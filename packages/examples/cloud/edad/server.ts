@@ -26,7 +26,7 @@ const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_DIR = join(import.meta.dir, "public");
 
 const CLOUD_URL = (
-  process.env.ELIZA_CLOUD_URL ?? "https://www.elizacloud.ai"
+  process.env.ELIZA_CLOUD_URL ?? "https://elizacloud.ai"
 ).replace(/\/+$/, "");
 const AFFILIATE_CODE = process.env.ELIZA_AFFILIATE_CODE ?? "";
 const APP_ID = process.env.ELIZA_APP_ID ?? "";

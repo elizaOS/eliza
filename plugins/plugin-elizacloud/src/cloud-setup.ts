@@ -46,7 +46,7 @@ type ProvisionOutcome =
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_CLOUD_BASE_URL = "https://elizacloud.ai";
 const PROVISION_TIMEOUT_MS = 120_000; // 2 minutes
 const PROVISION_POLL_INTERVAL_MS = 3_000;
 

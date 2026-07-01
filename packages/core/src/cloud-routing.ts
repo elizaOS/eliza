@@ -28,7 +28,7 @@ export interface RouteSpec {
 		| { kind: "query"; paramName: string };
 }
 
-const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
+const CLOUD_BASE_FALLBACK = "https://elizacloud.ai/api/v1";
 
 /**
  * Structural subset of `IAgentRuntime` we actually need. Avoids a hard

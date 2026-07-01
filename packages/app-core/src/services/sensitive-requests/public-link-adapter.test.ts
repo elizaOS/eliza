@@ -100,7 +100,7 @@ describe("publicLinkSensitiveRequestAdapter", () => {
       expect(result.delivered).toBe(true);
       if (!result.delivered) throw new Error("expected success");
       expect(result.url).toBe(
-        "https://www.elizacloud.ai/api/v1/payment/app-charge/app_demo/req_pay_1/public",
+        "https://elizacloud.ai/api/v1/payment/app-charge/app_demo/req_pay_1/public",
       );
     } finally {
       if (previous !== undefined) process.env.ELIZAOS_CLOUD_BASE_URL = previous;

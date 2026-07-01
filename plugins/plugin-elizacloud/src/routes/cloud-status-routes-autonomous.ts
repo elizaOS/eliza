@@ -13,7 +13,7 @@ import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cl
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://www.elizacloud.ai/api/v1";
+const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
 const CLOUD_BILLING_URL =
   "https://www.elizacloud.ai/dashboard/settings?tab=billing";
 
