@@ -1780,6 +1780,8 @@ export function buildCadenceFromUpdateFields(args: {
   currentWindowPolicy: LifeOpsWindowPolicy;
   update: ExtractedUpdateFields;
   timeZone: string;
+  /** Clock override for tests; defaults to the system clock. */
+  now?: Date;
 }): {
   cadence: LifeOpsCadence;
   windowPolicy?: UpdateLifeOpsDefinitionRequest["windowPolicy"];
@@ -1956,19 +1958,41 @@ export function buildCadenceFromUpdateFields(args: {
       : null;
   }
 
-  // once: an explicit new time moves the dueAt. With no new time there is
+  // once: a date-level move ("push it to Friday", "move it to april 17")
+  // and/or an explicit new time moves the dueAt. With neither there is
   // nothing to change — return null so the caller reports that honestly
   // instead of re-saving the old dueAt and claiming an update happened.
-  if (kind === "once" && timeOfDayMinute !== null) {
-    return {
-      cadence: {
-        kind: "once",
-        dueAt: buildOneOffDueAtFromMinuteOfDay({
-          minuteOfDay: timeOfDayMinute,
-          timeZone,
-        }),
-      },
-    };
+  if (kind === "once") {
+    const hasDateMove =
+      update.dueDate !== null ||
+      update.dueInDays !== null ||
+      update.dueWeekday !== null ||
+      update.dueInMinutes !== null;
+    if (hasDateMove) {
+      const dueAt = resolveOnceDueAt({
+        dueDate: update.dueDate,
+        dueInDays: update.dueInDays,
+        dueWeekday: update.dueWeekday,
+        dueInMinutes: update.dueInMinutes,
+        timeOfDayMinute,
+        now: args.now,
+        timeZone,
+      });
+      // Unresolvable (e.g. a named date already in the past) — report
+      // honestly rather than writing a bogus dueAt.
+      return dueAt ? { cadence: { kind: "once", dueAt } } : null;
+    }
+    if (timeOfDayMinute !== null) {
+      return {
+        cadence: {
+          kind: "once",
+          dueAt: buildOneOffDueAtFromMinuteOfDay({
+            minuteOfDay: timeOfDayMinute,
+            timeZone,
+          }),
+        },
+      };
+    }
   }
   return null;
 }
@@ -3232,7 +3256,11 @@ export async function runLifeOperationHandler(
             llmFields.windows ||
             llmFields.weekdays ||
             llmFields.everyMinutes ||
-            llmFields.timeOfDay
+            llmFields.timeOfDay ||
+            llmFields.dueDate ||
+            llmFields.dueInDays !== null ||
+            llmFields.dueWeekday !== null ||
+            llmFields.dueInMinutes !== null
           ) {
             const built = buildCadenceFromUpdateFields({
               currentCadence: target.definition.cadence,

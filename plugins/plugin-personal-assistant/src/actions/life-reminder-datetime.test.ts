@@ -245,6 +245,10 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     everyMinutes: null,
     priority: null,
     description: null,
+    dueDate: null,
+    dueInDays: null,
+    dueWeekday: null,
+    dueInMinutes: null,
   };
 
   it("moves the dueAt when a new time is extracted", () => {
@@ -270,6 +274,72 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
       currentWindowPolicy,
       timeZone: DENVER,
       update: emptyUpdate,
+    });
+    expect(built).toBeNull();
+  });
+
+  // Date-level moves ("push it to Friday / tomorrow / april 17") previously
+  // resolved only the TIME portion because the update extractor had no
+  // due* fields — the date silently stayed put.
+  it("moves the dueAt to a named weekday + time", () => {
+    // NOW is Wed 2026-07-01 (Denver). "Friday at 3pm" => Fri 2026-07-03 15:00 MDT.
+    const built = buildCadenceFromUpdateFields({
+      currentCadence,
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, dueWeekday: 5, timeOfDay: "15:00" },
+    });
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-07-03T21:00:00.000Z",
+    });
+  });
+
+  it("moves the dueAt by relative days (tomorrow), keeping the extracted time", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence,
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, dueInDays: 1, timeOfDay: "09:30" },
+    });
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-07-02T15:30:00.000Z",
+    });
+  });
+
+  it("moves the dueAt to an explicit calendar date", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence,
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, dueDate: "2026-07-10", timeOfDay: "12:00" },
+    });
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-07-10T18:00:00.000Z",
+    });
+  });
+
+  it("an offset move (in 2 hours) resolves from now", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence,
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, dueInMinutes: 120 },
+    });
+    expect(built?.cadence.kind).toBe("once");
+    const dueAt =
+      built && built.cadence.kind === "once" ? built.cadence.dueAt : "";
+    expect(new Date(dueAt).getTime() - NOW.getTime()).toBe(120 * 60_000);
+  });
+
+  it("a past calendar date is rejected (null), never a bogus dueAt", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence,
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, dueDate: "2026-06-01", timeOfDay: "12:00" },
     });
     expect(built).toBeNull();
   });
