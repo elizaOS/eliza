@@ -16,6 +16,7 @@
  */
 
 import type http from "node:http";
+import { resolveDiscordExchange } from "./auth/discord-exchange";
 import { type EmbedPlatform, verifyEmbedLaunch } from "./auth/embed-handshake";
 import {
   DEFAULT_EMBED_TOKEN_TTL_MS,
@@ -40,10 +41,15 @@ export async function handleEmbedAuthRoutes(
   res: http.ServerResponse,
   state: CompatRuntimeState,
   // Injectable so tests exercise the route without a module mock for the
-  // handshake — module mocks race under vmForks parallel load. Defaults to the
-  // real verifier in production.
-  deps: { verifyEmbedLaunch: typeof verifyEmbedLaunch } = { verifyEmbedLaunch },
+  // handshake — module mocks race under vmForks parallel load. Each field
+  // defaults to the real implementation in production.
+  deps: {
+    verifyEmbedLaunch?: typeof verifyEmbedLaunch;
+    resolveDiscordExchange?: typeof resolveDiscordExchange;
+  } = {},
 ): Promise<boolean> {
+  const verify = deps.verifyEmbedLaunch ?? verifyEmbedLaunch;
+  const resolveExchange = deps.resolveDiscordExchange ?? resolveDiscordExchange;
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
@@ -75,10 +81,22 @@ export async function handleEmbedAuthRoutes(
   const accountId =
     typeof body.accountId === "string" ? body.accountId : undefined;
 
-  const result = await deps.verifyEmbedLaunch(
-    { platform, signedLaunchPayload, accountId },
-    runtime,
-  );
+  // Discord verification exchanges the Activity OAuth2 code server-side; resolve
+  // the production exchange from the runtime's configured credentials. When the
+  // credentials are unset this is `undefined` and the handshake fails closed
+  // with `discord_exchange_unconfigured`. Telegram never needs an exchange, so
+  // its input is left untouched.
+  const input =
+    platform === "discord"
+      ? {
+          platform,
+          signedLaunchPayload,
+          accountId,
+          discordExchange: resolveExchange(runtime),
+        }
+      : { platform, signedLaunchPayload, accountId };
+
+  const result = await verify(input, runtime);
 
   if (!result.ok) {
     // Fail closed: never echo the raw reason in a way that leaks why the

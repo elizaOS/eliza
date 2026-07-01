@@ -303,4 +303,97 @@ describe("handleEmbedAuthRoutes", () => {
     );
     expect(ok).toBe(true);
   });
+
+  it("wires the resolved Discord exchange into the handshake for discord", async () => {
+    verifyEmbedLaunch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      reason: "x",
+    });
+    const exchangeFn = vi.fn();
+    const resolveDiscordExchange = vi.fn(() => exchangeFn);
+    const runtime = { agentId: "agent", getSetting: () => undefined };
+    const r = fakeRes();
+    await handleEmbedAuthRoutes(
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "discord",
+        signedLaunchPayload: "oauth2-code",
+        accountId: "acct-9",
+      }),
+      r.res,
+      runtimeState(runtime),
+      {
+        verifyEmbedLaunch: verifyEmbedLaunch as never,
+        resolveDiscordExchange: resolveDiscordExchange as never,
+      },
+    );
+    expect(resolveDiscordExchange).toHaveBeenCalledWith(runtime);
+    expect(verifyEmbedLaunch).toHaveBeenCalledWith(
+      {
+        platform: "discord",
+        signedLaunchPayload: "oauth2-code",
+        accountId: "acct-9",
+        discordExchange: exchangeFn,
+      },
+      runtime,
+    );
+  });
+
+  it("passes an undefined exchange for discord when credentials are unconfigured", async () => {
+    verifyEmbedLaunch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      reason: "x",
+    });
+    const resolveDiscordExchange = vi.fn(() => undefined);
+    const runtime = { agentId: "agent", getSetting: () => undefined };
+    const r = fakeRes();
+    await handleEmbedAuthRoutes(
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "discord",
+        signedLaunchPayload: "oauth2-code",
+      }),
+      r.res,
+      runtimeState(runtime),
+      {
+        verifyEmbedLaunch: verifyEmbedLaunch as never,
+        resolveDiscordExchange: resolveDiscordExchange as never,
+      },
+    );
+    const input = verifyEmbedLaunch.mock.calls[0]?.[0] as {
+      platform: string;
+      discordExchange: unknown;
+    };
+    expect(input.platform).toBe("discord");
+    expect(input.discordExchange).toBeUndefined();
+  });
+
+  it("never resolves a Discord exchange for a telegram launch", async () => {
+    verifyEmbedLaunch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      reason: "x",
+    });
+    const resolveDiscordExchange = vi.fn(() => vi.fn());
+    const runtime = { agentId: "agent", getSetting: () => undefined };
+    const r = fakeRes();
+    await handleEmbedAuthRoutes(
+      fakeReq("POST", "/api/embed/auth", {
+        platform: "telegram",
+        signedLaunchPayload: "initData",
+      }),
+      r.res,
+      runtimeState(runtime),
+      {
+        verifyEmbedLaunch: verifyEmbedLaunch as never,
+        resolveDiscordExchange: resolveDiscordExchange as never,
+      },
+    );
+    expect(resolveDiscordExchange).not.toHaveBeenCalled();
+    const input = verifyEmbedLaunch.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(input).not.toHaveProperty("discordExchange");
+  });
 });
