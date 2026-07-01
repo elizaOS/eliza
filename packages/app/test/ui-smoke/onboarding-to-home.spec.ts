@@ -86,7 +86,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    await swipeLeftToLauncher(page, surface);
+    await swipeLeftToLauncher(page, surface, { input: "mouse" });
     await screenshot(page, "launcher");
   });
 

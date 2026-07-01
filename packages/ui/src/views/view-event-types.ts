@@ -20,6 +20,8 @@ export const VIEW_EVENTS = {
   TRANSACTION_COMPLETE: "transaction:complete",
   /** A user-facing setting was changed and persisted. */
   SETTINGS_CHANGED: "settings:changed",
+  /** A plugin was hot-reloaded into the running runtime. */
+  PLUGIN_RELOADED: "plugin_reloaded",
 } as const;
 
 export type ViewEventType = (typeof VIEW_EVENTS)[keyof typeof VIEW_EVENTS];

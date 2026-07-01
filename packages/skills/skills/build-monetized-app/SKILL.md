@@ -64,6 +64,19 @@ charges, x402 requests, domains, media, and advertising. The direct SDK examples
 show the parent/app runtime shape; they are not permission to pass raw owner
 API keys or wallet keys to child workers.
 
+## ViewKind contract for Cloud app views
+
+If the app is delivered as an elizaOS plugin or contributes any `Plugin.views`
+entry, set `viewKind` explicitly:
+
+- `release` — finished user-facing views; this is the default for production
+  app views.
+- `preview` — unfinished or experimental views hidden until enabled.
+- `developer` — dev tooling such as logs, inspectors, debuggers, editors,
+  diagnostics, deployment panels, or admin consoles.
+- `system` — reserved for built-in elizaOS shell views; never use it in a
+  generated Cloud app plugin.
+
 ## After launch: charging and payout
 
 Use the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill and its

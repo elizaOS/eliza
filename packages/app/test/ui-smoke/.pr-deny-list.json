@@ -37,11 +37,6 @@
       "reason": "Generic per-control interaction harness (#8796); for every built-in view it fills inputs and clicks every control. Run on demand via `E2E_RECORD=1 bun run --cwd packages/app test:e2e test/ui-smoke/all-views-interaction.spec.ts`; it exercises destructive controls broadly so it is a coverage tool, not a narrow keyless PR gate."
     },
     {
-      "spec": "plugin-views-interaction.spec.ts",
-      "category": "dedicated-tool",
-      "reason": "Generic per-control interaction harness for dynamically-loaded plugin GUI views (#8796). Run on demand via `bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-interaction.spec.ts`, not default smoke."
-    },
-    {
       "spec": "launcher-interaction.spec.ts",
       "category": "dedicated-tool",
       "reason": "Drives Launcher view-catalog controls (#8796; renamed from springboard-interaction in #10001). Run on demand, not as a keyless PR gate."

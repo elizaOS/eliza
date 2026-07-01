@@ -71,7 +71,7 @@ import {
   StaticDataRegistry,
   WalletService,
 } from "@feed/engine";
-import type { JsonValue, StringRecord } from "@feed/shared";
+import type { JsonRpcResult, JsonValue, StringRecord } from "@feed/shared";
 import {
   GROUP_CONFIG,
   generateSnowflakeId,
@@ -86,6 +86,32 @@ function requireArrayItem<T>(items: T[], index: number, context: string): T {
     throw new Error(`Missing ${context} at index ${index}`);
   }
   return item;
+}
+
+function isJsonRecord(
+  value: JsonRpcResult | undefined,
+): value is StringRecord<JsonValue> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function coerceToolResponseResult<T>(value: unknown): T {
+  return value as T;
+}
+
+function requireToolResponseResult<T>(
+  result: JsonRpcResult | undefined,
+  label: string,
+  requiredKeys: readonly string[],
+): T {
+  if (!isJsonRecord(result)) {
+    throw new Error(`${label} response result must be an object`);
+  }
+  for (const key of requiredKeys) {
+    if (result[key] === undefined) {
+      throw new Error(`${label} response result is missing ${key}`);
+    }
+  }
+  return coerceToolResponseResult<T>(result);
 }
 
 function buildWalletPort(): WalletPort {
@@ -3133,7 +3159,11 @@ export async function executeCreateEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as CreateEscrowPaymentResult;
+  return requireToolResponseResult<CreateEscrowPaymentResult>(
+    response.result,
+    "createEscrowPayment",
+    ["success", "escrow", "paymentRequest"],
+  );
 }
 
 /**
@@ -3162,7 +3192,11 @@ export async function executeVerifyEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as VerifyEscrowPaymentResult;
+  return requireToolResponseResult<VerifyEscrowPaymentResult>(
+    response.result,
+    "verifyEscrowPayment",
+    ["success", "escrow"],
+  );
 }
 
 /**
@@ -3189,7 +3223,11 @@ export async function executeRefundEscrowPayment(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as RefundEscrowPaymentResult;
+  return requireToolResponseResult<RefundEscrowPaymentResult>(
+    response.result,
+    "refundEscrowPayment",
+    ["success", "escrow"],
+  );
 }
 
 /**
@@ -3218,7 +3256,11 @@ export async function executeListEscrowPayments(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as ListEscrowPaymentsResult;
+  return requireToolResponseResult<ListEscrowPaymentsResult>(
+    response.result,
+    "listEscrowPayments",
+    ["success", "escrows", "pagination"],
+  );
 }
 
 // ============================================================================
@@ -3310,7 +3352,11 @@ export async function executeAppealBanWithEscrow(
   if (!response.result) {
     throw new Error("No result in response");
   }
-  return response.result as unknown as AppealBanWithEscrowResult;
+  return requireToolResponseResult<AppealBanWithEscrowResult>(
+    response.result,
+    "appealBanWithEscrow",
+    ["success", "message", "appeal"],
+  );
 }
 
 // ============================================================================

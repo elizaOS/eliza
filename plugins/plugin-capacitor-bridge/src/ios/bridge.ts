@@ -996,7 +996,7 @@ function _buildBufferedRoutePair(args: {
 	const readable = Readable.from(
 		args.bodyText ? [Buffer.from(args.bodyText, "utf8")] : [],
 	);
-	const req = readable as unknown as IncomingMessage & {
+	const req = readable as IncomingMessage & {
 		method: string;
 		url: string;
 		headers: Record<string, string>;
@@ -1066,7 +1066,7 @@ function _buildBufferedRoutePair(args: {
 	};
 	return {
 		req,
-		res: res as unknown as ServerResponse,
+		res: res as ServerResponse,
 		captured,
 	};
 }
@@ -1167,7 +1167,7 @@ function tryHandleHostResultLine(line: string): boolean {
 	const envelope =
 		parsed.envelope && typeof parsed.envelope === "object"
 			? (parsed.envelope as Record<string, unknown>)
-			: (parsed as unknown as Record<string, unknown>);
+			: { ok: parsed.ok, result: parsed.result, error: parsed.error };
 	if (envelope.ok === false) {
 		pending.reject(
 			new Error(

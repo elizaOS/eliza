@@ -66,6 +66,10 @@ export default defineConfig({
 				find: "@elizaos/ui/agent-surface",
 				replacement: path.join(uiSrc, "agent-surface/useAgentElement.ts"),
 			},
+			{
+				find: "@elizaos/ui/events",
+				replacement: path.join(uiSrc, "events/index.ts"),
+			},
 			// The spatial view + terminal renderer import the spatial primitives
 			// and the TUI engine. Resolve both to source so their internal React
 			// hooks share the same singleton as the test renderer (otherwise the

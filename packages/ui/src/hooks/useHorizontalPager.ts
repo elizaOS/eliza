@@ -78,6 +78,37 @@ function pageOffset(page: number, width: number): number {
   return -page * width;
 }
 
+function clampPage(page: number, pageCount: number): number {
+  return Math.max(0, Math.min(Math.max(0, pageCount - 1), page));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function getVelocityAwarePagerTransitionMs({
+  velocityPxPerMs,
+  remainingDistancePx,
+  fallbackMs,
+}: {
+  velocityPxPerMs: number;
+  remainingDistancePx: number;
+  fallbackMs: number;
+}): number {
+  const remaining = Math.abs(remainingDistancePx);
+  const speed = Math.abs(velocityPxPerMs);
+  if (remaining < 1 || speed < 0.01) {
+    return clamp(Math.round(fallbackMs), MIN_SETTLE_MS, MAX_SETTLE_MS);
+  }
+
+  const effectiveSpeed = Math.max(MIN_SETTLE_SPEED, speed);
+  return clamp(
+    Math.round(remaining / effectiveSpeed),
+    MIN_SETTLE_MS,
+    MAX_SETTLE_MS,
+  );
+}
+
 /**
  * Settle duration (ms) for the remaining travel at a given release velocity.
  * Fast flick → short, snappy settle; slow release → longer ease, clamped to a
@@ -87,14 +118,11 @@ function momentumSettleMs(
   remainingPx: number,
   velocityPxPerMs: number,
 ): number {
-  const speed = Math.max(Math.abs(velocityPxPerMs), MIN_SETTLE_SPEED);
-  return Math.round(
-    Math.max(MIN_SETTLE_MS, Math.min(MAX_SETTLE_MS, remainingPx / speed)),
-  );
-}
-
-function clampPage(page: number, pageCount: number): number {
-  return Math.max(0, Math.min(Math.max(0, pageCount - 1), page));
+  return getVelocityAwarePagerTransitionMs({
+    velocityPxPerMs,
+    remainingDistancePx: remainingPx,
+    fallbackMs: SETTLE_MS,
+  });
 }
 
 /**

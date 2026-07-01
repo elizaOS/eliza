@@ -378,6 +378,9 @@
       "@elizaos/plugin-polymarket": [
         "./plugins/plugin-polymarket/dist/index.d.ts"
       ],
+      "@elizaos/plugin-pty": [
+        "./plugins/plugin-pty/dist/index.d.ts"
+      ],
       "@elizaos/plugin-registry": [
         "./plugins/plugin-registry/dist/index.d.ts"
       ],
