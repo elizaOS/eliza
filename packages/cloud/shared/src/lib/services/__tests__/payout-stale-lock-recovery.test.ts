@@ -114,6 +114,7 @@ let pgliteReady = true;
 
 interface SeedOpts {
   status: string;
+  network?: string;
   broadcastTxHash?: string | null;
   retryCount?: number;
   /** processing_started_at, expressed as minutes in the PAST (undefined → NULL). */
@@ -150,7 +151,7 @@ async function seedRedemption(opts: SeedOpts): Promise<string> {
         processing_started_at, broadcast_tx_hash, retry_count)
      VALUES
        ('${id}', '${userId}', '1000.00', '10.0000', '0.10000000', '100.00000000',
-        now() + interval '1 hour', 'base', '${opts.payoutAddress ?? OK_ADDRESS}', '${opts.status}',
+        now() + interval '1 hour', '${opts.network ?? "base"}', '${opts.payoutAddress ?? OK_ADDRESS}', '${opts.status}',
         ${started}, ${broadcast}, '${opts.retryCount ?? 0}');`,
   );
   return id;
@@ -158,6 +159,7 @@ async function seedRedemption(opts: SeedOpts): Promise<string> {
 
 async function readRedemption(id: string): Promise<{
   status: string;
+  failure_reason: string | null;
   broadcast_tx_hash: string | null;
   tx_hash: string | null;
   retry_count: string;
@@ -165,11 +167,12 @@ async function readRedemption(id: string): Promise<{
   requires_review: boolean;
 }> {
   const rows = await dbWrite.execute(
-    `SELECT status, broadcast_tx_hash, tx_hash, retry_count, processing_started_at, requires_review
+    `SELECT status, failure_reason, broadcast_tx_hash, tx_hash, retry_count, processing_started_at, requires_review
      FROM token_redemptions WHERE id = '${id}';`,
   );
   return rows.rows[0] as {
     status: string;
+    failure_reason: string | null;
     broadcast_tx_hash: string | null;
     tx_hash: string | null;
     retry_count: string;
@@ -336,6 +339,35 @@ describe("payout stale-lock recovery (#10553)", () => {
       // The load-bearing assertion: NO new transaction was broadcast.
       expect(sendRawTxMock.mock.calls.length).toBe(0);
       // It is surfaced for on-chain reconciliation.
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(b2) #10628: stale Solana rows without a broadcast hash are escalated, not re-approved",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "processing",
+        network: "solana",
+        broadcastTxHash: null,
+        startedMinutesAgo: 10,
+        retryCount: 0,
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.processed).toBe(0);
+      expect(row.status).toBe("failed");
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.tx_hash).toBeNull();
+      expect(Number(row.retry_count)).toBe(1);
+      expect(row.processing_started_at).toBeNull();
+      expect(row.requires_review).toBe(true);
+      expect(row.failure_reason).toContain("Solana stale processing lock");
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
       expect(sendAlertMock.mock.calls.length).toBe(1);
     },
     PGLITE_TIMEOUT,
