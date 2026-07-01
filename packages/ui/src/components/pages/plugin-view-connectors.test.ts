@@ -31,4 +31,28 @@ describe("shouldRenderConnectorPluginConfig", () => {
       }),
     ).toBe(false);
   });
+
+  it("hides the config form when both managed-mode exclusions apply", () => {
+    expect(
+      shouldRenderConnectorPluginConfig({
+        hasParams: true,
+        isCloudOAuthMode: true,
+        isDiscordManagedMode: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("renders nothing when the plugin exposes no params, regardless of mode", () => {
+    for (const isCloudOAuthMode of [false, true]) {
+      for (const isDiscordManagedMode of [false, true]) {
+        expect(
+          shouldRenderConnectorPluginConfig({
+            hasParams: false,
+            isCloudOAuthMode,
+            isDiscordManagedMode,
+          }),
+        ).toBe(false);
+      }
+    }
+  });
 });
