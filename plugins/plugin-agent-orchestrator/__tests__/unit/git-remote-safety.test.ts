@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertSafeGitRef,
   assertSafeGitRemote,
   normalizeRepositoryInput,
+  UnsafeGitRefError,
   UnsafeGitRemoteError,
 } from "../../src/services/repo-input.js";
 
@@ -78,5 +80,58 @@ describe("assertSafeGitRemote", () => {
     // `::` inside an IPv6 literal must NOT trip the `<helper>::` check.
     const ipv6 = "https://[2001:db8::1]/owner/repo.git";
     expect(assertSafeGitRemote(ipv6)).toBe(ipv6);
+  });
+
+  it("rejects shell metacharacters / whitespace even behind a valid scheme", () => {
+    // The unauthenticated clone path in git-workspace-service runs the remote
+    // through a shell, so an `https://`-prefixed string with metacharacters is
+    // still command injection. A prefix-only scheme check would wave these
+    // through — the reason #10980's fix left the RCE reachable.
+    for (const bad of [
+      "https://127.0.0.1/x; touch /tmp/pwned",
+      "https://127.0.0.1/x$(touch /tmp/pwned)",
+      "https://127.0.0.1/x`id`",
+      "https://127.0.0.1/x|touch /tmp/pwned",
+      "https://127.0.0.1/x && touch /tmp/pwned",
+      "https://127.0.0.1/x\ntouch /tmp/pwned",
+    ]) {
+      expect(() => assertSafeGitRemote(bad)).toThrow(UnsafeGitRemoteError);
+    }
+  });
+});
+
+describe("assertSafeGitRef", () => {
+  it("accepts ordinary branch / ref names", () => {
+    for (const ok of [
+      "main",
+      "develop",
+      "master",
+      "feature/foo-bar",
+      "release/1.2.3",
+      "v1.0.0",
+      "eliza/task-abc123",
+    ]) {
+      expect(assertSafeGitRef(ok)).toBe(ok);
+    }
+  });
+
+  it("rejects a leading '-' (argument injection)", () => {
+    expect(() => assertSafeGitRef("--upload-pack=sh")).toThrow(
+      UnsafeGitRefError,
+    );
+  });
+
+  it("rejects shell metacharacters / whitespace (branch-name command injection)", () => {
+    for (const bad of [
+      "main; touch /tmp/pwned",
+      "main$(touch /tmp/pwned)",
+      "main`id`",
+      "main | sh",
+      "main && rm -rf /",
+      "with space",
+      "",
+    ]) {
+      expect(() => assertSafeGitRef(bad)).toThrow(UnsafeGitRefError);
+    }
   });
 });

@@ -69,7 +69,11 @@ import {
 export type { AuthPromptCallback } from "./workspace-github.js";
 
 import { readConfigEnvKey } from "./config-env.js";
-import { assertSafeGitRemote, normalizeRepositoryInput } from "./repo-input.js";
+import {
+  assertSafeGitRef,
+  assertSafeGitRemote,
+  normalizeRepositoryInput,
+} from "./repo-input.js";
 import {
   commit as gitCommit,
   createPR as gitCreatePR,
@@ -442,8 +446,19 @@ export class CodingWorkspaceService {
     }
 
     // Normalize common shorthand like owner/repo before handing it to the
-    // lower-level clone service, which expects an actual remote URL.
-    const repo = normalizeRepositoryInput(options.repo);
+    // lower-level clone service, which expects an actual remote URL, then hard-
+    // gate it at the Milady boundary BEFORE any git spawn. assertSafeGitRemote
+    // rejects transport helpers, leading-"-" argument injection, non-http(s)/ssh
+    // schemes, AND shell metacharacters — so the SAME validated string is safe
+    // on every downstream strategy (credentialed execFile clone, worktree, and
+    // the dependency's unauthenticated shell clone). Throws before provision().
+    const repo = assertSafeGitRemote(normalizeRepositoryInput(options.repo));
+    // A caller-supplied branch name (HTTP body / action content) bypasses the
+    // sanitized auto-mint and flows raw into `git checkout -b` / `git worktree
+    // add -b` via the dependency's shell, so validate it as a git ref here.
+    if (options.branchName !== undefined) {
+      assertSafeGitRef(options.branchName, "branchName");
+    }
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
     const userCredentials = this.resolveUserCredentials(
@@ -460,9 +475,16 @@ export class CodingWorkspaceService {
       userCredentials?.type === "pat" || userCredentials?.type === "oauth"
         ? userCredentials.token
         : undefined;
-    const baseBranch =
+    // `baseBranch` flows into `git clone --branch …` / `git fetch origin …` via
+    // the dependency's shell. Validate it whether it was caller-supplied
+    // (untrusted) or resolved from the remote's symref (a malicious remote could
+    // return a ref with metacharacters). `??` short-circuits so an explicit
+    // baseBranch is rejected before we ever spawn `git ls-remote`.
+    const baseBranch = assertSafeGitRef(
       options.baseBranch ??
-      (await resolveDefaultBranch(repo, defaultBranchToken));
+        (await resolveDefaultBranch(repo, defaultBranchToken)),
+      "baseBranch",
+    );
 
     const workspaceConfig: WorkspaceConfig = {
       repo,
