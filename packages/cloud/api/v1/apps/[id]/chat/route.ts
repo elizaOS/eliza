@@ -10,6 +10,7 @@ import {
   type RouteContext,
 } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   addCorsHeaders,
   createPreflightResponse,
@@ -198,6 +199,20 @@ async function handlePOST(
     }
 
     const { user } = authResult;
+    if (await isAppKeyOutOfScope(authResult.apiKey?.id, appId)) {
+      return withCors(
+        Response.json(
+          {
+            error: {
+              message: "Access denied to this app",
+              type: "invalid_request_error",
+              code: "access_denied",
+            },
+          },
+          { status: 403 },
+        ),
+      );
+    }
 
     // Access control: non-monetized apps are internal (same org only)
     // Monetized apps are public (anyone with credits can use)

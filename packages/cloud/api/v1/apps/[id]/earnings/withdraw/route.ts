@@ -7,6 +7,7 @@ import {
   type RouteContext,
 } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   RateLimitPresets,
   rateLimit,
@@ -65,7 +66,7 @@ async function handlePOST(
       );
     }
 
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;
 
     const app = await appsService.getById(id);
@@ -78,6 +79,12 @@ async function handlePOST(
     }
 
     if (app.organization_id !== user.organization_id) {
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
+    }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
       return Response.json(
         { success: false, error: "Access denied" },
         { status: 403 },

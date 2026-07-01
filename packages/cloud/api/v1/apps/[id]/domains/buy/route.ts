@@ -18,6 +18,7 @@ import { dbRead, dbWrite } from "@/db/client";
 import { creditTransactionsRepository } from "@/db/repositories/credit-transactions";
 import { domainPurchaseIdempotency } from "@/db/schemas/domain-purchase-idempotency";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
@@ -75,6 +76,9 @@ app.post("/", async (c) => {
     const appRow = await appsService.getById(appId);
     if (!appRow) return c.json({ success: false, error: "App not found" }, 404);
     if (appRow.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
