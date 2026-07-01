@@ -18,6 +18,18 @@ runtime surface that makes them work standalone:
 - The runner factory `createScheduledTaskRunner({ … })` — persistence
   (`ScheduledTaskStore`/`ScheduledTaskLogStore`) and the owner/channel/connector
   dependencies are **injected** by the host, not owned here.
+- **The dispatch policy** (`dispatch-policy.ts`, enforced inside `fire()`):
+  a typed connector `DispatchResult { ok: false }` is never recorded as a
+  successful fire. `rate_limited`/`retryAfterMinutes` failures retry the SAME
+  step with backoff (bounded, 3 attempts/step); permanent failures advance the
+  escalation ladder across channels at each step's `delayMinutes`;
+  user-actionable failures also record `metadata.connectorDegradation`; an
+  exhausted ladder goes terminal `failed` + `pipeline.onFail`. Retry/advance
+  park the row back in `scheduled` with `state.firedAt` = next attempt time
+  (the scheduled-override the due evaluation and the `next_fire_at` index both
+  honor), surface as fire-result kind `dispatch_deferred`, and write a
+  `dispatch_retried`/`escalated` state-log row. Snooze and recurrence-refire
+  clear the continuation (`metadata.pendingDispatch`).
 - **The runner host service** `ScheduledTaskRunnerService` (serviceType
   `"lifeops_scheduled_task_runner"`, in `scheduled-task/runner-service.ts`) +
   the runtime-injected deps port `registerScheduledTaskRunnerDeps` /
