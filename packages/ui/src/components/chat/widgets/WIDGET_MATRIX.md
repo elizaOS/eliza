@@ -165,7 +165,6 @@ the open proposal.
 | Followups | yes | yes | n/a |
 | Form | yes | yes | n/a |
 | Notifications | yes | yes (added #9304) | n/a |
-| Messages | yes | yes (added #9304) | n/a |
 | Orchestrator activity | yes (e2e fixture) | yes | n/a |
 | Orchestrator accounts | yes (e2e fixture) | yes | n/a |
 | Grilling card | yes (added #9304) | yes | n/a |

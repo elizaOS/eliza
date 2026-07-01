@@ -42,24 +42,6 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
     });
   });
 
-  it("resolves a messages-sink declaration to a component", () => {
-    const decl: PluginWidgetDeclaration = {
-      id: "sink-test.msgs",
-      pluginId: "sink-test",
-      slot: "home",
-      label: "Sink Msgs",
-      defaultWidget: "messages",
-    };
-    withTempDeclaration(decl, () => {
-      const resolved = resolveWidgetsForSlot("home", [
-        { id: "sink-test", enabled: true, isActive: true },
-      ]);
-      const entry = resolved.find((r) => r.declaration.id === "sink-test.msgs");
-      expect(entry?.Component).toBeTruthy();
-      expect(entry?.defaultWidgetSink).toBe("messages");
-    });
-  });
-
   it("resolves an activity-sink declaration to a component", () => {
     const decl: PluginWidgetDeclaration = {
       id: "sink-test.act",

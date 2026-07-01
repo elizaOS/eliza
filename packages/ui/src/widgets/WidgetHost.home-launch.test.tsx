@@ -21,7 +21,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api/client-types-chat";
 
 // The home WidgetHost reads `s.plugins` (none active on a cold launch). Empty
-// plugins still resolve the always-visible core widgets (notifications).
+// plugins still resolve the always-visible core widgets (notifications). The
+// standalone Messages tile was consolidated into the notification rail (#10697);
+// the `conversations` mock below is retained for the other home widgets that
+// probe the conversation list.
 const DEFAULT_CONVERSATIONS = [
   {
     id: "c1",
@@ -136,6 +139,9 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     const notifications = screen.getByTestId("widget-notifications");
     expect(notifications.textContent).toContain("PR review requested");
     expect(notifications.textContent).toContain("2");
+    // The standalone Messages tile was consolidated into the notification rail
+    // (#10697), so the home host no longer renders a `widget-messages` card.
+    expect(screen.queryByTestId("widget-messages")).toBeNull();
   });
 
   it("self-hides every card when there is no data (the #9143 clean home)", () => {

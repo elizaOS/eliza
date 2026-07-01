@@ -32,13 +32,23 @@ interface WorkflowDispatchCall {
   options?: { idempotencyKey?: string };
 }
 
+interface NotifyCall {
+  title: string;
+  body?: string;
+  category?: string;
+  priority?: string;
+  source?: string;
+  groupKey?: string;
+  data?: Record<string, unknown>;
+}
+
 interface MockRuntimeHandle {
   runtime: IAgentRuntime;
   dispatchCalls: WorkflowDispatchCall[];
+  notifyCalls: NotifyCall[];
   deletedTaskIds: UUID[];
   updatedTasks: Array<{ id: UUID; patch: Partial<Task> }>;
   warnings: unknown[][];
-  notifyCalls: Array<Record<string, unknown>>;
   setDispatchResult: (
     result: { ok: true; executionId?: string } | { ok: false; error: string },
   ) => void;
@@ -47,16 +57,10 @@ interface MockRuntimeHandle {
 
 function makeRuntime(): MockRuntimeHandle {
   const dispatchCalls: WorkflowDispatchCall[] = [];
+  const notifyCalls: NotifyCall[] = [];
   const deletedTaskIds: UUID[] = [];
   const updatedTasks: Array<{ id: UUID; patch: Partial<Task> }> = [];
   const warnings: unknown[][] = [];
-  const notifyCalls: Array<Record<string, unknown>> = [];
-
-  const notificationService = {
-    async notify(input: Record<string, unknown>) {
-      notifyCalls.push(input);
-    },
-  };
   let dispatchResult: {
     ok: boolean;
     executionId?: string;
@@ -75,6 +79,15 @@ function makeRuntime(): MockRuntimeHandle {
     },
   };
 
+  // The trigger runtime surfaces both success and failure on the notification
+  // rail (#10697) via the NOTIFICATION service; capture every emit so the tests
+  // can assert the real notify contract, not just the log lines.
+  const notificationService = {
+    async notify(input: NotifyCall) {
+      notifyCalls.push(input);
+    },
+  };
+
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "trigger-test" },
@@ -87,9 +100,12 @@ function makeRuntime(): MockRuntimeHandle {
       debug: vi.fn(),
     },
     getService: (name: string) => {
-      if (name === "WORKFLOW_DISPATCH")
+      if (name === "WORKFLOW_DISPATCH") {
         return workflowServicePresent ? workflowService : null;
-      if (name === ServiceType.NOTIFICATION) return notificationService;
+      }
+      if (name === ServiceType.NOTIFICATION) {
+        return notificationService;
+      }
       return null;
     },
     deleteTask: vi.fn(async (id: UUID) => {
@@ -103,10 +119,10 @@ function makeRuntime(): MockRuntimeHandle {
   return {
     runtime,
     dispatchCalls,
+    notifyCalls,
     deletedTaskIds,
     updatedTasks,
     warnings,
-    notifyCalls,
     setDispatchResult: (result) => {
       dispatchResult = result;
     },
@@ -205,25 +221,19 @@ describe("executeTriggerTask", () => {
     } as Task);
     expect(persisted?.runCount).toBe(1);
     expect(persisted?.lastStatus).toBe("success");
-  });
 
-  it("emits a low-priority completion notification on a successful run (#10697)", async () => {
-    const task = makeTriggerTask({
-      triggerType: "interval",
-      displayName: "Nightly backup",
-    });
-
-    await executeTriggerTask(handle.runtime, task, { source: "scheduler" });
-
+    // A successful run surfaces a completion on the notification rail (#10697):
+    // scheduled automations run without the user in the loop, so the success is
+    // otherwise invisible. It mirrors the failure branch's contract.
     expect(handle.notifyCalls).toHaveLength(1);
-    const notif = handle.notifyCalls[0];
-    expect(notif.title).toBe('Automation "Nightly backup" completed');
-    expect(notif.category).toBe("workflow");
-    expect(notif.priority).toBe("low");
-    expect(notif.source).toBe("trigger");
-    // Grouped per trigger so a frequently scheduled automation updates one
-    // rail entry instead of spamming a fresh notification every run.
-    expect(notif.groupKey).toBe(`trigger:${task.id}`);
+    const notify = handle.notifyCalls[0];
+    expect(notify?.title).toBe('Automation "Test Trigger" completed');
+    expect(notify?.category).toBe("workflow");
+    expect(notify?.priority).toBe("normal");
+    expect(notify?.source).toBe("trigger");
+    expect(notify?.groupKey).toBe(`trigger:${task.id}`);
+    expect(notify?.data?.triggerId).toBe(before?.triggerId);
+    expect(notify?.data?.executionId).toBe("exec-1");
   });
 
   it("emits a high-priority failure notification when the dispatch errors", async () => {
@@ -417,6 +427,15 @@ describe("executeTriggerTask", () => {
     expect(result.error).toBe("boom");
     // The run still records and persists (error is observable, not swallowed).
     expect(handle.updatedTasks).toHaveLength(1);
+    // A failed run surfaces a high-priority failure on the notification rail;
+    // the success completion is NOT emitted on the error path.
+    expect(handle.notifyCalls).toHaveLength(1);
+    const notify = handle.notifyCalls[0];
+    expect(notify?.title).toBe('Automation "Test Trigger" failed');
+    expect(notify?.category).toBe("workflow");
+    expect(notify?.priority).toBe("high");
+    expect(notify?.source).toBe("trigger");
+    expect(notify?.body).toBe("boom");
   });
 
   it("reports an error when the WORKFLOW_DISPATCH service is absent", async () => {

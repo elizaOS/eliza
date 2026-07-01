@@ -38,12 +38,16 @@ describe("home frontpage widget slot (#9143)", () => {
     expect(notif?.Component).toBeTruthy();
   });
 
-  it("no longer resolves a standalone Recent conversations tile (#10697)", () => {
-    // The redundant Messages widget was removed — messages fold into the
-    // notification rail, so the home grid must not resurface a messages tile.
+  it("no longer resolves a standalone Messages tile on home (#10697 consolidation)", () => {
+    // The standalone recent-conversations tile was consolidated into the
+    // notification rail (#10697): nothing on the home slot should carry the
+    // `messages.recent` id or the `messages` pluginId anymore.
     const resolved = resolveWidgetsForSlot("home", []);
     expect(
       resolved.find((r) => r.declaration.id === "messages.recent"),
+    ).toBeUndefined();
+    expect(
+      resolved.find((r) => r.declaration.pluginId === "messages"),
     ).toBeUndefined();
   });
 

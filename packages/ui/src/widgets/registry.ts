@@ -69,13 +69,14 @@ registerWidgetComponent(
   "notifications.recent",
   NotificationsWidget,
 );
-// Curated home-grid widgets backed by core API surfaces (conversations, agent
-// activity, wallet, running workflows). Each renders populated data, a
-// connected-but-empty state, or self-hides — always-visible so the home grid is
-// populated even before the runtime plugin snapshot arrives. The connector
-// status strip and discord recent tiles were intentionally dropped from the
-// home surface: they surfaced connector warn/error chips and a "Connect Discord"
-// affordance that crowded the naked home grid with setup noise.
+// Curated home-grid widgets backed by core API surfaces (agent activity, wallet,
+// running workflows). Each renders populated data, a connected-but-empty state,
+// or self-hides — always-visible so the home grid is populated even before the
+// runtime plugin snapshot arrives. The connector status strip and discord recent
+// tiles were intentionally dropped from the home surface: they surfaced
+// connector warn/error chips and a "Connect Discord" affordance that crowded the
+// naked home grid with setup noise. Recent conversations were consolidated into
+// the notification rail (#10697) — the standalone messages tile was removed.
 registerWidgetComponent("feed", "feed.agent-activity", AgentActivityWidget);
 registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
 // Running workflows tile (ITEM 5): backed by the core GET /api/automations
@@ -342,9 +343,9 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     // Boosted by any notification; urgent ones map to escalation-level weight.
     signalKinds: ["notification", "approval", "escalation"],
   },
-  // The standalone Recent-conversations tile was removed (#10697) — it
-  // duplicated the always-present chat overlay. Follow-up-worthy messages now
-  // surface as `category: "message"` notifications in the notification rail.
+  // Recent conversations were consolidated into the notification rail (#10697):
+  // the standalone home Messages tile and its `messages` default-widget sink were
+  // removed. The chat overlay remains the live-thread surface.
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -625,8 +626,8 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   "welcome",
   // Notifications is a core runtime feature (NotificationService), not a
   // loadable plugin, so its frontpage widget must render regardless of the
-  // plugin snapshot. (#9143). Messages was removed (#9304) — redundant with the
-  // always-present chat overlay.
+  // plugin snapshot. (#9143). The standalone Messages tile was consolidated into
+  // the notification rail (#10697), so it is no longer always-visible here.
   "notifications",
   // Needs-response is backed by the core ApprovalService (not a loadable
   // plugin), so its frontpage widget must render regardless of the plugin
@@ -710,10 +711,6 @@ export const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
   Record<DefaultHomeWidgetSink, { pluginId: string; id: string }>
 > = {
   notifications: { pluginId: "notifications", id: "notifications.recent" },
-  // The `messages` sink now folds into the notification rail (#10697) — the
-  // standalone Messages widget was removed as redundant with the chat overlay,
-  // so a plugin declaring `defaultWidget: "messages"` resolves to notifications.
-  messages: { pluginId: "notifications", id: "notifications.recent" },
   activity: {
     pluginId: "agent-orchestrator",
     id: "agent-orchestrator.activity",

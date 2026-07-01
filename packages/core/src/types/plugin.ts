@@ -468,7 +468,7 @@ export interface PluginWidgetDeclaration {
 	 * shipping a component. Ignored unless `slot` is `"home"` and no own
 	 * component is registered for this declaration's `pluginId`/`id`.
 	 */
-	defaultWidget?: "notifications" | "messages" | "activity";
+	defaultWidget?: "notifications" | "activity";
 	/**
 	 * Home-slot attention signals this widget responds to (#9143 priority). When
 	 * the home surface receives a live activity/notification signal of one of
