@@ -95,17 +95,6 @@ function userMessage(page: Page, text: string): Locator {
     .first();
 }
 
-function assistantMessages(page: Page, hasText: string | RegExp): Locator {
-  return page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .filter({ hasText })
-    .or(
-      conversationLog(page)
-        .locator('[data-role="assistant"]')
-        .filter({ hasText }),
-    );
-}
-
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
@@ -355,6 +344,32 @@ function parseAssistantFixtureText(
   ) as DeterministicAssistantFixture;
 }
 
+async function deterministicAssistantFixtures(
+  page: Page,
+): Promise<DeterministicAssistantFixture[]> {
+  const texts = await page
+    .locator(
+      [
+        '[data-testid="chat-message"][data-role="assistant"]',
+        '[role="log"][aria-label="conversation history"] [data-role="assistant"]',
+      ].join(", "),
+    )
+    .evaluateAll((elements) =>
+      elements
+        .map((element) => element.textContent?.trim() ?? "")
+        .filter((text) => text.includes("ui-smoke-assistant-v1")),
+    );
+
+  const fixtures: DeterministicAssistantFixture[] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    if (seen.has(text)) continue;
+    seen.add(text);
+    fixtures.push(parseAssistantFixtureText(text));
+  }
+  return fixtures;
+}
+
 async function expectDeterministicChatTurn(
   page: Page,
   prompt: string,
@@ -363,16 +378,9 @@ async function expectDeterministicChatTurn(
   await expect
     .poll(
       async () => {
-        const assistants = assistantMessages(page, /ui-smoke-assistant-v1/);
-        const matches: DeterministicAssistantFixture[] = [];
-        for (let i = 0; i < (await assistants.count()); i += 1) {
-          const assistantText =
-            (await assistants.nth(i).textContent())?.trim() ?? "";
-          const parsed = parseAssistantFixtureText(assistantText);
-          if (parsed.input.text === prompt) {
-            matches.push(parsed);
-          }
-        }
+        const matches = (await deterministicAssistantFixtures(page)).filter(
+          (fixture) => fixture.input.text === prompt,
+        );
         return matches.at(-1) ?? null;
       },
       {
