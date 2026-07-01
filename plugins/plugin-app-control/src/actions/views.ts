@@ -2267,9 +2267,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "confirm",
 				description:
-					'Set to "true" or "yes" to skip the delete confirmation prompt (delete mode).',
+					"Structured delete confirmation. Set true to confirm and false to cancel a pending delete prompt.",
 				required: false,
-				schema: { type: "string" },
+				schema: { type: "boolean" },
 			},
 			{
 				name: "sha",
@@ -2287,6 +2287,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			options?: Record<string, unknown>,
 		): Promise<boolean> => {
 			const text = message.content.text ?? "";
+			const actionOptions = normalizeActionOptions(options);
 			const roomId =
 				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 
@@ -2295,9 +2296,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
 			}
 
-			// Multi-turn delete follow-up: yes/no matches a pending confirm task.
-			if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
-				if (await hasPendingDeleteConfirm(runtime, roomId)) return true;
+			// Multi-turn delete follow-up: structured confirm boolean matches a
+			// pending confirm task.
+			if (
+				isDeleteConfirmation(actionOptions) ||
+				isDeleteCancellation(actionOptions)
+			) {
+				if (await hasPendingDeleteConfirm(runtime, roomId)) {
+					return ownerCheck(runtime, message);
+				}
 			}
 
 			// Create/edit/delete require owner access. The mode must be inferred the
@@ -2305,7 +2312,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			// the runtime passes here (handlerOptions.parameters). Inferring from text
 			// alone let a planner `{action:"delete"}` whose text lacked a "view"/
 			// "plugin" noun escape the gate while the handler still mutated.
-			const mode = inferMode(text, normalizeActionOptions(options));
+			const mode = inferMode(text, actionOptions);
 			if (
 				mode === "create" ||
 				mode === "edit" ||
@@ -2363,8 +2370,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 				}
 
-				// Multi-turn follow-up: yes/no for a pending delete confirmation.
-				if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
+				// Multi-turn follow-up: structured confirmation for a pending delete.
+				if (
+					isDeleteConfirmation(actionOptions) ||
+					isDeleteCancellation(actionOptions)
+				) {
 					if (await hasPendingDeleteConfirm(runtime, roomId)) {
 						const views = await client.listViews();
 						return runViewsDelete({
@@ -3008,7 +3018,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: 'Are you sure you want to delete the LifeOps view (@elizaos/plugin-personal-assistant)? Reply "yes" to confirm or "cancel" to abort.',
+						text: "Are you sure you want to delete the LifeOps view (@elizaos/plugin-personal-assistant)? Confirm with confirm=true, or cancel with confirm=false.",
 						action: "VIEWS",
 					},
 				},
