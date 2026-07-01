@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import {
   type AestheticMetricBudget,
+  type AestheticVerdictDebt,
   bucket,
   computeVerdict,
   evaluateAestheticMetricBudget,
+  evaluateStrictGate,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   parseNavigationTabPaths,
 } from "./aesthetic-audit-rules";
@@ -29,12 +31,15 @@ import { VIEW_CASES } from "./plugin-view-cases";
 // a GATE that fails on any `broken` verdict (a real crash / blank render /
 // console error / empty view) outside the shrinking debt allowlist below.
 // `needs-work` (design debt: blue / orange-hover / off-token radius) is logged
-// with a count but not hard-gated yet — capture the current set into
-// AESTHETIC_VERDICT_DEBT from a clean CI run, then tighten this to gate it too.
+// with a count but not hard-gated by default — opt in with
+// `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` (#10710) once the current set is captured
+// into AESTHETIC_VERDICT_DEBT from a clean CI run.
 const AUDIT_STRICT = process.env.ELIZA_AUDIT_APP_STRICT === "1";
+const AUDIT_STRICT_NEEDS_WORK =
+  process.env.ELIZA_AUDIT_APP_STRICT_NEEDS_WORK === "1";
 // Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
 // that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention).
-const AESTHETIC_VERDICT_DEBT: Record<string, "broken" | "needs-work"> = {};
+const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {};
 
 /**
  * App-side all-views aesthetic audit (#8796) — the agent app's equivalent of
@@ -1083,23 +1088,28 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       "utf8",
     );
 
-    // Gate (#9304). Always log the verdict tally; in strict mode, fail the run
-    // on any `broken` view not covered by the debt allowlist.
+    // Gate (#9304, #10710). Always log the verdict tally; the strict fail lives
+    // in the pure `evaluateStrictGate` (unit-tested in test/audit): it fails on
+    // any undebted `broken` view when `strict` is on, and — with
+    // `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` — on any undebted `needs-work` too.
     const broken = findings.filter((f) => f.verdict === "broken");
     const needsWork = findings.filter((f) => f.verdict === "needs-work");
     const minimalismBudgetFailures = findings.filter(
       (f) => f.minimalismBudgetViolations.length > 0,
     );
-    const undebtedBroken = broken.filter(
-      (f) => AESTHETIC_VERDICT_DEBT[`${f.slug}-${f.viewport}`] !== "broken",
-    );
+    const gate = evaluateStrictGate(findings, AESTHETIC_VERDICT_DEBT, {
+      strict: AUDIT_STRICT,
+      needsWorkStrict: AUDIT_STRICT_NEEDS_WORK,
+    });
     console.log(
       `[aesthetic-audit] ${findings.length} findings — ` +
         `broken=${broken.length} needs-work=${needsWork.length} ` +
         `needs-eyeball=${findings.filter((f) => f.verdict === "needs-eyeball").length} ` +
         `good=${findings.filter((f) => f.verdict === "good").length} ` +
         `minimalism-budget-failures=${minimalismBudgetFailures.length} ` +
-        `(strict=${AUDIT_STRICT}, undebted-broken=${undebtedBroken.length})`,
+        `(strict=${AUDIT_STRICT}, needs-work-strict=${AUDIT_STRICT_NEEDS_WORK}, ` +
+        `undebted-broken=${gate.undebtedBroken.length}, ` +
+        `undebted-needs-work=${gate.undebtedNeedsWork.length})`,
     );
     if (minimalismBudgetFailures.length > 0) {
       const detail = minimalismBudgetFailures
@@ -1118,22 +1128,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `from a fresh clean baseline.`,
       );
     }
-    if (AUDIT_STRICT && undebtedBroken.length > 0) {
-      const detail = undebtedBroken
-        .map(
-          (f) =>
-            `  ${f.slug} @ ${f.viewport}: ${
-              [...f.consoleErrors, ...f.qualityIssues].join("; ") ||
-              `readableChars=${f.readableChars}`
-            }`,
-        )
-        .join("\n");
-      throw new Error(
-        `[aesthetic-audit] STRICT gate failed: ${undebtedBroken.length} ` +
-          `non-exempt 'broken' view(s) not in AESTHETIC_VERDICT_DEBT:\n${detail}\n` +
-          `Fix the view or, if genuinely accepted debt, add the slug-viewport key ` +
-          `to AESTHETIC_VERDICT_DEBT (and shrink it over time).`,
-      );
+    if (gate.failed) {
+      throw new Error(gate.message);
     }
   });
 });
