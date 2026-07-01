@@ -162,4 +162,21 @@ describe("catalog — registry/config-derived secret seeding", () => {
 			DB_PASSWORD: "p@ss",
 		});
 	});
+	it("deriveKnownSecrets skips weak all-lowercase dictionary defaults, keeps real opaque secrets", () => {
+		// A secret-named env var whose value is a bare dictionary word (a common
+		// default like `password`/`changeme`) must NOT be auto-seeded — swapping it
+		// verbatim would corrupt legitimate text that merely contains that word.
+		// Real opaque secrets (digits/case/symbols/spaces) are still seeded.
+		expect(
+			deriveKnownSecrets({
+				ADMIN_PASSWORD: "password",
+				LOGIN_SECRET: "changeme",
+				API_KEY: "sk-Ab3xK9zPmq",
+				WALLET_MNEMONIC: "legal winner thank year",
+			}),
+		).toEqual({
+			API_KEY: "sk-Ab3xK9zPmq",
+			WALLET_MNEMONIC: "legal winner thank year",
+		});
+	});
 });
