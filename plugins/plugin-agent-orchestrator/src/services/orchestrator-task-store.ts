@@ -46,12 +46,17 @@ interface Logger {
 }
 
 interface TaskStoreRuntime {
+  /** Modern eliza runtime exposes the DB adapter as `runtime.adapter`. */
+  adapter?: unknown;
+  /** Legacy alias kept for pre-2026 runtimes and custom container harnesses. */
   databaseAdapter?: unknown;
   logger?: Logger;
   getSetting?: (key: string) => string | undefined;
 }
 
-type SqlDatabaseAdapter = {
+/** Raw shape: an adapter that exposes flat SQL methods directly. Older test
+ * harnesses (and hand-rolled sqlite bindings) look like this. */
+type RawSqlDatabaseAdapter = {
   query?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   execute?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   run?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
@@ -59,6 +64,23 @@ type SqlDatabaseAdapter = {
   get?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   select?: (sql: string, params?: unknown[]) => Promise<unknown[]> | unknown[];
 };
+
+/** Eliza shape: `BaseDrizzleAdapter` from @elizaos/plugin-sql. The raw
+ * executor lives on `adapter.db.execute(sql\`...\`)` (drizzle's tagged-template
+ * SQL). We only need `.execute` here. It returns a rowset for SELECTs and an
+ * ack for writes, which is all this store's storage-layer touches. */
+type ElizaDrizzleAdapter = {
+  db: {
+    execute: (query: unknown) => Promise<unknown> | unknown;
+  };
+};
+
+/** Unified low-level executor. `run` performs a mutation and ignores the
+ * result; `all` runs a SELECT and returns rows. */
+interface SqlExecutor {
+  run(sql: string, params?: unknown[]): Promise<void>;
+  all(sql: string, params?: unknown[]): Promise<unknown[]>;
+}
 
 // Bound auxiliary inline collections so telemetry/artifact chatter cannot grow
 // without limit. The primary operator timeline (messages + events) remains
@@ -99,11 +121,114 @@ function normalizeTaskDocument(
   };
 }
 
-function isSqlDatabaseAdapter(value: unknown): value is SqlDatabaseAdapter {
+function isRawSqlDatabaseAdapter(
+  value: unknown,
+): value is RawSqlDatabaseAdapter {
   if (!isRecord(value)) return false;
   return ["query", "execute", "run", "all", "get", "select"].some(
     (method) => typeof value[method] === "function",
   );
+}
+
+function isElizaDrizzleAdapter(value: unknown): value is ElizaDrizzleAdapter {
+  if (!isRecord(value)) return false;
+  const db = value.db;
+  return isRecord(db) && typeof db.execute === "function";
+}
+
+function isPersistableAdapter(
+  value: unknown,
+): value is RawSqlDatabaseAdapter | ElizaDrizzleAdapter {
+  return isRawSqlDatabaseAdapter(value) || isElizaDrizzleAdapter(value);
+}
+
+/**
+ * Resolve a raw or eliza-shaped adapter to a unified `SqlExecutor`.
+ *
+ * For raw adapters we pick the best available method for each operation.
+ * For eliza adapters we bake a tiny drizzle-flavored parameter binder: the
+ * SQL we emit uses `?` placeholders, so we substitute drizzle's own
+ * `sql\`...\`` template that concatenates literal string segments with
+ * `sql.param(value)` bind markers, using the drizzle runtime already loaded
+ * next to the adapter. Since we only invoke this from within an environment
+ * that ships `@elizaos/plugin-sql` (drizzle-orm is present), we require it
+ * lazily at first use to avoid a hard dependency here.
+ */
+async function resolveSqlExecutor(
+  adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
+): Promise<SqlExecutor> {
+  if (isElizaDrizzleAdapter(adapter)) {
+    // Lazily require drizzle's sql builder. Cast through unknown, since the
+    // eliza adapter guarantees drizzle-orm is installed alongside it.
+    const drizzle = (await import("drizzle-orm")) as {
+      sql: {
+        raw(text: string): unknown;
+        param(value: unknown): unknown;
+        join(chunks: unknown[], separator?: unknown): unknown;
+      };
+    };
+    const buildQuery = (text: string, params: unknown[] = []): unknown => {
+      if (params.length === 0) return drizzle.sql.raw(text);
+      // Split the emitted SQL on `?` placeholders and interleave drizzle
+      // bind-param chunks between the literal fragments. We only ever emit
+      // `?` (never `?N`) below, so a naive split is safe here.
+      const parts = text.split("?");
+      if (parts.length - 1 !== params.length) {
+        throw new Error(
+          `orchestrator-task-store: placeholder/param count mismatch (${
+            parts.length - 1
+          } placeholders vs ${params.length} params)`,
+        );
+      }
+      const chunks: unknown[] = [];
+      for (let i = 0; i < parts.length; i++) {
+        chunks.push(drizzle.sql.raw(parts[i]));
+        if (i < params.length) chunks.push(drizzle.sql.param(params[i]));
+      }
+      return drizzle.sql.join(chunks);
+    };
+    return {
+      async run(text, params) {
+        await adapter.db.execute(buildQuery(text, params));
+      },
+      async all(text, params) {
+        const result = await adapter.db.execute(buildQuery(text, params));
+        return normalizeRowset(result);
+      },
+    };
+  }
+
+  const runFn = adapter.execute ?? adapter.run ?? adapter.query;
+  const allFn = adapter.all ?? adapter.select ?? adapter.query;
+  if (!runFn) {
+    throw new Error(
+      "orchestrator-task-store: raw adapter exposes none of execute/run/query",
+    );
+  }
+  if (!allFn) {
+    throw new Error(
+      "orchestrator-task-store: raw adapter exposes none of all/select/query",
+    );
+  }
+  return {
+    async run(text, params = []) {
+      await runFn.call(adapter, text, params);
+    },
+    async all(text, params = []) {
+      const result = await allFn.call(adapter, text, params);
+      return normalizeRowset(result);
+    },
+  };
+}
+
+function normalizeRowset(result: unknown): unknown[] {
+  if (Array.isArray(result)) return result;
+  if (isRecord(result)) {
+    for (const key of ["rows", "results", "data", "values"]) {
+      if (Array.isArray(result[key])) return result[key] as unknown[];
+    }
+  }
+  return [];
 }
 
 function nowIso(): string {
@@ -565,13 +690,21 @@ const TASK_INDEX_SQL = [
 ];
 
 /** SQL backend. Stores the whole document as a JSON column with indexed
- * columns for the list query, so all reads/writes are single-row operations. */
+ * columns for the list query, so all reads/writes are single-row operations.
+ *
+ * Accepts either a raw sqlite-style adapter (older test harnesses,
+ * hand-rolled bindings) or an eliza `BaseDrizzleAdapter` (postgres/pglite),
+ * routing through {@link resolveSqlExecutor}. Upsert SQL uses `ON CONFLICT`
+ * so it's portable across postgres, pglite, and sqlite ≥3.24. */
 export class RuntimeDbTaskStore {
   private readonly cache = new InMemoryTaskStore();
   private initPromise: Promise<void> | undefined;
+  private executor: SqlExecutor | undefined;
   private tail = Promise.resolve();
 
-  constructor(private readonly adapter: SqlDatabaseAdapter) {}
+  constructor(
+    private readonly adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
+  ) {}
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const run = this.tail.then(operation, operation);
@@ -584,31 +717,20 @@ export class RuntimeDbTaskStore {
 
   private async ensureInitialized(): Promise<void> {
     this.initPromise ??= (async () => {
-      await this.exec(TASK_TABLE_SQL);
-      for (const sql of TASK_INDEX_SQL) await this.exec(sql);
+      this.executor = await resolveSqlExecutor(this.adapter);
+      await this.executor.run(TASK_TABLE_SQL);
+      for (const sql of TASK_INDEX_SQL) await this.executor.run(sql);
     })();
     await this.initPromise;
   }
 
-  private async exec(sql: string, params: unknown[] = []): Promise<unknown> {
-    const fn = this.adapter.execute ?? this.adapter.run ?? this.adapter.query;
-    if (!fn)
-      throw new Error("Runtime DB adapter exposes none of execute/run/query");
-    return fn.call(this.adapter, sql, params);
-  }
-
-  private async rows(sql: string, params: unknown[] = []): Promise<unknown[]> {
-    const fn = this.adapter.all ?? this.adapter.select ?? this.adapter.query;
-    if (!fn)
-      throw new Error("Runtime DB adapter exposes none of all/select/query");
-    const result = await fn.call(this.adapter, sql, params);
-    if (Array.isArray(result)) return result;
-    if (isRecord(result)) {
-      for (const key of ["rows", "results", "data", "values"]) {
-        if (Array.isArray(result[key])) return result[key] as unknown[];
-      }
+  private exec(): SqlExecutor {
+    if (!this.executor) {
+      throw new Error(
+        "orchestrator-task-store: executor accessed before ensureInitialized()",
+      );
     }
-    return [];
+    return this.executor;
   }
 
   private parseDoc(row: unknown): OrchestratorTaskDocument | null {
@@ -623,10 +745,22 @@ export class RuntimeDbTaskStore {
 
   private async persist(doc: OrchestratorTaskDocument): Promise<void> {
     const searchText = buildSearchText(doc);
-    await this.exec(
-      `INSERT OR REPLACE INTO orchestrator_tasks
+    // Portable upsert. Postgres/pglite need ON CONFLICT DO UPDATE; sqlite
+    // ≥3.24 accepts the same syntax. Named-column DO UPDATE avoids the
+    // sqlite-only INSERT OR REPLACE form we used to emit.
+    await this.exec().run(
+      `INSERT INTO orchestrator_tasks
        (id, status, archived, priority, title, search_text, updated_at, last_activity_at, document)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         status = excluded.status,
+         archived = excluded.archived,
+         priority = excluded.priority,
+         title = excluded.title,
+         search_text = excluded.search_text,
+         updated_at = excluded.updated_at,
+         last_activity_at = excluded.last_activity_at,
+         document = excluded.document`,
       [
         doc.task.id,
         doc.task.status,
@@ -642,7 +776,7 @@ export class RuntimeDbTaskStore {
   }
 
   private async loadOne(id: string): Promise<OrchestratorTaskDocument | null> {
-    const rows = await this.rows(
+    const rows = await this.exec().all(
       "SELECT document FROM orchestrator_tasks WHERE id = ?",
       [id],
     );
@@ -683,7 +817,7 @@ export class RuntimeDbTaskStore {
       filter.limit && filter.limit > 0
         ? `LIMIT ${Math.floor(filter.limit)}`
         : "";
-    const rows = await this.rows(
+    const rows = await this.exec().all(
       `SELECT document FROM orchestrator_tasks ${where} ORDER BY last_activity_at DESC ${limit}`,
       params,
     );
@@ -715,7 +849,7 @@ export class RuntimeDbTaskStore {
   async deleteTask(id: string): Promise<boolean> {
     return this.enqueue(async () => {
       await this.ensureInitialized();
-      await this.exec("DELETE FROM orchestrator_tasks WHERE id = ?", [id]);
+      await this.exec().run("DELETE FROM orchestrator_tasks WHERE id = ?", [id]);
       return true;
     });
   }
@@ -742,7 +876,7 @@ export class RuntimeDbTaskStore {
 
   async findSession(sessionId: string) {
     await this.ensureInitialized();
-    const rows = await this.rows(
+    const rows = await this.exec().all(
       "SELECT document FROM orchestrator_tasks WHERE document LIKE ?",
       [`%${sessionId}%`],
     );
@@ -786,11 +920,16 @@ export class OrchestratorTaskStore {
   private readonly delegate: InMemoryTaskStore | RuntimeDbTaskStore;
 
   constructor(options: OrchestratorTaskStoreOptions = {}) {
-    const adapter = options.runtime?.databaseAdapter;
+    // Prefer the modern `runtime.adapter` property (see
+    // packages/core/src/runtime.ts declares `public adapter!: IDatabaseAdapter`);
+    // fall back to the legacy `runtime.databaseAdapter` name that older test
+    // harnesses and some custom container runtimes still use.
+    const adapter =
+      options.runtime?.adapter ?? options.runtime?.databaseAdapter;
     const logger = options.runtime?.logger;
     if (
       (options.backend === undefined || options.backend === "runtime-db") &&
-      isSqlDatabaseAdapter(adapter)
+      isPersistableAdapter(adapter)
     ) {
       this.backend = "runtime-db";
       this.delegate = new RuntimeDbTaskStore(adapter);

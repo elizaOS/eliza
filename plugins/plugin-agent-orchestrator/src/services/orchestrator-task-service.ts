@@ -146,6 +146,9 @@ type RuntimeLike = IAgentRuntime & {
       (message: string, data?: unknown) => void
     >
   >;
+  /** Modern eliza runtime property. */
+  adapter?: unknown;
+  /** Legacy alias for pre-2026 runtimes and some container harnesses. */
   databaseAdapter?: unknown;
   getSetting?: (key: string) => string | undefined | null;
 };
@@ -590,6 +593,10 @@ export class OrchestratorTaskService extends Service {
       opts.store ??
       new OrchestratorTaskStore({
         runtime: {
+          // Feed both names. The store prefers `adapter` and falls back to
+          // `databaseAdapter`. This keeps ancient hand-rolled runtimes working
+          // while wiring modern eliza runtimes to the SQL backend for real.
+          adapter: this.runtime.adapter,
           databaseAdapter: this.runtime.databaseAdapter,
           logger: this.runtime.logger,
           getSetting: (key) => {
