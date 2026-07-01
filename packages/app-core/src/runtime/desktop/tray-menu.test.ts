@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildDesktopTrayViewItems,
   buildLocalizedTrayMenu,
-  desktopTrayAppSlug,
   DESKTOP_TRAY_MENU_ITEMS,
+  desktopTrayAppSlug,
   TRAY_APP_ITEM_PREFIX,
 } from "./tray-menu";
 
@@ -46,7 +46,10 @@ describe("buildDesktopTrayViewItems", () => {
 
   it("produces slugs the renderer can resolve back to a descriptor", () => {
     const bySlug = new Map(
-      getInternalToolAppDescriptors().map((d) => [desktopTrayAppSlug(d.name), d]),
+      getInternalToolAppDescriptors().map((d) => [
+        desktopTrayAppSlug(d.name),
+        d,
+      ]),
     );
     for (const item of buildDesktopTrayViewItems()) {
       const slug = item.id.slice(TRAY_APP_ITEM_PREFIX.length);

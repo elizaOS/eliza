@@ -123,6 +123,11 @@ import {
   measureStartup,
 } from "@elizaos/ui/state/startup-telemetry";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
+import {
+  loadDesktopHotkeySettings,
+  resolveChatSummonAccelerator,
+  SUMMON_CHAT_SHORTCUT_ID,
+} from "@elizaos/ui/utils/desktop-hotkey";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
@@ -1868,6 +1873,33 @@ async function initializeDesktopShell(): Promise<void> {
     accelerator: "CommandOrControl+K",
   });
 
+  // Programmable global hotkey that fronts the floating chat overlay, à la
+  // Claude Desktop / Wispr Flow (#10716). The accelerator is user-configurable
+  // in Desktop settings (persisted in localStorage); re-register on change.
+  const registerChatSummonShortcut = async (): Promise<void> => {
+    const accelerator = resolveChatSummonAccelerator(
+      loadDesktopHotkeySettings(),
+    );
+    const result = await Desktop.registerShortcut({
+      id: SUMMON_CHAT_SHORTCUT_ID,
+      accelerator,
+    });
+    if (!result?.success) {
+      console.warn(
+        `${APP_LOG_PREFIX} chat summon hotkey ${accelerator} was rejected by the OS`,
+      );
+    }
+  };
+  await registerChatSummonShortcut();
+  window.addEventListener("eliza:desktop:hotkey-changed", () => {
+    void registerChatSummonShortcut();
+  });
+
+  const summonChat = async (): Promise<void> => {
+    await Desktop.showWindow();
+    await Desktop.focusWindow();
+  };
+
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
@@ -1875,6 +1907,8 @@ async function initializeDesktopShell(): Promise<void> {
       const id = (payload as { id?: string } | null | undefined)?.id;
       if (id === "command-palette") {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
+      } else if (id === SUMMON_CHAT_SHORTCUT_ID) {
+        void summonChat();
       }
     },
   });

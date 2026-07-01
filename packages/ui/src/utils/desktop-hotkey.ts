@@ -46,9 +46,7 @@ export function currentPlatform(): NodeJS.Platform {
 export function defaultChatSummonAccelerator(
   platform: NodeJS.Platform = currentPlatform(),
 ): string {
-  return platform === "darwin"
-    ? "Command+Shift+Space"
-    : "Control+Shift+Space";
+  return platform === "darwin" ? "Command+Shift+Space" : "Control+Shift+Space";
 }
 
 /**
@@ -114,7 +112,9 @@ function canonicalKeyToken(raw: string): string | null {
  * it is not a valid accelerator (empty, no key, two keys, or an unknown token).
  * Modifier order is canonicalized so equivalent strings compare equal.
  */
-export function normalizeAccelerator(input: string | null | undefined): string | null {
+export function normalizeAccelerator(
+  input: string | null | undefined,
+): string | null {
   if (typeof input !== "string") return null;
   const trimmed = input.trim();
   if (trimmed.length === 0) return null;
@@ -166,7 +166,9 @@ export function isValidAccelerator(input: string | null | undefined): boolean {
  * we require at least one non-Shift modifier (Cmd/Ctrl/Alt/Super) to avoid
  * hijacking ordinary typing. Used to gate user-entered accelerators.
  */
-export function isSafeGlobalAccelerator(input: string | null | undefined): boolean {
+export function isSafeGlobalAccelerator(
+  input: string | null | undefined,
+): boolean {
   const normalized = normalizeAccelerator(input);
   if (!normalized) return false;
   const tokens = normalized.split("+");
@@ -200,7 +202,9 @@ export const DEFAULT_DESKTOP_HOTKEY_SETTINGS: DesktopHotkeySettings = {
  * dropped (reverts to the default) rather than silently registering a bad
  * binding.
  */
-export function parseDesktopHotkeySettings(raw: unknown): DesktopHotkeySettings {
+export function parseDesktopHotkeySettings(
+  raw: unknown,
+): DesktopHotkeySettings {
   if (!raw || typeof raw !== "object") {
     return { ...DEFAULT_DESKTOP_HOTKEY_SETTINGS };
   }
@@ -277,4 +281,78 @@ export function saveDesktopHotkeySettings(
     }
   }
   return normalized;
+}
+
+/** Keyboard-event keys that are modifiers, not the accelerator's "key" token. */
+const MODIFIER_EVENT_KEYS: ReadonlySet<string> = new Set([
+  "Meta",
+  "Control",
+  "Alt",
+  "Shift",
+  "CapsLock",
+  "OS",
+  "AltGraph",
+]);
+
+type CapturedKeyEvent = Pick<
+  KeyboardEvent,
+  "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "key" | "code"
+>;
+
+/**
+ * Build a normalized accelerator from a captured `keydown`, for a
+ * record-shortcut UI. Returns `null` while only modifiers are held (keep
+ * recording) or for an unsupported key. The result still passes through
+ * {@link normalizeAccelerator}, so callers should additionally gate on
+ * {@link isSafeGlobalAccelerator} before persisting.
+ */
+export function acceleratorFromKeyboardEvent(
+  event: CapturedKeyEvent,
+): string | null {
+  if (MODIFIER_EVENT_KEYS.has(event.key)) {
+    return null;
+  }
+
+  const modifiers: string[] = [];
+  if (event.metaKey) modifiers.push("Command");
+  if (event.ctrlKey) modifiers.push("Control");
+  if (event.altKey) modifiers.push("Alt");
+  if (event.shiftKey) modifiers.push("Shift");
+
+  let key: string | null = null;
+  if (event.code === "Space" || event.key === " ") {
+    key = "Space";
+  } else if (/^Arrow(Up|Down|Left|Right)$/.test(event.key)) {
+    key = event.key.slice("Arrow".length);
+  } else {
+    key = canonicalKeyToken(event.key);
+  }
+  if (!key) return null;
+
+  return normalizeAccelerator([...modifiers, key].join("+"));
+}
+
+/**
+ * Human-friendly rendering of an accelerator for display (⌘⇧Space on macOS,
+ * `Ctrl+Shift+Space` elsewhere). Purely cosmetic — never persisted.
+ */
+export function formatAcceleratorForDisplay(
+  accelerator: string,
+  platform: NodeJS.Platform = currentPlatform(),
+): string {
+  const normalized = normalizeAccelerator(accelerator);
+  if (!normalized) return accelerator;
+  if (platform !== "darwin") return normalized;
+  const SYMBOLS: Record<string, string> = {
+    CommandOrControl: "⌘",
+    Command: "⌘",
+    Control: "⌃",
+    Alt: "⌥",
+    Shift: "⇧",
+    Super: "⌘",
+  };
+  return normalized
+    .split("+")
+    .map((token) => SYMBOLS[token] ?? token)
+    .join("");
 }

@@ -1946,6 +1946,17 @@ async function setupUpdater(): Promise<void> {
         void getDesktopManager().showWindow();
         return true;
       }
+      if (action === "summon-chat") {
+        // "Summon Chat" menu/tray click path (#10716): restore (create if the
+        // app is tray-first), show, and focus the chat surface — same outcome
+        // as the programmable global hotkey, which the renderer summons.
+        void (async () => {
+          await restoreWindow();
+          await getDesktopManager().showWindow();
+          await getDesktopManager().focusWindow();
+        })();
+        return true;
+      }
       return false;
     };
 

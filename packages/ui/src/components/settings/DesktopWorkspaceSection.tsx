@@ -24,6 +24,7 @@ import {
 } from "../../utils/desktop-workspace";
 import { Button } from "../ui/button";
 import { SettingsTextarea } from "../ui/settings-controls";
+import { DesktopChatHotkeySetting } from "./DesktopChatHotkeySetting";
 import { DesktopWorkspaceDisplay } from "./DesktopWorkspaceDisplay";
 import { useDesktopDiagnosticsText } from "./DesktopWorkspaceDisplay.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -393,6 +394,8 @@ export function DesktopWorkspaceSection({
             {t("desktopworkspacesection.OpenDesktopSettingsWindow")}
           </WorkspaceActionButton>
         </div>
+
+        <DesktopChatHotkeySetting />
 
         {(actionError || actionMessage) && (
           <div

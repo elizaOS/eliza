@@ -23,10 +23,9 @@ function findMenu(menus: ReturnType<typeof build>, label: string) {
   return menus.find((m) => m.label === label);
 }
 
-function collectActions(item: {
-  action?: string;
-  submenu?: Array<{ action?: string; submenu?: unknown }>;
-}): string[] {
+type MenuNode = { action?: string; submenu?: MenuNode[] };
+
+function collectActions(item: MenuNode): string[] {
   const actions: string[] = [];
   if (item.action) actions.push(item.action);
   for (const child of item.submenu ?? []) {
@@ -40,7 +39,14 @@ describe("buildApplicationMenu structure", () => {
     const menu = build();
     const labels = menu.map((m) => m.label);
     expect(labels).toEqual(
-      expect.arrayContaining(["File", "Edit", "View", "Desktop", "Views", "Window"]),
+      expect.arrayContaining([
+        "File",
+        "Edit",
+        "View",
+        "Desktop",
+        "Views",
+        "Window",
+      ]),
     );
   });
 

@@ -713,11 +713,15 @@ export class DesktopManager {
           );
         });
       } else {
-        void this.showWindow().catch((err: unknown) => {
-          logger.warn(
-            `[Desktop] Failed to show window from tray click: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
+        // Click-to-summon (#10716): show AND focus so a tray-icon click fronts
+        // the floating chat identically to the programmable global hotkey.
+        void this.showWindow()
+          .then(() => this.focusWindow())
+          .catch((err: unknown) => {
+            logger.warn(
+              `[Desktop] Failed to summon window from tray click: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
       }
       this.send("desktopTrayClick", {
         x: 0,
