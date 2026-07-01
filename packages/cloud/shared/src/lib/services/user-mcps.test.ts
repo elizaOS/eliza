@@ -504,4 +504,22 @@ describe("userMcpsService public-surface redaction (#10917/#10918)", () => {
     expect(JSON.stringify(pub)).not.toContain("secret-backend.internal");
     expect(JSON.stringify(pub)).not.toContain("11111111-1111-4111-8111-111111111111");
   });
+
+  test("toVisibleMcpForOrganization preserves owner rows and redacts foreign rows", () => {
+    const mcp = makeRow({
+      endpoint_type: "external",
+      external_endpoint: "https://secret-backend.internal/mcp",
+      created_by_user_id: "11111111-1111-4111-8111-111111111111",
+      organization_id: ORG,
+    });
+
+    const owner = userMcpsService.toVisibleMcpForOrganization(mcp, ORG);
+    expect(owner.external_endpoint).toBe("https://secret-backend.internal/mcp");
+    expect(owner.created_by_user_id).toBe("11111111-1111-4111-8111-111111111111");
+
+    const foreign = userMcpsService.toVisibleMcpForOrganization(mcp, OTHER_ORG);
+    expect(foreign.external_endpoint).toBeNull();
+    expect(foreign.created_by_user_id).toBeNull();
+    expect(JSON.stringify(foreign)).not.toContain("secret-backend.internal");
+  });
 });

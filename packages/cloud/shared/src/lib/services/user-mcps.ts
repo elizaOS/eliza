@@ -108,6 +108,11 @@ export interface UseMcpResult {
   usageId: string;
 }
 
+export type PublicUserMcp = Omit<UserMcp, "external_endpoint" | "created_by_user_id"> & {
+  external_endpoint: null;
+  created_by_user_id: null;
+};
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -756,11 +761,15 @@ class UserMcpsService {
    * `created_by_user_id` (cross-org user identity), so `?scope=public` /
    * combined listings never hand a foreign caller either. (#10918)
    */
-  toPublicMcp(mcp: UserMcp): Omit<UserMcp, "external_endpoint" | "created_by_user_id"> & {
-    external_endpoint: null;
-    created_by_user_id: null;
-  } {
+  toPublicMcp(mcp: UserMcp): PublicUserMcp {
     return { ...mcp, external_endpoint: null, created_by_user_id: null };
+  }
+
+  /**
+   * Return the owner view unchanged, otherwise redact the public view.
+   */
+  toVisibleMcpForOrganization(mcp: UserMcp, organizationId: string): UserMcp | PublicUserMcp {
+    return mcp.organization_id === organizationId ? mcp : this.toPublicMcp(mcp);
   }
 
   /**

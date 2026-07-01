@@ -201,7 +201,9 @@ app.get("/", async (c) => {
         limit,
         offset,
       });
-      mcps = publicMcps.map((m) => userMcpsService.toPublicMcp(m));
+      mcps = publicMcps.map((m) =>
+        userMcpsService.toVisibleMcpForOrganization(m, user.organization_id),
+      );
     } else if (scope === "own") {
       mcps = await userMcpsService.listByOrganization(user.organization_id, {
         status,
