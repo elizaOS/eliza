@@ -98,6 +98,26 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
+      - name: Reclaim disk from leaked checkouts of prior runs
+        run: |
+          set -uo pipefail
+          # Cancelled/killed deploy runs never reach the trailing "Clean temp
+          # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
+          # monorepo materialization) leak and pile up on this shared self-hosted
+          # box until disk/inodes are exhausted and this run's own materialization
+          # blows its timeout — freezing prod (elizaOS/eliza#10839). Reclaim every
+          # stale checkout dir that is NOT from this run before we materialize ours.
+          # Deploys serialize on this box and the prefix is unique to this workflow,
+          # so nothing live is touched; best-effort, never fails the deploy.
+          reclaimed=0
+          for d in /tmp/eliza-checkout-*; do
+            [ -e "$d" ] || continue
+            case "$d" in /tmp/eliza-checkout-${{ github.run_id }}-*) continue ;; esac
+            timeout 120s rm -rf "$d" 2>/dev/null || echo "::warning::cleanup of $d exceeded 120s (non-fatal)"
+            reclaimed=$((reclaimed + 1))
+          done
+          echo "Reclaimed ${reclaimed} leaked checkout dir(s) from prior runs."
+          df -h /tmp / 2>/dev/null | tail -2 || true
       - name: Checkout repository
         timeout-minutes: 20
         env:
@@ -316,6 +336,26 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
+      - name: Reclaim disk from leaked checkouts of prior runs
+        run: |
+          set -uo pipefail
+          # Cancelled/killed deploy runs never reach the trailing "Clean temp
+          # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
+          # monorepo materialization) leak and pile up on this shared self-hosted
+          # box until disk/inodes are exhausted and this run's own materialization
+          # blows its timeout — freezing prod (elizaOS/eliza#10839). Reclaim every
+          # stale checkout dir that is NOT from this run before we materialize ours.
+          # Deploys serialize on this box and the prefix is unique to this workflow,
+          # so nothing live is touched; best-effort, never fails the deploy.
+          reclaimed=0
+          for d in /tmp/eliza-checkout-*; do
+            [ -e "$d" ] || continue
+            case "$d" in /tmp/eliza-checkout-${{ github.run_id }}-*) continue ;; esac
+            timeout 120s rm -rf "$d" 2>/dev/null || echo "::warning::cleanup of $d exceeded 120s (non-fatal)"
+            reclaimed=$((reclaimed + 1))
+          done
+          echo "Reclaimed ${reclaimed} leaked checkout dir(s) from prior runs."
+          df -h /tmp / 2>/dev/null | tail -2 || true
       - name: Checkout repository
         timeout-minutes: 20
         env:
@@ -569,6 +609,26 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
+      - name: Reclaim disk from leaked checkouts of prior runs
+        run: |
+          set -uo pipefail
+          # Cancelled/killed deploy runs never reach the trailing "Clean temp
+          # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
+          # monorepo materialization) leak and pile up on this shared self-hosted
+          # box until disk/inodes are exhausted and this run's own materialization
+          # blows its timeout — freezing prod (elizaOS/eliza#10839). Reclaim every
+          # stale checkout dir that is NOT from this run before we materialize ours.
+          # Deploys serialize on this box and the prefix is unique to this workflow,
+          # so nothing live is touched; best-effort, never fails the deploy.
+          reclaimed=0
+          for d in /tmp/eliza-checkout-*; do
+            [ -e "$d" ] || continue
+            case "$d" in /tmp/eliza-checkout-${{ github.run_id }}-*) continue ;; esac
+            timeout 120s rm -rf "$d" 2>/dev/null || echo "::warning::cleanup of $d exceeded 120s (non-fatal)"
+            reclaimed=$((reclaimed + 1))
+          done
+          echo "Reclaimed ${reclaimed} leaked checkout dir(s) from prior runs."
+          df -h /tmp / 2>/dev/null | tail -2 || true
       - name: Checkout repository
         timeout-minutes: 20
         env:
