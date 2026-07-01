@@ -11,6 +11,7 @@ import { usersRepository } from "../../db/repositories/users";
 import { apps } from "../../db/schemas/apps";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
+import { getRequestIdempotencyKey } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import {
   computeInferenceCharge,
@@ -852,42 +853,24 @@ export class AppCreditsService {
     metadata: Record<string, unknown>,
     providedApp?: App,
   ): Promise<void> {
-    // Update app-level earnings tracking
-    if (type === "inference_markup") {
-      await appEarningsRepository.addInferenceEarnings(appId, amount);
-    } else {
-      await appEarningsRepository.addPurchaseEarnings(appId, amount);
-    }
-
-    // Create transaction record
-    await appEarningsRepository.createTransaction({
-      app_id: appId,
-      user_id: userId,
-      type,
-      amount: String(amount),
-      description:
-        type === "inference_markup" ? "Inference markup earnings" : "Credit purchase share",
-      metadata,
-    });
-
-    // CRITICAL: Credit the app creator's redeemable_earnings balance
-    // This allows them to redeem earnings as elizaOS tokens
-    // Use provided app to avoid N+1 query, or fetch if not provided
+    // CRITICAL: Credit the app creator's redeemable_earnings balance FIRST — it
+    // is the idempotency gate. #10423: a settlement retry (a re-run of the
+    // chat/message `onFinish` for the SAME request, or a webhook retry) must not
+    // double-credit. Key on a stable per-charge id — the request idempotency key
+    // (inference) or the Stripe payment intent (purchase) — never on `appId`,
+    // which repeats across every charge. Fall back to the (non-idempotent)
+    // app-scoped id only when no per-charge key is present, preserving prior
+    // behavior for callers without one.
     const app = providedApp ?? (await appsRepository.findById(appId));
-    if (app?.created_by_user_id) {
-      // #10423: make the creator credit IDEMPOTENT. A settlement retry (a
-      // re-run of the chat/message `onFinish` for the SAME request, or a
-      // webhook retry) must not double-credit. Key on a stable per-charge id —
-      // the request idempotency key (inference) or the Stripe payment intent
-      // (purchase) — never on `appId`, which repeats across every charge.
-      // Fall back to the (non-idempotent) app-scoped id only when no per-charge
-      // key is present, preserving the prior behavior for callers without one.
-      const chargeKey =
-        (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
-        (typeof metadata.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
-        null;
-      const sourceId = chargeKey ? `${chargeKey}:${type}` : appId;
+    const chargeKey =
+      (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
+      (typeof metadata.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
+      getRequestIdempotencyKey() ||
+      null;
 
+    let deduplicated = false;
+    if (app?.created_by_user_id) {
+      const sourceId = chargeKey ? `${chargeKey}:${type}` : appId;
       const result = await redeemableEarningsService.addEarnings({
         userId: app.created_by_user_id,
         amount,
@@ -905,17 +888,16 @@ export class AppCreditsService {
           ...metadata,
         },
       });
+      deduplicated = result.deduplicated === true;
 
-      if (result.deduplicated) {
-        logger.info("[AppCredits] Creator earning already recorded — skipped duplicate", {
+      if (deduplicated) {
+        logger.info("[AppCredits] Creator earning already recorded — skipping duplicate", {
           appId,
           creatorId: app.created_by_user_id,
           amount,
           sourceId,
         });
-      }
-
-      if (!result.success) {
+      } else if (!result.success) {
         logger.error("[AppCredits] Failed to credit redeemable earnings", {
           appId,
           creatorId: app.created_by_user_id,
@@ -931,6 +913,29 @@ export class AppCreditsService {
         });
       }
     }
+
+    // A dedup retry already recorded everything on the first pass — skip the
+    // shadow app_earnings + audit-transaction writes so they don't double-count
+    // the withdrawable ceiling (#10423).
+    if (deduplicated) return;
+
+    // Shadow app-level earnings tracking (analytics / withdrawable ceiling).
+    if (type === "inference_markup") {
+      await appEarningsRepository.addInferenceEarnings(appId, amount);
+    } else {
+      await appEarningsRepository.addPurchaseEarnings(appId, amount);
+    }
+
+    // Create transaction record
+    await appEarningsRepository.createTransaction({
+      app_id: appId,
+      user_id: userId,
+      type,
+      amount: String(amount),
+      description:
+        type === "inference_markup" ? "Inference markup earnings" : "Credit purchase share",
+      metadata,
+    });
   }
 
   /**
@@ -945,30 +950,26 @@ export class AppCreditsService {
     amount: number,
     metadata: Record<string, unknown>,
   ): Promise<void> {
-    // Reduce app-level inference earnings (use negative value)
-    await appEarningsRepository.addInferenceEarnings(appId, -amount);
-
-    // Create transaction record for audit trail
-    await appEarningsRepository.createTransaction({
-      app_id: appId,
-      user_id: userId,
-      type: "inference_markup",
-      amount: String(-amount), // Negative to indicate reduction
-      description: "Reconciliation adjustment (refund)",
-      metadata: {
-        ...metadata,
-        type: "reconciliation_refund",
-      },
-    });
-
-    // Reduce the app creator's redeemable_earnings balance
+    // #10423 (symmetry with recordCreatorEarnings): the reversal must also be
+    // idempotent, or a retried reconciliation would double-DEBIT the creator.
+    // Key the reduce on the SAME per-charge id + a distinct suffix so a retry
+    // of the same refund reuses the prior ledger entry instead of reducing
+    // twice. reduceEarnings is the gate; skip the shadow writes on a dedup retry.
     const app = await appsRepository.findById(appId);
+    const chargeKey =
+      (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
+      (typeof metadata.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
+      getRequestIdempotencyKey() ||
+      null;
+
+    let deduplicated = false;
     if (app?.created_by_user_id) {
       const result = await redeemableEarningsService.reduceEarnings({
         userId: app.created_by_user_id,
         amount,
         source: "miniapp",
-        sourceId: appId,
+        sourceId: chargeKey ? `${chargeKey}:reconciliation_refund` : appId,
+        dedupeBySourceId: chargeKey !== null,
         description: `Reconciliation adjustment for app: ${app.name || appId}`,
         metadata: {
           appId,
@@ -977,8 +978,15 @@ export class AppCreditsService {
           ...metadata,
         },
       });
+      deduplicated = result.deduplicated === true;
 
-      if (!result.success) {
+      if (deduplicated) {
+        logger.info("[AppCredits] Creator earning reversal already applied — skipping duplicate", {
+          appId,
+          creatorId: app.created_by_user_id,
+          amount,
+        });
+      } else if (!result.success) {
         logger.error("[AppCredits] Failed to reduce redeemable earnings", {
           appId,
           creatorId: app.created_by_user_id,
@@ -994,6 +1002,22 @@ export class AppCreditsService {
         });
       }
     }
+
+    if (deduplicated) return;
+
+    // Shadow app-level reduction (use negative value) + audit trail.
+    await appEarningsRepository.addInferenceEarnings(appId, -amount);
+    await appEarningsRepository.createTransaction({
+      app_id: appId,
+      user_id: userId,
+      type: "inference_markup",
+      amount: String(-amount), // Negative to indicate reduction
+      description: "Reconciliation adjustment (refund)",
+      metadata: {
+        ...metadata,
+        type: "reconciliation_refund",
+      },
+    });
   }
 
   /**
