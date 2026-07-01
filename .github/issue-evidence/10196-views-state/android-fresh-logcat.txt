@@ -534,10 +534,10 @@
 06-30 18:25:59.957 12258 12296 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-32x32.png
 06-30 18:25:59.965 12258 12297 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.ico
 06-30 18:25:59.977 12258 12296 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.svg
-06-30 18:26:00.011  1496  1817 I AiAiEcho: Predicting[0]: 
-06-30 18:26:00.011  1496  1817 I AiAiEcho: EchoTargets: 
-06-30 18:26:00.011  1496  1817 I AiAiEcho: Filtered by AiAi flag check: 
-06-30 18:26:00.012  1496  1817 I AiAiEcho: Ranked targets strategy: SORT, count: 0, ranking metadata: 
+06-30 18:26:00.011  1496  1817 I AiAiEcho: Predicting[0]:
+06-30 18:26:00.011  1496  1817 I AiAiEcho: EchoTargets:
+06-30 18:26:00.011  1496  1817 I AiAiEcho: Filtered by AiAi flag check:
+06-30 18:26:00.012  1496  1817 I AiAiEcho: Ranked targets strategy: SORT, count: 0, ranking metadata:
 06-30 18:26:00.013  1496  1817 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
 06-30 18:26:00.017   764   764 W PageIndicator: Total number of pages invalid: 0. Assuming 1 page.
 06-30 18:26:00.058   764   855 D EGL_emulation: app_time_stats: avg=30899.73ms min=30899.73ms max=30899.73ms count=1
