@@ -7,7 +7,32 @@ import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
 } from "../../state/notifications/notification-store";
+
+// Wrap the module-global toast-sink registrar so a test can assert WHICH
+// NotificationCenter instance (headless vs pull-down panel) owns it (#10811),
+// while keeping every other store fn real.
+vi.mock(
+  "../../state/notifications/notification-store",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../state/notifications/notification-store")
+      >();
+    return {
+      ...actual,
+      registerNotificationToastSink: (
+        sink: Parameters<typeof actual.registerNotificationToastSink>[0],
+      ) => {
+        sinkSpy(sink);
+        return actual.registerNotificationToastSink(sink);
+      },
+    };
+  },
+);
+
 import { NotificationCenter } from "./NotificationCenter";
+
+const sinkSpy = vi.hoisted(() => vi.fn());
 
 const mocks = vi.hoisted(() => ({
   appState: {
@@ -157,5 +182,23 @@ describe("NotificationCenter", () => {
         name: "Filter notifications by category",
       }),
     ).toBeNull();
+  });
+});
+
+describe("NotificationCenter — panel does not steal the toast sink (#10811)", () => {
+  it("only the non-panel instance registers/unregisters the shared toast sink", () => {
+    // Headless (always-mounted) instance owns the sink.
+    render(<NotificationCenter />);
+    expect(sinkSpy).toHaveBeenCalledWith(mocks.appState.setActionNotice);
+
+    sinkSpy.mockClear();
+
+    // Opening + closing the pull-down panel mounts+unmounts a SECOND instance.
+    // Regression: the panel registered/nulled the shared sink, and the headless
+    // instance never re-registered it (stable setActionNotice) → interrupt toasts
+    // silently died after one open/close. The panel must never touch the sink.
+    const panel = render(<NotificationCenter isPanelMode />);
+    panel.unmount();
+    expect(sinkSpy).not.toHaveBeenCalled();
   });
 });

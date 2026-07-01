@@ -272,9 +272,16 @@ export function NotificationCenter({
   // the store guards against re-init; the toast sink is re-pointed on remount.
   useEffect(() => {
     initNotifications();
+    // Only the always-mounted (non-panel) instance owns the module-global toast
+    // sink. The pull-down panel mounts a SECOND NotificationCenter; if it also
+    // (un)registered the sink, closing the panel would null it while the headless
+    // instance stays up — and that instance's effect never re-runs (setActionNotice
+    // is a stable useCallback), silently killing interrupt toasts for the rest of
+    // the session. Guard sink ownership to the non-panel instance. (#10811)
+    if (isPanelMode) return;
     registerNotificationToastSink(setActionNotice);
     return () => registerNotificationToastSink(null);
-  }, [setActionNotice]);
+  }, [setActionNotice, isPanelMode]);
 
   const handleMarkAll = useCallback(() => {
     void markAllNotificationsRead();
