@@ -3,6 +3,7 @@ import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { isAospShellEnabled } from "../../navigation";
 import { getActiveViewModality } from "../../platform/platform-guards";
+import { useAppSelectorShallow } from "../../state";
 import {
   setLauncherEditing,
   setLauncherPage,
@@ -23,6 +24,9 @@ export const LauncherSurface = React.memo(function LauncherSurface({
 }: LauncherSurfaceProps): React.JSX.Element {
   const { views, loading } = useRoutableViews();
   const enabledKinds = useEnabledViewKinds();
+  const { elizaCloudConnected } = useAppSelectorShallow((state) => ({
+    elizaCloudConnected: state.elizaCloudConnected,
+  }));
   const activeModality = React.useMemo(() => getActiveViewModality(), []);
   const isAosp = React.useMemo(() => isAospShellEnabled(), []);
   // Page index comes from the single shell-surface store, so the launcher, the
@@ -40,8 +44,13 @@ export const LauncherSurface = React.memo(function LauncherSurface({
   );
 
   const pages = React.useMemo(
-    () => curateLauncherPages(modalEntries, { isAosp, enabledKinds }),
-    [modalEntries, isAosp, enabledKinds],
+    () =>
+      curateLauncherPages(modalEntries, {
+        isAosp,
+        enabledKinds,
+        cloudActive: elizaCloudConnected,
+      }),
+    [modalEntries, isAosp, enabledKinds, elizaCloudConnected],
   );
 
   const entries = React.useMemo<ViewEntry[]>(() => pages.flat(), [pages]);

@@ -139,11 +139,22 @@ function preferenceScore(entry: ViewEntry): number {
   return score;
 }
 
+/**
+ * Launcher tiles that back an Eliza Cloud surface and must not appear unless the
+ * user is signed into cloud. `cloud-apps` (the Cloud Applications dashboard,
+ * registered by `@elizaos/app`'s cloud-apps-view) is `viewKind: "release"`, so
+ * without this gate it shows as an "Apps" tile even when cloud is
+ * disconnected. (#10725)
+ */
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud-apps"]);
+
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */
   isAosp: boolean;
   /** Which view kinds the user/build has enabled (system+release always on). */
   enabledKinds: EnabledViewKinds;
+  /** True when signed into Eliza Cloud; gates cloud-only launcher tiles. */
+  cloudActive: boolean;
 }
 
 function comparator(indexes: Array<Map<string, number>>) {
@@ -174,13 +185,16 @@ function comparator(indexes: Array<Map<string, number>>) {
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
-  { isAosp, enabledKinds }: CurateLauncherOptions,
+  { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
 ): ViewEntry[][] {
   const byCanonical = new Map<string, ViewEntry>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
     if (AOSP_INDEX.has(canonicalId) && !isAosp) continue;
+    // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
+    // unless the user is signed into Eliza Cloud.
+    if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
 
     const curated =
       APPS_INDEX.has(canonicalId) ||
