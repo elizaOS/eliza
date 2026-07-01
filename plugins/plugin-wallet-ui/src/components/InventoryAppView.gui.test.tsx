@@ -18,6 +18,7 @@ import type {
   WalletTradingProfileResponse,
 } from "@elizaos/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -766,5 +767,123 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
 
     expect(await screen.findByText("Unavailable")).toBeTruthy();
     expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
+  });
+});
+
+describe("InventoryView GUI — stale trading-profile response race", () => {
+  it("drops an out-of-order stale window response and keeps the latest window's P&L", async () => {
+    // Control resolution order per fetch so we can resolve the *newer* request
+    // first and the *older* (stale) one second — the request-id guard in
+    // loadTradingProfile must ignore the stale one.
+    const deferreds: Array<{
+      window: string;
+      resolve: (value: WalletTradingProfileResponse) => void;
+    }> = [];
+    walletClient.getWalletTradingProfile.mockImplementation(
+      (window: string) =>
+        new Promise<WalletTradingProfileResponse>((resolve) => {
+          deferreds.push({ window, resolve });
+        }),
+    );
+
+    const profileWith = (pnl: string): WalletTradingProfileResponse => ({
+      ...tradingProfile,
+      summary: { ...tradingProfile.summary, realizedPnlBnb: pnl },
+    });
+
+    appHooks.useApp.mockReturnValue(makeAppState());
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    // Mount kicks off the default 30d fetch. Settle it so the chip shows 1.5.
+    await waitFor(() => expect(deferreds).toHaveLength(1));
+    expect(deferreds[0].window).toBe("30d");
+    await act(async () => {
+      deferreds[0].resolve(profileWith("1.5"));
+    });
+    expect(await screen.findByText("+1.5 BNB")).toBeTruthy();
+
+    // Switch 30d -> 24h -> 7d. Each window change issues a fresh fetch.
+    fireEvent.click(screen.getByRole("button", { name: "24h" }));
+    await waitFor(() => expect(deferreds).toHaveLength(2));
+    expect(deferreds[1].window).toBe("24h");
+    fireEvent.click(screen.getByRole("button", { name: "7d" }));
+    await waitFor(() => expect(deferreds).toHaveLength(3));
+    expect(deferreds[2].window).toBe("7d");
+
+    // Resolve the NEWEST (7d) first...
+    await act(async () => {
+      deferreds[2].resolve(profileWith("9.9"));
+    });
+    expect(await screen.findByText("+9.9 BNB")).toBeTruthy();
+
+    // ...then resolve the STALE (24h) request. The guard must drop it so the
+    // 24h value never clobbers the newer 7d value already on screen.
+    await act(async () => {
+      deferreds[1].resolve(profileWith("1.1"));
+    });
+
+    // Give any (incorrect) state update a chance to flush, then assert the
+    // latest window still wins and the stale value never rendered.
+    await Promise.resolve();
+    expect(screen.getByText("+9.9 BNB")).toBeTruthy();
+    expect(screen.queryByText("+1.1 BNB")).toBeNull();
+  });
+});
+
+describe("InventoryView GUI — trading-profile fetch error", () => {
+  it("surfaces the error message under the chart and clears the profile", async () => {
+    walletClient.getWalletTradingProfile.mockRejectedValue(
+      new Error("Trading profile endpoint returned 500"),
+    );
+    appHooks.useApp.mockReturnValue(makeAppState());
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    // The rejection sets tradingProfileError, which renders below the chart.
+    expect(
+      await screen.findByText("Trading profile endpoint returned 500"),
+    ).toBeTruthy();
+
+    // With the profile nulled, the P&L chart falls back to its empty prompt and
+    // the realized-P&L chip (which needs profile data) is not shown.
+    expect(screen.getByText("Trade to see your P&L here")).toBeTruthy();
+    expect(screen.queryByText("+1.5 BNB")).toBeNull();
+  });
+
+  it("falls back to a generic message when the rejection carries no message", async () => {
+    walletClient.getWalletTradingProfile.mockRejectedValue(new Error("   "));
+    appHooks.useApp.mockReturnValue(makeAppState());
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    expect(
+      await screen.findByText("Failed to load trading profile."),
+    ).toBeTruthy();
+  });
+});
+
+describe("InventoryView GUI — loading state anti-flash", () => {
+  it("does not flash the empty-wallet hero while balances are still loading", async () => {
+    // Enabled wallet, empty holdings, but the balance/NFT loads are in flight.
+    // showMarketPulseHero must stay suppressed so the empty hero never flashes
+    // before real data arrives.
+    appHooks.useApp.mockReturnValue(
+      makeAppState({
+        walletLoading: true,
+        walletNftsLoading: true,
+        walletBalances: {
+          evm: { address: EVM_ADDRESS, chains: [] },
+          solana: null,
+        },
+        walletNfts: { evm: [], solana: null },
+      }),
+    );
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    // No premature empty-wallet hero / configure CTA during load.
+    expect(screen.queryByLabelText("Empty wallet")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
   });
 });

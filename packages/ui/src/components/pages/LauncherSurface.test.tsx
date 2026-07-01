@@ -5,7 +5,13 @@ import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import {
+  enterLauncherEdit,
+  goLauncher,
+  resetShellSurfaceForTests,
+} from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { readRecentViewIds } from "../../view-recents";
 import { LauncherSurface } from "./LauncherSurface";
 
 vi.mock("../../hooks/useAvailableViews", () => ({
@@ -76,6 +82,7 @@ const DEFAULT_VIEWS = [
 beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
+  resetShellSurfaceForTests();
   useEnabledViewKindsMock.mockReturnValue({
     developer: true,
     preview: true,
@@ -97,6 +104,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetShellSurfaceForTests();
   vi.clearAllMocks();
 });
 
@@ -161,5 +169,146 @@ describe("LauncherSurface", () => {
     );
 
     expect(ids).toEqual(["phone", "settings", "notes", "weather"]);
+  });
+
+  it("records the launched view id into recents (nav payload)", () => {
+    render(<LauncherSurface />);
+
+    expect(readRecentViewIds()).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(window.location.pathname).toBe("/settings");
+    expect(readRecentViewIds()).toEqual(["settings"]);
+  });
+
+  it("is idempotent under rapid double-click of a loaded tile", () => {
+    const get = vi.fn(async (_entry: ViewEntry) => {});
+    useViewCatalogMock.mockReturnValue({
+      entries: [availableApp("weather", "Weather")],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      get,
+    });
+    render(<LauncherSurface />);
+
+    const tile = screen.getByRole("button", { name: "Notes" });
+    fireEvent.click(tile);
+    fireEvent.click(tile);
+
+    // A loaded view routes through history, never the catalog loader, and the
+    // recents list dedupes so a double-tap leaves a single entry.
+    expect(window.location.pathname).toBe("/notes");
+    expect(readRecentViewIds()).toEqual(["notes"]);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("requests the catalog for an unloaded app without navigating", () => {
+    const get = vi.fn(async (_entry: ViewEntry) => {});
+    useViewCatalogMock.mockReturnValue({
+      entries: [availableApp("weather", "Weather")],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      get,
+    });
+    render(<LauncherSurface />);
+
+    const tile = screen.getByRole("button", { name: "Weather" });
+    fireEvent.click(tile);
+    fireEvent.click(tile);
+
+    // Loading is best-effort per tap; navigation must NOT happen for an app
+    // that has not finished loading, and no recent is recorded.
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(window.location.pathname).toBe("/");
+    expect(readRecentViewIds()).toEqual([]);
+  });
+
+  it("renders an empty launcher when every view is hidden", () => {
+    useRoutableViewsMock.mockReturnValue({
+      views: [view("chat", "Chat", "/chat"), view("views", "Views", "/views")],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    useViewCatalogMock.mockReturnValue({
+      entries: [],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      get: vi.fn(async () => {}),
+    });
+    const { container } = render(<LauncherSurface />);
+
+    expect(screen.getByTestId("launcher")).toBeTruthy();
+    expect(
+      container.querySelectorAll('[data-testid^="launcher-tile-"]').length,
+    ).toBe(0);
+  });
+
+  it("shows the loading skeleton with no tiles while views load", () => {
+    useRoutableViewsMock.mockReturnValue({
+      views: [],
+      loading: true,
+      error: null,
+      refresh: vi.fn(),
+    });
+    useViewCatalogMock.mockReturnValue({
+      entries: [],
+      loading: true,
+      error: null,
+      refresh: vi.fn(),
+      get: vi.fn(async () => {}),
+    });
+    const { container } = render(<LauncherSurface />);
+
+    // Skeleton path renders instead of any real page/tile.
+    expect(screen.getByTestId("launcher-page-window")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-page-0")).toBeNull();
+    expect(
+      container.querySelectorAll('[data-testid^="launcher-tile-"]').length,
+    ).toBe(0);
+  });
+
+  it("suppresses tile launch while the shell store is in edit mode", () => {
+    goLauncher();
+    enterLauncherEdit();
+    render(<LauncherSurface />);
+
+    // In edit/jiggle mode a tile tap must not navigate — the pin affordance is
+    // shown instead so the user can favorite rather than open.
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+
+    expect(window.location.pathname).toBe("/");
+    expect(readRecentViewIds()).toEqual([]);
+    expect(screen.getByTestId("launcher-fav-settings")).toBeTruthy();
+  });
+
+  it("hides preview-kind views when the preview toggle is off", () => {
+    useEnabledViewKindsMock.mockReturnValue({
+      developer: true,
+      preview: false,
+    });
+    useRoutableViewsMock.mockReturnValue({
+      views: [
+        view("notes", "Notes", "/notes"),
+        view("labs", "Labs", "/labs", { viewKind: "preview" }),
+      ],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    useViewCatalogMock.mockReturnValue({
+      entries: [],
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+      get: vi.fn(async () => {}),
+    });
+    render(<LauncherSurface />);
+
+    expect(screen.getByTestId("launcher-tile-notes")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-tile-labs")).toBeNull();
   });
 });

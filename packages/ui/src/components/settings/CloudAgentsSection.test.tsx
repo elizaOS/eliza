@@ -780,6 +780,258 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
   });
 });
 
+describe("CloudAgentsSection create (deploy)", () => {
+  let reloadSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    clientMock.selectOrProvisionCloudAgent.mockReset();
+    // A token is available (persisted active server) so createAgent proceeds.
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+    // bindAndReload reboots the app — stub reload so jsdom doesn't throw.
+    reloadSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, reload: reloadSpy },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  async function renderEmpty() {
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+    render(<CloudAgentsSection />);
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agents-empty")).toBeTruthy(),
+    );
+  }
+
+  it("provisions a new agent with the trimmed name + forceCreate, then binds", async () => {
+    clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "new-agent",
+      apiBase: "https://agent.example.test",
+    });
+    await renderEmpty();
+
+    fireEvent.change(screen.getByPlaceholderText(/Agent name/), {
+      target: { value: "  My Bot  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    // The provision call carries the trimmed name, force-create flag, and the
+    // resolved auth token + cloud base — not the raw padded input.
+    await waitFor(() =>
+      expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "My Bot",
+          forceCreate: true,
+          authToken: "tok",
+          cloudApiBase: "https://www.elizacloud.ai",
+        }),
+      ),
+    );
+    // On success it binds the freshly-created agent as the active cloud server
+    // and announces the switch — the same rail switchTo/rename use.
+    await waitFor(() =>
+      expect(persistenceMock.savePersistedActiveServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "cloud",
+          id: "cloud:new-agent",
+          label: "My Bot",
+        }),
+      ),
+    );
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Switched to My Bot"),
+      "success",
+      expect.any(Number),
+    );
+  });
+
+  it("refuses an empty/whitespace name — surfaces an error, no provision call", async () => {
+    await renderEmpty();
+
+    fireEvent.change(screen.getByPlaceholderText(/Agent name/), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Give your agent a name first.",
+      "error",
+      expect.any(Number),
+    );
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("blocks provisioning without a cloud token — prompts sign-in, no call", async () => {
+    // Connected in-app but no resolvable token (no persisted access token).
+    persistenceMock.loadPersistedActiveServer.mockReturnValue(null);
+    await renderEmpty();
+
+    fireEvent.change(screen.getByPlaceholderText(/Agent name/), {
+      target: { value: "Nameless" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Sign in to Eliza Cloud before creating an agent.",
+      "error",
+      expect.any(Number),
+    );
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+  });
+
+  it("surfaces provisioning failure and re-enables the Create button", async () => {
+    clientMock.selectOrProvisionCloudAgent.mockRejectedValue(
+      new Error("no capacity in region"),
+    );
+    await renderEmpty();
+
+    fireEvent.change(screen.getByPlaceholderText(/Agent name/), {
+      target: { value: "Doomed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        "no capacity in region",
+        "error",
+        expect.any(Number),
+      ),
+    );
+    // creating is reset on failure, so the button returns to "Create"
+    // (not stuck on "Creating…") and no bind happened.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Create" })).toBeTruthy(),
+    );
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
+});
+
+describe("CloudAgentsSection connection gate", () => {
+  beforeEach(() => {
+    resetClientMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("shows the sign-in prompt (not the manager) when disconnected with no token", async () => {
+    appMock.value = { elizaCloudConnected: false, setActionNotice: vi.fn() };
+    // No persisted active server → currentCloudToken() resolves empty.
+    persistenceMock.loadPersistedActiveServer.mockReturnValue(null);
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    render(<CloudAgentsSection />);
+
+    expect(
+      screen.getByText(
+        "Sign in to Eliza Cloud to manage your cloud agents.",
+      ),
+    ).toBeTruthy();
+    // The manager surfaces (create input, refresh, loading/empty states) are
+    // gated away entirely.
+    expect(screen.queryByPlaceholderText(/Agent name/)).toBeNull();
+    expect(screen.queryByTestId("cloud-agents-loading")).toBeNull();
+    expect(screen.queryByTestId("cloud-agents-empty")).toBeNull();
+  });
+
+  it("renders the manager when disconnected in-app but a persisted token exists", async () => {
+    // Not connected in the app store, but a persisted cloud token is present —
+    // the section still manages agents (hasToken keeps the gate open).
+    appMock.value = { elizaCloudConnected: false, setActionNotice: vi.fn() };
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [],
+    });
+
+    render(<CloudAgentsSection />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agents-empty")).toBeTruthy(),
+    );
+    expect(
+      screen.queryByText(
+        "Sign in to Eliza Cloud to manage your cloud agents.",
+      ),
+    ).toBeNull();
+    expect(screen.getByPlaceholderText(/Agent name/)).toBeTruthy();
+  });
+});
+
+describe("CloudAgentsSection list rendering (sort)", () => {
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:other",
+      label: "Other",
+      accessToken: "tok",
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("orders rows newest-created-first regardless of fetch order", async () => {
+    const older = agent({
+      agent_id: "agent-old",
+      agent_name: "Older",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    const newer = agent({
+      agent_id: "agent-new",
+      agent_name: "Newer",
+      created_at: "2026-03-01T00:00:00.000Z",
+    });
+    // Fetch returns oldest-first; the component must sort to newest-first.
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [older, newer],
+    });
+    render(<CloudAgentsSection />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cloud-agent-status-agent-new")).toBeTruthy(),
+    );
+
+    const newerRow = screen.getByTestId("cloud-agent-status-agent-new");
+    const olderRow = screen.getByTestId("cloud-agent-status-agent-old");
+    // DOCUMENT_POSITION_FOLLOWING (4) => olderRow comes AFTER newerRow.
+    expect(
+      newerRow.compareDocumentPosition(olderRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+});
+
 // The shared→dedicated handoff no longer drives this Settings row's "Waking…"
 // badge: PR3 re-points the live client SILENTLY (no row-level waking state), and
 // the in-flight progress is shown by the chat-shell handoff toast
