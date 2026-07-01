@@ -6,6 +6,7 @@
  * Browser: stack-based fallback.
  */
 
+import type { PseudonymSession } from "./security/pii-pseudonymizer";
 import type { SecretSwapSession } from "./security/secret-swap";
 import type { RoleGateRole } from "./types/contexts";
 import { StackContextManager } from "./utils/stack-context-manager";
@@ -32,6 +33,15 @@ export interface TrajectoryContext {
 	 * when secret-swap is disabled — the egress restore is then a no-op.
 	 */
 	secretSwapSession?: SecretSwapSession;
+	/**
+	 * Turn-scoped PII pseudonymization session (#10469 / #7007). Minted on the
+	 * first `useModel` call of a turn when PII swap is enabled, then reused by
+	 * every subsequent model call so a real entity maps to the same surrogate all
+	 * turn, and read at the action-execution boundary (`executePlannedToolCall`)
+	 * to restore real names/orgs/addresses into handler args and reply text.
+	 * Absent when PII swap is disabled — the egress restore is then a no-op.
+	 */
+	piiSwapSession?: PseudonymSession;
 	/**
 	 * Step ID of the parent trajectory step, when the current step was
 	 * dispatched from inside another. Persistence layers use this to attach

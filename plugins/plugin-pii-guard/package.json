@@ -1,0 +1,102 @@
+{
+  "name": "@elizaos/plugin-pii-guard",
+  "description": "Local NER model recognizer for the runtime's PII pseudonymization layer. Supplies a distilbert-NER (person / org / location) recognizer via @huggingface/transformers (transformers.js v3, onnxruntime-node CPU) behind the @elizaos/core PiiEntityRecognizer seam.",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "ElizaOS",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "pii",
+    "ner",
+    "pseudonymization",
+    "privacy",
+    "transformers"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/elizaos/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json",
+    "build.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "capabilities": [
+        "pii_entity_recognizer"
+      ]
+    }
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ELIZA_PII_NER_SCORE_THRESHOLD": {
+        "type": "number",
+        "description": "Minimum model confidence (0..1) for an entity to be emitted (default: 0.5)."
+      },
+      "ELIZA_PII_NER_MODEL": {
+        "type": "string",
+        "description": "HuggingFace token-classification model id to load (default: dslim/distilbert-NER)."
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (onnxruntime-node native CPU inference)"
+    }
+  }
+}

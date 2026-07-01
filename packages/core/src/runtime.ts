@@ -55,6 +55,19 @@ import {
 } from "./runtime/system-prompt";
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
+import {
+	CompositeEntityRecognizer,
+	DEFAULT_PSEUDONYM_BLOCKLIST,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	PII_SWAP_DISABLED_KINDS_SETTING,
+	PII_SWAP_ENABLED_SETTING,
+	PII_SWAP_EXEMPT_VALUES_SETTING,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	PseudonymSession,
+	parsePiiSwapList,
+	RegexEntityRecognizer,
+} from "./security/index.js";
 import { redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
@@ -1191,6 +1204,64 @@ export class AgentRuntime implements IAgentRuntime {
 				this.getSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING),
 			),
 		});
+	}
+
+	private isPiiSwapEnabled(): boolean {
+		return (
+			parseBooleanValue(this.getSetting(PII_SWAP_ENABLED_SETTING)) ?? false
+		);
+	}
+
+	/**
+	 * Build the turn's PII pseudonymization session (#10469 / #7007). The
+	 * recognizer is the composite of the runtime's built-in regex recognizer
+	 * (street addresses) and — if a plugin registered the
+	 * `PII_ENTITY_RECOGNIZER_SERVICE` — the local NER model (person/org/location).
+	 * With no model plugin present the layer runs regex-only: degraded coverage,
+	 * but still never leaks what it does detect. The agent's own name is added to
+	 * the blocklist so the model's identity is never pseudonymized.
+	 */
+	private createPiiSwapSession(): PseudonymSession {
+		const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
+		const nerService = this.getService(
+			PII_ENTITY_RECOGNIZER_SERVICE,
+		) as unknown as PiiEntityRecognizerService | null;
+		const nerRecognizer = nerService?.getRecognizer?.() ?? null;
+		if (nerRecognizer) recognizers.push(nerRecognizer);
+
+		const blocklist = [
+			...DEFAULT_PSEUDONYM_BLOCKLIST,
+			...(this.character.name ? [this.character.name] : []),
+			...parsePiiSwapList(this.getSetting(PII_SWAP_EXEMPT_VALUES_SETTING)),
+		];
+		return new PseudonymSession({
+			recognizer: new CompositeEntityRecognizer(recognizers, { blocklist }),
+			blocklist,
+			disabledKinds: parsePiiSwapList(
+				this.getSetting(PII_SWAP_DISABLED_KINDS_SETTING),
+			),
+		});
+	}
+
+	/** Flatten every string leaf of the model params plus the system prompt into
+	 * one text blob for the PII recognizer to scan. */
+	private collectPromptText(
+		params: unknown,
+		systemPrompt: string | undefined,
+	): string {
+		const parts: string[] = [];
+		const walk = (value: unknown): void => {
+			if (typeof value === "string") {
+				parts.push(value);
+			} else if (Array.isArray(value)) {
+				for (const item of value) walk(item);
+			} else if (value && typeof value === "object") {
+				for (const child of Object.values(value)) walk(child);
+			}
+		};
+		walk(params);
+		if (systemPrompt) parts.push(systemPrompt);
+		return parts.join("\n");
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -4840,6 +4911,15 @@ export class AgentRuntime implements IAgentRuntime {
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
+		// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
+		// (a random per-turn surrogate would destabilize embeddings), but — unlike
+		// the secret gate — swaps IMAGE prompts, whose text can carry real names.
+		const PII_SWAP_SKIP_MODELS: string[] = [
+			ModelType.TRANSCRIPTION,
+			ModelType.AUDIO,
+			ModelType.VIDEO,
+			ModelType.TEXT_EMBEDDING,
+		];
 		let modelParams: ModelParamsMap[T];
 		const paramsClone = isPlainObject(params)
 			? { ...(params as Record<string, JsonValue | object>) }
@@ -4960,8 +5040,12 @@ export class AgentRuntime implements IAgentRuntime {
 		let handlerDeliveredStream = false;
 		let streamedText = "";
 		let secretSwapSession: SecretSwapSession | null = null;
-		let secretSwapStreamBuffer = "";
-		const emitModelStreamChunk = async (safeChunk: string): Promise<void> => {
+		let guardedStreamBuffer = "";
+		let piiSwapSession: PseudonymSession | null = null;
+		const emitModelStreamChunk = async (
+			safeChunk: string,
+			visibleChunk = safeChunk,
+		): Promise<void> => {
 			if (abortSignal?.aborted) return;
 			if (streamedText === "" && safeChunk.length > 0) {
 				markInference(INFERENCE_MARKS.firstToken);
@@ -4989,33 +5073,42 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			await runInsideModelStreamChunkDelivery(async () => {
 				if (structuredExtractor) {
-					structuredExtractor.push(safeChunk);
+					structuredExtractor.push(visibleChunk);
 					return;
 				}
-				if (paramsChunk) await paramsChunk(safeChunk, msgId, undefined);
-				if (ctxChunk) await ctxChunk(safeChunk, msgId, undefined);
+				if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
+				if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
 			});
 		};
 		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
-			if (secretSwapSession) {
-				secretSwapStreamBuffer += chunk;
+			if (secretSwapSession || piiSwapSession) {
+				guardedStreamBuffer += chunk;
 				return;
 			}
 			await emitModelStreamChunk(chunk);
 		};
-		const flushSecretSwapStream = async (): Promise<void> => {
+		const flushGuardedStream = async (): Promise<void> => {
 			if (
 				abortSignal?.aborted ||
-				!secretSwapSession ||
-				secretSwapStreamBuffer.length === 0
+				(!secretSwapSession && !piiSwapSession) ||
+				guardedStreamBuffer.length === 0
 			) {
 				return;
 			}
-			const safeText = secretSwapSession.substituteText(secretSwapStreamBuffer);
-			secretSwapStreamBuffer = "";
+			let safeText = guardedStreamBuffer;
+			guardedStreamBuffer = "";
+			if (secretSwapSession) {
+				safeText = secretSwapSession.substituteText(safeText);
+			}
+			if (piiSwapSession) {
+				safeText = piiSwapSession.substituteText(safeText);
+			}
 			if (safeText.length > 0) {
-				await emitModelStreamChunk(safeText);
+				const visibleText = piiSwapSession
+					? piiSwapSession.restoreText(safeText)
+					: safeText;
+				await emitModelStreamChunk(safeText, visibleText);
 			}
 		};
 		// Wire the handler-facing stream callback for local providers AND for the
@@ -5088,6 +5181,42 @@ export class AgentRuntime implements IAgentRuntime {
 					: secretSwapSession.substituteText(effectiveSystemPrompt);
 		}
 
+		// Models the PII swap must NOT touch: binary-input modalities (nothing to
+		// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
+		// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
+		// surrogate would embed the same real text differently every turn and wreck
+		// semantic memory retrieval; embeddings stay on the real text).
+		let piiIngressText = "";
+		if (
+			this.isPiiSwapEnabled() &&
+			!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
+		) {
+			// Turn-scoped like the secret session (same mapping all turn), so the
+			// execution boundary can restore what this call swapped.
+			const trajectoryCtx = getTrajectoryContext();
+			piiSwapSession =
+				trajectoryCtx?.piiSwapSession ?? this.createPiiSwapSession();
+			if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
+				trajectoryCtx.piiSwapSession = piiSwapSession;
+			}
+			// The awaited detection step: learn every named entity in the assembled
+			// prompt (params + system prompt), then substitute synchronously. Ordered
+			// after the secret pass, so the NER model reads opaque
+			// `__ELIZA_SECRET_…__` placeholders, never a raw secret. The ONNX
+			// inference is offloaded to onnxruntime's threadpool, so it overlaps the
+			// event loop rather than blocking other turns.
+			piiIngressText = this.collectPromptText(
+				modelParams,
+				effectiveSystemPrompt,
+			);
+			await piiSwapSession.learn(piiIngressText);
+			modelParams = piiSwapSession.substituteInValue(modelParams);
+			effectiveSystemPrompt =
+				effectiveSystemPrompt === undefined
+					? undefined
+					: piiSwapSession.substituteText(effectiveSystemPrompt);
+		}
+
 		await this.invokePipelineHooks(
 			"pre_model",
 			preModelPipelineHookContext({
@@ -5109,6 +5238,28 @@ export class AgentRuntime implements IAgentRuntime {
 				postHookSystemPrompt === undefined
 					? undefined
 					: secretSwapSession.substituteText(postHookSystemPrompt);
+		}
+		if (piiSwapSession) {
+			// pre_model hooks may have injected fresh text (RAG snippets, extra
+			// context) with never-seen PII. If the assembled text changed, re-run
+			// detection so that new PII is swapped too — not just already-learned
+			// values re-masked. learn() is idempotent, so this only adds new entities.
+			const postHookText = this.collectPromptText(
+				modelParams,
+				effectiveSystemPrompt,
+			);
+			if (postHookText !== piiIngressText) {
+				await piiSwapSession.learn(postHookText);
+			}
+			modelParams = piiSwapSession.substituteInValue(modelParams);
+			const postHookSystemPrompt = resolveEffectiveSystemPrompt({
+				params: modelParams,
+				fallback: effectiveSystemPrompt,
+			});
+			effectiveSystemPrompt =
+				postHookSystemPrompt === undefined
+					? undefined
+					: piiSwapSession.substituteText(postHookSystemPrompt);
 		}
 
 		const hookedParamsObj =
@@ -5192,9 +5343,11 @@ export class AgentRuntime implements IAgentRuntime {
 			modelParams as Record<string, JsonValue | object>,
 		);
 
-		const resultRef: { current: unknown } = {
-			current: secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse,
-		};
+		let safeRawResponse: unknown =
+			secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse;
+		safeRawResponse =
+			piiSwapSession?.substituteInValue(safeRawResponse) ?? safeRawResponse;
+		const resultRef: { current: unknown } = { current: safeRawResponse };
 		const modelOutToTrajectoryString = (v: unknown) =>
 			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
 
@@ -5208,7 +5361,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (abortSignal?.aborted) break;
 				await deliverModelStreamChunk(chunk);
 			}
-			await flushSecretSwapStream();
+			await flushGuardedStream();
 			structuredExtractor?.flush();
 
 			const trajStreamEnd = getTrajectoryContext();
@@ -5300,6 +5453,9 @@ export class AgentRuntime implements IAgentRuntime {
 			resultRef.current =
 				secretSwapSession?.substituteInValue(resultRef.current) ??
 				resultRef.current;
+			resultRef.current =
+				piiSwapSession?.substituteInValue(resultRef.current) ??
+				resultRef.current;
 
 			this.logger.trace(
 				{
@@ -5315,7 +5471,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.logModelCall(
 				String(modelType),
 				resolvedModelKey,
-				params,
+				modelParams,
 				promptContent,
 				effectiveSystemPrompt,
 				elapsedTime,
@@ -5340,7 +5496,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (handlerDeliveredStream) {
-			await flushSecretSwapStream();
+			await flushGuardedStream();
 			structuredExtractor?.flush();
 			const trajStreamEnd = getTrajectoryContext();
 			await this.invokePipelineHooks(
@@ -5386,6 +5542,8 @@ export class AgentRuntime implements IAgentRuntime {
 		resultRef.current =
 			secretSwapSession?.substituteInValue(resultRef.current) ??
 			resultRef.current;
+		resultRef.current =
+			piiSwapSession?.substituteInValue(resultRef.current) ?? resultRef.current;
 
 		this.logger.trace(
 			{
@@ -5400,7 +5558,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.logModelCall(
 			String(modelType),
 			resolvedModelKey,
-			params,
+			modelParams,
 			promptContent,
 			effectiveSystemPrompt,
 			elapsedTime,
