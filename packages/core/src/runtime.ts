@@ -2403,8 +2403,51 @@ export class AgentRuntime implements IAgentRuntime {
 		// Merge DB-persisted settings back into runtime character
 		// This ensures settings from previous runs are available
 		if (existingAgent.settings) {
+			const dbSettings = isPlainObject(existingAgent.settings)
+				? existingAgent.settings
+				: {};
+			const dbExtraSettings = isPlainObject(dbSettings.extra)
+				? dbSettings.extra
+				: {};
+			const dbSettingsSecrets = isPlainObject(dbSettings.secrets)
+				? dbSettings.secrets
+				: {};
+			const characterSettings = isPlainObject(this.character.settings)
+				? this.character.settings
+				: {};
+			const characterExtraSettings = isPlainObject(characterSettings.extra)
+				? characterSettings.extra
+				: {};
+			const characterSettingsSecrets = isPlainObject(characterSettings.secrets)
+				? characterSettings.secrets
+				: {};
+			const characterSecrets =
+				this.character.secrets && typeof this.character.secrets === "object"
+					? this.character.secrets
+					: {};
+			const dbSettingsWithRuntimeOverrides = { ...existingAgent.settings };
+
+			for (const key of Object.keys(this.settings)) {
+				const runtimeValue = this.getRuntimeSettingValue(key);
+				if (runtimeValue === undefined) {
+					continue;
+				}
+
+				const hasDbValue =
+					Object.hasOwn(dbSettings, key) || Object.hasOwn(dbExtraSettings, key);
+				const hasCharacterValue =
+					Object.hasOwn(characterSettings, key) ||
+					Object.hasOwn(characterExtraSettings, key) ||
+					Object.hasOwn(characterSettingsSecrets, key) ||
+					Object.hasOwn(characterSecrets, key);
+
+				if (hasDbValue && !hasCharacterValue) {
+					dbSettingsWithRuntimeOverrides[key] = runtimeValue;
+				}
+			}
+
 			this.character.settings = {
-				...existingAgent.settings,
+				...dbSettingsWithRuntimeOverrides,
 				...this.character.settings, // Character file overrides DB
 			};
 
@@ -2414,27 +2457,34 @@ export class AgentRuntime implements IAgentRuntime {
 				existingAgent.secrets && typeof existingAgent.secrets === "object"
 					? existingAgent.secrets
 					: {};
-			const dbSettingsSecrets =
-				existingAgent.settings.secrets &&
-				typeof existingAgent.settings.secrets === "object"
-					? existingAgent.settings.secrets
-					: {};
-			const settingsSecrets =
-				this.character.settings.secrets &&
-				typeof this.character.settings.secrets === "object"
-					? this.character.settings.secrets
-					: {};
-			const characterSecrets =
-				this.character.secrets && typeof this.character.secrets === "object"
-					? this.character.secrets
-					: {};
+			const runtimeSecretOverrides: Record<string, string | boolean | number> =
+				{};
+
+			for (const key of Object.keys(this.settings)) {
+				const runtimeValue = this.getRuntimeSettingValue(key);
+				if (runtimeValue === undefined) {
+					continue;
+				}
+
+				const hasDbSecret =
+					Object.hasOwn(dbSecrets, key) ||
+					Object.hasOwn(dbSettingsSecrets, key);
+				const hasCharacterSecret =
+					Object.hasOwn(characterSecrets, key) ||
+					Object.hasOwn(characterSettingsSecrets, key);
+
+				if (hasDbSecret && !hasCharacterSecret) {
+					runtimeSecretOverrides[key] = runtimeValue;
+				}
+			}
 
 			// Merge into both locations that getSetting() checks
 			const mergedSecrets = {
 				...dbSecrets,
 				...dbSettingsSecrets,
+				...runtimeSecretOverrides,
 				...characterSecrets,
-				...settingsSecrets, // settings.secrets has priority
+				...characterSettingsSecrets, // character settings.secrets has priority
 			};
 
 			if (Object.keys(mergedSecrets).length > 0) {
@@ -2723,6 +2773,20 @@ export class AgentRuntime implements IAgentRuntime {
 		return undefined;
 	}
 
+	private getRuntimeSettingValue(
+		key: string,
+	): string | boolean | number | undefined {
+		const value = this.settings[key];
+		if (
+			typeof value === "string" ||
+			typeof value === "boolean" ||
+			typeof value === "number"
+		) {
+			return value;
+		}
+		return undefined;
+	}
+
 	getSetting(key: string): string | boolean | number | null {
 		const settings = this.character.settings;
 		const secrets = this.character.secrets;
@@ -2752,7 +2816,7 @@ export class AgentRuntime implements IAgentRuntime {
 			extraSettings?.[key] ??
 			nestedSecrets?.[key] ??
 			this.getCharacterEnvSetting(key) ??
-			this.settings[key];
+			this.getRuntimeSettingValue(key);
 
 		// Handle each type appropriately
 		if (value === undefined || value === null) {
