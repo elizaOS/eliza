@@ -12,6 +12,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getLatestAppReview, runAppReview } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -19,7 +23,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.post("/", async (c) => {
+// CRITICAL: submission runs a synchronous LLM classification — without a
+// limiter an org member could spam it to burn model spend (same preset as
+// the redemptions POST).
+app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
     const appId = c.req.param("id");
