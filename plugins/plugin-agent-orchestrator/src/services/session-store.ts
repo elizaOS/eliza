@@ -24,7 +24,7 @@ type Logger = NonNullable<SessionStoreRuntime["logger"]>;
 const FILE_LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
 const FILE_LOCK_STALE_MS = 30_000;
 
-type SqlDatabaseAdapter = {
+type RawSqlDatabaseAdapter = {
   query?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   execute?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   run?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
@@ -32,6 +32,17 @@ type SqlDatabaseAdapter = {
   get?: (sql: string, params?: unknown[]) => Promise<unknown> | unknown;
   select?: (sql: string, params?: unknown[]) => Promise<unknown[]> | unknown[];
 };
+
+type ElizaDrizzleAdapter = {
+  db: {
+    execute: (query: unknown) => Promise<unknown> | unknown;
+  };
+};
+
+interface SqlExecutor {
+  run(sql: string, params?: unknown[]): Promise<void>;
+  all(sql: string, params?: unknown[]): Promise<unknown[]>;
+}
 
 type StoredSession = Omit<SessionInfo, "createdAt" | "lastActivityAt"> & {
   createdAt: string;
@@ -129,11 +140,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isSqlDatabaseAdapter(value: unknown): value is SqlDatabaseAdapter {
+function isRawSqlDatabaseAdapter(
+  value: unknown,
+): value is RawSqlDatabaseAdapter {
   if (!isRecord(value)) return false;
   return ["query", "execute", "run", "all", "get", "select"].some(
     (method) => typeof value[method] === "function",
   );
+}
+
+function isElizaDrizzleAdapter(value: unknown): value is ElizaDrizzleAdapter {
+  if (!isRecord(value)) return false;
+  const db = value.db;
+  return isRecord(db) && typeof db.execute === "function";
+}
+
+function isPersistableAdapter(
+  value: unknown,
+): value is RawSqlDatabaseAdapter | ElizaDrizzleAdapter {
+  return isRawSqlDatabaseAdapter(value) || isElizaDrizzleAdapter(value);
 }
 
 function normalizeRows(result: unknown): unknown[] {
@@ -144,6 +169,68 @@ function normalizeRows(result: unknown): unknown[] {
     if (Array.isArray(value)) return value;
   }
   return [];
+}
+
+async function resolveSqlExecutor(
+  adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
+): Promise<SqlExecutor> {
+  if (isElizaDrizzleAdapter(adapter)) {
+    const drizzle = (await import("drizzle-orm")) as {
+      sql: {
+        raw(text: string): unknown;
+        param(value: unknown): unknown;
+        join(chunks: unknown[], separator?: unknown): unknown;
+      };
+    };
+    const buildQuery = (text: string, params: unknown[] = []): unknown => {
+      if (params.length === 0) return drizzle.sql.raw(text);
+      const parts = text.split("?");
+      if (parts.length - 1 !== params.length) {
+        throw new Error(
+          `acpx SessionStore SQL placeholder mismatch: ${
+            parts.length - 1
+          } placeholders for ${params.length} params`,
+        );
+      }
+      const chunks: unknown[] = [];
+      for (let i = 0; i < parts.length; i++) {
+        chunks.push(drizzle.sql.raw(parts[i]));
+        if (i < params.length) chunks.push(drizzle.sql.param(params[i]));
+      }
+      return drizzle.sql.join(chunks);
+    };
+    return {
+      async run(text, params) {
+        await adapter.db.execute(buildQuery(text, params));
+      },
+      async all(text, params) {
+        return normalizeRows(
+          await adapter.db.execute(buildQuery(text, params)),
+        );
+      },
+    };
+  }
+
+  const runFn = adapter.execute ?? adapter.run ?? adapter.query;
+  const allFn = adapter.all ?? adapter.select ?? adapter.query;
+  if (!runFn) {
+    throw new Error(
+      "acpx SessionStore raw adapter exposes none of execute, run, or query",
+    );
+  }
+  if (!allFn) {
+    throw new Error(
+      "acpx SessionStore raw adapter exposes none of all, select, or query",
+    );
+  }
+  return {
+    async run(text, params = []) {
+      await runFn.call(adapter, text, params);
+    },
+    async all(text, params = []) {
+      return normalizeRows(await allFn.call(adapter, text, params));
+    },
+  };
 }
 
 function rowToSession(row: unknown): SessionInfo {
@@ -501,9 +588,10 @@ export class FileSessionStore extends InMemorySessionStore {
 export class RuntimeDbSessionStore implements SessionStore {
   private readonly writes = new WriteQueue();
   private initPromise: Promise<void> | undefined;
+  private executor: SqlExecutor | undefined;
 
   constructor(
-    private readonly adapter: SqlDatabaseAdapter,
+    private readonly adapter: RawSqlDatabaseAdapter | ElizaDrizzleAdapter,
     private readonly logger?: Logger,
   ) {
     void this.logger;
@@ -620,41 +708,55 @@ export class RuntimeDbSessionStore implements SessionStore {
 
   private async ensureInitialized(): Promise<void> {
     this.initPromise ??= (async () => {
-      await this.execute(SESSION_TABLE_SQL);
-      for (const sql of SESSION_INDEX_SQL) await this.execute(sql);
+      this.executor = await resolveSqlExecutor(this.adapter);
+      await this.executor.run(SESSION_TABLE_SQL);
+      for (const sql of SESSION_INDEX_SQL) await this.executor.run(sql);
     })();
     await this.initPromise;
   }
 
+  private exec(): SqlExecutor {
+    if (!this.executor) {
+      throw new Error(
+        "acpx SessionStore executor accessed before initialization",
+      );
+    }
+    return this.executor;
+  }
+
   private async upsert(session: SessionInfo): Promise<void> {
     await this.execute(
-      `INSERT OR REPLACE INTO acp_sessions (
+      `INSERT INTO acp_sessions (
         id, name, agent_type, workdir, status, acpx_record_id, acpx_session_id, agent_session_id,
         pid, approval_preset, created_at, last_activity_at, last_error, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET
+        name = excluded.name,
+        agent_type = excluded.agent_type,
+        workdir = excluded.workdir,
+        status = excluded.status,
+        acpx_record_id = excluded.acpx_record_id,
+        acpx_session_id = excluded.acpx_session_id,
+        agent_session_id = excluded.agent_session_id,
+        pid = excluded.pid,
+        approval_preset = excluded.approval_preset,
+        created_at = excluded.created_at,
+        last_activity_at = excluded.last_activity_at,
+        last_error = excluded.last_error,
+        metadata = excluded.metadata`,
       sessionToParams(session),
     );
   }
 
-  private async execute(sql: string, params: unknown[] = []): Promise<unknown> {
-    const fn = this.adapter.execute ?? this.adapter.run ?? this.adapter.query;
-    if (!fn)
-      throw new Error(
-        "Runtime database adapter does not expose execute, run, or query",
-      );
-    return fn.call(this.adapter, sql, params);
+  private async execute(sql: string, params: unknown[] = []): Promise<void> {
+    await this.exec().run(sql, params);
   }
 
   private async getMany(
     sql: string,
     params: unknown[],
   ): Promise<SessionInfo[]> {
-    const fn = this.adapter.all ?? this.adapter.select ?? this.adapter.query;
-    if (!fn)
-      throw new Error(
-        "Runtime database adapter does not expose all, select, or query",
-      );
-    const rows = normalizeRows(await fn.call(this.adapter, sql, params));
+    const rows = await this.exec().all(sql, params);
     return rows.map(rowToSession);
   }
 
@@ -662,10 +764,6 @@ export class RuntimeDbSessionStore implements SessionStore {
     sql: string,
     params: unknown[],
   ): Promise<SessionInfo | null> {
-    if (this.adapter.get) {
-      const row = await this.adapter.get.call(this.adapter, sql, params);
-      return row ? rowToSession(row) : null;
-    }
     const [row] = await this.getMany(sql, params);
     return row;
   }
@@ -682,11 +780,12 @@ export class AcpSessionStore implements SessionStore {
   private readonly delegate: SessionStore;
 
   constructor(options: AcpSessionStoreOptions = {}) {
-    const adapter = options.runtime?.databaseAdapter;
+    const adapter =
+      options.runtime?.adapter ?? options.runtime?.databaseAdapter;
     const logger = options.runtime?.logger;
     if (
       (options.backend === undefined || options.backend === "runtime-db") &&
-      isSqlDatabaseAdapter(adapter)
+      isPersistableAdapter(adapter)
     ) {
       this.backend = "runtime-db";
       this.delegate = new RuntimeDbSessionStore(adapter, logger);

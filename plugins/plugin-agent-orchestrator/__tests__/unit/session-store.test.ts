@@ -259,6 +259,46 @@ describe("AcpSessionStore", () => {
     expect(store.backend).toBe("runtime-db");
   });
 
+  it("selects the modern runtime.adapter DB backend", () => {
+    const adapter = { query: vi.fn() };
+    const store = new AcpSessionStore({
+      runtime: { adapter },
+    });
+    expect(store.backend).toBe("runtime-db");
+  });
+
+  it("recognizes and writes through eliza drizzle-shaped runtime adapters", async () => {
+    const execute = vi.fn(async () => ({ rows: [] }));
+    const adapter = { db: { execute } };
+    const store = new AcpSessionStore({
+      runtime: { adapter },
+    });
+    expect(store.backend).toBe("runtime-db");
+
+    await store.create(session());
+
+    expect(execute).toHaveBeenCalled();
+  });
+
+  it("prefers runtime.adapter over legacy databaseAdapter and uses portable upsert", async () => {
+    const modern = { query: vi.fn(async () => []) };
+    const legacy = { query: vi.fn(async () => []) };
+    const store = new AcpSessionStore({
+      runtime: { adapter: modern, databaseAdapter: legacy },
+    });
+
+    await store.create(session());
+
+    expect(modern.query).toHaveBeenCalled();
+    expect(legacy.query).not.toHaveBeenCalled();
+    const sqlText = modern.query.mock.calls
+      .map(([sql]) => String(sql))
+      .join("\n");
+    expect(sqlText).toContain("INSERT INTO acp_sessions");
+    expect(sqlText).toContain("ON CONFLICT (id) DO UPDATE SET");
+    expect(sqlText).not.toContain("INSERT OR REPLACE");
+  });
+
   it("selects explicit in-memory backend and warns", () => {
     const logger = { warn: vi.fn() };
     const store = new AcpSessionStore({

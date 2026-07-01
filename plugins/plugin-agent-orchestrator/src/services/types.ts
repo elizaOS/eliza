@@ -184,6 +184,7 @@ export interface SessionStore {
 }
 
 export interface SessionStoreRuntime {
+  adapter?: unknown;
   databaseAdapter?: unknown;
   logger?: {
     warn?: (message: string, ...args: unknown[]) => void;

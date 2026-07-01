@@ -53,6 +53,7 @@ type RuntimeLike = IAgentRuntime & {
     >
   >;
   services?: Map<string, unknown[]>;
+  adapter?: unknown;
   databaseAdapter?: unknown;
   getSetting?: (key: string) => string | undefined | null;
 };
@@ -2899,6 +2900,7 @@ function boolSetting(value: string | undefined): boolean | undefined {
 
 function createDefaultSessionStore(runtime: RuntimeLike): SessionStore {
   const runtimeForStore = {
+    adapter: runtime.adapter,
     databaseAdapter: runtime.databaseAdapter,
     logger: runtime.logger,
     getSetting: (key: string) => {
