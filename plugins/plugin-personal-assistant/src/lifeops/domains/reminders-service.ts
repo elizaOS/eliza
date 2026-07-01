@@ -128,6 +128,7 @@ import {
   type ProcessDueScheduledTasksResult,
   processDueScheduledTasks,
 } from "../scheduled-task/scheduler.js";
+import { getScheduledTaskRunner } from "../scheduled-task/service.js";
 import { isMissingLifeOpsRelationError } from "../scheduler-task.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
@@ -5447,6 +5448,19 @@ export class RemindersDomain {
         agentId: this.ctx.agentId(),
         retentionDays: DEFAULT_TELEMETRY_RETENTION_DAYS,
       });
+      // Scheduled-task state-log rollup rides the same once-per-day gate.
+      // `rolloverStateLog` (90-day default retention) previously had no
+      // production caller, so `life_scheduled_task_log` grew unbounded.
+      const runner = getScheduledTaskRunner(this.ctx.runtime, {
+        agentId: this.ctx.agentId(),
+        now: () => now,
+      });
+      const rolled = await runner.rolloverStateLog();
+      if (rolled.rolledUp > 0 || rolled.deletedRaw > 0) {
+        logger.info(
+          `[RemindersDomain] state-log rollup: ${rolled.deletedRaw} raw rows folded into ${rolled.rolledUp} daily summaries`,
+        );
+      }
       this.telemetryRollupLastRunDate = dateKey;
     } catch (error) {
       // Maintenance failure should not break the scheduler tick; surface
