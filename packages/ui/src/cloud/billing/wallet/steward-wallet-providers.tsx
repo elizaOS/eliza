@@ -28,7 +28,7 @@ import {
 } from "@solana/wallet-adapter-wallets";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { http, WagmiProvider } from "wagmi";
+import { type Config, http, WagmiProvider } from "wagmi";
 import { base, bsc } from "wagmi/chains";
 
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
@@ -51,7 +51,11 @@ export function StewardWalletProviders({ children }: { children: ReactNode }) {
       ? `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`
       : DEFAULT_SOLANA_RPC_URL);
 
-  const evmConfig = useMemo(
+  // RainbowKit's `getDefaultConfig` is designed to feed `WagmiProvider`, but the
+  // monorepo resolves two wagmi copies (RainbowKit pins wagmi 2.x; other packages
+  // pull wagmi 3.x), so their `Config` types are structurally identical yet
+  // nominally distinct. Bridge them at this single boundary.
+  const evmConfig = useMemo<Config>(
     () =>
       getDefaultConfig({
         appName: "Eliza Cloud",
@@ -67,7 +71,7 @@ export function StewardWalletProviders({ children }: { children: ReactNode }) {
           [bsc.id]: http("https://bsc-dataseed.binance.org"),
         },
         ssr: false,
-      }),
+      }) as unknown as Config,
     [alchemyKey, appUrl, walletConnectProjectId],
   );
 

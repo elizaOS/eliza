@@ -219,6 +219,7 @@ vi.mock("./state", () => {
     handlePluginToggle: vi.fn(),
     loadDropStatus: vi.fn(async () => undefined),
     firstRunComplete: true,
+    firstRunName: "",
     ownerName: "Test Owner",
     plugins: [],
     retryStartup: vi.fn(),
