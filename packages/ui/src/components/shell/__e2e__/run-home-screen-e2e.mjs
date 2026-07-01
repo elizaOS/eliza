@@ -185,6 +185,36 @@ async function swipeRight(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
+// A left touch-swipe across an element, dispatched as real `pointerType:"touch"`
+// events (Playwright's mouse API emits mouse pointers, which grab pointer
+// capture; touch does not — matching the device the launcher pager targets).
+async function touchSwipeLeft(page, testId) {
+  await page.getByTestId(testId).evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const y = box.y + box.height * 0.4;
+    const startX = box.x + box.width * 0.82;
+    const endX = box.x + box.width * 0.14;
+    const fire = (type, x) =>
+      el.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 7,
+          pointerType: "touch",
+          isPrimary: true,
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    fire("pointerdown", startX);
+    const steps = 10;
+    for (let i = 1; i <= steps; i += 1) {
+      fire("pointermove", startX + ((endX - startX) * i) / steps);
+    }
+    fire("pointerup", endX);
+  });
+}
+
 // A STATIONARY hold past the long-press window. On the curated launcher this
 // must NOT enter edit mode (the launcher is read-only, fixed placement).
 async function longPressHold(page, tileTestId) {
@@ -451,8 +481,23 @@ try {
       .count()) === 0,
     "developer tool (trajectories) is not on the apps page (page 0)",
   );
-  await swipeLeft(mobile.getByTestId("home-launcher-launcher-page"));
-  await mobile.waitForTimeout(450);
+  // Touch-swipe the INNER launcher viewport forward to the developer page. On a
+  // real device the launcher pager owns forward paging (touch does not grab
+  // pointer capture the way mouse does, so the outer home↔launcher rail does not
+  // hijack the gesture). Drive true `pointerType:"touch"` events so this matches
+  // the mobile experience, then assert the rail actually paged.
+  await touchSwipeLeft(mobile, "launcher-page-window");
+  await mobile.waitForTimeout(750);
+  const pagedOffset = await mobile
+    .getByTestId("launcher-page-rail")
+    .evaluate((el) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
+    });
+  assert(
+    pagedOffset.x < -pagedOffset.width * 0.5,
+    `launcher paged forward to the developer page (rail x=${Math.round(pagedOffset.x)})`,
+  );
   for (const id of ["trajectories", "database", "runtime", "logs", "skills", "plugins"]) {
     assert(
       await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
