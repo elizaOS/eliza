@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
           files: |
