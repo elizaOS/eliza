@@ -17,11 +17,9 @@
  */
 
 import type { App } from "../../db/repositories/apps";
-import {
-  type AppFrontendDeployment,
-  appFrontendDeploymentsRepository,
-} from "../../db/repositories/app-frontend-deployments";
+import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
 import type {
+  AppFrontendDeployment,
   FrontendBuildMeta,
   FrontendFileEntry,
   FrontendManifest,
@@ -146,7 +144,7 @@ export function normalizeSitePath(input: string): string | null {
   return segments.join("/");
 }
 
-function toBytes(file: FrontendUploadFile): Uint8Array {
+function toBytes(file: FrontendUploadFile): Uint8Array<ArrayBuffer> {
   if (file.encoding === "base64") {
     const binary = atob(file.content);
     const bytes = new Uint8Array(binary.length);
@@ -156,7 +154,7 @@ function toBytes(file: FrontendUploadFile): Uint8Array {
   return new TextEncoder().encode(file.content);
 }
 
-export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+export async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))

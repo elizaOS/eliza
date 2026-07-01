@@ -67,7 +67,7 @@ function memoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
           return new TextDecoder().decode(v);
         },
         async arrayBuffer() {
-          return v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength);
+          return new Uint8Array(v).buffer;
         },
       };
     },
