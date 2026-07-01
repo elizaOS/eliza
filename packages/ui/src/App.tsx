@@ -86,7 +86,6 @@ import {
   APPS_ENABLED,
   getAppSlugFromPath,
   getWindowNavigationPath,
-  isAndroidPhoneSurfaceEnabled,
   isAospShellEnabled,
   isRouteRootPath,
   pathForTab,
@@ -1068,13 +1067,13 @@ function renderAppsSurface(navigationPath: string): ReactNode {
 
 function renderStaticViewRouterTab({
   tab,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
   walletNav,
 }: {
   tab: string;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
   walletNav?: ReactNode;
@@ -1171,13 +1170,13 @@ function renderStaticViewRouterTab({
     return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
   }
   if (tab === "phone") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView);
   }
   if (tab === "messages") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, MessagesPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView);
   }
   if (tab === "contacts") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, ContactsPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView);
   }
   if (tab === "views" || tab === "apps") {
     return renderAppsSurface(navigationPath);
@@ -1225,7 +1224,7 @@ function renderViewRouterContent({
   navigationPath,
   availableViews,
   appSlug,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   settingsInitialSection,
 }: {
   tab: string;
@@ -1235,7 +1234,7 @@ function renderViewRouterContent({
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
@@ -1278,7 +1277,7 @@ function renderViewRouterContent({
   if (remoteView?.bundleUrl) return renderRemoteView(remoteView, walletNav);
   return renderStaticViewRouterTab({
     tab,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
     walletNav,
@@ -1299,7 +1298,10 @@ function ViewRouter({
 }) {
   const activeTab = useAppSelector((s) => s.tab);
   const tab = routeOverride?.tab ?? activeTab;
-  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
+  // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
+  // camera + the home tiles + the launcher tiles) — never rendered on web,
+  // desktop, iOS, or stock Play-Store Android, even via a deep link.
+  const nativeOsSurfaceEnabled = isAospShellEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(
     () =>
@@ -1339,7 +1341,7 @@ function ViewRouter({
     navigationPath,
     availableViews,
     appSlug,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     settingsInitialSection,
   });
 

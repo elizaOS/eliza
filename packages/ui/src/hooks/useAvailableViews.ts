@@ -114,6 +114,18 @@ interface UseAvailableViewsOptions {
 
 const POLL_INTERVAL_MS = 30_000;
 
+/**
+ * Native device-OS surfaces that only exist on the AOSP ElizaOS fork. They are
+ * stripped from the routable view set on every other build (web, desktop, iOS,
+ * stock Play-Store Android).
+ */
+const NATIVE_OS_VIEW_IDS: ReadonlySet<string> = new Set([
+  "phone",
+  "messages",
+  "contacts",
+  "camera",
+]);
+
 async function fetchViewList(
   viewType?: "gui" | "tui" | "xr",
 ): Promise<ViewRegistryEntry[]> {
@@ -403,12 +415,12 @@ export function useAvailableViews(
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
   const views = useMemo(() => {
     const merged = mergeWithAppShellViews(networkViews, appShellViews);
-    // Camera is an AOSP-ElizaOS-fork-only surface (native device camera).
-    // Hide it from the view manager + router everywhere else — web, desktop,
-    // iOS, and stock Play-Store Android — matching the AOSP-gated home tile
-    // (`nativeOs`) and the `/camera` route gate in App.tsx.
+    // Phone, messages, contacts, and camera are AOSP-ElizaOS-fork-only surfaces
+    // (native device apps). Strip them from the view manager + router everywhere
+    // else — web, desktop, iOS, and stock Play-Store Android — matching the
+    // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
     if (isAospShellEnabled()) return merged;
-    return merged.filter((view) => view.id !== "camera");
+    return merged.filter((view) => !NATIVE_OS_VIEW_IDS.has(view.id));
   }, [networkViews, appShellViews]);
 
   return {
