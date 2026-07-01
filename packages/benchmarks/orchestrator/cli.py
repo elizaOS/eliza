@@ -30,6 +30,7 @@ from .inventory import (
     report_to_markdown as inventory_report_to_markdown,
 )
 from .random_baseline_runner import CALIBRATION_HARNESSES, SYNTHETIC_HARNESSES
+from .review_package import build_review_package, write_review_package
 from .runner import _rebuild_latest_result_snapshots, _repair_current_compatibility_statuses, run_benchmarks
 from .matrix_validation import build_cross_matrix_report, report_to_json, report_to_markdown
 from .runtime_gates import build_runtime_gate_report, print_runtime_gate_report
@@ -450,6 +451,35 @@ def _cmd_verify_artifacts(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def _cmd_review_package(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    latest_dir = Path(args.latest_dir).expanduser() if args.latest_dir else None
+    package = build_review_package(
+        workspace_root,
+        latest_dir=latest_dir,
+        reviewed_by=args.reviewed_by,
+        reviewer_note=args.reviewer_note,
+        tolerance=float(args.tolerance),
+        check_runtime_gates=not bool(args.skip_runtime_gates),
+        include_benchmarks=set(_split_csv(args.include_benchmarks)) or None,
+        exclude_benchmarks=set(_split_csv(args.exclude_benchmarks)) or None,
+    )
+    manifest_path, scorecard_path = write_review_package(
+        package,
+        Path(args.out_dir).expanduser(),
+    )
+    print(f"Wrote manifest: {manifest_path}")
+    print(f"Wrote scorecard: {scorecard_path}")
+    if not package.ok:
+        print(
+            "Benchmark review package is blocked; inspect `blocking_findings` "
+            "in the manifest or the scorecard section above."
+        )
+        return 1
+    print("Benchmark review package is complete.")
+    return 0
+
+
 def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
     """Parse ``provider:model[@base_url]`` into ``(provider, model, base_url)``.
 
@@ -825,6 +855,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if generated benchmark output (results/DBs/trajectories) is committed",
     )
     p_verify_artifacts.set_defaults(func=_cmd_verify_artifacts)
+
+    p_review = sub.add_parser(
+        "review-package",
+        help="Write the final reviewed benchmark scorecard and machine-readable manifest",
+    )
+    p_review.add_argument(
+        "--latest-dir",
+        default=None,
+        help="Latest snapshot directory to package (default: benchmark_results/latest)",
+    )
+    p_review.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory that receives manifest.json and scorecard.md",
+    )
+    p_review.add_argument(
+        "--reviewed-by",
+        default="",
+        help="Human reviewer name or handle recorded in the manifest",
+    )
+    p_review.add_argument(
+        "--reviewer-note",
+        required=True,
+        help="Manual note confirming trajectories/replays were opened and spot-reviewed",
+    )
+    p_review.add_argument(
+        "--tolerance",
+        type=float,
+        default=0.08,
+        help="Allowed absolute score spread across required real harnesses",
+    )
+    p_review.add_argument(
+        "--skip-runtime-gates",
+        action="store_true",
+        help="Package latest artifacts without probing host runtime prerequisites",
+    )
+    p_review.add_argument(
+        "--include-benchmarks",
+        default=None,
+        help="Comma-separated benchmark IDs to include in the review package",
+    )
+    p_review.add_argument(
+        "--exclude-benchmarks",
+        default=None,
+        help="Comma-separated benchmark IDs to exclude from the review package",
+    )
+    p_review.set_defaults(func=_cmd_review_package)
 
     p_run = sub.add_parser("run", help="Run one or more benchmarks idempotently")
     p_run.add_argument("--all", action="store_true", help="Run all integrated benchmarks")
