@@ -26,6 +26,14 @@ export interface FinalCheckReport {
   type: string;
   status: FinalCheckStatus;
   detail: string;
+  /**
+   * Numeric LLM-judge score in [0, 1] when this check ran a judge
+   * (`judgeRubric`). Absent for non-judged checks and when the judge itself
+   * errored. Serialized so downstream training/quality tooling can
+   * reward-weight trajectories instead of re-parsing the detail string
+   * (#8795).
+   */
+  score?: number;
 }
 
 export interface TurnReport {
@@ -38,6 +46,12 @@ export interface TurnReport {
   actionsCalled: CapturedAction[];
   durationMs: number;
   failedAssertions: string[];
+  /**
+   * Numeric `responseJudge` score in [0, 1] when this turn ran an LLM judge.
+   * Recorded for passing turns too — before this field the score only
+   * appeared inside a failure detail string (#8795).
+   */
+  judgeScore?: number;
   /** `.wav` artifacts a `voice` turn wrote when run under `--run-dir`. */
   audioArtifacts?: VoiceAudioArtifact[];
 }
@@ -56,6 +70,13 @@ export interface ScenarioReport {
   failedAssertions: Array<{ label: string; detail: string }>;
   providerName: string | null;
   error?: string;
+  /**
+   * Minimum judge score in [0, 1] across every judged turn and `judgeRubric`
+   * final check in the scenario — the binding quality constraint. Absent when
+   * no judge ran. Carried into `--export-native` rows as
+   * `metadata.judge_score` for reward-weighted training (#8795).
+   */
+  judgeScore?: number;
 }
 
 export interface AggregateReport {

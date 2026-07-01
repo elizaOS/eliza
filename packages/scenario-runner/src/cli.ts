@@ -373,10 +373,20 @@ async function main(): Promise<number> {
     const scenarioOutcomes = new Map(
       reports.map((report) => [report.id, report.status] as const),
     );
+    // Thread the numeric judge score (minimum across judged turns + rubric
+    // final checks) so rows carry metadata.judge_score for reward-weighted
+    // training (#8795).
+    const scenarioJudgeScores = new Map<string, number>();
+    for (const report of reports) {
+      if (typeof report.judgeScore === "number") {
+        scenarioJudgeScores.set(report.id, report.judgeScore);
+      }
+    }
     exportScenarioNativeJsonl(
       effectiveRunDir,
       parsed.exportNativePath,
       scenarioOutcomes,
+      scenarioJudgeScores,
     );
   }
   if (effectiveRunDir) {

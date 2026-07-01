@@ -43,6 +43,13 @@ export const SCENARIO_NATIVE_EXPORT_VERSION = 1 as const;
  */
 export type ScenarioOutcome = "passed" | "failed" | "skipped";
 export type ScenarioOutcomeMap = ReadonlyMap<string, ScenarioOutcome>;
+/**
+ * Per-scenario numeric judge score (`ScenarioReport.judgeScore`, the minimum
+ * across all judged turns + judgeRubric final checks), keyed by scenario id.
+ * Threaded into the exporter so training prep can reward-weight rows
+ * (#8795) instead of only routing on pass/fail.
+ */
+export type ScenarioJudgeScoreMap = ReadonlyMap<string, number>;
 
 export interface NativeBoundaryRow {
   format: typeof NATIVE_FORMAT;
@@ -55,6 +62,13 @@ export interface NativeBoundaryRow {
    * trajectory lifecycle contract.
    */
   scenarioStatus?: ScenarioOutcome;
+  /**
+   * Numeric LLM-judge score in [0, 1] for the source scenario (minimum across
+   * its judged turns + judgeRubric final checks). Also mirrored as
+   * `metadata.judge_score` so the training reward pipeline reads it without
+   * knowing the row shape (#8795).
+   */
+  judgeScore?: number;
   request: {
     system?: string;
     messages?: unknown[];
@@ -363,6 +377,7 @@ function buildResponse(
 export function recordedTrajectoryToNativeRows(
   trajectory: RecordedTrajectory,
   scenarioOutcome?: ScenarioOutcome,
+  judgeScore?: number,
 ): NativeBoundaryRow[] {
   const rows: NativeBoundaryRow[] = [];
   const stages: RecordedStage[] = Array.isArray(trajectory.stages)
@@ -397,6 +412,7 @@ export function recordedTrajectoryToNativeRows(
       schemaVersion: NATIVE_SCHEMA_VERSION,
       boundary: GENERATE_TEXT_BOUNDARY,
       ...(scenarioOutcome ? { scenarioStatus: scenarioOutcome } : {}),
+      ...(judgeScore !== undefined ? { judgeScore } : {}),
       request,
       response,
       trajectoryId: trajectory.trajectoryId,
@@ -447,6 +463,7 @@ export function recordedTrajectoryToNativeRows(
           typeof model.provider === "string" ? model.provider : undefined,
         trajectory_status: trajectory.status,
         ...(scenarioOutcome ? { scenario_status: scenarioOutcome } : {}),
+        ...(judgeScore !== undefined ? { judge_score: judgeScore } : {}),
         ...(typeof model.costUsd === "number"
           ? { source_cost_usd: model.costUsd }
           : {}),
@@ -512,11 +529,17 @@ function addString(set: Set<string>, value: unknown): void {
  * gold. Without this map the exporter cannot tell a scenario that mechanically
  * finished but failed its assertions from a genuinely passing one — and would
  * export both as gold.
+ *
+ * `scenarioJudgeScores` maps scenario id → numeric judge score
+ * (`ScenarioReport.judgeScore`). When present, each row carries it as
+ * `judgeScore` and `metadata.judge_score` so training prep can reward-weight
+ * rows on judged quality, not just pass/fail (#8795).
  */
 export function exportScenarioNativeJsonl(
   runDir: string,
   outPath: string,
   scenarioOutcomes?: ScenarioOutcomeMap,
+  scenarioJudgeScores?: ScenarioJudgeScoreMap,
 ): number {
   const trajectoriesDir = path.join(runDir, "trajectories");
   const files = collectTrajectoryFiles(trajectoriesDir);
@@ -561,7 +584,13 @@ export function exportScenarioNativeJsonl(
         `[scenario-runner] trajectory ${parsed.trajectoryId} has scenarioId="${parsed.scenarioId}" with no matching scenario report; exporting without a pass/fail status`,
       );
     }
-    rows.push(...recordedTrajectoryToNativeRows(parsed, scenarioOutcome));
+    const judgeScore =
+      scenarioJudgeScores && typeof parsed.scenarioId === "string"
+        ? scenarioJudgeScores.get(parsed.scenarioId)
+        : undefined;
+    rows.push(
+      ...recordedTrajectoryToNativeRows(parsed, scenarioOutcome, judgeScore),
+    );
   }
   mkdirSync(path.dirname(outPath), { recursive: true });
   const body =

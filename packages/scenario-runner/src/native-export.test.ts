@@ -437,3 +437,91 @@ describe("exportScenarioNativeJsonl", () => {
     }
   });
 });
+
+describe("judge score serialization (#8795)", () => {
+  it("stamps the numeric judge score on rows and metadata", () => {
+    const rows = recordedTrajectoryToNativeRows(
+      syntheticTrajectory() as never,
+      "passed",
+      0.82,
+    );
+    const row = expectSingleNativeRow(rows);
+    expect(row.judgeScore).toBe(0.82);
+    expect(row.metadata.judge_score).toBe(0.82);
+    // Survives JSON round-tripping as a number, not a detail string.
+    const parsed = JSON.parse(JSON.stringify(row));
+    expect(parsed.judgeScore).toBe(0.82);
+    expect(parsed.metadata.judge_score).toBe(0.82);
+  });
+
+  it("omits judge score fields when no judge ran", () => {
+    const rows = recordedTrajectoryToNativeRows(
+      syntheticTrajectory() as never,
+      "passed",
+    );
+    const row = expectSingleNativeRow(rows);
+    expect(Object.hasOwn(row, "judgeScore")).toBe(false);
+    expect(Object.hasOwn(row.metadata, "judge_score")).toBe(false);
+  });
+
+  it("threads per-scenario judge scores through exportScenarioNativeJsonl", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-judge-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(syntheticTrajectory()),
+        "utf-8",
+      );
+      const outPath = path.join(runDir, "native.jsonl");
+      const outcomes = new Map<string, "passed" | "failed" | "skipped">([
+        ["todos.create-basic", "passed"],
+      ]);
+      const judgeScores = new Map<string, number>([
+        ["todos.create-basic", 0.9],
+      ]);
+      const count = exportScenarioNativeJsonl(
+        runDir,
+        outPath,
+        outcomes,
+        judgeScores,
+      );
+      expect(count).toBe(1);
+      const parsed = JSON.parse(readFileSync(outPath, "utf-8").trim());
+      expect(parsed.scenarioStatus).toBe("passed");
+      expect(parsed.judgeScore).toBe(0.9);
+      expect(parsed.metadata.judge_score).toBe(0.9);
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves rows for unjudged scenarios untouched", () => {
+    const runDir = mkdtempSync(
+      path.join(tmpdir(), "scenario-native-nojudge-"),
+    );
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(syntheticTrajectory()),
+        "utf-8",
+      );
+      const outPath = path.join(runDir, "native.jsonl");
+      const count = exportScenarioNativeJsonl(
+        runDir,
+        outPath,
+        new Map([["todos.create-basic", "passed" as const]]),
+        new Map<string, number>([["some.other-scenario", 0.5]]),
+      );
+      expect(count).toBe(1);
+      const parsed = JSON.parse(readFileSync(outPath, "utf-8").trim());
+      expect(parsed.judgeScore).toBeUndefined();
+      expect(parsed.metadata.judge_score).toBeUndefined();
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+});
