@@ -60,6 +60,7 @@ import {
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
+import { SwarmCoordinatorService } from "./services/swarm-coordinator-service.js";
 import { TaskSupervisorService } from "./services/task-supervisor-service.js";
 import { TaskWatchdogService } from "./services/task-watchdog-service.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
@@ -68,6 +69,7 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
+import { codingAgentRoutePlugin } from "./setup-routes.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -107,6 +109,13 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(CodingWorkspaceService),
         serviceClass(TaskSupervisorService),
         serviceClass(TaskWatchdogService),
+        // Discoverable SWARM_COORDINATOR adapter. server.ts's
+        // wireCoordinatorBridgesWhenReady + plugin-app-control's
+        // verification-room-bridge both look this up by serviceType; without
+        // it the coordinator bridges time out ("coding agent features
+        // disabled") and the verification bridge stays inactive. See
+        // services/swarm-coordinator-service.ts for the consolidation backstory.
+        serviceClass(SwarmCoordinatorService),
       ]
     : [];
 
@@ -219,6 +228,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
     services: orchestratorServices,
     actions: orchestratorActions,
     providers: orchestratorProviders,
+    routes: codeExecutionAllowed ? (codingAgentRoutePlugin.routes ?? []) : [],
     responseHandlerEvaluators: codeExecutionAllowed
       ? [subAgentCompletionResponseEvaluator, subAgentFailureResponseEvaluator]
       : [],
@@ -281,6 +291,12 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TaskSupervisorService.serviceType,
         // Eager-start the stalled-agent watchdog loop too (#8901).
         TaskWatchdogService.serviceType,
+        // Eager-start the coordinator adapter so it subscribes to the ACP
+        // event stream at boot (rather than waiting for a getService() that
+        // only the server's bridge-wiring poll issues). This makes
+        // wireCoordinatorBridgesWhenReady succeed on its first attempt and the
+        // verification-room-bridge attach without burning its retry budget.
+        SwarmCoordinatorService.serviceType,
       ];
       setTimeout(() => {
         void (async () => {
@@ -446,6 +462,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         SubAgentRouter.serviceType,
       );
       await router?.stop();
+      const coordinator = runtime.getService<SwarmCoordinatorService>(
+        SwarmCoordinatorService.serviceType,
+      );
+      await coordinator?.stop();
       await CodingWorkspaceService.stopRuntime(runtime);
     },
   };
@@ -2150,6 +2170,14 @@ export {
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
+// SWARM_COORDINATOR adapter — discoverable by the server's coordinator-bridge
+// wiring and plugin-app-control's verification-room-bridge.
+export {
+  SWARM_COORDINATOR_SERVICE_TYPE,
+  SwarmCoordinatorService,
+  type SwarmEvent,
+  type SwarmEventListener,
+} from "./services/swarm-coordinator-service.js";
 export {
   composeRoomDigest,
   runSupervisorTick,
