@@ -136,7 +136,6 @@ bun run --cwd packages/ui test:e2e            # slow suite (vitest.e2e.config.ts
 bun run --cwd packages/ui test:agent-surface-e2e   # agent-surface __e2e__ runner
 bun run --cwd packages/ui test:chat-sheet-e2e      # continuous-chat pull-sheet drag-gesture __e2e__ runner
 bun run --cwd packages/ui test:home-screen-e2e     # home-screen __e2e__ runner
-bun run --cwd packages/ui test:onboarding-e2e      # first-run onboarding (CompactOnboarding) screenshot __e2e__ runner
 bun run --cwd packages/ui test:chat-ambient-e2e    # /chat ambient orange-pulse background screenshot __e2e__ runner
 bun run --cwd packages/ui lint                # biome check src
 bun run --cwd packages/ui lint:fix            # biome check --write src

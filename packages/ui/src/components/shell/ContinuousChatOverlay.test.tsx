@@ -42,6 +42,7 @@ import {
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
   type ShellController,
@@ -1920,7 +1921,7 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
 });
 
 describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () => {
-  const reasoningMessages = [
+  const reasoningMessages: ShellMessage[] = [
     { id: "u", role: "user", content: "why X over Y?", createdAt: 1 },
     {
       id: "a",

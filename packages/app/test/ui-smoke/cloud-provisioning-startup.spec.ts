@@ -120,11 +120,11 @@ async function clickIfVisible(
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
-  const cloudRuntime = page.getByTestId("first-run-chooser-cloud");
+  const cloudRuntime = page.getByTestId("choice-__first_run__:runtime:cloud");
   if (await clickIfVisible(cloudRuntime, 10_000)) return;
 
   // Some authenticated recovery paths can still hydrate directly at the agent
-  // picker before the floating runtime chooser paints.
+  // picker before the in-chat runtime choice paints.
   const createNew = page
     .getByTestId("onboarding-agent-create")
     .or(page.getByRole("button", { name: /create a new agent/i }));

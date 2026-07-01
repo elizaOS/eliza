@@ -1,8 +1,8 @@
 {
-  "componentFiles": 404,
+  "componentFiles": 401,
   "withStories": 258,
-  "missingStories": 146,
-  "coverage": "63.9%",
+  "missingStories": 143,
+  "coverage": "64.3%",
   "missing": [
     "src\\App.tsx",
     "src\\agent-surface\\AgentSurfaceContext.tsx",
@@ -135,9 +135,6 @@
     "src\\components\\training\\JobDetailPanel.tsx",
     "src\\components\\training\\TrainingDashboard.tsx",
     "src\\components\\training\\injected.tsx",
-    "src\\first-run\\CompactOnboarding.tsx",
-    "src\\first-run\\FirstRunScreen.tsx",
-    "src\\first-run\\OnboardingVoicePill.tsx",
     "src\\genui\\renderer.tsx",
     "src\\hooks\\BugReportProvider.tsx",
     "src\\layouts\\chat-panel-layout\\chat-panel-layout.tsx",

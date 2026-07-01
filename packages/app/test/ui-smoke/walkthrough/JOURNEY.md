@@ -42,9 +42,9 @@ journey.
   - Send: `[data-testid="chat-composer-action"]`
   - Chat thread lines: `[data-testid="thread-line"]`
   - First-run setup: assert the shell overlay plus
-    `[data-testid="first-run-runtime-chooser"]`; runtime choices use
-    `[data-testid="first-run-chooser-cloud|local|other"]`, the provider step uses
-    `[data-testid="first-run-provider-on-device|elizacloud|other"]`, and the
+    `[data-testid="continuous-chat-overlay"]`; runtime choices use
+    `[data-testid="choice-__first_run__:runtime:<id>"]`, the provider step uses
+    `[data-testid="choice-__first_run__:provider:<id>"]`, and the
     completion gate remains
     `[data-testid="choice-__first_run__:tutorial:start|skip"]`
   - Tutorial: `/tutorial` route → `[data-testid="tutorial-launcher"]` →
@@ -96,8 +96,8 @@ and named in the final evidence.
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 1 | Cold app launch | The app shell loads from `/` without first-run completion. A warming/startup surface renders, then the home + floating first-run runtime chooser appear. | No page errors; no unexpected `console.error`; no unexpected `5xx`; `[data-testid="continuous-chat-overlay"]` + `[data-testid="first-run-runtime-chooser"]` visible within 20s when first-run is incomplete. | `01-cold-launch.png` |
-| 2 | Onboarding | The floating first-run chooser owns runtime/provider setup. | Runtime chooser title visible; `first-run-chooser-cloud` and `first-run-chooser-local` visible; Advanced setup reveals `first-run-chooser-other`. | `02-onboarding-runtime.png` |
+| 1 | Cold app launch | The app shell loads from `/` without first-run completion. A warming/startup surface renders, then the home + chat transcript first-run choices appear. | No page errors; no unexpected `console.error`; no unexpected `5xx`; `[data-testid="continuous-chat-overlay"]` + transcript runtime choices visible within 20s when first-run is incomplete. | `01-cold-launch.png` |
+| 2 | Onboarding | The chat transcript owns runtime/provider setup. | Runtime prompt visible; `choice-__first_run__:runtime:cloud`, `:local`, and `:other` visible. | `02-onboarding-runtime.png` |
 | 3 | Agent provisioning | Choosing the selected runtime leads to a provisioning or ready state; the app does not stay stuck on waking/provisioning copy. | Status changes are observed through the real startup/provisioning selectors used by existing smoke tests; ready route eventually exposes the chat composer. | `03-provisioning-ready.png` |
 | 4 | Send + receive voice | Voice input can populate the composer, a message can be sent, the assistant reply renders, and TTS endpoint wiring is exercised when enabled. | STT transcript appears in `[data-testid="chat-composer-textarea"]`; stream POST body includes the transcript; assistant `[data-testid="thread-line"]` appears; TTS mock records assistant text + voice/model payload. | `04-voice-round-trip.png` |
 | 5 | Type to navigate to Character view | A chat command switches the active route to the character editor. | Composer sends the command; navigation reaches `/character`; `[data-testid="character-editor-view"]` visible. | `05-chat-navigate-character.png` |
@@ -149,9 +149,9 @@ the real backend agent + model and writes the trajectory to
 
 | Step | Action | Expected state | Required assertions | Capture |
 | --- | --- | --- | --- | --- |
-| 01 | Cold app launch | `/` loads with first-run incomplete; the floating first-run runtime chooser renders over the app shell. | No page error / no `console.error` / no 5xx; `continuous-chat-overlay` + `first-run-runtime-chooser` visible ≤20s; removed `first-run-chat`/`startup-first-run-background` absent. | `01-cold-launch.png` |
-| 02 | Onboarding runtime choice | The first-run chooser asks how the agent should run. | Runtime chooser title visible; `first-run-chooser-cloud` / `…-local` visible; Advanced setup reveals `…-other`. | `02-onboarding-runtime.png` |
-| 03 | Choose runtime → tutorial → ready | Picking Local advances to the provider step, then provisioning, then the tutorial-or-skip CHOICE flips first-run complete. | `first-run-chooser-local` → `first-run-provider-on-device` → `choice-__first_run__:tutorial:skip`; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
+| 01 | Cold app launch | `/` loads with first-run incomplete; the chat transcript renders first-run choices over the app shell. | No page error / no `console.error` / no 5xx; `continuous-chat-overlay` + transcript choices visible ≤20s; removed `first-run-chat`/`startup-first-run-background` absent. | `01-cold-launch.png` |
+| 02 | Onboarding runtime choice | The chat transcript asks how the agent should run. | Runtime prompt visible; `choice-__first_run__:runtime:cloud` / `:local` / `:other` visible. | `02-onboarding-runtime.png` |
+| 03 | Choose runtime → tutorial → ready | Picking Local advances to the provider step, then provisioning, then the tutorial-or-skip CHOICE flips first-run complete. | `choice-__first_run__:runtime:local` → `choice-__first_run__:provider:on-device` → `choice-__first_run__:tutorial:skip`; first-run flips complete; `continuous-chat-overlay` + `chat-composer-textarea` reachable. | `03-provisioning-ready.png` |
 | 04 | Interactive tutorial | The `/tutorial` launcher starts the tour spotlight. | `tutorial-launcher` → `tutorial-start` → `tutorial-card`; "Meet Eliza" text visible; tour dismissed via `tutorial-skip`. | `04-tutorial.png` |
 | 05 | Help search | The Help view searches the KB. | `help-view` visible; search "change the model" → `help-entry-change-model` references "AI Model". | `05-help.png` |
 | 06 | Open settings | The Settings shell opens. | `settings-shell` visible; "Models & Providers" section opened. | `06-settings-open.png` |

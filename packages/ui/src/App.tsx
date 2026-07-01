@@ -74,10 +74,12 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
+  CONNECT_EVENT,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import { FirstRunRuntimeChooser } from "./first-run/FirstRunRuntimeChooser";
+import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
+import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
@@ -93,6 +95,7 @@ import {
   TAB_PATHS,
   tabFromPath,
 } from "./navigation";
+import { applyLaunchConnection } from "./platform";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
@@ -102,6 +105,8 @@ import {
 } from "./state";
 import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
+import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
+import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -109,6 +114,14 @@ const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
+
+function gatewayHostForDisplay(gatewayUrl: string): string {
+  try {
+    return new URL(gatewayUrl).host || gatewayUrl;
+  } catch {
+    return gatewayUrl;
+  }
+}
 
 // Single source of truth for the lazy route-view chunk loaders. Each
 // lazyNamedView() call registers its import() thunk here so prefetch (below)
@@ -136,6 +149,7 @@ function lazyNamedView<
   });
 }
 
+import { client } from "./api";
 import { fetchWithCsrf } from "./api/csrf-client";
 // Import the page registry from its standalone module, NOT the
 // `app-shell-components` barrel — that barrel statically re-exports every page
@@ -1655,6 +1669,7 @@ export function App() {
     tab,
     setTab,
     setState,
+    setActionNotice,
     actionNotice,
     activeOverlayApp,
     uiTheme,
@@ -1662,6 +1677,7 @@ export function App() {
     activeGameViewerUrl,
     gameOverlayEnabled,
     uiShellMode,
+    uiLanguage,
     t,
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
@@ -1670,6 +1686,7 @@ export function App() {
     tab: s.tab,
     setTab: s.setTab,
     setState: s.setState,
+    setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
     activeOverlayApp: s.activeOverlayApp,
     uiTheme: s.uiTheme,
@@ -1677,6 +1694,7 @@ export function App() {
     activeGameViewerUrl: s.activeGameViewerUrl,
     gameOverlayEnabled: s.gameOverlayEnabled,
     uiShellMode: s.uiShellMode,
+    uiLanguage: s.uiLanguage,
     t: s.t,
   }));
   const isPopout = useIsPopout();
@@ -1694,6 +1712,88 @@ export function App() {
   // Runtime-dependent effects and overlay apps below stay gated on
   // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+
+  useEffect(() => {
+    if (!isShellPaintableNow) return;
+
+    const handleConnect = async (event: Event): Promise<void> => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const payload =
+        detail && typeof detail === "object" && !Array.isArray(detail)
+          ? (detail as {
+              gatewayUrl?: unknown;
+              token?: unknown;
+              completeFirstRun?: unknown;
+              skipConfirm?: unknown;
+            })
+          : null;
+      if (typeof payload?.gatewayUrl !== "string") {
+        return;
+      }
+
+      const completeFirstRun = payload.completeFirstRun === true;
+      const skipConfirm = payload.skipConfirm === true;
+      if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
+        const approved = await confirmDesktopAction({
+          type: "warning",
+          title: "Connect to this server?",
+          message: `Point this app at "${gatewayHostForDisplay(payload.gatewayUrl)}"?`,
+          detail:
+            "A link asked to connect this app to a different agent server. Only continue if you trust it — that server will handle your messages and data.",
+          confirmLabel: "Connect",
+          cancelLabel: "Cancel",
+        });
+        if (!approved) {
+          setActionNotice("Connection request cancelled.", "info", 4200);
+          return;
+        }
+      }
+
+      try {
+        const connection = applyLaunchConnection({
+          kind: "remote",
+          apiBase: payload.gatewayUrl,
+          token: typeof payload.token === "string" ? payload.token : null,
+          allowPublicHttps: true,
+        });
+        persistMobileRuntimeModeForServerTarget("remote");
+        setState("firstRunRuntimeTarget", "remote");
+        setState("firstRunRemoteApiBase", connection.apiBase);
+        setState("firstRunRemoteToken", connection.token ?? "");
+        setState("firstRunRemoteConnected", true);
+        setState("firstRunRemoteError", null);
+        if (completeFirstRun) {
+          await adoptRemoteAgentFirstRun(client, {
+            apiBase: connection.apiBase,
+            token: connection.token,
+            uiLanguage,
+          });
+          setState("firstRunComplete", true);
+          startupCoordinator.dispatch({ type: "FIRST_RUN_COMPLETE" });
+        }
+        setActionNotice("Connected to remote backend.", "success", 4200);
+        retryStartup();
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : "Failed to connect remote backend.",
+          "error",
+          8000,
+        );
+      }
+    };
+
+    document.addEventListener(CONNECT_EVENT, handleConnect);
+    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+  }, [
+    isShellPaintableNow,
+    retryStartup,
+    setActionNotice,
+    setState,
+    startupCoordinator.dispatch,
+    uiLanguage,
+  ]);
 
   // Skip the auth probe during first-run-required: there is no agent/session
   // yet, so /api/auth/me would spuriously trip server_unavailable/unauthenticated
@@ -2323,7 +2423,6 @@ export function App() {
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
         <FirstRunConductorMount />
-        <FirstRunRuntimeChooser />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

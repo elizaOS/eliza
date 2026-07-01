@@ -1451,6 +1451,9 @@ export function ContinuousChatOverlay({
   const [mode, setMode] = React.useState<ChatMode>(
     firstRunOpen ? "full" : "input",
   );
+  React.useEffect(() => {
+    if (firstRunOpen) setMode("full");
+  }, [firstRunOpen]);
   const pilled = mode === "pill";
   const sheetOpen = mode === "half" || mode === "full";
   const expanded = mode === "full";

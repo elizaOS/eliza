@@ -353,8 +353,8 @@ async function expectMainShellReadyForRoute(
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
   if (!options.allowOnboardingToast) {
-    // Runtime/provider setup is owned by the floating first-run chooser. Its
-    // absence proves the main shell is past onboarding.
+    // Runtime/provider setup is owned by in-chat first-run choices. The removed
+    // standalone chooser must never intercept normal route loads.
     await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
     });

@@ -742,11 +742,14 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    // The fresh first-run runtime chooser renders over the real shell; there is
-    // no separate full-screen legacy surface.
+    // The fresh first-run choices render inside the real chat transcript; there
+    // is no separate full-screen legacy surface.
     const firstRunOverlay = page.getByTestId("continuous-chat-overlay");
     await expect(firstRunOverlay).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("first-run-runtime-chooser")).toBeVisible({
+    await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:cloud"),
+    ).toBeVisible({
       timeout: 20_000,
     });
     await screenshot(page, "01-first-run-clouds");

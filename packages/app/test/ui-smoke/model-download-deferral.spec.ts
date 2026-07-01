@@ -154,14 +154,13 @@ test("selecting on-device inference drops the user into chat while the model dow
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
-  const chooser = page.getByTestId("first-run-runtime-chooser");
-  await expect(chooser).toBeVisible({ timeout: 20_000 });
-  const runtimeChoice = chooser.getByTestId("first-run-chooser-local");
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
+  const runtimeChoice = page.getByTestId("choice-__first_run__:runtime:local");
   await expect(runtimeChoice).toBeVisible({ timeout: 15_000 });
 
   // This device → on-device inference.
   await runtimeChoice.click();
-  const onDevice = chooser.getByTestId("first-run-provider-on-device");
+  const onDevice = page.getByTestId("choice-__first_run__:provider:on-device");
   await expect(onDevice).toBeVisible({ timeout: 10_000 });
   await onDevice.click();
 
