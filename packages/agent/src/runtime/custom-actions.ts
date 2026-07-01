@@ -655,9 +655,21 @@ async function performGuardedHttpRequest(
     return { ok: false, status: 0, text: "", blocked: true };
   }
 
+  // wttr.in content-negotiates on User-Agent: any "Mozilla" UA gets the
+  // interactive HTML page (and the ?format= param is ignored), while the compact
+  // plain-text weather line the live-info WEB_FETCH actually wants is served only
+  // to a non-browser UA (it is built for `curl wttr.in`). The browser-like
+  // default above exists to satisfy WAF-fronted JSON APIs (coingecko etc.), so
+  // scope the CLI UA to wttr.in rather than changing the global default. A
+  // caller-supplied User-Agent header still wins (set below).
+  const host = parsed.hostname.toLowerCase();
+  const isPlainTextCliHost = host === "wttr.in" || host.endsWith(".wttr.in");
+  const defaultUserAgent = isPlainTextCliHost
+    ? "Eliza/1.0 (+https://elizaos.ai)"
+    : GUARDED_GET_DEFAULT_USER_AGENT;
   // Build headers via the Headers API so a caller-supplied header (in any
   // casing) cleanly overrides the default rather than being comma-joined onto it.
-  const headers = new Headers({ "User-Agent": GUARDED_GET_DEFAULT_USER_AGENT });
+  const headers = new Headers({ "User-Agent": defaultUserAgent });
   if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (opts.headers) {
     for (const [key, value] of Object.entries(opts.headers)) {
