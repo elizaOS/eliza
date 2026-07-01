@@ -152,3 +152,91 @@ describe("registerBuiltInGates: personal_baseline_sufficient (#8795)", () => {
     });
   });
 });
+
+/**
+ * Regression: `weekday_only` must honor `params.weekdays` (#10721 audit).
+ * habit-starters passes `{ weekdays: [1, 3, 5] }` (Mon/Wed/Fri) — before the
+ * fix the gate ignored the list and allowed every non-weekend day, so a
+ * Mon/Wed/Fri habit fired five days a week.
+ */
+describe("weekday_only honors params.weekdays", () => {
+  function weekdayTask(weekdays?: unknown): ScheduledTask {
+    return {
+      taskId: "t-weekday",
+      kind: "reminder",
+      promptInstructions: "stretch",
+      trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" },
+      priority: "low",
+      shouldFire: {
+        compose: "all",
+        gates: [
+          weekdays === undefined
+            ? { kind: "weekday_only" }
+            : { kind: "weekday_only", params: { weekdays } },
+        ],
+      },
+      respectsGlobalPause: true,
+      state: { status: "scheduled", followupCount: 0 },
+      source: "default_pack",
+      createdBy: "test",
+      ownerVisible: true,
+    } as ScheduledTask;
+  }
+
+  function contextAt(task: ScheduledTask, nowIso: string): GateEvaluationContext {
+    return {
+      task,
+      nowIso,
+      ownerFacts: { timezone: "UTC" },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+    };
+  }
+
+  const MONDAY = "2026-05-11T12:00:00.000Z";
+  const TUESDAY = "2026-05-12T12:00:00.000Z";
+  const SATURDAY = "2026-05-09T12:00:00.000Z";
+
+  async function decide(task: ScheduledTask, nowIso: string) {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    return reg.get("weekday_only")?.evaluate(task, contextAt(task, nowIso));
+  }
+
+  it("allows a listed day (Mon in [1,3,5])", async () => {
+    expect(await decide(weekdayTask([1, 3, 5]), MONDAY)).toEqual({
+      kind: "allow",
+    });
+  });
+
+  it("denies an unlisted weekday (Tue not in [1,3,5]) — the pre-fix bug", async () => {
+    const decision = await decide(weekdayTask([1, 3, 5]), TUESDAY);
+    expect(decision?.kind).toBe("deny");
+    expect(
+      decision && "reason" in decision ? decision.reason : "",
+    ).toContain("day 2 not in [1,3,5]");
+  });
+
+  it("denies a weekend day not in the list", async () => {
+    expect((await decide(weekdayTask([1, 3, 5]), SATURDAY))?.kind).toBe(
+      "deny",
+    );
+  });
+
+  it("an explicit list including a weekend day allows that day", async () => {
+    expect(await decide(weekdayTask([0, 6]), SATURDAY)).toEqual({
+      kind: "allow",
+    });
+  });
+
+  it("without params keeps the any-non-weekend default", async () => {
+    expect(await decide(weekdayTask(), MONDAY)).toEqual({ kind: "allow" });
+    expect((await decide(weekdayTask(), SATURDAY))?.kind).toBe("deny");
+  });
+
+  it("invalid entries are filtered; an all-invalid list falls back to the default", async () => {
+    expect(await decide(weekdayTask([9, -1, 2.5]), TUESDAY)).toEqual({
+      kind: "allow",
+    });
+  });
+});

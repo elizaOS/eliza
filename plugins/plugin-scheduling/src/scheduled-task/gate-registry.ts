@@ -129,10 +129,36 @@ const weekendOnlyGate: TaskGateContribution = {
   },
 };
 
+interface WeekdayOnlyParams {
+  /**
+   * Days-of-week the task may fire on (0 = Sunday … 6 = Saturday), e.g.
+   * `[1, 3, 5]` for Mon/Wed/Fri habits. When absent or empty, the gate
+   * allows any non-weekend day.
+   */
+  weekdays?: number[];
+}
+
 const weekdayOnlyGate: TaskGateContribution = {
   kind: "weekday_only",
   evaluate(_task, context): GateDecision {
+    const params = (context.task.shouldFire?.gates.find(
+      (g) => g.kind === "weekday_only",
+    )?.params ?? {}) as WeekdayOnlyParams;
     const { dayOfWeek } = localPartsForContext(context);
+    const allowedDays = Array.isArray(params.weekdays)
+      ? params.weekdays.filter(
+          (d) => Number.isInteger(d) && intInRange(d, 0, 6),
+        )
+      : [];
+    if (allowedDays.length > 0) {
+      if (allowedDays.includes(dayOfWeek)) {
+        return { kind: "allow" };
+      }
+      return {
+        kind: "deny",
+        reason: `weekday_only: day ${dayOfWeek} not in [${allowedDays.join(",")}]`,
+      };
+    }
     if (!isWeekend(dayOfWeek)) {
       return { kind: "allow" };
     }
