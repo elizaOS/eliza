@@ -60,15 +60,15 @@ test("first-run starts with setup choices before capability settings", async ({
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
-  const chooser = page.getByTestId("first-run-runtime-chooser");
-  await expect(chooser).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   await expect(
-    chooser.getByText("Choose how Eliza should run", { exact: true }),
+    page.getByText("First, where should your agent run?", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(chooser.getByTestId("first-run-chooser-cloud")).toBeVisible();
-  await expect(chooser.getByTestId("first-run-chooser-local")).toBeVisible();
   await expect(
-    chooser.getByRole("button", { name: /Advanced setup/i }),
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:local"),
   ).toBeVisible();
 
   // The Computer Use capability switch must NOT be reachable before the agent

@@ -79,7 +79,6 @@ import {
   type FocusConnectorEventDetail,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
-import { FirstRunRuntimeChooser } from "./first-run/FirstRunRuntimeChooser";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
@@ -2424,7 +2423,6 @@ export function App() {
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
         <FirstRunConductorMount />
-        <FirstRunRuntimeChooser />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

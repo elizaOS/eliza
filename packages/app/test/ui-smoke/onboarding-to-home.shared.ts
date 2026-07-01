@@ -741,13 +741,13 @@ export const FINANCES_TESTID = "chat-widget-finances-alerts";
 export const GOALS_TESTID = "widget-goals-attention";
 export const NOTIFICATIONS_TESTID = "widget-notifications";
 
-// First-run runtime/provider buttons live in the floating runtime chooser. The
-// headless conductor still owns backup/tutorial/cloud-agent ChoiceWidgets in the
-// transcript, but runtime/provider UI must not duplicate there.
+// First-run runtime/provider buttons live in the real chat transcript. The
+// headless conductor seeds the ChoiceWidgets and the chat action channel routes
+// their sentinel values before they hit the server.
 const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
-  `first-run-chooser-${id}`;
+  `choice-__first_run__:runtime:${id}`;
 const PROVIDER_CHOICE = (id: "on-device" | "elizacloud" | "other"): string =>
-  `first-run-provider-${id}`;
+  `choice-__first_run__:provider:${id}`;
 const TUTORIAL_CHOICE = (id: "start" | "skip"): string =>
   `choice-__first_run__:tutorial:${id}`;
 const CLOUD_AGENT_CHOICE = (id: string): string =>
@@ -764,21 +764,15 @@ const REMOVED_ONBOARDING_TESTIDS = [
 
 /**
  * Assert the FIRST painted surface of a fresh profile is the real app shell plus
- * floating runtime chooser — and that NONE of the removed full-screen onboarding
- * testIds exist. The chat overlay may be present underneath, but runtime/provider
- * controls are owned by the chooser.
+ * the real chat overlay with in-transcript first-run choices — and that NONE of
+ * the removed full-screen onboarding testIds exist.
  */
 export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
-  const chooser = page.getByTestId("first-run-runtime-chooser");
-  await expect(chooser).toBeVisible({ timeout: 30_000 });
   await expect(
-    chooser.getByText("Choose how Eliza should run", { exact: true }),
+    page.getByText("First, where should your agent run?", { exact: false }),
   ).toBeVisible({ timeout: 20_000 });
-  await expect(
-    chooser.getByRole("button", { name: /Advanced setup/i }),
-  ).toBeVisible();
   // The removed full-screen onboarding gate must be absent.
   for (const testId of REMOVED_ONBOARDING_TESTIDS) {
     await expect(
@@ -786,10 +780,12 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
       `removed onboarding surface ${testId} must not render (flow is chat-first)`,
     ).toHaveCount(0);
   }
-  await expect(chooser.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
     timeout: 15_000,
   });
-  await expect(chooser.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+  await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+  await expect(page.getByTestId(RUNTIME_CHOICE("other"))).toBeVisible();
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   return chatOverlay;
 }
 
@@ -849,7 +845,7 @@ export async function completeOnboardingToHome(
 ): Promise<{ surface: Locator }> {
   const { state, tutorial = "skip" } = opts;
 
-  // 1) The chooser owns runtime/provider setup; no removed full-screen gate exists.
+  // 1) The chat transcript owns runtime/provider setup; no removed full-screen gate exists.
   await expectChatFirstOnboarding(page);
 
   // 2) Local runtime → on-device ("all-local") provider.
@@ -980,8 +976,6 @@ export async function completeOtherProviderSettingsHandoff(
 
   await expectChatFirstOnboarding(page);
 
-  const chooser = page.getByTestId("first-run-runtime-chooser");
-  await chooser.getByRole("button", { name: /Advanced setup/i }).click();
   const otherRuntime = page.getByTestId(RUNTIME_CHOICE("other"));
   await expect(otherRuntime).toBeVisible({ timeout: 15_000 });
   await click(otherRuntime);

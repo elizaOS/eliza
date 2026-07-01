@@ -6,26 +6,35 @@ cloud/local/remote adoption paths.
 ## Passing runs
 
 - Browser desktop/mobile smoke:
-  `ELIZA_UI_SMOKE_PORT=2152 ELIZA_UI_SMOKE_API_PORT=31352 ELIZA_API_PORT=31352 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts packages/app/test/ui-smoke/onboarding-to-home-mobile.spec.ts --project=chromium`
-  - Result: 10 passed.
+  `ELIZA_UI_SMOKE_PORT=2158 ELIZA_UI_SMOKE_API_PORT=31358 ELIZA_API_PORT=31358 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts packages/app/test/ui-smoke/onboarding-to-home-mobile.spec.ts --project=chromium`
+  - Result: 10 passed after deleting `FirstRunRuntimeChooser`.
+- Focused evidence recapture:
+  `ELIZA_UI_SMOKE_PORT=2161 ELIZA_UI_SMOKE_API_PORT=31361 ELIZA_API_PORT=31361 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts --project=chromium -g "Local onboarding lands"`
+  - Result: 1 passed; refreshed desktop chat-first/home/launcher screenshots.
+  `ELIZA_UI_SMOKE_PORT=2162 ELIZA_UI_SMOKE_API_PORT=31362 ELIZA_API_PORT=31362 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/onboarding-to-home-mobile.spec.ts --project=chromium -g "first-run.*touch"`
+  - Result: 3 passed; refreshed mobile home/cloud screenshots.
+- Supporting first-run smoke:
+  `ELIZA_UI_SMOKE_PORT=2159 ELIZA_UI_SMOKE_API_PORT=31359 ELIZA_API_PORT=31359 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/first-run-startup.spec.ts packages/app/test/ui-smoke/runtime-configurability.spec.ts packages/app/test/ui-smoke/model-download-deferral.spec.ts packages/app/test/ui-smoke/computer-use.spec.ts packages/app/test/ui-smoke/reset-returns-to-onboarding.spec.ts --project=chromium`
+  - Result: 8 passed; reset path initially exposed the already-mounted chat overlay not reopening for first-run.
+  `ELIZA_UI_SMOKE_PORT=2160 ELIZA_UI_SMOKE_API_PORT=31360 ELIZA_API_PORT=31360 bunx playwright test --config packages/app/playwright.ui-smoke.config.ts packages/app/test/ui-smoke/reset-returns-to-onboarding.spec.ts --project=chromium`
+  - Result: 2 passed after opening `ContinuousChatOverlay` whenever `firstRunOpen` becomes true.
+- Android build:
+  `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 bun run --cwd packages/app build:android`
+  - Result: passed; produced `packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk`.
 - Android WebView deep-link smoke:
   `ANDROID_SERIAL=emulator-5554 ELIZA_ANDROID_BACKEND=host ELIZA_ANDROID_REQUIRE_AGENT=1 ELIZA_ANDROID_ALLOW_FIRST_RUN=1 ELIZA_ANDROID_CLEAR_APP_DATA=1 ELIZA_ANDROID_APK=packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk bunx playwright test --config packages/app/playwright.android.config.ts packages/app/test/android/onboarding-to-home.android.spec.ts`
   - Result: 1 passed.
 - Packaged Linux desktop build:
   `bun run --cwd packages/app-core/platforms/electrobun build`
-  - Result: passed after adding the Discord subpath runtime shim and Linux
-    screenshot fallback.
+  - Result: passed on the rebuilt `@elizaos/ui` package.
 - Packaged Linux desktop launch/render smoke:
   `bunx playwright test --config packages/app/playwright.electrobun.packaged.config.ts packages/app/test/electrobun-packaged/desktop-launch-render.e2e.spec.ts`
   - Result: 1 passed.
 - Focused first-run unit tests:
-  `./node_modules/.bin/vitest run packages/ui/src/first-run/FirstRunRuntimeChooser.test.tsx packages/ui/src/first-run/first-run.test.ts packages/ui/src/first-run/adopt-remote-first-run.test.ts packages/ui/src/state/use-startup-shell-controller.confirm.test.ts`
-  - Result: 4 files, 40 tests passed.
-- UI typecheck:
-  `bun run --cwd packages/ui typecheck`
-  - Result: passed.
+  `./node_modules/.bin/vitest run packages/ui/src/first-run/first-run.test.ts packages/ui/src/first-run/adopt-remote-first-run.test.ts packages/ui/src/state/use-startup-shell-controller.confirm.test.ts packages/app/test/wallet-optimized-chunk-matcher.test.ts`
+  - Result: 4 files / 39 tests passed after removing the standalone chooser component.
 - Targeted Biome:
-  `./node_modules/.bin/biome check packages/app/src/main.tsx packages/app/test/android/android-harness.ts packages/app/test/android/onboarding-to-home.android.spec.ts packages/app/test/ui-smoke/onboarding-to-home-mobile.spec.ts packages/app/test/ui-smoke/onboarding-to-home.shared.ts packages/app/test/ui-smoke/onboarding-to-home.spec.ts packages/ui/src/App.tsx packages/ui/src/state/use-startup-shell-controller.ts packages/ui/src/hooks/useRenderGuard.ts plugins/plugin-discord/build.ts packages/app-core/platforms/electrobun/src/native/screencapture.ts`
+  `./node_modules/.bin/biome check <edited onboarding/app/ui files>`
   - Result: passed.
 
 ## Artifacts
@@ -33,21 +42,23 @@ cloud/local/remote adoption paths.
 - `android-home-landing.png`
 - `android-onboarding-to-home.mp4`
 - `web-onboarding-chat-first.png`
+- `web-home.png`
+- `web-launcher.png`
 - `web-remote-home.png`
+- `mobile-home.png`
 - `mobile-cloud-home.png`
 - `desktop-launch-render.png`
 
 ## Known gaps
 
-- After the final rebase onto `origin/develop` (`98e0fecb9a`), a browser smoke
-  rerun using ports `2153/31353` failed before tests started because
-  `packages/app/scripts/verify-chunk-safety.mjs` detected the latest app build
-  leaking the bn.js/crypto marker into `useWalletModal-CjdC_QEv.js`. This is a
-  base app chunking failure, not an onboarding assertion failure.
-- `bun run --cwd packages/app typecheck` and
-  `bun run --cwd packages/app-core/platforms/electrobun typecheck` still fail on
-  pre-existing workspace module/type resolution issues outside this onboarding
-  change.
+- A post-rebase browser smoke exposed a stale `dist/assets/useWalletModal*.js`
+  file from an older build. `verify-chunk-safety.mjs` now scans only current
+  reachable chunks from `dist/index.html`, and the browser desktop/mobile smoke
+  passes again.
+- Plain `bun run --cwd packages/app build:android` still requires the local
+  fused inference native library. The smoke APK was built with
+  `ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1`, which is the same cloud/smoke mode
+  used when local inference is unavailable.
 - A full `bun run --cwd packages/app audit:app` run had two transient failures
   (`builtin-camera`, `builtin-tasks` desktop landscape); both passed when rerun
   by grep.
