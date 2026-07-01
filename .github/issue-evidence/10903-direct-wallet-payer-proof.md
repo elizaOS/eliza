@@ -15,14 +15,19 @@ The server verifies EVM signatures as EIP-712 typed data through `publicClient.v
 - `bun run --cwd packages/cloud/shared typecheck`
   - Passed.
 - `bun run --cwd packages/cloud/api typecheck`
-  - Passed.
+  - Passed before rebase and passed again after rebasing onto `origin/develop`.
 - `bun run --cwd packages/ui typecheck`
   - Passed.
+- `bunx biome check packages/cloud/api/__tests__/chat-completions-streaming-credit-leak.test.ts packages/cloud/api/src/stubs/elizaos-core.ts`
+  - Passed after the rebase cleanup.
+- `bun test packages/cloud/api/__tests__/chat-completions-streaming-credit-leak.test.ts`
+  - Passed: 4 tests, 30 assertions.
 - `REQUIRE_E2E_SERVER=0 bun test packages/cloud/api/test/e2e/group-m-direct-crypto.test.ts`
   - Passed in no-server skip mode: 5 tests loaded and skipped live calls because `http://localhost:8787` was not running.
 - `ELIZA_NODE_PATH=/Users/shawwalters/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node bun run --cwd packages/app audit:app`
-  - Passed: 349 Playwright checks, `broken=0`, `needs-work=0`, `minimalism-budget-failures=0`.
+  - Passed before rebase: 349 Playwright checks, `broken=0`, `needs-work=0`, `minimalism-budget-failures=0`.
+  - Post-rebase rerun generated `packages/app/aesthetic-audit-output/report.json` with 348 views, `broken=0`, `needs-work=0`, `minimalism-budget-failures=0`; the wrapper later hung in a `build:web` subprocess and was terminated.
 
 ## Blocked / N/A
 
-- Full live payment trajectory, screenshots, video, and frontend/backend logs are N/A for this draft PR because no funded live treasury/testnet payment flow or local Worker server was available in this worktree.
+- Full live payment trajectory, screenshots, video, and frontend/backend logs are N/A for this PR because no funded live treasury/testnet payment flow or local Worker server was available in this worktree.
