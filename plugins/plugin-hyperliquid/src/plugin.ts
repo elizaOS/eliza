@@ -140,8 +140,9 @@ export const hyperliquidPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "HyperliquidView",
       tags: ["trading", "perps", "hyperliquid", "crypto"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Reached as a sub-view of Wallet (WalletSectionNav), not a launcher tile.
+      visibleInManager: false,
+      desktopTabEnabled: false,
     },
   ],
   async dispose(runtime: IAgentRuntime) {

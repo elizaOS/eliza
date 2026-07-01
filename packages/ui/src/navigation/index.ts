@@ -214,6 +214,8 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
       "Conversations with your agent, inbound messages from every connector, and connector management",
   },
   {
+    // AOSP ElizaOS-fork only — the native dialer/SMS/contact tiles are gated to
+    // the fork in the launcher (see launcher-curation LAUNCHER_AOSP_ONLY_IDS).
     label: "Phone",
     tabs: ["phone", "messages", "contacts"],
     icon: Phone,
@@ -221,10 +223,9 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   },
   {
     label: "Launcher",
-    tabs: ["views", "apps", ...APPS_TOOL_TABS],
+    tabs: ["views", ...APPS_TOOL_TABS],
     icon: LayoutGrid,
-    description:
-      "The Launcher — agent views, games, integrations, and app tools",
+    description: "The Launcher — agent views, integrations, and app tools",
   },
   {
     label: "Character",
@@ -233,10 +234,11 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Avatar identity, style, examples, and knowledge",
   },
   {
+    // Hyperliquid + Polymarket are sub-views of Wallet, not standalone apps.
     label: "Wallet",
-    tabs: ["inventory"],
+    tabs: ["inventory", "hyperliquid", "polymarket"],
     icon: Wallet,
-    description: "Crypto wallets and token balances",
+    description: "Crypto wallets, token balances, perps, and prediction markets",
   },
   {
     label: "Browser",
@@ -251,10 +253,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
+    // One consolidated surface — scheduled tasks + recurring workflows share the
+    // Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
     label: "Automations",
-    tabs: ["automations", "triggers", "tasks"],
+    tabs: ["automations"],
     icon: Clock3,
-    description: "Tasks, scheduled tasks, and recurring workflows",
+    description: "Scheduled tasks and recurring workflows",
   },
   {
     label: "Settings",

@@ -13,6 +13,17 @@
 
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
+// The @stwd/react components — notably <StewardLogin> on the app-auth authorize
+// page (packages/ui/src/cloud-ui/components/auth/authorize-content.tsx) — are
+// styled ENTIRELY by this scoped `.stwd-*` stylesheet (it drives layout, button
+// borders/fills, and the input box via CSS custom properties). It was never
+// imported anywhere, so <StewardLogin> rendered completely unstyled in prod: the
+// authorize/sign-in buttons collapsed to plain inline text with icons floating
+// above jammed labels and no input box. Import it here, co-located with the lazy
+// web-only Steward chunk, so it loads exactly when the Steward UI mounts. Scoped
+// to `.stwd-*` → touches nothing else. This module is dynamically imported
+// (never in the Node barrel), so the .css never reaches a Node plugin loader.
+import "@stwd/react/styles.css";
 import { StewardClient } from "@stwd/sdk";
 import {
   type ComponentProps,
@@ -39,6 +50,18 @@ import {
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
 type StewardProviderClient = ComponentProps<typeof StewardProvider>["client"];
+
+// The Steward SDK UI (<StewardLogin> on the app-auth sign-in page, wallet,
+// dashboards) otherwise renders with the SDK's default gold accent
+// (DEFAULT_THEME.primaryColor = #D4A054). Override just the accent colors to
+// Eliza's brand orange so the sign-in matches the rest of the product (the main
+// /login page + the app shell are #FF5800). The SDK's dark surface/text defaults
+// already match our surfaces, so no other fields need theming. Passed as the
+// provider `theme` (Partial<TenantTheme>) → mapped to the scoped `.stwd-*` vars.
+const ELIZA_STEWARD_THEME: ComponentProps<typeof StewardProvider>["theme"] = {
+  primaryColor: "#FF5800",
+  accentColor: "#FF5800",
+};
 
 function AuthTokenSync({ children }: { children: ReactNode }) {
   const auth = useStewardAuth();
@@ -273,6 +296,7 @@ export default function StewardAuthRuntimeProvider({
     <StewardProvider
       client={providerClient}
       agentId="eliza-cloud"
+      theme={ELIZA_STEWARD_THEME}
       auth={authConfig}
       tenantId={
         tenantId && !isPlaceholderValue(tenantId) ? tenantId : undefined

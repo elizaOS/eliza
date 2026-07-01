@@ -51,13 +51,15 @@ describe("BUILTIN_VIEWS categorization", () => {
     expect(byId.get("character")).toBe("system");
     expect(byId.get("documents")).toBe("system");
     expect(byId.get("transcripts")).toBe("system");
+    // #10669: automations/plugins-page/memories promoted preview→system
+    // (always-on shipping surfaces, matching builtin-views.ts).
+    expect(byId.get("automations")).toBe("system");
+    expect(byId.get("plugins-page")).toBe("system");
+    expect(byId.get("memories")).toBe("system");
     expect(byId.get("logs")).toBe("developer");
     expect(byId.get("database")).toBe("developer");
     expect(byId.get("trajectories")).toBe("developer");
-    expect(byId.get("automations")).toBe("preview");
     expect(byId.get("camera")).toBe("preview");
-    expect(byId.get("plugins-page")).toBe("preview");
-    expect(byId.get("memories")).toBe("preview");
     expect(byId.get("background")).toBe("preview");
     // No built-in is left uncategorized (resolves to a concrete kind).
     for (const v of BUILTIN_VIEWS) {

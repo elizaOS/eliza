@@ -35,4 +35,20 @@ export const client = {
   getOrchestratorAccounts: async () => ({ accounts: [] }),
   getOrchestratorRooms: async () => ({ rooms: [] }),
   listAccounts: async () => ({ accounts: [] }),
+  // Unified-tasks home widget (useUnifiedTasks) — empty so it self-hides. These
+  // prototype methods are bare side-effect patches in production, dropped from
+  // this esbuild bundle, so stub them here explicitly.
+  listAutomations: async () => ({ automations: [] }),
+  listScheduledTasks: async () => ({ tasks: [] }),
+  // CalendarUpcomingWidget probes Google connectivity through the typed client
+  // before showing events; report a connected account so it renders the seeded
+  // feed instead of the "Connect calendar" affordance.
+  listConnectorAccounts: async () => ({
+    accounts: [{ id: "google-owner", provider: "google", status: "connected" }],
+  }),
+  // MessagesWidget cold-seeds from the conversation list then fetches each
+  // candidate's messages; empty results make it self-hide cleanly instead of
+  // throwing (which would surface a "Widget failed to render" fallback).
+  listConversations: async () => ({ conversations: [] }),
+  getConversationMessages: async () => ({ messages: [] }),
 };

@@ -185,22 +185,38 @@ async function swipeRight(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
-// Press a tile and PAN past the slop while HOLDING past the long-press window:
-// a real swipe-back that starts on a tile. It must NOT ghost-fire edit mode.
-async function longPressPan(page, tileTestId) {
-  const btn = page.getByTestId(tileTestId).locator("button").first();
-  const box = await btn.boundingBox();
-  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.mouse.move(cx + 32, cy + 2, { steps: 4 }); // pan past the slop
-  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450) while panned
-  await page.mouse.up();
+// A left touch-swipe across an element, dispatched as real `pointerType:"touch"`
+// events (Playwright's mouse API emits mouse pointers, which grab pointer
+// capture; touch does not — matching the device the launcher pager targets).
+async function touchSwipeLeft(page, testId) {
+  await page.getByTestId(testId).evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const y = box.y + box.height * 0.4;
+    const startX = box.x + box.width * 0.82;
+    const endX = box.x + box.width * 0.14;
+    const fire = (type, x) =>
+      el.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 7,
+          pointerType: "touch",
+          isPrimary: true,
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    fire("pointerdown", startX);
+    const steps = 10;
+    for (let i = 1; i <= steps; i += 1) {
+      fire("pointermove", startX + ((endX - startX) * i) / steps);
+    }
+    fire("pointerup", endX);
+  });
 }
-// A STATIONARY hold past the long-press window: the intentional gesture that
-// enters edit mode now that the Edit button is gone.
+
+// A STATIONARY hold past the long-press window. On the curated launcher this
+// must NOT enter edit mode (the launcher is read-only, fixed placement).
 async function longPressHold(page, tileTestId) {
   const btn = page.getByTestId(tileTestId).locator("button").first();
   const box = await btn.boundingBox();
@@ -316,6 +332,17 @@ try {
       );
     }
   }
+  // No home widget may fall back to the "Widget failed to render" boundary — an
+  // ErrorBoundary catch is invisible to the page-error guard, so assert it here.
+  {
+    const errorCards = await mobile
+      .locator('[data-testid^="widget-error-"]')
+      .allTextContents();
+    assert(
+      errorCards.length === 0,
+      `no home widget hit its error boundary (${errorCards.length})`,
+    );
+  }
   // No general quick-access tiles anymore — Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
@@ -350,33 +377,42 @@ try {
 
   await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
   await waitForSurfacePageSettled(mobile, "launcher");
+
+  // ── Curated apps page — the everyday apps render as tiles, in curated order.
+  for (const id of ["wallet", "automations", "browser", "settings"]) {
+    assert(
+      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      `curated app "${id}" renders on the launcher apps page`,
+    );
+  }
+  // ── Removed / hidden surfaces never tile: shell self-links, removed apps,
+  // wallet sub-views, and the deduped duplicate registrations.
+  for (const id of ["chat", "views", "shopify", "hyperliquid", "inventory", "triggers"]) {
+    assert(
+      (await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0,
+      `"${id}" is absent from the launcher (removed/hidden/deduped)`,
+    );
+  }
+  // A single Wallet tile survives the duplicate wallet + inventory registrations.
   assert(
-    await mobile.getByTestId("launcher-tile-settings").isVisible(),
-    "Settings renders inside Launcher favorites",
-  );
-  assert(
-    (await mobile.getByTestId("launcher-tile-chat").count()) === 0,
-    "Chat self-link is absent from Launcher",
-  );
-  assert(
-    (await mobile.getByTestId("launcher-tile-views").count()) === 0,
-    "Views self-link is absent from Launcher",
+    (await mobile.getByTestId("launcher-tile-wallet").count()) === 1,
+    "duplicate wallet registrations collapse to one tile",
   );
 
-  // ── Real image icons — the favorites carry a hero image, so each renders an
+  // ── Real image icons — curated tiles carry hero images, so each renders an
   // <img> tile (not the glyph fallback). On device the agent serves the branded
   // SVG at /api/views/:id/hero, resolved through the runtime API base so it
   // loads on native (file://) shells too.
-  for (const id of ["settings", "activity", "files", "tasks"]) {
+  for (const id of ["wallet", "automations", "browser", "character"]) {
     const img = mobile.getByTestId(`launcher-image-${id}`);
     assert(
       (await img.count()) === 1 && (await img.isVisible()),
-      `favorite "${id}" renders a real image icon (hero <img>, not a glyph)`,
+      `curated app "${id}" renders a real image icon (hero <img>, not a glyph)`,
     );
     const src = await img.getAttribute("src");
     assert(
       typeof src === "string" && src.startsWith("data:image/svg+xml"),
-      `favorite "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
+      `curated app "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
     );
   }
 
@@ -426,51 +462,59 @@ try {
     `no tile falls back to a bare glyph-only visual (${imageCount}/${visualCount} have images)`,
   );
 
-  // ── A swipe that starts ON a tile never ghost-fires edit mode (#3) ───────
-  await longPressPan(mobile, "launcher-tile-app0");
-  assert(
-    (await mobile.getByTestId("launcher-fav-app0").count()) === 0,
-    "a pan/swipe that starts on a tile does NOT enter edit mode",
-  );
-
-  // ── Long-press → edit → swipe back → HOME, with edit mode RESET (#3) ──────
-  // There is no Edit button: a STATIONARY long-press on a tile is the sole entry
-  // into edit mode (per-tile pin badges appear).
-  await longPressHold(mobile, "launcher-tile-app0");
+  // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
+  // (fixed placement, no reorder/pin/favorites dock). #3
+  await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(
-    (await mobile.getByTestId("launcher-fav-app0").count()) === 1,
-    "a stationary long-press enters edit mode (pin badges shown, no Edit button)",
+    (await mobile.getByTestId("launcher-fav-wallet").count()) === 0,
+    "a stationary long-press does NOT enter edit mode (curated launcher is read-only)",
   );
-  await snap(mobile, "mobile-launcher-edit");
+  // A right-swipe still returns HOME cleanly.
   await swipeRight(mobile.getByTestId("home-launcher-launcher-page"));
   await waitForSurfacePageSettled(mobile, "home");
   assert(
     (await mobile
       .getByTestId("home-launcher-surface")
       .getAttribute("data-page")) === "home",
-    "swipe-back FROM edit mode returns HOME (never stranded in jiggle mode)",
+    "swipe-back from the launcher returns HOME",
   );
-  // Re-open: a clean launch view, NOT stale edit mode.
   await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
   await waitForSurfacePageSettled(mobile, "launcher");
-  assert(
-    (await mobile.getByTestId("launcher-fav-app0").count()) === 0,
-    "re-opening the launcher is a clean launch view (edit mode auto-reset)",
-  );
 
-  // ── Swipe to page 2 (no dots — paging is swipe-only now) ─────────────────
-  // page 1 holds app0–app19; app20 lives on page 2.
+  // ── Swipe to page 2 = the Developer tools (no dots — paging is swipe-only).
+  // Developer tools live on page 2's grid; they are NOT on the apps page (page
+  // 0). Both pages are in the DOM, so scope the check to the page-0 container.
   assert(
-    (await mobile.getByTestId("launcher-tile-app20").count()) === 0,
-    "page-2 tile (app20) is not on page 1",
+    (await mobile
+      .getByTestId("launcher-page-0")
+      .getByTestId("launcher-tile-trajectories")
+      .count()) === 0,
+    "developer tool (trajectories) is not on the apps page (page 0)",
   );
-  await swipeLeft(mobile.getByTestId("home-launcher-launcher-page"));
-  await mobile.waitForTimeout(450);
+  // Touch-swipe the INNER launcher viewport forward to the developer page. On a
+  // real device the launcher pager owns forward paging (touch does not grab
+  // pointer capture the way mouse does, so the outer home↔launcher rail does not
+  // hijack the gesture). Drive true `pointerType:"touch"` events so this matches
+  // the mobile experience, then assert the rail actually paged.
+  await touchSwipeLeft(mobile, "launcher-page-window");
+  await mobile.waitForTimeout(750);
+  const pagedOffset = await mobile
+    .getByTestId("launcher-page-rail")
+    .evaluate((el) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
+    });
   assert(
-    await mobile.getByTestId("launcher-tile-app20").isVisible(),
-    "swiping the launcher pages forward to page 2 (app20 visible)",
+    pagedOffset.x < -pagedOffset.width * 0.5,
+    `launcher paged forward to the developer page (rail x=${Math.round(pagedOffset.x)})`,
   );
+  for (const id of ["trajectories", "database", "runtime", "logs", "skills", "plugins"]) {
+    assert(
+      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      `developer tool "${id}" renders on the launcher developer page`,
+    );
+  }
   await snap(mobile, "mobile-launcher-page2");
 
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"

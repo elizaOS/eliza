@@ -86,7 +86,6 @@ import {
   APPS_ENABLED,
   getAppSlugFromPath,
   getWindowNavigationPath,
-  isAndroidPhoneSurfaceEnabled,
   isAospShellEnabled,
   isRouteRootPath,
   pathForTab,
@@ -154,6 +153,10 @@ import {
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
+import {
+  isWalletSectionPath,
+  WalletSectionNav,
+} from "./components/pages/WalletSectionNav";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
@@ -468,13 +471,16 @@ function KioskShell() {
 function TabScrollView({
   children,
   className = "",
+  nav,
 }: {
   children: ReactNode;
   className?: string;
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
+      nav={nav}
       main={
         <div
           data-shell-scroll-region="true"
@@ -490,14 +496,17 @@ function TabScrollView({
 function TabContentView({
   children,
   surface = "opaque",
+  nav,
 }: {
   children: ReactNode;
   surface?: "opaque" | "transparent";
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
       surface={surface}
+      nav={nav}
       main={
         <div
           data-shell-content-region="true"
@@ -882,10 +891,10 @@ function findRemoteViewForRoute(
   );
 }
 
-function renderRemoteView(view: ViewRegistryEntry): ReactNode {
+function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl) return null;
   return (
-    <TabContentView>
+    <TabContentView nav={nav}>
       <DynamicViewLoader
         bundleUrl={view.bundleUrl}
         componentExport={view.componentExport}
@@ -1059,14 +1068,16 @@ function renderAppsSurface(navigationPath: string): ReactNode {
 
 function renderStaticViewRouterTab({
   tab,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
+  walletNav,
 }: {
   tab: string;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
+  walletNav?: ReactNode;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     tutorial: (
@@ -1160,13 +1171,13 @@ function renderStaticViewRouterTab({
     return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
   }
   if (tab === "phone") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView);
   }
   if (tab === "messages") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, MessagesPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView);
   }
   if (tab === "contacts") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, ContactsPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView);
   }
   if (tab === "views" || tab === "apps") {
     return renderAppsSurface(navigationPath);
@@ -1191,7 +1202,7 @@ function renderStaticViewRouterTab({
   }
   if (tab === "inventory") {
     return (
-      <TabScrollView>
+      <TabScrollView nav={walletNav}>
         <WalletInventoryPage />
       </TabScrollView>
     );
@@ -1214,7 +1225,7 @@ function renderViewRouterContent({
   navigationPath,
   availableViews,
   appSlug,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   settingsInitialSection,
 }: {
   tab: string;
@@ -1224,7 +1235,7 @@ function renderViewRouterContent({
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   settingsInitialSection?: string | null;
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
@@ -1241,13 +1252,19 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
+  // Hyperliquid + Polymarket are sub-views of Wallet: the wallet family of
+  // routes shares one sub-nav rendered in the workspace chrome nav slot.
+  const walletNav = isWalletSectionPath(navigationPath) ? (
+    <WalletSectionNav activePath={navigationPath} />
+  ) : undefined;
+
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
     isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
-      <TabContentView>
+      <TabContentView nav={walletNav}>
         <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
@@ -1258,12 +1275,13 @@ function renderViewRouterContent({
     tab,
     appSlug,
   );
-  if (remoteView?.bundleUrl) return renderRemoteView(remoteView);
+  if (remoteView?.bundleUrl) return renderRemoteView(remoteView, walletNav);
   return renderStaticViewRouterTab({
     tab,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
+    walletNav,
   });
 }
 
@@ -1281,7 +1299,10 @@ function ViewRouter({
 }) {
   const activeTab = useAppSelector((s) => s.tab);
   const tab = routeOverride?.tab ?? activeTab;
-  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
+  // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
+  // camera + the home tiles + the launcher tiles) — never rendered on web,
+  // desktop, iOS, or stock Play-Store Android, even via a deep link.
+  const nativeOsSurfaceEnabled = isAospShellEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const [navigationPath, setNavigationPath] = useState(
     () =>
@@ -1321,7 +1342,7 @@ function ViewRouter({
     navigationPath,
     availableViews,
     appSlug,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     settingsInitialSection,
   });
 
