@@ -81,6 +81,12 @@ const publicPathPrefixes = [
   // entry the session gate 401s every Stripe delivery → a checkout would charge
   // the card but never settle (payment_request stuck "pending").
   "/api/v1/stripe/webhook",
+  // OxaPay settlement webhook for the same unified payment_requests surface
+  // (#10732). Public like /api/v1/stripe/webhook above; the handler fails
+  // closed without a valid HMAC-SHA512 `hmac` header. Without this entry the
+  // session gate 401s every OxaPay delivery → an invoice would collect crypto
+  // but the payment_request would never settle (user pays, no credit).
+  "/api/v1/oxapay/webhook",
   "/api/crypto/webhook",
   "/api/crypto/status",
   "/api/crypto/direct-payments/config",
