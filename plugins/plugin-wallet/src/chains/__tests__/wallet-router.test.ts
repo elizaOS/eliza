@@ -300,6 +300,61 @@ describe("wallet router action", () => {
     expect(result?.data?.chain).toBe("base");
   });
 
+  it("routes confirmed pump.fun buys through the pump.fun Solana handler", async () => {
+    const { runtime, service } = createService();
+    const pumpfun = handler(
+      "pumpfun",
+      "pump.fun",
+      "pump.fun-solana",
+      "solana",
+      ["pump_fun_buy"],
+    );
+    service.registerChainHandler(pumpfun);
+
+    const mint = "So11111111111111111111111111111111111111112";
+    const result = await runConfirmed(runtime, {
+      action: "pump.fun buy",
+      token: mint,
+      amount: "0.01",
+      mode: "execute",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(pumpfun.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subaction: "pump_fun_buy",
+        toToken: mint,
+        amount: "0.01",
+      }),
+      expect.any(Object),
+    );
+    expect(result?.data?.chain).toBe("pumpfun");
+    expect(result?.data?.signature).toBe("soltest");
+  });
+
+  it("rejects pump.fun buys without a token mint before confirmation", async () => {
+    const { runtime, service } = createService();
+    const pumpfun = handler(
+      "pumpfun",
+      "pump.fun",
+      "pump.fun-solana",
+      "solana",
+      ["pump_fun_buy"],
+    );
+    service.registerChainHandler(pumpfun);
+
+    const result = await run(runtime, {
+      action: "PUMPFUN_BUY",
+      amount: "0.01",
+      mode: "execute",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("INVALID_PARAMS");
+    expect(String(result?.text)).toContain("pump.fun token mint");
+    expect(pumpfun.execute).not.toHaveBeenCalled();
+  });
+
   it("does not execute when LLM sets confirmed:true without a user yes reply", async () => {
     const { runtime, service } = createService();
     const base = handler("base", "Base", "8453", "evm");

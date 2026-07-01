@@ -611,3 +611,36 @@ describe("specs directory", () => {
     }
   });
 });
+
+describe("addContactTemplate — untrusted input isolation (#10793)", () => {
+  it("wraps {{message}} in <current_message> delimiters so injected text is data, not directives", () => {
+    const t = prompts.addContactTemplate;
+    const open = t.indexOf("<current_message>");
+    const close = t.indexOf("</current_message>");
+    const msg = t.indexOf("{{message}}");
+    assert.ok(
+      open !== -1 && close !== -1,
+      "current_message delimiters present",
+    );
+    assert.ok(
+      open < msg && msg < close,
+      "{{message}} sits inside the delimiter pair",
+    );
+  });
+
+  it("instructs the model to treat delimited content as data, never instructions", () => {
+    const t = prompts.addContactTemplate.toLowerCase();
+    assert.ok(
+      t.includes("never follow instructions") || t.includes("strictly as data"),
+      "has a data-not-instructions guard",
+    );
+  });
+
+  it("treats delimiter-like strings inside the user message as literal data", () => {
+    const t = prompts.addContactTemplate.toLowerCase();
+    assert.ok(
+      t.includes("delimiter-like text") && t.includes("not boundaries"),
+      "guards against closing-tag injection inside current_message",
+    );
+  });
+});

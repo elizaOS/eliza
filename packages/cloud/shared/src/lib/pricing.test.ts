@@ -21,6 +21,7 @@ describe("getProviderFromModel / normalizeModelName", () => {
     expect(getProviderFromModel("openrouter:meta/llama")).toBe("openrouter");
     expect(getProviderFromModel("anthropic/claude-opus-4")).toBe("anthropic");
     expect(getProviderFromModel("gpt-5-mini")).toBe("openai");
+    expect(getProviderFromModel("gemma-4-31b")).toBe("cerebras");
     expect(getProviderFromModel("claude-sonnet-4")).toBe("anthropic");
     expect(getProviderFromModel("gemini-2.0")).toBe("google");
   });
@@ -42,7 +43,8 @@ describe("reasoning detection", () => {
   test("modelUsesReasoningTokens trusts catalog params, then name patterns", () => {
     // catalog signal alone is enough, even for an unknown id.
     expect(modelUsesReasoningTokens("mystery-model", ["reasoning"])).toBe(true);
-    // name-pattern fallback (gpt-oss is the cloud default small model).
+    // name-pattern fallback for Cerebras reasoning defaults.
+    expect(modelUsesReasoningTokens("gemma-4-31b")).toBe(true);
     expect(modelUsesReasoningTokens("gpt-oss-120b")).toBe(true);
     expect(modelUsesReasoningTokens("deepseek-r1")).toBe(true);
     expect(modelUsesReasoningTokens("gpt-4o-mini")).toBe(false);

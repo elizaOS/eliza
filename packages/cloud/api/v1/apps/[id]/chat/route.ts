@@ -10,6 +10,7 @@ import {
   type RouteContext,
 } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   addCorsHeaders,
   createPreflightResponse,
@@ -44,16 +45,14 @@ import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { reservationOutputTokens } from "./chat-reservation";
+import { reconcileStreamProcessingError } from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
 
 // Safety multiplier for cost estimation to reduce undercharging risk
 // We charge 1.5x estimated upfront, then reconcile to actual
 const COST_SAFETY_MULTIPLIER = 1.5;
-
-// Default estimated output tokens for cost pre-calculation
-// This is a reasonable average for chat completions
-const DEFAULT_ESTIMATED_OUTPUT_TOKENS = 500;
 
 function isProviderHttpError(error: unknown): error is ProviderHttpError {
   return Boolean(
@@ -197,6 +196,20 @@ async function handlePOST(
     }
 
     const { user } = authResult;
+    if (await isAppKeyOutOfScope(authResult.apiKey?.id, appId)) {
+      return withCors(
+        Response.json(
+          {
+            error: {
+              message: "Access denied to this app",
+              type: "invalid_request_error",
+              code: "access_denied",
+            },
+          },
+          { status: 403 },
+        ),
+      );
+    }
 
     // Access control: non-monetized apps are internal (same org only)
     // Monetized apps are public (anyone with credits can use)
@@ -282,7 +295,12 @@ async function handlePOST(
       .join(" ");
 
     const estimatedInputTokens = estimateTokens(inputText);
-    const estimatedOutputTokens = DEFAULT_ESTIMATED_OUTPUT_TOKENS;
+    // #10924: reserve for the caller's max_tokens ceiling (forwarded to the
+    // provider), not a fixed estimate — otherwise a low-balance caller drains
+    // inference the all-or-nothing reconcile can't recover.
+    const estimatedOutputTokens = reservationOutputTokens(
+      chatRequest.max_tokens,
+    );
     const { totalCost: estimatedBaseCost } = await calculateCost(
       normalizedModel,
       provider,
@@ -408,6 +426,11 @@ async function handlePOST(
       let outputTokens = 0;
       let fullContent = "";
       let writerClosed = false;
+      // True once the FULL answer has been delivered to the client and the
+      // writer closed. Distinguishes "stream failed mid-delivery" (refund) from
+      // "stream succeeded, only post-stream accounting threw" (do NOT refund —
+      // the user already received the whole answer).
+      let streamCompleted = false;
 
       // Process stream in background with error handling
       (async () => {
@@ -523,6 +546,9 @@ async function handlePOST(
 
           writerClosed = true;
           writer.close();
+          // The client has now received the complete answer. Anything that
+          // throws below is post-delivery accounting only — must not refund.
+          streamCompleted = true;
 
           // Fallback: estimate tokens if usage not provided
           if (inputTokens === 0 && outputTokens === 0) {
@@ -587,30 +613,27 @@ async function handlePOST(
             },
           });
         } catch (error) {
-          // Stream failed - refund the reserved charge since we don't know actual usage
           const errorMessage =
             error instanceof Error ? error.message : "Unknown error";
-          logger.error(
-            "[App Chat] Stream processing failed, refunding reserved",
+
+          // Refund the reserved charge ONLY when the stream failed before the
+          // client got the full answer. If it already completed and only the
+          // post-stream accounting threw, keeping the charge avoids handing out
+          // free inference. (See reconcileStreamProcessingError.)
+          const { refunded } = await reconcileStreamProcessingError(
             {
+              streamCompleted,
               appId,
               userId: user.id,
               reservedBaseCost,
-              error: errorMessage,
+              errorMessage,
             },
+            appCreditsService,
           );
 
-          await appCreditsService.reconcileCredits({
-            appId,
-            userId: user.id,
-            estimatedBaseCost: reservedBaseCost,
-            actualBaseCost: 0, // Refund full reserved amount
-            description: "Refund due to stream error",
-            metadata: { error: true, streaming: true },
-          });
-
-          // Send error event to client if writer is still open
-          if (!writerClosed) {
+          // Notify the client only when the stream failed mid-delivery (a
+          // completed stream already closed the writer with the full answer).
+          if (refunded && !writerClosed) {
             const errorEvent = `data: ${JSON.stringify({
               error: {
                 message: "Stream interrupted. Credits refunded.",

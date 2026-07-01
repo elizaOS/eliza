@@ -20,6 +20,7 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
@@ -367,16 +368,20 @@ export async function processAttachments(
 			}
 
 			const contentType = res.headers.get("content-type") || "";
-			const isPlainText = contentType.startsWith("text/plain");
+			// Any text/* document (plain, csv, markdown — all on the chat upload
+			// allow-list) is readable as text. Previously only text/plain was
+			// handled, so csv/markdown fell through to "skipped" (#10714).
+			const isText = contentType.startsWith("text/");
+			const isPdf = contentType.startsWith("application/pdf");
 
-			if (isPlainText) {
+			if (isText) {
 				runtime.logger.debug(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						url: attachment.url,
 					},
-					"Processing plain text document",
+					"Processing text document",
 				);
 
 				const textContent = await res.text();
@@ -392,10 +397,35 @@ export async function processAttachments(
 					},
 					"Extracted text content",
 				);
+			} else if (isPdf) {
+				// Extract PDF text so a PDF attachment is readable by the agent
+				// instead of being silently skipped (#10714). Dynamic import keeps
+				// the heavy `unpdf` dependency off the hot path — it loads only when
+				// a PDF is actually processed.
+				const { convertPdfToTextFromBuffer } = await import(
+					"../documents/utils"
+				);
+				const pdfBuffer = Buffer.from(await res.arrayBuffer());
+				const textContent = await convertPdfToTextFromBuffer(
+					pdfBuffer,
+					processedAttachment.title ?? undefined,
+				);
+				processedAttachment.text = textContent;
+				processedAttachment.title = processedAttachment.title || "PDF Document";
+
+				runtime.logger.debug(
+					{
+						src: "basic-capabilities",
+						agentId: runtime.agentId,
+						textLength: textContent.length,
+						textPreview: textContent.substring(0, 100) || undefined,
+					},
+					"Extracted PDF text content",
+				);
 			} else {
 				runtime.logger.warn(
 					{ src: "basic-capabilities", agentId: runtime.agentId, contentType },
-					"Skipping non-plain-text document",
+					"Skipping unsupported document type",
 				);
 			}
 		}
@@ -1360,6 +1390,7 @@ export const basicServices: ServiceClass[] = [
 	// Per-channel topic LRU. Records Stage-1-extracted topics per room and
 	// surfaces them back into routing via the CHANNEL_TOPICS provider.
 	ChannelTopicsService,
+	SensitiveRequestDispatchRegistryService,
 ];
 
 /**
@@ -1496,6 +1527,9 @@ export function createBasicCapabilitiesPlugin(
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
 			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
+			await runtime
+				.getService(SensitiveRequestDispatchRegistryService.serviceType)
+				?.stop();
 			if (config.enableAutonomy) {
 				await runtime.getService(AutonomyService.serviceType)?.stop();
 			}

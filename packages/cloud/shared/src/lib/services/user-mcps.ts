@@ -108,6 +108,11 @@ export interface UseMcpResult {
   usageId: string;
 }
 
+export type PublicUserMcp = Omit<UserMcp, "external_endpoint" | "created_by_user_id"> & {
+  external_endpoint: null;
+  created_by_user_id: null;
+};
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -718,7 +723,10 @@ class UserMcpsService {
   }
 
   /**
-   * Get the full endpoint URL for an MCP
+   * Get the full endpoint URL for an MCP. Returns the RAW external backend URL
+   * for external MCPs, so this is owner-only — never call it on a public/registry
+   * surface (that leaks the raw URL and bypasses the metered proxy). Use
+   * {@link getPublicProxyUrl} for anything a non-owner can see (#10917).
    */
   getEndpointUrl(mcp: UserMcp, baseUrl: string): string {
     if (mcp.endpoint_type === "external" && mcp.external_endpoint) {
@@ -732,6 +740,36 @@ class UserMcpsService {
     }
 
     return `${baseUrl}/api/mcp/user/${mcp.slug}`;
+  }
+
+  /**
+   * Public-safe endpoint URL: always the metered proxy for external/container
+   * MCPs — never the raw `external_endpoint`, which would let a caller hit the
+   * backend directly and bypass metering/charging. Use this everywhere a
+   * non-owner can see the MCP (the registry, `?scope=public`). (#10917)
+   */
+  getPublicProxyUrl(mcp: UserMcp, baseUrl: string): string {
+    if (mcp.endpoint_type === "external" || mcp.endpoint_type === "container") {
+      return `${baseUrl}/api/mcp/proxy/${mcp.id}${mcp.endpoint_path ?? "/mcp"}`;
+    }
+    return `${baseUrl}/api/mcp/user/${mcp.slug}`;
+  }
+
+  /**
+   * Redact an MCP for a PUBLIC (non-owner) response: drop the raw
+   * `external_endpoint` (metered-proxy bypass) and the internal
+   * `created_by_user_id` (cross-org user identity), so `?scope=public` /
+   * combined listings never hand a foreign caller either. (#10918)
+   */
+  toPublicMcp(mcp: UserMcp): PublicUserMcp {
+    return { ...mcp, external_endpoint: null, created_by_user_id: null };
+  }
+
+  /**
+   * Return the owner view unchanged, otherwise redact the public view.
+   */
+  toVisibleMcpForOrganization(mcp: UserMcp, organizationId: string): UserMcp | PublicUserMcp {
+    return mcp.organization_id === organizationId ? mcp : this.toPublicMcp(mcp);
   }
 
   /**
@@ -774,7 +812,9 @@ class UserMcpsService {
       >;
     };
   } {
-    const endpoint = this.getEndpointUrl(mcp, baseUrl);
+    // The registry is a public discovery surface — advertise the metered proxy,
+    // never the raw external backend URL (that would bypass metering). (#10917)
+    const endpoint = this.getPublicProxyUrl(mcp, baseUrl);
 
     let pricingDescription = "Free to use";
     if (mcp.pricing_type === "credits") {

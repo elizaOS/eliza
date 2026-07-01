@@ -144,6 +144,35 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
+	it("exposes a parent whose SIMILE is named as a candidate hint (2026-07-01)", () => {
+		// Live regression: Stage-1 routed "generate an image of a corgi" to the
+		// media context and named the action by its simile GENERATE_IMAGE, but the
+		// real parent is GENERATE_MEDIA. scoreExactHints matched hints only against
+		// the parent's canonical name, so GENERATE_MEDIA got no exact-hint boost,
+		// was never exposed to the planner, and the model reported "no image tool"
+		// even though the action was registered and in-context.
+		const catalog = buildActionCatalog([
+			{
+				name: "GENERATE_MEDIA",
+				description: "Generate or process images, audio, and video.",
+				similes: ["GENERATE_IMAGE", "CREATE_IMAGE", "GENERATE_VIDEO"],
+				tags: ["media"],
+				contexts: ["media", "files"],
+			},
+			{ name: "WEB_SEARCH", description: "Search the web.", similes: [] },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "generate an image of a corgi wearing sunglasses",
+			candidateActions: ["GENERATE_IMAGE"],
+		});
+		expect(response.results[0]).toMatchObject({
+			name: "GENERATE_MEDIA",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
 	it("matches candidate action namespaces and child names with regex scoring", () => {
 		const catalog = buildActionCatalog(actions);
 		const namespaceResponse = retrieveActions({

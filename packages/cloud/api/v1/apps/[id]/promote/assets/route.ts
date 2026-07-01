@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   AD_COPY_GENERATION_COST,
   estimateAssetGenerationCost,
@@ -31,12 +32,15 @@ async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ) {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
   const app = await appsService.getById(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
+  }
+  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+    return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
   const body = await request.json();
@@ -153,12 +157,15 @@ async function __hono_GET(
   request: Request,
   { params }: RouteContext<{ id: string }>,
 ) {
-  const { user } = await requireAuthOrApiKeyWithOrg(request);
+  const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
   const app = await appsService.getById(id);
   if (!app || app.organization_id !== user.organization_id) {
     return Response.json({ error: "App not found" }, { status: 404 });
+  }
+  if (await isAppKeyOutOfScope(apiKey?.id, id)) {
+    return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
   const url = new URL(request.url);

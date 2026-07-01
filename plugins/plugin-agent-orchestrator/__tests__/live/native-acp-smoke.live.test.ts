@@ -35,7 +35,7 @@ describeLive("Native ACP smoke (live, gated by RUN_LIVE_NATIVE_ACP=1)", () => {
         .join("\n");
 
       expect(result.status, output).toBe(0);
-      expect(output, output).toMatch(/NATIVE ACP SMOKE (PASSED|SKIPPED)/);
+      expect(output, output).toMatch(/NATIVE ACP SMOKE PASSED/);
     },
     Number(process.env.LIVE_NATIVE_ACP_TEST_TIMEOUT_MS ?? 180_000),
   );

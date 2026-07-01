@@ -55,6 +55,9 @@ mock.module("@/db/repositories/users", () => ({
     findById: mock(async () => ({ name: "Agent User" })),
   },
 }));
+mock.module("@/lib/security/safe-fetch", () => ({
+  safeFetch: webhookFetch,
+}));
 mock.module("@/lib/services/app-charge-callbacks", () => ({
   appChargeCallbacksService: {},
 }));
@@ -103,6 +106,9 @@ mock.module("@/lib/services/referrals", () => ({
     calculateRevenueSplits,
   },
 }));
+mock.module("@/lib/security/safe-fetch", () => ({
+  safeFetch: webhookFetch,
+}));
 mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({}),
 }));
@@ -118,7 +124,6 @@ describe("stripe checkout queue waifu top-up callback", () => {
     createInvoice.mockClear();
     calculateRevenueSplits.mockClear();
     webhookFetch.mockClear();
-    globalThis.fetch = webhookFetch as unknown as typeof fetch;
   });
 
   test("emits token and wallet context for agent credit top-ups", async () => {

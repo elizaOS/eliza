@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as zod from "zod";
 import { parseDurationMs } from "../../../shared/src/cli/parse-duration.ts";
 import {
   BlockStreamingChunkSchema,
@@ -10,6 +10,8 @@ import {
   ToolsLinksSchema,
   ToolsMediaSchema,
 } from "./zod-schema.core.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 export const HeartbeatSchema = z
   .object({
@@ -172,7 +174,7 @@ type ToolPolicyConflictValue = {
 const validateToolPolicyConflict = (
   scope: string,
   value: ToolPolicyConflictValue,
-  ctx: z.RefinementCtx,
+  ctx: zod.RefinementCtx,
 ) => {
   if (
     value.allow &&

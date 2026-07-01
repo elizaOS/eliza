@@ -3,7 +3,7 @@ import {
   annotateCatalogModel,
   BITROUTER_NITRO_TEXT_MODEL,
   type CatalogModel,
-  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+  CEREBRAS_DEFAULT_TEXT_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   FALLBACK_TEXT_SELECTOR_MODELS,
   STATIC_TEXT_CATALOG_MODELS,
@@ -22,13 +22,10 @@ describe("#8426 text catalog recommendation invariants", () => {
   const byId = (id: string): CatalogModel | undefined =>
     STATIC_TEXT_CATALOG_MODELS.find((m) => m.id === id);
 
-  test("the two healthy Cerebras defaults are recommended", () => {
-    const small = byId(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL); // gpt-oss-120b
-    const large = byId(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL); // zai-glm-4.7
-    expect(small?.recommended).toBe(true);
-    expect(small?.tags).toContain("recommended");
-    expect(large?.recommended).toBe(true);
-    expect(large?.tags).toContain("recommended");
+  test("the healthy Cerebras default is recommended", () => {
+    const model = byId(CEREBRAS_DEFAULT_TEXT_MODEL);
+    expect(model?.recommended).toBe(true);
+    expect(model?.tags).toContain("recommended");
   });
 
   test("the flaky :nitro gateway model is reachable but NOT recommended", () => {
@@ -51,7 +48,7 @@ describe("#8426 text catalog recommendation invariants", () => {
     expect(annotated.tags ?? []).not.toContain("recommended");
   });
 
-  test("annotateCatalogModel DOES badge the Cerebras default ids by id alone", () => {
+  test("annotateCatalogModel DOES badge the Cerebras default id by id alone", () => {
     const annotated = annotateCatalogModel({
       id: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
       object: "model",
@@ -63,10 +60,9 @@ describe("#8426 text catalog recommendation invariants", () => {
     expect(annotated.tags).toContain("recommended");
   });
 
-  test("the selector list ranks the two Cerebras defaults first (no :nitro at the top)", () => {
-    const topTwo = FALLBACK_TEXT_SELECTOR_MODELS.slice(0, 2).map((m) => m.id);
-    expect(topTwo).toContain(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
-    expect(topTwo).toContain(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL);
-    expect(topTwo).not.toContain(BITROUTER_NITRO_TEXT_MODEL);
+  test("the selector list ranks the Cerebras default first (no :nitro at the top)", () => {
+    const top = FALLBACK_TEXT_SELECTOR_MODELS[0];
+    expect(top?.id).toBe(CEREBRAS_DEFAULT_TEXT_MODEL);
+    expect(top?.id).not.toBe(BITROUTER_NITRO_TEXT_MODEL);
   });
 });

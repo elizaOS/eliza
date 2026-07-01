@@ -209,6 +209,7 @@ import {
   runTelemetryRetention,
 } from "../telemetry-retention.js";
 import { addMinutes, getZonedDateParts } from "../time.js";
+import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
 
@@ -1033,7 +1034,14 @@ export class RemindersDomain {
       title: "Reminder",
       body: args.text,
       category: "reminder",
-      priority: "normal",
+      // Tier calendar reminders by lead time (#10697): "starting soon" → high,
+      // "tomorrow / further" → low, later-today → normal (non-calendar stays
+      // normal). dueAt is the event start for a calendar_event.
+      priority: resolveReminderNotificationPriority({
+        ownerType: args.ownerType,
+        dueAt: args.dueAt,
+        nowMs: Date.now(),
+      }),
       source: "lifeops",
       deepLink: "/chat",
       groupKey: `reminder:${args.ownerType}:${args.ownerId}`,

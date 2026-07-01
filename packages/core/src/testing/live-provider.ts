@@ -16,6 +16,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "../contracts/service-routing";
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
 const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
@@ -183,10 +184,10 @@ export function selectLiveProvider(
 			: def.defaultBaseUrl;
 
 		const defaultSmallModel = isCerebrasOpenAi
-			? "gpt-oss-120b"
+			? DEFAULT_CEREBRAS_TEXT_MODEL
 			: def.defaultSmallModel;
 		const defaultLargeModel = isCerebrasOpenAi
-			? "gpt-oss-120b"
+			? DEFAULT_CEREBRAS_TEXT_MODEL
 			: def.defaultLargeModel;
 		const smallModel =
 			process.env[def.smallModelEnvVar]?.trim() || defaultSmallModel;

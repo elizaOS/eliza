@@ -274,6 +274,16 @@ export function retrieveActions(
 	const candidateActions = dedupeNormalizedStrings(input.candidateActions);
 	const parentActionHints = dedupeNormalizedStrings([
 		...(input.parentActionHints ?? []),
+		// A candidate the model named may be a parent's canonical name OR one of
+		// its declared similes — Stage-1 routinely names GENERATE_MEDIA as
+		// "GENERATE_IMAGE". Resolve either form to the canonical parent name so it
+		// earns the exact-hint score floor and is reliably exposed to the planner,
+		// instead of the real action being silently displaced out of the tier cut
+		// (which made the model report "no such tool" for a registered, in-context
+		// action).
+		...candidateActions.flatMap((actionName) =>
+			resolveCandidateToParentNames(input.catalog.parents, actionName),
+		),
 		...candidateActions.flatMap((actionName) =>
 			candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []
@@ -827,6 +837,32 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 	if (parent) return [parent];
 	if (looksLikeViewCandidateAction(normalized)) return ["VIEWS"];
 	return [];
+}
+
+/**
+ * Resolve a candidate action name the model emitted to the canonical parent
+ * name(s) it refers to — matching either the parent's own name or one of its
+ * declared similes. Returns [] when the candidate names no registered parent (a
+ * hallucinated action), so it never fabricates an exposure. Used to give an
+ * in-catalog candidate the exact-hint score floor whether the model named the
+ * canonical action or a simile of it.
+ */
+function resolveCandidateToParentNames(
+	parents: ActionCatalogParent[],
+	candidate: string,
+): string[] {
+	const normalized = normalizeActionName(candidate);
+	if (!normalized) return [];
+	const matches: string[] = [];
+	for (const parent of parents) {
+		if (
+			parent.normalizedName === normalized ||
+			parent.similes.some((simile) => normalizeActionName(simile) === normalized)
+		) {
+			matches.push(parent.normalizedName);
+		}
+	}
+	return matches;
 }
 
 function looksLikeViewCandidateAction(normalizedActionName: string): boolean {

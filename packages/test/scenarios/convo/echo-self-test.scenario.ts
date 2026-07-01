@@ -88,7 +88,6 @@ function echoRouteFixtures(): Array<Record<string, unknown>> {
 }
 
 export default scenario({
-  lane: "live-only",
   id: "convo.echo-self-test",
   title: "Convo framework self-test: ECHO_TEST action is captured",
   domain: "convo",

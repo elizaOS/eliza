@@ -143,9 +143,11 @@ export function CockpitSessionPane({
     detail?.providerPolicy?.preferredFramework === "elizaos" &&
     detail?.providerPolicy?.providerSource === "eliza-cloud";
   const currentTier: ElizaCloudTier =
-    detail?.providerPolicy?.model === ELIZA_CLOUD_TIER_MODEL.large
-      ? "large"
-      : "small";
+    ELIZA_CLOUD_TIER_MODEL.small === ELIZA_CLOUD_TIER_MODEL.large
+      ? "small"
+      : detail?.providerPolicy?.model === ELIZA_CLOUD_TIER_MODEL.large
+        ? "large"
+        : "small";
   const onTierChange = useCallback(
     (tier: ElizaCloudTier) => {
       const model = ELIZA_CLOUD_TIER_MODEL[tier];

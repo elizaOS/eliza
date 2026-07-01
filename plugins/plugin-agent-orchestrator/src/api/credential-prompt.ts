@@ -222,7 +222,11 @@ export async function emitCredentialPrompt(input: {
     ...(secretRequest ? { secretRequest } : {}),
   } as Content & { secretRequest?: CredentialSecretRequestEnvelope };
   try {
-    await send({ source: origin.source, roomId: origin.roomId }, content);
+    await send.call(
+      runtime,
+      { source: origin.source, roomId: origin.roomId },
+      content,
+    );
     return true;
   } catch (error) {
     // Posting the prompt is a non-critical side-effect of the credential
@@ -248,11 +252,15 @@ export async function emitCredentialResolved(input: {
 }): Promise<boolean> {
   const { runtime, metadata, key, label } = input;
   const origin = readOrigin(metadata);
-  const send = (runtime as RuntimeWithSendTarget).sendMessageToTarget;
-  if (!origin || typeof send !== "function") return false;
+  if (
+    !origin ||
+    typeof (runtime as RuntimeWithSendTarget).sendMessageToTarget !== "function"
+  ) {
+    return false;
+  }
   const who = label ? `**${label}**` : "the sub-agent";
   try {
-    await send(
+    await (runtime as RuntimeWithSendTarget).sendMessageToTarget?.(
       { source: origin.source, roomId: origin.roomId },
       {
         text: `✅ Credential \`${key}\` received — resuming ${who}.`,

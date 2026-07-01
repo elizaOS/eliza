@@ -200,7 +200,14 @@ export function bucket(color: string): Bucket {
   // Very light + near-achromatic = white.
   if (lum > 0.95 && saturation < 0.05) return "white";
   // Achromatic (gray scale): neutral, or black only when genuinely dark.
-  if (saturation < 0.15) return lum < 0.08 ? "black" : "neutral";
+  // Gate on ABSOLUTE chroma too, not just the saturation RATIO: at low
+  // luminance a 1–2/255 channel spread yields a high `chroma/max` ratio yet is
+  // perceptually black — so a dark scrim like `rgba(10,10,12,0.5)` (chroma 2,
+  // ratio 0.17) must not escape this gate and get hue-classified as a saturated
+  // "blue" (240°), which mislabels an essentially-black overlay as a brand
+  // violation. A genuinely-saturated dark navy `rgb(10,10,40)` has chroma 30 and
+  // still falls through to the blue band below.
+  if (saturation < 0.15 || chroma < 12) return lum < 0.08 ? "black" : "neutral";
 
   // Chromatic — classify by hue (degrees, 0–360).
   let hue = 0;
@@ -277,4 +284,121 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
     return "needs-eyeball";
   }
   return "good";
+}
+
+/**
+ * The worst verdict tolerated for a given `${slug}-${viewport}` key. Empty map =
+ * zero debt. A `broken` entry tolerates a `broken` render for that view; because
+ * `needs-work` is a strictly-lesser verdict, a `broken` entry ALSO tolerates a
+ * `needs-work` for the same view (see {@link evaluateStrictGate}).
+ */
+export type AestheticVerdictDebt = Record<string, "broken" | "needs-work">;
+
+/** The subset of a view audit finding the strict gate reads. The spec's fuller
+ * `ViewFinding` (which carries `viewport` + `verdict`) is structurally
+ * assignable to this. */
+export interface GateFinding {
+  slug: string;
+  viewport: string;
+  verdict: AestheticVerdict;
+  consoleErrors: string[];
+  qualityIssues: string[];
+  /** Readable text length in the view root; ~0 means the view never painted. */
+  readableChars: number;
+}
+
+export interface StrictGateOptions {
+  /**
+   * Gate undebted `broken` findings — the always-present strict fail. Defaults
+   * to `true`: this function IS the strict gate. The spec threads the
+   * `ELIZA_AUDIT_APP_STRICT` env flag through so a non-strict run can still read
+   * the tally (`undebtedBroken`) without failing.
+   */
+  strict?: boolean;
+  /**
+   * ALSO gate undebted `needs-work` findings — the opt-in
+   * `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` extension (#10710). Off by default.
+   * Governed by the SAME {@link AestheticVerdictDebt} allowlist: a `needs-work`
+   * OR a `broken` debt entry tolerates a `needs-work` for that slug-viewport.
+   */
+  needsWorkStrict?: boolean;
+}
+
+export interface StrictGateResult {
+  /** `broken` findings whose slug-viewport is not debted as `broken`. */
+  undebtedBroken: GateFinding[];
+  /** `needs-work` findings with no debt entry (a `broken`/`needs-work` entry
+   * tolerates them). Only gated when {@link StrictGateOptions.needsWorkStrict}. */
+  undebtedNeedsWork: GateFinding[];
+  /** True when the gate should fail the run under the supplied options. */
+  failed: boolean;
+  /** Human-readable failure detail, or "" when the gate passes. */
+  message: string;
+}
+
+/**
+ * Pure strict-gate evaluation for the all-views aesthetic audit (#9304, #10710).
+ *
+ * Extracted out of the Playwright spec so it is unit-testable without a live
+ * `page`. `broken` (a real crash / blank render / console error / empty view)
+ * fails the run when `strict` is on and the view is not covered by the
+ * {@link AestheticVerdictDebt} allowlist; `needs-work` (design debt: blue /
+ * orange-hover / off-token radius) only fails when the opt-in `needsWorkStrict`
+ * is on and the view is likewise undebted. A `broken` debt entry is the stronger
+ * grant and so also tolerates a `needs-work` for the same slug-viewport.
+ */
+export function evaluateStrictGate(
+  findings: readonly GateFinding[],
+  debt: AestheticVerdictDebt,
+  opts: StrictGateOptions = {},
+): StrictGateResult {
+  const strict = opts.strict ?? true;
+  const needsWorkStrict = opts.needsWorkStrict ?? false;
+  const keyOf = (f: GateFinding): string => `${f.slug}-${f.viewport}`;
+
+  const undebtedBroken = findings.filter(
+    (f) => f.verdict === "broken" && debt[keyOf(f)] !== "broken",
+  );
+  // Either a `needs-work` or a `broken` debt entry tolerates a `needs-work`;
+  // only a total absence of a debt entry leaves it undebted.
+  const undebtedNeedsWork = findings.filter(
+    (f) => f.verdict === "needs-work" && debt[keyOf(f)] === undefined,
+  );
+
+  const brokenFail = strict && undebtedBroken.length > 0;
+  const needsWorkFail = needsWorkStrict && undebtedNeedsWork.length > 0;
+  const failed = brokenFail || needsWorkFail;
+
+  const sections: string[] = [];
+  if (brokenFail) {
+    const detail = undebtedBroken
+      .map(
+        (f) =>
+          `  ${f.slug} @ ${f.viewport}: ${
+            [...f.consoleErrors, ...f.qualityIssues].join("; ") ||
+            `readableChars=${f.readableChars}`
+          }`,
+      )
+      .join("\n");
+    sections.push(
+      `${undebtedBroken.length} non-exempt 'broken' view(s) not in ` +
+        `AESTHETIC_VERDICT_DEBT:\n${detail}`,
+    );
+  }
+  if (needsWorkFail) {
+    const detail = undebtedNeedsWork
+      .map((f) => `  ${f.slug} @ ${f.viewport}`)
+      .join("\n");
+    sections.push(
+      `${undebtedNeedsWork.length} non-exempt 'needs-work' view(s) not in ` +
+        `AESTHETIC_VERDICT_DEBT:\n${detail}`,
+    );
+  }
+  const message = failed
+    ? `[aesthetic-audit] STRICT gate failed:\n${sections.join("\n")}\n` +
+      `Fix the view or, if genuinely accepted debt, add the slug-viewport key ` +
+      `to AESTHETIC_VERDICT_DEBT (and shrink it over time).`
+    : "";
+
+  return { undebtedBroken, undebtedNeedsWork, failed, message };
 }

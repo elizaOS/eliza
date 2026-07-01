@@ -4,6 +4,7 @@ import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/client";
 import { appImageGenerationIdempotency } from "@/db/schemas/app-image-generation-idempotency";
 import { jsonError } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -254,6 +255,10 @@ app.post("/", async (c) => {
       !appRecord.monetization_enabled &&
       appRecord.organization_id !== user.organization_id
     ) {
+      return jsonError(c, 403, "Access denied to this app", "access_denied");
+    }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
       return jsonError(c, 403, "Access denied to this app", "access_denied");
     }
 

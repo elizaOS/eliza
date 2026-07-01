@@ -7,8 +7,13 @@ import {
   seedAppStorage,
 } from "./helpers";
 import {
+  completeCloudInferenceOnboardingToHome,
+  completeCloudOnboardingToHome,
   completeOnboardingToHome,
+  completeOtherProviderSettingsHandoff,
+  injectCloudAuthToken,
   injectFullCapabilityHost,
+  installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
   settleHomeEntrance,
@@ -84,7 +89,67 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     await screenshot(page, "home");
 
     // A real left-flick over the home page pans the rail to the launcher.
-    await swipeLeftToLauncher(page, surface);
+    await swipeLeftToLauncher(page, surface, { input: "touch" });
     await screenshot(page, "launcher");
+  });
+
+  test("cloud first-run completes in chat with touch", async ({ page }) => {
+    await injectFullCapabilityHost(page);
+    await injectCloudAuthToken(page);
+    const state = await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeCloudOnboardingToHome(
+      page,
+      (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
+    );
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "cloud-home");
+    await expect(surface).toHaveAttribute("data-page", "home");
+  });
+
+  test("cloud-inference provider first-run completes in chat with touch", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    await injectCloudAuthToken(page);
+    const state = await installHomeRoutes(page);
+    await installCloudRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeCloudInferenceOnboardingToHome(
+      page,
+      (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
+    );
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "cloud-inference-home");
+    await expect(surface).toHaveAttribute("data-page", "home");
+  });
+
+  test("other provider handoff stays in chat with touch", async ({ page }) => {
+    await injectFullCapabilityHost(page);
+    const state = await installHomeRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const { surface } = await completeOtherProviderSettingsHandoff(
+      page,
+      (locator: Locator) => locator.tap(),
+      { state, tutorial: "skip" },
+    );
+
+    await settleHomeEntrance(page);
+    await screenshot(page, "other-settings-handoff");
+    await expect(surface).toHaveAttribute("data-page", "home");
   });
 });

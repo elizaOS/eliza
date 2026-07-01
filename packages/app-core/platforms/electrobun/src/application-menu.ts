@@ -95,6 +95,69 @@ export function findAppMenuEntryBySlug(slug: string): AppMenuEntry | undefined {
   return APP_MENU_ENTRIES.find((entry) => entry.slug === slug);
 }
 
+// Curated desktop-eligible view windows for the menu-bar "Views" submenu
+// (#10716). Mirror of the `desktopTabEnabled: true` entries in
+// `packages/agent/src/api/builtin-views.ts` that also run on desktop (`camera`
+// is android-only and excluded). Duplicated here for the same reason as
+// APP_MENU_ENTRIES above — this bun-side module must not pull `@elizaos/agent`
+// (the catalog owner) into the main-process bundle. `application-menu.test.ts`
+// asserts this list stays in sync with the renderer-side DESKTOP_VIEW_WINDOWS.
+export interface ViewMenuEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly path: string;
+}
+
+const VIEW_MENU_ENTRIES: readonly ViewMenuEntry[] = [
+  { id: "tutorial", label: "Tutorial", path: "/tutorial" },
+  { id: "help", label: "Help", path: "/help" },
+  { id: "chat", label: "Chat", path: "/chat" },
+  { id: "character", label: "Character", path: "/character" },
+  { id: "documents", label: "Knowledge", path: "/character/documents" },
+  { id: "settings", label: "Settings", path: "/settings" },
+  { id: "background", label: "Background", path: "/background" },
+] as const;
+
+export function getViewMenuEntries(): readonly ViewMenuEntry[] {
+  return VIEW_MENU_ENTRIES;
+}
+
+/** Menu-bar action prefix for opening a view in its own desktop window. */
+export const NEW_VIEW_WINDOW_ACTION_PREFIX = "new-window:view-";
+
+/**
+ * Parse a `new-window:view-<id>` menu action to its view id, or `undefined`
+ * when the action is not a view-window action. `index.ts` resolves the id
+ * against {@link getViewMenuEntries} to open the window.
+ */
+export function parseViewWindowAction(
+  action: string | undefined,
+): string | undefined {
+  if (!action?.startsWith(NEW_VIEW_WINDOW_ACTION_PREFIX)) {
+    return undefined;
+  }
+  const id = action.slice(NEW_VIEW_WINDOW_ACTION_PREFIX.length).trim();
+  return id || undefined;
+}
+
+export function findViewMenuEntryById(id: string): ViewMenuEntry | undefined {
+  return VIEW_MENU_ENTRIES.find((entry) => entry.id === id);
+}
+
+/**
+ * Menu-bar "Views" submenu — opens each desktop-eligible builtin view in its
+ * own window. Pure builder so the shape is diffable in tests.
+ */
+export function buildViewsMenu(): ApplicationMenuItem {
+  return {
+    label: "Views",
+    submenu: VIEW_MENU_ENTRIES.map((entry) => ({
+      label: entry.label,
+      action: `${NEW_VIEW_WINDOW_ACTION_PREFIX}${entry.id}`,
+    })),
+  };
+}
+
 /**
  * OS menu bar structure for Electrobun. Each **`action`** is emitted as
  * `application-menu-clicked` and handled in `index.ts`. **Why a pure builder:**
@@ -336,6 +399,7 @@ export function buildApplicationMenu({
     },
     buildDesktopMenu(isMac),
     buildAppsMenu(),
+    buildViewsMenu(),
     {
       label: "Window",
       submenu: [

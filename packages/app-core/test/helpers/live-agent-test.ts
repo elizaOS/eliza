@@ -18,6 +18,7 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   InMemoryDatabaseAdapter,
   type Memory,
   type Plugin,
@@ -333,30 +334,30 @@ function applyProviderSettings(
       );
       runtime.setSetting(
         "OPENAI_LARGE_MODEL",
-        process.env.OPENAI_LARGE_MODEL || "gpt-oss-120b",
+        process.env.OPENAI_LARGE_MODEL || DEFAULT_CEREBRAS_TEXT_MODEL,
       );
       runtime.setSetting(
         "OPENAI_MEDIUM_MODEL",
         process.env.OPENAI_MEDIUM_MODEL ||
           process.env.OPENAI_LARGE_MODEL ||
-          "gpt-oss-120b",
+          DEFAULT_CEREBRAS_TEXT_MODEL,
       );
       runtime.setSetting(
         "OPENAI_SMALL_MODEL",
-        process.env.OPENAI_SMALL_MODEL || "gpt-oss-120b",
+        process.env.OPENAI_SMALL_MODEL || DEFAULT_CEREBRAS_TEXT_MODEL,
       );
       runtime.setSetting(
         "OPENAI_ACTION_PLANNER_MODEL",
         process.env.OPENAI_ACTION_PLANNER_MODEL ||
           process.env.OPENAI_LARGE_MODEL ||
-          "gpt-oss-120b",
+          DEFAULT_CEREBRAS_TEXT_MODEL,
       );
       runtime.setSetting(
         "OPENAI_PLANNER_MODEL",
         process.env.OPENAI_PLANNER_MODEL ||
           process.env.OPENAI_ACTION_PLANNER_MODEL ||
           process.env.OPENAI_LARGE_MODEL ||
-          "gpt-oss-120b",
+          DEFAULT_CEREBRAS_TEXT_MODEL,
       );
       break;
     }
@@ -388,9 +389,9 @@ function maybeApplyCerebrasAlias(provider: LiveProviderId): () => void {
 
   process.env.OPENAI_API_KEY = cerebras;
   process.env.OPENAI_BASE_URL ||= "https://api.cerebras.ai/v1";
-  process.env.OPENAI_LARGE_MODEL ||= "gpt-oss-120b";
+  process.env.OPENAI_LARGE_MODEL ||= DEFAULT_CEREBRAS_TEXT_MODEL;
   process.env.OPENAI_MEDIUM_MODEL ||= process.env.OPENAI_LARGE_MODEL;
-  process.env.OPENAI_SMALL_MODEL ||= "gpt-oss-120b";
+  process.env.OPENAI_SMALL_MODEL ||= DEFAULT_CEREBRAS_TEXT_MODEL;
   process.env.OPENAI_ACTION_PLANNER_MODEL ||= process.env.OPENAI_LARGE_MODEL;
   process.env.OPENAI_PLANNER_MODEL ||= process.env.OPENAI_ACTION_PLANNER_MODEL;
 

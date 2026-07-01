@@ -93,7 +93,7 @@ export function OrchestratorGrillingCard({
     <div
       data-testid="orchestrator-grilling"
       data-grilling-status={status}
-      className="my-2 rounded-sm border border-border/50 bg-bg-accent/30 p-2 text-sm"
+      className="my-2 p-2 text-sm"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

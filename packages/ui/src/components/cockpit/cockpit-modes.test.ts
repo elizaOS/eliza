@@ -47,14 +47,14 @@ describe("cockpit-modes lowering", () => {
           agentType: "elizaos",
           tier: "small",
         }),
-      ).toBe("gpt-oss-120b");
+      ).toBe("gemma-4-31b");
       expect(
         cockpitModeModel({
           mode: "eliza-cloud",
           agentType: "elizaos",
           tier: "large",
         }),
-      ).toBe("zai-glm-4.7");
+      ).toBe("gemma-4-31b");
       expect(
         cockpitModeModel({ mode: "opencode", agentType: "opencode" }),
       ).toBeUndefined();
@@ -79,7 +79,7 @@ describe("cockpit-modes lowering", () => {
       ).toEqual({
         preferredFramework: "elizaos",
         providerSource: "eliza-cloud",
-        model: "zai-glm-4.7",
+        model: "gemma-4-31b",
       });
       expect(
         cockpitModeToProviderPolicy({

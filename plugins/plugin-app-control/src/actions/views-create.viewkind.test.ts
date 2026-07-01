@@ -3,7 +3,7 @@ import { buildCreatePrompt } from "./views-create";
 
 /**
  * #8917: the view-create prompt must instruct the sub-agent to set a ViewKind on
- * the Plugin.views entry (release by default, never system).
+ * the Plugin.views entry (release by default, developer for tooling, never system).
  */
 describe("buildCreatePrompt viewKind contract (#8917)", () => {
 	const prompt = buildCreatePrompt(
@@ -18,11 +18,13 @@ describe("buildCreatePrompt viewKind contract (#8917)", () => {
 		expect(prompt.toLowerCase()).toContain("viewkind");
 	});
 
-	it("names release (default) + preview and forbids system", () => {
+	it("names release (default), preview, developer, and forbids system", () => {
 		expect(prompt).toContain('"release"');
 		expect(prompt).toContain('"preview"');
+		expect(prompt).toContain('"developer"');
 		expect(prompt).toContain('"system"');
 		expect(prompt.toLowerCase()).toContain("default");
+		expect(prompt.toLowerCase()).toContain("dev tooling");
 		expect(prompt.toLowerCase()).toContain("reserved for built-ins");
 	});
 

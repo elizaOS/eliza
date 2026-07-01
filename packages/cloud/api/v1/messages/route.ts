@@ -779,6 +779,9 @@ async function handleNonStream(
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
+  // #10423: stable per-request key so a settlement retry doesn't double-credit
+  // the app creator's redeemable earnings.
+  const requestId = crypto.randomUUID();
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -829,7 +832,13 @@ async function handleNonStream(
         estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
         actualBaseCost: billing.totalCost,
         description: `Messages API: ${model}`,
-        metadata: { model, provider, billingSource, streaming: false },
+        metadata: {
+          model,
+          provider,
+          billingSource,
+          streaming: false,
+          idempotencyKey: requestId,
+        },
       });
     }
 
@@ -931,6 +940,9 @@ async function handleStream(
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+  // #10423: stable per-request key so a streaming settlement retry doesn't
+  // double-credit the app creator's redeemable earnings.
+  const requestId = crypto.randomUUID();
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -980,7 +992,13 @@ async function handleStream(
             estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
             actualBaseCost: billing.totalCost,
             description: `Messages API stream: ${model}`,
-            metadata: { model, provider, billingSource, streaming: true },
+            metadata: {
+              model,
+              provider,
+              billingSource,
+              streaming: true,
+              idempotencyKey: requestId,
+            },
           });
         }
 

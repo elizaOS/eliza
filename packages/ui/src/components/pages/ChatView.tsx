@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/logger";
-import { Check, Copy, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -57,7 +57,6 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
-import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
@@ -659,34 +658,6 @@ export function ChatView({
     },
     [copyToClipboard],
   );
-  // Copy the whole thread as a plain-text transcript (`Speaker: text`, blank
-  // line between turns) via the shared clipboard helper — parity with the
-  // overlay's full-state header. Flashes a check on success.
-  const [conversationCopied, setConversationCopied] = useState(false);
-  const conversationCopiedTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  useEffect(
-    () => () => {
-      if (conversationCopiedTimerRef.current) {
-        clearTimeout(conversationCopiedTimerRef.current);
-      }
-    },
-    [],
-  );
-  const handleCopyConversation = useCallback(() => {
-    const transcript = conversationTranscriptText(visibleMsgs, { agentName });
-    if (!transcript) return;
-    void copyToClipboard(transcript);
-    setConversationCopied(true);
-    if (conversationCopiedTimerRef.current) {
-      clearTimeout(conversationCopiedTimerRef.current);
-    }
-    conversationCopiedTimerRef.current = setTimeout(
-      () => setConversationCopied(false),
-      2000,
-    );
-  }, [agentName, copyToClipboard, visibleMsgs]);
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
@@ -849,29 +820,6 @@ export function ChatView({
       </button>
     ) : null;
 
-  // Copy-the-whole-thread control, shown alongside Reset when there are
-  // messages. Same neutral resting → neutral-hover language as Reset (no orange,
-  // no blue), flashing a check on copy.
-  const copyConversationButton =
-    visibleMsgs.length > 0 ? (
-      <button
-        type="button"
-        data-testid="chat-view-copy-conversation-button"
-        aria-label={
-          conversationCopied ? "Conversation copied" : "Copy conversation"
-        }
-        title={conversationCopied ? "Conversation copied" : "Copy conversation"}
-        onClick={handleCopyConversation}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
-      >
-        {conversationCopied ? (
-          <Check className="h-[18px] w-[18px] text-ok" aria-hidden />
-        ) : (
-          <Copy className="h-[18px] w-[18px]" aria-hidden />
-        )}
-      </button>
-    ) : null;
-
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -881,7 +829,6 @@ export function ChatView({
           <CodingAgentControlChip />
           {continuousChatToggleVisible || resetConversationButton ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
-              {copyConversationButton}
               {resetConversationButton}
               {continuousChatToggleVisible ? (
                 <ContinuousChatToggle
@@ -946,7 +893,6 @@ export function ChatView({
           <CodingAgentControlChip />
           {continuousChatToggleVisible || resetConversationButton ? (
             <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
-              {copyConversationButton}
               {resetConversationButton}
               {continuousChatToggleVisible ? (
                 <ContinuousChatToggle

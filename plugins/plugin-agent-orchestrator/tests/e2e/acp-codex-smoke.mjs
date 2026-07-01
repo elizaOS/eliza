@@ -7,12 +7,12 @@
  *   - acpx installed globally (`npm install -g acpx@latest`)
  *   - codex installed and authenticated
  *
- * Run from repo root after `npm run build`:
- *   node tests/e2e/acp-codex-smoke.mjs
+ * Run from plugins/plugin-agent-orchestrator after `bun run build`:
+ *   ELIZA_ACP_TRANSPORT=cli node tests/e2e/acp-codex-smoke.mjs
  *
  * Exits 0 on pass, 1 on fail.
  */
-import { AcpService } from "../../dist/services/acp-service.js";
+import { AcpService } from "../../dist/node/index.node.js";
 
 const fakeRuntime = {
   logger: {
@@ -21,7 +21,10 @@ const fakeRuntime = {
     warn: (...a) => console.warn("[warn]", ...a),
     error: (...a) => console.error("[error]", ...a),
   },
-  getSetting: (k) => process.env[k],
+  getSetting: (k) => {
+    if (k === "ELIZA_ACP_TRANSPORT") return process.env[k] ?? "cli";
+    return process.env[k];
+  },
   agentId: "e2e-smoke",
 };
 

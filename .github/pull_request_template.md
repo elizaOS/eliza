@@ -1,23 +1,23 @@
-<!-- Use this template by filling in information and copying and pasting relevant items out of the HTML comments. -->
+<!-- Fill every visible section. Keep every evidence row visible; use N/A with a concrete reason when a row does not apply. -->
 
 # Relates to
 
 <!-- LINK TO ISSUE OR TICKET -->
 
-<!--
-DEFINITION OF DONE — full standard: PR_EVIDENCE.md
-- This PR targets `develop` and is rebased/merged onto the LATEST origin/develop
-  with ZERO conflicts (`git fetch origin && git rebase origin/develop`, then
-  `bun install && bun run verify`).
-- A reviewer can confirm this works WITHOUT reading the code, from the Evidence below.
--->
+Definition of Done: full standard in [`PR_EVIDENCE.md`](PR_EVIDENCE.md).
+
+- [ ] This PR targets `develop` and is rebased onto the latest `origin/develop`
+      with zero conflicts (`git fetch origin && git rebase origin/develop`).
+- [ ] `bun install` and `bun run verify` were run after sync, or any failure is
+      recorded below with the exact unrelated blocker.
+- [ ] A reviewer can confirm the change works without reading the code, from the
+      evidence attached below.
 
 # Sync with develop
 
-<!--
-- [ ] Rebased/merged onto the latest origin/develop; zero conflicts
-- [ ] `bun run verify` passes post-sync; relevant tests pass
--->
+- [ ] Rebased/merged onto the latest `origin/develop`; zero conflicts.
+- [ ] `bun run verify` passes post-sync, or the exact unrelated blocker is
+      documented in **Known gaps / failures** below.
 
 <!-- This risks section must be filled out before the final review and merge. -->
 
@@ -71,48 +71,79 @@ None: Automated tests are acceptable.
   - verify [result]
 -->
 
-# Evidence (prove the real thing happened — see PR_EVIDENCE.md)
+# Evidence Gate
 
-<!--
-Attach each that applies, or write "N/A — <reason>". Don't leave blank.
-Drop files in .github/issue-evidence/<issue#>-<slug>.<ext> and reference them here.
--->
+Any change testable on the frontend is not mergeable without a video walkthrough,
+before/after screenshots, and logs. If you did not attach them, say why.
+
+Attach each applicable artifact, or write `N/A - <reason>` on the row. Do not
+leave evidence rows blank. Drop files in
+`.github/issue-evidence/<issue#>-<slug>.<ext>` and reference them here.
+
+- [ ] Before full-page screenshots are attached for every affected UI surface
+      (desktop and mobile), or marked `N/A - <reason>`.
+- [ ] After full-page screenshots are attached for every affected UI surface
+      (desktop and mobile), or marked `N/A - <reason>`.
+- [ ] A video walkthrough of the complete user flow is attached, or marked
+      `N/A - <reason>`.
+- [ ] Backend logs show the real code path firing end to end, or are marked
+      `N/A - <reason>`.
+- [ ] Frontend console and network logs show the request/response and state
+      change, or are marked `N/A - <reason>`.
+- [ ] Real-LLM trajectory is attached for agent/action/provider/prompt/model
+      changes, or marked `N/A - <reason>`.
+- [ ] Domain artifacts are attached where applicable (DB rows, memories,
+      scheduled tasks, wallet/on-chain output, generated files, audio, etc.), or
+      marked `N/A - <reason>`.
+
+# Evidence Details
 
 ## Real LLM-call trajectory
 
-<!--
-For agent/action/provider/prompt/model changes — a REAL (live model) run, not the
-deterministic proxy. Produce with:
+For agent/action/provider/prompt/model changes, use a real live-model run, not
+the deterministic proxy. Produce with:
+
+```bash
   packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out.json>
-Link the JSON report / run viewer / native jsonl, or write N/A — <reason>.
--->
+```
+
+Link the JSON report, run viewer, native jsonl, or write `N/A - <reason>`.
 
 ## Backend + frontend logs
 
-<!--
 Backend: structured logger lines ([ClassName] …) showing the code path firing end to end.
 Frontend: console + network trace showing the request/response and state change.
-Paste here and file under .github/issue-evidence/, or write N/A — <reason>.
--->
+Paste here and file under `.github/issue-evidence/`, or write
+`N/A - <reason>`.
 
 ## Screenshots (before / after) + video walkthrough
 
-<!--
-Full-page before AND after for any UI change. A video click-through of the flow:
+Full-page before AND after screenshots are required for any UI change. Include a
+video click-through of the flow.
+
+```bash
   bun run test:e2e:record                 (general E2E recordings)
   bun run --cwd packages/app audit:app    (app + cloud UI — REQUIRED for UI changes)
+```
+
 ### Before
+
 ### After
+
 ### Walkthrough video
-Or write N/A — <reason>.
--->
+
+Or write `N/A - <reason>`.
 
 ## Audio / voice walkthrough
 
-<!--
-For voice / transcript / TTS / STT / omnivoice changes — captured audio of the
-real round-trip plus a narrated walkthrough. Or write N/A — <reason>.
--->
+For voice / transcript / TTS / STT / omnivoice changes, attach captured audio of
+the real round-trip plus a narrated walkthrough. Or write `N/A - <reason>`.
+
+## Known gaps / failures
+
+List any command failure, missing artifact, unavailable device, unavailable live
+service, or evidence row marked N/A. Include the exact reason and why it is not a
+blocker for this PR.
 
 <!-- If there is anything about the deployment, please make a note. -->
 <!--

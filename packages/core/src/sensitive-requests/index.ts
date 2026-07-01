@@ -19,9 +19,10 @@ export {
 	type DeliveryResult,
 	type DeliveryTarget,
 	type DispatchSensitiveRequest,
+	SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
 	type SensitiveRequestDeliveryAdapter,
 	type SensitiveRequestDispatchRegistry,
+	SensitiveRequestDispatchRegistryService,
 	type SensitiveRequestPaymentContextDescriptor,
-	type SensitiveRequestTunnelRouting,
 	type SensitiveRequestWithPaymentContext,
 } from "./dispatch-registry";

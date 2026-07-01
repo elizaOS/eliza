@@ -21,6 +21,8 @@ import type { ViewEntry } from "../../hooks/view-catalog";
 
 /** Page 1 — everyday apps, in display order. Other loaded apps append after. */
 export const LAUNCHER_APPS_ORDER: readonly string[] = [
+  "chat",
+  "settings",
   "wallet",
   "automations",
   "browser",
@@ -31,7 +33,6 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "memories",
   "feed",
   "stream",
-  "settings",
 ];
 
 /** Page 2 — developer tools, in display order. */
@@ -59,13 +60,12 @@ export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] = [
 
 /**
  * Views that never appear in the launcher grid:
- *  - shell surfaces reached another way (chat is the home; views/apps launchers;
- *    background + voice are set from Settings/chat; character-select is inline),
+ *  - shell surfaces reached another way (views/apps launchers; background +
+ *    voice are set from Settings/chat; character-select is inline),
  *  - removed apps (companion, model tester, shopify, wearables),
  *  - wallet sub-views (hyperliquid/polymarket open from inside the Wallet app).
  */
 export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
-  "chat",
   "views",
   "views-manager",
   "apps",
@@ -139,11 +139,22 @@ function preferenceScore(entry: ViewEntry): number {
   return score;
 }
 
+/**
+ * Launcher tiles that back an Eliza Cloud surface and must not appear unless the
+ * user is signed into cloud. `cloud-apps` (the Cloud Applications dashboard,
+ * registered by `@elizaos/app`'s cloud-apps-view) is `viewKind: "release"`, so
+ * without this gate it shows as an "Apps" tile even when cloud is
+ * disconnected. (#10725)
+ */
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud-apps"]);
+
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */
   isAosp: boolean;
   /** Which view kinds the user/build has enabled (system+release always on). */
   enabledKinds: EnabledViewKinds;
+  /** True when signed into Eliza Cloud; gates cloud-only launcher tiles. */
+  cloudActive: boolean;
 }
 
 function comparator(indexes: Array<Map<string, number>>) {
@@ -174,13 +185,16 @@ function comparator(indexes: Array<Map<string, number>>) {
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
-  { isAosp, enabledKinds }: CurateLauncherOptions,
+  { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
 ): ViewEntry[][] {
   const byCanonical = new Map<string, ViewEntry>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
     if (AOSP_INDEX.has(canonicalId) && !isAosp) continue;
+    // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
+    // unless the user is signed into Eliza Cloud.
+    if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
 
     const curated =
       APPS_INDEX.has(canonicalId) ||

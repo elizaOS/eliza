@@ -33,7 +33,7 @@ describe("CockpitNewSessionForm", () => {
       providerPolicy: {
         preferredFramework: "elizaos",
         providerSource: "eliza-cloud",
-        model: "gpt-oss-120b",
+        model: "gemma-4-31b",
       },
     });
   });

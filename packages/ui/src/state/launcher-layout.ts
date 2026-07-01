@@ -7,11 +7,9 @@
  * rendering/gesture layer consumes these helpers; all reconciliation logic lives
  * here so it is unit testable without a DOM.
  *
- * The `favorites` field and `toggleFavorite`/`moveIcon` favorite-eviction are
- * retained as pure model plumbing (and `LAUNCHER_DOCK_LIMIT` is still the
- * desktop-tab pin cap in `useDesktopTabs`), but the Launcher no longer
- * renders a favorites dock — every tile is identical, so `defaultLayout` seeds
- * no favorites and all available views flow onto the pages.
+ * The `favorites` field is the launcher dock. Fresh installs seed a tiny,
+ * stable dock with Chat + Settings; explicit stored layouts (including an empty
+ * user-cleared dock) are respected.
  *
  * Mirrors the persistence style of `view-recents.ts`.
  */
@@ -35,16 +33,18 @@ const LEGACY_LAUNCHER_STORAGE_KEY = "elizaos.views.springboard";
 export const LAUNCHER_PAGE_SIZE = 24;
 /**
  * Pin cap reused by the desktop-tab pinning model (`useDesktopTabs`). The
- * mobile Launcher no longer has a favorites dock, but the desktop tab rail
- * still caps pinned tabs at this iOS-style count.
+ * mobile launcher dock and desktop tab rail both cap pinned items at this
+ * iOS-style count.
  */
 export const LAUNCHER_DOCK_LIMIT = 4;
+export const DEFAULT_LAUNCHER_FAVORITES: readonly string[] = [
+  "chat",
+  "settings",
+];
 
 export interface LauncherLayout {
   /**
-   * Ordered view ids kept out of the page grid. Retained as model plumbing for
-   * `toggleFavorite`/`moveIcon`; the Launcher seeds this empty (no dock) so
-   * every view renders as a uniform page tile.
+   * Ordered view ids kept out of the page grid and rendered in the dock.
    */
   favorites: string[];
   /** Ordered pages; each page is an ordered list of view ids. */
@@ -63,11 +63,11 @@ export function emptyLayout(): LauncherLayout {
 }
 
 /**
- * First-run layout. The favorites dock was removed, so a fresh install seeds no
- * favorites — every available view flows onto the pages as a uniform tile.
+ * First-run layout. Reconciliation intersects this seed with the live view ids,
+ * so builds without one of these surfaces simply drop it.
  */
 export function defaultLayout(): LauncherLayout {
-  return emptyLayout();
+  return { favorites: [...DEFAULT_LAUNCHER_FAVORITES], pages: [] };
 }
 
 function isStringArray(value: unknown): value is string[] {

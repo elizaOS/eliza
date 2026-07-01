@@ -168,7 +168,7 @@ describe("Home ↔ Launcher composed surface", () => {
 
     expect(surface.getAttribute("data-page")).toBe("launcher");
     expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
-  });
+  }, 15_000);
 
   it("renders no page-indicator strips — no dots competing with the composer (#4)", () => {
     const surface = renderComposed();

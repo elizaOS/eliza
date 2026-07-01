@@ -7,9 +7,18 @@ const DISTANCE_THRESHOLD_RATIO = 0.24;
 const MIN_FLICK_DISTANCE = 48;
 const FLICK_VELOCITY = 0.45;
 const SETTLE_MS = 360;
-const SNAP_BACK_MS = 280;
 const EDGE_RESISTANCE = 0.35;
 const SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+// Velocity-aware momentum settle (#10717): after a drag release, the settle
+// duration is derived from the release velocity instead of a constant rate — a
+// fast flick settles quickly, a slow drag eases in — so the rail no longer
+// snaps home at the same speed regardless of how the finger left it.
+const MIN_SETTLE_MS = 130;
+const MAX_SETTLE_MS = 440;
+// Slowest settle speed (px/ms): a near-zero release velocity eases the
+// remaining distance in at this floor (→ up to MAX_SETTLE_MS), while a faster
+// flick divides through to a shorter duration (down to MIN_SETTLE_MS).
+const MIN_SETTLE_SPEED = 1.5;
 
 interface DragState {
   pointerId: number;
@@ -47,6 +56,14 @@ export interface HorizontalPagerBinding<
     onPointerCancel: React.PointerEventHandler<HTMLDivElement>;
     onLostPointerCapture: React.PointerEventHandler<HTMLDivElement>;
   };
+  /** True when there is a previous page to page back to (for a `<` control). */
+  canPrev: boolean;
+  /** True when there is a next page to page forward to (for a `>` control). */
+  canNext: boolean;
+  /** Page back one view (no-op at the first page). For pointer edge buttons. */
+  goPrev: () => void;
+  /** Page forward one view (no-op at the last page). For pointer edge buttons. */
+  goNext: () => void;
 }
 
 function now(): number {
@@ -63,6 +80,49 @@ function pageOffset(page: number, width: number): number {
 
 function clampPage(page: number, pageCount: number): number {
   return Math.max(0, Math.min(Math.max(0, pageCount - 1), page));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function getVelocityAwarePagerTransitionMs({
+  velocityPxPerMs,
+  remainingDistancePx,
+  fallbackMs,
+}: {
+  velocityPxPerMs: number;
+  remainingDistancePx: number;
+  fallbackMs: number;
+}): number {
+  const remaining = Math.abs(remainingDistancePx);
+  const speed = Math.abs(velocityPxPerMs);
+  if (remaining < 1 || speed < 0.01) {
+    return clamp(Math.round(fallbackMs), MIN_SETTLE_MS, MAX_SETTLE_MS);
+  }
+
+  const effectiveSpeed = Math.max(MIN_SETTLE_SPEED, speed);
+  return clamp(
+    Math.round(remaining / effectiveSpeed),
+    MIN_SETTLE_MS,
+    MAX_SETTLE_MS,
+  );
+}
+
+/**
+ * Settle duration (ms) for the remaining travel at a given release velocity.
+ * Fast flick → short, snappy settle; slow release → longer ease, clamped to a
+ * comfortable [MIN_SETTLE_MS, MAX_SETTLE_MS] band.
+ */
+function momentumSettleMs(
+  remainingPx: number,
+  velocityPxPerMs: number,
+): number {
+  return getVelocityAwarePagerTransitionMs({
+    velocityPxPerMs,
+    remainingDistancePx: remainingPx,
+    fallbackMs: SETTLE_MS,
+  });
 }
 
 /**
@@ -87,6 +147,14 @@ export function useHorizontalPager<
   const dragRef = React.useRef<DragState | null>(null);
   const rafRef = React.useRef(0);
   const pendingOffsetRef = React.useRef<number | null>(null);
+  // A committed swipe advances the page via onPageChange, which re-runs the
+  // layout effect below — so the velocity-derived settle duration is handed to
+  // that effect here (instead of the fixed SETTLE_MS) so the momentum survives
+  // the controlled-page update.
+  const pendingSettleRef = React.useRef<{
+    targetPage: number;
+    durationMs: number;
+  } | null>(null);
   const mountedRef = React.useRef(false);
   const pageRef = React.useRef(page);
   const pageCountRef = React.useRef(pageCount);
@@ -182,9 +250,17 @@ export function useHorizontalPager<
   React.useLayoutEffect(() => {
     const width = measureWidth();
     const nextPage = clampPage(page, pageCount);
+    // Prefer the velocity-derived duration a committed swipe just parked here;
+    // fall back to the fixed rate for a programmatic / button-driven page change.
+    const pendingSettle = pendingSettleRef.current;
+    pendingSettleRef.current = null;
+    const settleMs =
+      pendingSettle?.targetPage === nextPage
+        ? pendingSettle.durationMs
+        : SETTLE_MS;
     writeOffset(
       pageOffset(nextPage, width),
-      mountedRef.current && !dragRef.current ? SETTLE_MS : null,
+      mountedRef.current && !dragRef.current ? settleMs : null,
     );
     mountedRef.current = true;
   }, [measureWidth, page, pageCount, writeOffset]);
@@ -220,14 +296,25 @@ export function useHorizontalPager<
       const base = pageOffset(state.page, state.width);
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
+      const elapsed = Math.max(1, now() - state.startTime);
+      const velocity = dx / elapsed;
+      // Where the rail physically sits at release (incl. edge rubber-band), so
+      // the momentum settle covers the ACTUAL remaining distance to the target.
+      const lastVisual =
+        state.axis === "horizontal" ? base + visualDragOffset(state, dx) : base;
+      // Velocity-aware momentum: settle duration scales with how fast the finger
+      // left, not a fixed rate — a flick lands quick, a slow drag eases in.
+      const settleTo = (offset: number) =>
+        writeOffset(
+          offset,
+          momentumSettleMs(Math.abs(offset - lastVisual), velocity),
+        );
 
       if (cancelled || state.axis !== "horizontal" || !canMove(state, dx)) {
-        writeOffset(base, SNAP_BACK_MS);
+        settleTo(base);
         return;
       }
 
-      const elapsed = Math.max(1, now() - state.startTime);
-      const velocity = dx / elapsed;
       const distanceThreshold = Math.max(
         MIN_DISTANCE_THRESHOLD,
         state.width * DISTANCE_THRESHOLD_RATIO,
@@ -239,12 +326,12 @@ export function useHorizontalPager<
           Math.abs(dx) > Math.abs(dy) * AXIS_DOMINANCE_RATIO);
 
       if (!shouldAdvance) {
-        writeOffset(base, SNAP_BACK_MS);
+        settleTo(base);
         return;
       }
 
       if (dx > 0 && state.page === 0 && edgeSwipeRightEnabledRef.current) {
-        writeOffset(base, SNAP_BACK_MS);
+        settleTo(base);
         onEdgeSwipeRightRef.current?.();
         return;
       }
@@ -253,13 +340,44 @@ export function useHorizontalPager<
         state.page + (dx < 0 ? 1 : -1),
         pageCountRef.current,
       );
-      writeOffset(pageOffset(targetPage, state.width), SETTLE_MS);
+      const targetOffset = pageOffset(targetPage, state.width);
       if (targetPage !== pageRef.current) {
+        // Park the momentum duration for the layout effect that the
+        // onPageChange-driven re-render triggers, so the controlled-page update
+        // settles with the flick's velocity rather than the fixed rate.
+        pendingSettleRef.current = {
+          targetPage,
+          durationMs: momentumSettleMs(
+            Math.abs(targetOffset - lastVisual),
+            velocity,
+          ),
+        };
         onPageChangeRef.current(targetPage);
+      } else {
+        // Already at the clamped edge — settle directly (no page change fires).
+        settleTo(targetOffset);
       }
     },
-    [canMove, cancelScheduledOffset, releaseCapture, writeOffset],
+    [
+      canMove,
+      cancelScheduledOffset,
+      releaseCapture,
+      visualDragOffset,
+      writeOffset,
+    ],
   );
+
+  // Discrete one-page navigation for pointer edge buttons (`<` / `>` on
+  // web/desktop). Routes through the same controlled-page + settle path as a
+  // committed swipe, so a click and a flick land identically.
+  const goPrev = React.useCallback(() => {
+    const target = clampPage(pageRef.current - 1, pageCountRef.current);
+    if (target !== pageRef.current) onPageChangeRef.current(target);
+  }, []);
+  const goNext = React.useCallback(() => {
+    const target = clampPage(pageRef.current + 1, pageCountRef.current);
+    if (target !== pageRef.current) onPageChangeRef.current(target);
+  }, []);
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -335,6 +453,8 @@ export function useHorizontalPager<
     [finish],
   );
 
+  const clampedPage = clampPage(page, pageCount);
+
   return {
     viewportRef,
     railRef,
@@ -345,5 +465,9 @@ export function useHorizontalPager<
       onPointerCancel,
       onLostPointerCapture: onPointerCancel,
     },
+    canPrev: clampedPage > 0,
+    canNext: clampedPage < pageCount - 1,
+    goPrev,
+    goNext,
   };
 }

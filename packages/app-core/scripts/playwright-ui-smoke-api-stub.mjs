@@ -3141,6 +3141,16 @@ const server = http.createServer(async (req, res) => {
 
   if (
     (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname === "/api/avatar/vrm"
+  ) {
+    // The character VRM is optional. A 404 mirrors "no custom avatar configured";
+    // returning the catch-all 501 makes diagnostics treat the fallback as a bug.
+    sendEmpty(req, res, 404);
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
     url.pathname === "/api/avatar/background"
   ) {
     sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);

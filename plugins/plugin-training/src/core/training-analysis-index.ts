@@ -2855,8 +2855,11 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
     function hrefForPath(value) {
       const path = typeof value === "string" ? value.trim() : "";
       if (!path) return null;
-      if (/^[a-z][a-z0-9+.-]*:///i.test(path)) return path;
-      if (path.startsWith("/")) return "file://" + encodeURI(path);
+      if (path.indexOf("://") !== -1) return path;
+      const normalized = path.split(String.fromCharCode(92)).join("/");
+      if (normalized.charAt(0) === "/") return "file://" + encodeURI(normalized);
+      if (normalized.length > 1 && normalized.charAt(1) === ":")
+        return "file:///" + encodeURI(normalized);
       return null;
     }
     function appendPathCell(row, value) {

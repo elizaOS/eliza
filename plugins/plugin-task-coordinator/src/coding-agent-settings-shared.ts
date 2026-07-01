@@ -121,7 +121,7 @@ export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
     { value: "o4-mini", label: "o4-mini" },
     { value: "gpt-4o", label: "GPT-4o" },
   ],
-  cerebras: [{ value: "gpt-oss-120b", label: "gpt-oss-120b" }],
+  cerebras: [{ value: "gemma-4-31b", label: "gemma-4-31b" }],
 };
 
 export const AGENT_LABELS: Record<AgentTab, string> = {

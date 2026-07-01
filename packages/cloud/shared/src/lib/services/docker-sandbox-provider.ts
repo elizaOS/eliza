@@ -440,7 +440,7 @@ const HEALTH_CHECK_POLL_INTERVAL_MS = 3_000;
  * `/api/health` answers over the tailnet; 180s lost that race and failed the
  * provision even though the agent came up. 6 min gives slow cold boots room.
  */
-const HEALTH_CHECK_TIMEOUT_MS = 360_000;
+export const HEALTH_CHECK_TIMEOUT_MS = 360_000;
 
 /** SSH command timeout for docker pull (can be slow on first pull). */
 export const PULL_TIMEOUT_MS = 300_000; // 5 min

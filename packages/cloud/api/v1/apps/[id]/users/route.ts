@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -21,7 +22,7 @@ async function __hono_GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const limit = searchParams.get("limit")
@@ -42,6 +43,15 @@ async function __hono_GET(
     }
 
     if (existingApp.organization_id !== user.organization_id) {
+      return Response.json(
+        {
+          success: false,
+          error: "Access denied",
+        },
+        { status: 403 },
+      );
+    }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
       return Response.json(
         {
           success: false,

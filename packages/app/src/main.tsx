@@ -41,7 +41,10 @@ import {
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge";
 import { initializeCapacitorBridge } from "@elizaos/ui/bridge/capacitor-bridge";
-import { initializeStorageBridge } from "@elizaos/ui/bridge/storage-bridge";
+import {
+  initializeStorageBridge,
+  setStorageValue,
+} from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
@@ -119,6 +122,7 @@ import {
   markStartup,
   measureStartup,
 } from "@elizaos/ui/state/startup-telemetry";
+import { getChatOverlayHotkey } from "@elizaos/ui/state/useChatOverlayHotkey";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
@@ -1657,10 +1661,27 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   // SECURITY: never accept a bearer token from an OS-delivered deep link (see
   // the `connect` case below). A pairing-disabled remote that needs a token is
   // connected via the trusted in-app Settings entry instead.
-  dispatchAppEvent(CONNECT_EVENT, {
-    gatewayUrl: validatedUrl.href,
-    completeFirstRun: true,
+  const connection = applyLaunchConnection({
+    kind: "remote",
+    apiBase: validatedUrl.href,
+    token: null,
+    allowPublicHttps: true,
   });
+  const dispatchConnect = () => {
+    dispatchAppEvent(CONNECT_EVENT, {
+      gatewayUrl: connection.apiBase,
+      completeFirstRun: true,
+    });
+  };
+  const activeServer = JSON.stringify({
+    id: `remote:${connection.apiBase}`,
+    kind: "remote",
+    label: validatedUrl.hostname || "Remote agent",
+    apiBase: connection.apiBase,
+  });
+  void setStorageValue("elizaos:active-server", activeServer).finally(
+    dispatchConnect,
+  );
 }
 
 function handleDeepLink(url: string): void {
@@ -1691,6 +1712,17 @@ function handleDeepLink(url: string): void {
   const path = isAppLink
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
+  if (path === "first-run/runtime/remote") {
+    const rawApiBase =
+      parsed.searchParams.get("api")?.trim() ||
+      parsed.searchParams.get("apiBase")?.trim() ||
+      parsed.searchParams.get("url")?.trim() ||
+      parsed.searchParams.get("host")?.trim();
+    if (rawApiBase) {
+      connectFirstRunRemoteDeepLink(rawApiBase);
+    }
+    return;
+  }
 
   // eliza://settings/connectors/<provider> — open Settings → Connectors.
   // The new Connectors section renders one inline expansion per connector;
@@ -1837,6 +1869,24 @@ async function initializeDesktopShell(): Promise<void> {
     accelerator: "CommandOrControl+K",
   });
 
+  // Programmable chat-overlay summon hotkey (#10716). The command palette keeps
+  // CommandOrControl+K; this is a distinct, user-configurable global shortcut
+  // (default CommandOrControl+Shift+C) that brings the floating chat surface —
+  // which on desktop is the main window — to the foreground. Registered only
+  // when enabled in Desktop settings.
+  const chatOverlayHotkey = getChatOverlayHotkey();
+  if (chatOverlayHotkey.enabled) {
+    await Desktop.registerShortcut({
+      id: "chat-overlay",
+      accelerator: chatOverlayHotkey.accelerator,
+    });
+  }
+
+  const summonChatOverlay = async (): Promise<void> => {
+    await Desktop.showWindow();
+    await Desktop.focusWindow();
+  };
+
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
@@ -1844,6 +1894,8 @@ async function initializeDesktopShell(): Promise<void> {
       const id = (payload as { id?: string } | null | undefined)?.id;
       if (id === "command-palette") {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
+      } else if (id === "chat-overlay") {
+        void summonChatOverlay();
       }
     },
   });

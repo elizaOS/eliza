@@ -34,6 +34,7 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { openExternalUrl } from "../../../utils/openExternalUrl";
+import { resolveCloudConsoleUrl } from "../lib/native-cloud-nav";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -159,7 +160,12 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
   }
 
   function openBilling() {
-    void openExternalUrl(`${window.location.origin}/dashboard/billing`);
+    // Resolve the real cloud console host from boot config, NOT
+    // window.location.origin — on the native Applications studio the WebView
+    // origin is `https://localhost` (Capacitor) / the Electrobun scheme, so
+    // `${origin}/dashboard/billing` would dead-end at the device instead of
+    // Eliza Cloud billing. resolveCloudConsoleUrl is correct on web + native.
+    void openExternalUrl(resolveCloudConsoleUrl("/dashboard/billing"));
   }
 
   return (

@@ -181,6 +181,32 @@ async function readRedemption(id: string): Promise<{
   };
 }
 
+/** Read the redeeming user's earnings balances via the redemption's user_id. */
+async function readEarnings(
+  redemptionId: string,
+): Promise<{ available_balance: number; total_pending: number }> {
+  const r = await dbWrite.execute(
+    `SELECT re.available_balance, re.total_pending
+       FROM redeemable_earnings re
+       JOIN token_redemptions tr ON tr.user_id = re.user_id
+      WHERE tr.id = '${redemptionId}';`,
+  );
+  const row = r.rows[0] as { available_balance: string; total_pending: string };
+  return {
+    available_balance: Number(row.available_balance),
+    total_pending: Number(row.total_pending),
+  };
+}
+
+/** Count refund ledger entries for a redemption (idempotency assertion). */
+async function refundLedgerCount(redemptionId: string): Promise<number> {
+  const r = await dbWrite.execute(
+    `SELECT count(*)::int AS n FROM redeemable_earnings_ledger
+      WHERE redemption_id = '${redemptionId}' AND entry_type = 'refund';`,
+  );
+  return (r.rows[0] as { n: number }).n;
+}
+
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
@@ -594,6 +620,73 @@ describe("payout stale-lock recovery (#10553)", () => {
       expect(row.requires_review).toBe(false);
       expect(sendRawTxMock.mock.calls.length).toBe(0);
       expect(sendAlertMock.mock.calls.length).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(g) a retries-exhausted redemption returns its locked earnings to available_balance exactly once",
+    async () => {
+      if (!pgliteReady) return;
+      // Seeded: total_pending=10 (locked), available_balance=90, usd_value=10.
+      const id = await seedRedemption({
+        status: "processing",
+        broadcastTxHash: null,
+        startedMinutesAgo: 10,
+        retryCount: 3, // == MAX_RETRY_ATTEMPTS → recovery marks it 'failed'
+      });
+
+      const before = await readEarnings(id);
+      expect(before.available_balance).toBeCloseTo(90, 4);
+      expect(before.total_pending).toBeCloseTo(10, 4);
+
+      await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(row.status).toBe("failed");
+      expect(row.broadcast_tx_hash).toBeNull();
+
+      // The $10 was returned from total_pending to available_balance (previously
+      // stranded forever — rejectRedemption only touches 'pending' rows).
+      const after = await readEarnings(id);
+      expect(after.available_balance).toBeCloseTo(100, 4);
+      expect(after.total_pending).toBeCloseTo(0, 4);
+      expect(await refundLedgerCount(id)).toBe(1);
+
+      // Idempotent: a second batch does NOT refund again (ledger guard).
+      await service.processBatch();
+      const after2 = await readEarnings(id);
+      expect(after2.available_balance).toBeCloseTo(100, 4);
+      expect(await refundLedgerCount(id)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(h) a broadcast-but-unconfirmed row is NEVER refunded (reverse-double-pay guard)",
+    async () => {
+      if (!pgliteReady) return;
+      // A stale row WITH a broadcast hash: tokens may be on-chain, so it must be
+      // routed to reconciliation (left 'processing'), never failed+refunded —
+      // refunding available_balance while tokens went out would be a reverse
+      // double-pay.
+      const id = await seedRedemption({
+        status: "processing",
+        broadcastTxHash: `0x${"d".repeat(64)}`,
+        startedMinutesAgo: 10,
+        retryCount: 0,
+      });
+
+      const before = await readEarnings(id);
+      await service.processBatch();
+
+      const row = await readRedemption(id);
+      // Not failed (reconciliation path), and crucially NOT refunded.
+      expect(row.status).toBe("processing");
+      const after = await readEarnings(id);
+      expect(after.available_balance).toBeCloseTo(before.available_balance, 4);
+      expect(after.total_pending).toBeCloseTo(before.total_pending, 4);
+      expect(await refundLedgerCount(id)).toBe(0);
     },
     PGLITE_TIMEOUT,
   );

@@ -70,10 +70,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install browser drivers (the suite imports puppeteer-core/playwright-core)
+      - name: Install browser drivers
         run: |
           set -euo pipefail
-          bun add --cwd packages/app-core puppeteer-core playwright-core
           bunx playwright install --with-deps chromium
 
       - name: Run browser-driven real app e2e

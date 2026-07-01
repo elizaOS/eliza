@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CEREBRAS_DEFAULT_TEXT_LARGE_MODEL, CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "./catalog";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "./catalog";
 import { MODEL_TIERS, resolveModel } from "./model-tiers";
 
 /**
@@ -9,22 +9,26 @@ import { MODEL_TIERS, resolveModel } from "./model-tiers";
  */
 describe("#8426 model-tier PRO default", () => {
   test("pro resolves to the Cerebras default and is flagged recommended", () => {
-    expect(MODEL_TIERS.pro.modelId).toBe(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL); // gpt-oss-120b
+    expect(MODEL_TIERS.pro.modelId).toBe(CEREBRAS_DEFAULT_TEXT_MODEL);
     expect(MODEL_TIERS.pro.provider).toBe("cerebras");
     expect(MODEL_TIERS.pro.recommended).toBe(true);
   });
 
   test("resolveModel keeps Cerebras-native bare ids on Cerebras for billing", () => {
     expect(resolveModel("pro")).toMatchObject({
-      modelId: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+      modelId: CEREBRAS_DEFAULT_TEXT_MODEL,
       provider: "cerebras",
     });
-    expect(resolveModel(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL)).toMatchObject({
-      modelId: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    expect(resolveModel(CEREBRAS_DEFAULT_TEXT_MODEL)).toMatchObject({
+      modelId: CEREBRAS_DEFAULT_TEXT_MODEL,
       provider: "cerebras",
     });
-    expect(resolveModel(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL)).toMatchObject({
-      modelId: CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    expect(resolveModel("gpt-oss-120b")).toMatchObject({
+      modelId: "gpt-oss-120b",
+      provider: "cerebras",
+    });
+    expect(resolveModel("zai-glm-4.7")).toMatchObject({
+      modelId: "zai-glm-4.7",
       provider: "cerebras",
     });
   });

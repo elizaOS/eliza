@@ -48,6 +48,14 @@ export const ECONOMICS_GOAL_CAPABILITIES: readonly string[] = [
   "read credits, earnings, and redemption balances (credits.*, redemptions.*)",
 ];
 
+export const VIEW_KIND_CONTRACT: readonly string[] = [
+  "If you create or edit a `Plugin.views` entry, set `viewKind` explicitly.",
+  "`release` is the default for finished user-facing views.",
+  "`preview` is for unfinished or experimental views hidden until enabled.",
+  "`developer` is for dev tooling such as logs, inspectors, debuggers, editors, diagnostics, and deployment/admin tools.",
+  "`system` is reserved for built-in elizaOS shell views; do not use it in generated plugins.",
+];
+
 /** Named capability fences a goal task can run under. */
 export type GoalCapabilityProfile = "default" | "economics";
 
@@ -195,6 +203,9 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
   sections.push(
     "--- Capabilities ---",
     capabilityLine,
+    ...(profile === "economics"
+      ? ["--- ViewKind Contract ---", bulletList([...VIEW_KIND_CONTRACT])]
+      : []),
     "--- Working Agreement ---",
     bulletList([...COMPLETION_CONTRACT]),
     // #8895: ask for a machine-checkable CompletionEnvelope on completion so the

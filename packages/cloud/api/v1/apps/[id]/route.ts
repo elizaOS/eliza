@@ -10,6 +10,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appCleanupService } from "@/lib/services/app-cleanup";
 import { appsService } from "@/lib/services/apps";
@@ -67,6 +68,10 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   const existing = await appsService.getById(id);
   if (!existing) return c.json({ success: false, error: "App not found" }, 404);
   if (existing.organization_id !== user.organization_id) {
+    return c.json({ success: false, error: "Access denied" }, 403);
+  }
+  // An app-scoped API key may only act on its own app, never a sibling (#10852).
+  if (await isAppKeyOutOfScope(c.get("apiKeyId"), id)) {
     return c.json({ success: false, error: "Access denied" }, 403);
   }
 
@@ -158,6 +163,10 @@ app.delete("/", async (c) => {
     if (!existing)
       return c.json({ success: false, error: "App not found" }, 404);
     if (existing.organization_id !== user.organization_id) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), id)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 

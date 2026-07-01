@@ -14,6 +14,7 @@ import {
   agentSandboxesRepository,
 } from "../../db/repositories/agent-sandboxes";
 import { cache } from "../cache/client";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../models";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
@@ -22,7 +23,7 @@ const HISTORY_TTL_SECONDS = 604800; // 7 days
 const MAX_HISTORY_MESSAGES = 20; // 10 turns (user + assistant)
 
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = "gpt-oss-120b";
+const CEREBRAS_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 
 export interface ChatMessage {
   role: "user" | "assistant";

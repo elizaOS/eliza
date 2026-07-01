@@ -283,6 +283,11 @@ export function memoryRuntime(
       if (idx >= 0) facts[idx] = { ...facts[idx], ...patch } as Memory;
       return Promise.resolve(idx >= 0);
     },
+    deleteMemory: (id: string) => {
+      const idx = facts.findIndex((m) => (m as { id?: string }).id === id);
+      if (idx >= 0) facts.splice(idx, 1);
+      return Promise.resolve();
+    },
   } as unknown as MemoryRuntime;
   return runtime;
 }

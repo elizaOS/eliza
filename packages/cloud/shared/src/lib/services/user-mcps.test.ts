@@ -451,11 +451,75 @@ describe("userMcpsService.toRegistryFormat", () => {
     expect(entry.id).toBe(`user-${live.id}`);
     expect(entry.name).toBe("Weather Pro");
     expect(entry.status).toBe("live");
-    expect(entry.endpoint).toBe(live.external_endpoint);
     expect(entry.toolCount).toBe(1);
+
+    // Security (#10917): the public registry advertises the METERED PROXY, never
+    // the raw external backend URL (which would bypass metering/charging).
+    const proxyUrl = `https://www.elizacloud.ai/api/mcp/proxy/${live.id}${live.endpoint_path ?? "/mcp"}`;
+    expect(entry.endpoint).toBe(proxyUrl);
+    expect(entry.endpoint).not.toBe(live.external_endpoint);
     expect(entry.configTemplate.servers[live.slug]).toEqual({
       type: "streamable-http",
-      url: live.external_endpoint as string,
+      url: proxyUrl,
     });
+    // The raw external_endpoint appears NOWHERE in the public entry.
+    expect(JSON.stringify(entry)).not.toContain(live.external_endpoint as string);
+  });
+});
+
+describe("userMcpsService public-surface redaction (#10917/#10918)", () => {
+  test("getPublicProxyUrl always returns the proxy for external/container, never the raw URL", () => {
+    const external = makeRow({
+      endpoint_type: "external",
+      external_endpoint: "https://secret-backend.internal/mcp",
+      endpoint_path: "/mcp",
+    });
+    const url = userMcpsService.getPublicProxyUrl(external, "https://www.elizacloud.ai");
+    expect(url).toBe(`https://www.elizacloud.ai/api/mcp/proxy/${external.id}/mcp`);
+    expect(url).not.toContain("secret-backend.internal");
+
+    const container = makeRow({ endpoint_type: "container", container_id: "c1" });
+    expect(userMcpsService.getPublicProxyUrl(container, "https://x")).toBe(
+      `https://x/api/mcp/proxy/${container.id}/mcp`,
+    );
+
+    // getEndpointUrl (owner-only) still returns the raw URL — the split is the point.
+    expect(userMcpsService.getEndpointUrl(external, "https://x")).toBe(
+      "https://secret-backend.internal/mcp",
+    );
+  });
+
+  test("toPublicMcp drops the raw external_endpoint and created_by_user_id", () => {
+    const mcp = makeRow({
+      endpoint_type: "external",
+      external_endpoint: "https://secret-backend.internal/mcp",
+      created_by_user_id: "11111111-1111-4111-8111-111111111111",
+    });
+    const pub = userMcpsService.toPublicMcp(mcp);
+    expect(pub.external_endpoint).toBeNull();
+    expect(pub.created_by_user_id).toBeNull();
+    // Non-sensitive fields survive (still discoverable).
+    expect(pub.id).toBe(mcp.id);
+    expect(pub.name).toBe(mcp.name);
+    expect(JSON.stringify(pub)).not.toContain("secret-backend.internal");
+    expect(JSON.stringify(pub)).not.toContain("11111111-1111-4111-8111-111111111111");
+  });
+
+  test("toVisibleMcpForOrganization preserves owner rows and redacts foreign rows", () => {
+    const mcp = makeRow({
+      endpoint_type: "external",
+      external_endpoint: "https://secret-backend.internal/mcp",
+      created_by_user_id: "11111111-1111-4111-8111-111111111111",
+      organization_id: ORG,
+    });
+
+    const owner = userMcpsService.toVisibleMcpForOrganization(mcp, ORG);
+    expect(owner.external_endpoint).toBe("https://secret-backend.internal/mcp");
+    expect(owner.created_by_user_id).toBe("11111111-1111-4111-8111-111111111111");
+
+    const foreign = userMcpsService.toVisibleMcpForOrganization(mcp, OTHER_ORG);
+    expect(foreign.external_endpoint).toBeNull();
+    expect(foreign.created_by_user_id).toBeNull();
+    expect(JSON.stringify(foreign)).not.toContain("secret-backend.internal");
   });
 });

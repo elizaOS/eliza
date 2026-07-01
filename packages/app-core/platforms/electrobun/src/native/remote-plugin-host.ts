@@ -261,7 +261,7 @@ class SubprocessWorkerHandle implements RemotePluginWorkerHandle {
 
   postMessage(message: RemotePluginWorkerMessage): void {
     if (!this.proc.stdin) return;
-    const writer = this.proc.stdin as unknown as { write(data: string): void };
+    const writer = this.proc.stdin as { write(data: string): void };
     writer.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -291,9 +291,7 @@ class SubprocessWorkerHandle implements RemotePluginWorkerHandle {
 
   private async readStdout(): Promise<void> {
     if (!this.proc.stdout) return;
-    const reader = (
-      this.proc.stdout as unknown as ReadableStream<Uint8Array>
-    ).getReader();
+    const reader = (this.proc.stdout as ReadableStream<Uint8Array>).getReader();
     try {
       // eslint-disable-next-line no-constant-condition
       while (true) {

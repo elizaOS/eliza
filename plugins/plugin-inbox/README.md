@@ -12,11 +12,16 @@ Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaste
 
 ### Action
 
-`INBOX` — op-based dispatch. Ops: `list`, `search`, `summarize`.
+`INBOX` — op-based dispatch. Ops: `list`, `search`, `summarize`, `triage`, `reply`, `snooze`, `archive`, `approve`.
 
 - `list` — fan-out fetch across all connected platform adapters (gmail, discord, telegram, signal, imessage, whatsapp), dedupe by message id and thread topic, return merged feed ordered by recency.
 - `search` — search across selected platforms by `query`.
 - `summarize` — return a per-platform count plus a single rolled-up summary.
+- `triage` — list persisted unresolved triage queue entries, optionally filtered by classification.
+- `reply` — draft a connector-backed response, then send after explicit confirmation.
+- `snooze` — hide a triage entry until an ISO timestamp.
+- `archive` — archive through the connector adapter and resolve on success.
+- `approve` — send the stored draft or suggested response.
 
 Fetchers are injectable via `setInboxFetchers` for tests. Owner-only.
 
@@ -27,19 +32,28 @@ Fetchers are injectable via `setInboxFetchers` for tests. Owner-only.
 
 ### Service
 
-`InboxService` (`src/inbox/service.ts`) — `triage()`, `curate()`, `triageWithCuration()`, `search()`, `list()`, `digest()`, `resolve()`. No dependency on `@elizaos/plugin-personal-assistant`.
+`InboxService` (`src/inbox/service.ts`) — `triage()`, `curate()`, `triageWithCuration()`, `search()`, `list()`, `digest()`, `resolve()`, `snooze()`. No dependency on `@elizaos/plugin-personal-assistant`.
+
+### Routes
+
+- `GET /api/lifeops/inbox/triage` — list unresolved entries.
+- `POST /api/lifeops/inbox/triage` — classify/persist inbound messages.
+- `POST /api/lifeops/inbox/:id/reply` — draft or send a reply.
+- `POST /api/lifeops/inbox/:id/snooze` — set `snoozed_until`.
+- `POST /api/lifeops/inbox/:id/archive` — archive and resolve on connector success.
+- `POST /api/lifeops/inbox/:id/approve` — send the stored draft/suggested response.
 
 ### Schema
 
 `pgSchema('app_inbox')` with three tables:
 
-- `triage_decisions` — history of decisions per (thread, decision-event).
-- `snoozed` — threads to re-surface at `wake_at`.
-- `archived` — threads explicitly removed from the active inbox.
+- `life_inbox_triage_entries` — per-thread triage decisions, draft replies, snooze timestamps, and resolution state.
+- `life_inbox_triage_examples` — owner-labeled few-shot examples for triage classification.
+- `life_email_unsubscribes` — unsubscribe attempts and outcomes.
 
 ### View
 
-`/inbox` — `InboxView` component. Minimal placeholder UI (header, channel filter chips, empty thread list) until the full triage drawer / snooze picker / approval queue lands.
+`/inbox` — `InboxView` component for the cross-channel inbox surface.
 
 ## Layout
 
@@ -49,13 +63,15 @@ src/
   plugin.ts                           inboxPlugin Plugin object
   types.ts                            TriageDecision, ThreadSummary, channel + decision enums
   actions/
-    inbox.ts                          INBOX umbrella action (list/search/summarize fan-out)
+    inbox.ts                          INBOX umbrella action (fan-out + triage queue ops)
+  routes/
+    inbox-routes.ts                   Triage read/write + reply/snooze/archive/approve routes
   providers/
     inbox-triage.ts                   inboxTriage provider — pending triage queue (position 14)
     cross-channel-context.ts          crossChannelContext provider — sender cross-channel history (position -3)
   inbox/
-    service.ts                        InboxService — triage/curate/search/list/digest/resolve
-    repository.ts                     InboxRepository — raw SQL over app_lifeops.life_inbox_triage_*
+    service.ts                        InboxService — triage/curate/search/list/digest/resolve/snooze
+    repository.ts                     InboxRepository — raw SQL over app_inbox.life_inbox_triage_*
     types.ts                          InboundMessage, TriageEntry, TriageClassification, etc.
     triage-classifier.ts              LLM classification of inbound messages
     email-curation.ts                 Email curation engine (save/archive/delete decisions)
@@ -95,5 +111,6 @@ None. Channel credentials are read from each provider plugin (`plugin-discord`, 
 - **`@elizaos/plugin-sql` must be loaded first.** The schema registration relies on `runtime.db`.
 - **No Android SMS.** SMS routing intentionally stays in `plugin-messages`. Do not add SMS channel handling here.
 - **Schema name is `app_inbox`** to avoid collision with any host-app `inbox` table the runtime might also surface.
+- **Snooze is additive.** `snoozed_until` is added to `life_inbox_triage_entries`; the migration repairs old targets and maps legacy `app_lifeops` rows with `NULL AS snoozed_until`.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. Both must be run for a complete build.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger requirements, ESM/module standards, and the cloud-frontend visual-review gate (if any of this plugin's UI ends up in `cloud-frontend`).

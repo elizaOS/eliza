@@ -228,6 +228,7 @@ export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
 export * from "./runtime/version.ts";
 export * from "./security/index.ts";
+export * from "./services/agent-backup.ts";
 export * from "./services/agent-export.ts";
 // Runtime owner-approval queue promoted from LifeOps (Slice 4). Named
 // re-export — same rationale as the knowledge graph / pending-prompts below:

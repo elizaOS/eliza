@@ -25,6 +25,7 @@ import { MockAppProvider } from "../../../storybook/mock-providers";
 import { readViewInteractions } from "../../../view-telemetry";
 import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
 import { buildConversationNav } from "../conversation-nav";
+import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import type { ShellMessage } from "../shell-state";
 import type { ConversationNav, ShellController } from "../useShellController";
 
@@ -65,6 +66,62 @@ function threadFor(activeId: string): ShellMessage[] {
     },
     { id: `${activeId}-m3`, role: "user", content: "got it", createdAt: 3 },
   ];
+}
+
+function BackgroundHome(): React.JSX.Element {
+  return (
+    <div
+      data-testid="background-home-content"
+      style={{
+        height: "100%",
+        padding: "64px 28px",
+        color: "rgba(255,255,255,0.9)",
+      }}
+    >
+      <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Home</h1>
+      <p style={{ marginTop: 12, maxWidth: 340, lineHeight: 1.5 }}>
+        Swipe this background while chat is open. The real launcher rail should
+        still receive the drag.
+      </p>
+    </div>
+  );
+}
+
+function BackgroundLauncher({
+  onNavigateHomeFromEdge,
+}: {
+  onNavigateHomeFromEdge?: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      data-testid="background-launcher-content"
+      style={{
+        height: "100%",
+        padding: "64px 28px",
+        color: "rgba(255,255,255,0.9)",
+      }}
+    >
+      <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>Launcher</h1>
+      <p style={{ marginTop: 12, maxWidth: 340, lineHeight: 1.5 }}>
+        Chat is still open; this page was reached by a background swipe.
+      </p>
+      <button
+        type="button"
+        data-testid="background-launcher-home-button"
+        onClick={onNavigateHomeFromEdge}
+        style={{
+          marginTop: 20,
+          border: "1px solid rgba(255,255,255,0.35)",
+          borderRadius: 999,
+          padding: "8px 14px",
+          color: "white",
+          background: "rgba(255,255,255,0.12)",
+        }}
+      >
+        Home
+      </button>
+    </div>
+  );
 }
 
 function Harness(): React.JSX.Element {
@@ -180,6 +237,8 @@ function Harness(): React.JSX.Element {
     transcriptionMode: false,
     transcript: "",
     speaking: false,
+    speak: () => {},
+    stopSpeaking: () => {},
     agentVoiceMuted: false,
     needsAudioUnlock: false,
     modelStatus: {
@@ -225,13 +284,10 @@ function Harness(): React.JSX.Element {
         overflow: "hidden",
       }}
     >
-      <div style={{ padding: "40px 24px", maxWidth: 640 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0 }}>Workspace</h1>
-        <p style={{ opacity: 0.7, marginTop: 10, lineHeight: 1.6 }}>
-          The floating chat below is the REAL ContinuousChatOverlay. Swiping the
-          open thread navigates between live conversations.
-        </p>
-      </div>
+      <HomeLauncherSurface
+        home={<BackgroundHome />}
+        launcher={<BackgroundLauncher />}
+      />
       <ContinuousChatOverlay controller={controller} />
     </div>
   );

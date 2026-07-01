@@ -7,6 +7,7 @@ import type { DatabaseProviderType } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient } from "./client-base";
 import type {
+  AccountConnectRequest,
   ApiError,
   ChatActionResultSummary,
   ChatFailureKind,
@@ -428,6 +429,8 @@ declare module "./client-base" {
        * as a normal assistant reply.
        */
       failureKind?: ChatFailureKind;
+      /** Structured "connect another account" request from CONNECT_ACCOUNT. */
+      accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -451,6 +454,8 @@ declare module "./client-base" {
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */
       failureKind?: ChatFailureKind;
+      /** See sendConversationMessage above. */
+      accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -1147,6 +1152,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
     failureKind?: ChatFailureKind;
+    accountConnect?: AccountConnectRequest;
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];
   }>(`/api/conversations/${encodeURIComponent(id)}/messages`, {

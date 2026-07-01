@@ -23,6 +23,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  */
 export default defineConfig({
   ...baseConfig,
+  resolve: {
+    ...baseConfig.resolve,
+    preserveSymlinks: false,
+  },
   test: {
     ...baseConfig.test,
     setupFiles: [path.join(here, "test/setup.ts")],

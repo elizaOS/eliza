@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import {
+  DEFAULT_LAUNCHER_FAVORITES,
   LAUNCHER_DOCK_LIMIT,
   LAUNCHER_STORAGE_KEY,
 } from "../../state/launcher-layout";
@@ -63,12 +64,39 @@ afterEach(() => {
 });
 
 describe("Launcher", () => {
-  it("renders every view as a names-only icon tile", () => {
+  it("renders the default Chat and Settings dock without duplicating page tiles", () => {
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
-    expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
+    const dock = within(screen.getByTestId("launcher-dock"));
+    expect(dock.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(dock.getByTestId("launcher-tile-settings")).toBeTruthy();
+    const page = within(screen.getByTestId("launcher-page-0"));
+    expect(page.queryByTestId("launcher-tile-chat")).toBeNull();
+    expect(page.queryByTestId("launcher-tile-settings")).toBeNull();
     // Label text is present (names below icons), no descriptions.
     expect(screen.getByText("Chat")).toBeTruthy();
+  });
+
+  it("renders the seeded dock in grouped curated mode and keeps docked apps off the page", () => {
+    render(
+      <Launcher
+        entries={[
+          entry("chat", "Chat"),
+          entry("settings", "Settings"),
+          entry("wallet", "Wallet"),
+        ]}
+        pageGroups={[["chat", "settings", "wallet"]]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    const dock = within(screen.getByTestId("launcher-dock"));
+    expect(dock.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(dock.getByTestId("launcher-tile-settings")).toBeTruthy();
+
+    const page = within(screen.getByTestId("launcher-page-0"));
+    expect(page.queryByTestId("launcher-tile-chat")).toBeNull();
+    expect(page.queryByTestId("launcher-tile-settings")).toBeNull();
+    expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
   });
 
   it("preserves the manual order from a migrated Springboard layout", () => {
@@ -403,7 +431,8 @@ describe("Launcher controlled favorites (desktop tabs)", () => {
   it("clamps the dock to LAUNCHER_DOCK_LIMIT even when more are supplied", () => {
     // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
     // A caller that supplies more than the cap must still render at most
-    // LAUNCHER_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock).
+    // LAUNCHER_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock), and those
+    // docked ids must not duplicate in the page grid.
     const ids = ["a", "b", "c", "d", "e", "f"];
     render(
       <Launcher
@@ -417,6 +446,17 @@ describe("Launcher controlled favorites (desktop tabs)", () => {
       .getByTestId("launcher-dock")
       .querySelectorAll('[data-testid^="launcher-tile-"]');
     expect(dockTiles).toHaveLength(LAUNCHER_DOCK_LIMIT);
+    expect(
+      within(screen.getByTestId("launcher-dock")).getByTestId(
+        "launcher-tile-a",
+      ),
+    ).toBeTruthy();
+
+    const page = within(screen.getByTestId("launcher-page-0"));
+    expect(page.queryByTestId("launcher-tile-a")).toBeNull();
+    expect(page.queryByTestId("launcher-tile-d")).toBeNull();
+    expect(page.getByTestId("launcher-tile-e")).toBeTruthy();
+    expect(page.getByTestId("launcher-tile-f")).toBeTruthy();
   });
 });
 
@@ -426,6 +466,10 @@ describe("Launcher dock favorites (local, uncontrolled)", () => {
   const MANY = ["a", "b", "c", "d", "e"].map((id) =>
     entry(id, id.toUpperCase()),
   );
+
+  it("keeps the seed list stable for standalone favorite tests", () => {
+    expect(DEFAULT_LAUNCHER_FAVORITES).toEqual(["chat", "settings"]);
+  });
 
   it("unpins a favorited view from the dock", () => {
     // `notes` and `archive` are not default-dock ids (#9144), so the seeded dock
@@ -468,6 +512,3 @@ describe("Launcher dock favorites (local, uncontrolled)", () => {
     expect(stored.favorites).toEqual(["b", "c", "d", "e"]);
   });
 });
-
-// Keep `within` referenced for future grouped-dock assertions without lint noise.
-void within;

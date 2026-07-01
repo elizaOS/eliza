@@ -18,6 +18,7 @@ import {
   type MessageAttachmentContentType,
 } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
+import { isStreamGenerationError } from "../api/client-base";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
@@ -103,6 +104,33 @@ function asStringList(value: unknown): string[] {
     return value.split(/[\n,;]/);
   }
   return [];
+}
+
+/**
+ * Map a send/stream failure (HTTP status + error `kind`) to a user-facing notice
+ * so a stalled turn is never silent dead air. Shared by the main-chat send path
+ * and the action/inbox/connector send path — both must surface the same
+ * status-specific message. (#10231)
+ */
+export function buildSendFailureNotice(err: unknown): string {
+  const status = (err as { status?: number }).status;
+  const kind = (err as { kind?: string }).kind;
+  if (status === 401 || status === 403) {
+    return "Your session expired — sign in again and resend your message.";
+  }
+  if (status === 429) {
+    return "The agent is busy right now — wait a few seconds and resend.";
+  }
+  if (status === 503 || status === 502) {
+    return "The agent is still waking up — give it a moment and resend.";
+  }
+  if (kind === "timeout") {
+    return "The agent took too long to respond — give it a moment and resend.";
+  }
+  if (kind === "network") {
+    return "Couldn't reach the agent — check your connection and resend.";
+  }
+  return "That message didn't go through — please resend.";
 }
 
 function abortServerConversationTurn(
@@ -995,6 +1023,9 @@ export function useChatSend(deps: UseChatSendDeps) {
             mode: "complete",
             fullText: data.text,
             ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+            ...(data.accountConnect
+              ? { accountConnect: data.accountConnect }
+              : {}),
             ...(data.reasoning ? { reasoning: data.reasoning } : {}),
           });
         } else if (data.failureKind) {
@@ -1005,6 +1036,17 @@ export function useChatSend(deps: UseChatSendDeps) {
             messageId: assistantMsgId,
             mode: "fail",
             failureKind: data.failureKind,
+          });
+        } else if (data.accountConnect) {
+          // Streaming text already matched but the server flagged a
+          // "connect another account" request — stamp it (via complete, which
+          // carries accountConnect) so the renderer swaps in the
+          // AccountConnectBlock while keeping the already-streamed text.
+          applyStreamingTextModification(setConversationMessages, {
+            messageId: assistantMsgId,
+            mode: "complete",
+            fullText: data.text,
+            accountConnect: data.accountConnect,
           });
         }
         if (data.usage) {
@@ -1068,6 +1110,32 @@ export function useChatSend(deps: UseChatSendDeps) {
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
           dropEmptyAssistantPlaceholder(assistantMsgId);
+          return;
+        }
+
+        // A terminal SSE `error` event that carried a structured gate must
+        // surface that gate on the assistant turn — the same UI the completed
+        // response shows — instead of collapsing to a generic error notice that
+        // loses the actionable signal (#10231). `no_provider` → the provider
+        // gate; a connect-account request → the AccountConnectBlock.
+        if (
+          isStreamGenerationError(err) &&
+          (err.failureKind || err.accountConnect)
+        ) {
+          if (err.failureKind) {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "fail",
+              failureKind: err.failureKind,
+            });
+          } else if (err.accountConnect) {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "complete",
+              fullText: "",
+              accountConnect: err.accountConnect,
+            });
+          }
           return;
         }
 
@@ -1194,20 +1262,8 @@ export function useChatSend(deps: UseChatSendDeps) {
           // idle timeout is 60s — without this the user just sees the dots
           // vanish and nothing replace them, reading as "my message was lost").
           dropEmptyAssistantPlaceholder(assistantMsgId);
-          const kind = (err as { kind?: string }).kind;
           const isAuth = status === 401 || status === 403;
-          const notice = isAuth
-            ? "Your session expired — sign in again and resend your message."
-            : status === 429
-              ? "The agent is busy right now — wait a few seconds and resend."
-              : status === 503 || status === 502
-                ? "The agent is still waking up — give it a moment and resend."
-                : kind === "timeout"
-                  ? "The agent took too long to respond — give it a moment and resend."
-                  : kind === "network"
-                    ? "Couldn't reach the agent — check your connection and resend."
-                    : "That message didn't go through — please resend.";
-          setActionNotice(notice, "error", 8_000);
+          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
           // Reconcile from the server for non-auth errors — loadConversationMessages
           // no longer wipes the thread on transient failures (404-only clear), so
           // this is safe; skip on auth where the reload would just fail again.
@@ -1344,6 +1400,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
   }, [flushQueuedChatSends]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
   const sendChatText = useCallback(
     async (
       rawInput: string,
@@ -1363,7 +1420,18 @@ export function useChatSend(deps: UseChatSendDeps) {
         chatSendQueueRef.current.push({
           rawInput,
           channelType: options?.channelType ?? "DM",
-          conversationId: options?.conversationId,
+          // Pin the target conversation at ENQUEUE, not at drain (#10700). The
+          // shell send() path (voice converse turns + tapped suggestions) omits
+          // conversationId, so without this the queued turn resolved its target
+          // LATE in runQueuedChatSend as `activeConversationIdRef.current` — and
+          // a new-chat between enqueue and drain rerouted it to the wrong (new)
+          // conversation. Snapshot the active conversation now so the turn lands
+          // where it was sent. When there is NO active conversation (cold open),
+          // stay null and let the drain-time create-or-join resolve it, so a
+          // rapid second cold-open turn still joins the one created conversation
+          // rather than spawning its own.
+          conversationId:
+            options?.conversationId ?? activeConversationIdRef.current ?? null,
           images: options?.images,
           metadata: buildChatViewMetadata(tab, options?.metadata),
           resolve,
@@ -1599,6 +1667,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             dropEmptyAssistantPlaceholder(assistantMsgId);
             return;
           }
+          // Surface a status-specific notice so an inbox/connector send that
+          // 5xxs, times out, or auth-fails is never silent dead air — the
+          // main-chat send path already does this; this one did not (#10231).
+          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
           await loadConversationMessages(convId);
         } finally {
           // Belt-and-braces: cancel any frame still pending (idempotent).

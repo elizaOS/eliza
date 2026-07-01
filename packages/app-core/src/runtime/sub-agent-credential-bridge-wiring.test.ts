@@ -101,9 +101,7 @@ describe("registerSubAgentCredentialBridge — parent runtime", () => {
       credentialKeys: ["OPENAI_API_KEY"],
     });
     expect(scope.credentialScopeId).toMatch(/^cred_scope_[0-9a-f]{16}$/);
-    expect(scope.sensitiveRequestIds).toEqual([
-      `cred_${scope.credentialScopeId}`,
-    ]);
+    expect(scope.sensitiveRequestIds).toEqual([]);
 
     await bridge.tunnelCredential({
       childSessionId: "pty-1-abc",

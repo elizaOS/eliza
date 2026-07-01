@@ -5,8 +5,7 @@ import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageMod
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
   BITROUTER_NITRO_TEXT_MODEL,
-  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-  CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+  CEREBRAS_NATIVE_TEXT_MODELS,
   getGroqApiModelId,
   isGroqNativeModel,
   isVastNativeModel,
@@ -28,6 +27,7 @@ let cerebrasClient: ReturnType<typeof createOpenAI> | null = null;
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
+const CEREBRAS_NATIVE_TEXT_MODEL_SET = new Set<string>(CEREBRAS_NATIVE_TEXT_MODELS);
 
 function getGroqClient() {
   if (!groqClient) {
@@ -198,7 +198,7 @@ function normalizeCerebrasModelId(model: string): string {
   // Strip provider/gateway namespace prefixes AND the OpenRouter routing-variant
   // suffix (:nitro / :floor / :free / …). A dedicated agent's bundled plugin
   // emits ids like "openai/gpt-oss-120b:nitro" / "openai/zai-glm-4.7:nitro" for
-  // what are really the bare Cerebras models gpt-oss-120b / zai-glm-4.7. Without
+  // what are really bare Cerebras models. Without
   // this, isCerebrasNativeModel() misses them, so they skip cerebras-direct and
   // fall through to BitRouter → the PUBLIC api.bitrouter.ai → OpenRouter, which
   // 429s the :nitro variant (3 retries → 26-55s chats) or 500s "pricing
@@ -218,9 +218,7 @@ function normalizeCerebrasModelId(model: string): string {
 
 function isCerebrasNativeModel(model: string): boolean {
   const modelId = normalizeCerebrasModelId(model);
-  return (
-    modelId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL || modelId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
-  );
+  return CEREBRAS_NATIVE_TEXT_MODEL_SET.has(modelId);
 }
 
 /**
@@ -430,7 +428,7 @@ export function getLanguageModel(model: string) {
     return client.languageModel(apiModelId);
   }
 
-  // Cerebras-native default IDs (gpt-oss-120b, zai-glm-4.7) → Cerebras direct.
+  // Cerebras-native bare IDs (gemma-4-31b, gpt-oss-120b, zai-glm-4.7) → Cerebras direct.
   // Cerebras-only by design: a 429 must surface so the chat path can return the
   // graceful "model provider rate-limited" reply rather than silently failing
   // over to OpenRouter on a different provider. Wrapped in withRateLimitFailFast

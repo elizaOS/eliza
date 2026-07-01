@@ -17,6 +17,10 @@ import {
   LAYOUT_SHIFT_OBSERVER_INIT,
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
+import {
+  touchLongPress,
+  touchSwipe,
+} from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
@@ -201,48 +205,20 @@ async function swipeRight(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
-// A left touch-swipe across an element, dispatched as real `pointerType:"touch"`
-// events (Playwright's mouse API emits mouse pointers, which grab pointer
-// capture; touch does not — matching the device the launcher pager targets).
+// A left touch-swipe across an element, driven through Chromium's real touch
+// input path. This keeps the mobile launcher pager honest: hit-testing,
+// touch-action, implicit capture, and pointer cancellation all stay in play.
 async function touchSwipeLeft(page, testId) {
-  await page.getByTestId(testId).evaluate((el) => {
-    const box = el.getBoundingClientRect();
-    const y = box.y + box.height * 0.4;
-    const startX = box.x + box.width * 0.82;
-    const endX = box.x + box.width * 0.14;
-    const fire = (type, x) =>
-      el.dispatchEvent(
-        new PointerEvent(type, {
-          pointerId: 7,
-          pointerType: "touch",
-          isPrimary: true,
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: y,
-        }),
-      );
-    fire("pointerdown", startX);
-    const steps = 10;
-    for (let i = 1; i <= steps; i += 1) {
-      fire("pointermove", startX + ((endX - startX) * i) / steps);
-    }
-    fire("pointerup", endX);
+  await touchSwipe(page, `[data-testid="${testId}"]`, -280, 0, {
+    steps: 10,
+    stepDelayMs: 16,
   });
 }
 
 // A STATIONARY hold past the long-press window. On the curated launcher this
 // must NOT enter edit mode (the launcher is read-only, fixed placement).
 async function longPressHold(page, tileTestId) {
-  const btn = page.getByTestId(tileTestId).locator("button").first();
-  const box = await btn.boundingBox();
-  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450), no movement
-  await page.mouse.up();
+  await touchLongPress(page, `[data-testid="${tileTestId}"] button`, 600);
 }
 async function waitForSurfacePageSettled(p, pageName) {
   await p.waitForFunction((expectedPage) => {
@@ -274,6 +250,8 @@ try {
   const mobileContext = await browser.newContext({
     viewport: { width: 402, height: 874 },
     deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
     recordVideo: {
       dir: outDir,
       size: { width: 402, height: 874 },
@@ -281,6 +259,25 @@ try {
   });
   const mobile = await mobileContext.newPage();
   mobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  await mobile.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    const coarsePointer = (query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    });
+    window.matchMedia = (query) =>
+      /hover:\s*hover|pointer:\s*fine/.test(query)
+        ? coarsePointer(query)
+        : real(query);
+  });
   // Install the shared layout-shift PerformanceObserver BEFORE any paint, so
   // every shift during the home settle lands in window.__ELIZA_LAYOUT_SHIFTS__
   // (the same contract HomeScreen's dev observer + the KPI specs use). We read
@@ -291,6 +288,13 @@ try {
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
+  assert(
+    (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-next").count()) === 0,
+    "mobile coarse-pointer: no rail or launcher edge buttons on home",
+  );
   assert(
     (await mobile.getByTestId("home-launcher-surface").getAttribute(
       "data-page",
@@ -393,6 +397,13 @@ try {
 
   await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
   await waitForSurfacePageSettled(mobile, "launcher");
+  assert(
+    (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-prev").count()) === 0 &&
+      (await mobile.getByTestId("launcher-pager-edge-next").count()) === 0,
+    "mobile coarse-pointer: no rail or launcher edge buttons on launcher",
+  );
 
   // ── Curated apps page — the everyday apps render as tiles, in curated order.
   for (const id of ["wallet", "automations", "browser", "settings"]) {
@@ -401,9 +412,21 @@ try {
       `curated app "${id}" renders on the launcher apps page`,
     );
   }
-  // ── Removed / hidden surfaces never tile: shell self-links, removed apps,
-  // wallet sub-views, and the deduped duplicate registrations.
-  for (const id of ["chat", "views", "shopify", "hyperliquid", "inventory", "triggers"]) {
+  // ── Default favorites stay in the dock and out of the page grid.
+  assert(
+    await mobile.getByTestId("launcher-dock").getByText("Chat").isVisible(),
+    "default favorite Chat renders in the launcher dock",
+  );
+  assert(
+    (await mobile
+      .getByTestId("launcher-page-0")
+      .getByTestId("launcher-tile-chat")
+      .count()) === 0,
+    "default favorite Chat is absent from the page grid (docked instead)",
+  );
+  // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
+  // and the deduped duplicate registrations.
+  for (const id of ["views", "shopify", "hyperliquid", "inventory", "triggers"]) {
     assert(
       (await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0,
       `"${id}" is absent from the launcher (removed/hidden/deduped)`,
@@ -479,7 +502,7 @@ try {
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
-  // (fixed placement, no reorder/pin/favorites dock). #3
+  // (fixed placement, no reorder/pin affordances). #3
   await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(
@@ -576,6 +599,55 @@ try {
   await waitForSurfacePageSettled(desktop, "launcher");
   await snap(desktop, "desktop-launcher");
   await desktop.close();
+
+  // #10717: the web/desktop `< >` edge buttons render ONLY on fine-pointer /
+  // hover-capable devices. The mobile path above explicitly emulates touch /
+  // coarse-pointer and asserts the buttons are absent; this page forces the
+  // fine-pointer media features before load to exercise + capture them.
+  const finePointer = await browser.newPage({
+    viewport: { width: 1180, height: 900 },
+  });
+  finePointer.on("pageerror", (e) => sink.errors.push(String(e)));
+  await finePointer.addInitScript(() => {
+    const real = window.matchMedia.bind(window);
+    const stub = (query) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    });
+    window.matchMedia = (query) =>
+      /hover: hover|pointer: fine/.test(query) ? stub(query) : real(query);
+  });
+  await finePointer.goto(url);
+  await finePointer.waitForSelector('[data-testid="home-launcher-surface"]');
+  await finePointer.waitForTimeout(400);
+  // On the HOME half the rail offers a `>` (→ launcher) and no `<` (home is the
+  // first view).
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-next").count()) === 1,
+    "desktop fine-pointer: `>` edge button present on home",
+  );
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-prev").count()) === 0,
+    "desktop fine-pointer: no `<` edge button on the first (home) view",
+  );
+  await snap(finePointer, "desktop-edge-buttons-home");
+  // Click `>` to page to the launcher; the `<` (→ home) now appears.
+  await finePointer.getByTestId("rail-pager-edge-next").click();
+  await waitForSurfacePageSettled(finePointer, "launcher");
+  assert(
+    (await finePointer.getByTestId("rail-pager-edge-prev").count()) === 1,
+    "desktop fine-pointer: `<` edge button (→ home) present on the launcher",
+  );
+  await snap(finePointer, "desktop-edge-buttons-launcher");
+  await finePointer.close();
 } finally {
   await browser.close();
 }

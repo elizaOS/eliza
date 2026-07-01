@@ -92,24 +92,32 @@ async function __hono_GET(
     return Response.json({ error: "MCP not found" }, { status: 404 });
   }
 
+  const isOwner = mcp.organization_id === authResult.user.organization_id;
+
   // Get stats if owner
   let stats = null;
-  if (mcp.organization_id === authResult.user.organization_id) {
+  if (isOwner) {
     stats = await userMcpsService.getStats(mcpId, mcp.organization_id);
   }
 
   // Get endpoint URL
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
-  const endpointUrl = userMcpsService.getEndpointUrl(mcp, baseUrl);
+  const endpointUrl = isOwner
+    ? userMcpsService.getEndpointUrl(mcp, baseUrl)
+    : userMcpsService.getPublicProxyUrl(mcp, baseUrl);
+  const visibleMcp = userMcpsService.toVisibleMcpForOrganization(
+    mcp,
+    authResult.user.organization_id,
+  );
 
   return Response.json({
     mcp: {
-      ...mcp,
+      ...visibleMcp,
       endpointUrl,
     },
     stats,
-    isOwner: mcp.organization_id === authResult.user.organization_id,
+    isOwner,
   });
 }
 

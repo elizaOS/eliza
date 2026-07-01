@@ -240,6 +240,64 @@ export function isCanonicalSecretKey(key: string): key is CanonicalSecretKey {
 }
 
 /**
+ * Name-based "does this config key carry a secret value" heuristic. Canonical
+ * (registry-declared) names always count; the open-ended suffix regex also
+ * catches third-party plugin secret fields (`*_API_KEY`, `*_TOKEN`, `*SECRET*`,
+ * `*PASSWORD*`, `*MNEMONIC*`, `*SEED*`, `*CREDENTIAL*`, `*PASSPHRASE*`). Used by
+ * the secret-swap layer (#10469) to derive the set of secret-bearing values to
+ * swap from config/registry rather than a hand-copied list.
+ */
+const SECRET_KEY_NAME_PATTERN =
+	/(?:API)?_?(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|PRIVATE_KEY)\b|SECRET|PASSWORD|MNEMONIC|CREDENTIAL/i;
+
+export function isSecretKey(key: string): boolean {
+	if (!key) return false;
+	if (isCanonicalSecretKey(resolveSecretKeyAlias(key))) return true;
+	return SECRET_KEY_NAME_PATTERN.test(key);
+}
+
+/**
+ * Derive the set of secret VALUES available to the runtime from secret-bearing
+ * config keys (env + resolved settings), keyed by their source name. This is the
+ * registry/config-derived catalog the swap layer seeds into a session's
+ * `knownSecrets` — so a plugin's `FOO_API_KEY` is swapped even if it never
+ * appears in a recognised inline token shape.
+ */
+/**
+ * Whether an env-derived value is secret-SHAPED enough to auto-seed into the
+ * swap catalog. A weak dictionary default (`password`, `changeme`) is a common
+ * English word, not a real secret: seeding it would swap that word out of any
+ * legitimate text that merely contains it (content corruption). Real opaque
+ * secrets — API keys, hex, base64, tokens, mnemonics-with-spaces — always carry
+ * a digit / uppercase / symbol / space, so they clear this. Explicitly
+ * configured character secrets never pass through here and always swap; this
+ * only narrows the open-ended env-name-derived catalog, never a declared secret.
+ */
+function isCatalogSeedableSecretValue(value: string): boolean {
+	const trimmed = value.trim();
+	// A single short all-lowercase-ASCII token has no entropy signal — treat it
+	// as a dictionary word rather than an opaque secret worth swapping verbatim.
+	return !(/^[a-z]+$/.test(trimmed) && trimmed.length < 16);
+}
+
+export function deriveKnownSecrets(
+	sources: Record<string, string | undefined>,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(sources)) {
+		if (
+			typeof value === "string" &&
+			value.length > 0 &&
+			isSecretKey(key) &&
+			isCatalogSeedableSecretValue(value)
+		) {
+			out[key] = value;
+		}
+	}
+	return out;
+}
+
+/**
  * Get the model provider name for a given API key.
  *
  * @param apiKey - The API key environment variable name

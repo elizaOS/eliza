@@ -6,7 +6,7 @@ import { PtyTerminalPane } from "./PtyTerminalPane";
 export type CockpitTerminalTier = "fast" | "smart";
 
 export interface CockpitInteractiveTerminalProps {
-  /** Which cerebras tier eliza-code leads with (fast = gpt-oss-120b). */
+  /** Which cerebras tier eliza-code leads with. */
   tier: CockpitTerminalTier;
   /** Optional working directory for the session. */
   cwd?: string;

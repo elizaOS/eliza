@@ -8,6 +8,7 @@
  * @module security
  */
 
+export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	applyCapabilityManifest,
 	assertHostAllowed,
@@ -21,6 +22,17 @@ export {
 	withCapabilityGovernance,
 } from "./capability-manifest.js";
 export {
+	CompositeEntityRecognizer,
+	canonicalKind,
+	type EntitySpan,
+	GazetteerEntityRecognizer,
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
+	RegexEntityRecognizer,
+	type RegexEntityRecognizerOptions,
+} from "./entity-recognizer.js";
+export {
 	buildSafeExternalPrompt,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
@@ -30,7 +42,6 @@ export {
 	wrapExternalContent,
 	wrapWebContent,
 } from "./external-content.js";
-
 export {
 	hardenIncomingUserMessage,
 	type IncomingMessageSecurityMetadata,
@@ -49,7 +60,18 @@ export {
 	type PiiDetector,
 	type PiiMatch,
 	ssnValid,
+	wifValid,
 } from "./pii-detectors.js";
+export {
+	DEFAULT_PSEUDONYM_BLOCKLIST,
+	PII_SWAP_DISABLED_KINDS_SETTING,
+	PII_SWAP_ENABLED_SETTING,
+	PII_SWAP_EXEMPT_VALUES_SETTING,
+	type PseudonymEntry,
+	PseudonymSession,
+	type PseudonymSessionOptions,
+	parsePiiSwapList,
+} from "./pii-pseudonymizer.js";
 export {
 	createSecretsRedactor,
 	// Pattern-based redaction

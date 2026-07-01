@@ -34,7 +34,7 @@ import {
   type LinkedAccountProviderId,
   type ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
-import { z } from "zod";
+import * as zod from "zod";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -64,6 +64,8 @@ import {
   type SubscriptionProvider,
 } from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 // ─── Account pool (single source of truth) ──────────────────────────
 //

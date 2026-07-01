@@ -1663,6 +1663,24 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	return cleaned;
 }
 
+/**
+ * Restore PII surrogates → real values at the final user-facing reply egress
+ * (#10827). The NER pseudonymization layer swaps real PII to surrogates on
+ * ingress and restores them at the tool-call execution boundary
+ * (`execute-planned-tool-call.ts`) — but a direct/terminal reply that does NOT
+ * go through a tool call was still shipping the surrogate to the user. Mirror
+ * the tool-call egress restore here so the user (and the persisted assistant
+ * message they read back) sees the real value, while the model, trajectory,
+ * logs, and providers upstream keep the surrogate. Best-effort + a zero-cost
+ * no-op when PII swap is disabled (no session on the trajectory context) or the
+ * text carries no surrogate. Scoped to the reply TEXT only — the `thought`
+ * (reasoning trajectory) is intentionally left pseudonymized.
+ */
+export function restorePiiInUserReplyText(text: string): string {
+	const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+	return piiSwapSession ? piiSwapSession.restoreInValue(text) : text;
+}
+
 function createV5ReplyStrategyResult(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1677,7 +1695,7 @@ function createV5ReplyStrategyResult(args: {
 		thought: args.thought,
 		actions: ["REPLY"],
 		providers: [],
-		text: args.text,
+		text: restorePiiInUserReplyText(args.text),
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
@@ -3753,9 +3771,20 @@ export function messageHandlerFromFieldResult(
 	// candidate backstop (which excludes creative-writing / explanation asks), so
 	// it is model-agnostic and regresses neither the direct-answer nor the
 	// poem-about-an-app path.
+	// An explicit, runnable spawn/delegation candidate in the model's OWN
+	// candidate list — for a message that structurally looks like coding work — is
+	// a firm "delegate this" commitment, and must win EVEN when the model ALSO
+	// (contradictorily) routed contexts=[simple] with a chatty complete-looking
+	// replyText. Previously this also required a non-simple planning context
+	// (`initialPlanningContexts.length > 0`); dropping that requirement closes the
+	// live bug where "build the app" came back with contexts=[simple] +
+	// candidateActionNames=[TASKS_SPAWN_AGENT], so shouldPreferCompleteDirectReply
+	// treated the spawn as "weak", suppressed it, and the bot said "I'm building
+	// it" while never spawning. Still safe: looksLikeCodingWorkRequest excludes
+	// creative-writing / explanation asks, and the candidate must be a REGISTERED
+	// delegation action — so this never fires on a poem or a how-do-I question.
 	const modelCommittedToDelegation =
 		!preemptDirect &&
-		initialPlanningContexts.length > 0 &&
 		looksLikeCodingWorkRequest(currentMessageText) &&
 		modelProvidedRunnableDelegationCandidate(
 			rawCandidateActions,
@@ -3927,7 +3956,7 @@ function filterRunnableCandidateActions(
 	});
 }
 
-function applyDirectCurrentCandidateBackstopToMessageHandler(
+export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	messageHandler: MessageHandlerResult,
 	runtimeContext:
 		| {
@@ -3960,6 +3989,37 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
+
+	// The structured-envelope path (messageHandlerFromFieldResult) already refuses
+	// to force-plan over a finished answer whose only planning signals are weak,
+	// injectable ones (a simple/general context + search/shell-class candidates)
+	// via shouldPreferCompleteDirectReply. The plain-text fallback lands here
+	// instead and previously skipped that valve, so a COMPLETE plain-text answer
+	// ("Your lucky number is 4291." / a solved logic puzzle) that this backstop
+	// happened to tag with an inferred WEB_SEARCH candidate got promoted to
+	// requiresTool=true — forcing a pointless web search + a slow extra planner
+	// round, even though the identical answer in JSON form (contexts=[simple])
+	// went direct. Apply the same structural valve here so the two Stage-1 shapes
+	// route identically. Live-info stays correct: its Stage-1 reply is an ack
+	// ("Checking the price now."), not a complete answer, so it fails
+	// looksLikeCompleteDirectReply and still forces the fetch. Coding/spawn stays
+	// correct too: a strong (non-weak) candidate fails hasOnlyWeakDirectReplyPlanningSignals.
+	// The extra !looksLikeCodingWorkRequest guard mirrors the structured path's
+	// !modelCommittedToDelegation gate: spawn-class actions (TASKS_SPAWN_AGENT, …)
+	// are ALSO in the weak-override set, so without this a plain-text "build the
+	// app" reply that read as a complete sentence could be kept direct and never
+	// spawn. Restricting the valve to non-coding-work turns keeps the build-spawn
+	// path intact while still short-circuiting finished plain-text answers.
+	if (
+		!looksLikeCodingWorkRequest(currentMessageText) &&
+		shouldPreferCompleteDirectReply({
+			replyText: String(messageHandler.plan.reply ?? ""),
+			candidateActions: runnableCandidateActions,
+			contexts: messageHandler.plan.contexts ?? [],
+		})
+	) {
+		return messageHandler;
+	}
 
 	const planningContexts = (messageHandler.plan.contexts ?? []).filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
@@ -4097,6 +4157,7 @@ const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
 		"TASKS",
 		"TASKS_SPAWN_AGENT",
 		"TERMINAL",
+		"WEB_FETCH",
 		"WEB_SEARCH",
 	].map(normalizeActionIdentifier),
 );
@@ -5096,6 +5157,78 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 	return false;
 }
 
+/**
+ * One entry per executed sub-planner step, projected for the parent loop. This
+ * is the structured record the outer planner's next turn reasons over so it can
+ * see which multi-step operations already succeeded and advance to the next one
+ * instead of re-dispatching the umbrella action from scratch (issue
+ * elizaOS/eliza#8007).
+ */
+interface SubPlannerSubStep {
+	action: string;
+	success: boolean;
+	summary?: string;
+	error?: string;
+}
+
+const SUB_STEP_SUMMARY_MAX_CHARS = 400;
+
+function truncateSubStepText(text: string): string {
+	const trimmed = text.trim();
+	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
+	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+}
+
+function collectSubPlannerSubSteps(
+	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
+): SubPlannerSubStep[] {
+	const subSteps: SubPlannerSubStep[] = [];
+	for (const step of subResult.trajectory.steps) {
+		if (!step.toolCall?.name || !step.result) continue;
+		const result = step.result;
+		const errorText =
+			typeof result.error === "string"
+				? result.error
+				: result.error instanceof Error
+					? result.error.message
+					: undefined;
+		const summarySource =
+			typeof result.text === "string" && result.text.trim().length > 0
+				? result.text
+				: typeof result.userFacingText === "string"
+					? result.userFacingText
+					: undefined;
+		subSteps.push({
+			action: step.toolCall.name,
+			success: result.success,
+			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
+			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
+		});
+	}
+	return subSteps;
+}
+
+/**
+ * Diagnostic, log-shaped projection of the full sub-planner trajectory. Renders
+ * every executed sub-step as `OK/FAIL <action>: <summary/error>` so the parent
+ * planner's tool-result message carries the progression (e.g.
+ * `OK provision_workspace, OK spawn_agent, FAIL submit_workspace`) instead of
+ * only the terminal step. Without this the outer LLM cannot tell that step 1
+ * already succeeded and re-dispatches the umbrella action on every CONTINUE
+ * turn.
+ */
+function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
+	return subSteps
+		.map((step) => {
+			const marker = step.success ? "OK" : "FAIL";
+			const detail = step.error ?? step.summary;
+			return detail
+				? `${marker} ${step.action}: ${detail}`
+				: `${marker} ${step.action}`;
+		})
+		.join("\n");
+}
+
 export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
@@ -5104,17 +5237,47 @@ export function subPlannerResultToPlannerToolResult(
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
+
+	// Aggregate every executed sub-step, not just the terminal one, so the
+	// parent planner's next turn can see which operations already succeeded and
+	// advance to the next op instead of re-running the umbrella action from the
+	// first step (issue elizaOS/eliza#8007). The per-step progression flows to
+	// the outer LLM through `text` (the diagnostic tool-result projection) and
+	// to downstream action context through `data.subSteps` /
+	// `data.completedSubActions`.
+	const subSteps = collectSubPlannerSubSteps(subResult);
+	const diagnosticText = renderSubStepDiagnosticText(subSteps);
+	const completedSubActions = subSteps
+		.filter((step) => step.success)
+		.map((step) => step.action);
+	const terminalData = lastStep?.result?.data;
+	const data =
+		terminalData || subSteps.length > 0
+			? {
+					...(terminalData ?? {}),
+					...(subSteps.length > 0
+						? {
+								subSteps,
+								completedSubActions,
+							}
+						: {}),
+				}
+			: undefined;
+
 	return {
 		success,
-		text: userFacingText,
+		// Diagnostic channel: the whole progression, so CONTINUE re-planning
+		// sees the completed steps. Falls back to the user-facing text when the
+		// sub-planner executed no discrete steps.
+		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
 		userFacingText,
-		data: lastStep?.result?.data,
+		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
 		// loop. A sub-action that returns `continueChain: false` (e.g.
-		// TASKS_SPAWN_AGENT — fire-and-forget) terminates the sub-planner,
+		// TASKS_SPAWN_AGENT, fire-and-forget) terminates the sub-planner,
 		// but without this the parent planner loop never sees the flag,
-		// evaluates CONTINUE, and re-runs the umbrella action — producing
+		// evaluates CONTINUE, and re-runs the umbrella action, producing
 		// duplicate spawns on a single user turn.
 		continueChain: lastStep?.result?.continueChain,
 	};
@@ -9591,12 +9754,17 @@ export class DefaultMessageService implements IMessageService {
 							url,
 							isRemote,
 						);
-						const isPlainText = contentType.startsWith("text/plain");
+						// Any text/* document (plain, csv, markdown — all on the chat
+						// upload allow-list) is readable as text; PDFs are extracted via
+						// unpdf. Previously only text/plain was handled, so csv/markdown/
+						// pdf were skipped and never seen by the agent (#10714).
+						const isText = contentType.startsWith("text/");
+						const isPdf = contentType.startsWith("application/pdf");
 
-						if (isPlainText) {
+						if (isText) {
 							runtime.logger.debug(
 								{ src: "service:message", documentUrl: attachment.url },
-								"Processing plain text document",
+								"Processing text document",
 							);
 
 							const textContent = buffer.toString("utf8");
@@ -9611,10 +9779,30 @@ export class DefaultMessageService implements IMessageService {
 								},
 								"Extracted text content",
 							);
+						} else if (isPdf) {
+							const { convertPdfToTextFromBuffer } = await import(
+								"../features/documents/utils.ts"
+							);
+							const textContent = await convertPdfToTextFromBuffer(
+								buffer,
+								processedAttachment.title ?? undefined,
+							);
+							processedAttachment.text = textContent;
+							processedAttachment.title =
+								processedAttachment.title || "PDF Document";
+
+							runtime.logger.debug(
+								{
+									src: "service:message",
+									textLength: textContent.length,
+									textPreview: textContent.substring(0, 100),
+								},
+								"Extracted PDF text content",
+							);
 						} else {
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
-								"Skipping non-plain-text document",
+								"Skipping unsupported document type",
 							);
 						}
 					} else if (

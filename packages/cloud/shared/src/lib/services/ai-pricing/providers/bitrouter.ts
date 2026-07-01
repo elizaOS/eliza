@@ -42,6 +42,18 @@ const FORCED_BITROUTER_PRICING: ReadonlyArray<{
   metadata?: Record<string, unknown>;
 }> = [
   {
+    model: "cerebras:gemma-4-31b",
+    provider: "cerebras",
+    productFamily: "language",
+    unit: "token",
+    inputUnitPrice: 0.00000099,
+    outputUnitPrice: 0.00000149,
+    sourceUrl: CEREBRAS_PRICING_SOURCE_URL,
+    metadata: {
+      sourceNote: "Cerebras Gemma 4 31B price converted from $0.99/$1.49 per 1M tokens.",
+    },
+  },
+  {
     model: "cerebras:gpt-oss-120b",
     provider: "cerebras",
     productFamily: "language",

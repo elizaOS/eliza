@@ -16,11 +16,14 @@ vi.mock("../../hooks/useWeather", () => ({
   }),
 }));
 
+import { __setAppValueForTests } from "../../state/app-store";
+import type { AppContextValue } from "../../state/types";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  __setAppValueForTests(null);
 });
 
 describe("DefaultHomeWidgets", () => {
@@ -63,5 +66,40 @@ describe("DefaultHomeWidgets", () => {
     const weather = screen.getByTestId("home-weather");
     expect(weather.className).toContain("col-span-2");
     expect(weather.className).toContain("row-span-2");
+  });
+
+  it("hides the time/date tile when the pref is set, keeping weather (#10706)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-25T14:30:00Z"));
+    __setAppValueForTests({
+      homeTimeWidgetHidden: true,
+    } as unknown as AppContextValue);
+
+    render(<DefaultHomeWidgets />);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    // The time tile is gone…
+    expect(screen.queryByTestId("home-time-widget")).toBeNull();
+    expect(
+      screen.getByTestId("default-home-widgets").textContent,
+    ).not.toContain("2:30");
+    // …but weather is independent and still shows immediately.
+    expect(screen.getByTestId("home-weather")).toBeTruthy();
+  });
+
+  it("shows the time tile by default (pref unset)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-25T14:30:00Z"));
+    __setAppValueForTests({
+      homeTimeWidgetHidden: false,
+    } as unknown as AppContextValue);
+
+    render(<DefaultHomeWidgets />);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByTestId("home-time-widget")).toBeTruthy();
   });
 });

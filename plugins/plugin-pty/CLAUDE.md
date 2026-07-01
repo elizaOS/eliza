@@ -31,7 +31,7 @@ that vendor's CLI — the TOS-unsafe tier. `eliza-code` (`packages/examples/code
 is a real interactive slash-command TUI **we own**: it already implements
 `/help`, `/clear`, `/task`, etc., and selects its model provider purely from env.
 Pointing it at Eliza Cloud's OpenAI-compatible endpoint routes inference to
-cerebras (`gpt-oss-120b` fast / `zai-glm-4.7` smart) — a real CLI with all slash
+cerebras (`gemma-4-31b` for both fast and smart) — a real CLI with all slash
 commands, on any device, with zero TOS exposure.
 
 ## Plugin surface

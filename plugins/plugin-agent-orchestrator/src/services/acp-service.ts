@@ -10,6 +10,7 @@ import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
+  diagnoseCodingAccountFallback,
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
@@ -608,6 +609,18 @@ export class AcpService extends Service {
         label: resolvedAccount.meta.label,
         strategy: resolvedAccount.meta.strategy,
       });
+    } else {
+      // A degraded pool must not hard-fail a spawn, but it must not degrade
+      // invisibly either (#9960). Warn loudly only when accounts are connected
+      // yet none are healthy — a benign empty pool stays quiet.
+      const fallbackWarning = diagnoseCodingAccountFallback(agentType);
+      if (fallbackWarning) {
+        this.log("warn", "coding account pool degraded to single-account", {
+          sessionId: id,
+          agentType,
+          detail: fallbackWarning,
+        });
+      }
     }
 
     const now = new Date();
@@ -693,7 +706,13 @@ export class AcpService extends Service {
       agentType,
       workdir,
       args,
-      env: this.buildEnv(opts.env, customCredentials, opts.model, agentType),
+      env: this.buildEnv(
+        opts.env,
+        customCredentials,
+        opts.model,
+        agentType,
+        id,
+      ),
     });
 
     if (result.code !== 0) {
@@ -808,6 +827,7 @@ export class AcpService extends Service {
         promptCredentials,
         opts.model,
         session.agentType,
+        sessionId,
       ),
       promptPreview: preview(text),
       promptLength: text.length,
@@ -1207,6 +1227,7 @@ export class AcpService extends Service {
         opts.customCredentials,
         opts.model,
         session.agentType,
+        id,
       ),
       // Auto-inherit the parent runtime's configured MCP servers (config
       // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
@@ -1484,7 +1505,13 @@ export class AcpService extends Service {
         // per-account CODEX_HOME is injected). buildEnv reseeds from
         // process.env, so without agentType here those parent keys would be
         // re-added and override the selected account on the cli transport.
-        env: this.buildEnv(opts.env, undefined, undefined, opts.agentType),
+        env: this.buildEnv(
+          opts.env,
+          undefined,
+          undefined,
+          opts.agentType,
+          opts.sessionId,
+        ),
         stdio: ["pipe", "pipe", "pipe"],
         // Place the child in its own process group so we can SIGTERM the
         // whole tree (acpx → npm exec → claude-agent-acp) via the negative
@@ -2116,6 +2143,7 @@ export class AcpService extends Service {
     customCredentials?: Record<string, string | undefined>,
     model?: string,
     agentType?: AgentType,
+    childSessionId?: string,
   ): NodeJS.ProcessEnv {
     // Deny-list-filtered, allowlisted, casing-canonicalized host env (see
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
@@ -2143,6 +2171,9 @@ export class AcpService extends Service {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
+    }
+    if (childSessionId?.trim()) {
+      env.PARALLAX_SESSION_ID = childSessionId.trim();
     }
     if (agentType === "claude" && env.CLAUDE_CODE_OAUTH_TOKEN) {
       // A specific subscription account was selected for this sub-agent. Claude

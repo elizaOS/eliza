@@ -209,6 +209,7 @@ export {
 export * from "./contracts/index.js";
 export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
 export {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";

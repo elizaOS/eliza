@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL, logger } from "@elizaos/core";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined" || !process.env) {
@@ -251,7 +251,9 @@ export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
 }
 
 function getCerebrasModel(runtime: IAgentRuntime): string | undefined {
-  return isCerebrasMode(runtime) ? getSetting(runtime, "CEREBRAS_MODEL") : undefined;
+  return isCerebrasMode(runtime)
+    ? getSetting(runtime, "CEREBRAS_MODEL", DEFAULT_CEREBRAS_TEXT_MODEL)
+    : undefined;
 }
 
 function getEvoLinkModel(runtime: IAgentRuntime): string | undefined {

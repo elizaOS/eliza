@@ -115,9 +115,18 @@ async function fulfillJson(
 ): Promise<void> {
   await route.fulfill({
     status,
-    contentType: "application/json",
-    body: JSON.stringify(body),
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "*",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "content-type": "application/json",
+    },
+    body: requestAllowsBody(route) ? JSON.stringify(body) : "",
   });
+}
+
+function requestAllowsBody(route: Route): boolean {
+  return route.request().method() !== "HEAD";
 }
 
 // -- Seeded attention payloads (mirror home-widget-priority.spec) -------------
@@ -326,7 +335,10 @@ async function routeFirstRunIncomplete(
       await route.fallback();
       return;
     }
-    await fulfillJson(route, { complete: false, cloudProvisioned: false });
+    await fulfillJson(route, {
+      complete: state.firstRunPosts.length > 0,
+      cloudProvisioned: false,
+    });
   });
   await page.route("**/api/first-run", async (route) => {
     if (route.request().method() !== "POST") {
@@ -381,6 +393,18 @@ export async function installHomeRoutes(
       totalBuffered: 0,
       replayed: true,
     });
+  });
+
+  await page.route("**/api/coding-agents", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await fulfillJson(route, {});
+      return;
+    }
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, []);
   });
 
   // Local-inference shell-level GETs — a fresh agent has no local model, so an
@@ -717,13 +741,13 @@ export const FINANCES_TESTID = "chat-widget-finances-alerts";
 export const GOALS_TESTID = "widget-goals-attention";
 export const NOTIFICATIONS_TESTID = "widget-notifications";
 
-// First-run runtime/provider buttons live in the floating runtime chooser. The
-// headless conductor still owns backup/tutorial/cloud-agent ChoiceWidgets in the
-// transcript, but runtime/provider UI must not duplicate there.
+// First-run runtime/provider buttons live in the real chat transcript. The
+// headless conductor seeds the ChoiceWidgets and the chat action channel routes
+// their sentinel values before they hit the server.
 const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
-  `first-run-chooser-${id}`;
+  `choice-__first_run__:runtime:${id}`;
 const PROVIDER_CHOICE = (id: "on-device" | "elizacloud" | "other"): string =>
-  `first-run-provider-${id}`;
+  `choice-__first_run__:provider:${id}`;
 const TUTORIAL_CHOICE = (id: "start" | "skip"): string =>
   `choice-__first_run__:tutorial:${id}`;
 const CLOUD_AGENT_CHOICE = (id: string): string =>
@@ -740,21 +764,15 @@ const REMOVED_ONBOARDING_TESTIDS = [
 
 /**
  * Assert the FIRST painted surface of a fresh profile is the real app shell plus
- * floating runtime chooser — and that NONE of the removed full-screen onboarding
- * testIds exist. The chat overlay may be present underneath, but runtime/provider
- * controls are owned by the chooser.
+ * the real chat overlay with in-transcript first-run choices — and that NONE of
+ * the removed full-screen onboarding testIds exist.
  */
 export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
-  const chooser = page.getByTestId("first-run-runtime-chooser");
-  await expect(chooser).toBeVisible({ timeout: 30_000 });
   await expect(
-    chooser.getByText("Choose how Eliza should run", { exact: true }),
+    page.getByText("First, where should your agent run?", { exact: false }),
   ).toBeVisible({ timeout: 20_000 });
-  await expect(
-    chooser.getByRole("button", { name: /Advanced setup/i }),
-  ).toBeVisible();
   // The removed full-screen onboarding gate must be absent.
   for (const testId of REMOVED_ONBOARDING_TESTIDS) {
     await expect(
@@ -762,10 +780,12 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
       `removed onboarding surface ${testId} must not render (flow is chat-first)`,
     ).toHaveCount(0);
   }
-  await expect(chooser.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
+  await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
     timeout: 15_000,
   });
-  await expect(chooser.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+  await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
+  await expect(page.getByTestId(RUNTIME_CHOICE("other"))).toBeVisible();
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   return chatOverlay;
 }
 
@@ -825,7 +845,7 @@ export async function completeOnboardingToHome(
 ): Promise<{ surface: Locator }> {
   const { state, tutorial = "skip" } = opts;
 
-  // 1) The chooser owns runtime/provider setup; no removed full-screen gate exists.
+  // 1) The chat transcript owns runtime/provider setup; no removed full-screen gate exists.
   await expectChatFirstOnboarding(page);
 
   // 2) Local runtime → on-device ("all-local") provider.
@@ -912,6 +932,141 @@ export async function completeCloudOnboardingToHome(
   return { surface };
 }
 
+export async function completeCloudInferenceOnboardingToHome(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" },
+): Promise<{ surface: Locator }> {
+  const { state, tutorial = "skip" } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  const local = page.getByTestId(RUNTIME_CHOICE("local"));
+  await expect(local).toBeEnabled({ timeout: 15_000 });
+  await click(local);
+
+  const cloudInference = page.getByTestId(PROVIDER_CHOICE("elizacloud"));
+  await expect(cloudInference).toBeVisible({ timeout: 15_000 });
+  await click(cloudInference);
+
+  await pickTutorial(page, click, tutorial);
+
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const surface = await expectPopulatedHome(page);
+
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for the cloud-inference local path",
+  ).toBe(1);
+
+  return { surface };
+}
+
+export async function completeOtherProviderSettingsHandoff(
+  page: Page,
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; tutorial?: "start" | "skip" },
+): Promise<{ surface: Locator }> {
+  const { state, tutorial = "skip" } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  const otherRuntime = page.getByTestId(RUNTIME_CHOICE("other"));
+  await expect(otherRuntime).toBeVisible({ timeout: 15_000 });
+  await click(otherRuntime);
+
+  const otherProvider = page.getByTestId(PROVIDER_CHOICE("other"));
+  await expect(otherProvider).toBeVisible({ timeout: 15_000 });
+  await click(otherProvider);
+
+  await pickTutorial(page, click, tutorial);
+
+  await expect(
+    page.getByText("Choose a model provider in Settings before sending", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Open Settings" })).toBeVisible(
+    { timeout: 15_000 },
+  );
+
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const surface = await expectPopulatedHome(page);
+
+  expect(
+    state.firstRunPosts.length,
+    "POST /api/first-run must fire exactly once for the Other/settings handoff path",
+  ).toBe(1);
+
+  return { surface };
+}
+
+export async function connectRemoteFirstRunToHome(
+  page: Page,
+  opts: { state: OnboardingRouteState; apiBase?: string },
+): Promise<{ surface: Locator; activeServer: string | null }> {
+  const { state } = opts;
+
+  await expectChatFirstOnboarding(page);
+
+  const apiBase =
+    opts.apiBase ??
+    (await page.evaluate(() => window.location.origin.toString()));
+
+  await page.evaluate((gatewayUrl) => {
+    document.dispatchEvent(
+      new CustomEvent("eliza:connect", {
+        detail: {
+          gatewayUrl,
+          completeFirstRun: true,
+          skipConfirm: true,
+        },
+      }),
+    );
+  }, apiBase);
+
+  const surface = page.getByTestId("home-launcher-surface");
+  await expect(surface).toBeVisible({ timeout: 60_000 });
+  await expect(surface).toHaveAttribute("data-page", "home");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("first-run-runtime-chooser")).toBeHidden({
+    timeout: 15_000,
+  });
+
+  const firstRunComplete = await page.evaluate(() =>
+    localStorage.getItem("eliza:first-run-complete"),
+  );
+  expect(
+    firstRunComplete,
+    "remote adoption must persist local completion",
+  ).toBe("1");
+
+  expect(
+    state.firstRunPosts.length <= 1,
+    "remote first-run adoption must not double-submit first-run setup",
+  ).toBe(true);
+
+  const activeServer = await page.evaluate(() =>
+    localStorage.getItem("elizaos:active-server"),
+  );
+  expect(activeServer, "remote active-server persisted").toBeTruthy();
+  expect(activeServer).toContain('"kind":"remote"');
+
+  return { surface, activeServer };
+}
+
 /**
  * Collapse the floating ContinuousChatOverlay back to its composer-only resting
  * state. In-chat onboarding leaves the overlay OPEN in the "full" detent (it was
@@ -933,14 +1088,13 @@ export async function collapseChatOverlay(page: Page): Promise<void> {
 /**
  * Swipe-left on the home page → the rail pans to the launcher, then assert a
  * real launcher tile. Uses a real left-flick that moves past the 72px
- * RAIL_FLICK_THRESHOLD. Touch-capable mobile contexts try Chromium's
- * touch-input path first, then fall back to the component's touch-typed
- * pointer contract if CI does not synthesize pointer events from that touch
- * stream. Desktop contexts use a mouse pointer drag.
+ * RAIL_FLICK_THRESHOLD. Mobile callers use Chromium CDP touch input and fail if
+ * the real touch stream does not move the rail; desktop callers use mouse drag.
  */
 export async function swipeLeftToLauncher(
   page: Page,
   surface: Locator,
+  options: { input?: "mouse" | "touch" | "auto" } = {},
 ): Promise<void> {
   // The in-chat onboarding overlay rests OPEN; collapse it so the swipe lands on
   // the home rail rather than the chat scrim.
@@ -956,8 +1110,14 @@ export async function swipeLeftToLauncher(
       navigator.maxTouchPoints > 0 ||
       window.matchMedia("(pointer: coarse)").matches,
   );
+  const input = options.input ?? "auto";
+  if (input === "touch" && !touchCapable) {
+    throw new Error(
+      "swipeLeftToLauncher requested touch input in a non-touch context",
+    );
+  }
 
-  if (touchCapable) {
+  if (input === "touch" || (input === "auto" && touchCapable)) {
     const client = await page.context().newCDPSession(page);
     try {
       await client.send("Input.dispatchTouchEvent", {
@@ -981,32 +1141,8 @@ export async function swipeLeftToLauncher(
     }
     await page.waitForTimeout(250);
     if ((await surface.getAttribute("data-page")) !== "launcher") {
-      await homePage.evaluate(
-        (element, coordinates) => {
-          const dispatchPointer = (type: string, x: number) => {
-            element.dispatchEvent(
-              new PointerEvent(type, {
-                bubbles: true,
-                button: 0,
-                buttons: type === "pointerup" ? 0 : 1,
-                cancelable: true,
-                clientX: x,
-                clientY: coordinates.midY,
-                composed: true,
-                isPrimary: true,
-                pointerId: 1,
-                pointerType: "touch",
-              }),
-            );
-          };
-
-          dispatchPointer("pointerdown", coordinates.startX);
-          for (let i = 1; i <= 6; i++) {
-            dispatchPointer("pointermove", coordinates.startX - i * 40);
-          }
-          dispatchPointer("pointerup", coordinates.startX - 240);
-        },
-        { startX, midY },
+      throw new Error(
+        "CDP touch swipe did not open the launcher; refusing synthetic pointer fallback",
       );
     }
   } else {

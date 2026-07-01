@@ -51,6 +51,7 @@ export {
 	type StylePreset,
 } from "./contracts/first-run-options";
 export {
+	DEFAULT_CEREBRAS_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 	type DeploymentTargetConfig,

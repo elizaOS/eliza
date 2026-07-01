@@ -1,21 +1,5 @@
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import {
-  Bell,
-  BellRing,
-  Bot,
-  Check,
-  CheckCheck,
-  CircleAlert,
-  Clock,
-  FileWarning,
-  HeartPulse,
-  Inbox,
-  MessageSquare,
-  Settings2,
-  Trash2,
-  Workflow,
-  X,
-} from "lucide-react";
+import { Bell, BellRing, CheckCheck, Inbox, Trash2, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -25,6 +9,7 @@ import {
 } from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import { categoryIcon } from "../../state/notifications/category-icon";
 import { navigateDeepLink } from "../../state/notifications/navigate-deep-link";
 import {
   clearNotifications,
@@ -36,24 +21,11 @@ import {
   useNotifications,
 } from "../../state/notifications/notification-store";
 import { formatRelativeTime } from "../../utils/format";
+import { rankHomeNotifications } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
-const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
-  reminder: <Clock className="h-4 w-4" />,
-  task: <Check className="h-4 w-4" />,
-  workflow: <Workflow className="h-4 w-4" />,
-  agent: <Bot className="h-4 w-4" />,
-  approval: <FileWarning className="h-4 w-4" />,
-  message: <MessageSquare className="h-4 w-4" />,
-  health: <HeartPulse className="h-4 w-4" />,
-  system: <Settings2 className="h-4 w-4" />,
-  general: <CircleAlert className="h-4 w-4" />,
-};
-
-function categoryIcon(category: NotificationCategory): ReactNode {
-  return CATEGORY_ICON[category] ?? CATEGORY_ICON.general;
-}
+type NotificationSortMode = "priority" | "time";
 
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
@@ -232,17 +204,30 @@ function FilterChip({
  *
  * `headless` boots the store + toast routing but renders no bell — used to keep
  * interrupt toasts flowing while the visible button is hidden.
+ *
+ * `variant="sheet"` renders the same panel as a controlled top sheet (opened by
+ * the home pull-DOWN gesture, #10706) instead of the bell + popover; `open` /
+ * `onOpenChange` drive it.
  */
 export function NotificationCenter({
   className,
   headless = false,
+  variant = "bell",
+  open = false,
+  onOpenChange,
 }: {
   className?: string;
   headless?: boolean;
+  variant?: "bell" | "sheet";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }): ReactNode {
   const { notifications, unreadCount } = useNotifications();
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
+  // Default to attention-first (unread → priority → recency); the user can flip
+  // to a plain most-recent-first timeline (#10706).
+  const [sortMode, setSortMode] = useState<NotificationSortMode>("priority");
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -258,22 +243,31 @@ export function NotificationCenter({
       ? "all"
       : activeCategory;
 
-  const visibleNotifications = useMemo(
-    () =>
+  const visibleNotifications = useMemo(() => {
+    const filtered =
       effectiveCategory === "all"
         ? notifications
-        : notifications.filter((n) => n.category === effectiveCategory),
-    [notifications, effectiveCategory],
-  );
+        : notifications.filter((n) => n.category === effectiveCategory);
+    // Priority: reuse the home ranker (unread → priority → recency) so the two
+    // surfaces agree. Time: a plain most-recent-first timeline. Both are pure +
+    // stable, so equal items never reshuffle between renders.
+    return sortMode === "priority"
+      ? rankHomeNotifications(filtered)
+      : [...filtered].sort((a, b) => b.createdAt - a.createdAt);
+  }, [notifications, effectiveCategory, sortMode]);
 
   // Boot the notification store (hydrate + subscribe to the live stream) and
   // route its interrupt toasts through the shell's ActionNotice. Idempotent —
   // the store guards against re-init; the toast sink is re-pointed on remount.
   useEffect(() => {
     initNotifications();
+    // Only the bell/headless owner routes interrupt toasts — the pull-down sheet
+    // is a transient reader and must not hijack (or null on unmount) the single
+    // shared toast sink the always-mounted headless instance owns.
+    if (variant === "sheet") return;
     registerNotificationToastSink(setActionNotice);
     return () => registerNotificationToastSink(null);
-  }, [setActionNotice]);
+  }, [setActionNotice, variant]);
 
   const handleMarkAll = useCallback(() => {
     void markAllNotificationsRead();
@@ -282,11 +276,153 @@ export function NotificationCenter({
     void clearNotifications();
   }, []);
 
+  // Escape closes the pull-down sheet (mirrors the popover's dismiss).
+  useEffect(() => {
+    if (variant !== "sheet" || !open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange?.(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [variant, open, onOpenChange]);
+
   const hasUnread = unreadCount > 0;
 
   // Hidden for now: keep the store + toast routing live (the effect above) but
   // render no bell. Drop the `headless` prop to bring the button back.
   if (headless) return null;
+
+  const panelBody = (
+    <>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+        <span className="text-sm font-semibold text-txt">Notifications</span>
+        <div className="flex items-center gap-1">
+          {hasUnread && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Mark all read"
+              title="Mark all read"
+              onClick={handleMarkAll}
+            >
+              <CheckCheck className="h-4 w-4" />
+            </Button>
+          )}
+          {notifications.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Clear all"
+              title="Clear all"
+              onClick={handleClear}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+          {variant === "sheet" && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close notifications"
+              title="Close"
+              data-testid="notification-sheet-close"
+              onClick={() => onOpenChange?.(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+      {presentCategories.length > 1 && (
+        <CategoryFilterBar
+          categories={presentCategories}
+          active={effectiveCategory}
+          onSelect={setActiveCategory}
+        />
+      )}
+      {notifications.length > 1 && (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+          <span className="text-2xs font-medium uppercase tracking-wide text-muted">
+            Sort
+          </span>
+          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
+            {(
+              [
+                ["priority", "Priority"],
+                ["time", "Recent"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                data-testid={`notif-sort-${mode}`}
+                aria-pressed={sortMode === mode}
+                onClick={() => setSortMode(mode)}
+                className={cn(
+                  "rounded px-2 py-0.5 text-2xs font-medium transition-colors",
+                  sortMode === mode
+                    ? "bg-accent/15 text-accent"
+                    : "text-muted hover:text-txt",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {notifications.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
+          <Inbox className="h-7 w-7 text-muted/70" />
+          <span className="text-sm text-muted">You're all caught up</span>
+        </div>
+      ) : (
+        <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
+          {visibleNotifications.map((notification) => (
+            <NotificationRow
+              key={notification.id}
+              notification={notification}
+              onClose={() =>
+                variant === "sheet" ? onOpenChange?.(false) : undefined
+              }
+            />
+          ))}
+        </ul>
+      )}
+    </>
+  );
+
+  // Pull-down sheet: a top-anchored panel the home surface reveals with a
+  // downward pull (#10706). Backdrop dismisses; a grabber hints the gesture.
+  if (variant === "sheet") {
+    if (!open) return null;
+    return (
+      <>
+        <button
+          type="button"
+          aria-label="Dismiss notifications"
+          data-testid="notification-sheet-backdrop"
+          onClick={() => onOpenChange?.(false)}
+          className="fixed inset-0 z-[9500] bg-black/40"
+        />
+        <div
+          role="dialog"
+          aria-label="Notifications"
+          data-testid="notification-sheet"
+          className={cn(
+            "fixed inset-x-0 top-0 z-[9501] mx-auto flex max-h-[85vh] w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover shadow-xl",
+            "pt-[var(--safe-area-top,0px)]",
+            className,
+          )}
+        >
+          {panelBody}
+          <div className="flex justify-center py-1.5">
+            <div className="h-1 w-9 rounded-full bg-muted/40" aria-hidden />
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <Popover>
@@ -320,58 +456,7 @@ export function NotificationCenter({
         sideOffset={8}
         className="w-[min(360px,calc(100vw-1.5rem))] p-0"
       >
-        <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-          <span className="text-sm font-semibold text-txt">Notifications</span>
-          <div className="flex items-center gap-1">
-            {hasUnread && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Mark all read"
-                title="Mark all read"
-                onClick={handleMarkAll}
-              >
-                <CheckCheck className="h-4 w-4" />
-              </Button>
-            )}
-            {notifications.length > 0 && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Clear all"
-                title="Clear all"
-                onClick={handleClear}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-        {presentCategories.length > 1 && (
-          <CategoryFilterBar
-            categories={presentCategories}
-            active={effectiveCategory}
-            onSelect={setActiveCategory}
-          />
-        )}
-        {notifications.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-            <Inbox className="h-7 w-7 text-muted/70" />
-            <span className="text-sm text-muted">You're all caught up</span>
-          </div>
-        ) : (
-          <ul className="max-h-[min(440px,60vh)] overflow-y-auto p-1.5">
-            {visibleNotifications.map((notification) => (
-              <NotificationRow
-                key={notification.id}
-                notification={notification}
-                onClose={() => {
-                  /* popover closes on navigation via deep-link below */
-                }}
-              />
-            ))}
-          </ul>
-        )}
+        {panelBody}
       </PopoverContent>
     </Popover>
   );

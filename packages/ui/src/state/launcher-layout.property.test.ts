@@ -32,19 +32,22 @@ describe("reconcileLayout invariants (property-based)", () => {
           const flat = out.pages.flat();
           const placed = [...out.favorites, ...flat];
 
-          // 1. The dock never exceeds the cap.
+          // 1. Favorites metadata never exceeds the shared pin cap.
           expect(out.favorites.length).toBeLessThanOrEqual(LAUNCHER_DOCK_LIMIT);
-          // 2. Everything placed is actually available (no stale ids leak).
+          // 2. Everything referenced is actually available (no stale ids leak).
           for (const id of placed) {
             expect(availableSet.has(id)).toBe(true);
           }
-          // 3. No id appears twice across the dock + pages.
-          expect(new Set(placed).size).toBe(placed.length);
-          // 4. Every available id is placed exactly once (nothing dropped).
+          // 3. No id appears twice in the page grid.
+          expect(new Set(flat).size).toBe(flat.length);
+          // 4. Every available id is represented exactly once across dock + pages.
           expect(new Set(placed)).toEqual(availableSet);
-          // 5. Favorites and pages are disjoint.
-          const favSet = new Set(out.favorites);
-          for (const id of flat) expect(favSet.has(id)).toBe(false);
+          expect(new Set(placed).size).toBe(placed.length);
+          // 5. Favorites are rendered in the dock and excluded from pages.
+          expect(new Set(out.favorites).size).toBe(out.favorites.length);
+          for (const id of out.favorites) {
+            expect(flat.includes(id)).toBe(false);
+          }
           // 6. No page overflows pageSize, and there are no empty pages (holes).
           for (const page of out.pages) {
             expect(page.length).toBeGreaterThan(0);

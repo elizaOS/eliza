@@ -141,6 +141,20 @@ export const Listening: Story = {
   },
 };
 
+/**
+ * Voice mode (hands-free) — the composer now shows the transcription start
+ * button next to the mic (#10699). The story gate captures this state.
+ */
+export const VoiceModeTranscription: Story = {
+  args: {
+    controller: makeController({
+      phase: "listening",
+      handsFree: true,
+      recording: true,
+    }),
+  },
+};
+
 /** Responding — the breathing typing dots. */
 export const Responding: Story = {
   args: { controller: makeController({ phase: "responding" }) },

@@ -33,15 +33,32 @@ import {
   createHash,
   randomBytes,
 } from "node:crypto";
-import type {
-  SubAgentCredentialBridge,
-  SubAgentCredentialScope,
+import {
+  ChannelType,
+  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE as CORE_SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  type SubAgentCredentialBridge as CoreSubAgentCredentialBridge,
+  type SubAgentCredentialRequestOrigin as CoreSubAgentCredentialRequestOrigin,
+  type DeliveryTarget,
+  type DispatchSensitiveRequest,
+  type IAgentRuntime,
+  logger,
+  type SensitiveRequest,
+  type SensitiveRequestActorPolicy,
+  type SensitiveRequestDeliveryMode,
+  type SensitiveRequestDispatchRegistry,
+  type SensitiveRequestPolicy,
+  type SensitiveRequestSourceContext,
 } from "@elizaos/core";
 
 const TOKEN_BYTES = 32; // 256-bit
 const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 const SCOPE_TTL_MS = 30 * 60 * 1000;
+export const SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE =
+  CORE_SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE;
+export const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE =
+  CORE_SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE;
 
 export interface DeclareScopeInput {
   childSessionId: string;
@@ -67,6 +84,31 @@ export interface RetrieveCredentialInput {
   key: string;
   scopedToken: string;
 }
+
+export type SubAgentCredentialRequestOrigin =
+  CoreSubAgentCredentialRequestOrigin;
+
+export interface SubAgentCredentialScopeResult extends DeclareScopeResult {
+  sensitiveRequestIds: readonly string[];
+}
+
+export interface BridgeCredentialAdapter {
+  requestCredentials(input: {
+    childSessionId: string;
+    credentialKeys: readonly string[];
+    origin?: SubAgentCredentialRequestOrigin;
+  }): Promise<SubAgentCredentialScopeResult>;
+  tryRetrieveCredential(
+    input: RetrieveCredentialInput,
+  ): Promise<
+    | { status: "pending" }
+    | { status: "ready"; value: string }
+    | { status: "expired" }
+    | { status: "rejected"; reason: string }
+  >;
+}
+
+export type SubAgentCredentialBridge = CoreSubAgentCredentialBridge;
 
 interface ScopeEntryKeyState {
   /** Hex-encoded `IV || ciphertext || authTag`. Cleared after redemption. */
@@ -361,161 +403,358 @@ export function createCredentialTunnelService(options?: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Bridge adapter factory
-// ---------------------------------------------------------------------------
+function normalizeCredentialKeys(keys: readonly string[]): string[] {
+  return Array.from(
+    new Set(
+      keys
+        .map((key) => (typeof key === "string" ? key.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+}
 
-/**
- * Input the bridge adapter hands to its credential-collection dispatcher when a
- * scope is declared. The dispatcher routes a `kind: "secret"` sensitive-request
- * (with the tunnel routing identifiers below) to the owner via the registered
- * delivery adapters and returns the ids of the requests it opened.
- *
- * Carries identifiers only — never the scoped token or a credential value.
- */
-export interface CredentialBridgeDispatchInput {
+function isDispatchRegistry(
+  value: unknown,
+): value is SensitiveRequestDispatchRegistry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { get?: unknown }).get === "function" &&
+    typeof (value as { list?: unknown }).list === "function"
+  );
+}
+
+function readOrigin(
+  value: SubAgentCredentialRequestOrigin | Record<string, unknown> | undefined,
+): SubAgentCredentialRequestOrigin | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const roomId =
+    typeof record.roomId === "string" && record.roomId.trim()
+      ? record.roomId.trim()
+      : undefined;
+  const channelId =
+    typeof record.channelId === "string" && record.channelId.trim()
+      ? record.channelId.trim()
+      : undefined;
+  const source =
+    typeof record.source === "string" && record.source.trim()
+      ? record.source.trim()
+      : undefined;
+  const ownerEntityId =
+    typeof record.ownerEntityId === "string" && record.ownerEntityId.trim()
+      ? record.ownerEntityId.trim()
+      : typeof record.userId === "string" && record.userId.trim()
+        ? record.userId.trim()
+        : undefined;
+  if (!roomId && !channelId && !source && !ownerEntityId) return undefined;
+  return { roomId, channelId, source, ownerEntityId };
+}
+
+function buildCredentialRequestPolicy(
+  actorPolicy: "owner_only" | "owner_or_linked_identity",
+  deliveryTarget: "dm" | "owner_app_inline",
+): SensitiveRequestPolicy {
+  return {
+    actor: actorPolicy as SensitiveRequestActorPolicy,
+    requirePrivateDelivery: true,
+    requireAuthenticatedLink: true,
+    allowInlineOwnerAppEntry: deliveryTarget === "owner_app_inline",
+    allowPublicLink: false,
+    allowDmFallback: deliveryTarget === "dm",
+    allowTunnelLink: false,
+    allowCloudLink: false,
+  };
+}
+
+function deliveryModeFor(
+  deliveryTarget: "dm" | "owner_app_inline",
+): SensitiveRequestDeliveryMode {
+  return deliveryTarget === "dm" ? "private_dm" : "inline_owner_app";
+}
+
+function sourceFor(
+  deliveryTarget: "dm" | "owner_app_inline",
+): SensitiveRequestSourceContext {
+  return deliveryTarget === "dm" ? "dm" : "owner_app_private";
+}
+
+function buildCredentialDispatchRequest(input: {
   childSessionId: string;
   credentialScopeId: string;
   credentialKeys: readonly string[];
+  expiresAt: number;
+  agentId: string;
   actorPolicy: "owner_only" | "owner_or_linked_identity";
   deliveryTarget: "dm" | "owner_app_inline";
+  origin?: SubAgentCredentialRequestOrigin;
+}): SensitiveRequest {
+  const {
+    agentId,
+    actorPolicy,
+    childSessionId,
+    credentialKeys,
+    credentialScopeId,
+    deliveryTarget,
+    expiresAt,
+    origin,
+  } = input;
+  const now = new Date().toISOString();
+  const expiresIso = new Date(expiresAt).toISOString();
+  const requestId = `cred_req_${randomBytes(8).toString("hex")}`;
+  const keys = normalizeCredentialKeys(credentialKeys);
+  const primaryKey = keys.length === 1 ? keys[0] : "SUB_AGENT_CREDENTIALS";
+  const policy = buildCredentialRequestPolicy(actorPolicy, deliveryTarget);
+  const mode = deliveryModeFor(deliveryTarget);
+  const source = sourceFor(deliveryTarget);
+  const countLabel = keys.length === 1 ? keys[0] : `${keys.length} credentials`;
+
+  return {
+    id: requestId,
+    kind: "secret",
+    status: "pending",
+    agentId,
+    organizationId: null,
+    ownerEntityId: origin?.ownerEntityId ?? null,
+    requesterEntityId: null,
+    sourceRoomId: origin?.roomId ?? null,
+    sourceChannelType: ChannelType.DM,
+    sourcePlatform:
+      deliveryTarget === "owner_app_inline"
+        ? "owner_app"
+        : (origin?.source ?? "dm"),
+    target: {
+      kind: "secret",
+      key: primaryKey,
+      scope: "agent",
+    },
+    policy,
+    delivery: {
+      kind: "secret",
+      source,
+      mode,
+      policy,
+      privateRouteRequired: true,
+      publicLinkAllowed: false,
+      authenticated: true,
+      canCollectValueInCurrentChannel: deliveryTarget === "owner_app_inline",
+      reason: `Sub-agent ${childSessionId} needs ${countLabel} to continue.`,
+      instruction:
+        "Enter the requested value in this secure owner-only form. The scoped token and credential value are never written to chat.",
+      tunnel: {
+        credentialScopeId,
+        childSessionId,
+        keys,
+      },
+    },
+    expiresAt: expiresIso,
+    fulfilledAt: null,
+    canceledAt: null,
+    expiredAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
-/**
- * The credential-collection dispatch dependency the bridge adapter composes
- * with `tunnel.declareScope`. The parent-runtime wiring provides a registry-
- * backed implementation; unit tests inject a stub. Returning an empty
- * `sensitiveRequestIds` is valid — the in-thread credential prompt still
- * surfaces the request to the owner.
- */
-export interface CredentialBridgeDispatch {
-  dispatch(
-    input: CredentialBridgeDispatchInput,
-  ): Promise<{ sensitiveRequestIds: readonly string[] }>;
+function toDispatchSensitiveRequest(
+  request: SensitiveRequest,
+): DispatchSensitiveRequest {
+  return {
+    ...request,
+    delivery: { ...request.delivery },
+  };
 }
 
-/**
- * Combined runtime surface registered under BOTH well-known service names:
- * - `SubAgentCredentialBridgeAdapter` — consumed by the orchestrator's bridge
- *   routes (`requestCredentials` / `tryRetrieveCredential`).
- * - `SubAgentCredentialBridge` — consumed by the core DECLARE/TUNNEL actions
- *   (`declareScope` / `tunnelCredential`).
- *
- * One object, one source of truth: every entry point funnels through the same
- * `CredentialTunnelService` + dispatch pipeline, so there is no duplicate
- * scope-minting or delivery path.
- */
-export interface SubAgentCredentialBridgeAdapter
-  extends SubAgentCredentialBridge {
-  requestCredentials(input: {
-    childSessionId: string;
-    credentialKeys: readonly string[];
-  }): Promise<{
-    credentialScopeId: string;
-    scopedToken: string;
-    expiresAt: number;
-    sensitiveRequestIds: readonly string[];
-  }>;
-  tryRetrieveCredential(input: {
-    childSessionId: string;
-    key: string;
-    scopedToken: string;
-  }): Promise<
-    | { status: "pending" }
-    | { status: "ready"; value: string }
-    | { status: "expired" }
-    | { status: "rejected"; reason: string }
-  >;
+async function dispatchCredentialRequest(input: {
+  dispatch: SensitiveRequestDispatchRegistry;
+  runtime: IAgentRuntime;
+  request: SensitiveRequest;
+  deliveryTarget: "dm" | "owner_app_inline";
+  origin?: SubAgentCredentialRequestOrigin;
+}): Promise<string | null> {
+  const target: DeliveryTarget =
+    input.deliveryTarget === "dm" ? "dm" : "owner_app_inline";
+  const channelId = input.origin?.channelId ?? input.origin?.roomId;
+  const adapter =
+    input.dispatch.resolve?.(target, channelId, input.runtime) ??
+    input.dispatch.get(target);
+  if (!adapter) {
+    logger.warn(
+      `[SubAgentCredentialBridge] no sensitive-request adapter registered for target=${target}`,
+    );
+    return null;
+  }
+
+  try {
+    const result = await adapter.deliver({
+      request: toDispatchSensitiveRequest(input.request),
+      channelId,
+      runtime: input.runtime,
+    });
+    if (!result.delivered) {
+      logger.warn(
+        `[SubAgentCredentialBridge] sensitive-request delivery failed target=${target} requestId=${input.request.id} error=${result.error ?? "unknown"}`,
+      );
+      return null;
+    }
+    return input.request.id;
+  } catch (error) {
+    logger.warn(
+      `[SubAgentCredentialBridge] sensitive-request delivery threw requestId=${input.request.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
 }
 
-/**
- * Build the parent-side credential bridge adapter. Composes the one-shot scope
- * engine (`tunnel`) with the owner-facing collection dispatcher (`dispatch`).
- *
- * `requestCredentials` (bridge routes) and `declareScope` (DECLARE action) are
- * the same operation — declare a one-shot scope, then dispatch a secret request
- * to collect the value(s) — so both delegate to one internal helper.
- */
-export function createSubAgentCredentialBridgeAdapter(deps: {
+export function createSubAgentCredentialBridgeAdapter(options: {
   tunnel: CredentialTunnelService;
-  dispatch: CredentialBridgeDispatch;
-  /** Reserved for delivery context (logging/telemetry); unused by the engine. */
-  runtime?: unknown;
-}): SubAgentCredentialBridgeAdapter {
-  const { tunnel, dispatch } = deps;
+  dispatch: SensitiveRequestDispatchRegistry;
+  runtime: IAgentRuntime;
+}): BridgeCredentialAdapter & SubAgentCredentialBridge {
+  const { dispatch, runtime, tunnel } = options;
+  const agentId = String(
+    (runtime as { agentId?: unknown }).agentId ?? "local-agent",
+  );
 
   async function declareAndDispatch(input: {
     childSessionId: string;
     credentialKeys: readonly string[];
-    actorPolicy: "owner_only" | "owner_or_linked_identity";
-    deliveryTarget: "dm" | "owner_app_inline";
-  }): Promise<SubAgentCredentialScope> {
+    actorPolicy?: "owner_only" | "owner_or_linked_identity";
+    deliveryTarget?: "dm" | "owner_app_inline";
+    origin?: SubAgentCredentialRequestOrigin;
+  }): Promise<SubAgentCredentialScopeResult> {
+    const credentialKeys = normalizeCredentialKeys(input.credentialKeys);
     const scope = tunnel.declareScope({
       childSessionId: input.childSessionId,
-      credentialKeys: input.credentialKeys,
+      credentialKeys,
     });
-    const { sensitiveRequestIds } = await dispatch.dispatch({
+    const actorPolicy = input.actorPolicy ?? "owner_only";
+    const deliveryTarget = input.deliveryTarget ?? "owner_app_inline";
+    const origin = readOrigin(input.origin);
+    const request = buildCredentialDispatchRequest({
       childSessionId: input.childSessionId,
       credentialScopeId: scope.credentialScopeId,
-      credentialKeys: input.credentialKeys,
-      actorPolicy: input.actorPolicy,
-      deliveryTarget: input.deliveryTarget,
+      credentialKeys,
+      expiresAt: scope.expiresAt,
+      agentId,
+      actorPolicy,
+      deliveryTarget,
+      origin,
+    });
+    const requestId = await dispatchCredentialRequest({
+      dispatch,
+      runtime,
+      request,
+      deliveryTarget,
+      origin,
     });
     return {
-      credentialScopeId: scope.credentialScopeId,
-      scopedToken: scope.scopedToken,
-      expiresAt: scope.expiresAt,
-      sensitiveRequestIds,
+      ...scope,
+      sensitiveRequestIds: requestId ? [requestId] : [],
     };
   }
 
   return {
-    declareScope(input) {
-      return declareAndDispatch({
-        childSessionId: input.childSessionId,
-        credentialKeys: input.credentialKeys,
-        actorPolicy: input.actorPolicy ?? "owner_only",
-        deliveryTarget: input.deliveryTarget ?? "owner_app_inline",
-      });
-    },
-
     requestCredentials(input) {
       return declareAndDispatch({
         childSessionId: input.childSessionId,
         credentialKeys: input.credentialKeys,
         actorPolicy: "owner_only",
         deliveryTarget: "owner_app_inline",
+        origin: input.origin,
       });
+    },
+
+    declareScope(input) {
+      return declareAndDispatch(input);
     },
 
     async tunnelCredential(input) {
       tunnel.tunnelCredential(input);
     },
 
-    async tryRetrieveCredential({ childSessionId, key, scopedToken }) {
+    async tryRetrieveCredential(input) {
       try {
-        const value = tunnel.retrieveCredential({
-          childSessionId,
-          key,
-          scopedToken,
-        });
+        const value = tunnel.retrieveCredential(input);
         return { status: "ready", value };
       } catch (error) {
         if (error instanceof CredentialScopeError) {
-          switch (error.code) {
-            case "no_ciphertext":
-              // The owner has not submitted the value yet — keep long-polling.
-              return { status: "pending" };
-            case "scope_expired":
-              return { status: "expired" };
-            default:
-              // already_redeemed / session_mismatch / key_not_in_scope /
-              // invalid_token / unknown_scope / invalid_input are terminal.
-              return { status: "rejected", reason: error.code };
-          }
+          if (error.code === "no_ciphertext") return { status: "pending" };
+          if (error.code === "scope_expired") return { status: "expired" };
+          return { status: "rejected", reason: error.code };
         }
-        throw error;
+        return {
+          status: "rejected",
+          reason: error instanceof Error ? error.message : String(error),
+        };
       }
     },
   };
+}
+
+export function isSubAgentCredentialBridgeSandboxedEnv(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return Boolean(
+    env.SANDBOX_AGENT_ID?.trim() ||
+      env.SANDBOX_ROUTE_AGENT_ID?.trim() ||
+      env.SANDBOX_SERVER_NAME?.trim() ||
+      env.PARALLAX_SESSION_ID?.trim(),
+  );
+}
+
+function setRuntimeService(
+  runtime: IAgentRuntime,
+  serviceName: string,
+  service: unknown,
+): void {
+  const services = (runtime as { services?: Map<string, unknown[]> }).services;
+  if (!services) return;
+  services.set(serviceName, [service]);
+}
+
+export function registerSubAgentCredentialBridgeAdapter(
+  runtime: IAgentRuntime,
+  options?: {
+    tunnel?: CredentialTunnelService;
+    dispatch?: SensitiveRequestDispatchRegistry;
+    env?: Record<string, string | undefined>;
+  },
+): boolean {
+  if (isSubAgentCredentialBridgeSandboxedEnv(options?.env)) {
+    logger.debug(
+      "[SubAgentCredentialBridge] sandboxed runtime detected; skipping bridge adapter registration",
+    );
+    return false;
+  }
+
+  const dispatch =
+    options?.dispatch ??
+    (runtime as { getService?: (name: string) => unknown }).getService?.(
+      "SensitiveRequestDispatchRegistry",
+    );
+  if (!isDispatchRegistry(dispatch)) {
+    logger.debug(
+      "[SubAgentCredentialBridge] sensitive-request dispatch registry missing; skipping bridge adapter registration",
+    );
+    return false;
+  }
+
+  const adapter = createSubAgentCredentialBridgeAdapter({
+    tunnel: options?.tunnel ?? createCredentialTunnelService(),
+    dispatch,
+    runtime,
+  });
+  setRuntimeService(
+    runtime,
+    SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+    adapter,
+  );
+  setRuntimeService(runtime, SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE, adapter);
+  logger.info(
+    "[SubAgentCredentialBridge] registered credential bridge adapter services",
+  );
+  return true;
 }

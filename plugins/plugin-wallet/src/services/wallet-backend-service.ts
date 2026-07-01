@@ -298,6 +298,13 @@ export class WalletBackendService extends Service {
         };
       }
     }
+    if (params.subaction === "pump_fun_buy" && !params.toToken) {
+      return {
+        ok: false,
+        error: "INVALID_PARAMS",
+        detail: "toToken must be the pump.fun token mint address.",
+      };
+    }
     return null;
   }
 

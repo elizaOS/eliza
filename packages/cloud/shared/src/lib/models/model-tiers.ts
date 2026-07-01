@@ -17,8 +17,8 @@ import {
 import {
   BITROUTER_DEFAULT_FREE_MODEL,
   BITROUTER_DEFAULT_TEXT_MODEL,
-  CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+  CEREBRAS_NATIVE_TEXT_MODELS,
 } from "./catalog";
 
 export type ModelTier = "fast" | "pro" | "ultra";
@@ -60,8 +60,7 @@ function extractProvider(modelId: string): string {
     return normalizeProviderKey(modelId.split("/")[0]);
   }
   if (
-    modelId === CEREBRAS_DEFAULT_TEXT_SMALL_MODEL ||
-    modelId === CEREBRAS_DEFAULT_TEXT_LARGE_MODEL
+    CEREBRAS_NATIVE_TEXT_MODELS.includes(modelId as (typeof CEREBRAS_NATIVE_TEXT_MODELS)[number])
   ) {
     return "cerebras";
   }
@@ -99,12 +98,12 @@ export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
     provider: extractProvider(PRO_MODEL_ID),
     icon: "sparkles",
     pricing: {
-      inputPer1k: 0.000039,
-      outputPer1k: 0.00018,
+      inputPer1k: 0.00099,
+      outputPer1k: 0.00149,
       currency: "USD",
     },
-    capabilities: ["text", "code", "reasoning", "function_calling", "long_context"],
-    contextWindow: 131072,
+    capabilities: ["text", "code", "function_calling", "long_context"],
+    contextWindow: 131000,
     recommended: true,
   },
   ultra: {
@@ -245,9 +244,9 @@ export const DEFAULT_IMAGE_MODEL = IMAGE_MODELS[0];
 
 export const ADDITIONAL_MODELS: AdditionalModel[] = [
   {
-    id: "gpt-oss-120b",
-    name: "GPT OSS 120B",
-    description: "Fast open-weight reasoning on Cerebras (~2000 tok/s)",
+    id: "gemma-4-31b",
+    name: "Gemma 4 31B",
+    description: "Default fast Cerebras model for Eliza Cloud text tiers",
     modelId: CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
     provider: "cerebras",
     recommended: true,

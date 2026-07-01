@@ -29,6 +29,7 @@ import {
   writeLauncherLayout,
 } from "../../state/launcher-layout";
 import { emitViewInteraction } from "../../view-telemetry";
+import { PagerEdgeButtons } from "../shell/PagerEdgeButtons";
 import { ViewTileImage } from "../views/ViewTileImage";
 
 export interface LauncherProps {
@@ -395,25 +396,43 @@ export function Launcher({
     setEditingState(!editing);
   }, [grouped, editing, setEditingState]);
 
+  // Cap the rendered dock at LAUNCHER_DOCK_LIMIT in BOTH modes. The
+  // uncontrolled path already enforces it via toggleFavorite; controlled
+  // (desktop-tab) favorites are capped at the pinning source too, but clamp
+  // here as defense so the dock can never overflow regardless of caller.
+  const favoriteIdList = useMemo(
+    () => (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
+    [favorites, layout.favorites],
+  );
+  // O(1) dock-membership check inside curation and tile rendering.
+  const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
+
   // Curated mode chunks each supplied group onto its own page(s) so a group
   // boundary always starts a fresh page (page 1 = apps, page 2 = developer),
-  // never merging two groups even when the first is short.
+  // never merging two groups even when the first is short. The default dock is
+  // still rendered above grouped pages, so docked apps stay out of the grid.
   const curatedPages = useMemo(() => {
     if (!pageGroups) return null;
     const result: string[][] = [];
     for (const group of pageGroups) {
-      const present = group.filter((id) => byId.has(id));
+      const present = group.filter(
+        (id) => byId.has(id) && !favoriteSet.has(id),
+      );
       for (let i = 0; i < present.length; i += LAUNCHER_PAGE_SIZE) {
         result.push(present.slice(i, i + LAUNCHER_PAGE_SIZE));
       }
     }
     return result.length > 0 ? result : [[]];
-  }, [pageGroups, byId]);
+  }, [pageGroups, byId, favoriteSet]);
 
-  const pages = useMemo(
-    () => curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]),
-    [curatedPages, layout.pages],
-  );
+  const pages = useMemo(() => {
+    const sourcePages =
+      curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]);
+    const filtered = sourcePages
+      .map((page) => page.filter((id) => !favoriteSet.has(id)))
+      .filter((page) => page.length > 0);
+    return filtered.length > 0 ? filtered : [[]];
+  }, [curatedPages, layout.pages, favoriteSet]);
 
   // Report the page count up so an outer surface (the rail) can size the single
   // unified page indicator. Fires only on an actual count change.
@@ -421,17 +440,6 @@ export function Launcher({
     onPageCountChange?.(pages.length);
   }, [pages.length, onPageCountChange]);
   const clampedPage = Math.min(activePage, pages.length - 1);
-  // Cap the rendered dock at LAUNCHER_DOCK_LIMIT in BOTH modes. The
-  // uncontrolled path already enforces it via toggleFavorite; controlled
-  // (desktop-tab) favorites are capped at the pinning source too, but clamp
-  // here as defense so the dock can never overflow regardless of caller.
-  const favoriteIdList = useMemo(
-    () =>
-      grouped
-        ? []
-        : (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
-    [grouped, favorites, layout.favorites],
-  );
   const favoriteEntries = useMemo(
     () =>
       favoriteIdList
@@ -439,8 +447,6 @@ export function Launcher({
         .filter((e): e is ViewEntry => e != null),
     [byId, favoriteIdList],
   );
-  // O(1) dock-membership check inside the tile map instead of Array.includes.
-  const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -528,6 +534,7 @@ export function Launcher({
           ref={pager.viewportRef}
           data-testid="launcher-page-window"
           className="relative flex min-h-0 flex-1 overflow-hidden touch-pan-y"
+          style={{ touchAction: "pan-y" }}
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
           onPointerUp={pager.handlers.onPointerUp}
@@ -541,7 +548,7 @@ export function Launcher({
           >
             {loading && entries.length === 0 ? (
               <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
-                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5">
                   {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                     <div
                       key={id}
@@ -563,6 +570,7 @@ export function Launcher({
                     data-testid={`launcher-page-${pageIndex}`}
                     aria-hidden={!active}
                     inert={!active || undefined}
+                    style={{ touchAction: "pan-y" }}
                     className={cn(
                       "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
                       !active && "pointer-events-none",
@@ -575,7 +583,7 @@ export function Launcher({
                         onReorder={(next) =>
                           handleReorder(pageIndex, next as string[])
                         }
-                        className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5"
+                        className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5"
                       >
                         {pageIds.map((id) => {
                           const entry = byId.get(id);
@@ -594,7 +602,7 @@ export function Launcher({
                         })}
                       </Reorder.Group>
                     ) : (
-                      <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 sm:grid-cols-5">
+                      <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5">
                         {pageIds.map((id) => {
                           const entry = byId.get(id);
                           if (!entry) return null;
@@ -612,6 +620,21 @@ export function Launcher({
             )}
           </div>
         </div>
+
+        {/* Web/desktop `< >` edge buttons (hidden on touch, and while editing so
+            they never fight the reorder gesture). Self-hide at the first/last
+            page via canPrev/canNext. */}
+        {!editing ? (
+          <PagerEdgeButtons
+            idPrefix="launcher"
+            canPrev={pager.canPrev}
+            canNext={pager.canNext}
+            goPrev={pager.goPrev}
+            goNext={pager.goNext}
+            prevLabel="Previous page"
+            nextLabel="Next page"
+          />
+        ) : null}
 
         {/* Page dots — rendered only for STANDALONE usage. When nested in the
             home/launcher rail, `showPageDots` is false and the rail owns the

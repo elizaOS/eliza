@@ -25,6 +25,7 @@ type NativeOptions = {
   approvalPreset: ApprovalPreset;
   timeoutMs?: number;
   terminal?: boolean;
+  env?: NodeJS.ProcessEnv;
   onEvent?: NativeEventHandler;
   onStderr?: (chunk: string) => void;
 };
@@ -343,6 +344,10 @@ describe("AcpService", () => {
     );
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).not.toContain("--no-terminal");
+    const env = spawnMock.mock.calls[0]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
   });
 
   it("honors explicit terminal capability opt-out", async () => {
@@ -383,6 +388,9 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(1);
     expect(nativeClientMock.instances[0]?.opts.command).toBe(
       "codex-acp --stdio",
+    );
+    expect(nativeClientMock.instances[0]?.opts.env?.PARALLAX_SESSION_ID).toBe(
+      spawned.sessionId,
     );
   });
 
@@ -797,6 +805,10 @@ describe("AcpService", () => {
     closeOk(prompt);
 
     const result = await sent;
+    const promptEnv = spawnMock.mock.calls[1]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(promptEnv?.PARALLAX_SESSION_ID).toBe(sessionId);
     expect(result.response).toContain("done");
     expect(result.response).toContain("[tool output: Running tool]");
     expect(result.response).toContain("/dev/root        45G");
@@ -997,6 +1009,63 @@ describe("AcpService", () => {
     expect(result.finalText).toBe(
       "the change is proven and received at runtime",
     );
+  });
+
+  it("native sendPrompt forwards thought chunks as reasoning without polluting the final answer", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((_sid, event, data) => {
+      events.push({ event, data });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-reasoning",
+      agentType: "opencode",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "agent_thought_chunk",
+            content: { type: "text", text: "Check the failing output. " },
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "The fix is ready." },
+          },
+        },
+      } as AcpJsonRpcMessage);
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        result: { stopReason: "end_turn" },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "finish");
+
+    expect(result.response).toBe("The fix is ready.");
+    expect(result.finalText).toBe("The fix is ready.");
+    expect(events).toContainEqual({
+      event: "reasoning",
+      data: { text: "Check the failing output. " },
+    });
+    expect(
+      events.filter(({ event }) => event === "message").map(({ data }) => data),
+    ).toEqual([{ text: "The fix is ready." }]);
   });
 
   it("native sendPrompt forwards sanitized ACP plan updates", async () => {

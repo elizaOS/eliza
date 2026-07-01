@@ -133,7 +133,7 @@ export default defineConfig({
       // personal-assistant domain views, so each lifeops view is exercised at
       // the same WebView viewport that ships on Capacitor iOS/Android.
       testMatch:
-        /(backgrounds|apps-personal-assistant-decomposed-interactions|chat-clear-swipe)\.spec\.ts/,
+        /(backgrounds|apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
     {

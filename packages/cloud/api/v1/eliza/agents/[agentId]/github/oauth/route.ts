@@ -12,6 +12,7 @@ import {
 import { initiateOAuth2 } from "@/lib/services/oauth/providers";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { resolveManagedGitHubReturnUrl } from "../connect-flow";
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -20,38 +21,6 @@ const oauthLinkSchema = z.object({
   postMessage: z.boolean().optional(),
   returnUrl: z.string().trim().max(2048).optional(),
 });
-
-/**
- * Build the redirect URL for after the GitHub OAuth callback.
- *
- * Unlike Discord (which has its own callback), GitHub uses the generic
- * OAuth callback. We redirect to a server-side completion endpoint that
- * auto-links the OAuth connection to the agent, then redirects to the
- * dashboard. This path is whitelisted in the generic callback's
- * ALLOWED_REDIRECT_PATHS.
- */
-function resolveManagedReturnUrl(
-  agentId: string,
-  organizationId: string,
-  userId: string,
-  args?: {
-    postMessage?: boolean;
-    returnUrl?: string;
-  },
-): string {
-  const params = new URLSearchParams({
-    agent_id: agentId,
-    org_id: organizationId,
-    user_id: userId,
-  });
-  if (args?.postMessage) {
-    params.set("post_message", "1");
-  }
-  if (args?.returnUrl) {
-    params.set("return_url", args.returnUrl);
-  }
-  return `/api/v1/eliza/github-oauth-complete?${params.toString()}`;
-}
 
 async function __hono_POST(
   request: Request,
@@ -103,7 +72,7 @@ async function __hono_POST(
     }
 
     const scopes = parsed.data.scopes || provider.defaultScopes || [];
-    const redirectUrl = resolveManagedReturnUrl(
+    const redirectUrl = resolveManagedGitHubReturnUrl(
       agentId,
       user.organization_id,
       user.id,

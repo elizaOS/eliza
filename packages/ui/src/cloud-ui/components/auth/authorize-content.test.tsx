@@ -4,14 +4,28 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const enabledProviders = vi.hoisted(() => ({
+  passkey: true,
+  email: true,
+  siwe: false,
+  siws: false,
+  google: true,
+  discord: true,
+  github: false,
+  twitter: false,
+  oauth: ["google", "discord"],
+}));
+
 const authRef = vi.hoisted(() => ({
   current: {
     isLoading: false,
     isAuthenticated: true,
     getToken: vi.fn(() => "token-1"),
     signOut: vi.fn(),
-    providers: [],
+    providers: enabledProviders,
     isProvidersLoading: false,
+    signInWithOAuth: vi.fn(),
+    activeTenantId: "elizacloud",
   },
 }));
 
@@ -23,8 +37,28 @@ const searchParamsRef = vi.hoisted(() => ({
 }));
 
 vi.mock("@stwd/react", () => ({
-  StewardLogin: ({ title }: { title?: string }) => (
-    <div data-testid="steward-login">{title}</div>
+  DiscordIcon: ({ size }: { size?: number }) => (
+    <svg aria-hidden="true" data-size={size} data-testid="discord-icon" />
+  ),
+  GoogleIcon: ({ size }: { size?: number }) => (
+    <svg aria-hidden="true" data-size={size} data-testid="google-icon" />
+  ),
+  StewardLogin: ({
+    showDiscord,
+    showGoogle,
+    title,
+  }: {
+    showDiscord?: boolean;
+    showGoogle?: boolean;
+    title?: string;
+  }) => (
+    <div
+      data-show-discord={String(showDiscord)}
+      data-show-google={String(showGoogle)}
+      data-testid="steward-login"
+    >
+      {title}
+    </div>
   ),
   useAuth: () => authRef.current,
 }));
@@ -73,8 +107,10 @@ describe("AuthorizeContent", () => {
       isAuthenticated: true,
       getToken: vi.fn(() => "token-1"),
       signOut: vi.fn(),
-      providers: [],
+      providers: enabledProviders,
       isProvidersLoading: false,
+      signInWithOAuth: vi.fn(),
+      activeTenantId: "elizacloud",
     };
     pushMock.mockReset();
     searchParamsRef.current = new URLSearchParams(
@@ -138,9 +174,57 @@ describe("AuthorizeContent", () => {
     expect(screen.getByTestId("steward-login").textContent).toBe(
       "Sign in to authorize",
     );
+    expect(
+      screen.getByTestId("steward-login").getAttribute("data-show-google"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("steward-login").getAttribute("data-show-discord"),
+    ).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Continue with Google" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Continue with Discord" }),
+    ).toBeTruthy();
     expect(screen.queryByText("This app wants to:")).toBeNull();
     expect(screen.queryByText(/By continuing/)).toBeNull();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  it("starts app-auth OAuth with the allowlisted Steward login redirect", async () => {
+    const user = userEvent.setup();
+    const signInWithOAuth = vi.fn(async () => ({
+      token: "token-1",
+      user: { id: "user-1", email: "nubs@example.com" },
+    }));
+    authRef.current = {
+      ...authRef.current,
+      isAuthenticated: false,
+      signInWithOAuth,
+    };
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...realLocation,
+        assign: locationAssignMock,
+        origin: "https://elizacloud.ai",
+      },
+    });
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() => expect(screen.getByText("Demo App")).toBeTruthy());
+    await user.click(
+      screen.getByRole("button", { name: "Continue with Google" }),
+    );
+
+    await waitFor(() =>
+      expect(signInWithOAuth).toHaveBeenCalledWith("google", {
+        redirectUri: "https://elizacloud.ai/login",
+        tenantId: "elizacloud",
+      }),
+    );
   });
 
   it("sends signed-out users through the cancel redirect", async () => {

@@ -95,6 +95,7 @@ export type CapturedArtifact = {
 
 export type ScenarioContext = {
   runtime?: unknown;
+  apiBaseUrl?: string;
   now?: string;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
@@ -182,6 +183,16 @@ export type ScenarioTurn = {
   method?: string;
   path?: string;
   body?: unknown;
+  /**
+   * For API turns, capture response-body fields for later templates.
+   * Example: `{ scopedToken: "scopedToken" }` then `{{capture:scopedToken}}`.
+   */
+  captures?: Record<string, string>;
+  /**
+   * Field names or dot-paths to redact from persisted reports/viewers. The
+   * in-memory responseBody passed to assertions and captures remains raw.
+   */
+  redactResponseFields?: string[];
   expectedStatus?: number;
   durationMs?: number;
   worker?: string;
@@ -371,6 +382,18 @@ export type ScenarioFinalCheck =
  */
 export type ScenarioLane = "pr-deterministic" | "live-only";
 
+/**
+ * A platform-gated deferral on a live-only scenario: it cannot run in any
+ * current lane because the platform/runner it needs does not exist yet. Keeps
+ * the scenario visible-but-deferred in the corpus inventory. (#10757)
+ */
+export type ScenarioDeferral = {
+  /** Why the scenario cannot run yet (e.g. "needs SelfControl.app on macOS"). */
+  reason: string;
+  /** Self-hosted runner label that would unblock it, e.g. `eliza-e2e-macos`. */
+  runner?: string;
+};
+
 export type ScenarioDefinition = {
   id: string;
   title: string;
@@ -386,6 +409,14 @@ export type ScenarioDefinition = {
    * Absent means `live-only` (see {@link DEFAULT_SCENARIO_LANE}).
    */
   lane?: ScenarioLane;
+  /**
+   * Platform-gated deferral. Present only on `live-only` scenarios that cannot
+   * run in any current lane because the platform/runner they need does not exist
+   * yet (e.g. a macOS SelfControl shard awaiting an `eliza-e2e-macos` runner).
+   * Keeps the scenario visible in the corpus inventory as a distinct "deferred
+   * platform-gated" class. (#10757)
+   */
+  deferred?: ScenarioDeferral;
   turns: ScenarioTurn[];
   seed?: ScenarioSeedStep[];
   cleanup?: ScenarioCleanupStep[];
@@ -400,5 +431,14 @@ export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
+
+/**
+ * Resolve a scenario's platform-gated deferral, or `null` when it is not
+ * deferred. Throws if `deferred` is malformed or paired with a
+ * `pr-deterministic` lane. (#10757)
+ */
+export declare function scenarioDeferral(
+  value: ScenarioDefinition,
+): ScenarioDeferral | null;
 
 export function scenario<const T extends ScenarioDefinition>(value: T): T;

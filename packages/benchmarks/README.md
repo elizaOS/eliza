@@ -1,7 +1,8 @@
 # `packages/benchmarks`
 
-The elizaOS evaluation suite — **43 registered benchmarks** (the canonical set in
-`registry/commands.py`) spanning agent autonomy, tool-call correctness,
+The elizaOS evaluation suite — **44 registered benchmarks** (the canonical set in
+`registry/commands.py`; 53 publicly runnable once adapter-only ids are counted)
+spanning agent autonomy, tool-call correctness,
 long-horizon reasoning, voice/vision multimodal, embodied control, onchain
 trading, and adversarial robustness, plus shared agent-harness adapters.
 
@@ -19,7 +20,7 @@ its own directory and carries `README.md` + `AGENTS.md` + `CLAUDE.md`.
 > `claw_eval_matrix`, `qwen_claw_bench_matrix`, `swe_bench_pro_matrix`,
 > `openclaw_benchmark`). What remains is classified explicitly:
 >
-> - **Registered** — 43 benchmarks in `registry/commands.py`.
+> - **Registered** — 44 benchmarks in `registry/commands.py`.
 > - **Bridge-wired & real** — ~25 route through the `eliza-adapter` (which boots
 >   a real `AgentRuntime` + real model plugins and serves
 >   `/api/benchmark/message`) on their default/real path.

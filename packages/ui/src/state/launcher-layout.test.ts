@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_LAUNCHER_FAVORITES,
   defaultLayout,
   emptyLayout,
   LAUNCHER_DOCK_LIMIT,
@@ -190,31 +191,42 @@ describe("launcher-layout persistence", () => {
 describe("launcher-layout default dock (#9144)", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("seeds an empty layout on first run — the favorites dock was removed", () => {
+  it("seeds Chat and Settings into the dock on first run", () => {
     expect(readLauncherLayout()).toEqual(defaultLayout());
-    expect(readLauncherLayout().favorites).toEqual([]);
+    expect(readLauncherLayout().favorites).toEqual(DEFAULT_LAUNCHER_FAVORITES);
     expect(readLauncherLayout().pages).toEqual([]);
   });
 
-  it("first-run default seeds no favorites", () => {
-    expect(defaultLayout().favorites).toEqual([]);
+  it("first-run default exposes the canonical dock seed", () => {
+    expect(defaultLayout().favorites).toEqual(DEFAULT_LAUNCHER_FAVORITES);
   });
 
-  it("flows every available view onto pages (no favorites reserved by default)", () => {
-    // With no default favorites, every available id lands on a page tile — none
-    // are held back in a dock.
+  it("reserves default favorites in the dock and flows the rest onto pages", () => {
     const out = reconcileLayout(defaultLayout(), [
+      "chat",
       "settings",
       "activity",
       "files",
       "notes",
+    ]);
+    expect(out.favorites).toEqual(["chat", "settings"]);
+    expect(out.pages.flat()).toEqual(["activity", "files", "notes"]);
+  });
+
+  it("drops unavailable default favorites without inventing missing views", () => {
+    const out = reconcileLayout(defaultLayout(), ["settings", "activity"]);
+    expect(out.favorites).toEqual(["settings"]);
+    expect(out.pages.flat()).toEqual(["activity"]);
+  });
+
+  it("respects an explicitly cleared stored dock", () => {
+    writeLauncherLayout({ favorites: [], pages: [] });
+    const out = reconcileLayout(readLauncherLayout(), [
+      "chat",
+      "settings",
+      "activity",
     ]);
     expect(out.favorites).toEqual([]);
-    expect(out.pages.flat()).toEqual([
-      "settings",
-      "activity",
-      "files",
-      "notes",
-    ]);
+    expect(out.pages.flat()).toEqual(["chat", "settings", "activity"]);
   });
 });

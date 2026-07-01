@@ -60,6 +60,7 @@ function walkScenarioFiles(dir: string): string[] {
 
 interface ScenarioFacts {
   file: string;
+  id: string;
   lane: string;
   hasFinalChecks: boolean;
   hasPerTurnAssert: boolean;
@@ -67,6 +68,7 @@ interface ScenarioFacts {
   hasExpectedActionParams: boolean;
   hasMessageAsGmailLabelExpectation: boolean;
   deadTurnAssertionFields: string[];
+  duplicateTopLevelFields: string[];
 }
 
 const DEAD_EXPECTED_ACTION_PARAMS = /\bexpectedActionParams\s*:/;
@@ -96,14 +98,93 @@ function propertyNameText(name: ts.PropertyName): string | undefined {
   return undefined;
 }
 
-function collectDirectTurnKeys(src: string, file: string): Set<string> {
-  const sourceFile = ts.createSourceFile(
-    file,
-    src,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
+function scenarioObjectFromExpression(
+  expression: ts.Expression,
+): ts.ObjectLiteralExpression | null {
+  if (ts.isObjectLiteralExpression(expression)) {
+    return expression;
+  }
+  if (ts.isCallExpression(expression)) {
+    const [firstArg] = expression.arguments;
+    if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
+      return firstArg;
+    }
+  }
+  return null;
+}
+
+function findExportedScenarioObject(
+  sourceFile: ts.SourceFile,
+): ts.ObjectLiteralExpression | null {
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportAssignment(statement)) {
+      const objectLiteral = scenarioObjectFromExpression(statement.expression);
+      if (objectLiteral) return objectLiteral;
+    }
+
+    if (!ts.isVariableStatement(statement)) continue;
+    const isExported = statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    );
+    if (!isExported) continue;
+
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name)) continue;
+      if (declaration.name.text !== "scenario") continue;
+      if (!declaration.initializer) continue;
+      const objectLiteral = scenarioObjectFromExpression(
+        declaration.initializer,
+      );
+      if (objectLiteral) return objectLiteral;
+    }
+  }
+
+  return null;
+}
+
+function getStaticStringPropertyValues(
+  objectLiteral: ts.ObjectLiteralExpression | null,
+  propertyName: string,
+): string[] {
+  if (!objectLiteral) return [];
+  const values: string[] = [];
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = propertyNameText(property.name);
+    if (name !== propertyName) continue;
+    const initializer = property.initializer;
+    if (
+      ts.isStringLiteral(initializer) ||
+      ts.isNoSubstitutionTemplateLiteral(initializer)
+    ) {
+      values.push(initializer.text);
+    }
+  }
+  return values;
+}
+
+function duplicateTopLevelFields(
+  objectLiteral: ts.ObjectLiteralExpression | null,
+  fields: ReadonlyArray<string>,
+): string[] {
+  if (!objectLiteral) return [];
+  const counts = new Map<string, number>();
+  for (const property of objectLiteral.properties) {
+    if (
+      !ts.isPropertyAssignment(property) &&
+      !ts.isMethodDeclaration(property) &&
+      !ts.isShorthandPropertyAssignment(property)
+    ) {
+      continue;
+    }
+    const name = propertyNameText(property.name);
+    if (!name || !fields.includes(name)) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return fields.filter((field) => (counts.get(field) ?? 0) > 1);
+}
+
+function collectDirectTurnKeys(sourceFile: ts.SourceFile): Set<string> {
   const keys = new Set<string>();
 
   function visit(node: ts.Node) {
@@ -135,11 +216,21 @@ function collectDirectTurnKeys(src: string, file: string): Set<string> {
 
 function analyze(file: string): ScenarioFacts {
   const src = readFileSync(file, "utf8");
-  const laneMatch = src.match(/\blane:\s*"([^"]+)"/);
-  const directTurnKeys = collectDirectTurnKeys(src, file);
+  const sourceFile = ts.createSourceFile(
+    file,
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const scenarioObject = findExportedScenarioObject(sourceFile);
+  const directTurnKeys = collectDirectTurnKeys(sourceFile);
+  const idValues = getStaticStringPropertyValues(scenarioObject, "id");
+  const laneValues = getStaticStringPropertyValues(scenarioObject, "lane");
   return {
     file,
-    lane: laneMatch ? laneMatch[1] : "live-only", // schema default is live-only
+    id: idValues.at(-1) ?? "",
+    lane: laneValues.at(-1) ?? "live-only", // schema default is live-only
     hasFinalChecks: NON_EMPTY_FINAL_CHECKS.test(src),
     hasPerTurnAssert: PER_TURN_ASSERT.test(src),
     hasPersonalityExpect: /\bpersonalityExpect\s*:/.test(src),
@@ -149,17 +240,73 @@ function analyze(file: string): ScenarioFacts {
     deadTurnAssertionFields: Object.keys(
       DEAD_TURN_ASSERTION_FIELD_FIXES,
     ).filter((field) => directTurnKeys.has(field)),
+    duplicateTopLevelFields: duplicateTopLevelFields(scenarioObject, [
+      "id",
+      "lane",
+    ]),
   };
 }
 
 const facts: ScenarioFacts[] =
   SCENARIO_ROOTS.flatMap(walkScenarioFiles).map(analyze);
 const rel = (f: ScenarioFacts) => relative(repoRoot, f.file);
+const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
+  "agent-orchestrator.list-agents",
+  "ainex.stand",
+  "anthropic-proxy.proxy-status",
+  "benchmarks.osworld-action",
+  "commands.help-command",
+  "computeruse.get-cursor-position",
+  "convo.echo-self-test",
+  "convo.greeting-dynamic",
+  "facewear.smartglasses-status",
+  "finances.owner-finances-dashboard",
+  "form.restore-stashed",
+  "goals.owner-goals-create",
+  "health.owner-health-status",
+  "hyperliquid.perpetual-market-status",
+  "inbox.summarize-inboxes",
+  "linear.search-issues",
+  "local-inference.start-transcription",
+  "music.routing-status",
+  "nostr.search-posts",
+  "orchestrator-device-modality-reach",
+  "orchestrator-evidence-bundle",
+  "orchestrator-grilling-happy-path",
+  "orchestrator-multi-task-supervisor",
+  "orchestrator-reflexion-respawn",
+  "orchestrator-view-cloud-deploy",
+  "orchestrator-watchdog-stall",
+  "relationships.list-entities",
+  "remote-desktop.list-sessions",
+  "shopify.list-products",
+  "suno.generate-music",
+  "task-coordinator.orchestrator-status",
+  "tunnel.status",
+  "vision.set-mode",
+  "wallet.token-info",
+].sort();
 
 describe("scenario corpus assertion guard", () => {
   it("scans a meaningful number of scenario files", () => {
     // Guards against a path/glob regression silently scanning nothing.
     expect(facts.length).toBeGreaterThan(500);
+  });
+
+  it("does not declare duplicate top-level scenario id or lane fields", () => {
+    const offenders = facts
+      .filter((f) => f.duplicateTopLevelFields.length > 0)
+      .map((f) => `${rel(f)} (${f.duplicateTopLevelFields.join(", ")})`)
+      .sort();
+    expect(offenders).toEqual([]);
+  });
+
+  it("tracks the current external pr-deterministic corpus explicitly", () => {
+    const ids = facts
+      .filter((f) => f.lane === "pr-deterministic")
+      .map((f) => f.id)
+      .sort();
+    expect(ids).toEqual(EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS);
   });
 
   it("no pr-deterministic scenario lacks an enforceable assertion", () => {

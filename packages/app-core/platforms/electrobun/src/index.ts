@@ -27,7 +27,9 @@ import {
 import {
   buildApplicationMenu,
   findAppMenuEntryBySlug,
+  findViewMenuEntryById,
   parseSettingsWindowAction,
+  parseViewWindowAction,
 } from "./application-menu";
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
@@ -39,7 +41,10 @@ import {
   computeBottomBarFrame,
   resolveDesktopShellWindowPresentation,
 } from "./desktop-bottom-bar-config";
-import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
+import {
+  classifyDeepLinkRoute,
+  readOpenUrlEventUrl,
+} from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
   shouldCreateDesktopTray,
@@ -1553,6 +1558,16 @@ type ElizaDesktopRpc = ReturnType<
 // biome-ignore lint/suspicious/noExplicitAny: bridges typed rpc.request to the handler-module's any-params signature
 type RpcRequestProxy = Record<string, (params: any) => Promise<any>>;
 
+function asRpcRequestProxy(request: unknown): RpcRequestProxy {
+  return request as RpcRequestProxy;
+}
+
+function asRpcSend(
+  send: unknown,
+): (message: string, payload?: unknown) => void {
+  return send as (message: string, payload?: unknown) => void;
+}
+
 const MAX_RPC_REQUEST_TIME_MS = 600_000;
 
 /**
@@ -1590,10 +1605,7 @@ function createDesktopRpc(label: string): {
       // dispatch through the same underlying sendFn. Cast to a plain
       // function signature to call it dynamically by name without the
       // schema-typed overloads narrowing the message string.
-      (rpc.send as unknown as (m: string, p?: unknown) => void)(
-        message,
-        payload ?? null,
-      );
+      asRpcSend(rpc.send)(message, payload ?? null);
     } catch (err) {
       logger.warn(
         `[sendToWebview:${label}] send(${message}) failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1641,7 +1653,7 @@ function wireMainWindowAfterCreate(
   initializeNativeModules(win, sendToWebview);
   setStewardSendToWebview(sendToWebview);
   wireBrowserWorkspaceCaller({
-    request: rpc.request as unknown as RpcRequestProxy,
+    request: asRpcRequestProxy(rpc.request),
   });
 }
 
@@ -1656,7 +1668,7 @@ function wireMainWindowAfterCreate(
  */
 function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
   wireBrowserWorkspaceCaller({
-    request: rpc.request as unknown as RpcRequestProxy,
+    request: asRpcRequestProxy(rpc.request),
   });
 }
 
@@ -1960,6 +1972,23 @@ async function setupUpdater(): Promise<void> {
     };
 
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
+      // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in
+      // its own window via the same app-window path detached surfaces use.
+      // Checked before the generic `new-window:` surface branch because that
+      // prefix also matches.
+      const viewId = parseViewWindowAction(action);
+      if (viewId) {
+        const entry = findViewMenuEntryById(viewId);
+        if (entry) {
+          void getDesktopManager().openAppWindow({
+            slug: `view-${entry.id}`,
+            title: entry.label,
+            path: entry.path,
+            alwaysOnTop: false,
+          });
+        }
+        return true;
+      }
       if (action?.startsWith("new-window:")) {
         const surface = action.slice("new-window:".length);
         if (surfaceWindowManager && isDetachedSurface(surface)) {
@@ -2135,41 +2164,27 @@ async function setupUpdater(): Promise<void> {
  * care which scheme is used; it only routes by host + pathname.
  */
 async function handleDeepLink(url: string): Promise<void> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    await forwardDeepLinkToRenderer(url);
-    return;
-  }
-
-  // `<scheme>://apps/<slug>` → URL parses host="apps", pathname="/<slug>"
-  if (parsed.host === "apps") {
-    const slug = parsed.pathname
-      .replace(/^\/+/, "")
-      .replace(/[?#].*$/, "")
-      .split("/")[0];
-    if (slug) {
-      const entry = findAppMenuEntryBySlug(slug);
-      if (entry) {
-        // Mirror the menu/tray handler: apps with a details page get a config
-        // review screen instead of a direct window so deep links and clicks
-        // produce identical UX.
-        if (entry.hasDetailsPage) {
-          void restoreWindow();
-          sendToActiveRenderer("desktopAppDetailsRequested", {
-            slug: entry.slug,
-          });
-        } else {
-          void getDesktopManager().openAppWindow({
-            slug: entry.slug,
-            title: entry.displayName,
-            path: entry.windowPath,
-            alwaysOnTop: false,
-          });
-        }
-        return;
+  const route = classifyDeepLinkRoute(url);
+  if (route.kind === "app") {
+    const entry = findAppMenuEntryBySlug(route.slug);
+    if (entry) {
+      // Mirror the menu/tray handler: apps with a details page get a config
+      // review screen instead of a direct window so deep links and clicks
+      // produce identical UX.
+      if (entry.hasDetailsPage) {
+        void restoreWindow();
+        sendToActiveRenderer("desktopAppDetailsRequested", {
+          slug: entry.slug,
+        });
+      } else {
+        void getDesktopManager().openAppWindow({
+          slug: entry.slug,
+          title: entry.displayName,
+          path: entry.windowPath,
+          alwaysOnTop: false,
+        });
       }
+      return;
     }
   }
 

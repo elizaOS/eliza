@@ -1,4 +1,4 @@
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   index,
   jsonb,
@@ -95,6 +95,17 @@ export const appEarningsTransactions = pgTable(
     ),
     user_idx: index("app_earnings_transactions_user_idx").on(table.user_id),
     type_idx: index("app_earnings_transactions_type_idx").on(table.type),
+    // Idempotency gate for withdrawals (#10878). Before this, `requestWithdrawal`
+    // deduped via a SELECT-then-INSERT with no backing constraint, so two
+    // concurrent/retried requests with the same key could both debit the balance
+    // (double withdrawal → over-credited redeemable balance). This partial unique
+    // index makes the DB — not a prior read — the idempotency gate: the second
+    // insert with the same (app_id, idempotencyKey) raises 23505.
+    withdrawal_idempotency_unique: uniqueIndex("app_earnings_tx_withdrawal_idempotency_uidx")
+      .on(table.app_id, sql`(${table.metadata} ->> 'idempotencyKey')`)
+      .where(
+        sql`${table.type} = 'withdrawal' AND (${table.metadata} ->> 'idempotencyKey') IS NOT NULL`,
+      ),
   }),
 );
 
