@@ -80,7 +80,7 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
   };
 });
 
-import { getViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
+import { getViewChatBinding } from "@elizaos/ui";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 const ISO = "2026-01-01T00:00:00.000Z";

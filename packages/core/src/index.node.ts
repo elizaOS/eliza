@@ -141,6 +141,7 @@ export {
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
+export * from "./features/sub-agent-credentials/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
