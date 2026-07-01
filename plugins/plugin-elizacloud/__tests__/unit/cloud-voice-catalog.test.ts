@@ -23,21 +23,31 @@ import {
   fetchCloudVoiceCatalog,
   resetCloudVoiceCatalogCacheForTesting,
   setCloudVoiceClientFactoryForTesting,
-} from "./cloud-voice-catalog";
+} from "../../src/cloud-voice-catalog";
 
 interface RuntimeOptions {
   connected?: boolean;
   apiKey?: string;
   baseUrl?: string;
+  /** Explicit ELIZAOS_CLOUD_ENABLED value; null leaves it unset. */
+  enabled?: string | null;
+  /** Explicit ELIZAOS_CLOUD_USE_TTS value; null leaves it unset. */
+  useTts?: string | null;
 }
 
 function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
   const apiKey = opts.apiKey ?? "test-cloud-key";
   const baseUrl = opts.baseUrl ?? "https://cloud.test.local/api/v1";
-  const enabled = opts.connected === false ? "false" : "true";
+  const enabled =
+    opts.enabled !== undefined
+      ? opts.enabled
+      : opts.connected === false
+        ? "false"
+        : "true";
   const settings: Record<string, string | null> = {
     ELIZAOS_CLOUD_API_KEY: opts.connected === false ? null : apiKey,
     ELIZAOS_CLOUD_ENABLED: enabled,
+    ELIZAOS_CLOUD_USE_TTS: opts.useTts ?? null,
     ELIZAOS_CLOUD_BASE_URL: baseUrl,
   };
   return {
@@ -114,13 +124,33 @@ const USER_VOICES_PAYLOAD = [
   },
 ];
 
+// The availability gate reads via the plugin's getSetting, which falls back
+// to process.env — isolate the suite from the outer environment so a
+// host-written cloud key/flag can't skew the disconnected assertions.
+const GATE_ENV_KEYS = [
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZAOS_CLOUD_USE_TTS",
+] as const;
+let savedGateEnv: Record<string, string | undefined> = {};
+
 describe("fetchCloudVoiceCatalog", () => {
   beforeEach(() => {
     resetCloudVoiceCatalogCacheForTesting();
+    savedGateEnv = {};
+    for (const key of GATE_ENV_KEYS) {
+      savedGateEnv[key] = process.env[key];
+      delete process.env[key];
+    }
   });
   afterEach(() => {
     setCloudVoiceClientFactoryForTesting(null);
     resetCloudVoiceCatalogCacheForTesting();
+    for (const key of GATE_ENV_KEYS) {
+      const saved = savedGateEnv[key];
+      if (saved === undefined) delete process.env[key];
+      else process.env[key] = saved;
+    }
   });
 
   it("returns an empty array when the runtime is not cloud-connected (no SDK calls)", async () => {
@@ -130,9 +160,44 @@ describe("fetchCloudVoiceCatalog", () => {
     });
     setCloudVoiceClientFactoryForTesting(() => client);
 
-    const voices = await fetchCloudVoiceCatalog(makeRuntime({ connected: false }));
+    const voices = await fetchCloudVoiceCatalog(
+      makeRuntime({ connected: false }),
+    );
     expect(voices).toEqual([]);
     // The gate runs before the HTTP fetch, so neither endpoint is called.
+    expect(calls.premade).toBe(0);
+    expect(calls.user).toBe(0);
+  });
+
+  it("serves the catalog in capability-only mode: key + USE_TTS=true, ENABLED unset (#10961)", async () => {
+    const { client, calls } = makeFakeClient({
+      premade: PREMADE_VOICES_PAYLOAD,
+      user: USER_VOICES_PAYLOAD,
+    });
+    setCloudVoiceClientFactoryForTesting(() => client);
+
+    const voices = await fetchCloudVoiceCatalog(
+      makeRuntime({ enabled: null, useTts: "true" }),
+    );
+    // Same availability gate as the TEXT_TO_SPEECH handler: an explicit
+    // cloud-routed TTS (ELIZAOS_CLOUD_USE_TTS=true) serves the voice list
+    // even though ELIZAOS_CLOUD_ENABLED is unset.
+    expect(calls.premade).toBe(1);
+    expect(calls.user).toBe(1);
+    expect(voices.length).toBeGreaterThan(0);
+  });
+
+  it("returns an empty array when the key is set but neither ENABLED nor USE_TTS is", async () => {
+    const { client, calls } = makeFakeClient({
+      premade: PREMADE_VOICES_PAYLOAD,
+      user: USER_VOICES_PAYLOAD,
+    });
+    setCloudVoiceClientFactoryForTesting(() => client);
+
+    const voices = await fetchCloudVoiceCatalog(
+      makeRuntime({ enabled: null, useTts: null }),
+    );
+    expect(voices).toEqual([]);
     expect(calls.premade).toBe(0);
     expect(calls.user).toBe(0);
   });
@@ -226,7 +291,11 @@ describe("fetchCloudVoiceCatalog", () => {
     const voices = await fetchCloudVoiceCatalog(makeRuntime());
     // Only premade voices come back; the user endpoint failure is swallowed.
     expect(voices.map((v) => v.id).sort()).toEqual(
-      ["21m00Tcm4TlvDq8ikWAM", "EXAVITQu4vr4xnSDxMaL", "minimal-id-voice"].sort(),
+      [
+        "21m00Tcm4TlvDq8ikWAM",
+        "EXAVITQu4vr4xnSDxMaL",
+        "minimal-id-voice",
+      ].sort(),
     );
   });
 

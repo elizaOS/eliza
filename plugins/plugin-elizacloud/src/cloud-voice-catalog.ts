@@ -16,8 +16,8 @@
  * to surface a UI hint.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { isCloudConnected, logger, toRuntimeSettings } from "@elizaos/core";
-import { getApiKey, getBaseURL } from "./utils/config";
+import { logger } from "@elizaos/core";
+import { getApiKey, getBaseURL, isCloudTtsAvailable } from "./utils/config";
 import { createElizaCloudClient } from "./utils/sdk-client";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -214,7 +214,10 @@ async function fetchEndpointVoices(
  * Fetch the user-visible voice catalog from Eliza Cloud (premade + cloned).
  *
  * Returns an empty array when:
- *   - Eliza Cloud isn't connected (no API key / not enabled).
+ *   - Cloud TTS isn't available (no API key, or neither
+ *     `ELIZAOS_CLOUD_ENABLED` nor `ELIZAOS_CLOUD_USE_TTS` is set — the same
+ *     gate as the TEXT_TO_SPEECH handler, so the catalog serves in
+ *     capability-only mode too).
  *   - Both upstream endpoints fail (network, auth, etc.).
  *
  * Results are cached for {@link CACHE_TTL_MS} per runtime. Subsequent calls
@@ -223,7 +226,7 @@ async function fetchEndpointVoices(
 export async function fetchCloudVoiceCatalog(
   runtime: IAgentRuntime,
 ): Promise<CloudVoiceCatalogEntry[]> {
-  if (!isCloudConnected(toRuntimeSettings(runtime))) {
+  if (!isCloudTtsAvailable(runtime)) {
     return [];
   }
   const key = cacheKeyFor(runtime);
