@@ -202,7 +202,7 @@ export function HomeScreen({
         type="button"
         data-testid="home-notification-pull-zone"
         aria-label="Open notifications"
-        className="absolute inset-x-0 top-0 z-[2] flex h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default items-end justify-center rounded-none border-0 bg-transparent p-0 pb-1 outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+        className="absolute inset-x-0 top-0 z-[2] flex h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default items-end justify-center rounded-none border-0 bg-transparent p-0 pb-1 outline-none"
         style={{ touchAction: "none" }}
         onClick={() => setNotificationsOpen(true)}
         {...notificationPull}
