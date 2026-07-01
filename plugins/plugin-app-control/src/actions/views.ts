@@ -35,6 +35,7 @@ import {
 	hasPendingDeleteConfirm,
 	isDeleteCancellation,
 	isDeleteConfirmation,
+	readDeleteConfirmationOption,
 	runViewsDelete,
 } from "./views-delete.js";
 import { runViewsEdit } from "./views-edit.js";
@@ -846,7 +847,7 @@ function isViewPluginAuthoringRequest(
 	if (
 		readStringOption(options, "editTarget") ||
 		readStringOption(options, "choice") ||
-		readStringOption(options, "confirm")
+		readDeleteConfirmationOption(options) !== null
 	) {
 		return true;
 	}

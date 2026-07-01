@@ -517,6 +517,50 @@ describe("view management actions", () => {
 		}
 	});
 
+	it("owner-gates the follow-up delete confirmation turn for a non-owner (#10471)", async () => {
+		// A pending delete-confirm task exists in this room. A non-owner replying
+		// with a structured confirm must NOT be able to confirm someone else's
+		// destructive delete — validate must funnel the follow-up turn through the
+		// owner gate, exactly like the first destructive turn.
+		const { runtime } = createRuntime({
+			tasks: [
+				{
+					id: "task-1",
+					metadata: {
+						roomId: "room-1",
+						viewId: "remote-ledger",
+						viewLabel: "Remote Ledger",
+						pluginName: "@local/plugin-ledger",
+					},
+				},
+			],
+		});
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: ownerCheck,
+		});
+
+		await expect(
+			action.validate?.(runtime as never, message("yes") as never, undefined, {
+				confirm: true,
+			}),
+		).resolves.toBe(false);
+		// The gate was actually reached (not rejected for some earlier reason).
+		expect(ownerCheck).toHaveBeenCalledTimes(1);
+
+		// A structured cancel from a non-owner is gated the same way.
+		await expect(
+			action.validate?.(runtime as never, message("no") as never, undefined, {
+				confirm: false,
+			}),
+		).resolves.toBe(false);
+		expect(ownerCheck).toHaveBeenCalledTimes(2);
+	});
+
 	it("reports failure (not 'Deleted') when the plugin uninstall fails", async () => {
 		const repo = createRepoFixture();
 		try {
