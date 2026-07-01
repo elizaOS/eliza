@@ -377,11 +377,15 @@ export class SecureTokenRedemptionService {
     let twapPrice: Decimal;
     let elizaAmount: Decimal;
     let quoteExpiresAt: Date;
+    let priceSource: string;
+    let twapSampleCount: number | undefined;
+    let twapVolatility: number | undefined;
 
     if (asset === "usdc") {
       twapPrice = new Decimal(1);
       elizaAmount = usdValue;
       quoteExpiresAt = new Date(Date.now() + SECURE_CONFIG.QUOTE_VALIDITY_MS);
+      priceSource = "usdc_fixed";
     } else {
       const quoteResult = await twapPriceOracle.getRedemptionQuote(network, pointsAmount, userId);
       if (!quoteResult.success) {
@@ -392,6 +396,9 @@ export class SecureTokenRedemptionService {
       twapPrice = new Decimal(twapQuote.twapPrice);
       elizaAmount = calculateTokenAmount(usdValue, twapPrice);
       quoteExpiresAt = twapQuote.expiresAt;
+      priceSource = "twap";
+      twapSampleCount = twapQuote.sampleCount;
+      twapVolatility = twapQuote.volatility;
       if (quoteResult.warnings?.length) {
         warnings.push(...quoteResult.warnings);
       }
@@ -541,12 +548,12 @@ export class SecureTokenRedemptionService {
           metadata: {
             user_agent: metadata?.userAgent ? sanitizeForLog(metadata.userAgent) : undefined,
             ip_address: metadata?.ipAddress,
-            price_source: "twap",
+            price_source: priceSource,
             idempotency_key: finalIdempotencyKey,
             original_balance: currentAvailable.toNumber(),
             balance_after: currentAvailable.minus(deductionAmount).toNumber(),
-            twap_sample_count: twapQuote.sampleCount,
-            twap_volatility: twapQuote.volatility,
+            twap_sample_count: twapSampleCount,
+            twap_volatility: twapVolatility,
             ledger_entry_id: ledgerEntry.id,
             earnings_source: "redeemable_earnings", // Mark source for audit
           },
