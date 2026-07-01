@@ -295,32 +295,26 @@ async function installDirectCloudLoginRoutes(
     });
   });
 
-  await page.route(
-    "https://api.elizacloud.ai/api/auth/cli-session",
-    async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      await fulfillJson(route, 200, { ok: true });
-    },
-  );
+  await page.route("**/api/auth/cli-session", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, { ok: true });
+  });
 
-  await page.route(
-    "https://api.elizacloud.ai/api/auth/cli-session/**",
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      await fulfillJson(route, 200, {
-        status: "authenticated",
-        apiKey: CLOUD_AUTH_TOKEN,
-        organizationId: "ui-smoke-org",
-        userId,
-      });
-    },
-  );
+  await page.route("**/api/auth/cli-session/**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      status: "authenticated",
+      apiKey: CLOUD_AUTH_TOKEN,
+      organizationId: "ui-smoke-org",
+      userId,
+    });
+  });
 }
 
 async function installFirstRunSubmitRoute(
