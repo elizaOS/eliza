@@ -161,10 +161,9 @@ describe("selectPricedHoldings", () => {
 
   it("renders nothing when no qualifying priced holdings exist", () => {
     expect(
-      selectPricedHoldings(
-        balances([{ symbol: "SHIB", valueUsd: "0.10" }]),
-        [price("SHIB", 0.00001)],
-      ),
+      selectPricedHoldings(balances([{ symbol: "SHIB", valueUsd: "0.10" }]), [
+        price("SHIB", 0.00001),
+      ]),
     ).toEqual([]);
   });
 });
