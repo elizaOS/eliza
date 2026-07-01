@@ -116,6 +116,21 @@ function StewardConfigError() {
 }
 
 /**
+ * Fallback shown while the lazy `@stwd/*` runtime chunk loads. It must NOT be
+ * `children`: the runtime is loaded precisely because this route needs Steward
+ * auth, and some children hard-require a `<StewardProvider>` ancestor — the
+ * app-auth authorize consent calls `useAuth()` from `@stwd/react`, which throws
+ * "must be used within a <StewardProvider>" if it renders without one. Rendering
+ * children during the fallback puts them in a provider-less tree and crashes the
+ * whole authorize flow (#10680). A neutral busy placeholder keeps the tree
+ * provider-safe until the chunk lands (it only shows on the first cold
+ * navigation to an auth surface; the chunk is cached thereafter).
+ */
+function StewardRuntimeLoadingFallback() {
+  return <div aria-busy="true" className="min-h-[40vh]" />;
+}
+
+/**
  * Outer Steward provider. Cheap on routes that don't need auth (no token, not
  * an auth surface) — it renders children directly without loading the heavy
  * `@stwd/*` runtime chunk. Loads the runtime lazily otherwise.
@@ -162,7 +177,7 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Suspense fallback={children}>
+    <Suspense fallback={<StewardRuntimeLoadingFallback />}>
       <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
         {children}
       </StewardAuthRuntimeProvider>
