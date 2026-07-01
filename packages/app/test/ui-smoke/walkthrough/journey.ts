@@ -548,11 +548,9 @@ export async function installJourneyRoutes(
     }
     await route.fallback();
   });
-  // The renderer HEAD-probes the OPTIONAL character VRM avatar on most views; the
-  // keyless stub stack 501s it, which the app treats as "no custom avatar" and
-  // falls back gracefully — but the raw 5xx trips the diagnostics gate on nearly
-  // every step. Answer the probe with a 404 ("no VRM") so the gate fails only on
-  // real errors, without changing the fallback behaviour the UI already relies on.
+  // The renderer HEAD-probes the OPTIONAL character VRM avatar on most views.
+  // Answer the probe with a 404 ("no VRM") so the gate fails only on real
+  // errors, without changing the fallback behaviour the UI already relies on.
   await page.route("**/api/avatar/vrm", async (route) => {
     if (route.request().method() === "HEAD") {
       await route.fulfill({ status: 404 });
