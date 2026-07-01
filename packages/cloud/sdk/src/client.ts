@@ -8,6 +8,7 @@ import {
   type ApiKeyCreateRequest,
   type ApiKeyCreateResponse,
   type ApiKeyListResponse,
+  type AppBackupSnapshot,
   type AppCreditsBalanceResponse,
   type AppDeployStatusResponse,
   type AppEarningsHistoryResponse,
@@ -68,6 +69,7 @@ import {
   type EmbeddingsRequest,
   type EmbeddingsResponse,
   type EndpointCallOptions,
+  type ExportAppBackupResponse,
   type GatewayRelayResponse,
   type GenerateImageRequest,
   type GenerateImageResponse,
@@ -95,6 +97,7 @@ import {
   type RegisterGatewayRelaySessionResponse,
   type ResponsesCreateRequest,
   type ResponsesCreateResponse,
+  type RestoreAppBackupResponse,
   type SettleX402PaymentRequestResponse,
   type SnapshotListResponse,
   type SnapshotType,
@@ -939,6 +942,28 @@ export class ElizaCloudClient {
     return this.request<ListAdSlotsResponse>(
       "GET",
       "/api/v1/marketing/inventory",
+    );
+  }
+
+  /** `GET /api/v1/apps/:id/backup` — export a secret-free app config snapshot (#10204). */
+  exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
+    return this.request<ExportAppBackupResponse>(
+      "GET",
+      `/api/v1/apps/${appId}/backup`,
+    );
+  }
+
+  /** `POST /api/v1/apps/backup/restore` — recreate an app from a backup snapshot. */
+  restoreAppBackup(
+    backup: AppBackupSnapshot,
+    name?: string,
+  ): Promise<RestoreAppBackupResponse> {
+    return this.request<RestoreAppBackupResponse>(
+      "POST",
+      "/api/v1/apps/backup/restore",
+      {
+        json: name ? { backup, name } : { backup },
+      },
     );
   }
 
