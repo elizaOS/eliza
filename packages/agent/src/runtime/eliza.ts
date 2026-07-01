@@ -1168,6 +1168,20 @@ function isProvisionedCloudContainer(env: NodeJS.ProcessEnv = process.env) {
   return env.ELIZA_CLOUD_PROVISIONED === "1";
 }
 
+function isExplicitFalseEnvValue(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "false";
+}
+
+function hasExplicitEmbeddingProviderConfig(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return Boolean(
+    readEffectiveEnvValue(config, "EMBEDDING_BASE_URL", env) ||
+      readEffectiveEnvValue(config, "EMBEDDING_API_KEY", env),
+  );
+}
+
 const CLOUD_ROUTING_MODEL_ENV: ReadonlyArray<[string, string]> = [
   ["ELIZAOS_CLOUD_NANO_MODEL", "nanoModel"],
   ["ELIZAOS_CLOUD_SMALL_MODEL", "smallModel"],
@@ -1275,6 +1289,12 @@ export function ensureProvisionedCloudContainerConfig(
     );
     const cloudRouting = buildDefaultElizaCloudServiceRouting({
       includeInference: true,
+      excludeServices:
+        isExplicitFalseEnvValue(
+          readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_EMBEDDINGS", env),
+        ) && hasExplicitEmbeddingProviderConfig(config, env)
+          ? ["embeddings"]
+          : undefined,
       nanoModel: readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL", env),
       smallModel: readEffectiveEnvValue(
         config,
@@ -2177,16 +2197,30 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     topology.services.tts || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_MEDIA", topology.services.media);
-  // Cloud containers always use cloud embeddings: the cloud TEXT_EMBEDDING
+  // Cloud containers normally use cloud embeddings: the cloud TEXT_EMBEDDING
   // handler (1536-dim) must win over plugin-local-inference's gte-small
   // (384-dim CPU GGUF). Without this, a dedicated cloud agent warms up and
   // serves local 384-dim embeddings while the SQL column is provisioned for the
   // cloud dimension → every memory insert is dropped on a dimension mismatch,
-  // and the CPU embedding warmup wastes boot time.
-  setCloudUsageEnv(
-    "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-    topology.services.embeddings || isCloudContainer,
+  // and the CPU embedding warmup wastes boot time. The exception is an explicit
+  // BYO embedding endpoint plus ELIZAOS_CLOUD_USE_EMBEDDINGS=false: that is an
+  // operator-owned override, so preserve it instead of forcing cloud back on.
+  const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
+  const cloudEmbeddingsExplicitlyDisabled = isExplicitFalseEnvValue(
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_EMBEDDINGS"),
   );
+  const byoEmbeddingProviderOverridesCloud =
+    isCloudContainer &&
+    cloudEmbeddingsExplicitlyDisabled &&
+    hasByoEmbeddingProvider;
+  if (byoEmbeddingProviderOverridesCloud) {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+  } else {
+    setCloudUsageEnv(
+      "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+      topology.services.embeddings || isCloudContainer,
+    );
+  }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 
   if (effectivelyEnabled) {
