@@ -136,6 +136,51 @@ describe("runEmbedHandshake", () => {
     });
   });
 
+  it("auto-detects telegram from injected initData on a bare /embed URL", async () => {
+    // The Telegram web_app button links to a bare `<base>/embed` (no ?platform).
+    const { client, setToken } = fakeClient();
+    const fetchImpl = fakeFetch(
+      jsonResponse(200, { role: "OWNER", adminMode: true, token: "tok" }),
+    );
+    const outcome = await runEmbedHandshake({
+      win: fakeWin("/embed", "", "tg-init"),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      client,
+    });
+    expect(outcome.status).toBe("authenticated");
+    expect(setToken).toHaveBeenCalledWith("tok");
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toMatchObject({
+      platform: "telegram",
+      signedLaunchPayload: "tg-init",
+    });
+  });
+
+  it("auto-detects discord from a bare /embed?code= redirect", async () => {
+    const { client } = fakeClient();
+    const fetchImpl = fakeFetch(
+      jsonResponse(200, { role: "ADMIN", adminMode: true, token: "t" }),
+    );
+    const outcome = await runEmbedHandshake({
+      win: fakeWin("/embed", "?code=disc-code"),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      client,
+    });
+    expect(outcome.status).toBe("authenticated");
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toMatchObject({
+      platform: "discord",
+      signedLaunchPayload: "disc-code",
+    });
+  });
+
+  it("fails closed on a bare /embed with no platform signal at all", async () => {
+    const { client } = fakeClient();
+    const outcome = await runEmbedHandshake({
+      win: fakeWin("/embed"),
+      client,
+    });
+    expect(outcome).toEqual({ status: "failed", reason: "unknown_platform" });
+  });
+
   it("fails closed on a 403 without installing a token", async () => {
     const { client, setToken } = fakeClient();
     const fetchImpl = fakeFetch(jsonResponse(403, { error: "nope" }));

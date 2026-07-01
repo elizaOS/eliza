@@ -50,9 +50,32 @@ export function isEmbedPath(pathname: string): boolean {
   return pathname === "/embed" || pathname.startsWith("/embed/");
 }
 
-function detectPlatform(params: URLSearchParams): EmbedPlatform | null {
-  const platform = params.get("platform");
-  return platform === "telegram" || platform === "discord" ? platform : null;
+function telegramInitData(win: Window): string | null {
+  const telegram = (win as Window & { Telegram?: { WebApp?: TelegramWebApp } })
+    .Telegram?.WebApp;
+  // The Mini App SDK wants `ready()` called once the app is prepared to be
+  // shown; it is also what makes `initData` reliably available.
+  telegram?.ready?.();
+  const initData = telegram?.initData?.trim();
+  return initData ? initData : null;
+}
+
+/**
+ * Detect the launch platform. The connector launch surfaces link to a bare
+ * `/embed` URL (no `?platform=`), so infer it from the runtime signals:
+ * a Telegram Mini App injects `Telegram.WebApp.initData`; a Discord Activity
+ * OAuth redirect lands with a `?code`. An explicit `?platform=` overrides both
+ * (useful for testing / non-standard launchers).
+ */
+function detectPlatform(
+  params: URLSearchParams,
+  win: Window,
+): EmbedPlatform | null {
+  const explicit = params.get("platform");
+  if (explicit === "telegram" || explicit === "discord") return explicit;
+  if (telegramInitData(win)) return "telegram";
+  if (params.get("code")?.trim()) return "discord";
+  return null;
 }
 
 function readLaunchPayload(
@@ -61,14 +84,7 @@ function readLaunchPayload(
   win: Window,
 ): string | null {
   if (platform === "telegram") {
-    const telegram = (
-      win as Window & { Telegram?: { WebApp?: TelegramWebApp } }
-    ).Telegram?.WebApp;
-    // The Mini App SDK wants `ready()` called once the app is prepared to be
-    // shown; it is also what makes `initData` reliably available.
-    telegram?.ready?.();
-    const initData = telegram?.initData?.trim();
-    return initData ? initData : null;
+    return telegramInitData(win);
   }
   // Discord Activity: the Embedded App SDK's `commands.authorize()` returns an
   // OAuth2 `code` the launch link carries through as a query param.
@@ -90,7 +106,7 @@ export async function runEmbedHandshake(
   }
 
   const params = new URLSearchParams(win.location.search);
-  const platform = detectPlatform(params);
+  const platform = detectPlatform(params, win);
   if (!platform) {
     return { status: "failed", reason: "unknown_platform" };
   }
