@@ -30,11 +30,26 @@ import { logger } from "../utils/logger";
 /** Bump when the rubric or category taxonomy changes so old rows stay attributable. */
 export const RUBRIC_VERSION = "2026-07-01.1";
 
-/** Default classifier model. Override with `APP_REVIEW_MODEL` (e.g. a Cerebras id for live runs). */
-const DEFAULT_REVIEW_MODEL = "gpt-4o-mini";
+/**
+ * Classifier model. `APP_REVIEW_MODEL` wins; otherwise pick a small, capable
+ * model from whichever provider the cloud actually has configured so the gate
+ * works out-of-the-box (OpenAI → Anthropic → Cerebras → Groq). Falls back to
+ * the first candidate, and `classifyCandidate` fails closed if none is usable.
+ */
+const REVIEW_MODEL_CANDIDATES = [
+  "gpt-4o-mini",
+  "claude-haiku-4-5-20251001",
+  "gpt-oss-120b",
+  "llama-3.3-70b",
+];
 
 export function getAppReviewModelId(): string {
-  return process.env.APP_REVIEW_MODEL?.trim() || DEFAULT_REVIEW_MODEL;
+  const explicit = process.env.APP_REVIEW_MODEL?.trim();
+  if (explicit) return explicit;
+  for (const model of REVIEW_MODEL_CANDIDATES) {
+    if (hasLanguageModelProviderConfigured(model)) return model;
+  }
+  return REVIEW_MODEL_CANDIDATES[0];
 }
 
 /**
@@ -192,10 +207,12 @@ Return "allow" for ordinary lawful software: productivity, entertainment, educat
 
 Respond with: disposition ("allow" or "ban"), matchedCategories (array of short category ids from the ban list, empty when allowing), and a one-sentence rationale a creator can act on.`;
 
+// All fields required + no string length constraints: OpenAI strict structured
+// output rejects optional properties and min/max keywords.
 const ClassifierSchema = z.object({
   disposition: z.enum(["allow", "ban"]),
-  matchedCategories: z.array(z.string()).default([]),
-  rationale: z.string().min(1).max(400),
+  matchedCategories: z.array(z.string()),
+  rationale: z.string(),
 });
 
 export interface AppReviewCandidate {

@@ -1,4 +1,5 @@
 import { paymentRequestsRepository } from "../../db/repositories/payment-requests";
+import { createOxaPayPaymentAdapter } from "./payment-adapters/oxapay";
 import { createStripePaymentAdapter } from "./payment-adapters/stripe";
 import { createPaymentRequestsService, type PaymentRequestsService } from "./payment-requests";
 
@@ -7,7 +8,9 @@ let singleton: PaymentRequestsService | null = null;
 export function getPaymentRequestsService(_env?: unknown): PaymentRequestsService {
   singleton ??= createPaymentRequestsService({
     repository: paymentRequestsRepository,
-    adapters: [createStripePaymentAdapter()],
+    // Stripe (brand-trust fiat) + OxaPay (crypto) both top up credits through
+    // this one surface + ledger (#10732).
+    adapters: [createStripePaymentAdapter(), createOxaPayPaymentAdapter()],
   });
   return singleton;
 }

@@ -5,6 +5,7 @@ import {
   getBaseUrl,
   isServerReachable,
 } from "./_helpers/api";
+import { approveAppInDb } from "./_helpers/review";
 
 let serverReachable = false;
 let hasTestApiKey = false;
@@ -32,8 +33,12 @@ async function createTestApp(): Promise<string> {
   expect(res.status).toBe(200);
   const body = (await res.json()) as { app?: { id?: string } };
   expect(body.app?.id).toBeTruthy();
-  createdAppIds.push(body.app?.id as string);
-  return body.app?.id as string;
+  const appId = body.app?.id as string;
+  createdAppIds.push(appId);
+  // Charges require a compliance-approved app (#10732). This suite exercises the
+  // charge/settlement path, not the review gate, so approve the app directly.
+  await approveAppInDb(appId);
+  return appId;
 }
 
 beforeAll(async () => {

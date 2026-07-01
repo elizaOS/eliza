@@ -21,7 +21,8 @@ import { getPaymentRequestsService } from "@/lib/services/payment-requests-defau
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CreateProviderSchema = z.enum(["stripe"]);
+// Stripe + OxaPay are the wired credit-top-up rails on this surface (#10732).
+const CreateProviderSchema = z.enum(["stripe", "oxapay"]);
 const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "wallet_native"]);
 const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
 const StatusSchema = z.enum([
