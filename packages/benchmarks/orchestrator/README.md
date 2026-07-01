@@ -601,6 +601,24 @@ latest artifact set.
 `validate-runtime-gates` probes the current host for the external services and
 credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
 
+After the latest matrix is generated and manually spot-reviewed, package the
+reviewed result set into the committed evidence location:
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator review-package \
+  --latest-dir packages/benchmarks/benchmark_results/latest \
+  --out-dir .github/issue-evidence/10199-benchmark-review \
+  --reviewed-by <handle> \
+  --reviewer-note "Opened the selected trajectories/replays and spot-reviewed model inputs, outputs, scores, and failure diagnostics."
+```
+
+`review-package` writes `manifest.json` plus `scorecard.md` and exits nonzero
+unless the static inventory has no gaps, `validate-latest-readiness` passes,
+the generated-artifact guard finds no committed run output, latest rows exist,
+and the manual review note is present. Use `--include-benchmarks`,
+`--exclude-benchmarks`, and `--skip-runtime-gates` only when packaging a clearly
+scoped partial matrix; the manifest records those filters.
+
 Expected real-runtime gates:
 
 - Hyperliquid rows require `HL_PRIVATE_KEY` and live execution with demo mode
