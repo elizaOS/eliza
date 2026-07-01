@@ -16,6 +16,17 @@ export interface CockpitInteractiveTerminalProps {
 
 type Phase = "spawning" | "ready" | "error";
 
+type InteractivePtyClient = typeof client & {
+  spawnPtySession(options: {
+    kind: "eliza-code";
+    tier: CockpitTerminalTier;
+    cwd?: string;
+  }): Promise<{ sessionId: string }>;
+  stopPtySession(sessionId: string): Promise<boolean>;
+};
+
+const ptyClient = client as InteractivePtyClient;
+
 /**
  * The "tap-in, drive it directly" pillar of the cockpit: launches a REAL
  * interactive `eliza-code` CLI on Eliza Cloud/cerebras (`@elizaos/plugin-pty`'s
@@ -41,7 +52,7 @@ export function CockpitInteractiveTerminal({
     setPhase("spawning");
     setError(null);
     try {
-      const { sessionId: id } = await client.spawnPtySession({
+      const { sessionId: id } = await ptyClient.spawnPtySession({
         kind: "eliza-code",
         tier,
         ...(cwd ? { cwd } : {}),
@@ -72,7 +83,7 @@ export function CockpitInteractiveTerminal({
     () => () => {
       const id = activeSessionRef.current;
       activeSessionRef.current = null;
-      if (id) void client.stopPtySession(id);
+      if (id) void ptyClient.stopPtySession(id);
     },
     [],
   );
@@ -84,7 +95,7 @@ export function CockpitInteractiveTerminal({
   const close = useCallback(() => {
     const id = activeSessionRef.current;
     activeSessionRef.current = null;
-    if (id) void client.stopPtySession(id);
+    if (id) void ptyClient.stopPtySession(id);
     onClose?.();
   }, [onClose]);
 
@@ -134,7 +145,11 @@ export function CockpitInteractiveTerminal({
         {phase === "spawning" ? (
           <div
             data-testid="cockpit-terminal-spawning"
-            style={{ padding: 16, fontSize: 13, color: "var(--txt-muted, #9aa0aa)" }}
+            style={{
+              padding: 16,
+              fontSize: 13,
+              color: "var(--txt-muted, #9aa0aa)",
+            }}
           >
             Starting interactive eliza-code on Cerebras…
           </div>
@@ -143,7 +158,11 @@ export function CockpitInteractiveTerminal({
         {phase === "error" ? (
           <div
             data-testid="cockpit-terminal-error"
-            style={{ padding: 16, fontSize: 13, color: "var(--danger, #f7768e)" }}
+            style={{
+              padding: 16,
+              fontSize: 13,
+              color: "var(--danger, #f7768e)",
+            }}
           >
             <div>{error}</div>
             <button

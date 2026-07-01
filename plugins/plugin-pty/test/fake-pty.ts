@@ -39,9 +39,9 @@ export class FakePty implements PtyHandle {
     return { dispose: () => void 0 };
   }
 
-  onExit(
-    listener: (event: { exitCode: number; signal?: number }) => void,
-  ): { dispose(): void } {
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): {
+    dispose(): void;
+  } {
     this.exitListeners.push(listener);
     return { dispose: () => void 0 };
   }

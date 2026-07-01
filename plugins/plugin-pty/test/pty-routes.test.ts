@@ -36,7 +36,11 @@ function makeHarness(opts?: {
   return { runtime, svc, calls: fake.calls };
 }
 
-function ctx(runtime: IAgentRuntime, body?: unknown, params?: Record<string, string>) {
+function ctx(
+  runtime: IAgentRuntime,
+  body?: unknown,
+  params?: Record<string, string>,
+) {
   return {
     body,
     params: params ?? {},
@@ -102,7 +106,10 @@ describe("POST /api/pty/sessions", () => {
   });
 
   it("503 when PTY_SERVICE is not registered", async () => {
-    const h = makeHarness({ noService: true, settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({
+      noService: true,
+      settings: { OPENAI_API_KEY: "sk" },
+    });
     const res = await routeByName("pty-spawn-session")(ctx(h.runtime, {}));
     expect(res.status).toBe(503);
   });
@@ -138,7 +145,9 @@ describe("POST /api/pty/sessions", () => {
 describe("GET + DELETE /api/pty/sessions", () => {
   it("lists live sessions", async () => {
     const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
-    await routeByName("pty-spawn-session")(ctx(h.runtime, { cwd: process.cwd() }));
+    await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
     const res = await routeByName("pty-list-sessions")(ctx(h.runtime));
     expect(res.status).toBe(200);
     expect((res.body as { sessions: unknown[] }).sessions).toHaveLength(1);

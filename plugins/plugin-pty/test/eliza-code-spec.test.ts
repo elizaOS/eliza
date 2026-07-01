@@ -71,10 +71,12 @@ describe("buildElizaCodeCerebrasSpec", () => {
     expect(() => buildElizaCodeCerebrasSpec({ ...base, apiKey: "  " })).toThrow(
       /API key/i,
     );
-    expect(() => buildElizaCodeCerebrasSpec({ ...base, cwd: "" })).toThrow(/cwd/i);
-    expect(() =>
-      buildElizaCodeCerebrasSpec({ ...base, binPath: "" }),
-    ).toThrow(/binPath/i);
+    expect(() => buildElizaCodeCerebrasSpec({ ...base, cwd: "" })).toThrow(
+      /cwd/i,
+    );
+    expect(() => buildElizaCodeCerebrasSpec({ ...base, binPath: "" })).toThrow(
+      /binPath/i,
+    );
   });
 });
 

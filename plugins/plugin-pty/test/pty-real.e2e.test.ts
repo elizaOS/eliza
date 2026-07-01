@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SessionExitEvent, SessionOutputEvent } from "../services/pty-contract";
+import type {
+  SessionExitEvent,
+  SessionOutputEvent,
+} from "../services/pty-contract";
 import {
   defaultSpawnResolver,
   PtyConsoleBridge,
@@ -33,7 +36,9 @@ suite("real PTY end-to-end (@lydell/node-pty)", () => {
       out += (e as SessionOutputEvent).data;
     });
     const exited = new Promise<number | null>((resolve) => {
-      bridge.on("session_exit", (e) => resolve((e as SessionExitEvent).exitCode));
+      bridge.on("session_exit", (e) =>
+        resolve((e as SessionExitEvent).exitCode),
+      );
     });
 
     const info = await store.start({

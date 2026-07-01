@@ -31,30 +31,30 @@ export const ptyPlugin: Plugin = {
 
 export default ptyPlugin;
 
-export { PtyService } from "./services/pty-service";
-export {
-  PtyConsoleBridge,
-  PtySessionStore,
-  defaultSpawnResolver,
-  type PtySpawnResolver,
-} from "./services/pty-session-store";
-export { bunTruePtySpawn, isBunRuntime } from "./services/bun-pty-spawn";
 export {
   buildElizaCodeCerebrasSpec,
-  resolveElizaCodeBin,
   ELIZA_CLOUD_DEFAULT_BASE_URL,
   ELIZA_CLOUD_FAST_MODEL,
   ELIZA_CLOUD_SMART_MODEL,
   type ElizaCodeCerebrasOptions,
+  resolveElizaCodeBin,
 } from "./lib/eliza-code-spec";
-export type {
-  PtyHandle,
-  PtySpawn,
-  PtySpawnSpec,
-  PtySessionInfo,
-} from "./services/pty-types";
+export { bunTruePtySpawn, isBunRuntime } from "./services/bun-pty-spawn";
 export type {
   ConsoleBridge,
-  SessionOutputEvent,
   SessionExitEvent,
+  SessionOutputEvent,
 } from "./services/pty-contract";
+export { PtyService } from "./services/pty-service";
+export {
+  defaultSpawnResolver,
+  PtyConsoleBridge,
+  PtySessionStore,
+  type PtySpawnResolver,
+} from "./services/pty-session-store";
+export type {
+  PtyHandle,
+  PtySessionInfo,
+  PtySpawn,
+  PtySpawnSpec,
+} from "./services/pty-types";

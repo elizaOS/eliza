@@ -1,8 +1,8 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   PtyConsoleBridge,
-  type PtySpawnResolver,
   PtySessionStore,
+  type PtySpawnResolver,
 } from "./pty-session-store";
 import type { PtySessionInfo, PtySpawnSpec } from "./pty-types";
 
@@ -50,7 +50,9 @@ export class PtyService extends Service {
   static async start(runtime: IAgentRuntime): Promise<PtyService> {
     const allowedRoot = resolveAllowedRoot(runtime);
     const instance = new PtyService(runtime, undefined, { allowedRoot });
-    logger.info(`[plugin-pty] PTY_SERVICE started (allowedRoot=${allowedRoot})`);
+    logger.info(
+      `[plugin-pty] PTY_SERVICE started (allowedRoot=${allowedRoot})`,
+    );
     return instance;
   }
 

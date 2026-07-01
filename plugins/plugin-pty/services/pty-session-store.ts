@@ -3,7 +3,11 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn";
-import type { ConsoleBridge, SessionExitEvent, SessionOutputEvent } from "./pty-contract";
+import type {
+  ConsoleBridge,
+  SessionExitEvent,
+  SessionOutputEvent,
+} from "./pty-contract";
 import type {
   PtyDisposable,
   PtyHandle,
@@ -140,7 +144,9 @@ export class PtySessionStore {
    */
   private confineCwd(cwd: string): string {
     const resolved = path.resolve(cwd);
-    const root = this.opts.allowedRoot ? path.resolve(this.opts.allowedRoot) : null;
+    const root = this.opts.allowedRoot
+      ? path.resolve(this.opts.allowedRoot)
+      : null;
     if (root) {
       const rel = path.relative(root, resolved);
       if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
@@ -218,7 +224,9 @@ export class PtySessionStore {
     try {
       session.pty.write(data);
     } catch (err) {
-      logger.warn(`[plugin-pty] write to session ${sessionId} failed: ${String(err)}`);
+      logger.warn(
+        `[plugin-pty] write to session ${sessionId} failed: ${String(err)}`,
+      );
     }
   }
 
@@ -226,13 +234,20 @@ export class PtySessionStore {
   resize(sessionId: string, cols: number, rows: number): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.info.exited) return;
-    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) {
+    if (
+      !Number.isFinite(cols) ||
+      !Number.isFinite(rows) ||
+      cols < 1 ||
+      rows < 1
+    ) {
       return;
     }
     try {
       session.pty.resize(Math.floor(cols), Math.floor(rows));
     } catch (err) {
-      logger.warn(`[plugin-pty] resize of session ${sessionId} failed: ${String(err)}`);
+      logger.warn(
+        `[plugin-pty] resize of session ${sessionId} failed: ${String(err)}`,
+      );
     }
   }
 
@@ -244,7 +259,9 @@ export class PtySessionStore {
     try {
       if (!session.info.exited) session.pty.kill();
     } catch (err) {
-      logger.warn(`[plugin-pty] kill of session ${sessionId} failed: ${String(err)}`);
+      logger.warn(
+        `[plugin-pty] kill of session ${sessionId} failed: ${String(err)}`,
+      );
     }
     for (const d of session.disposers) {
       try {
@@ -279,7 +296,9 @@ export class PtySessionStore {
     session.info.exited = true;
     session.info.exitCode = exitCode;
     this.bridge.emitExit(sessionId, exitCode);
-    logger.info(`[plugin-pty] session ${sessionId} exited (code=${exitCode ?? "null"})`);
+    logger.info(
+      `[plugin-pty] session ${sessionId} exited (code=${exitCode ?? "null"})`,
+    );
     // Keep the record briefly so a just-connected client can drain the tail,
     // then reap it.
     session.reapTimer = setTimeout(() => {

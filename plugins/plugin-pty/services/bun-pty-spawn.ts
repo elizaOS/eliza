@@ -28,7 +28,10 @@ interface BunLike {
     },
   ): {
     pid: number;
-    terminal?: { write(data: string): void; resize(cols: number, rows: number): void };
+    terminal?: {
+      write(data: string): void;
+      resize(cols: number, rows: number): void;
+    };
     exited?: Promise<number>;
     kill(signal?: number | string): void;
   };
@@ -73,7 +76,8 @@ export const bunTruePtySpawn: PtySpawn = (file, args, opts): PtyHandle => {
       cols: opts.cols ?? 120,
       rows: opts.rows ?? 30,
       ...(opts.name ? { name: opts.name } : {}),
-      data: (_terminal, bytes) => emitData(decoder.decode(bytes, { stream: true })),
+      data: (_terminal, bytes) =>
+        emitData(decoder.decode(bytes, { stream: true })),
       // The terminal `exit` callback reports the PTY-teardown status (always 1
       // under Bun), NOT the process exit code — so we ignore it here and take
       // the real code from `proc.exited` below.
@@ -81,9 +85,7 @@ export const bunTruePtySpawn: PtySpawn = (file, args, opts): PtyHandle => {
     },
   });
   // `proc.exited` is the authoritative process exit code.
-  void proc.exited
-    ?.then((code) => fireExit(code))
-    .catch(() => fireExit(1));
+  void proc.exited?.then((code) => fireExit(code)).catch(() => fireExit(1));
 
   const terminal = proc.terminal;
   return {

@@ -26,8 +26,18 @@
       "default": "./dist/*.js"
     }
   },
-  "files": ["dist"],
-  "keywords": ["eliza", "plugin", "pty", "terminal", "interactive", "cli", "cockpit"],
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "pty",
+    "terminal",
+    "interactive",
+    "cli",
+    "cockpit"
+  ],
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
@@ -84,7 +94,9 @@
     }
   },
   "eliza": {
-    "platforms": ["node"],
+    "platforms": [
+      "node"
+    ],
     "runtime": "node",
     "platformDetails": {
       "node": "Default export (Node.js) — requires a real PTY, not available on store builds"

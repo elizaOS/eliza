@@ -5,7 +5,10 @@ import {
   type RouteHandlerContext,
   type RouteHandlerResult,
 } from "@elizaos/core";
-import { buildElizaCodeCerebrasSpec, resolveElizaCodeBin } from "../lib/eliza-code-spec";
+import {
+  buildElizaCodeCerebrasSpec,
+  resolveElizaCodeBin,
+} from "../lib/eliza-code-spec";
 import type { PtyService } from "../services/pty-service";
 
 // --- small helpers -------------------------------------------------------
@@ -73,7 +76,9 @@ function defaultCwd(runtime: IAgentRuntime): string {
  * `kind: "eliza-code"` (real slash-command CLI on Eliza Cloud/cerebras).
  * Never logs the request body (it may carry an API key).
  */
-async function spawnHandler(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
+async function spawnHandler(
+  ctx: RouteHandlerContext,
+): Promise<RouteHandlerResult> {
   const { runtime } = ctx;
   if (!interactiveEnabled(runtime)) {
     return json(403, {
@@ -132,14 +137,18 @@ async function spawnHandler(ctx: RouteHandlerContext): Promise<RouteHandlerResul
 }
 
 /** GET /api/pty/sessions — list live sessions. */
-async function listHandler(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
+async function listHandler(
+  ctx: RouteHandlerContext,
+): Promise<RouteHandlerResult> {
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   return json(200, { sessions: svc.listSessions() });
 }
 
 /** DELETE /api/pty/sessions/:id — kill a session. */
-async function stopHandler(ctx: RouteHandlerContext): Promise<RouteHandlerResult> {
+async function stopHandler(
+  ctx: RouteHandlerContext,
+): Promise<RouteHandlerResult> {
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   const id = ctx.params?.id;

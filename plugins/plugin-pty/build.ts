@@ -11,7 +11,13 @@ await buildPlugin({
   clean: true,
   externals: ["@elizaos/core", "@lydell/node-pty"],
   targets: [
-    { label: "Node", entry: "./index.ts", outSubdir: "", target: "node", format: "esm" },
+    {
+      label: "Node",
+      entry: "./index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+    },
   ],
   dtsProject: "tsconfig.build.json",
   dtsEmitDeclarationOnly: true,
