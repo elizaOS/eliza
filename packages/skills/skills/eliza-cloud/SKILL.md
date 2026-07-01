@@ -25,6 +25,8 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 
 - `references/cloud-backend-and-monetization.md` for apps, auth, billing, and earnings
 - `references/apps-and-containers.md` for deployment, domains, and container workflow
+- `references/app-platform-lifecycle.md` for the unified app platform contract,
+  current frontend-hosting reality, and app lifecycle order
 - `references/payments-and-promotion.md` for app charges, x402 requests, local billing proxy aliases, payout redemptions, promotion assets, advertising, image/video/music/TTS generation, and parent-agent Cloud commands
 
 ## Skill Pairing
@@ -42,6 +44,13 @@ For new agent-built apps, defer to `build-monetized-app`: register a Cloud app,
 build and push a container image, deploy that container, enable monetization,
 patch the app URL/origins, and then offer a custom domain. Static hosting is
 only for legacy/local apps or edits to an existing static app.
+
+Cloud is the app platform contract, but managed frontend hosting is not
+first-class yet. Until the Worker/R2 frontend host described in
+`packages/cloud/APP_PLATFORM_REVIEW.md` lands, use an external/static frontend
+URL for frontend-only apps, and deploy a container only when the app needs
+server-side code. Do not promise that Cloud can upload and serve arbitrary
+frontend build artifacts as a managed static site yet.
 
 For existing app work:
 
