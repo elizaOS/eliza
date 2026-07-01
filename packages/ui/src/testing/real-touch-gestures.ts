@@ -19,7 +19,29 @@ interface Center {
   box: { x: number; y: number; width: number; height: number };
 }
 
+/**
+ * Wait for the page's main thread to be responsive (a main-world round-trip
+ * that resolves on the next produced frame) before dispatching a gesture. A
+ * real finger interacts with UI it can SEE — i.e. after the renderer committed
+ * the previous step. Without this, the CDP touch stream can race a main thread
+ * still busy with the previous step's React commit/style recalc; Chromium then
+ * resolves the gesture compositor-side and the page's pointer handlers never
+ * receive a clean release — the swipe is silently dropped in a way no real
+ * user gesture reproduces (the conversation-swipe runner's post-new-
+ * conversation swipes failed exactly this way).
+ */
+async function settleMainThread(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      }),
+  );
+}
+
 async function centerOf(page: Page, selector: string): Promise<Center> {
+  // Settle first so the box also reflects the committed layout.
+  await settleMainThread(page);
   const box = await page.locator(selector).first().boundingBox();
   if (!box) throw new Error(`real-touch: no bounding box for ${selector}`);
   return { cx: box.x + box.width / 2, cy: box.y + box.height / 2, box };
@@ -156,44 +178,10 @@ export async function touchLongPress(
   }
 }
 
-/**
- * A real two-finger pinch about an element's center: `spread > 0` spreads the
- * fingers apart (zoom-in gesture), `spread < 0` brings them together (zoom-out).
- */
-export async function touchPinch(
-  page: Page,
-  selector: string,
-  spread: number,
-  {
-    steps = 10,
-    stepDelayMs = 0,
-  }: { steps?: number; stepDelayMs?: number } = {},
-): Promise<void> {
-  const { cx, cy } = await centerOf(page, selector);
-  const client = await page.context().newCDPSession(page);
-  const start = 20; // initial half-separation (px) from center
-  const pair = (sep: number) => [
-    point(cx - sep, cy, 1),
-    point(cx + sep, cy, 2),
-  ];
-  try {
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: pair(start),
-    });
-    for (let i = 1; i <= steps; i += 1) {
-      const sep = Math.max(2, start + (spread * i) / steps);
-      await client.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: pair(sep),
-      });
-      if (stepDelayMs > 0) await page.waitForTimeout(stepDelayMs);
-    }
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
-  } finally {
-    await client.detach();
-  }
-}
+// NOTE: no shared `touchPinch` here on purpose. The one pinch consumer
+// (packages/app/test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts)
+// deliberately runs in a NON-touch, desktop-layout context and must enable
+// touch at the CDP level per-gesture (`Emulation.setTouchEmulationEnabled`)
+// with scale-based finger geometry — semantics these hasTouch-context helpers
+// don't share. A previous shared `touchPinch` export had zero consumers and
+// was removed rather than growing a second mode for one caller.

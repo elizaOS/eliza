@@ -183,6 +183,9 @@ async function snap(p, name) {
   await p.screenshot({ path: join(outDir, file) });
   console.log(`  📸 ${file}`);
 }
+// Mouse-drag paging for the DESKTOP page only (its context has no touch
+// support, and dragging the rail with a mouse is the real desktop input).
+// Every mobile-context swipe below goes through real CDP touch instead.
 async function swipeLeft(locator) {
   const box = await locator.boundingBox();
   if (!box) throw new Error("missing swipe target bounds");
@@ -194,22 +197,18 @@ async function swipeLeft(locator) {
   await locator.page().mouse.move(endX, y, { steps: 8 });
   await locator.page().mouse.up();
 }
-async function swipeRight(locator) {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("missing swipe target bounds");
-  const y = box.y + box.height * 0.45;
-  const startX = box.x + box.width * 0.22;
-  const endX = box.x + box.width * 0.78;
-  await locator.page().mouse.move(startX, y);
-  await locator.page().mouse.down();
-  await locator.page().mouse.move(endX, y, { steps: 8 });
-  await locator.page().mouse.up();
-}
-// A left touch-swipe across an element, driven through Chromium's real touch
-// input path. This keeps the mobile launcher pager honest: hit-testing,
-// touch-action, implicit capture, and pointer cancellation all stay in play.
+// Horizontal touch-swipes across an element, driven through Chromium's real
+// touch input path. These keep the mobile pagers honest — the inner launcher
+// pager AND the outer home↔launcher rail: hit-testing, touch-action, implicit
+// capture, and pointer cancellation all stay in play.
 async function touchSwipeLeft(page, testId) {
   await touchSwipe(page, `[data-testid="${testId}"]`, -280, 0, {
+    steps: 10,
+    stepDelayMs: 16,
+  });
+}
+async function touchSwipeRight(page, testId) {
+  await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
     steps: 10,
     stepDelayMs: 16,
   });
@@ -395,7 +394,10 @@ try {
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
 
-  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  // Real touch left-swipe on the home half pages the outer rail to the
+  // launcher (the halves are `touch-pan-y`, so a horizontal touch gesture is
+  // the rail's — exactly the phone input this profile emulates).
+  await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
   assert(
     (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
@@ -509,8 +511,9 @@ try {
     (await mobile.getByTestId("launcher-fav-wallet").count()) === 0,
     "a stationary long-press does NOT enter edit mode (curated launcher is read-only)",
   );
-  // A right-swipe still returns HOME cleanly.
-  await swipeRight(mobile.getByTestId("home-launcher-launcher-page"));
+  // A REAL touch right-swipe still returns HOME cleanly (at the launcher's
+  // first page the boundary right-swipe belongs to the outer rail).
+  await touchSwipeRight(mobile, "home-launcher-launcher-page");
   await waitForSurfacePageSettled(mobile, "home");
   assert(
     (await mobile
@@ -518,7 +521,7 @@ try {
       .getAttribute("data-page")) === "home",
     "swipe-back from the launcher returns HOME",
   );
-  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
 
   // ── Swipe to page 2 = the Developer tools (no dots — paging is swipe-only).

@@ -221,7 +221,14 @@ export function HomeScreen({
       <div
         data-testid="home-screen"
         className={cn(
-          "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
+          // `touch-pan-y`: this scroller covers the whole home half, and a
+          // scroll container's OWN touch-action governs which pans the browser
+          // consumes at it (`overflow-y-auto` computes to overflow-x auto too,
+          // so with the default `auto` the browser ate horizontal touch drags
+          // as a scroll attempt — pointercancel — and the home → launcher rail
+          // flick never fired on real touch). Keep vertical panning native for
+          // the widget list; hand every horizontal gesture to the rail.
+          "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-y-auto",
           // The shell root already reserves the status-bar safe area (its
           // paddingTop: var(--safe-area-top)); adding it again here double-padded
           // the content and left a large empty band above the dashboard. Just a
