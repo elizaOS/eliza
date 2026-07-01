@@ -546,6 +546,37 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
+  it("renders composer controls icon-only — no capsule/border/fill, accent when active (#10711)", () => {
+    // Resting: the + and mic controls carry only the icon — no round capsule,
+    // no border, no translucent white fill — while keeping the 44×44 hit target.
+    const { unmount } = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    for (const id of ["chat-composer-attach", "chat-composer-mic"]) {
+      const cls = screen.getByTestId(id).className;
+      expect(cls).not.toMatch(/rounded-full/);
+      expect(cls).not.toMatch(/\bborder\b/);
+      expect(cls).not.toMatch(/bg-white/);
+      expect(cls).toContain("bg-transparent");
+      expect(cls).toContain("h-11");
+      expect(cls).toContain("w-11");
+    }
+    unmount();
+
+    // Active (recording): distinguishable via accent icon color only — never by
+    // reintroducing a background/border fill on the resting-style control.
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ recording: true })}
+      />,
+    );
+    const mic = screen.getByTestId("chat-composer-mic");
+    expect(mic.getAttribute("aria-pressed")).toBe("true");
+    expect(mic.className).toContain("text-accent");
+    expect(mic.className).not.toMatch(/bg-white/);
+    expect(mic.className).not.toMatch(/\bborder\b/);
+  });
+
   it("does not render the resting suggestion strip (feature-flagged off)", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
