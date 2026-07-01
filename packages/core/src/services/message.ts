@@ -4019,8 +4019,16 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	// app" reply that read as a complete sentence could be kept direct and never
 	// spawn. Restricting the valve to non-coding-work turns keeps the build-spawn
 	// path intact while still short-circuiting finished plain-text answers.
+	// The !looksLikeWebSearchRequest guard closes the freshness hole the valve
+	// would otherwise open (adversarial review): on an explicitly fresh ask
+	// ("what's the current BTC price?") a model that confidently HALLUCINATES a
+	// complete-looking plain-text answer must not be kept direct — a stale price
+	// delivered confidently is worse than the extra fetch. The valve's wins
+	// (lucky-number echoes, solved riddles, static knowledge) carry no
+	// current-info signal and keep taking the direct path.
 	if (
 		!looksLikeCodingWorkRequest(currentMessageText) &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
 		shouldPreferCompleteDirectReply({
 			replyText: String(messageHandler.plan.reply ?? ""),
 			candidateActions: runnableCandidateActions,
