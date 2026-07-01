@@ -103,9 +103,29 @@ describe("relocateEntities — per-token BIO input (real v3 shape)", () => {
     for (const span of spans) {
       expect(text.slice(span.start, span.end)).toBe(span.value);
     }
-    expect(spans[0].value).toBe("Email Dana Whitfield");
+    expect(spans[0].value).toBe("Dana Whitfield");
     expect(spans[1].value).toBe("Northwind Labs");
     expect(spans[2].value).toBe("Fairhaven");
+  });
+
+  it("preserves a leading command verb when a person span absorbs it", () => {
+    const text = "Email Dana Whitfield at Northwind Labs.";
+    const tokens: RawNerGroup[] = [
+      { entity: "B-PER", word: "Em", score: 0.91, start: null, end: null },
+      { entity: "B-PER", word: "##ail", score: 0.96, start: null, end: null },
+      { entity: "I-PER", word: "Dana", score: 0.9, start: null, end: null },
+      {
+        entity: "I-PER",
+        word: "Whitfield",
+        score: 0.96,
+        start: null,
+        end: null,
+      },
+    ];
+    const spans = relocateEntities(text, tokens);
+    expect(spans).toHaveLength(1);
+    expect(spans[0].value).toBe("Dana Whitfield");
+    expect(text.slice(spans[0].start, spans[0].end)).toBe("Dana Whitfield");
   });
 });
 

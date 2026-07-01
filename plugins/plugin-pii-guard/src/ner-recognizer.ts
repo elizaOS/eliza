@@ -34,6 +34,17 @@ export const DEFAULT_SCORE_THRESHOLD = 0.5;
 
 /** Kinds the model produces that are meaningful PII for this layer. */
 const KEPT_KINDS = new Set(["person", "org", "location"]);
+const PERSON_LEADING_COMMAND_WORDS = new Set([
+  "ask",
+  "call",
+  "contact",
+  "email",
+  "message",
+  "ping",
+  "send",
+  "tell",
+  "text",
+]);
 
 /**
  * One result item from a transformers.js `token-classification` run. Two shapes
@@ -198,6 +209,31 @@ function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ");
 }
 
+function trimPersonCommandPrefix(value: string): {
+  value: string;
+  offset: number;
+} {
+  const match = /^(\s*)([A-Za-z]+)(\s+)/.exec(value);
+  if (!match) return { value, offset: 0 };
+  const command = match[2]?.toLowerCase();
+  if (!command || !PERSON_LEADING_COMMAND_WORDS.has(command)) {
+    return { value, offset: 0 };
+  }
+  const next = value.slice(match[0].length).trimStart();
+  if (next.length < 2 || !/^[A-Z]/.test(next)) {
+    return { value, offset: 0 };
+  }
+  const leadingTrim = value.length - value.trimStart().length;
+  const prefixLength = match[2].length + match[3].length;
+  return {
+    value: next,
+    offset:
+      leadingTrim +
+      prefixLength +
+      (value.slice(match[0].length).length - next.length),
+  };
+}
+
 /**
  * Locate `needle` in `haystack` starting at `from`, ignoring differences in the
  * amount/kind of whitespace. Returns `[start, end)` of the matched region in the
@@ -295,10 +331,16 @@ export function relocateEntities(
     }
 
     const slice = text.slice(start, end);
-    const value = slice.trim();
+    let value = slice.trim();
     if (value.length < 2) continue;
     // Re-tighten offsets if trim removed leading/trailing whitespace.
-    const trimmedStart = start + (slice.length - slice.trimStart().length);
+    let trimmedStart = start + (slice.length - slice.trimStart().length);
+    if (entity.kind === "person") {
+      const narrowed = trimPersonCommandPrefix(value);
+      value = narrowed.value;
+      trimmedStart += narrowed.offset;
+    }
+    if (value.length < 2) continue;
     const trimmedEnd = trimmedStart + value.length;
 
     spans.push({

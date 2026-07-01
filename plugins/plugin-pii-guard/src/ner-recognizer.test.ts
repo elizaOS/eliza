@@ -131,7 +131,7 @@ describe("NerEntityRecognizer (injected fake pipeline — no download)", () => {
     const spans = await rec.recognize(text);
     expect(spans.map((s) => s.kind)).toEqual(["person", "org", "location"]);
     expect(spans.map((s) => s.value)).toEqual([
-      "Email Dana Whitfield",
+      "Dana Whitfield",
       "Northwind Labs",
       "Fairhaven",
     ]);
