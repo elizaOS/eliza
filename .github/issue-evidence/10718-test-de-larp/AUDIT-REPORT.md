@@ -584,3 +584,28 @@ Un-excluding the 52 real DB-adapter tests (new `plugins/plugin-sql/src/vitest.re
 - `getMemories` requires an explicit `tableName` (typed required, no default — unlike `countMemories`, which defaults to `"messages"` at base.ts:2718). `memory.real.test.ts` passed `{ roomId } as never`, bypassing the type and querying an undefined table → 0 rows. Fixed to pass `tableName: "messages"`.
 
 Lane behavior: PGlite tests run for real (no external service); Postgres/RLS files self-skip cleanly when `POSTGRES_URL` is unset, so `test:real` is green locally and gains full coverage when a Postgres URL is provided. This is the clearest proof of the epic's thesis: excluded suites don't just lose coverage, they rot — the assertions silently drift from the code they claim to guard.
+
+### 8b. Backlog triage — false-positives vs. infra-gated (verified)
+
+On closer reading, part of the fresh-sweep backlog is NOT actionable-as-larp:
+
+- **`packages/benchmarks/voice-emotion` fixture — NOT larp (false positive).** The
+  symmetric `_FIXTURE_ROWS` is honestly documented in-code ("the fixture pretends
+  our classifier scores perfect… so CI exercises the metric pipeline end-to-end
+  without dragging in the gold corpus", `runner.py:74-79`), and `voice-bench-smoke.yml`
+  only *prints* macroF1 (no tautological threshold assert). It is a labeled plumbing
+  smoke, not a claimed accuracy eval. The genuine gap — the real classifier
+  (`tests/test_emotion_real_classifier.py`) runs in no workflow — is GPU/model/deps
+  infra, not a code fix.
+
+- **Infra/ops-gated (documented, not shipped this pass — would need environments
+  that can't be verified green here):** per-plugin `*.harness.test.ts` lane
+  (`plugin-goals` currently fails on an unbuilt `@elizaos/registry` subpath, so the
+  lane can't go green until that resolves); `packages/feed` conditional whole-suite
+  skips (need an ephemeral Postgres/server in the lane); the plugin-sql **Postgres**
+  half of the new `test:real` lane (needs `POSTGRES_URL`); `packages/examples` doc
+  claims + the `verify-examples.mjs` runner not being in any workflow.
+
+Discipline applied throughout: nothing red or unverified was shipped. Every test
+committed this pass was proven to fail without its fix, and infra changes were only
+made where the resulting lane was verified green locally.
