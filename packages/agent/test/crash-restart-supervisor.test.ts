@@ -19,6 +19,7 @@ import { afterAll, describe, expect, it } from "vitest";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CHILD = path.join(HERE, "fixtures", "crash-injection-child.ts");
 const MEMORY_CHILD = path.join(HERE, "fixtures", "memory-watchdog-child.ts");
+const GUARDS_CHILD = path.join(HERE, "fixtures", "process-guards-child.ts");
 
 // Spawns real `bun` child processes — gated like `test:tui-pty` so it stays out
 // of the fast unit lane and runs in the post-merge / on-demand lane with
@@ -67,6 +68,9 @@ const runChild = (env: Record<string, string>): Promise<number> =>
 // crash-injection child.
 const runMemoryChild = (env: Record<string, string>): Promise<number> =>
   runChildAt(MEMORY_CHILD, env, 25_000);
+
+const runGuardsChild = (env: Record<string, string>): Promise<number> =>
+  runChildAt(GUARDS_CHILD, env, 10_000);
 
 /** Supervisor mirroring run-node.mjs: respawn on 75, storm-guard, else propagate. */
 async function supervise(
@@ -211,4 +215,34 @@ describeE2E("memory watchdog -> supervised restart (real RSS pressure)", () => {
     });
     expect(code).toBe(0);
   }, 25_000);
+});
+
+// End-to-end proof for installProcessCrashGuards (#10203): the packages/shared
+// unit test can only call the captured listeners by hand with a mocked exit —
+// attaching real guards would crash the runner. These spawn a real bun child
+// that installs the guards and triggers a REAL uncaughtException / unhandled
+// rejection, proving the actual process.on(...) wiring behaves per policy.
+describeE2E("installProcessCrashGuards -> real process fault handling", () => {
+  it("exits RESTART_EXIT_CODE on a real uncaught exception (restart policy)", async () => {
+    const code = await runGuardsChild({ PG_POLICY: "restart", PG_FAULT: "uncaught" });
+    expect(code).toBe(RESTART_EXIT_CODE);
+  }, 15_000);
+
+  it("exits 1 on a real uncaught exception (exit policy)", async () => {
+    const code = await runGuardsChild({ PG_POLICY: "exit", PG_FAULT: "uncaught" });
+    expect(code).toBe(1);
+  }, 15_000);
+
+  it("survives a real uncaught exception (keep-alive policy) -> clean exit 0", async () => {
+    const code = await runGuardsChild({
+      PG_POLICY: "keep-alive",
+      PG_FAULT: "uncaught",
+    });
+    expect(code).toBe(0);
+  }, 15_000);
+
+  it("treats a real unhandled promise rejection as non-fatal -> stays alive, exit 0", async () => {
+    const code = await runGuardsChild({ PG_POLICY: "restart", PG_FAULT: "rejection" });
+    expect(code).toBe(0);
+  }, 15_000);
 });
