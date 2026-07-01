@@ -128,3 +128,165 @@ describe("CameraPageView", () => {
     expect(screen.getByTestId("camera-retry")).toBeTruthy();
   });
 });
+
+/** A promise whose resolver we hold, to model an in-flight bridge call. */
+function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+describe("CameraPageView — controls, idempotency & recovery", () => {
+  beforeEach(() => grantAndStream());
+
+  it("keeps controls at accessible tap targets (switch 44px / shutter 72px)", async () => {
+    render(<CameraPageView />);
+    // Tailwind h-11/w-11 == 2.75rem == 44px — the platform minimum touch target.
+    const switchBtn = await screen.findByTestId("camera-switch");
+    expect(switchBtn.className).toContain("h-11");
+    expect(switchBtn.className).toContain("w-11");
+    const shutter = screen.getByTestId("camera-capture");
+    expect(shutter.className).toContain("h-[72px]");
+    expect(shutter.className).toContain("w-[72px]");
+  });
+
+  it("fires exactly one capture for a rapid double-tap on the shutter", async () => {
+    const pending = deferred<{
+      base64: string;
+      format: string;
+      width: number;
+      height: number;
+    }>();
+    camera.capturePhoto.mockReturnValue(pending.promise);
+
+    render(<CameraPageView />);
+    const shutter = await screen.findByTestId("camera-capture");
+    fireEvent.click(shutter);
+    fireEvent.click(shutter); // second tap while the first is in flight
+
+    expect(camera.capturePhoto).toHaveBeenCalledTimes(1);
+    // The busy guard also disables the shutter mid-capture.
+    expect(shutter.hasAttribute("disabled")).toBe(true);
+
+    pending.resolve({ base64: "QUJD", format: "jpeg", width: 1, height: 1 });
+    await screen.findByTestId("camera-photo");
+    expect(camera.capturePhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires exactly one switch for a rapid double-tap while switching", async () => {
+    const pending = deferred<{
+      width: number;
+      height: number;
+      deviceId: string;
+    }>();
+    camera.switchCamera.mockReturnValue(pending.promise);
+
+    render(<CameraPageView />);
+    const switchBtn = await screen.findByTestId("camera-switch");
+    fireEvent.click(switchBtn);
+    fireEvent.click(switchBtn);
+
+    expect(camera.switchCamera).toHaveBeenCalledTimes(1);
+    expect(switchBtn.hasAttribute("disabled")).toBe(true);
+
+    pending.resolve({ width: 1, height: 1, deviceId: "front" });
+    await waitFor(() => expect(switchBtn.hasAttribute("disabled")).toBe(false));
+    expect(camera.switchCamera).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles facing back to the rear camera on a second switch", async () => {
+    render(<CameraPageView />);
+    const switchBtn = await screen.findByTestId("camera-switch");
+    fireEvent.click(switchBtn);
+    await waitFor(() =>
+      expect(camera.switchCamera).toHaveBeenLastCalledWith({
+        direction: "front",
+      }),
+    );
+    // Wait for the busy/facing state to settle before the next tap.
+    await waitFor(() => expect(switchBtn.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(switchBtn);
+    await waitFor(() =>
+      expect(camera.switchCamera).toHaveBeenLastCalledWith({
+        direction: "back",
+      }),
+    );
+  });
+
+  it("surfaces a switch failure as a non-fatal live toast and stays capturable", async () => {
+    camera.switchCamera.mockRejectedValue(new Error("switch failed"));
+    render(<CameraPageView />);
+    fireEvent.click(await screen.findByTestId("camera-switch"));
+
+    const toast = await screen.findByTestId("camera-error");
+    expect(toast.getAttribute("role")).toBe("alert");
+    expect(toast.textContent).toContain("switch failed");
+    // Preview is still live; the shutter remains available and re-enabled.
+    const shutter = screen.getByTestId("camera-capture");
+    expect(shutter).toBeTruthy();
+    await waitFor(() => expect(shutter.hasAttribute("disabled")).toBe(false));
+    // A failed switch must not flip the tracked facing.
+    expect(screen.queryByTestId("camera-photo")).toBeNull();
+  });
+
+  it("surfaces a capture failure as a live toast without a photo overlay", async () => {
+    camera.capturePhoto.mockRejectedValue(new Error("capture boom"));
+    render(<CameraPageView />);
+    fireEvent.click(await screen.findByTestId("camera-capture"));
+
+    const toast = await screen.findByTestId("camera-error");
+    expect(toast.textContent).toContain("capture boom");
+    expect(screen.queryByTestId("camera-photo")).toBeNull();
+    // Shutter re-enables so the user can retry the shot.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("camera-capture").hasAttribute("disabled"),
+      ).toBe(false),
+    );
+  });
+
+  it("recovers from denied to a live preview when access is granted on retry", async () => {
+    camera.requestPermissions.mockResolvedValueOnce({
+      camera: "denied",
+      microphone: "denied",
+      photos: "denied",
+    });
+    render(<CameraPageView />);
+    await screen.findByTestId("camera-denied");
+    expect(camera.startPreview).not.toHaveBeenCalled();
+
+    // The recovery callout's retry re-requests permission (now granted).
+    fireEvent.click(screen.getByTestId("camera-permission-callout-retry"));
+    expect(await screen.findByTestId("camera-capture")).toBeTruthy();
+    expect(camera.startPreview).toHaveBeenCalledTimes(1);
+    expect(camera.startPreview.mock.calls[0][0].direction).toBe("back");
+  });
+
+  it("recovers from the error state to a live preview via retry", async () => {
+    camera.startPreview.mockRejectedValueOnce(new Error("No camera found"));
+    render(<CameraPageView />);
+    await screen.findByTestId("camera-error-state");
+
+    fireEvent.click(screen.getByTestId("camera-retry"));
+    expect(await screen.findByTestId("camera-capture")).toBeTruthy();
+    expect(camera.startPreview).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("camera-error-state")).toBeNull();
+  });
+
+  it("passes through a capture result that is already a data URL", async () => {
+    camera.capturePhoto.mockResolvedValue({
+      base64: "data:image/png;base64,ZZZ",
+      format: "png",
+      width: 1,
+      height: 1,
+    });
+    render(<CameraPageView />);
+    fireEvent.click(await screen.findByTestId("camera-capture"));
+    const review = await screen.findByTestId("camera-photo");
+    expect(review.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,ZZZ",
+    );
+  });
+});
