@@ -42,7 +42,7 @@ async function __hono_POST(
       );
     }
 
-    // Gate on org credit before re-provisioning a container — matches the
+    // Gate on org credit before re-provisioning a container; matches the
     // paid-check every v1 wake route enforces (v1/agents/[agentId]/resume,
     // v1/eliza/agents/[agentId]/resume|provision). Without it a credit-suspended
     // dedicated agent could be resumed for free, repeatedly (elizaOS/eliza#10902).

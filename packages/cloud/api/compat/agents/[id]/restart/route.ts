@@ -40,7 +40,7 @@ async function __hono_POST(
       );
     }
 
-    // Gate on org credit before snapshot + re-provision — matches the paid-check
+    // Gate on org credit before snapshot + re-provision; matches the paid-check
     // every v1 wake route enforces. Without it a credit-suspended dedicated agent
     // could be restarted for free, repeatedly (elizaOS/eliza#10902).
     const creditCheck = await checkAgentCreditGate(user.organization_id);
