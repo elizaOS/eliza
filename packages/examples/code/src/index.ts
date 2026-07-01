@@ -47,6 +47,17 @@ function shouldRunInteractive(): boolean {
   return process.stdin.isTTY !== false && process.stdout.isTTY !== false;
 }
 
+function shouldRunCodingOnly(): boolean {
+  const args = process.argv.slice(2);
+  const env = process.env.ELIZA_CODE_CODING_ONLY?.trim().toLowerCase();
+  return (
+    env === "1" ||
+    env === "true" ||
+    args.includes("--coding-only") ||
+    args.includes("--no-orchestrator")
+  );
+}
+
 // ============================================================================
 // Interactive Mode (TUI)
 // ============================================================================
@@ -98,7 +109,7 @@ async function runInteractive(): Promise<void> {
   let app: InstanceType<typeof App> | undefined;
 
   // Initialize the agent
-  runtime = await initializeAgent();
+  runtime = await initializeAgent({ codingOnly: shouldRunCodingOnly() });
 
   // Handle SIGINT (Ctrl+C) and SIGTERM
   const handleSignal = () => {

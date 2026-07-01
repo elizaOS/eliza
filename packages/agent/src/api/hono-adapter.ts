@@ -20,6 +20,8 @@ import { dispatchRoute } from "./dispatch-route.ts";
 export interface HonoAdapterOptions {
   /** Predicate that decides whether the incoming request has a valid token. */
   isAuthorized: (req: Request) => boolean;
+  /** Predicate that decides whether the incoming request is trusted loopback/local. */
+  isTrustedLocal?: (req: Request) => boolean;
 }
 
 function honoMethod(type: Route["type"]): string | null {
@@ -134,6 +136,7 @@ export function mountRoutesOnHono(
         rawBody,
         inProcess: false,
         isAuthorized: () => options.isAuthorized(request),
+        isTrustedLocal: () => options.isTrustedLocal?.(request) ?? false,
       }).catch(
         (err: unknown): RouteHandlerResult => ({
           status: 500,

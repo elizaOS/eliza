@@ -85,6 +85,8 @@ export interface DispatchRouteArgs {
   /** true when invoked in-process via IPC; false when invoked over HTTP. */
   inProcess: boolean;
   isAuthorized: () => boolean;
+  /** true when the transport verified a trusted loopback/local request. */
+  isTrustedLocal?: () => boolean;
   /** Optional host context (config, restartRuntime, etc.) — installed on the runtime for the duration of the dispatch. */
   hostContext?: RuntimeRouteHostContext;
 }
@@ -387,6 +389,7 @@ export async function dispatchRoute(
           path: args.path,
           runtime: runtime as IAgentRuntime,
           inProcess: args.inProcess,
+          isTrustedLocal: args.isTrustedLocal?.() ?? false,
         };
         return await route.routeHandler(ctx);
       }

@@ -124,6 +124,7 @@
         "@elizaos/plugin-ollama": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-phone": "workspace:*",
+        "@elizaos/plugin-pty": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/plugin-remote-manifest": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
@@ -4618,6 +4619,23 @@
         "vitest": "^4.1.5",
       },
     },
+    "plugins/plugin-pty": {
+      "name": "@elizaos/plugin-pty",
+      "version": "1.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.1",
+        "@types/node": "^25.0.3",
+        "bun-types": "^1.2.25",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "optionalDependencies": {
+        "@lydell/node-pty": "^1.1.0",
+      },
+    },
     "plugins/plugin-registry": {
       "name": "@elizaos/plugin-registry",
       "version": "2.0.3-beta.7",
@@ -6380,6 +6398,8 @@
     "@elizaos/plugin-phone": ["@elizaos/plugin-phone@workspace:plugins/plugin-phone"],
 
     "@elizaos/plugin-polymarket": ["@elizaos/plugin-polymarket@workspace:plugins/plugin-polymarket"],
+
+    "@elizaos/plugin-pty": ["@elizaos/plugin-pty@workspace:plugins/plugin-pty"],
 
     "@elizaos/plugin-registry": ["@elizaos/plugin-registry@workspace:plugins/plugin-registry"],
 
