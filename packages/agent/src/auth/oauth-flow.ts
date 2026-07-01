@@ -40,6 +40,15 @@ export type FlowStatus =
   | "cancelled"
   | "timeout";
 
+/**
+ * Credential-free projection of an `AccountCredentialRecord` — the only
+ * account shape allowed into {@link FlowState}. `FlowState` is serialized
+ * verbatim to every `/api/accounts/:provider/oauth/status` SSE subscriber,
+ * so the OAuth access/refresh tokens must never enter it. In-process
+ * callers that need the tokens use `OAuthFlowHandle.completion` instead.
+ */
+export type FlowAccountSummary = Omit<AccountCredentialRecord, "credentials">;
+
 export interface FlowState {
   sessionId: string;
   providerId: SubscriptionProvider;
@@ -48,7 +57,7 @@ export interface FlowState {
   authUrl?: string;
   /** Anthropic only — the user must paste `code#state`; Codex uses the loopback callback. */
   needsCodeSubmission: boolean;
-  account?: AccountCredentialRecord;
+  account?: FlowAccountSummary;
   error?: string;
   startedAt: number;
   endedAt?: number;
@@ -310,7 +319,11 @@ async function startGenericFlow(args: {
       if (opts.onAccountSaved) {
         await opts.onAccountSaved(record);
       }
-      setTerminal({ status: "success", account: record });
+      // The broadcast state must never carry the tokens — every SSE
+      // subscriber receives it verbatim; only the in-process completion
+      // promise gets the full record.
+      const { credentials: _credentials, ...accountSummary } = record;
+      setTerminal({ status: "success", account: accountSummary });
       resolveCompletion({ account: record });
     } catch (err) {
       clearTimeout(timer);
