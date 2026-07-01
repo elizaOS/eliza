@@ -10,6 +10,7 @@
  *   - reachable-from-test
  *   - reachable-from-build
  *   - reachable-from-ci-workflow
+ *   - reachable-from-package-script
  *   - reachable-from-app-internal   (packages/app scripts only)
  *   - orphan
  *
@@ -59,6 +60,7 @@ const CATEGORIES = [
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
+  "reachable-from-package-script",
   "orphan",
 ];
 
@@ -73,6 +75,19 @@ const APP_CATEGORIES = [
   "reachable-from-app-internal",
   "orphan",
 ];
+
+const PACKAGE_JSON_PRUNE_DIRS = new Set([
+  ".git",
+  ".next",
+  ".turbo",
+  "aesthetic-audit-output",
+  "benchmark_results",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "reports",
+]);
 
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
@@ -97,6 +112,23 @@ function walk(dir, visit) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, visit);
     else visit(full);
+  }
+}
+
+function walkPruned(dir, visit) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!PACKAGE_JSON_PRUNE_DIRS.has(entry.name)) walkPruned(full, visit);
+    } else {
+      visit(full);
+    }
   }
 }
 
@@ -126,7 +158,9 @@ function referencedRootScripts(body) {
 function referencedScriptFiles(body, fileUniverse) {
   const found = new Set();
   for (const file of fileUniverse) {
-    if (body.includes(file)) found.add(file);
+    const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^A-Za-z0-9_.-])${escaped}($|[^A-Za-z0-9_.-])`);
+    if (re.test(body)) found.add(file);
   }
   return found;
 }
@@ -186,6 +220,42 @@ function filesFromRootScripts(reachedRoots, rootScripts, fileUniverse) {
     }
   }
   return seeds;
+}
+
+/**
+ * packages/scripts files invoked from package-local `package.json` scripts.
+ *
+ * Root reachability intentionally remains its own color; this catches the other
+ * public package script surface so helpers used by a package command are not
+ * reported as disposable just because root verify/build/CI do not call them.
+ */
+function filesFromPackageScripts(fileUniverse) {
+  const callersByFile = new Map();
+  walkPruned(ROOT, (file) => {
+    if (path.basename(file) !== "package.json") return;
+    if (path.resolve(file) === path.join(ROOT, "package.json")) return;
+
+    const pkg = readJson(file);
+    const scripts = pkg.scripts ?? {};
+    for (const [name, body] of Object.entries(scripts)) {
+      for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
+        if (!callersByFile.has(scriptFile)) callersByFile.set(scriptFile, []);
+        callersByFile.get(scriptFile).push({
+          packageJson: path.relative(ROOT, file),
+          script: name,
+        });
+      }
+    }
+  });
+
+  for (const callers of callersByFile.values()) {
+    callers.sort((a, b) =>
+      `${a.packageJson}:${a.script}`.localeCompare(
+        `${b.packageJson}:${b.script}`,
+      ),
+    );
+  }
+  return callersByFile;
 }
 
 /**
@@ -298,6 +368,7 @@ function buildInventory() {
   const rootScripts = readJson(path.join(ROOT, "package.json")).scripts ?? {};
   const fileUniverse = collectScriptFiles();
   const fileGraph = buildFileGraph(fileUniverse);
+  const packageScriptCallersByFile = filesFromPackageScripts(fileUniverse);
 
   // CI workflow corpus + the root-script names + script files it references.
   const workflowChunks = [];
@@ -334,6 +405,10 @@ function buildInventory() {
     ]),
     fileGraph,
   );
+  const packageScriptFiles = reachableFiles(
+    new Set(packageScriptCallersByFile.keys()),
+    fileGraph,
+  );
 
   const classifyRoot = (name) => {
     if (verifyRoots.has(name)) return "reachable-from-verify";
@@ -347,6 +422,7 @@ function buildInventory() {
     if (testFiles.has(file)) return "reachable-from-test";
     if (buildFiles.has(file)) return "reachable-from-build";
     if (ciFiles.has(file)) return "reachable-from-ci-workflow";
+    if (packageScriptFiles.has(file)) return "reachable-from-package-script";
     return "orphan";
   };
 
@@ -354,6 +430,7 @@ function buildInventory() {
     file,
     loc: loc(path.join(SCRIPTS_DIR, file)),
     category: classifyFile(file),
+    packageScriptCallers: packageScriptCallersByFile.get(file) ?? [],
   }));
   const roots = Object.keys(rootScripts).map((name) => ({
     name,
@@ -463,6 +540,9 @@ function buildInventory() {
       filesByCategory: fileTotals,
       locByCategory: fileLocTotals,
       rootScriptsByCategory: rootTotals,
+      packageScriptFileReferences: [
+        ...packageScriptCallersByFile.values(),
+      ].reduce((sum, callers) => sum + callers.length, 0),
       totalAppScripts: appScriptList.length,
       orphanAppScripts: appTotals.orphan,
       appScriptsByCategory: appTotals,
@@ -476,19 +556,20 @@ function buildInventory() {
 function printSummary(inv) {
   const { summary } = inv;
   const w = process.stdout.write.bind(process.stdout);
+  const categoryWidth = 31;
   w("\n[audit-scripts-inventory] packages/scripts/*.mjs reachability\n\n");
-  w("  category                       files     loc   roots\n");
-  w("  ---------------------------- ------- ------- -------\n");
+  w(`  ${"category".padEnd(categoryWidth)} files     loc   roots\n`);
+  w(`  ${"-".repeat(categoryWidth)} ------- ------- -------\n`);
   for (const c of CATEGORIES) {
     w(
-      `  ${c.padEnd(28)} ${String(summary.filesByCategory[c]).padStart(5)} ` +
+      `  ${c.padEnd(categoryWidth)} ${String(summary.filesByCategory[c]).padStart(5)} ` +
         `${String(summary.locByCategory[c]).padStart(7)} ` +
         `${String(summary.rootScriptsByCategory[c]).padStart(7)}\n`,
     );
   }
-  w("  ---------------------------- ------- ------- -------\n");
+  w(`  ${"-".repeat(categoryWidth)} ------- ------- -------\n`);
   w(
-    `  ${"TOTAL".padEnd(28)} ${String(summary.totalFiles).padStart(5)} ` +
+    `  ${"TOTAL".padEnd(categoryWidth)} ${String(summary.totalFiles).padStart(5)} ` +
       `${String(summary.totalLoc).padStart(7)} ` +
       `${String(summary.totalRootScripts).padStart(7)}\n\n`,
   );
@@ -501,7 +582,10 @@ function printSummary(inv) {
   if (orphans.length) {
     w("  orphan files:\n");
     for (const f of orphans) w(`    - ${f.file} (${f.loc} LOC)\n`);
-    w("\n");
+    w(
+      "\n  note: orphan here means no root/CI/package-script caller found, " +
+        'not "safe to delete".\n\n',
+    );
   }
 
   // packages/app — the second dense script surface (issue #10200, item 2).
