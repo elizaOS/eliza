@@ -106,17 +106,6 @@ function assistantMessages(page: Page, hasText: string | RegExp): Locator {
     );
 }
 
-function assistantMessages(page: Page, hasText: string | RegExp): Locator {
-  return page
-    .locator('[data-testid="chat-message"][data-role="assistant"]')
-    .filter({ hasText })
-    .or(
-      conversationLog(page)
-        .locator('[data-role="assistant"]')
-        .filter({ hasText }),
-    );
-}
-
 async function clickIfVisible(
   locator: Locator,
   timeoutMs = 2_000,
