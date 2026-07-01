@@ -10,6 +10,7 @@
 import { mock } from "bun:test";
 import type {
   ActivateAppFrontendResponse,
+  AppBackupSnapshot,
   AppDeployStatusResponse,
   AppDto,
   AppEarningsResponse,
@@ -28,6 +29,7 @@ import type {
   DeployAppFrontendResponse,
   DeployAppInput,
   DeployAppResponse,
+  ExportAppBackupResponse,
   ListAdSlotsResponse,
   ListAppFrontendDeploymentsResponse,
   ListAppsResponse,
@@ -65,6 +67,9 @@ type CreateInfluencerProfileFn = (
   input: CreateInfluencerProfileInput,
 ) => Promise<CreateInfluencerProfileResponse>;
 type ListInfluencersFn = (niche?: string) => Promise<ListInfluencersResponse>;
+type CreateAdSlotFn = (input: CreateAdSlotInput) => Promise<CreateAdSlotResponse>;
+type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
+type ExportAppBackupFn = (appId: string) => Promise<ExportAppBackupResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -106,6 +111,9 @@ interface SdkState {
   createInfluencerProfile: CreateInfluencerProfileFn;
   createBooking: CreateBookingFn;
   listInfluencers: ListInfluencersFn;
+  createAdSlot: CreateAdSlotFn;
+  listAdSlots: ListAdSlotsFn;
+  exportAppBackup: ExportAppBackupFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -215,6 +223,7 @@ function defaultState(): SdkState {
           brief: "b",
         },
       }),
+    exportAppBackup: () => Promise.resolve({ success: true, backup: { version: 1, exportedAt: "2020-01-01T00:00:00Z", app: { name: "App", description: null, app_url: "https://a", allowed_origins: [], logo_url: null, website_url: null, contact_email: null, linked_character_ids: [] }, monetization: { enabled: false, inference_markup_percentage: 0, purchase_share_percentage: 0 } } as AppBackupSnapshot }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -279,6 +288,15 @@ export function setListInfluencers(fn: ListInfluencersFn): void {
 }
 export function setCreateBooking(fn: CreateBookingFn): void {
   state.createBooking = fn;
+}
+export function setCreateAdSlot(fn: CreateAdSlotFn): void {
+  state.createAdSlot = fn;
+}
+export function setListAdSlots(fn: ListAdSlotsFn): void {
+  state.listAdSlots = fn;
+}
+export function setExportAppBackup(fn: ExportAppBackupFn): void {
+  state.exportAppBackup = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -354,6 +372,15 @@ export class FakeElizaCloudClient {
   }
   createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
     return state.createBooking(input);
+  }
+  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
+    return state.createAdSlot(input);
+  }
+  listAdSlots(): Promise<ListAdSlotsResponse> {
+    return state.listAdSlots();
+  }
+  exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
+    return state.exportAppBackup(appId);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);

@@ -5,12 +5,21 @@
  * rate card); advertisers book them with an escrowed offer. Money is held via
  * existing rails — the advertiser's org credits are debited when the offer is
  * funded, released to the influencer's `redeemable_earnings` on approval, or
- * refunded to the advertiser on rejection/cancel. Every money move is gated by
- * an atomic status transition (a CAS on `booking.status`), so it happens once.
+ * refunded to the advertiser on rejection/cancel. Every money move is idempotent
+ * on the booking id and finalized by an atomic status CAS, so it happens once.
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -25,14 +34,17 @@ export interface InfluencerPlatform {
 
 /**
  * Booking lifecycle (advertiser ⇄ influencer):
- *   offered   → advertiser funded the offer (org credits debited into escrow)
+ *   funding   → booking intent recorded; escrow debit not yet confirmed
+ *   offered   → escrow debited from the advertiser's org credits; offer live
  *   accepted  → influencer accepted
  *   delivered → influencer submitted the deliverable
  *   approved  → advertiser approved; escrow released to influencer earnings (paid)
- *   rejected  → influencer declined / advertiser rejected the deliverable (refunded)
+ *   rejected  → influencer declined (from offered or accepted) / advertiser
+ *               rejected the deliverable (refunded)
  *   cancelled → advertiser cancelled before acceptance (refunded)
  */
 export type InfluencerBookingStatus =
+  | "funding"
   | "offered"
   | "accepted"
   | "delivered"
@@ -88,6 +100,10 @@ export const influencerBookings = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     status: text("status").$type<InfluencerBookingStatus>().notNull().default("offered"),
     deliverable_url: text("deliverable_url"),
+    /** Client-supplied create key: a retried create reuses the row instead of funding twice. */
+    idempotency_key: text("idempotency_key"),
+    /** The escrow debit `credit_transactions.id` recorded when funding committed. */
+    escrow_transaction_id: uuid("escrow_transaction_id"),
 
     created_by_user_id: uuid("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -100,6 +116,10 @@ export const influencerBookings = pgTable(
     advertiser_idx: index("influencer_bookings_advertiser_idx").on(table.advertiser_org_id),
     profile_idx: index("influencer_bookings_profile_idx").on(table.influencer_profile_id),
     status_idx: index("influencer_bookings_status_idx").on(table.status),
+    /** DB-level dedupe gate for client create retries (NULLs exempt). */
+    idempotency_key_uidx: uniqueIndex("influencer_bookings_idempotency_key_uidx").on(
+      table.idempotency_key,
+    ),
   }),
 );
 

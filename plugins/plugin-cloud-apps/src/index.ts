@@ -49,6 +49,7 @@ import {
   createAdSlotAction,
   listAdSlotsAction,
 } from "./actions/ad-inventory.js";
+import { backupAppAction } from "./actions/backup-app.js";
 import { bookInfluencerAction } from "./actions/book-influencer.js";
 import { createAppAction } from "./actions/create-app.js";
 import { deleteAppAction } from "./actions/delete-app.js";
@@ -76,6 +77,7 @@ export {
   createAdSlotAction,
   listAdSlotsAction,
 } from "./actions/ad-inventory.js";
+export { backupAppAction } from "./actions/backup-app.js";
 export { bookInfluencerAction } from "./actions/book-influencer.js";
 export { createAppAction } from "./actions/create-app.js";
 export { deleteAppAction } from "./actions/delete-app.js";
@@ -128,6 +130,7 @@ export const cloudAppsPlugin: Plugin = {
     createInfluencerProfileAction,
     listInfluencersAction,
     bookInfluencerAction,
+    backupAppAction,
   ],
   providers: [cloudAppsProvider],
 };

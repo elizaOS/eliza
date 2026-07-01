@@ -1280,6 +1280,7 @@ export interface InfluencerBookingDto {
   influencer_profile_id: string;
   amount: string;
   status:
+    | "funding"
     | "offered"
     | "accepted"
     | "delivered"
@@ -1293,10 +1294,79 @@ export interface CreateBookingInput {
   profileId: string;
   brief: string;
   amount: number;
+  /** Optional create key: a retry with the same key returns the original booking instead of funding twice. */
+  idempotencyKey?: string;
 }
 
 export interface CreateBookingResponse {
   success: boolean;
   booking?: InfluencerBookingDto;
   error?: string;
+}
+
+// ---- Ad inventory / SSP (#10687) ----
+
+export type AdSlotFormat = "banner" | "native" | "interstitial" | "feed";
+
+export interface AdSlotDto {
+  id: string;
+  app_id: string;
+  name: string;
+  format: AdSlotFormat;
+  status: "active" | "paused";
+  floor_cpm: string;
+  total_impressions: number;
+  total_clicks: number;
+  total_revenue: string;
+}
+
+export interface CreateAdSlotInput {
+  appId: string;
+  name: string;
+  format: AdSlotFormat;
+  floorCpm?: number;
+}
+
+export interface CreateAdSlotResponse {
+  success: boolean;
+  slot: AdSlotDto;
+}
+
+export interface ListAdSlotsResponse {
+  success: boolean;
+  slots: AdSlotDto[];
+}
+
+// ---- App config backup / restore (#10204) ----
+
+export interface AppBackupSnapshot {
+  version: number;
+  exportedAt: string;
+  app: {
+    name: string;
+    description: string | null;
+    app_url: string;
+    allowed_origins: string[];
+    logo_url: string | null;
+    website_url: string | null;
+    contact_email: string | null;
+    linked_character_ids: string[];
+  };
+  monetization: {
+    enabled: boolean;
+    inference_markup_percentage: number;
+    purchase_share_percentage: number;
+  };
+  active_frontend_content_hash?: string | null;
+}
+
+export interface ExportAppBackupResponse {
+  success: boolean;
+  backup: AppBackupSnapshot;
+}
+
+export interface RestoreAppBackupResponse {
+  success: boolean;
+  app: { id: string; name: string; slug: string };
+  apiKey: string;
 }

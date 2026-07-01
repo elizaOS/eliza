@@ -18,6 +18,8 @@ const CreateBookingSchema = z.object({
   profileId: z.string().uuid(),
   brief: z.string().min(1).max(4000),
   amount: z.number().positive().max(1_000_000),
+  /** Optional create key: a retry with the same key returns the original booking instead of funding twice. */
+  idempotencyKey: z.string().min(8).max(255).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -60,6 +62,7 @@ app.post("/", async (c) => {
       brief: parsed.data.brief,
       amount: parsed.data.amount,
       createdByUserId: user.id,
+      idempotencyKey: parsed.data.idempotencyKey,
     });
     if (!result.ok) return c.json({ success: false, error: result.error }, 402);
     return c.json({ success: true, booking: result.booking }, 201);

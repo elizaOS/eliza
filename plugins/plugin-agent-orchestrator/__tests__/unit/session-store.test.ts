@@ -1,11 +1,14 @@
 import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AcpSessionStore,
   FileSessionStore,
   InMemorySessionStore,
+  RuntimeDbSessionStore,
 } from "../../src/services/session-store.js";
 import type { SessionInfo, SessionStore } from "../../src/services/types.js";
 
@@ -259,6 +262,35 @@ describe("AcpSessionStore", () => {
     expect(store.backend).toBe("runtime-db");
   });
 
+  it("reads the modern `runtime.adapter` property, not just the legacy `runtime.databaseAdapter`", () => {
+    // packages/core/src/runtime.ts exposes `public adapter!: IDatabaseAdapter`,
+    // so this is how a real eliza runtime feeds a database into the store.
+    const store = new AcpSessionStore({
+      runtime: { adapter: { query: vi.fn() } },
+    });
+    expect(store.backend).toBe("runtime-db");
+  });
+
+  it("recognizes an eliza `BaseDrizzleAdapter` shape (adapter.db.execute)", () => {
+    // The real @elizaos/plugin-sql adapter exposes SQL through `adapter.db`
+    // (a drizzle instance) rather than flat top-level methods. The store must
+    // recognize this shape too, or every real container silently falls to the
+    // file backend and loses sessions on container recreation.
+    const fakeDrizzleAdapter = { db: { execute: () => Promise.resolve([]) } };
+    const store = new AcpSessionStore({
+      runtime: { adapter: fakeDrizzleAdapter },
+    });
+    expect(store.backend).toBe("runtime-db");
+  });
+
+  it("lets an explicit memory backend win over an available adapter", () => {
+    const store = new AcpSessionStore({
+      backend: "memory",
+      runtime: { adapter: { query: vi.fn() } },
+    });
+    expect(store.backend).toBe("memory");
+  });
+
   it("selects explicit in-memory backend and warns", () => {
     const logger = { warn: vi.fn() };
     const store = new AcpSessionStore({
@@ -267,5 +299,144 @@ describe("AcpSessionStore", () => {
     });
     expect(store.backend).toBe("memory");
     expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** Raw flat-methods adapter over a REAL pglite database. Postgres speaks
+ * `$n` placeholders, so this hand-rolled binding rewrites the store's `?`
+ * placeholders the way any real raw postgres binding would. */
+function rawPgliteAdapter(client: PGlite) {
+  const rewrite = (sql: string) => {
+    let index = 0;
+    return sql.replace(/\?/g, () => `$${++index}`);
+  };
+  return {
+    execute: async (sql: string, params: unknown[] = []) =>
+      client.query(rewrite(sql), params),
+    all: async (sql: string, params: unknown[] = []) =>
+      (await client.query(rewrite(sql), params)).rows,
+  };
+}
+
+describe("RuntimeDbSessionStore (real pglite)", () => {
+  const clients: PGlite[] = [];
+
+  afterEach(async () => {
+    for (const client of clients.splice(0)) await client.close();
+  });
+
+  async function elizaShapedAdapter() {
+    const client = new PGlite();
+    clients.push(client);
+    // Same shape as @elizaos/plugin-sql's BaseDrizzleAdapter: the executor
+    // lives at `adapter.db` (a real drizzle instance over real pglite).
+    return { db: drizzle(client) };
+  }
+
+  it("round-trips the full SessionStore surface against real pglite via the eliza drizzle shape", {
+    timeout: 60_000,
+  }, async () => {
+    const adapter = await elizaShapedAdapter();
+    await expectAllInterfaceMethods(new RuntimeDbSessionStore(adapter));
+  });
+
+  it("upserting the same id twice updates in place (portable ON CONFLICT path)", {
+    timeout: 60_000,
+  }, async () => {
+    const adapter = await elizaShapedAdapter();
+    const store = new RuntimeDbSessionStore(adapter);
+
+    await store.create(session({ status: "starting" }));
+    // Second create with the same id must take the DO UPDATE branch —
+    // the old SQLite-only `INSERT OR REPLACE` is a syntax error on
+    // postgres/pglite, and a plain INSERT would violate the primary key.
+    await store.create(
+      session({ status: "running", metadata: { attempt: 2 } }),
+    );
+
+    await expect(store.list()).resolves.toHaveLength(1);
+    await expect(store.get("session-1")).resolves.toMatchObject({
+      status: "running",
+      metadata: { attempt: 2 },
+    });
+  });
+
+  it("survives a restart: a fresh store over the same database still sees every session", {
+    timeout: 60_000,
+  }, async () => {
+    // Regression for the live symptom behind #10991: with the file backend
+    // the JSON store lives on the container's ephemeral overlay filesystem,
+    // so recreation wipes it. The SQL backend must not depend on any
+    // in-memory state: a brand-new store instance over the same durable
+    // rows still resolves sessions by id, scope, and acpx record id.
+    const adapter = await elizaShapedAdapter();
+    const store1 = new RuntimeDbSessionStore(adapter);
+    await store1.create(session());
+    await store1.create(
+      session({ id: "session-2", name: "review", acpxRecordId: "record-2" }),
+    );
+
+    const store2 = new RuntimeDbSessionStore(adapter);
+    await expect(store2.list()).resolves.toHaveLength(2);
+    await expect(store2.get("session-1")).resolves.toMatchObject({
+      id: "session-1",
+      name: "main",
+      metadata: { purpose: "test" },
+    });
+    await expect(
+      store2.findByScope({
+        workdir: "/repo",
+        agentType: "codex",
+        name: "review",
+      }),
+    ).resolves.toMatchObject({ id: "session-2" });
+    await expect(store2.getByAcpxRecordId("record-2")).resolves.toMatchObject({
+      id: "session-2",
+    });
+  });
+
+  it("works against real pglite through a raw flat-methods adapter", {
+    timeout: 60_000,
+  }, async () => {
+    // Proves the upsert SQL itself is portable: pglite rejects the
+    // SQLite-only `INSERT OR REPLACE` at parse time, so this create/update
+    // round-trip only passes with `ON CONFLICT (id) DO UPDATE`.
+    const client = new PGlite();
+    clients.push(client);
+    const store = new RuntimeDbSessionStore(rawPgliteAdapter(client));
+
+    await store.create(session());
+    await store.update("session-1", { status: "blocked" });
+    await expect(store.get("session-1")).resolves.toMatchObject({
+      id: "session-1",
+      status: "blocked",
+    });
+    await store.delete("session-1");
+    await expect(store.get("session-1")).resolves.toBeNull();
+  });
+
+  it("never emits SQLite-only INSERT OR REPLACE", {
+    timeout: 60_000,
+  }, async () => {
+    const client = new PGlite();
+    clients.push(client);
+    const inner = rawPgliteAdapter(client);
+    const seenSql: string[] = [];
+    const capturing = {
+      execute: (sql: string, params?: unknown[]) => {
+        seenSql.push(sql);
+        return inner.execute(sql, params ?? []);
+      },
+      all: (sql: string, params?: unknown[]) => inner.all(sql, params ?? []),
+    };
+    const store = new RuntimeDbSessionStore(capturing);
+    await store.create(session());
+
+    const inserts = seenSql.filter((sql) => /INSERT\s+INTO/i.test(sql));
+    expect(inserts.length).toBeGreaterThan(0);
+    for (const sql of inserts) {
+      expect(sql).toMatch(/ON CONFLICT/i);
+      expect(sql).not.toMatch(/INSERT\s+OR\s+REPLACE/i);
+    }
   });
 });
