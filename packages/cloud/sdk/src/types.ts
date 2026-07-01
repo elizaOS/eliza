@@ -989,7 +989,13 @@ export interface AppFrontendDeploymentDto {
   id: string;
   app_id: string;
   version: number;
-  status: "pending" | "uploading" | "ready" | "active" | "superseded" | "failed";
+  status:
+    | "pending"
+    | "uploading"
+    | "ready"
+    | "active"
+    | "superseded"
+    | "failed";
   r2_prefix: string;
   content_hash: string | null;
   file_count: number;
@@ -1236,6 +1242,7 @@ export interface InfluencerBookingDto {
   influencer_profile_id: string;
   amount: string;
   status:
+    | "funding"
     | "offered"
     | "accepted"
     | "delivered"
@@ -1249,6 +1256,8 @@ export interface CreateBookingInput {
   profileId: string;
   brief: string;
   amount: number;
+  /** Optional create key: a retry with the same key returns the original booking instead of funding twice. */
+  idempotencyKey?: string;
 }
 
 export interface CreateBookingResponse {

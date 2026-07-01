@@ -113,6 +113,9 @@ describe("BOOK_INFLUENCER (two-phase money confirm)", () => {
       amount: 200,
       brief: "post about us",
     });
+    // Money-safety: the confirm carries a stable idempotency key so a
+    // transport-level retry cannot fund a second escrow.
+    expect(captured?.idempotencyKey).toMatch(/^influencer-confirm-.+/);
   });
 
   it("cancel: no booking", async () => {

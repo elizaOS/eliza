@@ -4,8 +4,10 @@
  * Two-sided booking with escrow over existing rails: advertiser org credits are
  * debited when an offer is funded, released to the influencer's redeemable
  * earnings on approval, or refunded on rejection/cancel. Every money move is
- * gated by an atomic status transition (a CAS `UPDATE ... WHERE status = <from>
- * RETURNING`), so a retry / concurrent call moves money exactly once.
+ * idempotent on the booking id (keyed debit / dedupe-by-source payout / keyed
+ * refund) and runs BEFORE the status finalize (an atomic CAS
+ * `UPDATE ... WHERE status = <from> RETURNING`), so a crash or retry moves
+ * money at most once and never finalizes a status the money didn't reach.
  */
 
 import { and, desc, eq } from "drizzle-orm";
@@ -111,8 +113,17 @@ export class InfluencerMarketplaceService {
   }
 
   /**
-   * Fund an offer: debit the advertiser's org credits (the escrow), then record
-   * the booking. If the debit fails (insufficient credits) no booking is made.
+   * Fund an offer — booking row first, money second, finalize last:
+   *
+   *   1. insert the booking in status `funding` (no money moved yet),
+   *   2. debit the advertiser's org credits keyed on `influencer_fund_<id>`
+   *      (idempotent — a retry can never debit twice for one booking),
+   *   3. CAS `funding` → `offered`, recording the escrow transaction id.
+   *
+   * A crash between steps leaves a `funding` row plus at most one keyed debit —
+   * never a debit without a booking row to reconcile. A client retry with the
+   * same `idempotencyKey` resumes the original booking instead of funding a
+   * second one.
    */
   async createBooking(input: {
     advertiserOrgId: string;
@@ -120,6 +131,7 @@ export class InfluencerMarketplaceService {
     brief: string;
     amount: number;
     createdByUserId: string;
+    idempotencyKey?: string;
   }): Promise<BookingResult> {
     if (input.amount <= 0) return { ok: false, error: "Amount must be positive" };
     const profile = await this.getProfile(input.profileId);
@@ -130,17 +142,19 @@ export class InfluencerMarketplaceService {
       return { ok: false, error: "Cannot book your own profile" };
     }
 
-    const debit = await creditsService.deductCredits({
-      organizationId: input.advertiserOrgId,
-      amount: input.amount,
-      description: `Influencer booking escrow (${profile.display_name})`,
-      metadata: { kind: "influencer_escrow", profileId: input.profileId },
-    });
-    if (!debit.success) {
-      return { ok: false, error: debit.reason ?? "Insufficient credits" };
+    if (input.idempotencyKey) {
+      const existing = await dbRead.query.influencerBookings.findFirst({
+        where: eq(influencerBookings.idempotency_key, input.idempotencyKey),
+      });
+      if (existing) {
+        if (existing.advertiser_org_id !== input.advertiserOrgId) {
+          return { ok: false, error: "Idempotency key already used" };
+        }
+        return this.fundBooking(existing, profile.display_name);
+      }
     }
 
-    const [booking] = await dbWrite
+    const inserted = await dbWrite
       .insert(influencerBookings)
       .values({
         advertiser_org_id: input.advertiserOrgId,
@@ -148,11 +162,69 @@ export class InfluencerMarketplaceService {
         influencer_user_id: profile.user_id,
         brief: input.brief,
         amount: input.amount.toFixed(2),
-        status: "offered",
+        status: "funding",
         created_by_user_id: input.createdByUserId,
+        idempotency_key: input.idempotencyKey ?? null,
       })
+      .onConflictDoNothing({ target: influencerBookings.idempotency_key })
       .returning();
-    return { ok: true, booking };
+
+    let booking = inserted[0];
+    if (!booking) {
+      // Lost a concurrent same-key create; resume the winner's booking.
+      const winner = input.idempotencyKey
+        ? await dbRead.query.influencerBookings.findFirst({
+            where: eq(influencerBookings.idempotency_key, input.idempotencyKey),
+          })
+        : undefined;
+      if (!winner) return { ok: false, error: "Booking insert failed" };
+      booking = winner;
+    }
+    return this.fundBooking(booking, profile.display_name);
+  }
+
+  /**
+   * Drive a booking from `funding` to `offered`: keyed escrow debit, then the
+   * finalize CAS. Safe to call repeatedly — a booking already past `funding`
+   * returns as-is, and a retry after a crashed funding attempt debits nothing
+   * new (the debit is idempotent on `influencer_fund_<bookingId>`).
+   */
+  private async fundBooking(
+    booking: InfluencerBooking,
+    displayName: string,
+  ): Promise<BookingResult> {
+    if (booking.status !== "funding") return { ok: true, booking };
+
+    const debit = await creditsService.deductCredits({
+      organizationId: booking.advertiser_org_id,
+      amount: Number(booking.amount),
+      description: `Influencer booking escrow (${displayName})`,
+      metadata: {
+        kind: "influencer_escrow",
+        profileId: booking.influencer_profile_id,
+        bookingId: booking.id,
+      },
+      stripePaymentIntentId: `influencer_fund_${booking.id}`,
+    });
+    if (!debit.success) {
+      // No money moved — retire the unfunded intent row so a retry starts clean.
+      await dbWrite
+        .delete(influencerBookings)
+        .where(
+          and(eq(influencerBookings.id, booking.id), eq(influencerBookings.status, "funding")),
+        );
+      return { ok: false, error: debit.reason ?? "Insufficient credits" };
+    }
+
+    const moved = await this.transition(booking.id, "funding", "offered", {
+      escrow_transaction_id: debit.transaction?.id ?? null,
+    });
+    if (moved) return { ok: true, booking: moved };
+    // A concurrent resume finalized it first.
+    const current = await this.getBooking(booking.id);
+    return current && current.status !== "funding"
+      ? { ok: true, booking: current }
+      : { ok: false, error: "Funding could not be finalized" };
   }
 
   /**
@@ -202,17 +274,21 @@ export class InfluencerMarketplaceService {
       : { ok: false, error: "Not awaiting a deliverable" };
   }
 
-  /** Advertiser approves the deliverable → release escrow to the influencer. */
+  /**
+   * Advertiser approves the deliverable → release escrow to the influencer.
+   *
+   * Pay-then-finalize: the payout runs BEFORE the status move. The payout is
+   * idempotent on the booking id, so a crash/retry pays at most once, and a
+   * payout failure leaves the booking `delivered` so approval can be retried —
+   * this can never mark a booking approved without the influencer being paid.
+   */
   async approveBooking(id: string, advertiserOrgId: string): Promise<BookingResult> {
     const booking = await this.getBooking(id);
     if (!booking || booking.advertiser_org_id !== advertiserOrgId) {
       return { ok: false, error: "Booking not found" };
     }
-    // CAS gate: only a `delivered` booking can be approved (moves money once).
-    const moved = await this.transition(id, "delivered", "approved", { resolved_at: new Date() });
-    if (!moved) return { ok: false, error: "Not awaiting approval" };
+    if (booking.status !== "delivered") return { ok: false, error: "Not awaiting approval" };
 
-    // Release escrow to the influencer (idempotent on the booking id).
     const credit = await redeemableEarningsService.addEarnings({
       userId: booking.influencer_user_id,
       amount: Number(booking.amount),
@@ -223,41 +299,100 @@ export class InfluencerMarketplaceService {
       metadata: { kind: "influencer_payout", bookingId: id, advertiserOrgId },
     });
     if (!credit.success) {
-      logger.error("[Influencer] payout failed after approval", {
+      logger.error("[Influencer] payout failed; booking left delivered for retry", {
         bookingId: id,
         error: credit.error,
       });
+      return { ok: false, error: "Payout failed — retry approval" };
     }
-    return { ok: true, booking: moved };
+
+    const moved = await this.transition(id, "delivered", "approved", { resolved_at: new Date() });
+    if (moved) return { ok: true, booking: moved };
+
+    // Lost the CAS to a concurrent transition after the (idempotent) payout.
+    const current = await this.getBooking(id);
+    if (current?.status === "approved") return { ok: true, booking: current };
+    logger.error("[Influencer] payout committed but booking moved to another state", {
+      bookingId: id,
+      status: current?.status,
+    });
+    return { ok: false, error: "Not awaiting approval" };
   }
 
-  /** Refund the advertiser (deliverable rejected, influencer declined, or cancel). */
+  /**
+   * Refund the advertiser (deliverable rejected, influencer declined, or cancel).
+   *
+   * Refund-then-finalize: the refund runs BEFORE the status move. The refund is
+   * idempotent on the booking id (one refund per booking, ever), so a
+   * crash/retry refunds at most once, and a refund failure leaves the prior
+   * status so the operation can be retried — this can never mark a booking
+   * rejected/cancelled while the advertiser is still debited.
+   */
   private async refund(
     id: string,
-    from: InfluencerBookingStatus,
+    allowedFrom: InfluencerBookingStatus[],
     to: InfluencerBookingStatus,
   ): Promise<BookingResult> {
     const booking = await this.getBooking(id);
     if (!booking) return { ok: false, error: "Booking not found" };
-    const moved = await this.transition(id, from, to, { resolved_at: new Date() });
-    if (!moved) return { ok: false, error: "Not in a refundable state" };
+    if (!allowedFrom.includes(booking.status)) {
+      return { ok: false, error: "Not in a refundable state" };
+    }
 
-    // Idempotent refund (unique on stripe_payment_intent_id backstop).
-    await creditsService.refundCredits({
-      organizationId: booking.advertiser_org_id,
-      amount: Number(booking.amount),
-      description: "Influencer booking refund",
-      stripePaymentIntentId: `influencer_refund_${id}`,
-      metadata: { kind: "influencer_refund", bookingId: id },
+    try {
+      await creditsService.refundCredits({
+        organizationId: booking.advertiser_org_id,
+        amount: Number(booking.amount),
+        description: "Influencer booking refund",
+        stripePaymentIntentId: `influencer_refund_${id}`,
+        metadata: { kind: "influencer_refund", bookingId: id },
+      });
+    } catch (error) {
+      logger.error("[Influencer] escrow refund failed; booking left in prior status for retry", {
+        bookingId: id,
+        from: booking.status,
+        to,
+        error,
+      });
+      return { ok: false, error: "Refund failed — retry" };
+    }
+
+    const moved = await this.transition(id, booking.status, to, { resolved_at: new Date() });
+    if (moved) return { ok: true, booking: moved };
+
+    // The refund is committed, so the booking MUST end in a refunded state.
+    const current = await this.getBooking(id);
+    if (!current) return { ok: false, error: "Booking not found" };
+    if (current.status === "rejected" || current.status === "cancelled") {
+      return { ok: true, booking: current }; // a concurrent refund path finalized first
+    }
+    if (current.status !== "approved") {
+      // A non-money transition (e.g. accept) raced in; force-finalize so the
+      // booking state agrees with the committed refund.
+      const forced = await this.transition(id, current.status, to, { resolved_at: new Date() });
+      if (forced) {
+        logger.warn("[Influencer] booking force-finalized after refund raced a transition", {
+          bookingId: id,
+          racedStatus: current.status,
+          to,
+        });
+        return { ok: true, booking: forced };
+      }
+    }
+    logger.error("[Influencer] refund committed but booking could not be finalized", {
+      bookingId: id,
+      status: current.status,
+      to,
     });
-    return { ok: true, booking: moved };
+    return { ok: false, error: "Booking changed state during refund" };
   }
 
+  /** Influencer declines: from `offered` (never accepted) or `accepted` (backing out). */
   rejectBooking(id: string, influencerUserId: string): Promise<BookingResult> {
     return this.getBooking(id).then((b) =>
       !b || b.influencer_user_id !== influencerUserId
         ? { ok: false, error: "Booking not found" }
-        : this.refund(id, "offered", "rejected"),
+        : this.refund(id, ["offered", "accepted"], "rejected"),
     );
   }
 
@@ -265,7 +400,7 @@ export class InfluencerMarketplaceService {
     return this.getBooking(id).then((b) =>
       !b || b.advertiser_org_id !== advertiserOrgId
         ? { ok: false, error: "Booking not found" }
-        : this.refund(id, "delivered", "rejected"),
+        : this.refund(id, ["delivered"], "rejected"),
     );
   }
 
@@ -273,7 +408,7 @@ export class InfluencerMarketplaceService {
     return this.getBooking(id).then((b) =>
       !b || b.advertiser_org_id !== advertiserOrgId
         ? { ok: false, error: "Booking not found" }
-        : this.refund(id, "offered", "cancelled"),
+        : this.refund(id, ["offered"], "cancelled"),
     );
   }
 
