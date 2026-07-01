@@ -33,21 +33,28 @@ export function getModelOptions(): {
   // All models available via Eliza Cloud (Vercel AI Gateway).
   // IDs use "provider/model" format to match the cloud API routing.
   // Every tier exposes the full catalog so users can assign any model to any slot.
+  const freeDefaultMatchesRecommended =
+    DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL === DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
   const allModels = [
     {
       id: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-      name: "GPT OSS 120B Nitro",
-      provider: "OpenAI",
-      description: "Recommended OpenRouter high-throughput reasoning model.",
+      name: "Gemma 4 31B",
+      provider: "Cerebras",
+      description: "Recommended Cerebras model for Eliza Cloud text tiers.",
       recommended: true,
+      ...(freeDefaultMatchesRecommended ? { free: true } : {}),
     },
-    {
-      id: DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
-      name: "GPT OSS 120B Free",
-      provider: "OpenAI",
-      description: "Free OpenRouter reasoning model.",
-      free: true,
-    },
+    ...(freeDefaultMatchesRecommended
+      ? []
+      : [
+          {
+            id: DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
+            name: "Gemma 4 31B Free",
+            provider: "Cerebras",
+            description: "Free Cerebras model for Eliza Cloud text tiers.",
+            free: true,
+          },
+        ]),
     // Anthropic
     {
       id: "anthropic/claude-opus-4.7",

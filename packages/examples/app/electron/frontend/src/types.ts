@@ -89,8 +89,8 @@ export const DEFAULT_CONFIG: AppConfig = {
 
     elizacloudApiKey: "",
     elizacloudBaseUrl: "https://elizacloud.ai/api/v1",
-    elizacloudSmallModel: "gpt-oss-120b",
-    elizacloudLargeModel: "zai-glm-4.7",
+    elizacloudSmallModel: "gemma-4-31b",
+    elizacloudLargeModel: "gemma-4-31b",
   },
 };
 

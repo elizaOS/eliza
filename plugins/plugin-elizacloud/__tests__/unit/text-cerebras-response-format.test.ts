@@ -1,6 +1,6 @@
 /**
  * Offline unit coverage for the native `/chat/completions` `response_format`
- * gate. Cerebras-served models (the gpt-oss family) 400 on
+ * gate. Cerebras-served native chat models 400 on
  * `response_format: { type: "json_schema" }`, so for those models the wire body
  * must carry `{ type: "json_object" }` instead. Every other model keeps the
  * full `json_schema` payload so structured output stays schema-constrained.
@@ -8,7 +8,7 @@
  * The fetch is mocked: we capture the request body and return a canned
  * chat-completions response, asserting only the outgoing `response_format`.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateNativeChatCompletion } from "../../src/models/text";
@@ -80,13 +80,18 @@ describe("native /chat/completions response_format gate", () => {
     vi.restoreAllMocks();
   });
 
-  it("emits json_object for cerebras-served gpt-oss models", async () => {
-    const body = await captureBody("gpt-oss-120b");
+  it.each([
+    DEFAULT_CEREBRAS_TEXT_MODEL,
+    `cerebras:${DEFAULT_CEREBRAS_TEXT_MODEL}`,
+    "gpt-oss-120b",
+    "zai-glm-4.7",
+  ])("emits json_object for cerebras-served %s", async (modelName) => {
+    const body = await captureBody(modelName);
     expect(body?.response_format).toEqual({ type: "json_object" });
   });
 
   it("keeps json_schema for non-cerebras models", async () => {
-    const body = await captureBody("zai-glm-4.7");
+    const body = await captureBody("gpt-4o-mini");
     expect(body?.response_format).toMatchObject({
       type: "json_schema",
       json_schema: { name: "reply_envelope" },
@@ -95,11 +100,10 @@ describe("native /chat/completions response_format gate", () => {
 });
 
 /**
- * gpt-oss runs a hidden reasoning pass before answering even when the caller
- * wants none (~4s/call vs ~0.7s suppressed). The runtime asks for none via
+ * The runtime asks for no hidden thinking via
  * `providerOptions.eliza.thinking="off"`; the native request must translate that
- * into cerebras's `reasoning_effort:"low"`. The knob is cerebras-only — other
- * providers (e.g. zai-glm-4.7) ignore it, so it must not leak onto their wire.
+ * into each Cerebras model's supported suppression value. The knob is
+ * cerebras-only, so it must not leak onto other providers.
  */
 describe("native /chat/completions reasoning_effort gate", () => {
   beforeEach(() => {
@@ -110,20 +114,26 @@ describe("native /chat/completions reasoning_effort gate", () => {
     vi.restoreAllMocks();
   });
 
-  it("maps eliza.thinking=off to reasoning_effort:low for cerebras gpt-oss", async () => {
-    const body = await captureBody("gpt-oss-120b", {
+  it.each([
+    ["gpt-oss-120b", "low"],
+    [DEFAULT_CEREBRAS_TEXT_MODEL, "none"],
+    ["zai-glm-4.7", "none"],
+  ] as const)("maps eliza.thinking=off for %s to reasoning_effort:%s", async (modelName, expectedEffort) => {
+    const body = await captureBody(modelName, {
       providerOptions: { eliza: { thinking: "off" } },
     });
-    expect(body?.reasoning_effort).toBe("low");
+    expect(body?.reasoning_effort).toBe(expectedEffort);
   });
 
   it("omits reasoning_effort when thinking is not suppressed", async () => {
-    const body = await captureBody("gpt-oss-120b", { providerOptions: {} });
+    const body = await captureBody(DEFAULT_CEREBRAS_TEXT_MODEL, {
+      providerOptions: {},
+    });
     expect(body?.reasoning_effort).toBeUndefined();
   });
 
   it("never sets reasoning_effort for non-cerebras models", async () => {
-    const body = await captureBody("zai-glm-4.7", {
+    const body = await captureBody("gpt-4o-mini", {
       providerOptions: { eliza: { thinking: "off" } },
     });
     expect(body?.reasoning_effort).toBeUndefined();

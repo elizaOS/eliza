@@ -104,6 +104,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
   isElizaSettingsDebugEnabled,
@@ -1052,16 +1053,14 @@ export async function configureLocalEmbeddingPlugin(
   );
 
   // Default Cerebras model — plugin-openai's Cerebras mode otherwise falls
-  // back to OpenAI-only ids (gpt-5 / gpt-5.4-mini) when CEREBRAS_MODEL is
-  // unset, which 404 on api.cerebras.ai for direct own-key sessions that
-  // never hit the first-run / provider-switch path. Seed the approved GPT-OSS
-  // default before plugin init (mirrors the Groq handling above; Cerebras
-  // shares one CEREBRAS_MODEL for both small and large).
+  // back to OpenAI-only ids when CEREBRAS_MODEL is unset. Seed the approved
+  // Gemma default before plugin init while preserving explicit shared model
+  // overrides from OPENAI_LARGE_MODEL / LARGE_MODEL.
   setEnvIfMissing(
     "CEREBRAS_MODEL",
     currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
       ? currentSharedLargeModel
-      : "gpt-oss-120b",
+      : DEFAULT_CEREBRAS_TEXT_MODEL,
   );
 
   logger.info(

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * `run-cerebras` — drives one v5 native-tool-calling trajectory against the
- * Cerebras `gpt-oss-120b` (or `gpt-oss-20b`) endpoint and writes the recorded
+ * Cerebras `gemma-4-31b` endpoint and writes the recorded
  * trajectory JSON to `./trajectories/<id>.json`.
  *
  * Spec: PLAN.md §19.2 / §19.3.
@@ -21,7 +21,7 @@
  *   --no-record             Skip writing JSON.
  *   --no-tty                Plain output for logs.
  *   --stages-only           One line per stage (compact).
- *   --model <name>          Override default `gpt-oss-120b`.
+ *   --model <name>          Override default `gemma-4-31b`.
  */
 
 import crypto from "node:crypto";
@@ -1109,7 +1109,7 @@ async function main(): Promise<void> {
 
   const opts: RunOptions = {
     apiKey,
-    model: (flags.get("model") as string | undefined) ?? "gpt-oss-120b",
+    model: (flags.get("model") as string | undefined) ?? "gemma-4-31b",
     systemPrompt,
     userMessage,
     noTty: flags.get("no-tty") === true || flags.get("no-tty") === "true",

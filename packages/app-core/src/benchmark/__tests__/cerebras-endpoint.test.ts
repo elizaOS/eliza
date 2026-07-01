@@ -81,8 +81,8 @@ describe("bench-server Cerebras autowiring", () => {
     expect(process.env.OPENAI_BASE_URL).not.toContain("/responses");
     expect(process.env.OPENAI_API_KEY).toBe("csk-test");
     expect(process.env.ELIZA_PROVIDER).toBe("cerebras");
-    expect(process.env.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
-    expect(process.env.OPENAI_SMALL_MODEL).toBe("gpt-oss-120b");
+    expect(process.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(process.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
   });
 
   it("respects an explicit CEREBRAS_BASE_URL override", () => {

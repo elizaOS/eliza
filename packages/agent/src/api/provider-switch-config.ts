@@ -9,6 +9,7 @@ import {
   asRecord,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   deriveFirstRunCredentialPersistencePlan,
   type FirstRunConnection,
   type FirstRunCredentialInputs,
@@ -424,16 +425,14 @@ const PROVIDER_DEFAULT_MODELS: Record<
     largeVal: "openai/gpt-oss-120b",
   },
   // Cerebras runs through the OpenAI plugin's Cerebras mode, which reads a
-  // single `CEREBRAS_MODEL` knob for every model role. Without it the plugin
-  // falls back to OpenAI ids (`gpt-5.4-mini` / `gpt-5`) that 404 on
-  // api.cerebras.ai, so a switched-in Cerebras agent would fail every call.
-  // small/large intentionally share the key+value: the `if (!process.env[key])`
-  // guard in applyDefaultModelNames skips the second write.
+  // single `CEREBRAS_MODEL` knob for every model role. Both default text tiers
+  // intentionally collapse to Gemma, so one default value covers small, large,
+  // mega, and planner while still letting an explicit CEREBRAS_MODEL win.
   cerebras: {
     smallKey: "CEREBRAS_MODEL",
-    smallVal: "gpt-oss-120b",
+    smallVal: DEFAULT_CEREBRAS_TEXT_MODEL,
     largeKey: "CEREBRAS_MODEL",
-    largeVal: "gpt-oss-120b",
+    largeVal: DEFAULT_CEREBRAS_TEXT_MODEL,
   },
   nearai: {
     smallKey: "NEARAI_SMALL_MODEL",

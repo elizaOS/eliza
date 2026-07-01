@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * run-eliza-cerebras — Validates the REAL v5 runtime path against Cerebras gpt-oss-120b.
+ * run-eliza-cerebras — Validates the REAL v5 runtime path against Cerebras gemma-4-31b.
  *
  * Per PLAN.md §21.4 note on G3 closure: this replaces the fetch-based
  * re-implementation in `run-cerebras.ts`. It calls `runV5MessageRuntimeStage1`
@@ -14,7 +14,7 @@
  *
  * Env (all optional with defaults):
  *   CEREBRAS_API_KEY           Required. Cerebras API key.
- *   OPENAI_LARGE_MODEL         Override model (default: gpt-oss-120b).
+ *   OPENAI_LARGE_MODEL         Override model (default: gemma-4-31b).
  *   ELIZA_TRAJECTORY_DIR      Where to write trajectory JSON (default: ./trajectories-eliza-cerebras).
  *   ELIZA_TRAJECTORY_RECORDING  Set to 0 to disable recording.
  */
@@ -55,7 +55,7 @@ const CEREBRAS_BASE_URL =
 const CEREBRAS_MODEL =
   process.env.CEREBRAS_LARGE_MODEL?.trim() ??
   process.env.OPENAI_LARGE_MODEL?.trim() ??
-  "gpt-oss-120b";
+  "gemma-4-31b";
 const TRAJECTORY_DIR =
   process.env.ELIZA_TRAJECTORY_DIR?.trim() ?? "./trajectories-eliza-cerebras";
 

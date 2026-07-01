@@ -6,7 +6,7 @@
  * supported model API key is available in the environment.
  *
  * Supported judge providers (checked in order):
- *   1. Cerebras   — CEREBRAS_API_KEY  (default model: cerebras/gpt-oss-120b)
+ *   1. Cerebras   — CEREBRAS_API_KEY  (default model: cerebras/gemma-4-31b)
  *   2. Anthropic  — ANTHROPIC_API_KEY (default model: claude-haiku-4-5-20251001)
  *
  * Override the model via VIEW_EVAL_MODEL env var.
@@ -19,6 +19,7 @@
  * suffixes to exclude from CI, or run directly when credentials are available.
  */
 
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   countViewJourneyScenarios,
@@ -48,7 +49,7 @@ function detectProvider(): JudgeProvider {
 }
 
 function defaultModel(provider: JudgeProvider): string {
-  if (provider === "cerebras") return "gpt-oss-120b";
+  if (provider === "cerebras") return DEFAULT_CEREBRAS_TEXT_MODEL;
   return "claude-haiku-4-5-20251001";
 }
 

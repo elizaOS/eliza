@@ -185,7 +185,7 @@ describe("POST /api/pty/sessions", () => {
     ]);
     expect(h.calls[0].opts.env?.ELIZA_CODE_CODING_ONLY).toBe("1");
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-cloud");
-    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("zai-glm-4.7"); // smart tier
+    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
   });
 
   it("403 when interactive spawning is disabled", async () => {

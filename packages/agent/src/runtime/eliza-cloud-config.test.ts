@@ -176,8 +176,8 @@ describe("provisioned cloud container topology (#9887)", () => {
         llmText: {
           backend: "elizacloud",
           transport: "cloud-proxy",
-          smallModel: "gpt-oss-120b",
-          largeModel: "zai-glm-4.7",
+          smallModel: "gemma-4-31b",
+          largeModel: "gemma-4-31b",
         },
         embeddings: {
           backend: "elizacloud",
@@ -203,8 +203,8 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(topology.runtime).toBe("cloud");
     expect(topology.services.inference).toBe(true);
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
-    expect(process.env.SMALL_MODEL).toBe("gpt-oss-120b");
-    expect(process.env.LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(process.env.SMALL_MODEL).toBe("gemma-4-31b");
+    expect(process.env.LARGE_MODEL).toBe("gemma-4-31b");
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(infoSpy).toHaveBeenCalledWith(
