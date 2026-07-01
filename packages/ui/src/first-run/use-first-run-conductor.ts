@@ -323,22 +323,29 @@ export function useFirstRunConductor(): void {
             outcome.agents.map((a) => ({ id: a.agent_id, name: a.agent_name })),
           );
           return;
-        case "needs-cloud-login":
-          replaceTurn(
+        case "needs-cloud-login": {
+          // Surface the "Connect Eliza Cloud" widget so the user can re-auth.
+          // seedTurn ADDS the turn if this path never created it — the hybrid
+          // "Local + Eliza Cloud inference" provider path never seeds a
+          // cloud-oauth turn, unlike the runtime:cloud path — then replaceTurn
+          // sets the failed/connect state. Without the seed, replaceTurn is a
+          // no-op and onboarding dead-ends silently (no widget, no error, no
+          // status) with recovery only via app restart (#10836).
+          const connectTurn = makeTurn(
             "first-run:cloud-oauth",
-            makeTurn(
-              "first-run:cloud-oauth",
-              "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
-              { secretRequest: cloudOAuthSecretRequest("failed") },
-            ),
+            "Connect your Eliza Cloud account to continue, then pick Eliza Cloud again.",
+            { secretRequest: cloudOAuthSecretRequest("failed") },
           );
+          seedTurn(connectTurn);
+          replaceTurn("first-run:cloud-oauth", connectTurn);
           return;
+        }
         case "error":
           seedError(outcome.message);
           return;
       }
     },
-    [seedTutorial, seedCloudAgentChoice, replaceTurn, seedError],
+    [seedTutorial, seedCloudAgentChoice, seedTurn, replaceTurn, seedError],
   );
 
   const handleFirstRunAction = React.useCallback(
