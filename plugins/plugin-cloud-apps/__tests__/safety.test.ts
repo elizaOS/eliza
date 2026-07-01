@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildConnectorCta,
   confirmationPrompt,
-  isExplicitConfirmation,
+  readStructuredConfirmation,
 } from "../src/safety.ts";
 
 const TARGET = {
@@ -11,53 +11,50 @@ const TARGET = {
   aliases: ["acme-bot"],
 };
 
-describe("isExplicitConfirmation", () => {
-  it("rejects a plain first ask (no affirmation word)", () => {
-    expect(isExplicitConfirmation("delete my Acme Bot app", TARGET)).toBe(
-      false,
-    );
-    expect(isExplicitConfirmation("remove acme-bot please", TARGET)).toBe(
-      false,
-    );
+describe("readStructuredConfirmation", () => {
+  it("accepts only structured boolean-ish confirmation fields", () => {
+    expect(readStructuredConfirmation({ confirm: true })).toBe(true);
+    expect(readStructuredConfirmation({ confirm: false })).toBe(false);
+    expect(readStructuredConfirmation({ confirmed: "1" })).toBe(true);
+    expect(readStructuredConfirmation({ confirm: "0" })).toBe(false);
   });
 
-  it("accepts an affirmation + verb", () => {
-    expect(isExplicitConfirmation("yes delete it", TARGET)).toBe(true);
-    expect(isExplicitConfirmation("delete Acme Bot — yes", TARGET)).toBe(true);
-    expect(isExplicitConfirmation("confirm, delete the app", TARGET)).toBe(
+  it("reads the confirmation from the real planner path (options.parameters)", () => {
+    // The runtime nests validated action parameters under options.parameters
+    // (execute-planned-tool-call.ts). Reading only the top level made confirm
+    // invisible on every real turn, so the destructive action could never fire.
+    expect(readStructuredConfirmation({ parameters: { confirm: true } })).toBe(
       true,
     );
-  });
-
-  it("accepts an affirmation + target reference (name/slug/id)", () => {
-    expect(isExplicitConfirmation("yes, Acme Bot", TARGET)).toBe(true);
-    expect(isExplicitConfirmation("go ahead with acme-bot", TARGET)).toBe(true);
-    expect(
-      isExplicitConfirmation(
-        "yes 11111111-2222-3333-4444-555555555555",
-        TARGET,
-      ),
-    ).toBe(true);
-  });
-
-  it("rejects a bare affirmation with no verb and no target", () => {
-    expect(isExplicitConfirmation("yes", TARGET)).toBe(false);
-    expect(isExplicitConfirmation("ok sure", TARGET)).toBe(false);
-  });
-
-  it("rejects negative / hesitant replies", () => {
-    expect(isExplicitConfirmation("no, keep it", TARGET)).toBe(false);
-    expect(isExplicitConfirmation("hmm not sure, maybe later", TARGET)).toBe(
+    expect(readStructuredConfirmation({ parameters: { confirm: false } })).toBe(
       false,
     );
-    expect(isExplicitConfirmation("", TARGET)).toBe(false);
+    expect(readStructuredConfirmation({ parameters: { confirmed: "1" } })).toBe(
+      true,
+    );
+    expect(readStructuredConfirmation({ parameters: {} })).toBe(null);
+    // The nested (planner-extracted) value is authoritative over any top-level.
+    expect(
+      readStructuredConfirmation({
+        parameters: { confirm: false },
+        confirm: true,
+      }),
+    ).toBe(false);
+    // Prose is still never treated as confirmation, even when nested.
+    expect(readStructuredConfirmation({ parameters: { confirm: "yes" } })).toBe(
+      null,
+    );
   });
 
-  it("does not match a short alias inside unrelated prose", () => {
-    // 'go' alias would be < 3 chars and must be ignored.
+  it("does not infer confirmation from user prose", () => {
+    expect(readStructuredConfirmation(undefined)).toBe(null);
+    expect(readStructuredConfirmation({ text: "yes delete Acme Bot" })).toBe(
+      null,
+    );
+    expect(readStructuredConfirmation({ confirm: "yes" })).toBe(null);
     expect(
-      isExplicitConfirmation("yes let's go", { name: "go", aliases: ["go"] }),
-    ).toBe(false);
+      readStructuredConfirmation({ confirm: "delete Acme Bot — yes" }),
+    ).toBe(null);
   });
 });
 
@@ -72,10 +69,7 @@ describe("confirmationPrompt", () => {
     expect(prompt).toContain("its running container");
     expect(prompt).toContain("its tenant database");
     expect(prompt.toLowerCase()).toContain("can't be undone");
-    expect(prompt).toContain("delete Acme Bot — yes");
-    // The prompt itself is an explicit-confirmation template; sanity-check that
-    // re-feeding the suggested token confirms.
-    expect(isExplicitConfirmation("delete Acme Bot — yes", TARGET)).toBe(true);
+    expect(prompt).toContain("confirm delete Acme Bot");
   });
 });
 

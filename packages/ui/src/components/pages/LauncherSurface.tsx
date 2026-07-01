@@ -1,11 +1,8 @@
 import * as React from "react";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
 import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
-import {
-  getActiveViewModality,
-  type ViewModality,
-} from "../../platform/platform-guards";
 import { isAospShellEnabled } from "../../navigation";
+import { getActiveViewModality } from "../../platform/platform-guards";
 import {
   setLauncherEditing,
   setLauncherPage,
@@ -14,8 +11,8 @@ import {
 } from "../../state/shell-surface-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { recordRecentViewId } from "../../view-recents";
-import { curateLauncherPages } from "./launcher-curation";
 import { Launcher } from "./Launcher";
+import { curateLauncherPages } from "./launcher-curation";
 
 export interface LauncherSurfaceProps {
   onNavigateHomeFromEdge?: () => void;

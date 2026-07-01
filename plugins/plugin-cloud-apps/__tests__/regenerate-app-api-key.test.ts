@@ -78,12 +78,20 @@ describe("REGENERATE_APP_API_KEY", () => {
 
   it("explicit confirmation: rotates once and shows the new key exactly once", async () => {
     const rotations = trackRotations();
+    const runtime = keyedRuntime();
     const cb = captureCallback();
+    await regenerateAppApiKeyAction.handler(
+      runtime,
+      makeMessage("regenerate the API key for Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
     const result = await regenerateAppApiKeyAction.handler(
-      keyedRuntime(),
-      makeMessage("rotate Acme Bot — yes"),
+      runtime,
+      makeMessage("confirmo"),
       undefined,
-      undefined,
+      { confirm: true },
       cb.fn,
     );
 
@@ -94,7 +102,9 @@ describe("REGENERATE_APP_API_KEY", () => {
     // The key is shown ONCE in the user-facing reply...
     const replies = cb.calls.filter((c) => (c.text ?? "").includes(NEW_KEY));
     expect(replies).toHaveLength(1);
-    expect(cb.calls[0]?.text?.toLowerCase()).toContain("won't be shown again");
+    expect(cb.calls.at(-1)?.text?.toLowerCase()).toContain(
+      "won't be shown again",
+    );
 
     // ...but never placed in the persisted `data` or summary `text`.
     expect(JSON.stringify(result?.data)).not.toContain(NEW_KEY);
@@ -103,23 +113,67 @@ describe("REGENERATE_APP_API_KEY", () => {
 
   it("handles a rotate that returns no key", async () => {
     setRegenerateAppApiKey(() => Promise.resolve({ success: true }));
+    const runtime = keyedRuntime();
     const cb = captureCallback();
+    await regenerateAppApiKeyAction.handler(
+      runtime,
+      makeMessage("regenerate the API key for Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
     const result = await regenerateAppApiKeyAction.handler(
-      keyedRuntime(),
-      makeMessage("rotate Acme Bot — yes"),
+      runtime,
+      makeMessage("confirm"),
       undefined,
-      undefined,
+      { confirm: true },
       cb.fn,
     );
     expect(result?.success).toBe(false);
     expect((result?.data as { reason: string }).reason).toBe("no_key_returned");
   });
 
+  it("structured confirm without a pending prompt does NOT rotate", async () => {
+    const rotations = trackRotations();
+    const result = await regenerateAppApiKeyAction.handler(
+      keyedRuntime(),
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      captureCallback().fn,
+    );
+    expect(rotations.count()).toBe(0);
+    expect((result?.data as { reason: string }).reason).toBe(
+      "no_pending_confirmation",
+    );
+  });
+
+  it("structured cancellation consumes the pending prompt without rotating", async () => {
+    const rotations = trackRotations();
+    const runtime = keyedRuntime();
+    await regenerateAppApiKeyAction.handler(
+      runtime,
+      makeMessage("regenerate the API key for Acme Bot"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
+    const result = await regenerateAppApiKeyAction.handler(
+      runtime,
+      makeMessage("cancel"),
+      undefined,
+      { confirm: false },
+      captureCallback().fn,
+    );
+    expect(rotations.count()).toBe(0);
+    expect((result?.data as { canceled: boolean }).canceled).toBe(true);
+  });
+
   it("returns not-found for an unknown app (no rotate)", async () => {
     const rotations = trackRotations();
     const result = await regenerateAppApiKeyAction.handler(
       keyedRuntime(),
-      makeMessage("rotate Zephyr — yes"),
+      makeMessage("rotate Zephyr"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -131,7 +185,7 @@ describe("REGENERATE_APP_API_KEY", () => {
   it("degrades gracefully with no Cloud API key", async () => {
     const result = await regenerateAppApiKeyAction.handler(
       unkeyedRuntime(),
-      makeMessage("rotate Acme Bot — yes"),
+      makeMessage("rotate Acme Bot"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -141,11 +195,19 @@ describe("REGENERATE_APP_API_KEY", () => {
 
   it("surfaces a rotate API error", async () => {
     setRegenerateAppApiKey(() => Promise.reject(new Error("boom")));
+    const runtime = keyedRuntime();
+    await regenerateAppApiKeyAction.handler(
+      runtime,
+      makeMessage("regenerate the API key for Acme Bot"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
     const result = await regenerateAppApiKeyAction.handler(
-      keyedRuntime(),
-      makeMessage("rotate Acme Bot — yes"),
+      runtime,
+      makeMessage("confirm"),
       undefined,
-      undefined,
+      { confirm: true },
       captureCallback().fn,
     );
     expect(result?.success).toBe(false);
