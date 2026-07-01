@@ -171,6 +171,43 @@ describe("NotificationCenter", () => {
     ).toBeNull();
   });
 
+  it("sheet variant: renders the panel controlled + closes via backdrop and X (#10706)", async () => {
+    seedNotifications([
+      notification("s1", "Pulled-down alert", "system"),
+    ]);
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <NotificationCenter
+        variant="sheet"
+        open
+        onOpenChange={onOpenChange}
+      />,
+    );
+
+    // Open: the sheet + its panel content are visible without any bell click.
+    expect(screen.getByTestId("notification-sheet")).toBeTruthy();
+    await screen.findByText("Pulled-down alert");
+
+    // Backdrop dismiss requests close.
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("notification-sheet-backdrop"));
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+
+    // The X control also requests close.
+    await user.click(screen.getByTestId("notification-sheet-close"));
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+
+    // Closed: nothing renders (controlled).
+    rerender(
+      <NotificationCenter
+        variant="sheet"
+        open={false}
+        onOpenChange={onOpenChange}
+      />,
+    );
+    expect(screen.queryByTestId("notification-sheet")).toBeNull();
+  });
+
   it("defaults to priority sort and toggles to a most-recent-first timeline (#10706)", async () => {
     const TITLES = ["Older high", "Newest normal", "Oldest urgent"];
     seedNotifications([
