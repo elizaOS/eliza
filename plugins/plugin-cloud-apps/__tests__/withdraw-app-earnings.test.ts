@@ -130,12 +130,20 @@ describe("WITHDRAW_APP_EARNINGS", () => {
 
   it("explicit confirmation: the safe withdraw path fires exactly once", async () => {
     const withdrawals = trackWithdrawals();
+    const runtime = keyedRuntime();
     const cb = captureCallback();
+    await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("withdraw my Acme Bot earnings"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
     const result = await withdrawAppEarningsAction.handler(
-      keyedRuntime(),
-      makeMessage("withdraw Acme Bot — yes"),
+      runtime,
+      makeMessage("confirmo"),
       undefined,
-      undefined,
+      { confirm: true },
       cb.fn,
     );
 
@@ -154,20 +162,64 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     // No secret transits the connector output on confirm either.
     const cta = (result?.data as { cta: ConnectorCta }).cta;
     expect(JSON.stringify(cta)).not.toContain(API_KEY);
-    expect(cb.calls[0]?.text).not.toContain(API_KEY);
+    expect(cb.calls.at(-1)?.text).not.toContain(API_KEY);
   });
 
-  it("honors an explicit amount on confirm", async () => {
+  it("honors the first-turn amount and ignores follow-up amount prose", async () => {
     const withdrawals = trackWithdrawals();
-    const result = await withdrawAppEarningsAction.handler(
-      keyedRuntime(),
-      makeMessage("withdraw $50 from Acme Bot — yes"),
+    const runtime = keyedRuntime();
+    await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("withdraw $50 from Acme Bot"),
       undefined,
       undefined,
       captureCallback().fn,
     );
+    const result = await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("confirm, actually make it $500"),
+      undefined,
+      { confirm: true },
+      captureCallback().fn,
+    );
     expect(withdrawals.calls[0]?.request.amount).toBe(50);
     expect(result?.success).toBe(true);
+  });
+
+  it("structured confirm without a pending prompt does NOT withdraw", async () => {
+    const withdrawals = trackWithdrawals();
+    const result = await withdrawAppEarningsAction.handler(
+      keyedRuntime(),
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      captureCallback().fn,
+    );
+    expect(withdrawals.calls).toHaveLength(0);
+    expect((result?.data as { reason: string }).reason).toBe(
+      "no_pending_confirmation",
+    );
+  });
+
+  it("structured cancellation consumes the pending prompt without withdrawing", async () => {
+    const withdrawals = trackWithdrawals();
+    const runtime = keyedRuntime();
+    await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("withdraw my Acme Bot earnings"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
+    const result = await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("cancel"),
+      undefined,
+      { confirm: false },
+      captureCallback().fn,
+    );
+    expect(withdrawals.calls).toHaveLength(0);
+    expect((result?.data as { canceled: boolean }).canceled).toBe(true);
   });
 
   it("refuses (no call) when the balance is below the payout threshold", async () => {
@@ -189,7 +241,7 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     const withdrawals = trackWithdrawals();
     const result = await withdrawAppEarningsAction.handler(
       keyedRuntime(),
-      makeMessage("withdraw Acme Bot — yes"),
+      makeMessage("withdraw Acme Bot"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -211,7 +263,7 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     const withdrawals = trackWithdrawals();
     const result = await withdrawAppEarningsAction.handler(
       keyedRuntime(),
-      makeMessage("withdraw Acme Bot — yes"),
+      makeMessage("withdraw Acme Bot"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -224,7 +276,7 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     const withdrawals = trackWithdrawals();
     const result = await withdrawAppEarningsAction.handler(
       keyedRuntime(),
-      makeMessage("withdraw $500 from Acme Bot — yes"),
+      makeMessage("withdraw $500 from Acme Bot"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -237,7 +289,7 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     const withdrawals = trackWithdrawals();
     const result = await withdrawAppEarningsAction.handler(
       keyedRuntime(),
-      makeMessage("withdraw Zephyr — yes"),
+      makeMessage("withdraw Zephyr"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -249,7 +301,7 @@ describe("WITHDRAW_APP_EARNINGS", () => {
   it("degrades gracefully with no Cloud API key", async () => {
     const result = await withdrawAppEarningsAction.handler(
       unkeyedRuntime(),
-      makeMessage("withdraw Acme Bot — yes"),
+      makeMessage("withdraw Acme Bot"),
       undefined,
       undefined,
       captureCallback().fn,
@@ -259,11 +311,19 @@ describe("WITHDRAW_APP_EARNINGS", () => {
 
   it("surfaces a withdraw API error on confirm", async () => {
     setWithdrawAppEarnings(() => Promise.reject(new Error("boom")));
+    const runtime = keyedRuntime();
+    await withdrawAppEarningsAction.handler(
+      runtime,
+      makeMessage("withdraw my Acme Bot earnings"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
     const result = await withdrawAppEarningsAction.handler(
-      keyedRuntime(),
-      makeMessage("withdraw Acme Bot — yes"),
+      runtime,
+      makeMessage("confirm"),
       undefined,
-      undefined,
+      { confirm: true },
       captureCallback().fn,
     );
     expect(result?.success).toBe(false);

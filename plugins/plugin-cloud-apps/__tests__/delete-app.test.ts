@@ -68,30 +68,45 @@ describe("DELETE_APP", () => {
 
   it("explicit confirmation: deletes exactly once", async () => {
     const deletes = trackDeletes();
+    const runtime = keyedRuntime();
     const cb = captureCallback();
+    await deleteAppAction.handler(
+      runtime,
+      makeMessage("delete Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
     const result = await deleteAppAction.handler(
-      keyedRuntime(),
-      makeMessage("delete Acme Bot — yes"),
+      runtime,
+      makeMessage("confirmar"),
       undefined,
-      undefined,
+      { confirm: true },
       cb.fn,
     );
 
     expect(deletes.count()).toBe(1);
     expect(result?.success ?? false).toBe(true);
     expect((result?.data as { deleted: boolean }).deleted).toBe(true);
-    expect(cb.calls[0]?.text).toContain("Deleted");
+    expect(cb.calls.at(-1)?.text).toContain("Deleted");
   });
 
   it("a bare 'yes' is NOT enough to delete (connector-agnostic safety)", async () => {
     const deletes = trackDeletes();
+    const runtime = keyedRuntime();
     const cb = captureCallback();
-    // resolve via planner option; confirmation parsed from the text only
+    await deleteAppAction.handler(
+      runtime,
+      makeMessage("delete Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
     const result = await deleteAppAction.handler(
-      keyedRuntime(),
+      runtime,
       makeMessage("yes"),
       undefined,
-      { appName: "Acme Bot" },
+      undefined,
       cb.fn,
     );
     expect(deletes.count()).toBe(0);
@@ -102,15 +117,38 @@ describe("DELETE_APP", () => {
 
   it("a hesitant follow-up does NOT delete", async () => {
     const deletes = trackDeletes();
+    const runtime = keyedRuntime();
+    await deleteAppAction.handler(
+      runtime,
+      makeMessage("delete Acme Bot"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
     const result = await deleteAppAction.handler(
-      keyedRuntime(),
+      runtime,
       makeMessage("hmm not sure, maybe later"),
       undefined,
-      { appName: "Acme Bot" },
+      { confirm: false },
       captureCallback().fn,
     );
     expect(deletes.count()).toBe(0);
-    expect((result?.data as { deleted: boolean }).deleted).toBe(false);
+    expect((result?.data as { canceled: boolean }).canceled).toBe(true);
+  });
+
+  it("structured confirm without a pending prompt does NOT delete", async () => {
+    const deletes = trackDeletes();
+    const result = await deleteAppAction.handler(
+      keyedRuntime(),
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      captureCallback().fn,
+    );
+    expect(deletes.count()).toBe(0);
+    expect((result?.data as { reason: string }).reason).toBe(
+      "no_pending_confirmation",
+    );
   });
 
   it("returns not-found for an unknown app (no confirmation, no delete)", async () => {
@@ -131,7 +169,7 @@ describe("DELETE_APP", () => {
     const cb = captureCallback();
     const result = await deleteAppAction.handler(
       unkeyedRuntime(),
-      makeMessage("delete Acme Bot — yes"),
+      makeMessage("delete Acme Bot"),
       undefined,
       undefined,
       cb.fn,
@@ -142,12 +180,20 @@ describe("DELETE_APP", () => {
 
   it("surfaces a delete API error", async () => {
     setDeleteApp(() => Promise.reject(new Error("boom")));
+    const runtime = keyedRuntime();
     const cb = captureCallback();
+    await deleteAppAction.handler(
+      runtime,
+      makeMessage("delete Acme Bot"),
+      undefined,
+      undefined,
+      cb.fn,
+    );
     const result = await deleteAppAction.handler(
-      keyedRuntime(),
-      makeMessage("delete Acme Bot — yes"),
+      runtime,
+      makeMessage("confirm"),
       undefined,
-      undefined,
+      { confirm: true },
       cb.fn,
     );
     expect(result?.success).toBe(false);
