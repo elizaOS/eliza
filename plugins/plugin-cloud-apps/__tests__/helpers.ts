@@ -29,10 +29,13 @@ import type {
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
+  type CreateAdSlotInput,
+  type CreateAdSlotResponse,
   type CreateBookingInput,
   type CreateBookingResponse,
   type CreateInfluencerProfileInput,
   type CreateInfluencerProfileResponse,
+  type ListAdSlotsResponse,
   type ListInfluencersResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
@@ -49,6 +52,8 @@ type DeployAppFrontendFn = (
 type CreateBookingFn = (input: CreateBookingInput) => Promise<CreateBookingResponse>;
 type CreateInfluencerProfileFn = (input: CreateInfluencerProfileInput) => Promise<CreateInfluencerProfileResponse>;
 type ListInfluencersFn = (niche?: string) => Promise<ListInfluencersResponse>;
+type CreateAdSlotFn = (input: CreateAdSlotInput) => Promise<CreateAdSlotResponse>;
+type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -88,6 +93,8 @@ interface SdkState {
   createInfluencerProfile: CreateInfluencerProfileFn;
   createBooking: CreateBookingFn;
   listInfluencers: ListInfluencersFn;
+  createAdSlot: CreateAdSlotFn;
+  listAdSlots: ListAdSlotsFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -138,6 +145,9 @@ function defaultState(): SdkState {
       Promise.resolve({ success: true, profile: { id: "inf_1", display_name: "Creator", niche: null, bio: null, platforms: [], status: "active" } }),
     listInfluencers: () => Promise.resolve({ success: true, profiles: [] }),
     createBooking: () => Promise.resolve({ success: true, booking: { id: "bk_1", advertiser_org_id: "org", influencer_profile_id: "inf_1", amount: "100.00", status: "offered", brief: "b" } }),
+    createAdSlot: () =>
+      Promise.resolve({ success: true, slot: { id: "slot_1", app_id: "app_1", name: "Slot", format: "banner", status: "active", floor_cpm: "1.0000", total_impressions: 0, total_clicks: 0, total_revenue: "0.000000" } }),
+    listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -192,6 +202,12 @@ export function setListInfluencers(fn: ListInfluencersFn): void {
 }
 export function setCreateBooking(fn: CreateBookingFn): void {
   state.createBooking = fn;
+}
+export function setCreateAdSlot(fn: CreateAdSlotFn): void {
+  state.createAdSlot = fn;
+}
+export function setListAdSlots(fn: ListAdSlotsFn): void {
+  state.listAdSlots = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -254,6 +270,12 @@ export class FakeElizaCloudClient {
   }
   createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
     return state.createBooking(input);
+  }
+  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
+    return state.createAdSlot(input);
+  }
+  listAdSlots(): Promise<ListAdSlotsResponse> {
+    return state.listAdSlots();
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);
