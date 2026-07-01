@@ -43,6 +43,12 @@ const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
 
+const cloudEmbeddingModels: NonNullable<Plugin["models"]> = {
+  [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
+  [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params: { texts: string[] }) =>
+    handleBatchTextEmbedding(runtime, params.texts),
+};
+
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
     return {};
@@ -81,6 +87,10 @@ const textInferenceModels: NonNullable<Plugin["models"]> = {
   [ACTION_PLANNER_MODEL_TYPE]: handleActionPlanner,
 };
 
+function isExplicitFalseFlag(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "false";
+}
+
 export function registerTextInferenceModels(runtime: IAgentRuntime): void {
   const flag = getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
   if (flag?.trim().toLowerCase() === "false") {
@@ -90,6 +100,24 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
     return;
   }
   for (const [modelType, handler] of Object.entries(textInferenceModels)) {
+    runtime.registerModel(
+      modelType,
+      handler as Parameters<IAgentRuntime["registerModel"]>[1],
+      elizaOSCloudPlugin.name,
+      elizaOSCloudPlugin.priority
+    );
+  }
+}
+
+export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
+  const flag = getSetting(runtime, "ELIZAOS_CLOUD_USE_EMBEDDINGS");
+  if (isExplicitFalseFlag(flag)) {
+    logger.info(
+      "[ElizaOSCloud] Not registering cloud embedding handlers: ELIZAOS_CLOUD_USE_EMBEDDINGS=false (another provider owns TEXT_EMBEDDING)"
+    );
+    return;
+  }
+  for (const [modelType, handler] of Object.entries(cloudEmbeddingModels)) {
     runtime.registerModel(
       modelType,
       handler as Parameters<IAgentRuntime["registerModel"]>[1],
@@ -180,9 +208,11 @@ export const elizaOSCloudPlugin: Plugin = {
   async init(config, runtime) {
     // Initialize inference (OpenAI-compatible client)
     initializeOpenAI(config, runtime);
-    // Chat-brain text handlers are conditional (see textInferenceModels
-    // above); capability handlers stay in the static `models` map below.
+    // Chat-brain text handlers and embedding handlers are conditional (see
+    // textInferenceModels/cloudEmbeddingModels above); other capability handlers
+    // stay in the static `models` map below.
     registerTextInferenceModels(runtime);
+    registerCloudEmbeddingModels(runtime);
   },
 
   // ─── Runtime Event Handlers ──────────────────────────────────────────
@@ -224,16 +254,12 @@ export const elizaOSCloudPlugin: Plugin = {
   ],
 
   // ─── Capability Model Handlers ───────────────────────────────────────
-  // Always registered: these capabilities don't compete with the chat brain
-  // and must survive an external text provider. The chat-brain text handlers
-  // (TEXT_*, RESPONSE_HANDLER, ACTION_PLANNER) are registered conditionally
-  // from init() — see textInferenceModels above.
+  // Always registered: these capabilities don't compete with BYO embedding or
+  // chat-brain slots and must survive an external text provider. The chat-brain
+  // text handlers (TEXT_*, RESPONSE_HANDLER, ACTION_PLANNER) and embedding
+  // handlers are registered conditionally from init() — see textInferenceModels
+  // and cloudEmbeddingModels above.
   models: {
-    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding,
-    // Batch path: one request embeds N texts (the embedding-drain service uses
-    // this to collapse serial single-text round-trips into fewer batched calls).
-    [ModelType.TEXT_EMBEDDING_BATCH]: (runtime, params: { texts: string[] }) =>
-      handleBatchTextEmbedding(runtime, params.texts),
     [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,

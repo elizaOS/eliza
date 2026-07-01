@@ -23,6 +23,10 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
   "ELIZAOS_CLOUD_API_KEY",
+  "EMBEDDING_BASE_URL",
+  "EMBEDDING_API_KEY",
+  "EMBEDDING_MODEL",
+  "EMBEDDING_DIMENSIONS",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_AGENT_ID",
   "ELIZAOS_CLOUD_NANO_MODEL",
@@ -71,6 +75,37 @@ describe("applyCloudConfigToEnv cloud-container embeddings (#8769)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
   });
 
+  it("honors BYO embedding ownership from config.env in a cloud-provisioned container", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    applyCloudConfigToEnv({
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+          EMBEDDING_BASE_URL: "http://172.17.0.1:11434/v1",
+          EMBEDDING_API_KEY: "ollama",
+        },
+      },
+    } as ElizaConfig);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+  });
+
+  it("lets an explicit BYO embedding endpoint own embeddings in a cloud-provisioned container", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+    process.env.EMBEDDING_BASE_URL = "http://172.17.0.1:11434/v1";
+    process.env.EMBEDDING_API_KEY = "ollama";
+    process.env.EMBEDDING_MODEL = "nomic-embed-text";
+    process.env.EMBEDDING_DIMENSIONS = "768";
+
+    applyCloudConfigToEnv({} as ElizaConfig);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("true");
+  });
+
   it("is a no-op when neither cloud config nor ELIZA_CLOUD_PROVISIONED is present", () => {
     // No cloud + not a container → the function returns early and must not
     // touch any cloud-usage env (so a local-only agent isn't flipped to cloud).
@@ -113,6 +148,56 @@ describe("provisioned cloud container topology (#9887)", () => {
       transport: "cloud-proxy",
       smallModel: "small-test",
     });
+  });
+
+  it("does not synthesize cloud embedding routing when config.env selects BYO embeddings", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+          EMBEDDING_BASE_URL: "http://172.17.0.1:11434/v1",
+          EMBEDDING_API_KEY: "ollama",
+        },
+      },
+    } as ElizaConfig;
+
+    ensureProvisionedCloudContainerConfig(config);
+
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    expect(config.serviceRouting?.embeddings).toBeUndefined();
+  });
+
+  it("does not synthesize cloud embedding routing when BYO embeddings are explicitly selected", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+    process.env.EMBEDDING_BASE_URL = "http://172.17.0.1:11434/v1";
+    process.env.EMBEDDING_API_KEY = "ollama";
+
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+    } as ElizaConfig;
+
+    ensureProvisionedCloudContainerConfig(config);
+
+    expect(config.serviceRouting?.llmText).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    expect(config.serviceRouting?.embeddings).toBeUndefined();
   });
 
   it("repairs topology from config.env when container env has only the provisioned marker", () => {
