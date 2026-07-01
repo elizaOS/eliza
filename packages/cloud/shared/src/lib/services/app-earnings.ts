@@ -201,7 +201,7 @@ export class AppEarningsService {
   ): Promise<{ success: boolean; message: string; transactionId?: string }> {
     // Idempotent fast path: return the prior transaction if this key already ran.
     if (idempotencyKey) {
-      const existing = await appEarningsRepository.findTransactionByIdempotencyKey(
+      const existing = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
         appId,
         idempotencyKey,
       );
@@ -253,17 +253,16 @@ export class AppEarningsService {
         if (!isUniqueConstraintError(err)) throw err;
         // Lost the race: another request already claimed this key. Return its
         // result idempotently WITHOUT debiting. PostgreSQL waits on a conflicting
-        // uncommitted unique-index entry before raising 23505, so this read should
-        // see the committed winner.
-        const winner = await appEarningsRepository.findTransactionByIdempotencyKey(
+        // uncommitted unique-index entry before raising 23505, so this primary
+        // read sees the committed winner without read-replica lag.
+        const winner = await appEarningsRepository.findTransactionByIdempotencyKeyOnPrimary(
           appId,
           idempotencyKey,
         );
         if (winner) {
           return this.idempotentWithdrawalResult(appId, idempotencyKey, winner);
         }
-        // The winning row isn't visible on the read replica yet; still safe —
-        // we never debited. The client can poll again.
+        // Defensive only: we never debited. The client can poll again.
         logger.warn(
           "[AppEarnings] Concurrent withdrawal for idempotency key; winner not yet readable",
           { appId, idempotencyKey },

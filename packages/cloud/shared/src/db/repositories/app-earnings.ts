@@ -112,7 +112,29 @@ export class AppEarningsRepository {
     appId: string,
     idempotencyKey: string,
   ): Promise<AppEarningsTransaction | undefined> {
-    const result = await dbRead
+    return this.findTransactionByIdempotencyKeyFromDb(dbRead, appId, idempotencyKey);
+  }
+
+  /**
+   * Finds a withdrawal transaction by idempotency key on the primary.
+   *
+   * Use this in write/idempotency flows where read-replica lag would otherwise
+   * make a completed withdrawal look "still in progress" immediately after the
+   * unique-index conflict resolves.
+   */
+  async findTransactionByIdempotencyKeyOnPrimary(
+    appId: string,
+    idempotencyKey: string,
+  ): Promise<AppEarningsTransaction | undefined> {
+    return this.findTransactionByIdempotencyKeyFromDb(dbWrite, appId, idempotencyKey);
+  }
+
+  private async findTransactionByIdempotencyKeyFromDb(
+    database: typeof dbRead,
+    appId: string,
+    idempotencyKey: string,
+  ): Promise<AppEarningsTransaction | undefined> {
+    const result = await database
       .select()
       .from(appEarningsTransactions)
       .where(
