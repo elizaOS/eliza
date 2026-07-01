@@ -65,8 +65,11 @@ Tests: `voice-workbench.test.ts`, `voice-workbench-report.test.ts`,
 `entity-extraction`, `voice-recognition`, `eot`, `transcription-mode`,
 `multi-agent-room`, `long-form-monologue`, **`robustness`** (noise / reverb /
 far-field / low-quality), **`echo-rejection`** (agent self-voice), **`owner-security`**
-(owner vs intruder), **`overlapping-speech`** (interrupting talkers). The 12
-built-in scenarios in `workbench-scenarios.ts` span every class.
+(owner vs intruder), **`overlapping-speech`** (interrupting talkers),
+**`name-disambiguation`** (similar-sounding names — Jon/John/Joan, Erik/Erika,
+Mia/Maya — each bind to exactly their own entity under clean, noisy, and
+garbled-transcript conditions; `minEntityF1` pins the extraction gate to 1).
+The 18 built-in scenarios in `workbench-scenarios.ts` span every class.
 
 ### Honesty contract
 
