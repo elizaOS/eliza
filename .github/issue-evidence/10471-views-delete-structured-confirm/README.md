@@ -17,7 +17,7 @@
 - `app-control-lint-check.log` — `plugins/plugin-app-control` lint check passed.
 - `app-control-build.log` — `plugins/plugin-app-control` build passed after running with `~/.bun/bin` on `PATH` so package scripts can find `bunx`.
 - `diff-check.log` — `git diff --check` passed.
-- `root-verify.log` — root `bun run verify` was attempted after rebasing and refreshing dependencies. It passed the type-safety ratchet and reached Turbo lint/typecheck; it failed outside this slice on `trajectory-viewer#lint` (`packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer/src/components/LandingPage.tsx` ambiguous anchor text). The log also shows `@elizaos/plugin-app-control:lint` passed.
+- `root-verify.log` — older root `bun run verify` attempt after rebasing and refreshing dependencies. It passed the type-safety ratchet and reached Turbo lint/typecheck, then failed outside this slice on the then-existing `trajectory-viewer#lint` ambiguous-anchor findings in `packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer/src/components/LandingPage.tsx`. Treat the focused app-control logs above as the current evidence for this draft until root verify is refreshed.
 
 ## Evidence notes
 
