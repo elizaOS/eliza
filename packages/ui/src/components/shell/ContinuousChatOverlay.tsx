@@ -254,9 +254,19 @@ function textToBase64(text: string): string {
 // Muted-speaker glyph for the autoplay-blocked "tap to enable sound" prompt.
 const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
-function Glyph({ d }: { d: string }): React.JSX.Element {
+function Glyph({
+  d,
+  className,
+}: {
+  d: string;
+  className?: string;
+}): React.JSX.Element {
   return (
-    <svg viewBox="0 0 36 36" className="h-[26px] w-[26px]" aria-hidden="true">
+    <svg
+      viewBox="0 0 36 36"
+      className={cn("h-[26px] w-[26px]", className)}
+      aria-hidden="true"
+    >
       <path fill="currentColor" fillRule="evenodd" d={d} />
     </svg>
   );
@@ -301,20 +311,21 @@ function SoftButton({
       onPointerUp={disabled ? undefined : onPointerUp}
       onPointerCancel={disabled ? undefined : onPointerCancel}
       className={cn(
-        // 44×44 hit target (WCAG 2.5.5) — comfortably thumb-tappable without
-        // crowding the bar (split the difference back down from 48).
-        "grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors",
-        "  ",
-        active
-          ? "border-white/40 bg-white/85 text-black"
-          : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
+        // Icon-only control: transparent, borderless, no capsule — just the
+        // glyph, sized up to carry weight without the removed background. The
+        // 44×44 hit target (WCAG 2.5.5) stays; only the visible chrome goes.
+        // Hover and active express through icon color alone — neutral resting →
+        // neutral hover, accent for active — never a background/border, never
+        // blue.
+        "grid h-11 w-11 shrink-0 place-items-center bg-transparent transition-colors",
+        active ? "text-accent" : "text-white/75 hover:text-white",
         disabled && "opacity-40",
       )}
     >
       {Icon ? (
-        <Icon className="h-[22px] w-[22px]" aria-hidden={true} />
+        <Icon className="h-[26px] w-[26px]" aria-hidden={true} />
       ) : glyph ? (
-        <Glyph d={glyph} />
+        <Glyph d={glyph} className="h-[30px] w-[30px]" />
       ) : null}
     </button>
   );
