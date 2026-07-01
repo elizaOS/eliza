@@ -7,7 +7,7 @@
  *   - {@link ConnectorStatus} — uniform `ok | degraded | disconnected` triple.
  *   - {@link DispatchResult}  — typed success / failure for `send`.
  */
-import { LifeOpsServiceError } from "@elizaos/shared";
+import { formatError, LifeOpsServiceError } from "@elizaos/shared";
 import type { ConnectorStatus, DispatchResult } from "./contract.js";
 
 export type LegacyConnectorStatus = {
@@ -121,12 +121,11 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         };
     }
   }
-  const message = error instanceof Error ? error.message : String(error);
   return {
     ok: false,
     reason: "transport_error",
     userActionable: false,
-    message,
+    message: formatError(error),
   };
 }
 

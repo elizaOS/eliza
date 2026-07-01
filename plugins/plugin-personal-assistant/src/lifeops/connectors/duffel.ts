@@ -6,6 +6,7 @@
  * `send`. Read verbs return flight offers + order state.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { formatError } from "@elizaos/core";
 import {
   DuffelConfigError,
   readDuffelConfigFromEnv,
@@ -57,7 +58,7 @@ export function createDuffelConnectorContribution(
       } catch (error) {
         return {
           state: "disconnected",
-          message: error instanceof Error ? error.message : String(error),
+          message: formatError(error),
           observedAt,
         };
       }
