@@ -1,0 +1,9 @@
+$ vitest run src/actions/playMusicQuery.test.ts
+
+ RUN  v4.1.5 /Users/shawwalters/.codex/worktrees/36cd/eliza/plugins/plugin-music
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  21:52:50
+   Duration  1.80s (transform 887ms, setup 431ms, import 554ms, tests 119ms, environment 0ms)

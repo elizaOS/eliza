@@ -128,16 +128,13 @@ function formatPromptValue(value: unknown, depth = 0): string {
   return String(value);
 }
 
-function readMusicQueryText(
-  message: Memory,
-  options?: Record<string, unknown>,
-): string {
+function readMusicQueryText(options?: Record<string, unknown>): string {
   const merged = mergedOptions(options);
   const direct = merged.query ?? merged.searchQuery;
   if (typeof direct === "string" && direct.trim().length >= 3) {
     return direct.trim();
   }
-  return message.content.text || "";
+  return "";
 }
 
 /**
@@ -524,127 +521,20 @@ export async function validatePlayMusicQuery(
   _runtime: IAgentRuntime,
   message: Memory,
   _state?: State,
+  options?: Record<string, unknown>,
 ): Promise<boolean> {
   if (message.content.source !== "discord") {
     return false;
   }
 
-  const messageText = (message.content.text || "").toLowerCase();
+  const queryText = readMusicQueryText(options).toLowerCase();
 
   // PERFORMANCE: Skip if this is a direct YouTube URL - let playYouTubeAudio handle it (much faster)
-  if (
-    messageText.includes("youtube.com/") ||
-    messageText.includes("youtu.be/")
-  ) {
+  if (queryText.includes("youtube.com/") || queryText.includes("youtu.be/")) {
     return false;
   }
 
-  // Check if this is a complex query that needs research
-  const researchKeywords = [
-    // Artist-specific
-    "first single",
-    "debut single",
-    "first song",
-    "debut album",
-    "first album",
-    "latest song",
-    "newest song",
-    "recent song",
-    "new song",
-    "new music",
-    "something like",
-    "similar to",
-    "sounds like",
-    "reminds me of",
-    "in the style of",
-    "most popular",
-    "biggest hit",
-    "best song",
-    "top song",
-    "second album",
-    "third album",
-    "2nd album",
-    "3rd album",
-    "nth album",
-
-    // Temporal
-    "80s",
-    "90s",
-    "2000s",
-    "70s",
-    "60s",
-    "from the",
-
-    // Genre/Mood
-    "genre:",
-    "chill",
-    "vibes",
-    "mood",
-    "upbeat",
-    "sad",
-    "happy",
-    "energetic",
-
-    // Activity
-    "workout",
-    "gym",
-    "study",
-    "focus",
-    "party",
-    "driving",
-    "sleep",
-
-    // Charts
-    "top",
-    "chart",
-    "billboard",
-    "trending",
-    "viral",
-    "popular now",
-
-    // Media
-    "soundtrack",
-    "theme song",
-    "theme from",
-    "from the movie",
-    "from the game",
-    "from the show",
-    "tv show",
-
-    // Lyrics/Topic
-    "songs about",
-    "with lyrics",
-    "that mentions",
-
-    // Versions
-    "cover of",
-    "remix of",
-    "acoustic version",
-    "live version",
-    "live at",
-    "instrumental",
-
-    // Album
-    "from the album",
-    "track",
-    "entire album",
-    "full album",
-    "whole album",
-  ];
-
-  const needsResearch = researchKeywords.some((keyword) =>
-    messageText.includes(keyword),
-  );
-
-  // Also check for pattern "play [genre/mood] music"
-  const simplePatterns = [
-    /play\s+(some\s+)?(jazz|rock|pop|hip hop|rap|metal|electronic|indie|folk|country|classical|blues)/i,
-    /play\s+(something\s+)?(chill|upbeat|sad|happy|energetic|mellow|intense)/i,
-  ];
-
-  return (
-    needsResearch || simplePatterns.some((pattern) => pattern.test(messageText))
-  );
+  return queryText.length >= 3;
 }
 
 export async function handlePlayMusicQuery(
@@ -656,7 +546,17 @@ export async function handlePlayMusicQuery(
 ): Promise<ActionResult | undefined> {
   if (!callback) return { success: false, error: "Missing callback" };
 
-  const messageText = readMusicQueryText(message, options);
+  const messageText = readMusicQueryText(options);
+  if (!messageText) {
+    const text =
+      "Please tell me what music you'd like me to find and play using the query parameter.";
+    await callback({
+      text,
+      source: message.content.source,
+    });
+    return { success: false, error: "Missing music query" };
+  }
+
   const preview = `Confirmation required before resolving and queueing music for: "${messageText}".`;
   const confirmBlock = await requireMusicConfirmation({
     runtime,
