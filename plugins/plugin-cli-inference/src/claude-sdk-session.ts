@@ -63,11 +63,27 @@ const ROUTE_TOOL = "mcp__eliza__route_action";
 export function isClaudeSubscriptionLimitMessage(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (t.length > 160) return false; // the real limit string is short; a long answer isn't it
-  return (
-    /\b(hit|reached|exceeded)\b[^.]*\b(session|usage|rate|weekly|daily|monthly)\s+limit\b/.test(
+  // A genuine short ANSWER about limits ("No, you haven't hit your rate limit
+  // yet.") shares vocabulary with the envelope; the envelope itself never
+  // contains negation.
+  if (
+    /\b(no|not|haven't|havent|hasn't|hasnt|didn't|didnt|isn't|isnt|wasn't|wasnt)\b/.test(
       t,
-    ) ||
-    (/\blimit\b/.test(t) && /\bresets?\b[^.]*\(utc\)/.test(t))
+    )
+  ) {
+    return false;
+  }
+  return (
+    // The UI envelope's interpunct separator ("· resets 9:30pm (UTC)",
+    // "∙ resets 3am") — model prose doesn't join clauses with an interpunct.
+    /[·∙•]\s*resets\b/.test(t) ||
+    // The envelope IS the whole message and opens second-person: "You've hit
+    // your session limit …". Anchored at the start so a genuine answer that
+    // merely contains the phrase mid-sentence ("Yes — you've hit your daily
+    // limit on that key") does not match.
+    /^you'?ve (hit|reached|exceeded) your\b[^.]*\blimit\b/.test(t) ||
+    // The classic Claude CLI form: "Claude AI usage limit reached|<unix-epoch>".
+    /\bclaude( ai)? usage limit reached\s*\|/.test(t)
   );
 }
 
@@ -406,26 +422,33 @@ export class ClaudeSdkSession {
       }
     }
 
-    // A dried-up subscription credit ends the turn cleanly but streams the limit
-    // string as the "answer". Detect it BEFORE either mode returns so it fails
+    if (mode === "route" && this.pendingDecision) {
+      // The decision is captured in the MCP handler the moment the model calls
+      // route_action — that IS the success signal (the turn then ends
+      // subtype=error_max_turns, which is normal). Return it regardless of how
+      // the turn terminated, and BEFORE the limit guard below: a validly
+      // captured decision must never be discarded because residual preamble
+      // text happened to mention limits.
+      return JSON.stringify(this.pendingDecision);
+    }
+
+    // A dried-up subscription credit ends the turn cleanly but surfaces the
+    // limit string as the "answer" — as streamed assistant text and/or as the
+    // result-envelope echo. Detect BOTH before either mode returns so it fails
     // over / becomes a graceful rate-limit reply instead of leaking "You've hit
-    // your session limit ..." to the user (route mode would otherwise relay it as
-    // a REPLY, text mode as the completion). "rate limit" in the thrown message
-    // routes it through isRateLimitError.
-    if (sawResult && isClaudeSubscriptionLimitMessage(text)) {
+    // your session limit ..." to the user (route mode would otherwise relay it
+    // as a REPLY, text mode as the completion). "rate limit" in the thrown
+    // message routes it through isRateLimitError.
+    const limitEnvelope = [text, resultText ?? ""].find((candidate) =>
+      isClaudeSubscriptionLimitMessage(candidate),
+    );
+    if (sawResult && limitEnvelope !== undefined) {
       throw new Error(
-        `[cli-inference:sdk] subscription rate limit reached: ${text.trim().slice(0, 120)}`,
+        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`,
       );
     }
 
     if (mode === "route") {
-      // The decision is captured in the MCP handler the moment the model calls
-      // route_action — that IS the success signal (the turn then ends
-      // subtype=error_max_turns, which is normal). Return it regardless of how
-      // the turn terminated.
-      if (this.pendingDecision) {
-        return JSON.stringify(this.pendingDecision);
-      }
       // No decision: the model went off-contract (it was told to call the tool
       // and "produce no plain-text answer"), so any residual text is a planning
       // preamble, not a finished reply — never surface it as a user REPLY. Only
