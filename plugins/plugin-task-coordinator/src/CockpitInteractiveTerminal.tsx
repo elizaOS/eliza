@@ -1,4 +1,4 @@
-import { client } from "@elizaos/ui";
+import { Button, client } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PtyTerminalPane } from "./PtyTerminalPane";
 
@@ -165,23 +165,17 @@ export function CockpitInteractiveTerminal({
             }}
           >
             <div>{error}</div>
-            <button
+            <Button
               type="button"
+              size="sm"
               data-testid="cockpit-terminal-retry"
               onClick={retry}
               style={{
                 marginTop: 10,
-                padding: "6px 12px",
-                background: "var(--accent, #5a9a2a)",
-                border: "none",
-                borderRadius: 6,
-                color: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
               }}
             >
               Retry
-            </button>
+            </Button>
           </div>
         ) : null}
 

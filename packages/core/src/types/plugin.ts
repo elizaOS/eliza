@@ -90,6 +90,8 @@ export interface RouteHandlerContext {
 	runtime: IAgentRuntime;
 	/** true when invoked in-process via IPC; false when invoked over HTTP. */
 	inProcess: boolean;
+	/** true when the HTTP transport has verified this request as loopback/local. */
+	isTrustedLocal?: boolean;
 }
 
 /** Return-shape result produced by a {@link RouteHandler}. */

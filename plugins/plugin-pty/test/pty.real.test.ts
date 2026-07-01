@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isBunRuntime } from "../services/bun-pty-spawn";
 import type {
   SessionExitEvent,
   SessionOutputEvent,
@@ -12,22 +13,24 @@ import {
 /**
  * Real end-to-end test of the PTY engine: spawns an ACTUAL OS process through
  * the real store + bridge (no fakes) and asserts output/exit/keystroke flow.
- * Gated on `@lydell/node-pty` actually loading (an optional native module), the
- * same way plugin-shell gates its live PTY tests — skips cleanly where the
- * native build is absent, runs for real where it is present.
+ * Under Bun this exercises Bun.spawn({ terminal }) via bunTruePtySpawn; under
+ * Node it gates on `@lydell/node-pty` actually loading (optional native dep).
  */
-let ptyAvailable = false;
+let ptyAvailable = isBunRuntime();
 try {
-  await import("@lydell/node-pty");
-  ptyAvailable = true;
+  if (!ptyAvailable) {
+    await import("@lydell/node-pty");
+    ptyAvailable = true;
+  }
 } catch {
   ptyAvailable = false;
 }
 
 const suite = ptyAvailable ? describe : describe.skip;
 const isWin = process.platform === "win32";
+const engine = isBunRuntime() ? "bunTruePty" : "@lydell/node-pty";
 
-suite("real PTY end-to-end (@lydell/node-pty)", () => {
+suite(`real PTY end-to-end (${engine})`, () => {
   it("streams a real process's output through the bridge, then exits 0", async () => {
     const bridge = new PtyConsoleBridge();
     const store = new PtySessionStore(bridge, defaultSpawnResolver);

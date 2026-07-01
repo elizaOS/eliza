@@ -45,6 +45,7 @@ function ctx(
     headers?: Record<string, string>;
     query?: Record<string, string>;
     inProcess?: boolean;
+    isTrustedLocal?: boolean;
   },
 ) {
   return {
@@ -56,6 +57,7 @@ function ctx(
     path: "/api/pty/sessions",
     runtime,
     inProcess: opts?.inProcess ?? true,
+    isTrustedLocal: opts?.isTrustedLocal ?? false,
   };
 }
 
@@ -64,20 +66,22 @@ let savedBin: string | undefined;
 let savedKey: string | undefined;
 beforeEach(() => {
   savedBin = process.env.ELIZA_CODE_BIN;
-  savedKey = process.env.OPENAI_API_KEY;
+  savedKey = process.env.PTY_ELIZA_CLOUD_API_KEY;
   process.env.ELIZA_CODE_BIN = EXISTING_FILE;
-  delete process.env.OPENAI_API_KEY;
+  delete process.env.PTY_ELIZA_CLOUD_API_KEY;
 });
 afterEach(() => {
   if (savedBin === undefined) delete process.env.ELIZA_CODE_BIN;
   else process.env.ELIZA_CODE_BIN = savedBin;
-  if (savedKey === undefined) delete process.env.OPENAI_API_KEY;
-  else process.env.OPENAI_API_KEY = savedKey;
+  if (savedKey === undefined) delete process.env.PTY_ELIZA_CLOUD_API_KEY;
+  else process.env.PTY_ELIZA_CLOUD_API_KEY = savedKey;
 });
 
 describe("POST /api/pty/sessions", () => {
   it("403s HTTP callers when no terminal token is configured", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk-cloud" } });
+    const h = makeHarness({
+      settings: { PTY_ELIZA_CLOUD_API_KEY: "sk-cloud" },
+    });
     const res = await routeByName("pty-spawn-session")(
       ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd() }, undefined, {
         inProcess: false,
@@ -88,10 +92,31 @@ describe("POST /api/pty/sessions", () => {
     expect(h.calls).toHaveLength(0);
   });
 
+  it("accepts trusted local HTTP cockpit callers without exposing a terminal token", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk-cloud",
+        ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd() }, undefined, {
+        headers: { "x-elizaos-client-id": "client-1" },
+        inProcess: false,
+        isTrustedLocal: true,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls).toHaveLength(1);
+    const session = (res.body as { session: { ownerClientId?: string } })
+      .session;
+    expect(session.ownerClientId).toBe("client-1");
+  });
+
   it("401s HTTP callers that omit a configured terminal token", async () => {
     const h = makeHarness({
       settings: {
-        OPENAI_API_KEY: "sk-cloud",
+        PTY_ELIZA_CLOUD_API_KEY: "sk-cloud",
         ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
       },
     });
@@ -108,7 +133,7 @@ describe("POST /api/pty/sessions", () => {
   it("401s HTTP callers with an invalid terminal token", async () => {
     const h = makeHarness({
       settings: {
-        OPENAI_API_KEY: "sk-cloud",
+        PTY_ELIZA_CLOUD_API_KEY: "sk-cloud",
         ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
       },
     });
@@ -126,7 +151,7 @@ describe("POST /api/pty/sessions", () => {
   it("accepts HTTP callers with the configured terminal token", async () => {
     const h = makeHarness({
       settings: {
-        OPENAI_API_KEY: "sk-cloud",
+        PTY_ELIZA_CLOUD_API_KEY: "sk-cloud",
         ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
       },
     });
@@ -141,7 +166,9 @@ describe("POST /api/pty/sessions", () => {
   });
 
   it("spawns an interactive eliza-code session and returns its id", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk-cloud" } });
+    const h = makeHarness({
+      settings: { PTY_ELIZA_CLOUD_API_KEY: "sk-cloud" },
+    });
     const res = await routeByName("pty-spawn-session")(
       ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd(), tier: "smart" }),
     );
@@ -151,14 +178,22 @@ describe("POST /api/pty/sessions", () => {
     // Real spawn wiring: bun runs the interactive bin with cerebras env.
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0].file).toBe("bun");
-    expect(h.calls[0].args).toEqual([EXISTING_FILE, "--interactive"]);
+    expect(h.calls[0].args).toEqual([
+      EXISTING_FILE,
+      "--interactive",
+      "--coding-only",
+    ]);
+    expect(h.calls[0].opts.env?.ELIZA_CODE_CODING_ONLY).toBe("1");
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-cloud");
     expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("zai-glm-4.7"); // smart tier
   });
 
   it("403 when interactive spawning is disabled", async () => {
     const h = makeHarness({
-      settings: { OPENAI_API_KEY: "sk", PTY_INTERACTIVE_ENABLED: "false" },
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_INTERACTIVE_ENABLED: "false",
+      },
     });
     const res = await routeByName("pty-spawn-session")(
       ctx(h.runtime, { cwd: process.cwd() }),
@@ -169,7 +204,10 @@ describe("POST /api/pty/sessions", () => {
 
   it("403 on store builds", async () => {
     const h = makeHarness({
-      settings: { OPENAI_API_KEY: "sk", ELIZA_BUILD_VARIANT: "store" },
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        ELIZA_BUILD_VARIANT: "store",
+      },
     });
     const res = await routeByName("pty-spawn-session")(ctx(h.runtime, {}));
     expect(res.status).toBe(403);
@@ -178,14 +216,14 @@ describe("POST /api/pty/sessions", () => {
   it("503 when PTY_SERVICE is not registered", async () => {
     const h = makeHarness({
       noService: true,
-      settings: { OPENAI_API_KEY: "sk" },
+      settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" },
     });
     const res = await routeByName("pty-spawn-session")(ctx(h.runtime, {}));
     expect(res.status).toBe(503);
   });
 
   it("400 on an unsupported session kind", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const res = await routeByName("pty-spawn-session")(
       ctx(h.runtime, { kind: "claude" }),
     );
@@ -202,6 +240,15 @@ describe("POST /api/pty/sessions", () => {
     expect((res.body as { error: string }).error).toMatch(/api key/i);
   });
 
+  it("does not fall back to the agent primary OPENAI_API_KEY", async () => {
+    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk-primary" } });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(400);
+    expect(h.calls).toHaveLength(0);
+  });
+
   it("accepts an apiKey supplied in the body", async () => {
     const h = makeHarness({ settings: {} });
     const res = await routeByName("pty-spawn-session")(
@@ -210,6 +257,38 @@ describe("POST /api/pty/sessions", () => {
     expect(res.status).toBe(200);
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-body");
   });
+
+  it("rejects unallowlisted base URLs and accepts explicit operator allowlist", async () => {
+    const rejected = makeHarness({
+      settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" },
+    });
+    const blocked = await routeByName("pty-spawn-session")(
+      ctx(rejected.runtime, {
+        cwd: process.cwd(),
+        baseUrl: "https://attacker.example/v1",
+      }),
+    );
+    expect(blocked.status).toBe(400);
+    expect((blocked.body as { error: string }).error).toMatch(/baseUrl/i);
+    expect(rejected.calls).toHaveLength(0);
+
+    const allowed = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ALLOWED_BASE_URLS: "https://staging.example/v1",
+      },
+    });
+    const ok = await routeByName("pty-spawn-session")(
+      ctx(allowed.runtime, {
+        cwd: process.cwd(),
+        baseUrl: "https://staging.example/v1/",
+      }),
+    );
+    expect(ok.status).toBe(200);
+    expect(allowed.calls[0].opts.env?.OPENAI_BASE_URL).toBe(
+      "https://staging.example/v1",
+    );
+  });
 });
 
 describe("GET + DELETE /api/pty/sessions", () => {
@@ -217,6 +296,7 @@ describe("GET + DELETE /api/pty/sessions", () => {
     const h = makeHarness({
       settings: {
         OPENAI_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
         ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
       },
     });
@@ -242,7 +322,7 @@ describe("GET + DELETE /api/pty/sessions", () => {
   });
 
   it("lists live sessions", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     await routeByName("pty-spawn-session")(
       ctx(h.runtime, { cwd: process.cwd() }),
     );
@@ -252,7 +332,7 @@ describe("GET + DELETE /api/pty/sessions", () => {
   });
 
   it("returns buffered output for a live session", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const spawn = await routeByName("pty-spawn-session")(
       ctx(h.runtime, { cwd: process.cwd() }),
     );
@@ -268,7 +348,7 @@ describe("GET + DELETE /api/pty/sessions", () => {
   });
 
   it("404s buffered output for an unknown session so clients can fall back", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const res = await routeByName("pty-buffered-output")(
       ctx(h.runtime, undefined, { id: "missing" }),
     );
@@ -276,7 +356,7 @@ describe("GET + DELETE /api/pty/sessions", () => {
   });
 
   it("stops a session by id", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const spawn = await routeByName("pty-spawn-session")(
       ctx(h.runtime, { cwd: process.cwd() }),
     );
@@ -291,7 +371,7 @@ describe("GET + DELETE /api/pty/sessions", () => {
   });
 
   it("400 when stopping without an id", async () => {
-    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const h = makeHarness({ settings: { PTY_ELIZA_CLOUD_API_KEY: "sk" } });
     const res = await routeByName("pty-stop-session")(
       ctx(h.runtime, undefined, {}),
     );

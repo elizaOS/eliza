@@ -25,6 +25,8 @@ const DEFAULT_MAX_SESSIONS = 24;
 const DEFAULT_OUTPUT_BUFFER_CHARS = 200_000;
 /** How long an exited session's record lingers for a final drain before removal. */
 const EXITED_SESSION_TTL_MS = 15_000;
+/** Fallback reap for REPL sessions whose browser/socket disappeared. */
+const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60_000;
 
 /**
  * Small, non-secret process env that a child terminal commonly needs to start
@@ -57,6 +59,7 @@ const SAFE_INHERITED_ENV_KEYS = new Set([
 /** Explicit spawn-spec env the eliza-code PTY is allowed to receive. */
 const ALLOWED_SPEC_ENV_KEYS = new Set([
   "ELIZA_CODE_PROVIDER",
+  "ELIZA_CODE_CODING_ONLY",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "OPENAI_SMALL_MODEL",
@@ -97,6 +100,8 @@ interface LiveSession {
   disposers: PtyDisposable[];
   outputBuffer: string;
   reapTimer?: ReturnType<typeof setTimeout>;
+  idleTimer?: ReturnType<typeof setTimeout>;
+  lastActivityAt: number;
 }
 
 /**
@@ -187,13 +192,21 @@ export class PtySessionStore {
   constructor(
     readonly bridge: PtyConsoleBridge,
     private readonly resolveSpawn: PtySpawnResolver = defaultSpawnResolver,
-    private readonly opts: { allowedRoot?: string; maxSessions?: number } = {},
+    private readonly opts: {
+      allowedRoot?: string;
+      maxSessions?: number;
+      idleTimeoutMs?: number;
+    } = {},
   ) {
     bridge.attachStore(this);
   }
 
   private get maxSessions(): number {
     return this.opts.maxSessions ?? DEFAULT_MAX_SESSIONS;
+  }
+
+  private get idleTimeoutMs(): number {
+    return this.opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   }
 
   /** Number of live (spawned, not-yet-reaped) sessions. */
@@ -254,6 +267,7 @@ export class PtySessionStore {
       cwd,
       label: spec.label,
       kind: spec.kind,
+      ownerClientId: spec.ownerClientId,
       pid: pty.pid,
       createdAt: Date.now(),
       exited: false,
@@ -261,9 +275,17 @@ export class PtySessionStore {
     };
 
     const disposers: PtyDisposable[] = [];
-    this.sessions.set(sessionId, { info, pty, disposers, outputBuffer: "" });
+    this.sessions.set(sessionId, {
+      info,
+      pty,
+      disposers,
+      outputBuffer: "",
+      lastActivityAt: Date.now(),
+    });
+    this.scheduleIdleReap(sessionId);
 
     const onData = pty.onData((data) => {
+      this.touch(sessionId);
       this.appendBufferedOutput(sessionId, data);
       this.bridge.emitOutput(sessionId, data);
     });
@@ -283,6 +305,7 @@ export class PtySessionStore {
   write(sessionId: string, data: string): void {
     const session = this.sessions.get(sessionId);
     if (!session || session.info.exited) return;
+    this.touch(sessionId);
     try {
       session.pty.write(data);
     } catch (err) {
@@ -305,6 +328,7 @@ export class PtySessionStore {
       return;
     }
     try {
+      this.touch(sessionId);
       session.pty.resize(Math.floor(cols), Math.floor(rows));
     } catch (err) {
       logger.warn(
@@ -318,6 +342,7 @@ export class PtySessionStore {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     if (session.reapTimer) clearTimeout(session.reapTimer);
+    if (session.idleTimer) clearTimeout(session.idleTimer);
     try {
       if (!session.info.exited) session.pty.kill();
     } catch (err) {
@@ -371,6 +396,7 @@ export class PtySessionStore {
   private handleExit(sessionId: string, exitCode: number | null): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    if (session.idleTimer) clearTimeout(session.idleTimer);
     session.info.exited = true;
     session.info.exitCode = exitCode;
     this.bridge.emitExit(sessionId, exitCode);
@@ -389,10 +415,39 @@ export class PtySessionStore {
             // best-effort
           }
         }
+        if (still.idleTimer) clearTimeout(still.idleTimer);
         this.sessions.delete(sessionId);
       }
     }, EXITED_SESSION_TTL_MS);
     // Don't hold the event loop open for the reap timer.
     session.reapTimer.unref?.();
+  }
+
+  private touch(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.info.exited) return;
+    session.lastActivityAt = Date.now();
+    this.scheduleIdleReap(sessionId);
+  }
+
+  private scheduleIdleReap(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.info.exited) return;
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    const timeout = this.idleTimeoutMs;
+    if (!Number.isFinite(timeout) || timeout <= 0) return;
+    session.idleTimer = setTimeout(() => {
+      const current = this.sessions.get(sessionId);
+      if (!current || current.info.exited) return;
+      if (Date.now() - current.lastActivityAt < timeout) {
+        this.scheduleIdleReap(sessionId);
+        return;
+      }
+      logger.warn(
+        `[plugin-pty] idle timeout reached for session ${sessionId}; stopping orphaned PTY`,
+      );
+      void this.stop(sessionId);
+    }, timeout);
+    session.idleTimer.unref?.();
   }
 }

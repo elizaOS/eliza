@@ -19,6 +19,16 @@ function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   return raw;
 }
 
+function resolveIdleTimeoutMs(runtime?: IAgentRuntime): number | undefined {
+  const fromSetting = runtime?.getSetting?.("PTY_IDLE_TIMEOUT_MS");
+  const raw =
+    (typeof fromSetting === "string" && fromSetting.trim()) ||
+    process.env.PTY_IDLE_TIMEOUT_MS?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 /**
  * `PTY_SERVICE`: the single service the agent server looks up
  * (`runtime.getService("PTY_SERVICE")`) to drive the web terminal. It exposes a
@@ -40,7 +50,11 @@ export class PtyService extends Service {
   constructor(
     runtime?: IAgentRuntime,
     spawnResolver?: PtySpawnResolver,
-    opts?: { allowedRoot?: string; maxSessions?: number },
+    opts?: {
+      allowedRoot?: string;
+      maxSessions?: number;
+      idleTimeoutMs?: number;
+    },
   ) {
     super(runtime);
     this.consoleBridge = new PtyConsoleBridge();
@@ -49,7 +63,11 @@ export class PtyService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<PtyService> {
     const allowedRoot = resolveAllowedRoot(runtime);
-    const instance = new PtyService(runtime, undefined, { allowedRoot });
+    const idleTimeoutMs = resolveIdleTimeoutMs(runtime);
+    const instance = new PtyService(runtime, undefined, {
+      allowedRoot,
+      ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
+    });
     logger.info(
       `[plugin-pty] PTY_SERVICE started (allowedRoot=${allowedRoot})`,
     );

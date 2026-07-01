@@ -58,6 +58,8 @@ export interface PtySpawnSpec {
   label?: string;
   /** Free-form origin tag for auditing (e.g. "cockpit", "eliza-code"). */
   kind?: string;
+  /** Stable UI/WebSocket client id that owns this session, when spawned by a browser. */
+  ownerClientId?: string;
 }
 
 /** Public, serializable metadata for one live session (no PTY handle leaked). */
@@ -68,6 +70,7 @@ export interface PtySessionInfo {
   cwd: string;
   label?: string;
   kind?: string;
+  ownerClientId?: string;
   pid?: number;
   createdAt: number;
   exited: boolean;

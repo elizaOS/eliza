@@ -1,10 +1,11 @@
 import {
+  Button,
   CockpitView,
   type CodingAgentCreateTaskInput,
   client,
   type OrchestratorRoomRosterOverview,
 } from "@elizaos/ui";
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CockpitInteractiveTerminal,
   type CockpitTerminalTier,
@@ -117,22 +118,22 @@ export function CockpitRoute() {
             zIndex: 10,
           }}
         >
-          <button
+          <Button
             type="button"
+            size="sm"
             data-testid="cockpit-open-terminal-fast"
             onClick={() => setTerminalTier("fast")}
-            style={terminalLaunchButtonStyle}
           >
             ⌨ Terminal · Fast
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
             data-testid="cockpit-open-terminal-smart"
             onClick={() => setTerminalTier("smart")}
-            style={terminalLaunchButtonStyle}
           >
             ⌨ Terminal · Smart
-          </button>
+          </Button>
         </div>
       ) : (
         <div
@@ -148,15 +149,3 @@ export function CockpitRoute() {
     </div>
   );
 }
-
-const terminalLaunchButtonStyle: CSSProperties = {
-  padding: "8px 14px",
-  background: "var(--accent, #5a9a2a)",
-  border: "none",
-  borderRadius: 999,
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-};

@@ -8,6 +8,7 @@ import {
 } from "@elizaos/core";
 import {
   buildElizaCodeCerebrasSpec,
+  ELIZA_CLOUD_DEFAULT_BASE_URL,
   resolveElizaCodeBin,
 } from "../lib/eliza-code-spec";
 import type { PtyService } from "../services/pty-service";
@@ -65,6 +66,47 @@ function bodyToken(body: Record<string, unknown>): string | undefined {
   return str(body.terminalToken) ?? str(body.ptyToken);
 }
 
+function splitCsv(v: string | undefined): string[] {
+  return (v ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizeBaseUrl(raw: string): string {
+  const url = new URL(raw);
+  url.hash = "";
+  url.search = "";
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString().replace(/\/+$/, "");
+}
+
+function allowedBaseUrls(runtime: IAgentRuntime): Set<string> {
+  const configured = [
+    ...splitCsv(getStr(runtime, "PTY_ALLOWED_BASE_URLS")),
+    ...splitCsv(getStr(runtime, "PTY_ELIZA_CLOUD_BASE_URL_ALLOWLIST")),
+  ];
+  return new Set(
+    [ELIZA_CLOUD_DEFAULT_BASE_URL, ...configured].map((url) =>
+      normalizeBaseUrl(url),
+    ),
+  );
+}
+
+function resolveAllowedBaseUrl(
+  runtime: IAgentRuntime,
+  requested: string | undefined,
+): string | undefined {
+  if (!requested) return undefined;
+  const normalized = normalizeBaseUrl(requested);
+  if (!allowedBaseUrls(runtime).has(normalized)) {
+    throw new Error(
+      `Unsupported PTY baseUrl "${requested}". Configure PTY_ALLOWED_BASE_URLS to allow it explicitly.`,
+    );
+  }
+  return normalized;
+}
+
 function providedTerminalToken(
   ctx: RouteHandlerContext,
   body: Record<string, unknown> = {},
@@ -89,12 +131,14 @@ function ptyAccessRejection(
   // Compatibility mode: trusted in-process callers keep working in local
   // builds unless the operator explicitly configures a terminal step-up token.
   if (!expected) {
-    if (ctx.inProcess) return null;
+    if (ctx.inProcess || ctx.isTrustedLocal) return null;
     return json(403, {
       error:
         "Interactive PTY routes require a terminal token (ELIZA_TERMINAL_RUN_TOKEN) for HTTP access.",
     });
   }
+
+  if (ctx.isTrustedLocal) return null;
 
   const provided = providedTerminalToken(ctx, body);
   if (!provided) {
@@ -122,18 +166,14 @@ function interactiveEnabled(runtime: IAgentRuntime): boolean {
 }
 
 /**
- * The Eliza Cloud API key eliza-code will authenticate with: an explicit body
- * key → a dedicated setting → the agent's OpenAI-compatible key.
+ * The Eliza Cloud API key eliza-code will authenticate with. Do not fall back
+ * to the agent's primary OPENAI_API_KEY; terminal users can inspect their env.
  */
 function resolveCloudApiKey(
   runtime: IAgentRuntime,
   bodyKey?: string,
 ): string | undefined {
-  return (
-    bodyKey ??
-    getStr(runtime, "PTY_ELIZA_CLOUD_API_KEY") ??
-    getStr(runtime, "OPENAI_API_KEY")
-  );
+  return bodyKey ?? getStr(runtime, "PTY_ELIZA_CLOUD_API_KEY");
 }
 
 function defaultCwd(runtime: IAgentRuntime): string {
@@ -175,7 +215,7 @@ async function spawnHandler(
   if (!apiKey) {
     return json(400, {
       error:
-        "No Eliza Cloud API key available. Pass { apiKey } or configure OPENAI_API_KEY.",
+        "No dedicated Eliza Cloud API key available. Pass { apiKey } or configure PTY_ELIZA_CLOUD_API_KEY.",
     });
   }
 
@@ -189,10 +229,11 @@ async function spawnHandler(
       apiKey,
       binPath,
       tier,
-      baseUrl: str(body.baseUrl),
+      baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
       fastModel: str(body.fastModel),
       smartModel: str(body.smartModel),
     });
+    spec.ownerClientId = header(ctx, "x-elizaos-client-id");
     const cols = num(body.cols);
     const rows = num(body.rows);
     if (cols) spec.cols = cols;

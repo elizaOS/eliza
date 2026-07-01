@@ -82,7 +82,7 @@ test/
   pty-session-store.test.ts    Bridge routing, streaming, lifecycle, confinement, cap
   pty-service.test.ts          Service wiring
   pty-routes.test.ts           Route handlers (gates, errors, spawn/list/stop)
-  pty-real.e2e.test.ts         Gated real-node-pty e2e (excluded from the normal lane)
+  pty.real.test.ts             Gated real PTY coverage (excluded from the normal lane)
 ```
 
 ## Commands
@@ -100,8 +100,10 @@ bun run --cwd plugins/plugin-pty lint
 |---|---|---|
 | `PTY_INTERACTIVE_ENABLED` | `true` | Set `false` (or run a store build) to disable spawning. |
 | `PTY_ALLOWED_DIRECTORY` | process cwd | Directory sessions are confined to. |
-| `ELIZA_TERMINAL_RUN_TOKEN` | — | Required step-up token for HTTP access to PTY spawn/list/stop routes. Send as `X-Eliza-Terminal-Token` or `terminalToken`. |
-| `PTY_ELIZA_CLOUD_API_KEY` / `OPENAI_API_KEY` | — | Eliza Cloud key eliza-code authenticates with. |
+| `ELIZA_TERMINAL_RUN_TOKEN` | — | Required step-up token for remote HTTP access to PTY spawn/list/stop routes. Trusted loopback cockpit traffic is allowed server-side without exposing the token to browser JavaScript. |
+| `PTY_ELIZA_CLOUD_API_KEY` | — | Dedicated Eliza Cloud key eliza-code authenticates with. Do not use the agent server's primary `OPENAI_API_KEY` for PTY sessions. |
+| `PTY_ALLOWED_BASE_URLS` | Eliza Cloud API | Comma-separated operator allowlist for non-default OpenAI-compatible base URLs. |
+| `PTY_IDLE_TIMEOUT_MS` | `900000` | Idle live-session timeout. Set `0` to disable the fallback reaper. |
 | `ELIZA_CODE_BIN` | auto-resolved | Absolute path to built `eliza-code` `dist/index.js`. |
 | `ELIZA_BUILD_VARIANT` | — | `store` disables interactive spawning. |
 
@@ -109,12 +111,13 @@ bun run --cwd plugins/plugin-pty lint
 
 `buildElizaCodeCerebrasSpec` sets the env eliza-code reads
 (`packages/examples/code/src/lib/model-provider.ts`):
-`ELIZA_CODE_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`
+`ELIZA_CODE_PROVIDER=openai`, `ELIZA_CODE_CODING_ONLY=1`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`
 (`https://api.elizacloud.ai/v1`), and `OPENAI_{SMALL,MEDIUM,LARGE}_MODEL`. The
 `tier` (`fast`/`smart`) controls which model small/medium lead with; large is
 always the smart model so heavy calls escalate. `CODING_TOOLS_WORKSPACE_ROOTS`
 and `SHELL_ALLOWED_DIRECTORY` confine eliza-code's own file/shell tools to the
-session cwd.
+session cwd. `--coding-only` / `ELIZA_CODE_CODING_ONLY=1` keeps the cockpit REPL
+from loading the orchestrator and recursively spawning sub-agents.
 
 ## Conventions / gotchas
 
@@ -135,7 +138,7 @@ session cwd.
 
 The binding standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. The unit suite
 proves the store/bridge/routing/spec logic against an injected PTY; the gated
-`pty-real.e2e.test.ts` (and the manual real-runtime checks) prove the actual
+`pty.real.test.ts` (and the manual real-runtime checks) prove the actual
 node-pty / Bun-truePty path spawns real processes, streams output, round-trips
 keystrokes, and reports exit codes. The full "real CLI on a phone" proof —
 interactive `eliza-code` answering `/help` against live cerebras on-device —

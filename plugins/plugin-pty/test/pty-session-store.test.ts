@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionOutputEvent } from "../services/pty-contract";
 import {
   PtyConsoleBridge,
@@ -7,7 +7,11 @@ import {
 import type { PtySpawnSpec } from "../services/pty-types";
 import { makeFakeSpawn } from "./fake-pty";
 
-function makeStore(opts?: { allowedRoot?: string; maxSessions?: number }) {
+function makeStore(opts?: {
+  allowedRoot?: string;
+  maxSessions?: number;
+  idleTimeoutMs?: number;
+}) {
   const fake = makeFakeSpawn();
   const bridge = new PtyConsoleBridge();
   const store = new PtySessionStore(bridge, fake.resolver, opts);
@@ -16,9 +20,13 @@ function makeStore(opts?: { allowedRoot?: string; maxSessions?: number }) {
 
 const spec = (over: Partial<PtySpawnSpec> = {}): PtySpawnSpec => ({
   command: "bun",
-  args: ["/bin/eliza-code.js", "--interactive"],
+  args: ["/bin/eliza-code.js", "--interactive", "--coding-only"],
   cwd: "/work/repo",
-  env: { OPENAI_API_KEY: "sk-1", TERM: "xterm-256color" },
+  env: {
+    ELIZA_CODE_CODING_ONLY: "1",
+    OPENAI_API_KEY: "sk-1",
+    TERM: "xterm-256color",
+  },
   label: "eliza-code · fast",
   kind: "eliza-code",
   ...over,
@@ -32,6 +40,7 @@ function setEnv(key: string, value: string): void {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const [key, value] of savedEnv) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -46,8 +55,13 @@ describe("PtySessionStore.start", () => {
     expect(fake.calls).toHaveLength(1);
     const call = fake.calls[0];
     expect(call.file).toBe("bun");
-    expect(call.args).toEqual(["/bin/eliza-code.js", "--interactive"]);
+    expect(call.args).toEqual([
+      "/bin/eliza-code.js",
+      "--interactive",
+      "--coding-only",
+    ]);
     expect(call.opts.cwd).toBe("/work/repo");
+    expect(call.opts.env?.ELIZA_CODE_CODING_ONLY).toBe("1");
     expect(call.opts.env?.OPENAI_API_KEY).toBe("sk-1");
     expect(call.opts.env?.OPENAI_BASE_URL).toBeUndefined();
     expect(call.opts.env?.PWD).toBe("/work/repo");
@@ -211,6 +225,16 @@ describe("PtySessionStore lifecycle", () => {
     await store.stopAll();
     expect(fake.ptys.every((p) => p.killed)).toBe(true);
     expect(store.size).toBe(0);
+  });
+
+  it("stops live sessions that exceed the idle timeout", async () => {
+    vi.useFakeTimers();
+    const { store, fake } = makeStore({ idleTimeoutMs: 100 });
+    const a = await store.start(spec());
+    expect(store.has(a.sessionId)).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fake.ptys[0].killed).toBe(true);
+    expect(store.has(a.sessionId)).toBe(false);
   });
 
   it("list() returns serializable info without leaking the PTY handle", async () => {

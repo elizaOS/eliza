@@ -11,6 +11,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ButtonHTMLAttributes, MouseEventHandler, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -18,10 +19,34 @@ const mocks = vi.hoisted(() => ({
   stopPtySession: vi.fn(),
 }));
 
+type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
+  agent?: string;
+  children?: ReactNode;
+  onPress?: MouseEventHandler<HTMLButtonElement>;
+  size?: string;
+  variant?: string;
+};
+
 vi.mock("@elizaos/ui", () => ({
   client: {
     spawnPtySession: mocks.spawnPtySession,
     stopPtySession: mocks.stopPtySession,
+  },
+  Button: (props: ButtonMockProps) => {
+    const {
+      children,
+      variant: _variant,
+      size: _size,
+      agent: _agent,
+      onPress,
+      onClick,
+      ...rest
+    } = props;
+    return (
+      <button type="button" {...rest} onClick={onClick ?? onPress}>
+        {children}
+      </button>
+    );
   },
 }));
 

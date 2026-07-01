@@ -17,6 +17,9 @@ import type { PtySpawnSpec } from "../services/pty-types";
  *   ELIZA_CODE_PROVIDER=openai  →  plugin-openai, keyed by OPENAI_API_KEY, with
  *   OPENAI_BASE_URL / OPENAI_{SMALL,MEDIUM,LARGE}_MODEL overrides. Eliza Cloud
  *   exposes an OpenAI-compatible endpoint, so this routes straight to cerebras.
+ *
+ * Cockpit PTY sessions run eliza-code in coding-only mode so the terminal
+ * cannot recursively spawn orchestrator sub-agents from inside the REPL.
  */
 
 export const ELIZA_CLOUD_DEFAULT_BASE_URL = "https://api.elizacloud.ai/v1";
@@ -80,6 +83,7 @@ export function buildElizaCodeCerebrasSpec(
 
   const env: Record<string, string | undefined> = {
     ELIZA_CODE_PROVIDER: "openai",
+    ELIZA_CODE_CODING_ONLY: "1",
     OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: baseUrl,
     OPENAI_SMALL_MODEL: smallModel,
@@ -93,7 +97,7 @@ export function buildElizaCodeCerebrasSpec(
 
   return {
     command: runner,
-    args: [opts.binPath, "--interactive"],
+    args: [opts.binPath, "--interactive", "--coding-only"],
     cwd,
     env,
     label: `eliza-code · ${tier} · ${tier === "smart" ? smartModel : fastModel}`,

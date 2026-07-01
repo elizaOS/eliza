@@ -18,7 +18,7 @@ describe("buildElizaCodeCerebrasSpec", () => {
   it("launches the interactive binary via bun, in the given cwd", () => {
     const spec = buildElizaCodeCerebrasSpec(base);
     expect(spec.command).toBe("bun");
-    expect(spec.args).toEqual([base.binPath, "--interactive"]);
+    expect(spec.args).toEqual([base.binPath, "--interactive", "--coding-only"]);
     expect(spec.cwd).toBe(path.resolve("/work/repo"));
     expect(spec.kind).toBe("eliza-code");
   });
@@ -27,6 +27,7 @@ describe("buildElizaCodeCerebrasSpec", () => {
     const spec = buildElizaCodeCerebrasSpec(base);
     expect(spec.env).toMatchObject({
       ELIZA_CODE_PROVIDER: "openai",
+      ELIZA_CODE_CODING_ONLY: "1",
       OPENAI_API_KEY: "sk-cloud-123",
       OPENAI_BASE_URL: ELIZA_CLOUD_DEFAULT_BASE_URL,
       OPENAI_SMALL_MODEL: ELIZA_CLOUD_FAST_MODEL,
