@@ -5,6 +5,7 @@
 import {
   type AppEarningsTransaction,
   appEarningsRepository,
+  type NewAppEarningsTransaction,
 } from "../../db/repositories/app-earnings";
 import { appsRepository } from "../../db/repositories/apps";
 import { isUniqueConstraintError } from "../utils/db-errors";
@@ -223,31 +224,37 @@ export class AppEarningsService {
 
     const metadata = {
       requested_at: new Date().toISOString(),
-      status: "processing",
+      status: "completed",
       note: "Earnings are available in your redeemable balance for redemption as elizaOS tokens",
       ...(idempotencyKey && { idempotencyKey }),
     };
 
-    // Claim the idempotency key BEFORE debiting. The partial unique index on
-    // (app_id, metadata->>'idempotencyKey') WHERE type='withdrawal' — not a prior
-    // SELECT — is the gate (#10878): a concurrent/retried request with the same
-    // key raises 23505 on this insert and never reaches the debit below, so the
-    // balance is mutated exactly once. Without a key there is nothing to dedupe,
-    // so we fall back to the legacy debit-then-record order.
-    let claim: AppEarningsTransaction | undefined;
+    const transactionData: NewAppEarningsTransaction = {
+      app_id: appId,
+      type: "withdrawal",
+      amount: String(-amount),
+      description: `Withdrawal request: $${amount.toFixed(2)}`,
+      metadata,
+    };
+
+    // Claim the idempotency key and debit in one write transaction. The partial
+    // unique index on (app_id, metadata->>'idempotencyKey') WHERE type='withdrawal'
+    // is the concurrency gate (#10878); the transaction keeps a retry from seeing
+    // a phantom claim when validation or the conditional debit fails.
     if (idempotencyKey) {
+      let result: Awaited<ReturnType<typeof appEarningsRepository.processIdempotentWithdrawal>>;
       try {
-        claim = await appEarningsRepository.createTransaction({
-          app_id: appId,
-          type: "withdrawal",
-          amount: String(-amount),
-          description: `Withdrawal request: $${amount.toFixed(2)}`,
-          metadata,
-        });
+        result = await appEarningsRepository.processIdempotentWithdrawal(
+          appId,
+          amount,
+          transactionData,
+        );
       } catch (err) {
         if (!isUniqueConstraintError(err)) throw err;
         // Lost the race: another request already claimed this key. Return its
-        // result idempotently WITHOUT debiting.
+        // result idempotently WITHOUT debiting. PostgreSQL waits on a conflicting
+        // uncommitted unique-index entry before raising 23505, so this read should
+        // see the committed winner.
         const winner = await appEarningsRepository.findTransactionByIdempotencyKey(
           appId,
           idempotencyKey,
@@ -266,29 +273,31 @@ export class AppEarningsService {
           message: "Withdrawal already in progress for this request.",
         };
       }
+
+      if (!result.success) {
+        return { success: false, message: result.message };
+      }
+
+      logger.info("[AppEarnings] Withdrawal requested", {
+        appId,
+        amount,
+        transactionId: result.transaction?.id,
+        idempotencyKey,
+      });
+
+      return {
+        success: true,
+        message: `$${amount.toFixed(2)} marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens.`,
+        transactionId: result.transaction?.id,
+      };
     }
 
     const result = await appEarningsRepository.processWithdrawal(appId, amount);
     if (!result.success) {
-      // Debit failed (below threshold / insufficient balance). Release the claim
-      // so a later legitimate retry can proceed and no phantom row lingers.
-      if (claim) {
-        await appEarningsRepository.deleteTransaction(claim.id);
-      }
       return { success: false, message: result.message };
     }
 
-    // Debit succeeded. When we pre-claimed (idempotencyKey path) the transaction
-    // row already exists; otherwise record it now.
-    const transaction =
-      claim ??
-      (await appEarningsRepository.createTransaction({
-        app_id: appId,
-        type: "withdrawal",
-        amount: String(-amount),
-        description: `Withdrawal request: $${amount.toFixed(2)}`,
-        metadata,
-      }));
+    const transaction = await appEarningsRepository.createTransaction(transactionData);
 
     logger.info("[AppEarnings] Withdrawal requested", {
       appId,

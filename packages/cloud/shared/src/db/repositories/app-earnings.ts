@@ -11,6 +11,23 @@ import {
 
 export type { AppEarnings, AppEarningsTransaction, NewAppEarnings, NewAppEarningsTransaction };
 
+type WithdrawalResult = {
+  success: boolean;
+  earnings: AppEarnings | null;
+  message: string;
+};
+
+type IdempotentWithdrawalResult = WithdrawalResult & {
+  transaction?: AppEarningsTransaction;
+};
+
+class WithdrawalRollback extends Error {
+  constructor(readonly result: WithdrawalResult) {
+    super(result.message);
+    this.name = "WithdrawalRollback";
+  }
+}
+
 /**
  * Repository for app earnings database operations.
  *
@@ -330,14 +347,7 @@ export class AppEarningsRepository {
    * still remains race-safe because the update predicate requires sufficient
    * withdrawable balance at write time.
    */
-  async processWithdrawal(
-    appId: string,
-    amount: number,
-  ): Promise<{
-    success: boolean;
-    earnings: AppEarnings | null;
-    message: string;
-  }> {
+  async processWithdrawal(appId: string, amount: number): Promise<WithdrawalResult> {
     const earnings = await this.findByAppId(appId);
     if (!earnings) {
       return {
@@ -400,6 +410,88 @@ export class AppEarningsRepository {
   }
 
   /**
+   * Claims a withdrawal idempotency key and debits the app balance atomically.
+   *
+   * The unique index on (app_id, metadata->>'idempotencyKey') is acquired before
+   * the debit. If validation or the conditional debit fails, the transaction is
+   * rolled back so no phantom claim can be observed by a retry.
+   */
+  async processIdempotentWithdrawal(
+    appId: string,
+    amount: number,
+    transactionData: NewAppEarningsTransaction,
+  ): Promise<IdempotentWithdrawalResult> {
+    try {
+      return await dbWrite.transaction(async (tx) => {
+        const earnings = await tx.query.appEarnings.findFirst({
+          where: eq(appEarnings.app_id, appId),
+        });
+        if (!earnings) {
+          throw new WithdrawalRollback({
+            success: false,
+            earnings: null,
+            message: "Earnings record not found",
+          });
+        }
+
+        const threshold = Number(earnings.payout_threshold);
+        if (amount < threshold) {
+          throw new WithdrawalRollback({
+            success: false,
+            earnings,
+            message: `Amount must be at least $${threshold.toFixed(2)}`,
+          });
+        }
+
+        const [transaction] = await tx
+          .insert(appEarningsTransactions)
+          .values(transactionData)
+          .returning();
+
+        const [updated] = await tx
+          .update(appEarnings)
+          .set({
+            withdrawable_balance: sql`${appEarnings.withdrawable_balance} - ${amount}`,
+            total_withdrawn: sql`${appEarnings.total_withdrawn} + ${amount}`,
+            last_withdrawal_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(appEarnings.app_id, appId),
+              gte(appEarnings.withdrawable_balance, amount.toFixed(2)),
+            ),
+          )
+          .returning();
+
+        if (!updated) {
+          const current = await tx.query.appEarnings.findFirst({
+            where: eq(appEarnings.app_id, appId),
+          });
+          const currentWithdrawable = Number(current?.withdrawable_balance ?? 0);
+          throw new WithdrawalRollback({
+            success: false,
+            earnings: current ?? earnings,
+            message: `Insufficient withdrawable balance: $${currentWithdrawable.toFixed(2)}`,
+          });
+        }
+
+        return {
+          success: true,
+          earnings: updated,
+          message: "Withdrawal processed successfully",
+          transaction,
+        };
+      });
+    } catch (error) {
+      if (error instanceof WithdrawalRollback) {
+        return error.result;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Updates the payout threshold for an app.
    */
   async updatePayoutThreshold(appId: string, threshold: number): Promise<AppEarnings> {
@@ -421,17 +513,6 @@ export class AppEarningsRepository {
   async createTransaction(data: NewAppEarningsTransaction): Promise<AppEarningsTransaction> {
     const [transaction] = await dbWrite.insert(appEarningsTransactions).values(data).returning();
     return transaction;
-  }
-
-  /**
-   * Deletes an earnings transaction by id.
-   *
-   * Used to release a withdrawal idempotency claim whose debit then failed
-   * (e.g. insufficient balance), so the key is free for a legitimate retry and
-   * no phantom "processing" row lingers (#10878).
-   */
-  async deleteTransaction(id: string): Promise<void> {
-    await dbWrite.delete(appEarningsTransactions).where(eq(appEarningsTransactions.id, id));
   }
 }
 

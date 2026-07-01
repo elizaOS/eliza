@@ -9,10 +9,11 @@
  *
  * After: a partial unique index on
  *   (app_id, metadata->>'idempotencyKey') WHERE type='withdrawal' AND key NOT NULL
- * (migration 0156) is the gate. The service claims the key by INSERTing the
- * withdrawal row BEFORE debiting; a concurrent/retried request loses the insert
- * (23505) and returns the winner's result WITHOUT debiting, so the balance moves
- * exactly once.
+ * (migration 0156) is the gate. The service INSERTs the withdrawal row and
+ * debits the balance inside one write transaction; a concurrent/retried request
+ * loses the insert (23505) only after the winner commits and then returns that
+ * winner WITHOUT debiting, so the balance moves exactly once. Failed debits roll
+ * the claim back, so retries never observe a phantom successful withdrawal.
  *
  * These run the REAL service against in-process PGlite (real SQL: the partial
  * unique index, the conditional-CAS debit, the JSONB idempotency lookup). Only
@@ -209,6 +210,27 @@ describe("requestWithdrawal idempotency (#10878)", () => {
       expect(retry.success).toBe(true);
       expect(await withdrawalRowCount("wd-key-topup")).toBe(1);
       expect((await balance()).withdrawable).toBeCloseTo(50, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "concurrent failed debits with the same key do not report a phantom success",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnings("10"); // less than the requested amount
+
+      const [a, b] = await Promise.all([
+        appEarningsService.requestWithdrawal(APP_ID, 50, "wd-key-fail-concurrent"),
+        appEarningsService.requestWithdrawal(APP_ID, 50, "wd-key-fail-concurrent"),
+      ]);
+
+      expect(a.success).toBe(false);
+      expect(b.success).toBe(false);
+      expect(await withdrawalRowCount("wd-key-fail-concurrent")).toBe(0);
+      const bal = await balance();
+      expect(bal.withdrawable).toBeCloseTo(10, 6);
+      expect(bal.withdrawn).toBeCloseTo(0, 6);
     },
     PGLITE_TIMEOUT,
   );
