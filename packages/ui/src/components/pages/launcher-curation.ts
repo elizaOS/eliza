@@ -21,6 +21,8 @@ import type { ViewEntry } from "../../hooks/view-catalog";
 
 /** Page 1 — everyday apps, in display order. Other loaded apps append after. */
 export const LAUNCHER_APPS_ORDER: readonly string[] = [
+  "chat",
+  "settings",
   "wallet",
   "automations",
   "browser",
@@ -31,7 +33,6 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "memories",
   "feed",
   "stream",
-  "settings",
 ];
 
 /** Page 2 — developer tools, in display order. */
@@ -59,13 +60,12 @@ export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] = [
 
 /**
  * Views that never appear in the launcher grid:
- *  - shell surfaces reached another way (chat is the home; views/apps launchers;
- *    background + voice are set from Settings/chat; character-select is inline),
+ *  - shell surfaces reached another way (views/apps launchers; background +
+ *    voice are set from Settings/chat; character-select is inline),
  *  - removed apps (companion, model tester, shopify, wearables),
  *  - wallet sub-views (hyperliquid/polymarket open from inside the Wallet app).
  */
 export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
-  "chat",
   "views",
   "views-manager",
   "apps",
