@@ -55,15 +55,9 @@ export class AppFrontendDeploymentsRepository {
     });
   }
 
-  async getByIdForApp(
-    appId: string,
-    id: string,
-  ): Promise<AppFrontendDeployment | undefined> {
+  async getByIdForApp(appId: string, id: string): Promise<AppFrontendDeployment | undefined> {
     return await dbRead.query.appFrontendDeployments.findFirst({
-      where: and(
-        eq(appFrontendDeployments.id, id),
-        eq(appFrontendDeployments.app_id, appId),
-      ),
+      where: and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.app_id, appId)),
     });
   }
 
@@ -120,10 +114,7 @@ export class AppFrontendDeploymentsRepository {
       .where(eq(appFrontendDeployments.id, id));
   }
 
-  async markStatus(
-    id: string,
-    status: AppFrontendDeployment["status"],
-  ): Promise<void> {
+  async markStatus(id: string, status: AppFrontendDeployment["status"]): Promise<void> {
     await dbWrite
       .update(appFrontendDeployments)
       .set({ status, updated_at: new Date() })
@@ -142,10 +133,7 @@ export class AppFrontendDeploymentsRepository {
    * current active to `superseded`, then promote the target to `active`. The
    * partial unique index guarantees no two rows are ever active at once.
    */
-  async activate(
-    appId: string,
-    id: string,
-  ): Promise<AppFrontendDeployment | undefined> {
+  async activate(appId: string, id: string): Promise<AppFrontendDeployment | undefined> {
     return await dbWrite.transaction(async (tx) => {
       await tx
         .update(appFrontendDeployments)
@@ -162,12 +150,7 @@ export class AppFrontendDeploymentsRepository {
       const [row] = await tx
         .update(appFrontendDeployments)
         .set({ status: "active", activated_at: now, updated_at: now })
-        .where(
-          and(
-            eq(appFrontendDeployments.id, id),
-            eq(appFrontendDeployments.app_id, appId),
-          ),
-        )
+        .where(and(eq(appFrontendDeployments.id, id), eq(appFrontendDeployments.app_id, appId)))
         .returning();
       return row;
     });
@@ -175,11 +158,8 @@ export class AppFrontendDeploymentsRepository {
 
   /** Delete a deployment row (callers must ensure it is not the active one). */
   async delete(id: string): Promise<void> {
-    await dbWrite
-      .delete(appFrontendDeployments)
-      .where(eq(appFrontendDeployments.id, id));
+    await dbWrite.delete(appFrontendDeployments).where(eq(appFrontendDeployments.id, id));
   }
 }
 
-export const appFrontendDeploymentsRepository =
-  new AppFrontendDeploymentsRepository();
+export const appFrontendDeploymentsRepository = new AppFrontendDeploymentsRepository();

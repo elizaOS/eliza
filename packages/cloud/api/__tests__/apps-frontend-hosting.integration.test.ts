@@ -111,7 +111,9 @@ function makeRow(appId: string, version: number): AppFrontendDeployment {
 }
 const repoMock = {
   async create(input: { appId: string; r2Prefix: string }) {
-    const existing = [...deployments.values()].filter((d) => d.app_id === input.appId);
+    const existing = [...deployments.values()].filter(
+      (d) => d.app_id === input.appId,
+    );
     const version = existing.reduce((m, d) => Math.max(m, d.version), 0) + 1;
     const row = makeRow(input.appId, version);
     row.r2_prefix = input.r2Prefix;
@@ -131,7 +133,9 @@ const repoMock = {
       .sort((a, b) => b.version - a.version);
   },
   async getActive(appId: string) {
-    return [...deployments.values()].find((d) => d.app_id === appId && d.status === "active");
+    return [...deployments.values()].find(
+      (d) => d.app_id === appId && d.status === "active",
+    );
   },
   async setPrefix(id: string, r2Prefix: string) {
     const d = deployments.get(id);
@@ -139,7 +143,12 @@ const repoMock = {
   },
   async finalize(
     id: string,
-    input: { manifest: FrontendManifest; contentHash: string; fileCount: number; totalBytes: number },
+    input: {
+      manifest: FrontendManifest;
+      contentHash: string;
+      fileCount: number;
+      totalBytes: number;
+    },
   ) {
     const d = deployments.get(id);
     if (!d) return undefined;
@@ -163,7 +172,8 @@ const repoMock = {
   },
   async activate(appId: string, id: string) {
     for (const d of deployments.values()) {
-      if (d.app_id === appId && d.status === "active" && d.id !== id) d.status = "superseded";
+      if (d.app_id === appId && d.status === "active" && d.id !== id)
+        d.status = "superseded";
     }
     const target = deployments.get(id);
     if (target && target.app_id === appId) {
@@ -223,7 +233,9 @@ mock.module("@/db/repositories/app-frontend-deployments", () => ({
 
 // Import routes AFTER mocks (they bind the seams at module-eval time).
 const baseRoute = (await import("../v1/apps/[id]/frontend/route")).default;
-const detailRoute = (await import("../v1/apps/[id]/frontend/[deploymentId]/route")).default;
+const detailRoute = (
+  await import("../v1/apps/[id]/frontend/[deploymentId]/route")
+).default;
 const activateRoute = (
   await import("../v1/apps/[id]/frontend/[deploymentId]/activate/route")
 ).default;
@@ -240,7 +252,13 @@ afterAll(() => {
 function buildApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>({ strict: false });
   app.use("*", corsMiddleware);
-  app.use("*", secureHeaders({ xContentTypeOptions: "nosniff", crossOriginEmbedderPolicy: false }));
+  app.use(
+    "*",
+    secureHeaders({
+      xContentTypeOptions: "nosniff",
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   app.use("*", authMiddleware);
   // Mount deeper/more-specific paths before `:deploymentId` so "preview" and
   // "activate" are not captured as a deployment id.
@@ -252,20 +270,33 @@ function buildApp(): Hono<AppEnv> {
   return app;
 }
 
-function req(app: Hono<AppEnv>, method: string, path: string, key: string | null, body?: unknown) {
+function req(
+  app: Hono<AppEnv>,
+  method: string,
+  path: string,
+  key: string | null,
+  body?: unknown,
+) {
   const headers: Record<string, string> = {};
   if (key) headers.authorization = `Bearer ${key}`;
   if (body !== undefined) headers["content-type"] = "application/json";
   return app.request(
     path,
-    { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined },
+    {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
     ENV,
   );
 }
 
 const BUNDLE = {
   files: [
-    { path: "index.html", content: "<html><head></head><body><h1>Home</h1></body></html>" },
+    {
+      path: "index.html",
+      content: "<html><head></head><body><h1>Home</h1></body></html>",
+    },
     { path: "assets/app.js", content: "console.log(1)" },
   ],
 };
@@ -292,7 +323,13 @@ describe("apps frontend hosting routes", () => {
   });
 
   test("POST publishes and activates a bundle (201)", async () => {
-    const res = await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE);
+    const res = await req(
+      app,
+      "POST",
+      `/api/v1/apps/${APP_ID}/frontend`,
+      KEY_A,
+      BUNDLE,
+    );
     expect(res.status).toBe(201);
     const json = (await res.json()) as { deployment: AppFrontendDeployment };
     expect(json.deployment.status).toBe("active");
@@ -301,12 +338,24 @@ describe("apps frontend hosting routes", () => {
   });
 
   test("POST rejects a bundle with no files (400)", async () => {
-    const res = await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, { files: [] });
+    const res = await req(
+      app,
+      "POST",
+      `/api/v1/apps/${APP_ID}/frontend`,
+      KEY_A,
+      { files: [] },
+    );
     expect(res.status).toBe(400);
   });
 
   test("POST from another org is denied (403)", async () => {
-    const res = await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_B, BUNDLE);
+    const res = await req(
+      app,
+      "POST",
+      `/api/v1/apps/${APP_ID}/frontend`,
+      KEY_B,
+      BUNDLE,
+    );
     expect(res.status).toBe(403);
   });
 
@@ -328,35 +377,71 @@ describe("apps frontend hosting routes", () => {
   });
 
   test("activate an older deployment rolls back", async () => {
-    const r1 = await (await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE)).json();
+    const r1 = await (
+      await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE)
+    ).json();
     await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE); // v2 active
     const v1Id = (r1 as { deployment: AppFrontendDeployment }).deployment.id;
-    const res = await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend/${v1Id}/activate`, KEY_A);
+    const res = await req(
+      app,
+      "POST",
+      `/api/v1/apps/${APP_ID}/frontend/${v1Id}/activate`,
+      KEY_A,
+    );
     expect(res.status).toBe(200);
-    const active = await (await req(app, "GET", `/api/v1/apps/${APP_ID}/frontend`, KEY_A)).json();
-    expect((active as { active_deployment_id: string }).active_deployment_id).toBe(v1Id);
+    const active = await (
+      await req(app, "GET", `/api/v1/apps/${APP_ID}/frontend`, KEY_A)
+    ).json();
+    expect(
+      (active as { active_deployment_id: string }).active_deployment_id,
+    ).toBe(v1Id);
   });
 
   test("cannot delete the active deployment (409), can delete a superseded one", async () => {
-    const r1 = await (await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE)).json();
+    const r1 = await (
+      await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE)
+    ).json();
     const v1Id = (r1 as { deployment: AppFrontendDeployment }).deployment.id;
     await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE); // v2 now active, v1 superseded
 
-    const denied = await req(app, "DELETE", `/api/v1/apps/${APP_ID}/frontend`, KEY_A);
+    const denied = await req(
+      app,
+      "DELETE",
+      `/api/v1/apps/${APP_ID}/frontend`,
+      KEY_A,
+    );
     // deleting via base path is not a route; delete the ACTIVE one by id → 409
-    const active = await (await req(app, "GET", `/api/v1/apps/${APP_ID}/frontend`, KEY_A)).json();
-    const activeId = (active as { active_deployment_id: string }).active_deployment_id;
-    const del409 = await req(app, "DELETE", `/api/v1/apps/${APP_ID}/frontend/${activeId}`, KEY_A);
+    const active = await (
+      await req(app, "GET", `/api/v1/apps/${APP_ID}/frontend`, KEY_A)
+    ).json();
+    const activeId = (active as { active_deployment_id: string })
+      .active_deployment_id;
+    const del409 = await req(
+      app,
+      "DELETE",
+      `/api/v1/apps/${APP_ID}/frontend/${activeId}`,
+      KEY_A,
+    );
     expect(del409.status).toBe(409);
 
-    const del200 = await req(app, "DELETE", `/api/v1/apps/${APP_ID}/frontend/${v1Id}`, KEY_A);
+    const del200 = await req(
+      app,
+      "DELETE",
+      `/api/v1/apps/${APP_ID}/frontend/${v1Id}`,
+      KEY_A,
+    );
     expect(del200.status).toBe(200);
     void denied;
   });
 
   test("preview serves the site with injected SEO + records a page view", async () => {
     await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE);
-    const res = await req(app, "GET", `/api/v1/apps/${APP_ID}/frontend/preview`, KEY_A);
+    const res = await req(
+      app,
+      "GET",
+      `/api/v1/apps/${APP_ID}/frontend/preview`,
+      KEY_A,
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
@@ -368,7 +453,12 @@ describe("apps frontend hosting routes", () => {
 
   test("preview serves a nested asset with immutable caching", async () => {
     await req(app, "POST", `/api/v1/apps/${APP_ID}/frontend`, KEY_A, BUNDLE);
-    const res = await req(app, "GET", `/api/v1/apps/${APP_ID}/frontend/preview/assets/app.js`, KEY_A);
+    const res = await req(
+      app,
+      "GET",
+      `/api/v1/apps/${APP_ID}/frontend/preview/assets/app.js`,
+      KEY_A,
+    );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/javascript");
     expect(res.headers.get("cache-control")).toContain("immutable");

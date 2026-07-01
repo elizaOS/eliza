@@ -8,16 +8,24 @@
  *   - `@/db/repositories/app-frontend-deployments` (getActive)
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 import { Hono } from "hono";
 import type { AppFrontendDeployment } from "@/db/schemas/app-frontend-deployments";
+import { sha256Hex } from "@/lib/services/app-frontend-hosting";
 import * as realApps from "@/lib/services/apps";
 import * as realManaged from "@/lib/services/managed-domains";
 import {
   type RuntimeR2Bucket,
   setRuntimeR2Bucket,
 } from "@/lib/storage/r2-runtime-binding";
-import { sha256Hex } from "@/lib/services/app-frontend-hosting";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
@@ -33,9 +41,11 @@ const APP = {
 const trackPageView = mock(async () => {});
 let getBySlugImpl: (slug: string) => Promise<unknown> = async () => undefined;
 let getByIdImpl: (id: string) => Promise<unknown> = async () => undefined;
-let getDomainByNameImpl: (d: string) => Promise<unknown> = async () => undefined;
-let getActiveImpl: (appId: string) => Promise<AppFrontendDeployment | undefined> = async () =>
+let getDomainByNameImpl: (d: string) => Promise<unknown> = async () =>
   undefined;
+let getActiveImpl: (
+  appId: string,
+) => Promise<AppFrontendDeployment | undefined> = async () => undefined;
 
 mock.module("@/lib/services/apps", () => ({
   ...realApps,
@@ -47,10 +57,14 @@ mock.module("@/lib/services/apps", () => ({
 }));
 mock.module("@/lib/services/managed-domains", () => ({
   ...realManaged,
-  managedDomainsService: { getDomainByName: (d: string) => getDomainByNameImpl(d) },
+  managedDomainsService: {
+    getDomainByName: (d: string) => getDomainByNameImpl(d),
+  },
 }));
 mock.module("@/db/repositories/app-frontend-deployments", () => ({
-  appFrontendDeploymentsRepository: { getActive: (id: string) => getActiveImpl(id) },
+  appFrontendDeploymentsRepository: {
+    getActive: (id: string) => getActiveImpl(id),
+  },
 }));
 
 const serveRoute = (
@@ -74,7 +88,9 @@ function memoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
     async put(key, value) {
       objects.set(
         key,
-        typeof value === "string" ? new TextEncoder().encode(value) : (value as Uint8Array),
+        typeof value === "string"
+          ? new TextEncoder().encode(value)
+          : (value as Uint8Array),
       );
       return {};
     },
@@ -91,7 +107,9 @@ beforeAll(async () => {
   const objects = new Map<string, Uint8Array>();
   setRuntimeR2Bucket(memoryBucket(objects));
   const prefix = "app-frontends/o/app_1/dep_1/";
-  const html = new TextEncoder().encode("<html><head></head><body><h1>Live</h1></body></html>");
+  const html = new TextEncoder().encode(
+    "<html><head></head><body><h1>Live</h1></body></html>",
+  );
   const hash = await sha256Hex(html);
   objects.set(`${prefix}${hash}`, html);
   activeDeployment = {
@@ -102,7 +120,14 @@ beforeAll(async () => {
     manifest: {
       entrypoint: "index.html",
       spaFallback: true,
-      files: [{ path: "index.html", hash, contentType: "text/html; charset=utf-8", size: html.byteLength }],
+      files: [
+        {
+          path: "index.html",
+          hash,
+          contentType: "text/html; charset=utf-8",
+          size: html.byteLength,
+        },
+      ],
     },
   } as unknown as AppFrontendDeployment;
 });
@@ -134,7 +159,8 @@ describe("public hosted-frontend serve", () => {
 
   test("serves a system-host (slug) request and records a page view", async () => {
     getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
-    getActiveImpl = async (id) => (id === "app_1" ? activeDeployment : undefined);
+    getActiveImpl = async (id) =>
+      id === "app_1" ? activeDeployment : undefined;
     const res = await app.request(
       "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
       {},
@@ -150,7 +176,9 @@ describe("public hosted-frontend serve", () => {
 
   test("serves a verified, active custom domain", async () => {
     getDomainByNameImpl = async (d) =>
-      d === "mycool.site" ? { appId: "app_1", verified: true, status: "active" } : undefined;
+      d === "mycool.site"
+        ? { appId: "app_1", verified: true, status: "active" }
+        : undefined;
     getByIdImpl = async (id) => (id === "app_1" ? APP : undefined);
     getActiveImpl = async () => activeDeployment;
     const res = await app.request(
@@ -172,7 +200,11 @@ describe("public hosted-frontend serve", () => {
   });
 
   test("404 when the custom domain is unverified", async () => {
-    getDomainByNameImpl = async () => ({ appId: "app_1", verified: false, status: "active" });
+    getDomainByNameImpl = async () => ({
+      appId: "app_1",
+      verified: false,
+      status: "active",
+    });
     const res = await app.request(
       "/api/v1/hosted-frontend/serve?host=unverified.site",
       {},
@@ -190,5 +222,17 @@ describe("public hosted-frontend serve", () => {
       ENV,
     );
     expect(res.status).toBe(404);
+  });
+
+  test("404 when the system-host app is not approved", async () => {
+    getBySlugImpl = async () => ({ ...APP, is_approved: false });
+    getActiveImpl = async () => activeDeployment;
+    const res = await app.request(
+      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(404);
+    expect(trackPageView).not.toHaveBeenCalled();
   });
 });

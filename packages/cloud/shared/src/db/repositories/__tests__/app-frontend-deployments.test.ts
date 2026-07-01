@@ -24,17 +24,10 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import {
-  type RuntimeR2Bucket,
-  setRuntimeR2Bucket,
-} from "../../../lib/storage/r2-runtime-binding";
+import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { appFrontendDeployments } from "../../schemas/app-frontend-deployments";
-import {
-  appDeploymentStatusEnum,
-  apps,
-  userDatabaseStatusEnum,
-} from "../../schemas/apps";
+import { appDeploymentStatusEnum, apps, userDatabaseStatusEnum } from "../../schemas/apps";
 import { organizations } from "../../schemas/organizations";
 import { users } from "../../schemas/users";
 import { appFrontendDeploymentsRepository } from "../app-frontend-deployments";

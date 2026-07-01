@@ -20,33 +20,43 @@
 
 import { Hono } from "hono";
 import { appFrontendDeploymentsRepository } from "@/db/repositories/app-frontend-deployments";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { appFrontendHostingService } from "@/lib/services/app-frontend-hosting";
 import { appsService } from "@/lib/services/apps";
 import { managedDomainsService } from "@/lib/services/managed-domains";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const SERVE_MARKER = "/hosted-frontend/serve";
 
 function normalizeHost(host: string | undefined): string | null {
-  const normalized = host?.trim().toLowerCase().replace(/\.+$/, "").split(":")[0];
+  const normalized = host
+    ?.trim()
+    .toLowerCase()
+    .replace(/\.+$/, "")
+    .split(":")[0];
   return normalized && normalized.length > 0 ? normalized : null;
 }
 
 async function resolveAppForHost(host: string) {
   const suffixRaw = getCloudAwareEnv().ELIZA_FRONTEND_HOST_SUFFIX;
-  const suffix = suffixRaw ? String(suffixRaw).trim().toLowerCase().replace(/^\.+/, "") : null;
+  const suffix = suffixRaw
+    ? String(suffixRaw).trim().toLowerCase().replace(/^\.+/, "")
+    : null;
   if (suffix && host.endsWith(`.${suffix}`)) {
     const slug = host.slice(0, host.length - suffix.length - 1);
     if (slug) {
       const app = await appsService.getBySlug(slug);
-      if (app?.is_active) return app;
+      if (app?.is_active && app.is_approved) return app;
     }
   }
   // Verified, active custom domain → its app (same predicate as /domains/resolve).
   const managedDomain = await managedDomainsService.getDomainByName(host);
-  if (managedDomain?.appId && managedDomain.verified && managedDomain.status === "active") {
+  if (
+    managedDomain?.appId &&
+    managedDomain.verified &&
+    managedDomain.status === "active"
+  ) {
     const app = await appsService.getById(managedDomain.appId);
     if (app?.is_active && app.is_approved) return app;
   }
@@ -58,17 +68,24 @@ const app = new Hono<AppEnv>();
 app.get("*", async (c) => {
   try {
     const url = new URL(c.req.url);
-    const host = normalizeHost(c.req.query("host") ?? c.req.header("x-forwarded-host") ?? url.hostname);
+    const host = normalizeHost(
+      c.req.query("host") ?? c.req.header("x-forwarded-host") ?? url.hostname,
+    );
     if (!host) return c.text("Not Found", 404);
 
     const appRow = await resolveAppForHost(host);
     if (!appRow) return c.text("Not Found", 404);
 
-    const deployment = await appFrontendDeploymentsRepository.getActive(appRow.id);
+    const deployment = await appFrontendDeploymentsRepository.getActive(
+      appRow.id,
+    );
     if (!deployment) return c.text("Not Found", 404);
 
     const markerIdx = url.pathname.indexOf(SERVE_MARKER);
-    const requestPath = markerIdx >= 0 ? url.pathname.slice(markerIdx + SERVE_MARKER.length) : "/";
+    const requestPath =
+      markerIdx >= 0
+        ? url.pathname.slice(markerIdx + SERVE_MARKER.length)
+        : "/";
 
     const canonicalBase = `https://${host}`;
     const rendered = await appFrontendHostingService.renderFrontendResponse({
@@ -116,7 +133,10 @@ app.get("*", async (c) => {
       }
     }
 
-    return new Response(rendered.body, { status: rendered.status, headers: rendered.headers });
+    return new Response(rendered.body, {
+      status: rendered.status,
+      headers: rendered.headers,
+    });
   } catch (error) {
     logger.error("[Hosted Frontend] serve failed:", error);
     return c.text("Internal Server Error", 500);

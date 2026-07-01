@@ -50,7 +50,9 @@ app.get("*", async (c) => {
     const url = new URL(c.req.url);
     const markerIdx = url.pathname.indexOf(PREVIEW_MARKER);
     const requestPath =
-      markerIdx >= 0 ? url.pathname.slice(markerIdx + PREVIEW_MARKER.length) : "/";
+      markerIdx >= 0
+        ? url.pathname.slice(markerIdx + PREVIEW_MARKER.length)
+        : "/";
 
     const canonical = found.production_url || found.app_url;
     const rendered = await appFrontendHostingService.renderFrontendResponse({

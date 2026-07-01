@@ -306,10 +306,13 @@ export function getHostedFrontendServeRewrite(
   url: URL,
   env: { ELIZA_FRONTEND_HOST_SUFFIX?: string },
 ): URL | null {
-  const suffix = normalizeHostname(env.ELIZA_FRONTEND_HOST_SUFFIX)?.replace(/^\.+/, "");
+  const suffix = normalizeHostname(env.ELIZA_FRONTEND_HOST_SUFFIX)?.replace(
+    /^\.+/,
+    "",
+  );
   if (!suffix) return null;
   const hostname = normalizeHostname(url.hostname);
-  if (!hostname || !hostname.endsWith(`.${suffix}`)) return null;
+  if (!hostname?.endsWith(`.${suffix}`)) return null;
   const slug = hostname.slice(0, hostname.length - suffix.length - 1);
   if (!slug || slug.includes(".")) return null;
   if (isFrontendAliasBackendPath(url)) return null;

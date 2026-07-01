@@ -87,7 +87,11 @@ app.post("/", async (c) => {
     const parsed = DeploySchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.flatten() },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.flatten(),
+        },
         400,
       );
     }

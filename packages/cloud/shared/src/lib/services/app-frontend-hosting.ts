@@ -16,8 +16,8 @@
  *    view server-side when a document is served (no secret embedded in the page).
  */
 
-import type { App } from "../../db/repositories/apps";
 import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
+import type { App } from "../../db/repositories/apps";
 import type {
   AppFrontendDeployment,
   FrontendBuildMeta,
@@ -216,11 +216,7 @@ export class AppFrontendHostingService {
     });
 
     try {
-      const r2Prefix = this.prefixFor(
-        input.app.organization_id,
-        input.app.id,
-        deployment.id,
-      );
+      const r2Prefix = this.prefixFor(input.app.organization_id, input.app.id, deployment.id);
       await appFrontendDeploymentsRepository.markStatus(deployment.id, "uploading");
 
       const bucket = requireBucket();
@@ -294,8 +290,14 @@ export class AppFrontendHostingService {
   async activate(appId: string, deploymentId: string): Promise<AppFrontendDeployment | undefined> {
     const target = await appFrontendDeploymentsRepository.getByIdForApp(appId, deploymentId);
     if (!target) return undefined;
-    if (target.status === "pending" || target.status === "uploading" || target.status === "failed") {
-      throw new Error(`Deployment ${deploymentId} is not ready to activate (status: ${target.status})`);
+    if (
+      target.status === "pending" ||
+      target.status === "uploading" ||
+      target.status === "failed"
+    ) {
+      throw new Error(
+        `Deployment ${deploymentId} is not ready to activate (status: ${target.status})`,
+      );
     }
     return appFrontendDeploymentsRepository.activate(appId, deploymentId);
   }
@@ -324,13 +326,19 @@ export class AppFrontendHostingService {
   async renderFrontendResponse(input: RenderInput): Promise<RenderedResponse> {
     const manifest = input.deployment.manifest;
     if (!manifest) {
-      return { status: 404, headers: { "content-type": "text/plain" }, body: "Not deployed", isDocument: false };
+      return {
+        status: 404,
+        headers: { "content-type": "text/plain" },
+        body: "Not deployed",
+        isDocument: false,
+      };
     }
 
     const normalized = normalizeSitePath(input.requestPath) ?? "";
-    let lookupPath = normalized === "" || normalized.endsWith("/")
-      ? `${normalized}${manifest.entrypoint}`
-      : normalized;
+    let lookupPath =
+      normalized === "" || normalized.endsWith("/")
+        ? `${normalized}${manifest.entrypoint}`
+        : normalized;
     lookupPath = normalizeSitePath(lookupPath) ?? manifest.entrypoint;
 
     let entry = manifest.files.find((f) => f.path === lookupPath);
@@ -344,13 +352,23 @@ export class AppFrontendHostingService {
 
     if (!entry) {
       // 404: serve the entrypoint body if present (SPA apps 404-in-app), else plain.
-      return { status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: "Not Found", isDocument: false };
+      return {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+        body: "Not Found",
+        isDocument: false,
+      };
     }
 
     const bucket = requireBucket();
     const obj = await bucket.get(`${input.deployment.r2_prefix}${entry.hash}`);
     if (!obj) {
-      return { status: 404, headers: { "content-type": "text/plain; charset=utf-8" }, body: "Not Found", isDocument: false };
+      return {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+        body: "Not Found",
+        isDocument: false,
+      };
     }
 
     const immutableAsset = !isHtml(entry.contentType);
@@ -422,12 +440,14 @@ export function injectSeo(html: string, seo: FrontendSeo): string {
     tags.push(`<meta property="og:site_name" content="${escapeHtml(seo.siteName)}" />`);
   }
   if ((seo.title || seo.image) && !lower.includes('name="twitter:card"')) {
-    tags.push(`<meta name="twitter:card" content="${seo.image ? "summary_large_image" : "summary"}" />`);
+    tags.push(
+      `<meta name="twitter:card" content="${seo.image ? "summary_large_image" : "summary"}" />`,
+    );
   }
   if (seo.url && !lower.includes('rel="canonical"')) {
     tags.push(`<link rel="canonical" href="${escapeHtml(seo.url)}" />`);
   }
-  if (seo.jsonLd && !lower.includes('application/ld+json')) {
+  if (seo.jsonLd && !lower.includes("application/ld+json")) {
     tags.push(
       `<script type="application/ld+json">${JSON.stringify(seo.jsonLd).replace(/</g, "\\u003c")}</script>`,
     );

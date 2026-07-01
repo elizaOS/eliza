@@ -12,7 +12,10 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
 
   test("is a no-op when the suffix env is unset (opt-in)", () => {
     expect(
-      getHostedFrontendServeRewrite(new URL("https://acme.sites.elizacloud.ai/"), {}),
+      getHostedFrontendServeRewrite(
+        new URL("https://acme.sites.elizacloud.ai/"),
+        {},
+      ),
     ).toBeNull();
   });
 
@@ -41,14 +44,22 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
       ),
     ).toBeNull();
     expect(
-      getHostedFrontendServeRewrite(new URL("https://acme.sites.elizacloud.ai/steward"), env),
+      getHostedFrontendServeRewrite(
+        new URL("https://acme.sites.elizacloud.ai/steward"),
+        env,
+      ),
     ).toBeNull();
   });
 
   test("ignores hosts that are not under the suffix, and nested subdomains", () => {
-    expect(getHostedFrontendServeRewrite(new URL("https://elizacloud.ai/"), env)).toBeNull();
     expect(
-      getHostedFrontendServeRewrite(new URL("https://a.b.sites.elizacloud.ai/"), env),
+      getHostedFrontendServeRewrite(new URL("https://elizacloud.ai/"), env),
+    ).toBeNull();
+    expect(
+      getHostedFrontendServeRewrite(
+        new URL("https://a.b.sites.elizacloud.ai/"),
+        env,
+      ),
     ).toBeNull();
   });
 });

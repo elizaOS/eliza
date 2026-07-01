@@ -11,10 +11,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { AppFrontendDeployment } from "../../db/schemas/app-frontend-deployments";
-import {
-  type RuntimeR2Bucket,
-  setRuntimeR2Bucket,
-} from "../storage/r2-runtime-binding";
+import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import {
   appFrontendHostingService,
   computeManifestHash,
@@ -155,9 +152,7 @@ describe("renderFrontendResponse", () => {
     const objects = new Map<string, Uint8Array>();
     setRuntimeR2Bucket(memoryBucket(objects));
     const prefix = "app-frontends/org/app-1/dep-1/";
-    const html = new TextEncoder().encode(
-      "<html><head></head><body><h1>Home</h1></body></html>",
-    );
+    const html = new TextEncoder().encode("<html><head></head><body><h1>Home</h1></body></html>");
     const js = new TextEncoder().encode("console.log('hi')");
     const htmlHash = await sha256Hex(html);
     const jsHash = await sha256Hex(js);
@@ -172,8 +167,18 @@ describe("renderFrontendResponse", () => {
         entrypoint: "index.html",
         spaFallback: true,
         files: [
-          { path: "index.html", hash: htmlHash, contentType: "text/html; charset=utf-8", size: html.byteLength },
-          { path: "assets/app.js", hash: jsHash, contentType: "text/javascript; charset=utf-8", size: js.byteLength },
+          {
+            path: "index.html",
+            hash: htmlHash,
+            contentType: "text/html; charset=utf-8",
+            size: html.byteLength,
+          },
+          {
+            path: "assets/app.js",
+            hash: jsHash,
+            contentType: "text/javascript; charset=utf-8",
+            size: js.byteLength,
+          },
         ],
       },
     } as unknown as AppFrontendDeployment;

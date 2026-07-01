@@ -23,7 +23,10 @@ app.post("/", async (c) => {
     const id = c.req.param("id");
     const deploymentId = c.req.param("deploymentId");
     if (!id || !deploymentId) {
-      return c.json({ success: false, error: "Missing app id or deployment id" }, 400);
+      return c.json(
+        { success: false, error: "Missing app id or deployment id" },
+        400,
+      );
     }
 
     const found = await appsService.getById(id);
@@ -32,8 +35,12 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const activated = await appFrontendHostingService.activate(id, deploymentId);
-    if (!activated) return c.json({ success: false, error: "Deployment not found" }, 404);
+    const activated = await appFrontendHostingService.activate(
+      id,
+      deploymentId,
+    );
+    if (!activated)
+      return c.json({ success: false, error: "Deployment not found" }, 404);
 
     logger.info("[Apps Frontend API] Activated frontend deployment", {
       appId: id,

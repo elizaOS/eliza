@@ -23,7 +23,10 @@ app.get("/", async (c) => {
     const id = c.req.param("id");
     const deploymentId = c.req.param("deploymentId");
     if (!id || !deploymentId) {
-      return c.json({ success: false, error: "Missing app id or deployment id" }, 400);
+      return c.json(
+        { success: false, error: "Missing app id or deployment id" },
+        400,
+      );
     }
 
     const found = await appsService.getById(id);
@@ -32,8 +35,12 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const deployment = await appFrontendDeploymentsRepository.getByIdForApp(id, deploymentId);
-    if (!deployment) return c.json({ success: false, error: "Deployment not found" }, 404);
+    const deployment = await appFrontendDeploymentsRepository.getByIdForApp(
+      id,
+      deploymentId,
+    );
+    if (!deployment)
+      return c.json({ success: false, error: "Deployment not found" }, 404);
     return c.json({ success: true, deployment });
   } catch (error) {
     logger.error("[Apps Frontend API] Failed to get deployment:", error);
@@ -47,7 +54,10 @@ app.delete("/", async (c) => {
     const id = c.req.param("id");
     const deploymentId = c.req.param("deploymentId");
     if (!id || !deploymentId) {
-      return c.json({ success: false, error: "Missing app id or deployment id" }, 400);
+      return c.json(
+        { success: false, error: "Missing app id or deployment id" },
+        400,
+      );
     }
 
     const found = await appsService.getById(id);
@@ -56,11 +66,18 @@ app.delete("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const deployment = await appFrontendDeploymentsRepository.getByIdForApp(id, deploymentId);
-    if (!deployment) return c.json({ success: false, error: "Deployment not found" }, 404);
+    const deployment = await appFrontendDeploymentsRepository.getByIdForApp(
+      id,
+      deploymentId,
+    );
+    if (!deployment)
+      return c.json({ success: false, error: "Deployment not found" }, 404);
     if (deployment.status === "active") {
       return c.json(
-        { success: false, error: "Cannot delete the active deployment; activate another first" },
+        {
+          success: false,
+          error: "Cannot delete the active deployment; activate another first",
+        },
         409,
       );
     }
