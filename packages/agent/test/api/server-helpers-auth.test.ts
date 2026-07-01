@@ -85,6 +85,9 @@ describe("applyCors", () => {
       CORS_ALLOWED_HEADERS,
     );
     expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toBe(
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    );
 
     const allowedHeaders = String(
       res.headers.get("Access-Control-Allow-Headers"),

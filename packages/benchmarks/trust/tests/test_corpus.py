@@ -83,6 +83,16 @@ class TestCorpusIntegrity:
         for tc in TEST_CORPUS:
             assert tc.input, f"Case {tc.id} has empty input"
 
+    def test_fake_system_command_case_is_prompt_injection_only(self) -> None:
+        """inj-14 should exercise fake system authority, not privilege escalation."""
+        case = next(tc for tc in TEST_CORPUS if tc.id == "inj-14")
+        assert case.category == ThreatCategory.PROMPT_INJECTION
+        assert case.expected_type == "prompt_injection"
+
+        privilege_terms = ("root", "privilege", "admin", "permission", "sudo")
+        case_input = case.input.lower()
+        assert not any(term in case_input for term in privilege_terms)
+
 
 class TestCorpusCategoryDistribution:
     """Verify category distribution is balanced and sufficient."""
