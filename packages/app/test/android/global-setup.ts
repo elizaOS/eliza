@@ -25,6 +25,7 @@ const HEALTH_POLL_MS = Number(
 );
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
+const CLEAR_APP_DATA = process.env.ELIZA_ANDROID_CLEAR_APP_DATA === "1";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -72,6 +73,12 @@ export default async function globalSetup() {
     execFileSync(adb, ["-s", serial, "install", "-r", "-d", apk], {
       stdio: "inherit",
     });
+  }
+
+  if (CLEAR_APP_DATA) {
+    console.log("[android-e2e] clearing app data before launch");
+    adbTry(adb, ["-s", serial, "shell", "am", "force-stop", APP_ID]);
+    adbTry(adb, ["-s", serial, "shell", "pm", "clear", APP_ID]);
   }
 
   // Pre-grant the runtime permissions the app requests on launch, so a system
