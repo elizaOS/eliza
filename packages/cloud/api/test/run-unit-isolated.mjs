@@ -25,11 +25,17 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
-const testsDir = path.join(pkgRoot, "__tests__");
+// Sweep the WHOLE package for unit tests, EXCLUDING dirs that run in a
+// different lane or are build output: `test/` holds the e2e harness (its own
+// `test:e2e` lane + a live server), and node_modules/dist/.turbo are artifacts.
+// Rooting the walk at `__tests__/` only meant colocated `<resource>/route.test.ts`
+// unit tests (billing, cron, credits, webhooks, …) never ran in CI.
+const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".turbo", "test"]);
 
 function walk(dir) {
   const out = [];
   for (const entry of readdirSync(dir)) {
+    if (EXCLUDED_DIRS.has(entry)) continue;
     const full = path.join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...walk(full));
     else if (/\.(test|spec)\.tsx?$/.test(entry)) out.push(full);
@@ -38,7 +44,8 @@ function walk(dir) {
 }
 
 const filter = process.argv[2];
-let files = walk(testsDir).sort();
+// Each file still runs in its own `bun test` process (mock.module isolation).
+let files = walk(pkgRoot).sort();
 if (filter) files = files.filter((f) => f.includes(filter));
 
 if (files.length === 0) {
