@@ -672,6 +672,9 @@ export class FileTaskStore extends InMemoryTaskStore {
   }
 }
 
+// `last_activity_at` holds a Date.now() ms epoch (~1.75e12), which overflows
+// postgres/pglite int4 — BIGINT is required there and maps to sqlite's 64-bit
+// INTEGER affinity, so it is portable across every backend this store engages.
 const TASK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS orchestrator_tasks (
   id TEXT PRIMARY KEY,
   status TEXT NOT NULL,
@@ -680,7 +683,7 @@ const TASK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS orchestrator_tasks (
   title TEXT,
   search_text TEXT,
   updated_at TEXT NOT NULL,
-  last_activity_at INTEGER NOT NULL,
+  last_activity_at BIGINT NOT NULL,
   document TEXT NOT NULL
 )`;
 
