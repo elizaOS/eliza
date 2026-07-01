@@ -105,6 +105,15 @@ export async function processStripeEvent(
       case "payment_intent.payment_failed":
         await handlePaymentIntentFailed(event);
         break;
+      case "charge.refunded":
+        await handleChargeRefunded(event);
+        break;
+      case "charge.dispute.funds_withdrawn":
+        await handleChargeDisputeFundsWithdrawn(event);
+        break;
+      case "charge.dispute.funds_reinstated":
+        await handleChargeDisputeFundsReinstated(event);
+        break;
       default:
         logger.debug(`[Stripe Queue] Unhandled event type: ${event.type}`);
     }
@@ -827,4 +836,186 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
       },
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// charge.refunded / charge.dispute.* — credit clawback/reinstatement (#10920, #10997)
+// ---------------------------------------------------------------------------
+
+/** The payment intent id off a charge, whether expanded or a bare string. */
+function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
+  return typeof charge.payment_intent === "string"
+    ? charge.payment_intent
+    : charge.payment_intent?.id;
+}
+
+/**
+ * Claw back org credits for the portion of a top-up charge that Stripe reversed.
+ * Balance top-ups grant credits 1:1 with USD, so `usdReversed` credits are
+ * removed up to the original grant and the org's current balance. Any
+ * unrecovered portion is recorded on the clawback transaction metadata because
+ * the organizations table has a nonnegative balance constraint. Only the DELTA
+ * past what was already clawed for this payment intent is removed, so multiple
+ * partial refunds and re-delivered webhooks are safe.
+ */
+async function clawbackForReversal(params: {
+  paymentIntentId: string | undefined;
+  usdReversed: number;
+  idempotencyKey: string;
+  source: string;
+  reference: string;
+}): Promise<void> {
+  const { paymentIntentId, usdReversed, idempotencyKey, source, reference } =
+    params;
+  if (!paymentIntentId || usdReversed <= 0) return;
+
+  // Only top-ups that actually granted org credits are clawable.
+  const grant =
+    await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
+  if (!grant || Number(grant.amount) <= 0) {
+    logger.info(
+      `[Stripe Queue] ${source} ${reference}: no credit grant for PI ${paymentIntentId}; nothing to claw back`,
+    );
+    return;
+  }
+
+  const grantAmount = Number(grant.amount);
+  if (!Number.isFinite(grantAmount) || grantAmount <= 0) {
+    logger.warn(
+      `[Stripe Queue] ${source} ${reference}: invalid credit grant amount for PI ${paymentIntentId}`,
+      { amount: grant.amount },
+    );
+    return;
+  }
+
+  const cappedUsdReversed = Math.min(usdReversed, grantAmount);
+  const alreadyClawed =
+    await creditsService.getClawedBackUsdForPaymentIntent(paymentIntentId);
+  const delta = Math.round((cappedUsdReversed - alreadyClawed) * 1e6) / 1e6;
+  if (delta <= 0) {
+    logger.info(
+      `[Stripe Queue] ${source} ${reference}: $${cappedUsdReversed.toFixed(2)} already clawed back for PI ${paymentIntentId}`,
+    );
+    return;
+  }
+
+  const result = await creditsService.clawbackCredits({
+    organizationId: grant.organization_id,
+    amount: delta,
+    description: `Stripe ${source} clawback — ${reference}`,
+    stripePaymentIntentId: idempotencyKey,
+    metadata: {
+      payment_intent_id: paymentIntentId,
+      reversed_usd: usdReversed,
+      capped_reversed_usd: cappedUsdReversed,
+      source,
+      reference,
+    },
+  });
+
+  if (result.alreadyProcessed) {
+    logger.info(
+      `[Stripe Queue] ${source} ${reference}: clawback key ${idempotencyKey} already processed`,
+    );
+    return;
+  }
+
+  logger.warn(
+    `[Stripe Queue] Clawed back $${result.appliedAmount.toFixed(2)} from org ${grant.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
+    {
+      requestedUsd: delta,
+      unrecoveredUsd: result.shortfallAmount,
+    },
+  );
+}
+
+async function handleChargeRefunded(event: Stripe.Event): Promise<void> {
+  const charge = event.data.object as Stripe.Charge;
+  // `amount_refunded` is the CUMULATIVE refunded amount (cents) on the charge.
+  await clawbackForReversal({
+    paymentIntentId: chargePaymentIntentId(charge),
+    usdReversed: (charge.amount_refunded ?? 0) / 100,
+    // Key on the cumulative amount so each new partial-refund total is a distinct
+    // idempotent clawback, while a re-delivery of the same state is a no-op.
+    idempotencyKey: `stripe:refund:${charge.id}:${charge.amount_refunded}`,
+    source: "charge.refunded",
+    reference: `charge ${charge.id}`,
+  });
+}
+
+async function handleChargeDisputeFundsWithdrawn(
+  event: Stripe.Event,
+): Promise<void> {
+  const dispute = event.data.object as Stripe.Dispute;
+  const chargeId =
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  const paymentIntentId =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+  // Stripe withdraws funds when the dispute opens. If the platform wins, the
+  // separate `funds_reinstated` event below compensates the applied clawback.
+  await clawbackForReversal({
+    paymentIntentId,
+    usdReversed: (dispute.amount ?? 0) / 100,
+    idempotencyKey: `stripe:dispute:${dispute.id}`,
+    source: "charge.dispute.funds_withdrawn",
+    reference: `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`,
+  });
+}
+
+async function handleChargeDisputeFundsReinstated(
+  event: Stripe.Event,
+): Promise<void> {
+  const dispute = event.data.object as Stripe.Dispute;
+  const chargeId =
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+  const paymentIntentId =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+  const source = "charge.dispute.funds_reinstated";
+  const reference = `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`;
+  const clawbackKey = `stripe:dispute:${dispute.id}`;
+
+  const clawback =
+    await creditsService.getTransactionByStripePaymentIntent(clawbackKey);
+  if (clawback?.type !== "clawback") {
+    logger.info(
+      `[Stripe Queue] ${source} ${reference}: no dispute clawback found; nothing to reinstate`,
+    );
+    return;
+  }
+
+  const appliedClawbackUsd = Math.abs(Number(clawback.amount));
+  const reinstatedUsd = Math.min(
+    (dispute.amount ?? 0) / 100,
+    appliedClawbackUsd,
+  );
+  if (!Number.isFinite(reinstatedUsd) || reinstatedUsd <= 0) {
+    logger.info(
+      `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
+      { clawbackAmount: clawback.amount, disputeAmount: dispute.amount },
+    );
+    return;
+  }
+
+  const result = await creditsService.refundCredits({
+    organizationId: clawback.organization_id,
+    amount: reinstatedUsd,
+    description: `Stripe ${source} reinstatement — ${reference}`,
+    stripePaymentIntentId: `${clawbackKey}:reinstated`,
+    metadata: {
+      payment_intent_id: paymentIntentId,
+      reinstated_usd: (dispute.amount ?? 0) / 100,
+      applied_reinstatement_usd: reinstatedUsd,
+      clawback_key: clawbackKey,
+      source,
+      reference,
+    },
+  });
+
+  logger.info(
+    `[Stripe Queue] Reinstated $${reinstatedUsd.toFixed(2)} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
+  );
 }

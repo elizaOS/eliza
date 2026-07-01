@@ -9,17 +9,31 @@
 
 import { mock } from "bun:test";
 import type {
+  ActivateAppFrontendResponse,
+  AppBackupSnapshot,
   AppDeployStatusResponse,
   AppDto,
   AppEarningsResponse,
   AppMonetizationResponse,
   AppResponse,
+  CreateAdSlotInput,
+  CreateAdSlotResponse,
   CreateAppInput,
   CreateAppResponse,
+  CreateBookingInput,
+  CreateBookingResponse,
+  CreateInfluencerProfileInput,
+  CreateInfluencerProfileResponse,
   DeleteAppResponse,
+  DeployAppFrontendInput,
+  DeployAppFrontendResponse,
   DeployAppInput,
   DeployAppResponse,
+  ExportAppBackupResponse,
+  ListAdSlotsResponse,
+  ListAppFrontendDeploymentsResponse,
   ListAppsResponse,
+  ListInfluencersResponse,
   RegenerateAppApiKeyResponse,
   UpdateAppInput,
   UpdateAppMonetizationInput,
@@ -31,6 +45,29 @@ import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
 type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
+type CreateAdSlotFn = (
+  input: CreateAdSlotInput,
+) => Promise<CreateAdSlotResponse>;
+type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
+type ListFrontendDeploymentsFn = (
+  appId: string,
+) => Promise<ListAppFrontendDeploymentsResponse>;
+type ActivateFrontendFn = (
+  appId: string,
+  deploymentId: string,
+) => Promise<ActivateAppFrontendResponse>;
+type DeployAppFrontendFn = (
+  id: string,
+  input: DeployAppFrontendInput,
+) => Promise<DeployAppFrontendResponse>;
+type CreateBookingFn = (
+  input: CreateBookingInput,
+) => Promise<CreateBookingResponse>;
+type CreateInfluencerProfileFn = (
+  input: CreateInfluencerProfileInput,
+) => Promise<CreateInfluencerProfileResponse>;
+type ListInfluencersFn = (niche?: string) => Promise<ListInfluencersResponse>;
+type ExportAppBackupFn = (appId: string) => Promise<ExportAppBackupResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -64,6 +101,17 @@ interface SdkState {
   getApp: GetAppFn;
   createApp: CreateAppFn;
   deployApp: DeployAppFn;
+  createAdSlot: CreateAdSlotFn;
+  listAdSlots: ListAdSlotsFn;
+  deployAppFrontend: DeployAppFrontendFn;
+  listAppFrontendDeployments: ListFrontendDeploymentsFn;
+  activateAppFrontend: ActivateFrontendFn;
+  createInfluencerProfile: CreateInfluencerProfileFn;
+  createBooking: CreateBookingFn;
+  listInfluencers: ListInfluencersFn;
+  createAdSlot: CreateAdSlotFn;
+  listAdSlots: ListAdSlotsFn;
+  exportAppBackup: ExportAppBackupFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -90,6 +138,111 @@ function defaultState(): SdkState {
         deploymentId: "dep_1",
         status: "BUILDING",
         startedAt: "2026-06-29T00:00:00.000Z",
+      }),
+    createAdSlot: () =>
+      Promise.resolve({
+        success: true,
+        slot: {
+          id: "slot_1",
+          app_id: "app_1",
+          name: "Slot",
+          format: "banner",
+          status: "active",
+          floor_cpm: "10.0000",
+          total_impressions: 0,
+          total_clicks: 0,
+          total_revenue: "0.000000",
+        },
+        adTagToken: "v1.9999999999.deadbeef",
+      }),
+    listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
+    deployAppFrontend: () =>
+      Promise.resolve({
+        success: true,
+        deployment: {
+          id: "fe_dep_1",
+          app_id: "app_1",
+          version: 1,
+          status: "active",
+          r2_prefix: "app-frontends/o/app_1/fe_dep_1/",
+          content_hash: "a".repeat(64),
+          file_count: 1,
+          total_bytes: 100,
+          error: null,
+          created_at: "2026-06-29T00:00:00.000Z",
+          activated_at: "2026-06-29T00:00:00.000Z",
+        },
+      }),
+    listAppFrontendDeployments: () =>
+      Promise.resolve({
+        success: true,
+        active_deployment_id: null,
+        deployments: [],
+      }),
+    activateAppFrontend: (_a, id) =>
+      Promise.resolve({
+        success: true,
+        deployment: {
+          id,
+          app_id: "app_1",
+          version: 1,
+          status: "active",
+          r2_prefix: "p",
+          content_hash: null,
+          file_count: 0,
+          total_bytes: 0,
+          error: null,
+          created_at: "2020-01-01",
+          activated_at: "2020-01-01",
+        },
+      }),
+    createInfluencerProfile: () =>
+      Promise.resolve({
+        success: true,
+        profile: {
+          id: "inf_1",
+          display_name: "Creator",
+          niche: null,
+          bio: null,
+          platforms: [],
+          status: "active",
+        },
+      }),
+    listInfluencers: () => Promise.resolve({ success: true, profiles: [] }),
+    createBooking: () =>
+      Promise.resolve({
+        success: true,
+        booking: {
+          id: "bk_1",
+          advertiser_org_id: "org",
+          influencer_profile_id: "inf_1",
+          amount: "100.00",
+          status: "offered",
+          brief: "b",
+        },
+      }),
+    exportAppBackup: () =>
+      Promise.resolve({
+        success: true,
+        backup: {
+          version: 1,
+          exportedAt: "2020-01-01T00:00:00Z",
+          app: {
+            name: "App",
+            description: null,
+            app_url: "https://a",
+            allowed_origins: [],
+            logo_url: null,
+            website_url: null,
+            contact_email: null,
+            linked_character_ids: [],
+          },
+          monetization: {
+            enabled: false,
+            inference_markup_percentage: 0,
+            purchase_share_percentage: 0,
+          },
+        } as AppBackupSnapshot,
       }),
     getAppDeployStatus: () =>
       Promise.resolve({
@@ -127,6 +280,37 @@ export function setCreateApp(fn: CreateAppFn): void {
 }
 export function setDeployApp(fn: DeployAppFn): void {
   state.deployApp = fn;
+}
+export function setCreateAdSlot(fn: CreateAdSlotFn): void {
+  state.createAdSlot = fn;
+}
+export function setListAdSlots(fn: ListAdSlotsFn): void {
+  state.listAdSlots = fn;
+}
+export function setDeployAppFrontend(fn: DeployAppFrontendFn): void {
+  state.deployAppFrontend = fn;
+}
+export function setListAppFrontendDeployments(
+  fn: ListFrontendDeploymentsFn,
+): void {
+  state.listAppFrontendDeployments = fn;
+}
+export function setActivateAppFrontend(fn: ActivateFrontendFn): void {
+  state.activateAppFrontend = fn;
+}
+export function setCreateInfluencerProfile(
+  fn: CreateInfluencerProfileFn,
+): void {
+  state.createInfluencerProfile = fn;
+}
+export function setListInfluencers(fn: ListInfluencersFn): void {
+  state.listInfluencers = fn;
+}
+export function setCreateBooking(fn: CreateBookingFn): void {
+  state.createBooking = fn;
+}
+export function setExportAppBackup(fn: ExportAppBackupFn): void {
+  state.exportAppBackup = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -168,6 +352,43 @@ export class FakeElizaCloudClient {
   }
   deployApp(id: string, input?: DeployAppInput): Promise<DeployAppResponse> {
     return state.deployApp(id, input);
+  }
+  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
+    return state.createAdSlot(input);
+  }
+  listAdSlots(): Promise<ListAdSlotsResponse> {
+    return state.listAdSlots();
+  }
+  deployAppFrontend(
+    id: string,
+    input: DeployAppFrontendInput,
+  ): Promise<DeployAppFrontendResponse> {
+    return state.deployAppFrontend(id, input);
+  }
+  listAppFrontendDeployments(
+    appId: string,
+  ): Promise<ListAppFrontendDeploymentsResponse> {
+    return state.listAppFrontendDeployments(appId);
+  }
+  activateAppFrontend(
+    appId: string,
+    deploymentId: string,
+  ): Promise<ActivateAppFrontendResponse> {
+    return state.activateAppFrontend(appId, deploymentId);
+  }
+  createInfluencerProfile(
+    input: CreateInfluencerProfileInput,
+  ): Promise<CreateInfluencerProfileResponse> {
+    return state.createInfluencerProfile(input);
+  }
+  listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
+    return state.listInfluencers(niche);
+  }
+  createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
+    return state.createBooking(input);
+  }
+  exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
+    return state.exportAppBackup(appId);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);

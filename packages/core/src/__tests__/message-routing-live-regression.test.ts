@@ -85,6 +85,25 @@ describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () 
 		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
 	});
 
+	it("forces the fetch even when the model HALLUCINATES a complete answer to a fresh ask", () => {
+		// Adversarial-review hardening: the valve must never keep a
+		// confident-but-unverified plain-text "answer" to an explicitly fresh
+		// question — a stale price delivered confidently is worse than the extra
+		// fetch. looksLikeWebSearchRequest gates the valve off for the
+		// current-info + market/news/weather class.
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply(
+				"Bitcoin is trading at $45,000 right now, up 2% on the day.",
+			),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "what is the current price of bitcoin right now?",
+			},
+		);
+		expect(out.plan.requiresTool).toBe(true);
+		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
+	});
+
 	it("still plans a coding-work request even with a complete-looking reply", () => {
 		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
 			simplePlainReply(

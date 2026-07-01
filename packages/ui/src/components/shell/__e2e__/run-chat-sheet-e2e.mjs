@@ -26,6 +26,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  touchDragHold,
+  touchTap,
+} from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
@@ -151,6 +155,21 @@ const sheetHeight = (p) =>
         .querySelector('[data-testid="chat-thread"]')
         ?.getBoundingClientRect().height ?? 0,
   );
+async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
+  await p
+    .waitForFunction(
+      ({ expected, tolerance }) => {
+        const h =
+          document
+            .querySelector('[data-testid="chat-thread"]')
+            ?.getBoundingClientRect().height ?? 0;
+        return Math.abs(h - expected) <= tolerance;
+      },
+      { expected, tolerance },
+      { timeout },
+    )
+    .catch(() => {});
+}
 const viewportH = (p) =>
   p.evaluate(() => window.visualViewport?.height ?? window.innerHeight);
 // Distance from the viewport top to the panel's top edge — at FULL the sheet
@@ -190,12 +209,15 @@ const SETTLE = 480; // spring settle time before measuring a detent
 
 /**
  * Real pointer gesture on the grabber. `up` px is the pull distance (positive =
- * up/open, negative = down/close). `pointer` is "mouse" (real Playwright mouse,
- * pointerType=mouse) or "touch" (dispatched PointerEvents, pointerType=touch).
+ * up/open, negative = down/close). `pointer` is "mouse" (real Playwright mouse)
+ * or "touch" (CDP Input.dispatchTouchEvent through Chromium's real touch path).
  * `slow` inserts per-step waits so elapsed time is real → LOW velocity (forces a
  * distance-threshold decision); without it the moves fire back-to-back → HIGH
  * velocity (a flick). `hold` leaves the pointer down for a mid-drag screenshot.
  */
+const heldTouchDrags = new WeakMap();
+const testIdSelector = (testId) => `[data-testid="${testId}"]`;
+
 async function gesture(
   p,
   up,
@@ -222,52 +244,14 @@ async function gesture(
     }
     if (!hold) await p.mouse.up();
   } else {
-    await p.evaluate(
-      ({ cx, cy, target }) => {
-        const el = document.querySelector(`[data-testid="${target}"]`);
-        window.__g = el;
-        el.dispatchEvent(
-          new PointerEvent("pointerdown", {
-            pointerId: 1,
-            pointerType: "touch",
-            clientX: cx,
-            clientY: cy,
-            bubbles: true,
-          }),
-        );
-      },
-      { cx, cy, target },
-    );
-    for (let i = 1; i <= steps; i += 1) {
-      await p.evaluate(
-        ({ cx, y }) =>
-          window.__g.dispatchEvent(
-            new PointerEvent("pointermove", {
-              pointerId: 1,
-              pointerType: "touch",
-              clientX: cx,
-              clientY: y,
-              bubbles: true,
-            }),
-          ),
-        { cx, y: targetY(i) },
-      );
-      if (slow) await p.waitForTimeout(28);
-    }
-    if (!hold) {
-      await p.evaluate(
-        ({ cx, y }) =>
-          window.__g.dispatchEvent(
-            new PointerEvent("pointerup", {
-              pointerId: 1,
-              pointerType: "touch",
-              clientX: cx,
-              clientY: y,
-              bubbles: true,
-            }),
-          ),
-        { cx, y: targetY(steps) },
-      );
+    const drag = await touchDragHold(p, testIdSelector(target), 0, -up, {
+      steps,
+      stepDelayMs: slow ? 28 : 0,
+    });
+    if (hold) {
+      heldTouchDrags.set(p, drag);
+    } else {
+      await drag.release();
     }
   }
 }
@@ -275,21 +259,10 @@ async function release(p, pointer, up = 0) {
   if (pointer === "mouse") {
     await p.mouse.up();
   } else {
-    const b = await grabberBox(p);
-    const y = (b?.y ?? 0) + (b?.height ?? 0) / 2 - up;
-    await p.evaluate(
-      (y) =>
-        window.__g?.dispatchEvent(
-          new PointerEvent("pointerup", {
-            pointerId: 1,
-            pointerType: "touch",
-            clientX: 0,
-            clientY: y,
-            bubbles: true,
-          }),
-        ),
-      y,
-    );
+    const drag = heldTouchDrags.get(p);
+    if (!drag) throw new Error("release(touch): no held real-touch drag");
+    heldTouchDrags.delete(p);
+    await drag.release();
   }
 }
 
@@ -309,10 +282,11 @@ async function runDragSuite(p, pointer, tag) {
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
   await snap(p, `${tag}-collapsed`);
 
-  // FLICK up → HALF (fast pull crosses the velocity threshold → snap to a detent)
-  await gesture(p, 90, { pointer, slow: false, steps: 2 });
+  // FLICK up → HALF (fast deliberate pull crosses the velocity threshold → snap to a detent)
+  await gesture(p, 160, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
+  await waitForSheetHeightNear(p, halfH, TOL);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
   // #9142 regression guard: the grabber BAR (inner span) must actually PAINT
@@ -417,9 +391,9 @@ async function runDragSuite(p, pointer, tag) {
 
   // FREE DRAG: a deliberate SLOW drag RESTS where released (not snapped to a
   // detent). Flick to FULL first for a known start, then slow-drag down. The
-  // strict "rests in the middle" check is mouse-authoritative — touch pointer
-  // dispatch in this harness can coalesce a slow drag and under-travel; touch
-  // still verifies the sheet stays open (no snap-shut) after the drag.
+  // strict "rests in the middle" check is mouse-authoritative — real touch can
+  // coalesce a slow drag and under-travel; touch still verifies the sheet stays
+  // open (no snap-shut) after the drag.
   await gesture(p, 200, { pointer, slow: false, steps: 2 });
   await p.waitForTimeout(SETTLE);
   const startFree = Math.round(await sheetHeight(p));
@@ -509,7 +483,11 @@ try {
 
   // ===== CONTROLS + INPUT STATES (mobile viewport for the tactile surface) =====
   const ctrl = async () =>
-    browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2 });
+    browser.newPage({
+      viewport: { width: 402, height: 874 },
+      deviceScaleFactor: 2,
+      hasTouch: true,
+    });
 
   // empty thread: no sheet, just the composer (suggestion strip is flagged off)
   {
@@ -1009,20 +987,17 @@ try {
     );
     await snap(p, "state-keyboard-collapsed");
 
-    // pull to FULL with the keyboard still up — the WORST case for height.
-    // Structural flicks (fast, 2 steps), not slow drags: a slow drag settles by
-    // free-rest magnetism and 120+240px of travel cannot arithmetically reach
-    // the full-detent magnet band with the keyboard mock open (panelMaxH 464 −
-    // magnet 64 = 400). The old `slow: true` variant only passed when harness
-    // timing accidentally crossed the 0.5 px/ms flick threshold — a race that
-    // flipped under load.
+    // Flick to FULL with the keyboard still up — the WORST case for height.
+    // Slow drags deliberately free-rest; the FULL semantic state requires a
+    // committed flick/pull release, so drive the real touch path that way.
     await gesture(p, 120, { pointer: "touch", slow: false, steps: 2 }); // → HALF
     await p.waitForTimeout(SETTLE);
     await gesture(p, 240, { pointer: "touch", slow: false, steps: 2 }); // → FULL
     await p.waitForTimeout(SETTLE);
+    const keyboardFullDetent = await detent(p);
     assert(
-      (await detent(p)) === "full",
-      "KEYBOARD: pulled to FULL with the keyboard open",
+      keyboardFullDetent === "full",
+      `KEYBOARD: pulled to FULL with the keyboard open (got ${keyboardFullDetent})`,
     );
     const full = await metrics();
     assert(
@@ -1141,25 +1116,8 @@ try {
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
-    // Real tap: pointerdown then pointerup at the SAME spot (no move).
-    const pb = await p.getByTestId("chat-pill").boundingBox();
-    const tx = pb.x + pb.width / 2;
-    const ty = pb.y + pb.height / 2;
-    await p.evaluate(
-      ({ tx, ty }) => {
-        const el = document.querySelector('[data-testid="chat-pill"]');
-        const opts = {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: tx,
-          clientY: ty,
-          bubbles: true,
-        };
-        el.dispatchEvent(new PointerEvent("pointerdown", opts));
-        el.dispatchEvent(new PointerEvent("pointerup", opts));
-      },
-      { tx, ty },
-    );
+    // Real tap: touchStart then touchEnd at the SAME spot (no move).
+    await touchTap(p, '[data-testid="chat-pill"]');
     await p.waitForTimeout(SETTLE);
     const openedOpacity = await p
       .getByTestId("chat-content")
@@ -1426,9 +1384,9 @@ try {
     );
     await snap(p, "state-OPEN_UNDER_HALF");
 
-    // CLOSED — flick down to input, then down again to the pill. Touch pointer:
+    // CLOSED — flick down to input, then down again to the pill. Real touch:
     // the grabber sits near the screen bottom, so a downward mouse drag clamps at
-    // the viewport edge; dispatched touch events carry the full downward delta.
+    // the viewport edge; CDP touch events carry the full downward delta.
     await gesture(p, -vh, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });

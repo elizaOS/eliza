@@ -7,7 +7,7 @@
  *   - {@link ConnectorStatus} — uniform `ok | degraded | disconnected` triple.
  *   - {@link DispatchResult}  — typed success / failure for `send`.
  */
-import { LifeOpsServiceError } from "../service.js";
+import { LifeOpsServiceError } from "@elizaos/shared";
 import type { ConnectorStatus, DispatchResult } from "./contract.js";
 
 export type LegacyConnectorStatus = {
@@ -144,12 +144,22 @@ export interface ConnectorSendPayload {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Type guard for the outbound `send` payload. Rejects any value that is not a
+ * `{ target: string; message: string }` object. `target` must be a non-empty,
+ * non-whitespace string: an empty or whitespace-only recipient is never a valid
+ * identity, and letting it through would hand an unroutable send to transport.
+ */
 export function isConnectorSendPayload(
   value: unknown,
 ): value is ConnectorSendPayload {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return typeof v.target === "string" && typeof v.message === "string";
+  return (
+    typeof v.target === "string" &&
+    v.target.trim().length > 0 &&
+    typeof v.message === "string"
+  );
 }
 
 export function rejectInvalidPayload(): DispatchResult {

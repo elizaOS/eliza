@@ -5,6 +5,7 @@ import {
   getBaseUrl,
   isServerReachable,
 } from "./_helpers/api";
+import { approveAppInDb } from "./_helpers/review";
 
 let serverReachable = false;
 let hasTestApiKey = false;
@@ -32,8 +33,12 @@ async function createTestApp(): Promise<string> {
   expect(res.status).toBe(200);
   const body = (await res.json()) as { app?: { id?: string } };
   expect(body.app?.id).toBeTruthy();
-  createdAppIds.push(body.app?.id as string);
-  return body.app?.id as string;
+  const appId = body.app?.id as string;
+  createdAppIds.push(appId);
+  // Charges require a compliance-approved app (#10732). This suite exercises the
+  // charge/settlement path, not the review gate, so approve the app directly.
+  await approveAppInDb(appId);
+  return appId;
 }
 
 beforeAll(async () => {
@@ -263,7 +268,7 @@ describe("PUT /api/v1/apps/:id", () => {
     expect(monetizeRes.status).toBe(200);
 
     // 2) baseline the org credit balance + the app's creator earnings.
-    const baselineBalanceRes = await api.get("/api/v1/app-credits/balance", {
+    const baselineBalanceRes = await api.get(`/api/v1/app-credits/balance?app_id=${appId}`, {
       headers: bearerHeaders(),
     });
     expect(baselineBalanceRes.status).toBe(200);
@@ -316,7 +321,7 @@ describe("PUT /api/v1/apps/:id", () => {
     let earningsIncreased = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       await new Promise((r) => setTimeout(r, 750));
-      const balanceRes = await api.get("/api/v1/app-credits/balance", {
+      const balanceRes = await api.get(`/api/v1/app-credits/balance?app_id=${appId}`, {
         headers: bearerHeaders(),
       });
       const balanceNow = Number(

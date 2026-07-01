@@ -126,6 +126,18 @@ describe("ClaudeSdkSession — TEXT mode", () => {
     await session.dispose();
   });
 
+  it("THROWS when the subscription-limit envelope is only in result.result", async () => {
+    const { session } = makeSession([
+      {
+        text: "",
+        subtype: "success",
+        resultText: "You've hit your session limit · resets 9:30pm (UTC)",
+      },
+    ]);
+    await expect(session.generate("hi")).rejects.toThrow(/subscription rate limit reached/);
+    await session.dispose();
+  });
+
   it("self-heals: a throwing turn disposes, the next call re-starts the session", async () => {
     const { session, starts } = makeSession([
       { text: "", subtype: "error_max_turns" }, // turn 1 throws
@@ -184,6 +196,25 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
     const out = JSON.parse(await session.route("hi"));
     expect(out.action).toBe("REPLY");
     expect(out.params.text).toBe("real");
+    await session.dispose();
+  });
+
+  it("the captured decision wins over residual subscription-limit text", async () => {
+    const { session } = makeSession(
+      [
+        {
+          toolCall: { action: "WEB_FETCH", params: { url: "https://example.test" } },
+          text: "You've hit your session limit · resets 9:30pm (UTC)",
+          subtype: "error_max_turns",
+        },
+      ],
+      { router: true }
+    );
+    const out = JSON.parse(await session.route("price?"));
+    expect(out).toEqual({
+      action: "WEB_FETCH",
+      params: { url: "https://example.test" },
+    });
     await session.dispose();
   });
 

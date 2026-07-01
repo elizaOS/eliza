@@ -23,12 +23,12 @@ export function createDuffelConnectorContribution(
 ): ConnectorContribution {
   return {
     kind: "duffel",
-    capabilities: [
-      "duffel.flights.search",
-      "duffel.offers.read",
-      "duffel.orders.read",
-      "duffel.orders.create",
-    ],
+    // Only what this contribution actually serves: `read` performs a flight
+    // search (which returns offers). It has no order read/create path — those
+    // must not be advertised, or `registry.byCapability("duffel.orders.create")`
+    // resolves a connector that only searches flights (real order creation lives
+    // on LifeOpsService.bookFlightItinerary → travel-service). (#10721)
+    capabilities: ["duffel.flights.search", "duffel.offers.read"],
     modes: ["cloud", "local"],
     describe: { label: "Duffel (Travel)" },
     async start() {},

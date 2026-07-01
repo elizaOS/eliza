@@ -87,7 +87,7 @@ export function kokoroEngineModelDir(rootOverride?: string): string {
 /**
  * Probe disk for a usable Kokoro layout. Returns null when any required
  * piece is missing — the engine then falls back to its existing behaviour
- * (fused omnivoice or `StubOmniVoiceBackend`).
+ * (fused omnivoice or `StubTtsBackend`).
  */
 export function resolveKokoroEngineConfig(
 	rootOverride?: string,

@@ -2,7 +2,7 @@
  * Media Provider Abstraction Layer
  *
  * Provides a single interface for media generation across multiple providers:
- * - Image Generation: FAL.ai, OpenAI (DALL-E), Google (Imagen), xAI, Eliza Cloud
+ * - Image Generation: FAL.ai, OpenAI (DALL-E), Google (Imagen), xAI
  * - Video Generation: FAL.ai, OpenAI (Sora), Google (Veo), Eliza Cloud
  * - Audio Generation: Suno, ElevenLabs (SFX), Eliza Cloud
  * - Vision (Analysis): OpenAI, Google, Anthropic, xAI, Eliza Cloud
@@ -55,7 +55,6 @@ async function withProviderErrorBoundary<T>(
   }
 }
 
-const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://elizacloud.ai/api/v1";
 const DEFAULT_AUDIO_TIMEOUT_MS = 120_000;
 
 const VEO_OPERATION_POLL_INTERVAL_MS = 10_000;
@@ -113,15 +112,6 @@ function getAudioKind(
     normalizeAudioKind(config?.kind) ??
     normalizeAudioKind(config?.defaultKind) ??
     "music"
-  );
-}
-
-function createCloudAudioProvider(
-  options: MediaProviderFactoryOptions,
-): AudioGenerationProvider {
-  return new ElizaCloudAudioProvider(
-    options.elizaCloudBaseUrl ?? DEFAULT_ELIZA_CLOUD_BASE_URL,
-    options.elizaCloudApiKey,
   );
 }
 
@@ -292,168 +282,6 @@ export interface VisionAnalysisProvider {
   analyze(
     options: VisionAnalysisOptions,
   ): Promise<MediaProviderResult<VisionAnalysisResult>>;
-}
-
-// ============================================================================
-// Eliza Cloud Provider Implementations
-// ============================================================================
-
-class ElizaCloudImageProvider implements ImageGenerationProvider {
-  name = "eliza-cloud";
-  private baseUrl: string;
-  private apiKey?: string;
-
-  constructor(baseUrl: string, apiKey?: string) {
-    this.baseUrl = baseUrl;
-    this.apiKey = apiKey;
-  }
-
-  async generate(
-    options: ImageGenerationOptions,
-  ): Promise<MediaProviderResult<ImageGenerationResult>> {
-    const response = await fetchWithTimeout(
-      `${this.baseUrl}/media/image/generate`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          prompt: options.prompt,
-          size: options.size,
-          quality: options.quality,
-          style: options.style,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      return { success: false, error: `Eliza Cloud error: ${text}` };
-    }
-
-    const data = (await response.json()) as {
-      imageUrl?: string;
-      imageBase64?: string;
-      revisedPrompt?: string;
-    };
-    return {
-      success: true,
-      data: {
-        imageUrl: data.imageUrl,
-        imageBase64: data.imageBase64,
-        revisedPrompt: data.revisedPrompt,
-      },
-    };
-  }
-}
-
-class ElizaCloudVideoProvider implements VideoGenerationProvider {
-  name = "eliza-cloud";
-  private baseUrl: string;
-  private apiKey?: string;
-
-  constructor(baseUrl: string, apiKey?: string) {
-    this.baseUrl = baseUrl;
-    this.apiKey = apiKey;
-  }
-
-  async generate(
-    options: VideoGenerationOptions,
-  ): Promise<MediaProviderResult<VideoGenerationResult>> {
-    const response = await fetchWithTimeout(
-      `${this.baseUrl}/media/video/generate`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          prompt: options.prompt,
-          duration: options.duration,
-          aspectRatio: options.aspectRatio,
-          imageUrl: options.imageUrl,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      return { success: false, error: `Eliza Cloud error: ${text}` };
-    }
-
-    const data = (await response.json()) as {
-      videoUrl?: string;
-      thumbnailUrl?: string;
-      duration?: number;
-    };
-    return {
-      success: true,
-      data: {
-        videoUrl: data.videoUrl,
-        thumbnailUrl: data.thumbnailUrl,
-        duration: data.duration,
-      },
-    };
-  }
-}
-
-class ElizaCloudAudioProvider implements AudioGenerationProvider {
-  name = "eliza-cloud";
-  private baseUrl: string;
-  private apiKey?: string;
-
-  constructor(baseUrl: string, apiKey?: string) {
-    this.baseUrl = baseUrl;
-    this.apiKey = apiKey;
-  }
-
-  async generate(
-    options: AudioGenerationOptions,
-  ): Promise<MediaProviderResult<AudioGenerationResult>> {
-    const response = await fetchWithTimeout(
-      `${this.baseUrl}/media/audio/generate`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          prompt: options.prompt,
-          kind: options.kind,
-          audioKind: options.audioKind,
-          duration: options.duration,
-          instrumental: options.instrumental,
-          genre: options.genre,
-          voiceId: options.voiceId,
-          modelId: options.modelId,
-          outputFormat: options.outputFormat,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      return { success: false, error: `Eliza Cloud error: ${text}` };
-    }
-
-    const data = (await response.json()) as {
-      audioUrl?: string;
-      title?: string;
-      duration?: number;
-    };
-    return {
-      success: true,
-      data: {
-        audioUrl: data.audioUrl,
-        title: data.title,
-        duration: data.duration,
-      },
-    };
-  }
 }
 
 class ElizaCloudVisionProvider implements VisionAnalysisProvider {
@@ -1879,7 +1707,8 @@ export function createImageProvider(
   config: ImageConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): ImageGenerationProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
   const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
 
   switch (provider) {
@@ -1911,9 +1740,9 @@ export function createImageProvider(
         "Configure a direct provider (fal, openai, google, xai) or enable cloud media.",
     );
   }
-  return new ElizaCloudImageProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
-    options.elizaCloudApiKey,
+  throw new Error(
+    "Cloud image generation is handled by the registered ModelType.IMAGE model. " +
+      "Enable @elizaos/plugin-elizacloud with ELIZAOS_CLOUD_API_KEY, or configure a direct provider (fal, openai, google, xai).",
   );
 }
 
@@ -1921,7 +1750,8 @@ export function createVideoProvider(
   config: VideoConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): VideoGenerationProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
   const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
 
   switch (provider) {
@@ -1948,9 +1778,9 @@ export function createVideoProvider(
         "Configure a direct provider (fal, openai, google) or enable cloud media.",
     );
   }
-  return new ElizaCloudVideoProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
-    options.elizaCloudApiKey,
+  throw new Error(
+    "Cloud video generation is handled by the registered ModelType.VIDEO model. " +
+      "Enable @elizaos/plugin-elizacloud with ELIZAOS_CLOUD_API_KEY, or configure a direct provider (fal, openai, google).",
   );
 }
 
@@ -1989,22 +1819,20 @@ function getAutoAudioProvider(
 
 function missingAudioProviderError(kind: AudioKind): string {
   return (
-    `No ${kind} audio provider configured and cloud media is disabled. ` +
-    "Configure a direct provider (suno, elevenlabs, fal) or enable cloud media."
+    `No ${kind} audio provider configured. ` +
+    "Configure a direct provider (suno, elevenlabs, fal), or use cloud media through the registered ModelType.AUDIO/TEXT_TO_SPEECH models."
   );
 }
 
 class RoutedAudioProvider implements AudioGenerationProvider {
   name = "audio-router";
   private config?: AudioGenConfig;
-  private options: MediaProviderFactoryOptions;
 
   constructor(
     config: AudioGenConfig | undefined,
-    options: MediaProviderFactoryOptions,
+    _options: MediaProviderFactoryOptions,
   ) {
     this.config = config;
-    this.options = options;
   }
 
   async generate(
@@ -2017,13 +1845,7 @@ class RoutedAudioProvider implements AudioGenerationProvider {
       "cloud";
 
     if (providerName === "cloud") {
-      if (this.options.cloudMediaDisabled) {
-        return { success: false, error: missingAudioProviderError(kind) };
-      }
-      return createCloudAudioProvider(this.options).generate({
-        ...options,
-        kind,
-      });
+      return { success: false, error: missingAudioProviderError(kind) };
     }
 
     try {
@@ -2060,14 +1882,7 @@ class RoutedAudioProvider implements AudioGenerationProvider {
       };
     }
 
-    if (this.options.cloudMediaDisabled) {
-      return { success: false, error: missingAudioProviderError(kind) };
-    }
-
-    return createCloudAudioProvider(this.options).generate({
-      ...options,
-      kind,
-    });
+    return { success: false, error: missingAudioProviderError(kind) };
   }
 }
 
@@ -2084,13 +1899,16 @@ export function createAudioProvider(
         "Audio media is configured for cloud mode but cloud media is disabled.",
       );
     }
-    return createCloudAudioProvider(options);
+    throw new Error(
+      "Cloud audio generation is handled by the registered ModelType.AUDIO/TEXT_TO_SPEECH models. " +
+        "Enable @elizaos/plugin-elizacloud with ELIZAOS_CLOUD_API_KEY, or configure a direct provider (suno, elevenlabs, fal).",
+    );
   }
 
-  if (options.cloudMediaDisabled && !hasUsableDirectAudioProvider(config)) {
+  if (!hasUsableDirectAudioProvider(config)) {
     throw new Error(
-      "No audio provider configured and cloud media is disabled. " +
-        "Configure a direct provider (suno, elevenlabs, fal) or enable cloud media.",
+      "No audio provider configured. " +
+        "Configure a direct provider (suno, elevenlabs, fal), or select cloud media with @elizaos/plugin-elizacloud enabled.",
     );
   }
 
@@ -2101,7 +1919,8 @@ export function createVisionProvider(
   config: VisionConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): VisionAnalysisProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
   const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
 
   switch (provider) {

@@ -235,6 +235,17 @@ jobs:
       - name: UI determinism gate
         run: bun run audit:ui-determinism
 
+      # Develop PRs do not run the canonical `ci.yaml` main-branch quality job,
+      # so keep the anti-larp/test-realness gates enforced here too.
+      - name: Anti-larp test gate self-test
+        run: bun run audit:focused-tests:self-test
+
+      - name: Anti-larp test gate
+        run: bun run audit:focused-tests
+
+      - name: Test realness ratchet
+        run: bun run audit:test-realness
+
   # `bun run lint` is intentionally separate from the static scans above: the
   # Turbo lint task depends on selected package builds, so it needs the normal
   # build-enabled workspace setup rather than the lean no-postinstall path.

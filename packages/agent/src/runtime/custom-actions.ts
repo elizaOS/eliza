@@ -606,8 +606,10 @@ export interface GuardedHttpGetResult {
 // lookup. A browser-like string is what these WAF-fronted endpoints accept; it
 // is overridable via ELIZA_WEB_FETCH_USER_AGENT so operators can refresh it
 // without a code change, and any caller-supplied User-Agent header still wins.
+const GUARDED_GET_OPERATOR_USER_AGENT =
+  process.env.ELIZA_WEB_FETCH_USER_AGENT?.trim() || undefined;
 const GUARDED_GET_DEFAULT_USER_AGENT =
-  process.env.ELIZA_WEB_FETCH_USER_AGENT?.trim() ||
+  GUARDED_GET_OPERATOR_USER_AGENT ||
   [
     "Mozilla/5.0 (X11; Linux x86_64)",
     "AppleWebKit/537.36 (KHTML, like Gecko)",
@@ -660,13 +662,19 @@ async function performGuardedHttpRequest(
   // plain-text weather line the live-info WEB_FETCH actually wants is served only
   // to a non-browser UA (it is built for `curl wttr.in`). The browser-like
   // default above exists to satisfy WAF-fronted JSON APIs (coingecko etc.), so
-  // scope the CLI UA to wttr.in rather than changing the global default. A
-  // caller-supplied User-Agent header still wins (set below).
-  const host = parsed.hostname.toLowerCase();
+  // scope the CLI UA to wttr.in rather than changing the global default.
+  // Precedence: caller-supplied header (set below) > operator env override
+  // (ELIZA_WEB_FETCH_USER_AGENT applies to EVERY host — an egress proxy that
+  // allowlists a specific UA must not be bypassed for wttr.in) > per-host CLI
+  // UA > browser default. Trailing-dot FQDNs ("wttr.in.") normalize to the
+  // same host.
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
   const isPlainTextCliHost = host === "wttr.in" || host.endsWith(".wttr.in");
-  const defaultUserAgent = isPlainTextCliHost
-    ? "Eliza/1.0 (+https://elizaos.ai)"
-    : GUARDED_GET_DEFAULT_USER_AGENT;
+  const defaultUserAgent =
+    GUARDED_GET_OPERATOR_USER_AGENT ??
+    (isPlainTextCliHost
+      ? "Eliza/1.0 (+https://elizaos.ai)"
+      : GUARDED_GET_DEFAULT_USER_AGENT);
   // Build headers via the Headers API so a caller-supplied header (in any
   // casing) cleanly overrides the default rather than being comma-joined onto it.
   const headers = new Headers({ "User-Agent": defaultUserAgent });

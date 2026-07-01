@@ -153,6 +153,16 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
+  it("points every voice-enabled tier at its tier-matched ASR mmproj GGUF", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const slug = id.slice("eliza-1-".length);
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.sourceModel?.components.asr?.file).toBe(
+        `bundles/${slug}/asr/mmproj-audio-${slug}-bf16.gguf`,
+      );
+    }
+  });
+
   it("points every vision-enabled tier at its tier-matched mmproj GGUF", () => {
     for (const id of ELIZA_1_VISION_TIER_IDS) {
       const slug = id.slice("eliza-1-".length);

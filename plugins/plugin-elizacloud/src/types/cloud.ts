@@ -348,7 +348,7 @@ export interface CloudPluginConfig {
 
 export const DEFAULT_CLOUD_CONFIG: CloudPluginConfig = {
   enabled: false,
-  baseUrl: "https://www.elizacloud.ai/api/v1",
+  baseUrl: "https://elizacloud.ai/api/v1",
   inferenceMode: "cloud",
   autoProvision: false,
   bridge: {

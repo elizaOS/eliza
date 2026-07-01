@@ -957,6 +957,73 @@ export interface AppDeployStatusResponse {
   startedAt: string | null;
 }
 
+// ---- Managed frontend hosting (#10690) -----------------------------------
+
+/** One file in a frontend deploy bundle. `content` is UTF-8 unless base64. */
+export interface FrontendUploadFileInput {
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";
+  contentType?: string;
+}
+
+/** `POST /api/v1/apps/:id/frontend` body — publish a static site in one call. */
+export interface DeployAppFrontendInput {
+  files: FrontendUploadFileInput[];
+  /** Document served for "/" and (with spaFallback) unmatched routes. Default "index.html". */
+  entrypoint?: string;
+  /** Fall back to the entrypoint for unmatched extensionless routes. Default true. */
+  spaFallback?: boolean;
+  /** Activate immediately after finalize. Default true. */
+  activate?: boolean;
+  buildMeta?: {
+    source?: string | null;
+    framework?: string | null;
+    gitCommit?: string | null;
+    note?: string | null;
+  };
+}
+
+/** A managed frontend deployment record. */
+export interface AppFrontendDeploymentDto {
+  id: string;
+  app_id: string;
+  version: number;
+  status:
+    | "pending"
+    | "uploading"
+    | "ready"
+    | "active"
+    | "superseded"
+    | "failed";
+  r2_prefix: string;
+  content_hash: string | null;
+  file_count: number;
+  total_bytes: number;
+  error: string | null;
+  created_at: string;
+  activated_at: string | null;
+}
+
+/** `POST /api/v1/apps/:id/frontend` response (201). */
+export interface DeployAppFrontendResponse {
+  success: boolean;
+  deployment: AppFrontendDeploymentDto;
+}
+
+/** `GET /api/v1/apps/:id/frontend` response. */
+export interface ListAppFrontendDeploymentsResponse {
+  success: boolean;
+  active_deployment_id: string | null;
+  deployments: AppFrontendDeploymentDto[];
+}
+
+/** `POST /api/v1/apps/:id/frontend/:deploymentId/activate` response. */
+export interface ActivateAppFrontendResponse {
+  success: boolean;
+  deployment: AppFrontendDeploymentDto;
+}
+
 /** Per-resource counts the cleanup pass reports on app deletion. */
 export interface AppCleanupSummary {
   domainsRemoved: number;
@@ -1138,4 +1205,135 @@ export interface ApiKeyCreateResponse {
 
 export interface ApiKeyListResponse {
   keys: ApiKeySummary[];
+}
+
+// ---- Ad inventory / SSP (#10687) ----
+
+export type AdSlotFormat = "banner" | "native" | "interstitial" | "feed";
+
+export interface AdSlotDto {
+  id: string;
+  app_id: string;
+  name: string;
+  format: AdSlotFormat;
+  status: "active" | "paused";
+  floor_cpm: string;
+  total_impressions: number;
+  total_clicks: number;
+  total_revenue: string;
+}
+
+export interface CreateAdSlotInput {
+  appId: string;
+  name: string;
+  format: AdSlotFormat;
+  floorCpm?: number;
+}
+
+export interface CreateAdSlotResponse {
+  success: boolean;
+  slot: AdSlotDto;
+  /**
+   * Signed capability the public serve endpoint requires (`&token=` on the ad
+   * tag). Null when the deployment has no `ELIZA_AD_TAG_SECRET` configured.
+   */
+  adTagToken: string | null;
+}
+
+export interface ListAdSlotsResponse {
+  success: boolean;
+  slots: AdSlotDto[];
+}
+
+// ---- Influencer marketplace (#10687) ----
+
+export interface InfluencerProfileDto {
+  id: string;
+  display_name: string;
+  niche: string | null;
+  bio: string | null;
+  platforms: Array<{ platform: string; handle: string; followers: number }>;
+  status: "active" | "inactive";
+}
+
+export interface CreateInfluencerProfileInput {
+  displayName: string;
+  niche?: string;
+  bio?: string;
+  platforms?: Array<{ platform: string; handle: string; followers: number }>;
+  rateCard?: Record<string, unknown>;
+}
+
+export interface CreateInfluencerProfileResponse {
+  success: boolean;
+  profile: InfluencerProfileDto;
+}
+
+export interface ListInfluencersResponse {
+  success: boolean;
+  profiles: InfluencerProfileDto[];
+}
+
+export interface InfluencerBookingDto {
+  id: string;
+  advertiser_org_id: string;
+  influencer_profile_id: string;
+  amount: string;
+  status:
+    | "funding"
+    | "offered"
+    | "accepted"
+    | "delivered"
+    | "approved"
+    | "rejected"
+    | "cancelled";
+  brief: string;
+}
+
+export interface CreateBookingInput {
+  profileId: string;
+  brief: string;
+  amount: number;
+  /** Optional create key: a retry with the same key returns the original booking instead of funding twice. */
+  idempotencyKey?: string;
+}
+
+export interface CreateBookingResponse {
+  success: boolean;
+  booking?: InfluencerBookingDto;
+  error?: string;
+}
+
+// ---- App config backup / restore (#10204) ----
+
+export interface AppBackupSnapshot {
+  version: number;
+  exportedAt: string;
+  app: {
+    name: string;
+    description: string | null;
+    app_url: string;
+    allowed_origins: string[];
+    logo_url: string | null;
+    website_url: string | null;
+    contact_email: string | null;
+    linked_character_ids: string[];
+  };
+  monetization: {
+    enabled: boolean;
+    inference_markup_percentage: number;
+    purchase_share_percentage: number;
+  };
+  active_frontend_content_hash?: string | null;
+}
+
+export interface ExportAppBackupResponse {
+  success: boolean;
+  backup: AppBackupSnapshot;
+}
+
+export interface RestoreAppBackupResponse {
+  success: boolean;
+  app: { id: string; name: string; slug: string };
+  apiKey: string;
 }

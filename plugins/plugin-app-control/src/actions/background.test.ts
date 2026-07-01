@@ -57,15 +57,18 @@ describe("inferBackgroundPlan", () => {
 		});
 	});
 
-	it("redo wins over undo phrasing when the user says un-undo", () => {
-		expect(inferBackgroundPlan("un-undo the wallpaper", undefined)).toEqual({
-			op: "redo",
-		});
+	it("detects redo from a 'go forward' phrasing", () => {
+		expect(
+			inferBackgroundPlan("go forward on the background", undefined),
+		).toEqual({ op: "redo" });
 	});
 
-	it("plain undo still resolves to undo (not redo)", () => {
-		expect(inferBackgroundPlan("undo the background", undefined)).toEqual({
-			op: "undo",
+	it("resolves a color word like 'red' to a set, not redo", () => {
+		expect(inferBackgroundPlan("make the background red", undefined)).toEqual({
+			op: "set",
+			mode: "shader",
+			color: "#dc2626",
+			colorLabel: "red",
 		});
 	});
 
@@ -223,15 +226,18 @@ describe("BACKGROUND action handler", () => {
 	});
 
 	it("broadcasts redo", async () => {
-		const { action, emitted } = setup();
-		await action.handler(
+		const { action, emitted, replies, callback } = setup();
+		const result = await action.handler(
 			runtime,
 			message("redo the background"),
 			undefined,
 			undefined,
-			vi.fn(),
+			callback,
 		);
 		expect(emitted).toEqual([{ op: "redo" }]);
+		expect(result.success).toBe(true);
+		expect(result.values).toEqual({ op: "redo" });
+		expect(replies[0].toLowerCase()).toContain("re-applied");
 	});
 
 	it("reports a clear error when the broadcast fails", async () => {

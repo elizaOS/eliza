@@ -5,8 +5,10 @@
  * GET   /api/v1/payment-requests        List payment requests for the caller's org.
  *
  * The read surface fronts payment_requests rows across providers.
- * Creation is Stripe-only until the non-Stripe adapters are real; use
- * the app-charge and x402 routes for OxaPay, wallet-native, and x402 flows.
+ * Creation accepts the wired credit rails — Stripe and OxaPay (#10732),
+ * settled by /api/v1/stripe/webhook and /api/v1/oxapay/webhook
+ * respectively; use the app-charge and x402 routes for wallet-native
+ * and x402 flows.
  */
 
 import { Hono } from "hono";
@@ -21,7 +23,8 @@ import { getPaymentRequestsService } from "@/lib/services/payment-requests-defau
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CreateProviderSchema = z.enum(["stripe"]);
+// Stripe + OxaPay are the wired credit-top-up rails on this surface (#10732).
+const CreateProviderSchema = z.enum(["stripe", "oxapay"]);
 const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "wallet_native"]);
 const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
 const StatusSchema = z.enum([

@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
   },
   env: {
     NEXT_PUBLIC_ELIZA_CLOUD_URL:
-      process.env.NEXT_PUBLIC_ELIZA_CLOUD_URL || "https://www.elizacloud.ai",
+      process.env.NEXT_PUBLIC_ELIZA_CLOUD_URL || "https://elizacloud.ai",
   },
 };
 

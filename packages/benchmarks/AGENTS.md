@@ -15,7 +15,9 @@ viewer/          Static results UI
 tests/           Suite-level tests (registry, scoring, normalization, acceptance gate)
 *-adapter/       Agent harness bridges: eliza / hermes / openclaw / smithers
 agentbench_matrix/  Code-agent comparison adapter (driven by orchestrator/code_agent_matrix.py); the duplicate *_matrix/ + app_eval/ import-shim variants were removed in #9475
-loadperf/ memperf/ mobile-resource/  Resource/device KPI harnesses (infra/CPU/memory/battery), NOT agent benchmarks — own CI lanes, not orchestrator adapters
+loadperf/ memperf/ mobile-resource/ view-bundle-size/
+                 Resource/device/bundle KPI harnesses (infra/CPU/memory/battery/bundle size),
+                 NOT agent benchmarks — own CI lanes, not orchestrator adapters
 <benchmark>/     One self-contained benchmark per directory
 benchmark_results/   Generated run output — GITIGNORED, never commit
 ```

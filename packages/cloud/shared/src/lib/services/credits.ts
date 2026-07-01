@@ -146,6 +146,12 @@ interface CreditMutationRow {
   created_at: Date | string | null;
 }
 
+interface ClawbackMutationRow extends CreditMutationRow {
+  applied_amount: string | number | null;
+  shortfall_amount: string | number | null;
+  already_processed: boolean | string | number | null;
+}
+
 function isPgTrue(value: boolean | string | number | null | undefined): boolean {
   return value === true || value === 1 || value === "1" || value === "t" || value === "true";
 }
@@ -192,7 +198,9 @@ function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
  */
 export class CreditsService {
   private async applyCreditIncrease(
-    params: AddCreditsParams & { transactionType: "credit" | "refund" },
+    params: AddCreditsParams & {
+      transactionType: "credit" | "refund" | "clawback";
+    },
   ): Promise<{
     transaction: CreditTransaction;
     newBalance: number;
@@ -815,6 +823,196 @@ export class CreditsService {
       });
       return result;
     });
+  }
+
+  /**
+   * Claw back credits after a Stripe refund / chargeback (#10920). The live
+   * organizations table forbids negative credit balances, so this applies as much
+   * of the clawback as the current balance can cover, floors the balance at zero,
+   * and records any unrecovered shortfall in transaction metadata for follow-up.
+   * Idempotent on `stripePaymentIntentId` (key it on the refund/dispute so a
+   * re-delivered webhook doesn't double-claw).
+   */
+  async clawbackCredits(params: {
+    organizationId: string;
+    amount: number;
+    description: string;
+    stripePaymentIntentId: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    transaction: CreditTransaction;
+    newBalance: number;
+    appliedAmount: number;
+    shortfallAmount: number;
+    alreadyProcessed: boolean;
+  }> {
+    if (params.amount <= 0) {
+      throw new Error("Clawback amount must be positive");
+    }
+
+    const metadataJson = JSON.stringify(params.metadata ?? {});
+    const rows = await sqlRows<ClawbackMutationRow>(
+      dbWrite,
+      sql`
+        WITH org AS (
+          SELECT id, credit_balance::numeric AS current_balance
+          FROM organizations
+          WHERE id = ${params.organizationId}
+          FOR UPDATE
+        ),
+        existing AS (
+          SELECT
+            id,
+            organization_id,
+            user_id,
+            amount,
+            type,
+            description,
+            metadata,
+            stripe_payment_intent_id,
+            created_at
+          FROM credit_transactions
+          WHERE stripe_payment_intent_id = ${params.stripePaymentIntentId}
+          LIMIT 1
+        ),
+        candidate AS (
+          SELECT
+            id,
+            current_balance,
+            LEAST(${String(params.amount)}::numeric, GREATEST(current_balance, 0)) AS applied_amount,
+            GREATEST(current_balance - ${String(params.amount)}::numeric, 0) AS new_balance,
+            GREATEST(${String(params.amount)}::numeric - GREATEST(current_balance, 0), 0) AS shortfall_amount
+          FROM org
+          WHERE NOT EXISTS (SELECT 1 FROM existing)
+        ),
+        updated AS (
+          UPDATE organizations AS o
+          SET
+            credit_balance = candidate.new_balance,
+            updated_at = NOW()
+          FROM candidate
+          WHERE o.id = candidate.id
+          RETURNING o.credit_balance AS new_balance
+        ),
+        inserted AS (
+          INSERT INTO credit_transactions (
+            organization_id,
+            amount,
+            type,
+            description,
+            metadata,
+            stripe_payment_intent_id,
+            created_at
+          )
+          SELECT
+            candidate.id,
+            -candidate.applied_amount,
+            'clawback',
+            ${params.description},
+            ${metadataJson}::jsonb || jsonb_build_object(
+              'requested_clawback_usd', ${String(params.amount)}::numeric,
+              'applied_clawback_usd', candidate.applied_amount,
+              'unrecovered_clawback_usd', candidate.shortfall_amount
+            ),
+            ${params.stripePaymentIntentId},
+            NOW()
+          FROM candidate
+          WHERE EXISTS (SELECT 1 FROM updated)
+          ON CONFLICT (stripe_payment_intent_id) DO NOTHING
+          RETURNING
+            id,
+            organization_id,
+            user_id,
+            amount,
+            type,
+            description,
+            metadata,
+            stripe_payment_intent_id,
+            created_at
+        ),
+        chosen_transaction AS (
+          SELECT * FROM inserted
+          UNION ALL
+          SELECT * FROM existing
+          WHERE NOT EXISTS (SELECT 1 FROM inserted)
+          LIMIT 1
+        )
+        SELECT
+          EXISTS(SELECT 1 FROM org) AS org_exists,
+          (SELECT current_balance FROM org) AS current_balance,
+          COALESCE((SELECT new_balance FROM updated), (SELECT current_balance FROM org)) AS new_balance,
+          chosen_transaction.id,
+          chosen_transaction.organization_id,
+          chosen_transaction.user_id,
+          chosen_transaction.amount,
+          chosen_transaction.type,
+          chosen_transaction.description,
+          chosen_transaction.metadata,
+          chosen_transaction.stripe_payment_intent_id,
+          chosen_transaction.created_at,
+          COALESCE((SELECT applied_amount FROM candidate), ABS((SELECT amount FROM existing)), 0) AS applied_amount,
+          COALESCE(
+            (SELECT shortfall_amount FROM candidate),
+            NULLIF((SELECT metadata->>'unrecovered_clawback_usd' FROM existing), '')::numeric,
+            0
+          ) AS shortfall_amount,
+          EXISTS(SELECT 1 FROM existing) AS already_processed
+        FROM (SELECT 1) AS singleton
+        LEFT JOIN chosen_transaction ON true
+      `,
+    );
+
+    const row = rows[0];
+    if (!row || !isPgTrue(row.org_exists)) {
+      throw new Error("Organization not found");
+    }
+    if (!row.id) {
+      const existing = await this.getTransactionByStripePaymentIntent(params.stripePaymentIntentId);
+      const org = await organizationsRepository.findById(params.organizationId);
+      if (existing && org) {
+        const metadata = parseMetadata(existing.metadata);
+        return {
+          transaction: existing,
+          newBalance: Number.parseFloat(String(org.credit_balance)),
+          appliedAmount: Math.abs(Number(existing.amount)),
+          shortfallAmount: Number(metadata.unrecovered_clawback_usd ?? 0),
+          alreadyProcessed: true,
+        };
+      }
+      throw new Error("[CreditsService] Clawback did not return a transaction row");
+    }
+
+    const result = {
+      transaction: toCreditTransaction(row),
+      newBalance: parseNumeric(row.new_balance, "new_balance"),
+      appliedAmount: parseNumeric(row.applied_amount, "applied_amount"),
+      shortfallAmount: parseNumeric(row.shortfall_amount, "shortfall_amount"),
+      alreadyProcessed: isPgTrue(row.already_processed),
+    };
+
+    invalidateOrganizationCache(params.organizationId).catch((error) => {
+      logger.error("[CreditsService] Failed to invalidate org cache:", error);
+    });
+    return result;
+  }
+
+  /**
+   * Total USD already clawed back for a Stripe payment intent (sum of prior
+   * `clawback` debits tagged with it). Lets the refund handler claw back only the
+   * DELTA of a cumulative `amount_refunded` across multiple partial refunds
+   * without double-charging. (#10920)
+   */
+  async getClawedBackUsdForPaymentIntent(paymentIntentId: string): Promise<number> {
+    const rows = await sqlRows<{ total: string | number | null }>(
+      dbWrite,
+      sql`
+        SELECT COALESCE(SUM(-amount), 0) AS total
+        FROM credit_transactions
+        WHERE type = 'clawback'
+          AND metadata->>'payment_intent_id' = ${paymentIntentId}
+      `,
+    );
+    return parseNumeric(rows[0]?.total ?? 0, "clawed_back_total");
   }
 
   /**

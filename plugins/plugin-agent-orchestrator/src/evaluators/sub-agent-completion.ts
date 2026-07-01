@@ -305,7 +305,7 @@ function completionHasVerificationFailure(text: string): boolean {
   );
 }
 
-function completionHasFailureMarkerWithoutPositiveEvidence(
+export function completionHasFailureMarkerWithoutPositiveEvidence(
   text: string,
   verifiedUrls: readonly string[] = [],
 ): boolean {
@@ -313,8 +313,15 @@ function completionHasFailureMarkerWithoutPositiveEvidence(
   const fullText = stripRouterAnnotations(text);
   const searchable = [body, fullText].filter(Boolean).join("\n");
   if (verifiedUrls.length > 0 || hasUserFacingUrl(searchable)) return false;
-  if (POSITIVE_QUANTITATIVE_EVIDENCE_RE.test(searchable)) return false;
+  // An explicit tool-failure marker (exit code 1, "permission denied", …) means
+  // the work failed regardless of any positive count the model also reported:
+  // "tests failed, exit code 1, but I found 5 files" is still a failure. It must
+  // be checked BEFORE the positive-evidence heuristic — that heuristic exists
+  // only to keep a *successful* "found 5 results" from tripping the no-result
+  // marker below, not to override a real failure. (Prior order let a positive
+  // count mask an explicit failure and relay it to the user as success.)
   if (TOOL_FAILURE_MARKER_RE.test(searchable)) return true;
+  if (POSITIVE_QUANTITATIVE_EVIDENCE_RE.test(searchable)) return false;
   return NO_RESULT_MARKER_RE.test(fullText) && !NO_RESULT_MARKER_RE.test(body);
 }
 
