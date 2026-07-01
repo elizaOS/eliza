@@ -39,18 +39,43 @@ export interface TouchSwipeOptions {
   holdMs?: number;
 }
 
+export interface ActiveTouchDrag {
+  readonly endX: number;
+  readonly endY: number;
+  release(): Promise<void>;
+  cancel(): Promise<void>;
+}
+
 /**
- * Real touch swipe / drag from an element's center by (dx, dy).
+ * Real touch drag from an element's center by (dx, dy), leaving the finger held
+ * down at the final point. Call `release()` after inspecting mid-drag state.
  */
-export async function touchSwipe(
+export async function touchDragHold(
   page: Page,
   selector: string,
   dx: number,
   dy: number,
   { steps = 12, stepDelayMs = 0, holdMs = 0 }: TouchSwipeOptions = {},
-): Promise<void> {
+): Promise<ActiveTouchDrag> {
   const { cx, cy } = await centerOf(page, selector);
   const client = await page.context().newCDPSession(page);
+  const endX = cx + dx;
+  const endY = cy + dy;
+  let ended = false;
+
+  const finish = async (type: "touchEnd" | "touchCancel") => {
+    if (ended) return;
+    ended = true;
+    try {
+      await client.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: [],
+      });
+    } finally {
+      await client.detach();
+    }
+  };
+
   try {
     await client.send("Input.dispatchTouchEvent", {
       type: "touchStart",
@@ -64,13 +89,30 @@ export async function touchSwipe(
       });
       if (stepDelayMs > 0) await page.waitForTimeout(stepDelayMs);
     }
-    await client.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
-  } finally {
-    await client.detach();
+    return {
+      endX,
+      endY,
+      release: () => finish("touchEnd"),
+      cancel: () => finish("touchCancel"),
+    };
+  } catch (error) {
+    await finish("touchCancel").catch(() => {});
+    throw error;
   }
+}
+
+/**
+ * Real touch swipe / drag from an element's center by (dx, dy).
+ */
+export async function touchSwipe(
+  page: Page,
+  selector: string,
+  dx: number,
+  dy: number,
+  options: TouchSwipeOptions = {},
+): Promise<void> {
+  const drag = await touchDragHold(page, selector, dx, dy, options);
+  await drag.release();
 }
 
 /** A real touch tap at an element's center (touchStart → touchEnd, no move). */
