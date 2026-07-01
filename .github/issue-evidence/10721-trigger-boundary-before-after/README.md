@@ -58,3 +58,24 @@ ELIZA_CHAT_VIA_CLI=claude ELIZA_PLANNER_NATIVE_TOOLS=0 ELIZA_CLI_TIMEOUT_MS=2400
 Gotcha for reproducers: the scenario runtime loads PA from `dist/` — rebuild
 (`bun run --cwd plugins/plugin-personal-assistant build`) after changing `src/`
 or the run proves the OLD code.
+
+## Addendum — capability-purpose routing finding (live, #8795)
+
+A live run of `inbox-triage-capability` (report at
+`../../..`-scratch, planner trace in the run dir) routed to the promoted
+`INBOX_LIST` subaction — which **bypasses the triage classifier**, the
+`inbox_triage` optimized-prompt consumer. The run's trajectories carry
+`planner`/`tool`/`messageHandler` stages but zero LifeOps capability purposes,
+so `trajectories:review --dry-run` correctly reports 0 samples for all 8
+capabilities.
+
+Two consequences worth acting on (residuals for #8795):
+1. The `*-capability.scenario.ts` files named for the optimization tasks do
+   not necessarily exercise those tasks under a live model — the planner can
+   satisfy the user via sibling subactions that skip the capability prompt.
+   Their planner assertions also still expect umbrella action names
+   (`inbox_action`) that promoted subactions (`INBOX_LIST`) no longer match.
+2. Organic trajectory accumulation for the GEPA loop will under-sample
+   capabilities whose flows the planner routes around; scenario-driven dataset
+   seeding (the `lifeops:gepa-seed` path) remains the reliable source until
+   action descriptions disambiguate the capability paths.
