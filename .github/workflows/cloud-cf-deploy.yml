@@ -120,9 +120,26 @@ jobs:
           # continue-on-error guards future edits.
           set +e
           set +o pipefail
-          stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
-          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null
-          echo "Reclaimed ${stale:-0} stale (idle >90min) leaked checkout dir(s)."
+          find_stale_checkouts() {
+            timeout 20s find /tmp -maxdepth 1 -type d \
+              -name 'eliza-checkout-*' \
+              -mmin +90 \
+              ! -name "eliza-checkout-${{ github.run_id }}-*" \
+              2>/dev/null || true
+          }
+          mapfile -t stale_dirs < <(find_stale_checkouts)
+          stale=${#stale_dirs[@]}
+          moved=0
+          index=0
+          for dir in "${stale_dirs[@]}"; do
+            index=$((index + 1))
+            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-${index}"
+            if mv "$dir" "$stale_dir" 2>/dev/null; then
+              moved=$((moved + 1))
+              nohup bash -c 'timeout 180s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            fi
+          done
+          echo "Scheduled background cleanup for ${moved}/${stale:-0} stale (idle >90min) leaked checkout dir(s)."
           df -h /tmp / 2>/dev/null | tail -2
           exit 0
       - name: Checkout repository
@@ -353,7 +370,7 @@ jobs:
         run: |
           set -uo pipefail
           if [ -e "$CHECKOUT_DIR" ]; then
-            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-$(date +%s)"
             mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
             nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
             echo "Scheduled best-effort cleanup for ${stale_dir}."
@@ -404,9 +421,26 @@ jobs:
           # continue-on-error guards future edits.
           set +e
           set +o pipefail
-          stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
-          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null
-          echo "Reclaimed ${stale:-0} stale (idle >90min) leaked checkout dir(s)."
+          find_stale_checkouts() {
+            timeout 20s find /tmp -maxdepth 1 -type d \
+              -name 'eliza-checkout-*' \
+              -mmin +90 \
+              ! -name "eliza-checkout-${{ github.run_id }}-*" \
+              2>/dev/null || true
+          }
+          mapfile -t stale_dirs < <(find_stale_checkouts)
+          stale=${#stale_dirs[@]}
+          moved=0
+          index=0
+          for dir in "${stale_dirs[@]}"; do
+            index=$((index + 1))
+            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-${index}"
+            if mv "$dir" "$stale_dir" 2>/dev/null; then
+              moved=$((moved + 1))
+              nohup bash -c 'timeout 180s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            fi
+          done
+          echo "Scheduled background cleanup for ${moved}/${stale:-0} stale (idle >90min) leaked checkout dir(s)."
           df -h /tmp / 2>/dev/null | tail -2
           exit 0
       - name: Checkout repository
@@ -670,7 +704,7 @@ jobs:
         run: |
           set -uo pipefail
           if [ -e "$CHECKOUT_DIR" ]; then
-            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-$(date +%s)"
             mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
             nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
             echo "Scheduled best-effort cleanup for ${stale_dir}."
@@ -721,9 +755,26 @@ jobs:
           # continue-on-error guards future edits.
           set +e
           set +o pipefail
-          stale=$(find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" 2>/dev/null | wc -l | tr -d ' ')
-          find /tmp -maxdepth 1 -type d -name 'eliza-checkout-*' -mmin +90 ! -name "eliza-checkout-${{ github.run_id }}-*" -exec rm -rf {} + 2>/dev/null
-          echo "Reclaimed ${stale:-0} stale (idle >90min) leaked checkout dir(s)."
+          find_stale_checkouts() {
+            timeout 20s find /tmp -maxdepth 1 -type d \
+              -name 'eliza-checkout-*' \
+              -mmin +90 \
+              ! -name "eliza-checkout-${{ github.run_id }}-*" \
+              2>/dev/null || true
+          }
+          mapfile -t stale_dirs < <(find_stale_checkouts)
+          stale=${#stale_dirs[@]}
+          moved=0
+          index=0
+          for dir in "${stale_dirs[@]}"; do
+            index=$((index + 1))
+            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-${index}"
+            if mv "$dir" "$stale_dir" 2>/dev/null; then
+              moved=$((moved + 1))
+              nohup bash -c 'timeout 180s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            fi
+          done
+          echo "Scheduled background cleanup for ${moved}/${stale:-0} stale (idle >90min) leaked checkout dir(s)."
           df -h /tmp / 2>/dev/null | tail -2
           exit 0
       - name: Checkout repository
@@ -939,7 +990,7 @@ jobs:
         run: |
           set -uo pipefail
           if [ -e "$CHECKOUT_DIR" ]; then
-            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-$(date +%s)"
             mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
             nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
             echo "Scheduled best-effort cleanup for ${stale_dir}."
