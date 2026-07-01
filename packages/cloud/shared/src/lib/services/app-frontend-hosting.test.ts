@@ -15,9 +15,12 @@ import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-
 import {
   appFrontendHostingService,
   computeManifestHash,
+  generateRobots,
+  generateSitemap,
   inferContentType,
   injectBeacon,
   injectSeo,
+  manifestHasFile,
   normalizeSitePath,
   sha256Hex,
 } from "./app-frontend-hosting";
@@ -142,6 +145,42 @@ describe("injectBeacon", () => {
   });
   test("no-op without a body", () => {
     expect(injectBeacon("<div></div>", "app-123")).toBe("<div></div>");
+  });
+});
+
+describe("generateRobots / generateSitemap", () => {
+  const manifest = {
+    entrypoint: "index.html",
+    spaFallback: false,
+    files: [
+      { path: "index.html", hash: "h0", contentType: "text/html", size: 1 },
+      { path: "about.html", hash: "h1", contentType: "text/html", size: 1 },
+      { path: "blog/post.html", hash: "h2", contentType: "text/html", size: 1 },
+      { path: "assets/app.js", hash: "h3", contentType: "text/javascript", size: 1 },
+    ],
+  };
+
+  test("robots.txt allows crawling and links the sitemap", () => {
+    const out = generateRobots("https://myapp.com/");
+    expect(out).toContain("User-agent: *");
+    expect(out).toContain("Allow: /");
+    expect(out).toContain("Sitemap: https://myapp.com/sitemap.xml");
+  });
+
+  test("sitemap.xml lists the root + every HTML page, not assets", () => {
+    const out = generateSitemap(manifest, "https://myapp.com");
+    expect(out).toContain("<loc>https://myapp.com/</loc>");
+    expect(out).toContain("<loc>https://myapp.com/about.html</loc>");
+    expect(out).toContain("<loc>https://myapp.com/blog/post.html</loc>");
+    // entrypoint is not duplicated as index.html, and assets are excluded
+    expect(out).not.toContain("index.html</loc>");
+    expect(out).not.toContain("app.js");
+    expect(out).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+  });
+
+  test("manifestHasFile lets a site's own robots/sitemap win", () => {
+    expect(manifestHasFile(manifest, "index.html")).toBe(true);
+    expect(manifestHasFile(manifest, "robots.txt")).toBe(false);
   });
 });
 

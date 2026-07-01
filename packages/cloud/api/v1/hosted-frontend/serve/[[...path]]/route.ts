@@ -105,6 +105,7 @@ app.get("*", async (c) => {
         url: `${canonicalBase}${requestPath || "/"}`,
       },
       beaconBase: canonicalBase,
+      siteBaseUrl: canonicalBase,
     });
 
     if (rendered.isDocument) {

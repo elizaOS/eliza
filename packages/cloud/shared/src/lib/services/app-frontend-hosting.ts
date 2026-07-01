@@ -65,6 +65,8 @@ export interface RenderInput {
   seo?: FrontendSeo;
   /** Absolute base for the page-view beacon endpoint; defaults to a relative URL. */
   beaconBase?: string;
+  /** Absolute site origin (e.g. https://myapp.com) used to synthesize robots.txt/sitemap.xml. */
+  siteBaseUrl?: string;
 }
 
 export interface RenderedResponse {
@@ -341,6 +343,28 @@ export class AppFrontendHostingService {
         : normalized;
     lookupPath = normalizeSitePath(lookupPath) ?? manifest.entrypoint;
 
+    // Synthesize robots.txt / sitemap.xml for hosted frontends that don't ship
+    // their own (a site's own file wins — it's found by the normal lookup below).
+    if (input.siteBaseUrl && (normalized === "robots.txt" || normalized === "sitemap.xml")) {
+      if (!manifest.files.some((f) => f.path === normalized)) {
+        const isRobots = normalized === "robots.txt";
+        return {
+          status: 200,
+          headers: {
+            "content-type": isRobots
+              ? "text/plain; charset=utf-8"
+              : "application/xml; charset=utf-8",
+            "cache-control": "public, max-age=3600",
+            "x-content-type-options": "nosniff",
+          },
+          body: isRobots
+            ? generateRobots(input.siteBaseUrl)
+            : generateSitemap(manifest, input.siteBaseUrl),
+          isDocument: false,
+        };
+      }
+    }
+
     let entry = manifest.files.find((f) => f.path === lookupPath);
     let servedEntrypoint = entry?.path === manifest.entrypoint;
 
@@ -471,6 +495,49 @@ export function injectBeacon(html: string, appId: string, beaconBase?: string): 
   const url = `${(beaconBase ?? "").replace(/\/$/, "")}/api/v1/track/pageview`;
   const script = `<script>(function(){function s(){try{var d={app_id:${JSON.stringify(appId)},page_url:location.pathname+location.search,referrer:document.referrer,pathname:location.pathname,screen_width:screen.width,screen_height:screen.height};navigator.sendBeacon(${JSON.stringify(url)},new Blob([JSON.stringify(d)],{type:"text/plain"}));}catch(e){}}var p=history.pushState,r=history.replaceState;history.pushState=function(){p.apply(this,arguments);s();};history.replaceState=function(){r.apply(this,arguments);s();};addEventListener("popstate",s);})();</script>`;
   return html.replace(bodyClose, `${script}</body>`);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * A default `robots.txt` for a hosted frontend that allows crawling and points
+ * at the synthesized sitemap. Only served when the deployment doesn't ship its
+ * own `robots.txt` (a site's own file always wins).
+ */
+export function generateRobots(siteBaseUrl: string): string {
+  const base = siteBaseUrl.replace(/\/$/, "");
+  return `User-agent: *\nAllow: /\nSitemap: ${base}/sitemap.xml\n`;
+}
+
+/**
+ * A `sitemap.xml` synthesized from the deployment manifest: the entrypoint as
+ * the site root plus every other HTML document. Only served when the deployment
+ * doesn't ship its own `sitemap.xml`.
+ */
+export function generateSitemap(manifest: FrontendManifest, siteBaseUrl: string): string {
+  const base = siteBaseUrl.replace(/\/$/, "");
+  const urls = new Set<string>([`${base}/`]);
+  for (const file of manifest.files) {
+    if (file.path === manifest.entrypoint) continue;
+    const lower = file.path.toLowerCase();
+    if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+      urls.add(`${base}/${file.path}`);
+    }
+  }
+  const body = [...urls].map((u) => `  <url><loc>${escapeXml(u)}</loc></url>`).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+}
+
+/** True when the manifest already ships its own file at this site path. */
+export function manifestHasFile(manifest: FrontendManifest, path: string): boolean {
+  return manifest.files.some((f) => f.path === path);
 }
 
 export const appFrontendHostingService = new AppFrontendHostingService();

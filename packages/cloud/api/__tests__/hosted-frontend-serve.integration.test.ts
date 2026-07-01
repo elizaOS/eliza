@@ -174,6 +174,36 @@ describe("public hosted-frontend serve", () => {
     expect(trackPageView).toHaveBeenCalled();
   });
 
+  test("synthesizes robots.txt (allow + sitemap link) for a hosted frontend", async () => {
+    getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
+    getActiveImpl = async () => activeDeployment;
+    const res = await app.request(
+      "/api/v1/hosted-frontend/serve/robots.txt?host=cool.sites.elizacloud.ai",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    const body = await res.text();
+    expect(body).toContain("User-agent: *");
+    expect(body).toContain("Sitemap: https://cool.sites.elizacloud.ai/sitemap.xml");
+  });
+
+  test("synthesizes sitemap.xml for a hosted frontend", async () => {
+    getBySlugImpl = async (slug) => (slug === "cool" ? APP : undefined);
+    getActiveImpl = async () => activeDeployment;
+    const res = await app.request(
+      "/api/v1/hosted-frontend/serve/sitemap.xml?host=cool.sites.elizacloud.ai",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/xml");
+    const body = await res.text();
+    expect(body).toContain("<urlset");
+    expect(body).toContain("<loc>https://cool.sites.elizacloud.ai/</loc>");
+  });
+
   test("serves a verified, active custom domain", async () => {
     getDomainByNameImpl = async (d) =>
       d === "mycool.site"

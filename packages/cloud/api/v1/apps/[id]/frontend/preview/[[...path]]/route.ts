@@ -71,6 +71,7 @@ app.get("*", async (c) => {
         siteName: found.name,
         url: canonical,
       },
+      siteBaseUrl: canonical || undefined,
     });
 
     // Record the page view server-side (no secret in the page). Best-effort:
