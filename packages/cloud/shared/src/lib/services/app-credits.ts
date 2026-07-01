@@ -18,7 +18,12 @@ import {
   computePurchaseSplit,
   computeReconciliation,
 } from "./app-credit-math";
-import { creditsService } from "./credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  creditsService,
+  InsufficientCreditsError,
+} from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
 /**
@@ -105,6 +110,41 @@ function validateMetadata(
   return metadata;
 }
 
+function withChargePhaseIdempotencyKey(
+  metadata: Record<string, unknown> | undefined,
+  idempotencyKey: string | undefined,
+  phase: "estimate" | "reconcile",
+): Record<string, unknown> | undefined {
+  if (!idempotencyKey) return metadata;
+  return {
+    ...metadata,
+    idempotencyKey: `${idempotencyKey}:${phase}`,
+  };
+}
+
+function mapAppReconciliationToCreditResult(
+  result: AppCreditReconciliationResult,
+  reservedAmount: number,
+  actualCost: number,
+  reservationTransactionId: string | null,
+): CreditReconciliationResult {
+  let adjustmentType: CreditReconciliationResult["adjustmentType"] = "none";
+
+  if (result.action === "refund" && result.reconciled) {
+    adjustmentType = "refund";
+  } else if (result.action === "charge") {
+    adjustmentType = result.reconciled ? "overage" : "uncollected_overage";
+  }
+
+  return {
+    reservedAmount,
+    actualCost,
+    reservationTransactionId,
+    settlementTransactionIds: [],
+    adjustmentType,
+  };
+}
+
 /**
  * Parameters for purchasing app credits.
  */
@@ -155,6 +195,25 @@ export interface AppCreditDeductionResult {
   newBalance: number;
   transactionId?: string;
   message?: string;
+}
+
+/**
+ * Parameters for atomically reserving app inference credits before model work.
+ */
+export interface AppCreditInferenceReservationParams {
+  appId: string;
+  userId: string;
+  estimatedBaseCost: number;
+  description: string;
+  metadata?: Record<string, unknown>;
+  /**
+   * Stable request id used to dedupe creator earnings across settlement retries.
+   * The service suffixes this per charge phase so the upfront estimate and a
+   * later overage adjustment can both credit the creator exactly once.
+   */
+  idempotencyKey?: string;
+  /** Optional: pass pre-fetched app to avoid N+1 query */
+  app?: App;
 }
 
 /**
@@ -316,6 +375,54 @@ export class AppCreditsService {
       platformOffset,
       creatorEarnings,
       newBalance,
+    };
+  }
+
+  async reserveInferenceCredits(
+    params: AppCreditInferenceReservationParams,
+  ): Promise<CreditReservation> {
+    const { appId, userId, estimatedBaseCost, description, metadata, idempotencyKey, app } = params;
+
+    const deduction = await this.deductCredits({
+      appId,
+      userId,
+      baseCost: estimatedBaseCost,
+      description,
+      metadata: withChargePhaseIdempotencyKey(metadata, idempotencyKey, "estimate"),
+      app,
+    });
+
+    if (!deduction.success) {
+      throw new InsufficientCreditsError(
+        deduction.totalCost,
+        deduction.newBalance,
+        "insufficient_balance",
+      );
+    }
+
+    const reservationTransactionId = deduction.transactionId ?? null;
+
+    return {
+      reservedAmount: deduction.totalCost,
+      reservationTransactionId,
+      reconcile: async (actualBaseCost: number) => {
+        const reconciliation = await this.reconcileCredits({
+          appId,
+          userId,
+          estimatedBaseCost,
+          actualBaseCost,
+          description,
+          metadata: withChargePhaseIdempotencyKey(metadata, idempotencyKey, "reconcile"),
+          app,
+        });
+
+        return mapAppReconciliationToCreditResult(
+          reconciliation,
+          deduction.totalCost,
+          actualBaseCost,
+          reservationTransactionId,
+        );
+      },
     };
   }
 
