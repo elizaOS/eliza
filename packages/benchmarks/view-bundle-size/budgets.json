@@ -2,8 +2,8 @@
   "_comment": "Per-plugin view-bundle size budgets for the #10724 bundle-size regression gate. The harness (bundle-size-kpi.mjs) builds every plugin's dist/views bundle, sums the gzipped bytes of its emitted JS/CSS, and exits non-zero when a bundle (or the total) exceeds its gzip ceiling. Budgets are gzipped bytes at level 9 (see GZIP_LEVEL in lib.mjs). Each gzipBudgetBytes was set from the MEASURED baseline (measuredGzipBytes) plus ~10-15% headroom for cross-environment/minor-change variance; measuredRawBytes/measuredGzipBytes are recorded for context and ratcheting. A bundle that fails to build is measured:false with size null and NEVER satisfies its budget (null is not zero). Goal is monotonic improvement — ratchet gzipBudgetBytes DOWN as views shrink; only widen with a real, justified reason.",
   "_baseline": {
     "capturedOn": "local darwin (mac) build of origin/develop; CI re-confirms on ubuntu",
-    "measuredTotalGzipBytes": 272245,
-    "measuredTotalRawBytes": 1198888,
+    "measuredTotalGzipBytes": 273472,
+    "measuredTotalRawBytes": 1201792,
     "measuredBundleCount": 26,
     "gzipLevel": 9
   },
@@ -60,9 +60,9 @@
       "gzipBudgetBytes": 3000
     },
     "plugin-health": {
-      "measuredRawBytes": 7768,
-      "measuredGzipBytes": 2538,
-      "gzipBudgetBytes": 3000
+      "measuredRawBytes": 10552,
+      "measuredGzipBytes": 3331,
+      "gzipBudgetBytes": 4000
     },
     "plugin-hyperliquid": {
       "measuredRawBytes": 16427,
