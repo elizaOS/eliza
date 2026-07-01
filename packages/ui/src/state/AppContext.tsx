@@ -1318,10 +1318,13 @@ function AppProviderInner({
 
   // In-chat first-run interception: a first-run-scoped choice pick (reserved
   // `__first_run__:` prefix) is consumed by the active onboarding conductor and
-  // MUST NOT reach the server. Every other value falls through to the real
-  // send funnel unchanged, so normal chat (including during/after onboarding)
-  // is unaffected. Widgets stay 100% display-only — both InlineWidgetText and
-  // MessageContent route picks through this single `sendActionMessage`.
+  // MUST NOT reach the server. While onboarding is ACTIVE (firstRunComplete
+  // false) every other value is dropped too: the transcript is choice-driven,
+  // so free text must never reach the server mid-setup (the overlay disables
+  // its composer; this is the send-seam backstop). Once onboarding completes,
+  // every non-first-run value falls through to the real send funnel unchanged.
+  // Widgets stay 100% display-only — both InlineWidgetText and MessageContent
+  // route picks through this single `sendActionMessage`.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
       if (
@@ -1330,9 +1333,10 @@ function AppProviderInner({
       ) {
         return Promise.resolve();
       }
+      if (!firstRunComplete) return Promise.resolve();
       return rawSendActionMessage(text);
     },
-    [rawSendActionMessage],
+    [firstRunComplete, rawSendActionMessage],
   );
 
   useEffect(() => {

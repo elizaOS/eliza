@@ -79,7 +79,6 @@ export interface FirstRunFinishPorts {
   ) => void;
   showActionBanner: (banner: ActionBanner) => void;
   setTab: (tab: string) => void;
-  switchAgentProfile: (profileId: string) => void;
   /** Injected client-side finalizer (flips firstRunComplete; never POSTs). */
   completeFirstRun: (landingTab?: string) => void;
   /** Status text (e.g. "Starting local agent") surfaced into the chat transcript. */
@@ -113,8 +112,8 @@ export function resetFirstRunPersistGuard(): void {
 
 /**
  * The SOLE call site of `client.submitFirstRun` (= POST /api/first-run). Local
- * and remote always persist once; cloud persists once iff the bound cloud agent
- * host owns the app-shell routes. The module-scoped guard plus the server-side
+ * always persists once; cloud persists once iff the bound cloud agent host
+ * owns the app-shell routes. The module-scoped guard plus the server-side
  * `meta.firstRunComplete` make a re-tapped first-run choice idempotent.
  */
 async function persistFirstRun(
@@ -307,27 +306,6 @@ function sortCloudAgentsForPicker(
     });
 }
 
-function normalizeRemoteTarget(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) throw new Error("Enter a remote agent URL.");
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new Error("Enter a valid remote agent URL.");
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Remote agents must use HTTP or HTTPS.");
-  }
-  parsed.pathname = parsed.pathname.replace(/\/+$/, "");
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/+$/, "");
-}
-
 function syncIdentity(
   sourceDraft: FirstRunProfileDraft,
   ports: FirstRunFinishPorts,
@@ -429,75 +407,6 @@ async function finishLocal(
       localAgentFetchBase(apiBase),
     );
   }
-  clearPersistedFirstRunState();
-  ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
-  return { kind: "done" };
-}
-
-// ── Remote runtime finish ────────────────────────────────────────────────────
-
-async function finishRemote(
-  sourceDraft: FirstRunProfileDraft,
-  ports: FirstRunFinishPorts,
-): Promise<FirstRunFinishOutcome> {
-  syncIdentity(sourceDraft, ports);
-  const apiBase = normalizeRemoteTarget(sourceDraft.remoteApiBase);
-  const accessToken = sourceDraft.remoteToken.trim();
-  ports.onStatus?.("Checking remote agent");
-  client.setBaseUrl(apiBase);
-  client.setToken(accessToken || null);
-  const auth = await client.getAuthStatus();
-  if (auth.required && !accessToken) {
-    if (auth.pairingEnabled) {
-      const profile = addAgentProfile({
-        kind: "remote",
-        label: apiBase,
-        apiBase,
-      });
-      savePersistedActiveServer({
-        id: `remote:${apiBase}`,
-        kind: "remote",
-        label: apiBase,
-        apiBase,
-      });
-      persistMobileRuntimeModeForServerTarget("remote");
-      ports.setRuntimeState("firstRunRuntimeTarget", "remote");
-      ports.setRuntimeState("firstRunRemoteApiBase", apiBase);
-      clearPersistedFirstRunState();
-      ports.onStatus?.(null);
-      ports.switchAgentProfile(profile.id);
-      return { kind: "done" };
-    }
-    throw new Error(
-      "This remote agent requires an access token. Enter the host's connection key, or enable pairing on the host.",
-    );
-  }
-  await client.getFirstRunStatus();
-  savePersistedActiveServer({
-    id: `remote:${apiBase}`,
-    kind: "remote",
-    label: apiBase,
-    apiBase,
-    ...(accessToken ? { accessToken } : {}),
-  });
-  addAgentProfile({
-    kind: "remote",
-    label: apiBase,
-    apiBase,
-    ...(accessToken ? { accessToken } : {}),
-  });
-  persistMobileRuntimeModeForServerTarget("remote");
-  ports.setRuntimeState("firstRunRuntimeTarget", "remote");
-  ports.setRuntimeState("firstRunRemoteApiBase", apiBase);
-  ports.setRuntimeState("firstRunRemoteToken", accessToken);
-  ports.setRuntimeState("firstRunRemoteConnected", true);
-  ports.onStatus?.("Saving first-run profile");
-  const plan = buildFirstRunSubmitPlan({
-    draft: { ...sourceDraft, runtime: "remote" },
-    uiLanguage: ports.uiLanguage,
-  });
-  await persistFirstRun(plan, ports);
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
   ports.completeFirstRun("chat");
@@ -710,8 +619,17 @@ export async function listOrAutoProvisionCloudAgent(
 
 // ── Router entry — validate + route by runtime ───────────────────────────────
 
+/**
+ * Draft narrowed to the runtimes this finish path actually provisions. The
+ * live remote flow is `adopt-remote-first-run.ts` (via
+ * `handleFirstRunRemoteConnect`) and never routes through here.
+ */
+export type FirstRunFinishDraft = FirstRunProfileDraft & {
+  runtime: Exclude<FirstRunRuntime, "remote">;
+};
+
 export async function runFirstRunFinish(
-  sourceDraft: FirstRunProfileDraft,
+  sourceDraft: FirstRunFinishDraft,
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
   const validation = validateFirstRunSubmitDraft(sourceDraft);
@@ -723,9 +641,6 @@ export async function runFirstRunFinish(
     };
   }
   try {
-    if (sourceDraft.runtime === "remote") {
-      return await finishRemote(sourceDraft, ports);
-    }
     if (sourceDraft.runtime === "cloud") {
       return await listOrAutoProvisionCloudAgent(sourceDraft, ports);
     }

@@ -786,7 +786,42 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
   await expect(page.getByTestId(RUNTIME_CHOICE("other"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
+
+  // Onboarding gating: the chat is NON-INTERACTIVE except the choice widgets.
+  // The composer is locked (disabled textarea + "choose" placeholder) and the
+  // pinned-open sheet is non-dismissable — Escape must NOT collapse it.
+  const composer = page.getByTestId("chat-composer-textarea");
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Choose an option to continue",
+  );
+  await expect(chatOverlay).toHaveAttribute("data-open", "true");
+  await page.keyboard.press("Escape");
+  // A gated Escape flips nothing; give a real collapse ample time to (not)
+  // land so this negative assertion cannot false-pass on timing.
+  await page.waitForTimeout(300);
+  await expect(chatOverlay).toHaveAttribute("data-open", "true");
+  await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
+    "data-detent",
+    "full",
+  );
   return chatOverlay;
+}
+
+/**
+ * Assert the overlay AUTO-COLLAPSED on the completion edge: the moment
+ * firstRunComplete flips, the sheet drops from the pinned FULL detent to the
+ * composer-only resting state (revealing the home), and the composer unlocks.
+ */
+export async function expectOnboardingAutoCollapse(page: Page): Promise<void> {
+  const overlay = page.getByTestId("continuous-chat-overlay");
+  await expect(overlay).not.toHaveAttribute("data-open", "true", {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEnabled({
+    timeout: 15_000,
+  });
 }
 
 /** Assert the seeded per-plugin home widgets render with their attention data. */
@@ -860,10 +895,12 @@ export async function completeOnboardingToHome(
   // 3) Provisioning posts first-run, then the conductor offers the tutorial.
   await pickTutorial(page, click, tutorial);
 
-  // 4) Landing is the HOME: the floating chat overlay is present (composer
-  // usable) AND the home widget host renders its seeded per-plugin cards.
+  // 4) Landing is the HOME: the sheet auto-collapses on the completion edge
+  // (revealing the home) and the floating chat overlay stays present with a
+  // now-unlocked composer; the home widget host renders its seeded cards.
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expectOnboardingAutoCollapse(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -913,11 +950,12 @@ export async function completeCloudOnboardingToHome(
   await expect(agentChoice).toBeVisible({ timeout: 30_000 });
   await click(agentChoice);
 
-  // 4) Binding done → tutorial offered → land on the home.
+  // 4) Binding done → tutorial offered → land on the home (sheet auto-collapses).
   await pickTutorial(page, click, tutorial);
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expectOnboardingAutoCollapse(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -953,6 +991,7 @@ export async function completeCloudInferenceOnboardingToHome(
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expectOnboardingAutoCollapse(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -997,6 +1036,7 @@ export async function completeOtherProviderSettingsHandoff(
 
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 60_000 });
+  await expectOnboardingAutoCollapse(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1038,6 +1078,8 @@ export async function connectRemoteFirstRunToHome(
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 60_000 });
   await expect(surface).toHaveAttribute("data-page", "home");
+  // Remote adoption flips firstRunComplete too — same auto-collapse edge.
+  await expectOnboardingAutoCollapse(page);
   await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
     timeout: 30_000,
   });
@@ -1069,11 +1111,12 @@ export async function connectRemoteFirstRunToHome(
 
 /**
  * Collapse the floating ContinuousChatOverlay back to its composer-only resting
- * state. In-chat onboarding leaves the overlay OPEN in the "full" detent (it was
- * auto-opened with firstRunOpen=true), and while open its scrim captures pointer
- * events over the whole viewport — so a home swipe lands on the chat, not the
- * home rail. Escape collapses the sheet from any open state (the overlay's own
- * keydown contract); `data-open` clears once it is back at the input detent.
+ * state if it happens to be open. The overlay AUTO-COLLAPSES on the onboarding
+ * completion edge, so post-onboarding this is normally a no-op guard (the
+ * early-return below); it still handles a sheet a test deliberately opened.
+ * Escape is the overlay's own keydown contract ONLY once onboarding is
+ * complete — during onboarding Escape is gated (see expectChatFirstOnboarding's
+ * negative assertion), so never call this mid-onboarding.
  */
 export async function collapseChatOverlay(page: Page): Promise<void> {
   const overlay = page.getByTestId("continuous-chat-overlay");
@@ -1096,8 +1139,9 @@ export async function swipeLeftToLauncher(
   surface: Locator,
   options: { input?: "mouse" | "touch" | "auto" } = {},
 ): Promise<void> {
-  // The in-chat onboarding overlay rests OPEN; collapse it so the swipe lands on
-  // the home rail rather than the chat scrim.
+  // Post-onboarding the overlay already auto-collapsed; this guard only closes
+  // a sheet a previous step deliberately opened, so the swipe lands on the
+  // home rail rather than the chat scrim.
   await collapseChatOverlay(page);
   const homePage = page.getByTestId("home-launcher-home-page");
   await expect(homePage).toBeVisible();
