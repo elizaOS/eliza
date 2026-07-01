@@ -336,6 +336,8 @@ export interface AppState {
   /** True when there is a previous background config to undo to. */
   canUndoBackground: boolean;
   canRedoBackground: boolean;
+  /** When true, the home time/date tile is hidden (user pref, #10706). */
+  homeTimeWidgetHidden: boolean;
   ownerName: string | null;
   connected: boolean;
   agentStatus: AgentStatus | null;
@@ -775,6 +777,8 @@ export interface AppActions {
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
   redoBackgroundConfig: () => void;
+  /** Show/hide the home time/date tile (#10706). */
+  setHomeTimeWidgetHidden: (hidden: boolean) => void;
 
   // Lifecycle
   handleStart: () => Promise<void>;

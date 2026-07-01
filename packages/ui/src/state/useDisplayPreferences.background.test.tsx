@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   loadBackgroundConfig,
   loadBackgroundHistory,
+  loadHomeTimeWidgetHidden,
   MAX_BACKGROUND_HISTORY,
+  saveHomeTimeWidgetHidden,
 } from "./persistence";
 import { DEFAULT_BACKGROUND_COLOR } from "./ui-preferences";
 import { useDisplayPreferences } from "./useDisplayPreferences";
@@ -143,5 +145,28 @@ describe("useDisplayPreferences — background history + undo", () => {
       });
     }
     expect(loadBackgroundHistory().length).toBe(MAX_BACKGROUND_HISTORY);
+  });
+});
+
+describe("useDisplayPreferences — home time widget visibility (#10706)", () => {
+  it("defaults to shown and persists a hide toggle across the setter", () => {
+    const { result } = renderHook(() => useDisplayPreferences());
+    expect(result.current.state.homeTimeWidgetHidden).toBe(false);
+    act(() => {
+      result.current.setHomeTimeWidgetHidden(true);
+    });
+    expect(result.current.state.homeTimeWidgetHidden).toBe(true);
+    expect(loadHomeTimeWidgetHidden()).toBe(true);
+    act(() => {
+      result.current.setHomeTimeWidgetHidden(false);
+    });
+    expect(result.current.state.homeTimeWidgetHidden).toBe(false);
+    expect(loadHomeTimeWidgetHidden()).toBe(false);
+  });
+
+  it("re-hydrates the hidden pref from storage on mount", () => {
+    saveHomeTimeWidgetHidden(true);
+    const { result } = renderHook(() => useDisplayPreferences());
+    expect(result.current.state.homeTimeWidgetHidden).toBe(true);
   });
 });
