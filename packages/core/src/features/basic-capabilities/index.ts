@@ -368,16 +368,20 @@ export async function processAttachments(
 			}
 
 			const contentType = res.headers.get("content-type") || "";
-			const isPlainText = contentType.startsWith("text/plain");
+			// Any text/* document (plain, csv, markdown — all on the chat upload
+			// allow-list) is readable as text. Previously only text/plain was
+			// handled, so csv/markdown fell through to "skipped" (#10714).
+			const isText = contentType.startsWith("text/");
+			const isPdf = contentType.startsWith("application/pdf");
 
-			if (isPlainText) {
+			if (isText) {
 				runtime.logger.debug(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						url: attachment.url,
 					},
-					"Processing plain text document",
+					"Processing text document",
 				);
 
 				const textContent = await res.text();
@@ -393,10 +397,35 @@ export async function processAttachments(
 					},
 					"Extracted text content",
 				);
+			} else if (isPdf) {
+				// Extract PDF text so a PDF attachment is readable by the agent
+				// instead of being silently skipped (#10714). Dynamic import keeps
+				// the heavy `unpdf` dependency off the hot path — it loads only when
+				// a PDF is actually processed.
+				const { convertPdfToTextFromBuffer } = await import(
+					"../documents/utils"
+				);
+				const pdfBuffer = Buffer.from(await res.arrayBuffer());
+				const textContent = await convertPdfToTextFromBuffer(
+					pdfBuffer,
+					processedAttachment.title ?? undefined,
+				);
+				processedAttachment.text = textContent;
+				processedAttachment.title = processedAttachment.title || "PDF Document";
+
+				runtime.logger.debug(
+					{
+						src: "basic-capabilities",
+						agentId: runtime.agentId,
+						textLength: textContent.length,
+						textPreview: textContent.substring(0, 100) || undefined,
+					},
+					"Extracted PDF text content",
+				);
 			} else {
 				runtime.logger.warn(
 					{ src: "basic-capabilities", agentId: runtime.agentId, contentType },
-					"Skipping non-plain-text document",
+					"Skipping unsupported document type",
 				);
 			}
 		}
