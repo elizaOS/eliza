@@ -36,7 +36,7 @@ import type {
   World,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { z } from "zod";
+import * as zod from "zod";
 import {
   isStoredMediaUrl,
   mediaFileNameFromUrl,
@@ -44,6 +44,8 @@ import {
   storedMediaContentMatchesName,
   writeStoredMediaFile,
 } from "../api/media-store.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -367,7 +369,7 @@ const PayloadSchema = z.object({
     .optional(),
 });
 
-type ValidatedAgentExportPayload = z.infer<typeof PayloadSchema>;
+type ValidatedAgentExportPayload = zod.infer<typeof PayloadSchema>;
 
 function toAgentExportPayload(
   payload: ValidatedAgentExportPayload,

@@ -17,6 +17,9 @@ import type {
   AgentRuntime,
   Memory,
   Plugin,
+  RouteBodyValue,
+  RouteRequest,
+  RouteResponse,
   UUID,
 } from "@elizaos/core";
 import {
@@ -25,7 +28,6 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
-import { stopSelfControlBlock } from "@elizaos/plugin-blocker/services/website-blocker/index";
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import type {
   CapturedAction,
@@ -40,6 +42,7 @@ import { actionMatchesScenarioExpectation } from "./action-families.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
+import { redactForScenarioReport } from "./redaction.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -174,10 +177,12 @@ type ExecutedTurn = ScenarioTurnExecution & {
   apiStatus?: number;
   apiBody?: unknown;
   durationMs?: number;
+  reportResponseText?: string;
 };
 
 type ScenarioVariableState = {
   baseNow: Date;
+  capturesByName: Map<string, unknown>;
   definitionIdsByTitle: Map<string, string>;
   occurrenceIdsByTitle: Map<string, string>;
 };
@@ -186,6 +191,14 @@ type ScenarioApiServer = {
   baseUrl: string;
   close: () => Promise<void>;
 };
+
+type ScenarioRouteRequest = http.IncomingMessage &
+  RouteRequest & {
+    get?: (name: string) => string | undefined;
+    protocol?: string;
+  };
+
+type ScenarioRouteResponse = http.ServerResponse & RouteResponse;
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
   scenarioLlmFixtures?: {
@@ -614,67 +627,114 @@ function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   return query;
 }
 
-function attachResponseHelpers(res: http.ServerResponse): void {
-  const response = res as http.ServerResponse & {
-    status?: (code: number) => {
-      json: (data: unknown) => void;
-      send: (data: unknown) => void;
-    };
-    json?: (data: unknown) => void;
-    send?: (data: unknown) => void;
-  };
+function attachResponseHelpers(
+  res: http.ServerResponse,
+): ScenarioRouteResponse {
+  const response = res as ScenarioRouteResponse;
   if (typeof response.status === "function") {
-    return;
+    return response;
   }
 
   const sendPayload = (data: unknown) => {
     if (res.headersSent) {
-      return;
+      return response;
     }
     if (typeof data === "string" || Buffer.isBuffer(data)) {
       res.end(data);
-      return;
+      return response;
     }
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.end(JSON.stringify(data));
+    return response;
   };
 
   response.status = (code: number) => {
     res.statusCode = code;
-    return {
-      json: (data: unknown) => sendPayload(data),
-      send: (data: unknown) => sendPayload(data),
-    };
+    return response;
   };
   response.json = (data: unknown) => sendPayload(data);
   response.send = (data: unknown) => sendPayload(data);
+  return response;
 }
 
-function augmentRequest(
+async function readRawRequestBody(req: http.IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function toRouteBodyValue(value: unknown): RouteBodyValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(toRouteBodyValue);
+  }
+  if (typeof value === "object") {
+    const record: Record<string, RouteBodyValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      record[key] = toRouteBodyValue(entry);
+    }
+    return record;
+  }
+  return null;
+}
+
+function toRouteBody(value: unknown): Record<string, RouteBodyValue> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record: Record<string, RouteBodyValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      record[key] = toRouteBodyValue(entry);
+    }
+    return record;
+  }
+  return { value: toRouteBodyValue(value) };
+}
+
+async function augmentRequest(
   req: http.IncomingMessage,
   url: URL,
   params: Record<string, string>,
-): void {
+): Promise<ScenarioRouteRequest> {
   const protoHeader = req.headers["x-forwarded-proto"];
   const protocol =
     typeof protoHeader === "string"
       ? protoHeader.split(",")[0]?.trim() || "http"
       : "http";
-  const request = req as http.IncomingMessage & {
-    query?: Record<string, string | string[]>;
-    params?: Record<string, string>;
-    protocol?: string;
-    path?: string;
-    get?: (name: string) => string | undefined;
-  };
+  const request = req as ScenarioRouteRequest;
   request.query = searchParamsToQuery(url);
   request.params = params;
   request.protocol = protocol;
   request.path = url.pathname;
+  request.method = req.method;
+  request.url = req.url;
   request.get = (name: string) => {
     const value = req.headers[name.toLowerCase()];
     return Array.isArray(value) ? value[0] : value;
   };
+  const rawBody = await readRawRequestBody(req);
+  if (rawBody.length === 0) {
+    return request;
+  }
+  request.rawBody = rawBody;
+  const contentType = request.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      request.body = toRouteBody(JSON.parse(rawBody));
+    } catch {
+      request.body = { value: rawBody };
+    }
+    return request;
+  }
+  request.body = { value: rawBody };
+  return request;
 }
 
 async function startScenarioApiServer(
@@ -695,10 +755,10 @@ async function startScenarioApiServer(
       if (params === null) {
         continue;
       }
-      attachResponseHelpers(res);
-      augmentRequest(req, url, params);
+      const routeResponse = attachResponseHelpers(res);
+      const routeRequest = await augmentRequest(req, url, params);
       try {
-        await route.handler(req as never, res as never, runtime);
+        await route.handler(routeRequest, routeResponse, runtime);
       } catch (error) {
         if (!res.headersSent) {
           res.statusCode = 500;
@@ -835,6 +895,58 @@ function indexResponseIdentifiers(
   }
 }
 
+function readCapturePath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const segment of path.split(".").filter(Boolean)) {
+    if (Array.isArray(current) && /^\d+$/.test(segment)) {
+      current = current[Number(segment)];
+      continue;
+    }
+    const record = toRecord(current);
+    if (!record) return undefined;
+    current = record[segment];
+  }
+  return current;
+}
+
+function captureResponseFields(
+  turn: ScenarioTurn,
+  body: unknown,
+  variables: ScenarioVariableState,
+): void {
+  const captures =
+    turn.captures && typeof turn.captures === "object"
+      ? turn.captures
+      : undefined;
+  if (!captures) return;
+
+  for (const [name, path] of Object.entries(captures)) {
+    const captureName = name.trim();
+    if (!captureName) {
+      throw new Error(
+        `[executor] api turn '${turn.name}' has an empty capture name`,
+      );
+    }
+    if (typeof path !== "string" || path.trim().length === 0) {
+      throw new Error(
+        `[executor] api turn '${turn.name}' capture '${captureName}' is missing a response path`,
+      );
+    }
+    const value = readCapturePath(body, path.trim());
+    if (
+      value === undefined ||
+      (typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean")
+    ) {
+      throw new Error(
+        `[executor] api turn '${turn.name}' could not capture '${captureName}' from response path '${path}'`,
+      );
+    }
+    variables.capturesByName.set(captureName, value);
+  }
+}
+
 async function lookupDefinitionIdByTitle(args: {
   apiServer: ScenarioApiServer;
   title: string;
@@ -919,6 +1031,12 @@ async function resolveTemplateString(args: {
         title: token.slice("occurrenceId:".length).trim(),
         variables: args.variables,
       });
+    }
+    if (replacement === null && token.startsWith("capture:")) {
+      const name = token.slice("capture:".length).trim();
+      if (args.variables.capturesByName.has(name)) {
+        replacement = String(args.variables.capturesByName.get(name));
+      }
     }
     if (replacement === null) {
       throw new Error(
@@ -1161,6 +1279,9 @@ async function deleteMockGmailDrafts(): Promise<string | undefined> {
 }
 
 async function clearSelfControlBlocks(): Promise<string | undefined> {
+  const { stopSelfControlBlock } = await import(
+    "@elizaos/plugin-blocker/services/website-blocker/index"
+  );
   const result = await stopSelfControlBlock();
   if (result.success) {
     return undefined;
@@ -1419,6 +1540,7 @@ async function executeApiTurn(args: {
   statusCode: number;
   responseBody: unknown;
   responseText: string;
+  reportResponseText: string;
   durationMs: number;
 }> {
   const method =
@@ -1472,6 +1594,16 @@ async function executeApiTurn(args: {
     }
   }
   indexResponseIdentifiers(responseBody, args.variables);
+  captureResponseFields(args.turn, responseBody, args.variables);
+  const explicitRedactions = Array.isArray(args.turn.redactResponseFields)
+    ? args.turn.redactResponseFields.filter(
+        (field): field is string => typeof field === "string",
+      )
+    : [];
+  const reportResponseBody = redactForScenarioReport(
+    responseBody,
+    explicitRedactions,
+  );
 
   return {
     apiStatus: response.status,
@@ -1482,6 +1614,10 @@ async function executeApiTurn(args: {
       typeof responseBody === "string"
         ? responseBody
         : JSON.stringify(responseBody ?? ""),
+    reportResponseText:
+      typeof reportResponseBody === "string"
+        ? reportResponseBody
+        : JSON.stringify(reportResponseBody ?? ""),
     durationMs: Date.now() - startedAt,
   };
 }
@@ -1892,6 +2028,7 @@ export async function runScenario(
   const primaryRoom = getDefaultScenarioRoom(rooms);
   const variables: ScenarioVariableState = {
     baseNow: new Date(startedAt),
+    capturesByName: new Map<string, unknown>(),
     definitionIdsByTitle: new Map<string, string>(),
     occurrenceIdsByTitle: new Map<string, string>(),
   };
@@ -1978,6 +2115,7 @@ export async function runScenario(
     interceptor = attachInterceptor(runtime);
     apiServer = await startScenarioApiServer(runtime);
     const activeApiServer = apiServer;
+    ctx.apiBaseUrl = activeApiServer.baseUrl;
 
     for (const turn of scenario.turns) {
       const kind = typeof turn.kind === "string" ? turn.kind : "message";
@@ -2109,7 +2247,8 @@ export async function runScenario(
         name: turn.name,
         kind,
         text: typeof turn.text === "string" ? turn.text : undefined,
-        responseText: execution.responseText ?? "",
+        responseText:
+          execution.reportResponseText ?? execution.responseText ?? "",
         actionsCalled: actionsThisTurn,
         durationMs: execution.durationMs ?? 0,
         failedAssertions,

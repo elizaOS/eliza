@@ -24,6 +24,7 @@ import type {
   CapturedMemoryWrite,
   CapturedStateTransition,
 } from "@elizaos/scenario-runner/schema";
+import { redactedSensitiveActionResult } from "./redaction.js";
 import { toRecord } from "./utils.js";
 
 const INTERCEPTOR_MARKER = Symbol.for("scenario-runner.interceptor-wrapped");
@@ -374,10 +375,15 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         ).apply(action, wrappedArgs)) as unknown;
         if (result && typeof result === "object") {
           const r = result as Record<string, unknown>;
+          const suppressResult = action.suppressActionResultClipboard === true;
+          const redactedResult = redactedSensitiveActionResult(action.name);
+          const resultForReport = suppressResult
+            ? { ...r, data: redactedResult, values: redactedResult }
+            : r;
           entry.result = {
             success: typeof r.success === "boolean" ? r.success : undefined,
-            data: r.data,
-            values: r.values,
+            data: suppressResult ? redactedResult : r.data,
+            values: suppressResult ? redactedResult : r.values,
             text: typeof r.text === "string" ? r.text : undefined,
             message: typeof r.message === "string" ? r.message : undefined,
             error: typeof r.error === "string" ? r.error : undefined,
@@ -389,15 +395,24 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
                 : undefined,
             path: typeof r.path === "string" ? r.path : undefined,
             exists: typeof r.exists === "boolean" ? r.exists : undefined,
-            raw: r,
+            raw: resultForReport,
           };
-          captureArtifactsFromValue(artifacts, action.name, "result", r);
-          captureStateTransitionsFromValue(stateTransitions, action.name, r);
+          captureArtifactsFromValue(
+            artifacts,
+            action.name,
+            "result",
+            resultForReport,
+          );
+          captureStateTransitionsFromValue(
+            stateTransitions,
+            action.name,
+            resultForReport,
+          );
           captureConnectorDispatchesFromAction(
             connectorDispatches,
             action.name,
             options,
-            r,
+            resultForReport,
           );
         } else {
           entry.result = { success: true };

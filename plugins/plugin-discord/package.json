@@ -21,8 +21,13 @@
 		"./*.css": "./dist/*.css",
 		"./user-account-scraper": {
 			"types": "./dist/user-account-scraper/index.d.ts",
-			"import": "./dist/index.js",
-			"default": "./dist/index.js"
+			"eliza-source": {
+				"types": "./user-account-scraper/index.ts",
+				"import": "./user-account-scraper/index.ts",
+				"default": "./user-account-scraper/index.ts"
+			},
+			"import": "./dist/user-account-scraper/index.js",
+			"default": "./dist/user-account-scraper/index.js"
 		},
 		"./*": {
 			"types": "./dist/*.d.ts",

@@ -1,177 +1,267 @@
-import type http from "node:http";
+import * as http from "node:http";
+import { Socket } from "node:net";
+import { createSensitiveRequestDispatchRegistry } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { CredentialScopeError } from "../services/credential-tunnel-service.ts";
-import type { CompatRuntimeState } from "./compat-route-shared.ts";
-import { handleCredentialTunnelRoute } from "./credential-tunnel-routes.ts";
+import {
+  CredentialScopeError,
+  createCredentialTunnelService,
+  createSubAgentCredentialBridgeAdapter,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
+  type SubAgentCredentialBridge,
+} from "../services/credential-tunnel-service";
+import type { CompatRuntimeState } from "./compat-route-shared";
+import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 
-function fakeReq(body: unknown): http.IncomingMessage {
-  // readCompatJsonBody honours a pre-parsed `req.body` object.
-  return { body } as unknown as http.IncomingMessage;
+interface FakeRes {
+  res: http.ServerResponse;
+  body(): unknown;
+  status(): number;
 }
 
-function fakeRes(): {
-  res: http.ServerResponse;
-  status: () => number;
-  body: () => unknown;
-} {
-  let statusCode = 0;
-  let payload = "";
-  const res = {
-    headersSent: false,
-    setHeader() {},
-    end(chunk?: string) {
-      if (chunk) payload = chunk;
-      (res as { headersSent: boolean }).headersSent = true;
-    },
-    set statusCode(code: number) {
-      statusCode = code;
-    },
-    get statusCode() {
-      return statusCode;
-    },
-  } as unknown as http.ServerResponse;
+function fakeRes(): FakeRes {
+  let bodyText = "";
+  const req = new http.IncomingMessage(new Socket());
+  const res = new http.ServerResponse(req);
+  res.statusCode = 200;
+  res.setHeader = () => res;
+  res.end = ((chunk?: string | Buffer) => {
+    if (typeof chunk === "string") bodyText += chunk;
+    else if (chunk) bodyText += chunk.toString("utf8");
+    return res;
+  }) as typeof res.end;
   return {
     res,
-    status: () => statusCode,
-    body: () => (payload ? JSON.parse(payload) : null),
+    body() {
+      return bodyText.length > 0 ? JSON.parse(bodyText) : null;
+    },
+    status() {
+      return res.statusCode;
+    },
   };
 }
 
-function makeState(
-  bridge: { tunnelCredential: (input: unknown) => Promise<void> } | null,
+function fakeReq(opts: {
+  method: string;
+  pathname: string;
+  body?: unknown;
+  ip?: string;
+  host?: string;
+  headers?: http.IncomingHttpHeaders;
+}): http.IncomingMessage {
+  const req = new http.IncomingMessage(new Socket());
+  req.method = opts.method;
+  req.url = opts.pathname;
+  req.headers = {
+    host: opts.host ?? "localhost:2138",
+    ...(opts.headers ?? {}),
+  };
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: opts.ip ?? "127.0.0.1",
+    configurable: true,
+  });
+  if (opts.body !== undefined) {
+    (req as { body?: unknown }).body = opts.body;
+  }
+  return req;
+}
+
+function stateWithBridge(
+  bridge: Partial<SubAgentCredentialBridge> | null,
 ): CompatRuntimeState {
   return {
-    current:
-      bridge === null
-        ? null
-        : ({
-            getService: (name: string) =>
-              name === "SubAgentCredentialBridge" ? bridge : null,
-          } as unknown as CompatRuntimeState["current"]),
+    current: {
+      getService: vi.fn((name: string) =>
+        name === SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE ? bridge : null,
+      ),
+    } as never,
     pendingAgentName: null,
     pendingRestartReasons: [],
   };
 }
 
-const VALID_BODY = {
-  credentialScopeId: "cred_scope_0011223344556677",
-  childSessionId: "pty-1-abc",
-  key: "OPENAI_API_KEY",
-  value: "sk-secret",
-};
+function validBody(overrides: Record<string, unknown> = {}) {
+  return {
+    childSessionId: "pty-1-abc",
+    credentialScopeId: "cred_scope_test",
+    key: "OPENAI_API_KEY",
+    value: "sk-test-12345",
+    ...overrides,
+  };
+}
 
-describe("handleCredentialTunnelRoute", () => {
-  it("ignores non-matching method/path", async () => {
-    const { res } = fakeRes();
-    expect(
-      await handleCredentialTunnelRoute(
-        fakeReq({}),
-        res,
-        makeState({ tunnelCredential: vi.fn() }),
-        "GET",
-        "/api/credential-tunnel/submit",
-      ),
-    ).toBe(false);
-    expect(
-      await handleCredentialTunnelRoute(
-        fakeReq({}),
-        res,
-        makeState({ tunnelCredential: vi.fn() }),
-        "POST",
-        "/api/other",
-      ),
-    ).toBe(false);
-  });
+async function callRoute(
+  req: http.IncomingMessage,
+  state: CompatRuntimeState,
+): Promise<FakeRes> {
+  const res = fakeRes();
+  const handled = await handleCredentialTunnelRoute(req, res.res, state);
+  expect(handled).toBe(true);
+  return res;
+}
 
-  it("calls bridge.tunnelCredential for a valid owner-authenticated submit", async () => {
-    const tunnelCredential = vi.fn().mockResolvedValue(undefined);
-    const { res, status, body } = fakeRes();
+describe("credential tunnel route", () => {
+  it("tunnels a credential through the registered owner-runtime bridge", async () => {
+    const tunnelCredential = vi.fn(async () => {});
+    const bridge = { tunnelCredential };
 
-    const handled = await handleCredentialTunnelRoute(
-      fakeReq(VALID_BODY),
-      res,
-      makeState({ tunnelCredential }),
-      "POST",
-      "/api/credential-tunnel/submit",
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel",
+        body: validBody(),
+      }),
+      stateWithBridge(bridge),
     );
 
-    expect(handled).toBe(true);
-    expect(status()).toBe(200);
-    expect(body()).toEqual({ ok: true });
-    expect(tunnelCredential).toHaveBeenCalledWith({
+    expect(res.status()).toBe(200);
+    expect(res.body()).toEqual({
+      ok: true,
       childSessionId: "pty-1-abc",
-      credentialScopeId: "cred_scope_0011223344556677",
+      credentialScopeId: "cred_scope_test",
       key: "OPENAI_API_KEY",
-      value: "sk-secret",
+    });
+    expect(tunnelCredential).toHaveBeenCalledWith(validBody());
+  });
+
+  it("accepts the legacy /submit route alias", async () => {
+    const tunnelCredential = vi.fn(async () => {});
+
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel/submit",
+        body: validBody(),
+      }),
+      stateWithBridge({ tunnelCredential }),
+    );
+
+    expect(res.status()).toBe(200);
+    expect(tunnelCredential).toHaveBeenCalledWith(validBody());
+  });
+
+  it("tunnels through the real bridge adapter and redeems exactly once", async () => {
+    const adapter = createSubAgentCredentialBridgeAdapter({
+      tunnel: createCredentialTunnelService(),
+      dispatch: createSensitiveRequestDispatchRegistry(),
+      runtime: { agentId: "parent-agent" } as never,
+    });
+    const scope = await adapter.declareScope({
+      childSessionId: "pty-1-abc",
+      credentialKeys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    });
+
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel",
+        body: validBody({
+          credentialScopeId: scope.credentialScopeId,
+          value: "sk-real-owner-route",
+        }),
+      }),
+      stateWithBridge(adapter),
+    );
+
+    expect(res.status()).toBe(200);
+    expect(res.body()).toEqual({
+      ok: true,
+      childSessionId: "pty-1-abc",
+      credentialScopeId: scope.credentialScopeId,
+      key: "OPENAI_API_KEY",
+    });
+    expect(
+      await adapter.tryRetrieveCredential({
+        childSessionId: "pty-1-abc",
+        key: "OPENAI_API_KEY",
+        scopedToken: scope.scopedToken,
+      }),
+    ).toEqual({ status: "ready", value: "sk-real-owner-route" });
+    expect(
+      await adapter.tryRetrieveCredential({
+        childSessionId: "pty-1-abc",
+        key: "OPENAI_API_KEY",
+        scopedToken: scope.scopedToken,
+      }),
+    ).toEqual({ status: "rejected", reason: "already_redeemed" });
+  });
+
+  it("rejects remote callers without owner authentication", async () => {
+    const tunnelCredential = vi.fn(async () => {});
+
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel",
+        ip: "203.0.113.8",
+        host: "agent.example.test",
+        body: validBody(),
+      }),
+      stateWithBridge({ tunnelCredential }),
+    );
+
+    expect(res.status()).toBe(401);
+    expect(res.body()).toEqual({ error: "Unauthorized" });
+    expect(tunnelCredential).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when the parent credential bridge is not registered", async () => {
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel",
+        body: validBody(),
+      }),
+      stateWithBridge(null),
+    );
+
+    expect(res.status()).toBe(503);
+    expect(res.body()).toEqual({
+      ok: false,
+      error: "credential bridge unavailable",
+      code: "no_adapter",
     });
   });
 
-  it("rejects an out-of-scope key with 403 (key_not_in_scope)", async () => {
-    const tunnelCredential = vi
-      .fn()
-      .mockRejectedValue(
-        new CredentialScopeError(
-          "key_not_in_scope",
-          "key AWS_SECRET not declared",
-        ),
-      );
-    const { res, status, body } = fakeRes();
+  it.each([
+    ["invalid_input", 400],
+    ["key_not_in_scope", 400],
+    ["invalid_token", 400],
+    ["unknown_scope", 404],
+    ["scope_expired", 410],
+    ["session_mismatch", 403],
+    ["already_redeemed", 403],
+    ["no_ciphertext", 409],
+  ] as const)("maps %s to HTTP %s with the same code", async (code, status) => {
+    const tunnelCredential = vi.fn(async () => {
+      throw new CredentialScopeError(code, code);
+    });
 
-    await handleCredentialTunnelRoute(
-      fakeReq({ ...VALID_BODY, key: "AWS_SECRET" }),
-      res,
-      makeState({ tunnelCredential }),
-      "POST",
-      "/api/credential-tunnel/submit",
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel",
+        body: validBody(),
+      }),
+      stateWithBridge({ tunnelCredential }),
     );
 
-    expect(status()).toBe(403);
-    expect((body() as { code: string }).code).toBe("key_not_in_scope");
+    expect(res.status()).toBe(status);
+    expect(res.body()).toEqual({ ok: false, error: code, code });
   });
 
-  it("maps an expired scope to 410", async () => {
-    const tunnelCredential = vi
-      .fn()
-      .mockRejectedValue(new CredentialScopeError("scope_expired", "expired"));
-    const { res, status, body } = fakeRes();
+  it("rejects malformed identifiers before invoking the bridge", async () => {
+    const tunnelCredential = vi.fn(async () => {});
 
-    await handleCredentialTunnelRoute(
-      fakeReq(VALID_BODY),
-      res,
-      makeState({ tunnelCredential }),
-      "POST",
-      "/api/credential-tunnel/submit",
+    const res = await callRoute(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/credential-tunnel",
+        body: validBody({ key: "../OPENAI_API_KEY" }),
+      }),
+      stateWithBridge({ tunnelCredential }),
     );
 
-    expect(status()).toBe(410);
-    expect((body() as { code: string }).code).toBe("scope_expired");
-  });
-
-  it("returns 503 when no bridge service is registered (sandboxed / child runtime)", async () => {
-    const { res, status, body } = fakeRes();
-    await handleCredentialTunnelRoute(
-      fakeReq(VALID_BODY),
-      res,
-      makeState(null),
-      "POST",
-      "/api/credential-tunnel/submit",
-    );
-    expect(status()).toBe(503);
-    expect((body() as { code: string }).code).toBe("no_adapter");
-  });
-
-  it("rejects an incomplete body with 400", async () => {
-    const tunnelCredential = vi.fn();
-    const { res, status, body } = fakeRes();
-    await handleCredentialTunnelRoute(
-      fakeReq({ credentialScopeId: "x", key: "K" }),
-      res,
-      makeState({ tunnelCredential }),
-      "POST",
-      "/api/credential-tunnel/submit",
-    );
-    expect(status()).toBe(400);
-    expect((body() as { code: string }).code).toBe("invalid_body");
+    expect(res.status()).toBe(400);
     expect(tunnelCredential).not.toHaveBeenCalled();
   });
 });

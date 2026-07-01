@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as zod from "zod";
 import {
   normalizeTelegramCommandDescription,
   normalizeTelegramCommandName,
@@ -20,6 +20,8 @@ import {
   RetryConfigSchema,
   requireOpenAllowFrom,
 } from "./zod-schema.core.ts";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 const ToolPolicyBySenderSchema = z
   .record(z.string(), ToolPolicySchema)
@@ -74,7 +76,7 @@ const TelegramCustomCommandSchema = z
 
 const validateTelegramCustomCommands = (
   value: { customCommands?: Array<{ command?: string; description?: string }> },
-  ctx: z.RefinementCtx,
+  ctx: zod.RefinementCtx,
 ) => {
   if (!value.customCommands || value.customCommands.length === 0) {
     return;
@@ -1079,4 +1081,4 @@ export const TwitterConfigSchema = z
   })
   .strict();
 
-export type TwitterConfig = z.infer<typeof TwitterConfigSchema>;
+export type TwitterConfig = zod.infer<typeof TwitterConfigSchema>;

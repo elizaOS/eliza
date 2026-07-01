@@ -6,12 +6,23 @@
  *   RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const RUN_FLAG = "RUN_LIVE_NATIVE_ACP";
 const DEFAULT_AGENT = "codex";
+const DEFAULT_CODEX_MODEL =
+  process.env.LIVE_NATIVE_ACP_CODEX_MODEL ?? "gpt-5.5";
+const DEFAULT_CODEX_REASONING_EFFORT =
+  process.env.LIVE_NATIVE_ACP_CODEX_REASONING_EFFORT ?? "low";
+const DEFAULT_CODEX_COMMAND = `npx -y @zed-industries/codex-acp@0.14.0 -c 'model="${DEFAULT_CODEX_MODEL}"' -c 'model_reasoning_effort="${DEFAULT_CODEX_REASONING_EFFORT}"'`;
 const PROMPT =
   "What is 7 plus 8? Reply with exactly the number, no punctuation.";
 const CLEANUP_TIMEOUT_MS = Number(
@@ -40,10 +51,13 @@ async function main() {
 
   const { AcpService } = await import("../../dist/node/index.node.js");
   const workdir = mkdtempSync(join(tmpdir(), `eliza-native-acp-${agent}-`));
+  const codexHome =
+    agent === "codex" ? createSmokeCodexHome(workdir) : undefined;
   const agentPidsBefore = snapshotAgentPids(agent);
   const runtime = makeRuntime(agent);
   const service = new AcpService(runtime);
   const events = [];
+  const keepAlive = setInterval(() => undefined, 1_000);
   let sessionId;
 
   service.onSessionEvent((sid, name, data) => {
@@ -51,24 +65,39 @@ async function main() {
   });
 
   try {
+    const smokeTimeoutMs = Number(
+      process.env.LIVE_NATIVE_ACP_TIMEOUT_MS ?? 120_000,
+    );
     console.log(`native ACP service smoke: agent=${agent}`);
     console.log(`native ACP service smoke: workdir=${workdir}`);
     console.log(
       `native ACP service smoke: command=${redactCommand(commandFor(agent))}`,
     );
 
-    await service.start();
-    const spawned = await service.spawnSession({
+    await withTimeout(service.start(), smokeTimeoutMs);
+    console.log("native ACP service smoke: service started");
+    console.log("native ACP service smoke: spawning session");
+    const spawnPromise = service.spawnSession({
       agentType: agent,
       workdir,
       approvalPreset: "permissive",
-      timeoutMs: Number(process.env.LIVE_NATIVE_ACP_TIMEOUT_MS ?? 120_000),
+      timeoutMs: smokeTimeoutMs,
+      ...(codexHome ? { env: { CODEX_HOME: codexHome } } : {}),
     });
+    console.log("native ACP service smoke: spawn request submitted");
+    const spawned = await withTimeout(spawnPromise, smokeTimeoutMs);
     sessionId = spawned.sessionId;
+    console.log(
+      `native ACP service smoke: session=${String(sessionId).slice(0, 8)}`,
+    );
 
-    const promptResult = await service.sendPrompt(sessionId, PROMPT, {
-      timeoutMs: Number(process.env.LIVE_NATIVE_ACP_TIMEOUT_MS ?? 120_000),
-    });
+    const promptResult = await withTimeout(
+      service.sendPrompt(sessionId, PROMPT, {
+        timeoutMs: smokeTimeoutMs,
+      }),
+      smokeTimeoutMs,
+    );
+    console.log("native ACP service smoke: prompt completed");
     const finalText = String(promptResult.finalText ?? "").trim();
     const taskCompletes = events.filter(
       (event) => event.name === "task_complete",
@@ -83,12 +112,13 @@ async function main() {
     console.log(`final text contains 15: ${finalTextValid}`);
 
     if (!completed || !finalTextValid || taskCompletes.length === 0) {
+      const eventSummary = summarizeEvents(events);
       throw new Error(
         `native ACP service smoke failed: stopReason=${JSON.stringify(
           promptResult.stopReason,
         )}, taskCompleteEvents=${taskCompletes.length}, finalText=${JSON.stringify(
           finalText,
-        )}`,
+        )}, events=${eventSummary}`,
       );
     }
 
@@ -99,19 +129,27 @@ async function main() {
     }
     throw err;
   } finally {
-    await withTimeout(
-      (async () => {
-        if (sessionId) {
+    console.log("native ACP service smoke: cleanup starting");
+    if (sessionId) {
+      await withTimeout(
+        (async () => {
           await service.closeSession(sessionId).catch(() => undefined);
-        }
-        await service.stop().catch(() => undefined);
-      })(),
-      CLEANUP_TIMEOUT_MS,
-    ).catch(() => undefined);
-    killNewAgentPids(agent, agentPidsBefore, "SIGTERM");
-    await wait(500);
-    killNewAgentPids(agent, agentPidsBefore, "SIGKILL");
+          await service.stop().catch(() => undefined);
+        })(),
+        CLEANUP_TIMEOUT_MS,
+      ).catch(() => undefined);
+      killNewAgentPids(agent, agentPidsBefore, "SIGTERM");
+      await wait(500);
+      killNewAgentPids(agent, agentPidsBefore, "SIGKILL");
+    } else {
+      console.warn(
+        "native ACP service smoke: skipping process cleanup before session id",
+      );
+    }
+    clearInterval(keepAlive);
     rmSync(workdir, { recursive: true, force: true });
+    if (codexHome) rmSync(codexHome, { recursive: true, force: true });
+    console.log("native ACP service smoke: cleanup complete");
   }
 }
 
@@ -128,6 +166,9 @@ function makeRuntime(agent) {
       if (key === "ELIZA_ACP_TRANSPORT") return "native";
       if (key === "ELIZA_ACP_DEFAULT_AGENT") return agent;
       if (key === "ELIZA_ACP_NO_TERMINAL") return "true";
+      if (key === "ELIZA_CODEX_ACP_COMMAND") {
+        return process.env[key]?.trim() || DEFAULT_CODEX_COMMAND;
+      }
       return process.env[key];
     },
   };
@@ -150,11 +191,30 @@ function ensureAgentCommand(agent) {
 }
 
 function commandFor(agent) {
-  return process.env[commandEnvName(agent)]?.trim() ?? "";
+  const command = process.env[commandEnvName(agent)]?.trim();
+  if (command) return command;
+  return agent === "codex" ? DEFAULT_CODEX_COMMAND : "";
 }
 
 function commandEnvName(agent) {
   return `ELIZA_${agent.toUpperCase()}_ACP_COMMAND`;
+}
+
+function createSmokeCodexHome(workdir) {
+  const codexHome = mkdtempSync(join(tmpdir(), "eliza-native-acp-codex-home-"));
+  writeFileSync(
+    join(codexHome, "config.toml"),
+    `model = ${JSON.stringify(DEFAULT_CODEX_MODEL)}\nmodel_reasoning_effort = ${JSON.stringify(
+      DEFAULT_CODEX_REASONING_EFFORT,
+    )}\n`,
+    "utf8",
+  );
+  const authPath = join(process.env.HOME ?? "", ".codex", "auth.json");
+  if (existsSync(authPath)) {
+    symlinkSync(authPath, join(codexHome, "auth.json"));
+  }
+  writeFileSync(join(workdir, ".codex-home"), codexHome, "utf8");
+  return codexHome;
 }
 
 function isSkippableFailure(err) {
@@ -171,6 +231,20 @@ function summarizeFailure(err) {
     .filter(Boolean)
     .join(" ");
   return cap(text || "native ACP command unavailable");
+}
+
+function summarizeEvents(events) {
+  return JSON.stringify(
+    events.slice(-10).map((event) => ({
+      name: event.name,
+      data: redactEventData(event.data),
+    })),
+  );
+}
+
+function redactEventData(value) {
+  const text = JSON.stringify(value ?? {});
+  return redactCommand(cap(text, 800));
 }
 
 function redactCommand(command) {
@@ -211,6 +285,7 @@ function snapshotAgentPids(agent) {
 function killNewAgentPids(agent, before, signal) {
   const current = snapshotAgentPids(agent);
   for (const pid of current) {
+    if (pid === process.pid || pid === process.ppid) continue;
     if (before.has(pid)) continue;
     try {
       process.kill(pid, signal);
@@ -228,16 +303,16 @@ function agentProcessPattern(agent) {
 }
 
 function withTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`timed out after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-      timer.unref?.();
-    }),
-  ]);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function wait(timeoutMs) {

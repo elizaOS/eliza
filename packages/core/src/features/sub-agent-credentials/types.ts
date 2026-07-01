@@ -9,6 +9,8 @@
  */
 
 export const SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE = "SubAgentCredentialBridge";
+export const SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE =
+	"SubAgentCredentialBridgeAdapter";
 export const SUB_AGENT_CHILD_DECISION_BUS_SERVICE = "SubAgentChildDecisionBus";
 export const SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE =
 	"SubAgentChildResultsClient";
@@ -20,6 +22,13 @@ export interface SubAgentCredentialScope {
 	expiresAt: number;
 	/** request ids dispatched to collect the missing values, if any. */
 	sensitiveRequestIds: readonly string[];
+}
+
+export interface SubAgentCredentialRequestOrigin {
+	roomId?: string;
+	channelId?: string;
+	source?: string;
+	ownerEntityId?: string;
 }
 
 export interface ChildAgentDecision {
@@ -59,6 +68,7 @@ export interface SubAgentCredentialBridge {
 		credentialKeys: readonly string[];
 		actorPolicy?: "owner_only" | "owner_or_linked_identity";
 		deliveryTarget?: "dm" | "owner_app_inline";
+		origin?: SubAgentCredentialRequestOrigin;
 	}): Promise<SubAgentCredentialScope>;
 	tunnelCredential(input: {
 		childSessionId: string;

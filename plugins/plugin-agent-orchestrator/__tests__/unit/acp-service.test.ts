@@ -25,6 +25,7 @@ type NativeOptions = {
   approvalPreset: ApprovalPreset;
   timeoutMs?: number;
   terminal?: boolean;
+  env?: NodeJS.ProcessEnv;
   onEvent?: NativeEventHandler;
   onStderr?: (chunk: string) => void;
 };
@@ -343,6 +344,10 @@ describe("AcpService", () => {
     );
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).not.toContain("--no-terminal");
+    const env = spawnMock.mock.calls[0]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
   });
 
   it("honors explicit terminal capability opt-out", async () => {
@@ -383,6 +388,9 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(1);
     expect(nativeClientMock.instances[0]?.opts.command).toBe(
       "codex-acp --stdio",
+    );
+    expect(nativeClientMock.instances[0]?.opts.env?.PARALLAX_SESSION_ID).toBe(
+      spawned.sessionId,
     );
   });
 
@@ -797,6 +805,10 @@ describe("AcpService", () => {
     closeOk(prompt);
 
     const result = await sent;
+    const promptEnv = spawnMock.mock.calls[1]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(promptEnv?.PARALLAX_SESSION_ID).toBe(sessionId);
     expect(result.response).toContain("done");
     expect(result.response).toContain("[tool output: Running tool]");
     expect(result.response).toContain("/dev/root        45G");

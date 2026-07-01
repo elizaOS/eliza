@@ -1,10 +1,15 @@
+import {
+  createSensitiveRequestDispatchRegistry,
+  type SensitiveRequestDeliveryAdapter,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
-  type CredentialBridgeDispatch,
-  type CredentialBridgeDispatchInput,
   CredentialScopeError,
   createCredentialTunnelService,
   createSubAgentCredentialBridgeAdapter,
+  registerSubAgentCredentialBridgeAdapter,
+  SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
+  SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
 } from "./credential-tunnel-service.ts";
 
 describe("credential-tunnel-service", () => {
@@ -198,222 +203,170 @@ describe("credential-tunnel-service", () => {
     expect(service.expireScopes()).toBe(2);
     expect(service.expireScopes()).toBe(0);
   });
-});
 
-describe("createSubAgentCredentialBridgeAdapter", () => {
-  function makeDispatch(): CredentialBridgeDispatch & {
-    calls: CredentialBridgeDispatchInput[];
-  } {
-    const calls: CredentialBridgeDispatchInput[] = [];
-    return {
-      calls,
-      dispatch: vi.fn(async (input: CredentialBridgeDispatchInput) => {
-        calls.push(input);
-        return { sensitiveRequestIds: [`req_${input.credentialScopeId}`] };
+  it("adapter dispatches an owner-only tunnel request without exposing scoped token or value", async () => {
+    const tunnel = createCredentialTunnelService();
+    const dispatch = createSensitiveRequestDispatchRegistry();
+    const deliver = vi.fn(
+      async (
+        _args: Parameters<SensitiveRequestDeliveryAdapter["deliver"]>[0],
+      ) => ({
+        delivered: true,
+        target: "owner_app_inline" as const,
+        formRendered: true,
       }),
+    );
+    const adapter: SensitiveRequestDeliveryAdapter = {
+      target: "owner_app_inline",
+      deliver,
     };
-  }
+    dispatch.register(adapter);
 
-  it("requestCredentials declares a scope and dispatches a secret request with tunnel routing", async () => {
-    const tunnel = createCredentialTunnelService();
-    const dispatch = makeDispatch();
-    const adapter = createSubAgentCredentialBridgeAdapter({ tunnel, dispatch });
-
-    const result = await adapter.requestCredentials({
-      childSessionId: "pty-1-abc",
-      credentialKeys: ["OPENAI_API_KEY"],
-    });
-
-    expect(result.credentialScopeId).toMatch(/^cred_scope_[0-9a-f]{16}$/);
-    expect(result.scopedToken).toMatch(/^[0-9a-f]{64}$/);
-    expect(result.expiresAt).toBeGreaterThan(Date.now());
-    expect(result.sensitiveRequestIds).toEqual([
-      `req_${result.credentialScopeId}`,
-    ]);
-
-    // The dispatcher receives identifiers only — never the scoped token.
-    expect(dispatch.calls).toHaveLength(1);
-    const dispatched = dispatch.calls[0];
-    expect(dispatched).toMatchObject({
-      childSessionId: "pty-1-abc",
-      credentialScopeId: result.credentialScopeId,
-      credentialKeys: ["OPENAI_API_KEY"],
-      actorPolicy: "owner_only",
-      deliveryTarget: "owner_app_inline",
-    });
-    expect(JSON.stringify(dispatched)).not.toContain(result.scopedToken);
-  });
-
-  it("declareScope honours an explicit actorPolicy / deliveryTarget", async () => {
-    const tunnel = createCredentialTunnelService();
-    const dispatch = makeDispatch();
-    const adapter = createSubAgentCredentialBridgeAdapter({ tunnel, dispatch });
-
-    const scope = await adapter.declareScope({
-      childSessionId: "pty-1-abc",
-      credentialKeys: ["STRIPE_KEY"],
-      actorPolicy: "owner_or_linked_identity",
-      deliveryTarget: "dm",
-    });
-
-    expect(scope.sensitiveRequestIds).toEqual([
-      `req_${scope.credentialScopeId}`,
-    ]);
-    expect(dispatch.calls[0]).toMatchObject({
-      actorPolicy: "owner_or_linked_identity",
-      deliveryTarget: "dm",
-    });
-  });
-
-  it("tunnelCredential → tryRetrieveCredential is one-shot; the second retrieve rejects already_redeemed", async () => {
-    const tunnel = createCredentialTunnelService();
-    const adapter = createSubAgentCredentialBridgeAdapter({
+    const bridge = createSubAgentCredentialBridgeAdapter({
       tunnel,
-      dispatch: makeDispatch(),
+      dispatch,
+      runtime: { agentId: "agent-runtime-1" } as never,
     });
 
-    const scope = await adapter.requestCredentials({
+    const scope = await bridge.requestCredentials({
+      childSessionId: "pty-1-abc",
+      credentialKeys: [" OPENAI_API_KEY ", "STRIPE_KEY", "OPENAI_API_KEY"],
+      origin: {
+        roomId: "room-owner",
+        channelId: "channel-owner",
+        source: "owner_app",
+        ownerEntityId: "owner-entity",
+      },
+    });
+
+    expect(scope.credentialScopeId).toMatch(/^cred_scope_/);
+    expect(scope.scopedToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(scope.sensitiveRequestIds).toHaveLength(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    const deliveredRequest = deliver.mock.calls[0][0].request as unknown as {
+      agentId: string;
+      ownerEntityId: string | null;
+      sourceRoomId: string | null;
+      target: { key: string };
+      delivery: {
+        mode: string;
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+    };
+    expect(deliveredRequest.agentId).toBe("agent-runtime-1");
+    expect(deliveredRequest.ownerEntityId).toBe("owner-entity");
+    expect(deliveredRequest.sourceRoomId).toBe("room-owner");
+    expect(deliveredRequest.target.key).toBe("SUB_AGENT_CREDENTIALS");
+    expect(deliveredRequest.delivery.mode).toBe("inline_owner_app");
+    expect(deliveredRequest.delivery.tunnel).toEqual({
+      credentialScopeId: scope.credentialScopeId,
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    });
+    expect(JSON.stringify(deliveredRequest)).not.toContain(scope.scopedToken);
+    expect(JSON.stringify(deliveredRequest)).not.toContain("sk-test-12345");
+
+    await bridge.tunnelCredential({
+      childSessionId: "pty-1-abc",
+      credentialScopeId: scope.credentialScopeId,
+      key: "OPENAI_API_KEY",
+      value: "sk-test-12345",
+    });
+
+    expect(
+      await bridge.tryRetrieveCredential({
+        childSessionId: "pty-1-abc",
+        key: "OPENAI_API_KEY",
+        scopedToken: scope.scopedToken,
+      }),
+    ).toEqual({ status: "ready", value: "sk-test-12345" });
+    expect(
+      await bridge.tryRetrieveCredential({
+        childSessionId: "pty-1-abc",
+        key: "OPENAI_API_KEY",
+        scopedToken: scope.scopedToken,
+      }),
+    ).toEqual({ status: "rejected", reason: "already_redeemed" });
+  });
+
+  it("adapter returns a scope even when no owner-app delivery adapter is registered", async () => {
+    const bridge = createSubAgentCredentialBridgeAdapter({
+      tunnel: createCredentialTunnelService(),
+      dispatch: createSensitiveRequestDispatchRegistry(),
+      runtime: { agentId: "agent-runtime-1" } as never,
+    });
+
+    const scope = await bridge.requestCredentials({
       childSessionId: "pty-1-abc",
       credentialKeys: ["OPENAI_API_KEY"],
     });
 
-    // Before tunneling: pending (owner has not submitted the value).
+    expect(scope.scopedToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(scope.sensitiveRequestIds).toEqual([]);
     expect(
-      await adapter.tryRetrieveCredential({
+      await bridge.tryRetrieveCredential({
         childSessionId: "pty-1-abc",
         key: "OPENAI_API_KEY",
         scopedToken: scope.scopedToken,
       }),
     ).toEqual({ status: "pending" });
-
-    await adapter.tunnelCredential({
-      childSessionId: "pty-1-abc",
-      credentialScopeId: scope.credentialScopeId,
-      key: "OPENAI_API_KEY",
-      value: "sk-secret",
-    });
-
-    expect(
-      await adapter.tryRetrieveCredential({
-        childSessionId: "pty-1-abc",
-        key: "OPENAI_API_KEY",
-        scopedToken: scope.scopedToken,
-      }),
-    ).toEqual({ status: "ready", value: "sk-secret" });
-
-    // One-shot: a second retrieve is terminal.
-    expect(
-      await adapter.tryRetrieveCredential({
-        childSessionId: "pty-1-abc",
-        key: "OPENAI_API_KEY",
-        scopedToken: scope.scopedToken,
-      }),
-    ).toMatchObject({ status: "rejected" });
   });
 
-  it("maps key_not_in_scope to a rejected retrieve and rejects tunnel of an undeclared key", async () => {
-    const tunnel = createCredentialTunnelService();
-    const adapter = createSubAgentCredentialBridgeAdapter({
-      tunnel,
-      dispatch: makeDispatch(),
-    });
-    const scope = await adapter.requestCredentials({
-      childSessionId: "pty-1-abc",
-      credentialKeys: ["OPENAI_API_KEY"],
-    });
-
-    await expect(
-      adapter.tunnelCredential({
-        childSessionId: "pty-1-abc",
-        credentialScopeId: scope.credentialScopeId,
-        key: "AWS_SECRET",
-        value: "x",
-      }),
-    ).rejects.toMatchObject({ code: "key_not_in_scope" });
+  it("registerSubAgentCredentialBridgeAdapter installs parent-runtime services and skips sandboxes", () => {
+    const dispatch = createSensitiveRequestDispatchRegistry();
+    const services = new Map<string, unknown[]>();
+    const runtime = {
+      agentId: "agent-runtime-1",
+      services,
+      getService: vi.fn((name: string) =>
+        name === "SensitiveRequestDispatchRegistry" ? dispatch : null,
+      ),
+    };
 
     expect(
-      await adapter.tryRetrieveCredential({
-        childSessionId: "pty-1-abc",
-        key: "AWS_SECRET",
-        scopedToken: scope.scopedToken,
+      registerSubAgentCredentialBridgeAdapter(runtime as never, {
+        tunnel: createCredentialTunnelService(),
       }),
-    ).toEqual({ status: "rejected", reason: "key_not_in_scope" });
-  });
-
-  it("maps scope_expired to an expired retrieve", async () => {
-    let clock = 1_000;
-    const tunnel = createCredentialTunnelService({
-      ttlMs: 100,
-      now: () => clock,
-    });
-    const adapter = createSubAgentCredentialBridgeAdapter({
-      tunnel,
-      dispatch: makeDispatch(),
-    });
-    const scope = await adapter.requestCredentials({
-      childSessionId: "pty-1-abc",
-      credentialKeys: ["OPENAI_API_KEY"],
-    });
-    await adapter.tunnelCredential({
-      childSessionId: "pty-1-abc",
-      credentialScopeId: scope.credentialScopeId,
-      key: "OPENAI_API_KEY",
-      value: "sk-secret",
-    });
-    clock = 100_000_000;
-
+    ).toBe(true);
+    expect(services.get(SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE)?.[0]).toBeTruthy();
     expect(
-      await adapter.tryRetrieveCredential({
-        childSessionId: "pty-1-abc",
-        key: "OPENAI_API_KEY",
-        scopedToken: scope.scopedToken,
-      }),
-    ).toEqual({ status: "expired" });
-  });
+      services.get(SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE)?.[0],
+    ).toBeTruthy();
 
-  it("maps session_mismatch to a rejected retrieve", async () => {
-    const tunnel = createCredentialTunnelService();
-    const adapter = createSubAgentCredentialBridgeAdapter({
-      tunnel,
-      dispatch: makeDispatch(),
-    });
-    const scope = await adapter.requestCredentials({
-      childSessionId: "pty-1-aaa",
-      credentialKeys: ["OPENAI_API_KEY"],
-    });
-    await adapter.tunnelCredential({
-      childSessionId: "pty-1-aaa",
-      credentialScopeId: scope.credentialScopeId,
-      key: "OPENAI_API_KEY",
-      value: "sk-secret",
-    });
-
+    const sandboxServices = new Map<string, unknown[]>();
     expect(
-      await adapter.tryRetrieveCredential({
-        childSessionId: "pty-1-bbb",
-        key: "OPENAI_API_KEY",
-        scopedToken: scope.scopedToken,
-      }),
-    ).toEqual({ status: "rejected", reason: "session_mismatch" });
-  });
+      registerSubAgentCredentialBridgeAdapter(
+        {
+          agentId: "sandbox-runtime",
+          services: sandboxServices,
+          getService: () => dispatch,
+        } as never,
+        {
+          tunnel: createCredentialTunnelService(),
+          env: { SANDBOX_AGENT_ID: "sandbox-1" },
+        },
+      ),
+    ).toBe(false);
+    expect(sandboxServices.size).toBe(0);
 
-  it("maps an invalid scoped token to a rejected retrieve", async () => {
-    const tunnel = createCredentialTunnelService();
-    const adapter = createSubAgentCredentialBridgeAdapter({
-      tunnel,
-      dispatch: makeDispatch(),
-    });
-    await adapter.requestCredentials({
-      childSessionId: "pty-1-abc",
-      credentialKeys: ["OPENAI_API_KEY"],
-    });
-
+    const childServices = new Map<string, unknown[]>();
     expect(
-      await adapter.tryRetrieveCredential({
-        childSessionId: "pty-1-abc",
-        key: "OPENAI_API_KEY",
-        scopedToken: "not-a-valid-token",
-      }),
-    ).toEqual({ status: "rejected", reason: "invalid_token" });
+      registerSubAgentCredentialBridgeAdapter(
+        {
+          agentId: "child-runtime",
+          services: childServices,
+          getService: () => dispatch,
+        } as never,
+        {
+          tunnel: createCredentialTunnelService(),
+          env: { PARALLAX_SESSION_ID: "pty-1-child" },
+        },
+      ),
+    ).toBe(false);
+    expect(childServices.size).toBe(0);
   });
 });

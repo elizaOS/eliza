@@ -37,6 +37,7 @@ import {
   normalizePluginId,
   parseSegments,
   sensitiveRequestStatusLabel,
+  sensitiveRequestTitleLabel,
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
@@ -587,6 +588,7 @@ export function SensitiveRequestBlock({
   });
 
   const tunnel = request.delivery?.tunnel;
+  const requestLabel = sensitiveRequestTitleLabel(request.key);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -625,7 +627,11 @@ export function SensitiveRequestBlock({
         setStatus("saved");
       } catch (caught) {
         setError(
-          caught instanceof Error ? caught.message : "Could not save secret.",
+          caught instanceof Error
+            ? caught.message
+            : tunnel
+              ? "Could not submit credential."
+              : "Could not save secret.",
         );
         setStatus("failed");
       } finally {
@@ -640,11 +646,11 @@ export function SensitiveRequestBlock({
       data-testid="sensitive-request"
       className="my-2 border border-border bg-card p-3 text-sm space-y-3"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-medium">{request.key}</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 break-words font-medium">{requestLabel}</div>
         <div
           data-testid="sensitive-request-status"
-          className="text-xs text-muted"
+          className="shrink-0 text-xs text-muted"
         >
           {sensitiveRequestStatusLabel(status)}
         </div>

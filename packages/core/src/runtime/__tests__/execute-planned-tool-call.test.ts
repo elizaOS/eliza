@@ -3,6 +3,7 @@ import {
 	getConnectorAccountManager,
 	InMemoryConnectorAccountStorage,
 } from "../../connectors/account-manager";
+import { runWithStreamingContext } from "../../streaming-context";
 import type {
 	Action,
 	HandlerCallback,
@@ -416,6 +417,81 @@ describe("executePlannedToolCall", () => {
 					}),
 				}),
 			}),
+		);
+	});
+
+	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {
+		const emitEvent = vi.fn(async () => {});
+		const onToolResult = vi.fn();
+		const action = makeAction({
+			name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+			suppressActionResultClipboard: true,
+			handler: async () => ({
+				success: true,
+				text: "declared",
+				data: {
+					actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+					credentialScopeId: "cred_scope_test",
+					scopedToken: "secret-token",
+				},
+			}),
+		});
+		const runtime = makeRuntime([action], { emitEvent });
+
+		const result = await runWithStreamingContext(
+			{ onStreamChunk: vi.fn(), onToolResult },
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE", params: {} },
+				),
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			data: expect.objectContaining({ scopedToken: "secret-token" }),
+		});
+		expect(emitEvent).toHaveBeenNthCalledWith(
+			2,
+			EventType.ACTION_COMPLETED,
+			expect.objectContaining({
+				content: expect.objectContaining({
+					actionResult: expect.objectContaining({
+						success: true,
+						text: "declared",
+						data: {
+							actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+							suppressed: true,
+							reason: "sensitive_action_result",
+						},
+					}),
+				}),
+			}),
+		);
+		expect(JSON.stringify(emitEvent.mock.calls)).not.toContain("secret-token");
+		expect(onToolResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				result: expect.objectContaining({
+					data: {
+						actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+						suppressed: true,
+						reason: "sensitive_action_result",
+					},
+				}),
+				toolCall: expect.objectContaining({
+					result: expect.objectContaining({
+						data: {
+							actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+							suppressed: true,
+							reason: "sensitive_action_result",
+						},
+					}),
+				}),
+			}),
+		);
+		expect(JSON.stringify(onToolResult.mock.calls)).not.toContain(
+			"secret-token",
 		);
 	});
 

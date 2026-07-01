@@ -31,7 +31,10 @@ function makeSteps(): { steps: PostReadyBootSteps; order: string[] } {
     registerTrainingRuntimeHooks: vi.fn(record("training", Promise.resolve())),
     registerCoreSensitiveRequestAdapters: vi.fn(record("sensitive", undefined)),
     registerSubAgentCredentialBridge: vi.fn(
-      record("credentialBridge", Promise.resolve()),
+      record("credentialBridgeWiring", Promise.resolve()),
+    ),
+    registerSubAgentCredentialBridgeAdapter: vi.fn(
+      record("credentialBridgeAdapter", true),
     ),
     shouldStartTelegramStandaloneBot: vi.fn(record("telegramCheck", false)),
     ensureTelegramBotPolling: vi.fn(record("telegramPoll", Promise.resolve())),
@@ -88,7 +91,8 @@ describe("runPostReadyBootTail — phase split", () => {
       "appRoutes",
       "training",
       "sensitive",
-      "credentialBridge",
+      "credentialBridgeAdapter",
+      "credentialBridgeWiring",
       "telegramCheck",
       "telegramStop",
       "triggerBridge",
@@ -154,6 +158,10 @@ describe("runPostReadyBootTail — phase split", () => {
     expect(order).toEqual([]);
     expect(steps.registerAppRoutePlugins).not.toHaveBeenCalled();
     expect(steps.registerCoreSensitiveRequestAdapters).not.toHaveBeenCalled();
+    expect(
+      steps.registerSubAgentCredentialBridgeAdapter,
+    ).not.toHaveBeenCalled();
+    expect(steps.registerSubAgentCredentialBridge).not.toHaveBeenCalled();
     expect(steps.ensureTriggerEventBridge).not.toHaveBeenCalled();
     expect(steps.startDeferredVoiceWarmup).not.toHaveBeenCalled();
   });

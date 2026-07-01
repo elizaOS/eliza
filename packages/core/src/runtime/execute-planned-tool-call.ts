@@ -80,12 +80,31 @@ function toContentValue(value: unknown): ContentValue {
 
 function actionResultToContentRecord(
 	result: ActionResult,
+	options: { suppressData?: boolean } = {},
 ): Record<string, ContentValue> {
 	const record: Record<string, ContentValue> = {};
 	for (const [key, value] of Object.entries(result)) {
+		if (options.suppressData && (key === "data" || key === "values")) {
+			record[key] = sensitiveActionResultMarker(value);
+			continue;
+		}
 		record[key] = toContentValue(value);
 	}
 	return record;
+}
+
+function sensitiveActionResultMarker(
+	value: unknown,
+): Record<string, ContentValue> {
+	const actionName =
+		isContentRecord(value) && typeof value.actionName === "string"
+			? value.actionName
+			: undefined;
+	return {
+		...(actionName ? { actionName } : {}),
+		suppressed: true,
+		reason: "sensitive_action_result",
+	};
 }
 
 export async function executePlannedToolCall(
@@ -273,7 +292,9 @@ export async function executePlannedToolCall(
 					text: resultForEvent.text ?? `Action ${action.name} completed`,
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: actionResultToContentRecord(resultForEvent),
+					actionResult: actionResultToContentRecord(resultForEvent, {
+						suppressData: action.suppressActionResultClipboard === true,
+					}),
 					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
@@ -294,12 +315,15 @@ export async function executePlannedToolCall(
 			});
 	}
 
-	return emitToolResult(toolCall, resultForEvent);
+	return emitToolResult(toolCall, resultForEvent, {
+		suppressData: action.suppressActionResultClipboard === true,
+	});
 }
 
 async function emitToolResult(
 	toolCall: PlannerToolCall | PlannedToolCall,
 	result: ActionResult,
+	options: { suppressData?: boolean } = {},
 ): Promise<ActionResult> {
 	const streamingContext = getStreamingContext();
 	const status = result.success ? "completed" : "failed";
@@ -307,7 +331,7 @@ async function emitToolResult(
 		toolCall,
 		status,
 	);
-	streamingToolCall.result = actionResultToStreamingResult(result);
+	streamingToolCall.result = actionResultToStreamingResult(result, options);
 	await emitStreamingHook(streamingContext, "onToolResult", {
 		toolCall: streamingToolCall,
 		toolCallId: streamingToolCall.id,
@@ -376,6 +400,7 @@ function plannedToolCallToStreamingToolCall(
 
 function actionResultToStreamingResult(
 	result: ActionResult,
+	options: { suppressData?: boolean } = {},
 ): ToolCall["result"] {
 	return {
 		success: result.success,
@@ -383,8 +408,13 @@ function actionResultToStreamingResult(
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		error: result.error ? stringifyError(result.error) : undefined,
-		data: result.data,
-		values: result.values,
+		data: options.suppressData
+			? sensitiveActionResultMarker(result.data)
+			: result.data,
+		values:
+			options.suppressData && result.values !== undefined
+				? sensitiveActionResultMarker(result.values)
+				: result.values,
 		continueChain: result.continueChain,
 	} as ToolCall["result"];
 }

@@ -77,9 +77,30 @@ state, but only when the bridge is wired (env var \`PARALLAX_SESSION_ID\` set):
   memory (facts, messages, knowledge) — not the originating room's recency.
 - \`.../active-workspaces\` → sibling sub-agents.
 
-Loopback-only, GET-only, read-only; auth is the path-embedded session id. If
-\`PARALLAX_SESSION_ID\` is unset, the bridge is not wired for your spawn — skip it.
-For a self-contained task, never touch the bridge.
+## Requesting a missing credential
+
+If a task truly requires a credential that is not in your sealed environment
+(for example \`OPENAI_API_KEY\`), request it through the parent credential bridge
+instead of asking the user in chat and instead of printing secrets:
+
+1. \`POST "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/credentials/request"\`
+   with JSON \`{"credentialKeys":["OPENAI_API_KEY"]}\`.
+2. The response includes \`credentialScopeId\`, \`scopedToken\`, \`expiresAt\`,
+   and \`sensitiveRequestIds\`. Treat \`scopedToken\` like a bearer secret:
+   keep it only in process memory or a private scratch file inside this
+   workspace; never print it, commit it, or include it in a final answer.
+3. Poll
+   \`GET "http://127.0.0.1:\${ELIZA_HOOK_PORT:-2138}/api/coding-agents/\${PARALLAX_SESSION_ID}/credentials/OPENAI_API_KEY?token=<scopedToken>"\`
+   until the parent returns the value or a terminal error. The value is
+   single-use; keep it in memory, use it for the required command, and never
+   echo it to stdout/stderr.
+
+All bridge endpoints are loopback-only and auth is the path-embedded session id.
+The parent-state endpoints are GET-only/read-only; the credential endpoints are
+the only write-like bridge calls, and they only ask the parent owner to approve
+a scoped one-shot secret. If \`PARALLAX_SESSION_ID\` is unset, the bridge is not
+wired for your spawn — skip it. For a self-contained task, never touch the
+bridge.
 
 ## Constraints
 

@@ -801,7 +801,12 @@ declare module "./client-base" {
       childSessionId: string;
       key: string;
       value: string;
-    }): Promise<{ ok: boolean }>;
+    }): Promise<{
+      ok: boolean;
+      childSessionId: string;
+      credentialScopeId: string;
+      key: string;
+    }>;
     testPluginConnection(id: string): Promise<{
       success: boolean;
       pluginId: string;
@@ -2788,18 +2793,27 @@ ElizaClient.prototype.tunnelCredential = async function (
 ) {
   // SECURITY: never log the value. Only the scope/session/key are safe to
   // surface for debugging.
-  logSettingsClient("POST /api/credential-tunnel/submit → start", {
+  logSettingsClient("POST /api/credential-tunnel → start", {
     baseUrl: this.getBaseUrl(),
     credentialScopeId: input.credentialScopeId,
     childSessionId: input.childSessionId,
     key: input.key,
+    hasValue: Boolean(input.value),
   });
-  const out = (await this.fetch("/api/credential-tunnel/submit", {
+  const out = (await this.fetch("/api/credential-tunnel", {
     method: "POST",
     body: JSON.stringify(input),
-  })) as { ok: boolean };
-  logSettingsClient("POST /api/credential-tunnel/submit ← ok", {
+  })) as {
+    ok: boolean;
+    childSessionId: string;
+    credentialScopeId: string;
+    key: string;
+  };
+  logSettingsClient("POST /api/credential-tunnel ← ok", {
     baseUrl: this.getBaseUrl(),
+    credentialScopeId: out.credentialScopeId,
+    childSessionId: out.childSessionId,
+    key: out.key,
     ok: out.ok,
   });
   return out;

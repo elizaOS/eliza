@@ -4,6 +4,7 @@
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
+export * from "./api/credential-tunnel-routes";
 export * from "./api/ios-local-agent-transport";
 export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
@@ -50,6 +51,7 @@ export * from "./security/platform-secure-store-node";
 export * from "./security/wallet-os-store-actions";
 export * from "./services/account-pool";
 export * from "./services/auth-store";
+export * from "./services/credential-tunnel-service";
 export * from "./services/github-credentials";
 export * from "./services/inference-abort";
 export * from "./services/steward-credentials";

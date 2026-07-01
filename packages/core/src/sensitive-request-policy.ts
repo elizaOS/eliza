@@ -16,6 +16,7 @@ export type SensitiveRequestStatus =
 export type SensitiveRequestPaymentContext = "verified_payer" | "any_payer";
 
 export type SensitiveRequestActorPolicy =
+	| "owner_only"
 	| "owner_or_linked_identity"
 	| "organization_admin"
 	| "verified_payer"
@@ -175,6 +176,13 @@ export interface SensitiveRequestEvent {
 	[key: string]: unknown;
 }
 
+export interface SensitiveRequestTunnelRouting {
+	credentialScopeId: string;
+	childSessionId: string;
+	/** Credential keys covered by this tunnel-routed request. Never includes values or scoped tokens. */
+	keys?: readonly string[];
+}
+
 export interface SensitiveRequestDeliveryPlan {
 	kind: SensitiveRequestKind;
 	source: SensitiveRequestSourceContext;
@@ -185,6 +193,8 @@ export interface SensitiveRequestDeliveryPlan {
 	authenticated: boolean;
 	canCollectValueInCurrentChannel: boolean;
 	linkBaseUrl?: string;
+	/** One-shot sub-agent credential tunnel routing. Scoped tokens and values never transit chat. */
+	tunnel?: SensitiveRequestTunnelRouting;
 	reason: string;
 	instruction: string;
 }
