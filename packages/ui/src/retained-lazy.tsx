@@ -32,6 +32,7 @@ export type RetainedLazyLoader<TProps extends object> = () => Promise<
 
 interface RetainedModuleEntry<TProps extends object> {
   loader: RetainedLazyLoader<TProps>;
+  key?: string;
   promise: Promise<RetainedLazyModule<TProps>>;
   module: RetainedLazyModule<TProps> | null;
   refCount: number;
@@ -125,9 +126,9 @@ function cleanupEntry(
   }
   const cleanup = entry.module?.cleanup;
   entry.module = null;
-  emitRetainedTelemetry("evict", { reason });
+  emitRetainedTelemetry("evict", { key: entry.key, reason });
   runCleanup(cleanup);
-  if (cleanup) emitRetainedTelemetry("cleanup", { reason });
+  if (cleanup) emitRetainedTelemetry("cleanup", { key: entry.key, reason });
 }
 
 function armRetentionTimer(entry: RetainedModuleEntry<object>): void {
@@ -194,11 +195,13 @@ function installRetainedModuleLifecycle(): void {
 
 function ensureEntry<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
+  options: { key?: string } = {},
 ): RetainedModuleEntry<TProps> {
   const existing = retainedModuleCache.get(
     loader as RetainedLazyLoader<object>,
   ) as RetainedModuleEntry<TProps> | undefined;
   if (existing) {
+    existing.key = options.key ?? existing.key;
     existing.lastUsedAt = Date.now();
     return existing;
   }
@@ -208,7 +211,7 @@ function ensureEntry<TProps extends object>(
     (module) => {
       entry.module = module;
       entry.lastUsedAt = Date.now();
-      emitRetainedTelemetry("load");
+      emitRetainedTelemetry("load", { key: entry.key });
       if (
         entry.cleanupScheduled ||
         (retainedModuleCache.get(loader as RetainedLazyLoader<object>) !==
@@ -218,7 +221,7 @@ function ensureEntry<TProps extends object>(
         const cleanup = entry.module.cleanup;
         entry.module = null;
         runCleanup(cleanup);
-        if (cleanup) emitRetainedTelemetry("cleanup");
+        if (cleanup) emitRetainedTelemetry("cleanup", { key: entry.key });
         return module;
       }
       if (entry.refCount === 0) {
@@ -234,13 +237,14 @@ function ensureEntry<TProps extends object>(
       ) {
         retainedModuleCache.delete(loader as RetainedLazyLoader<object>);
       }
-      emitRetainedTelemetry("load-error");
+      emitRetainedTelemetry("load-error", { key: entry.key });
       throw error;
     },
   );
 
   entry = {
     loader,
+    key: options.key,
     promise,
     module: null,
     refCount: 0,
@@ -257,12 +261,13 @@ function ensureEntry<TProps extends object>(
 
 export function acquireRetainedLazyModule<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
+  options: { cacheKey?: string } = {},
 ): {
   promise: Promise<RetainedLazyModule<TProps>>;
   release: () => void;
 } {
   installRetainedModuleLifecycle();
-  const entry = ensureEntry(loader);
+  const entry = ensureEntry(loader, { key: options.cacheKey });
   entry.refCount += 1;
   entry.lastUsedAt = Date.now();
   if (entry.retentionTimer) {
@@ -278,7 +283,7 @@ export function acquireRetainedLazyModule<TProps extends object>(
       released = true;
       entry.refCount = Math.max(0, entry.refCount - 1);
       entry.lastUsedAt = Date.now();
-      emitRetainedTelemetry("release");
+      emitRetainedTelemetry("release", { key: entry.key });
       if (entry.refCount !== 0) return;
       if (
         retainedModuleCache.get(loader as RetainedLazyLoader<object>) ===
@@ -306,9 +311,10 @@ export function invalidateRetainedLazyModule<TProps extends object>(
 
 export function preloadRetainedLazyModule<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
+  options: { cacheKey?: string } = {},
 ): Promise<RetainedLazyModule<TProps>> {
   installRetainedModuleLifecycle();
-  return ensureEntry(loader).promise;
+  return ensureEntry(loader, { key: options.cacheKey }).promise;
 }
 
 export function __resetRetainedLazyModulesForTests(): void {
@@ -337,11 +343,13 @@ export function __resetRetainedLazyModulesForTests(): void {
 
 export function RetainedLazyComponent<TProps extends object>({
   loader,
+  cacheKey,
   componentProps,
   fallback = null,
   onError,
 }: {
   loader: RetainedLazyLoader<TProps>;
+  cacheKey?: string;
   componentProps: TProps;
   fallback?: ReactNode;
   onError?: (error: Error) => ReactNode;
@@ -351,7 +359,7 @@ export function RetainedLazyComponent<TProps extends object>({
 
   useEffect(() => {
     let cancelled = false;
-    const lease = acquireRetainedLazyModule(loader);
+    const lease = acquireRetainedLazyModule(loader, { cacheKey });
     setModule(null);
     setError(null);
     void lease.promise
@@ -366,7 +374,7 @@ export function RetainedLazyComponent<TProps extends object>({
       cancelled = true;
       lease.release();
     };
-  }, [loader]);
+  }, [loader, cacheKey]);
 
   const renderedError = useMemo(
     () => (error && onError ? onError(error) : null),

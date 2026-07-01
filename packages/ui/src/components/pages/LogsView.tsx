@@ -3,6 +3,10 @@ import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import {
+  LAYOUT_SHIFT_INTENT_ATTR,
+  LAYOUT_SHIFT_INTENT_TRANSIENT,
+} from "../../hooks/useLayoutShiftMonitor";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
@@ -20,13 +24,18 @@ import {
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
-function logEntryKey(entry: LogEntry): string {
+const LOG_HYDRATION_SETTLE_MS = 1200;
+const LOG_INITIAL_SKELETON_ROWS = 4;
+const LOG_INITIAL_SKELETON_ROW_CLASS = "h-[11.375rem]";
+
+function logEntryKey(entry: LogEntry, index: number): string {
   return [
     entry.timestamp,
     entry.source,
     entry.level,
     entry.message,
     entry.tags.join(","),
+    index,
   ].join("|");
 }
 
@@ -127,6 +136,7 @@ function LogsViewBody() {
   // locally: until the first loadLogs() settles we show a loading state
   // instead of the "no entries yet" empty state (which is misleading mid-load).
   const [initialLoading, setInitialLoading] = useState(true);
+  const [logHydrationSettling, setLogHydrationSettling] = useState(false);
 
   const {
     logs,
@@ -167,7 +177,12 @@ function LogsViewBody() {
   useEffect(() => {
     let cancelled = false;
     void loadLogs().finally(() => {
-      if (!cancelled) setInitialLoading(false);
+      if (cancelled) return;
+      setLogHydrationSettling(true);
+      setInitialLoading(false);
+      window.setTimeout(() => {
+        if (!cancelled) setLogHydrationSettling(false);
+      }, LOG_HYDRATION_SETTLE_MS);
     });
     return () => {
       cancelled = true;
@@ -251,6 +266,9 @@ function LogsViewBody() {
     () => logs.filter((entry) => entry.level === "error").length,
     [logs],
   );
+  const logPanelShiftIntentProps = logHydrationSettling
+    ? { [LAYOUT_SHIFT_INTENT_ATTR]: LAYOUT_SHIFT_INTENT_TRANSIENT }
+    : undefined;
 
   return (
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
@@ -378,10 +396,16 @@ function LogsViewBody() {
       {/* Log entries — full remaining height */}
       <PagePanel
         variant="surface"
+        data-testid="logs-entry-panel"
         className="flex-1 min-h-0 overflow-y-auto font-mono text-sm"
+        {...logPanelShiftIntentProps}
       >
         {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
-          <ListSkeleton className="m-1" rows={8} rowClassName="h-10" />
+          <ListSkeleton
+            className="m-1"
+            rows={LOG_INITIAL_SKELETON_ROWS}
+            rowClassName={LOG_INITIAL_SKELETON_ROW_CLASS}
+          />
         ) : filteredLogs.length === 0 ? (
           <ChatEmptyStateWithRecommendations
             icon={ScrollText}
@@ -413,8 +437,8 @@ function LogsViewBody() {
           />
         ) : (
           <div className="overflow-hidden">
-            {filteredLogs.map((entry: LogEntry) => (
-              <LogRow key={logEntryKey(entry)} entry={entry} />
+            {filteredLogs.map((entry: LogEntry, index) => (
+              <LogRow key={logEntryKey(entry, index)} entry={entry} />
             ))}
           </div>
         )}

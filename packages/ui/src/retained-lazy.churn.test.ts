@@ -45,12 +45,12 @@ const flushMicrotasks = async () => {
 };
 
 /** A distinct "view" module: a trivial component plus a cleanup spy. */
-function makeView() {
+function makeView(index: number) {
   const cleanup = vi.fn();
   const Component: ComponentType<Record<string, never>> = () => null;
   const loader: RetainedLazyLoader<Record<string, never>> = () =>
     Promise.resolve({ default: Component, cleanup });
-  return { loader, cleanup };
+  return { key: `test-view-${index}`, loader, cleanup };
 }
 
 describe("retained-lazy module cache — multi-view churn", () => {
@@ -67,12 +67,16 @@ describe("retained-lazy module cache — multi-view churn", () => {
 
   it("evicts + cleans up older views and stays bounded across many switches", async () => {
     const ring = installRing();
-    const views = Array.from({ length: VIEW_COUNT }, () => makeView());
+    const views = Array.from({ length: VIEW_COUNT }, (_, index) =>
+      makeView(index),
+    );
 
     // Walk every "view" once: open it (acquire + await load), then leave it
     // (release) — the same sequence a tab switch drives.
     for (const view of views) {
-      const lease = acquireRetainedLazyModule(view.loader);
+      const lease = acquireRetainedLazyModule(view.loader, {
+        cacheKey: view.key,
+      });
       await lease.promise;
       lease.release();
       await flushMicrotasks();
@@ -82,6 +86,9 @@ describe("retained-lazy module cache — multi-view churn", () => {
     // overflow: exactly VIEW_COUNT - MAX of the oldest views.
     const evictedDuringWalk = ring.filter((e) => e.action === "evict").length;
     expect(evictedDuringWalk).toBe(VIEW_COUNT - MAX);
+    expect(ring.filter((e) => e.action === "evict").map((e) => e.key)).toEqual(
+      views.slice(0, VIEW_COUNT - MAX).map((view) => view.key),
+    );
 
     // The oldest `VIEW_COUNT - MAX` views are evicted + cleaned up; the most
     // recent `MAX` are still retained (idle) so their cleanup has NOT run yet.
@@ -116,7 +123,7 @@ describe("retained-lazy module cache — multi-view churn", () => {
 
   it("re-opening a retained view reuses the cached module (no second load)", async () => {
     const ring = installRing();
-    const { loader } = makeView();
+    const { loader } = makeView(0);
 
     const first = acquireRetainedLazyModule(loader);
     await first.promise;

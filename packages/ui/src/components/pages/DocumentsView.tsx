@@ -423,7 +423,9 @@ export function DocumentsView({
 } = {}) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const tRef = useRef(t);
   const setActionNoticeRef = useRef(setActionNotice);
+  tRef.current = t;
   setActionNoticeRef.current = setActionNotice;
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("all");
@@ -515,7 +517,7 @@ export function DocumentsView({
           const msg =
             err instanceof Error
               ? err.message
-              : t("documentsview.FailedToLoadDocumentsData", {
+              : tRef.current("documentsview.FailedToLoadDocumentsData", {
                   defaultValue: "Failed to load Knowledge data",
                 });
           setLoadError(msg);
@@ -525,7 +527,7 @@ export function DocumentsView({
         setLoading(false);
       }
     },
-    [onDocumentsChange, scopeFilter, t],
+    [onDocumentsChange, scopeFilter],
   );
 
   useEffect(() => {
