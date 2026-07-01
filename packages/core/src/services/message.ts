@@ -3927,7 +3927,7 @@ function filterRunnableCandidateActions(
 	});
 }
 
-function applyDirectCurrentCandidateBackstopToMessageHandler(
+export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	messageHandler: MessageHandlerResult,
 	runtimeContext:
 		| {
@@ -3960,6 +3960,37 @@ function applyDirectCurrentCandidateBackstopToMessageHandler(
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
+
+	// The structured-envelope path (messageHandlerFromFieldResult) already refuses
+	// to force-plan over a finished answer whose only planning signals are weak,
+	// injectable ones (a simple/general context + search/shell-class candidates)
+	// via shouldPreferCompleteDirectReply. The plain-text fallback lands here
+	// instead and previously skipped that valve, so a COMPLETE plain-text answer
+	// ("Your lucky number is 4291." / a solved logic puzzle) that this backstop
+	// happened to tag with an inferred WEB_SEARCH candidate got promoted to
+	// requiresTool=true — forcing a pointless web search + a slow extra planner
+	// round, even though the identical answer in JSON form (contexts=[simple])
+	// went direct. Apply the same structural valve here so the two Stage-1 shapes
+	// route identically. Live-info stays correct: its Stage-1 reply is an ack
+	// ("Checking the price now."), not a complete answer, so it fails
+	// looksLikeCompleteDirectReply and still forces the fetch. Coding/spawn stays
+	// correct too: a strong (non-weak) candidate fails hasOnlyWeakDirectReplyPlanningSignals.
+	// The extra !looksLikeCodingWorkRequest guard mirrors the structured path's
+	// !modelCommittedToDelegation gate: spawn-class actions (TASKS_SPAWN_AGENT, …)
+	// are ALSO in the weak-override set, so without this a plain-text "build the
+	// app" reply that read as a complete sentence could be kept direct and never
+	// spawn. Restricting the valve to non-coding-work turns keeps the build-spawn
+	// path intact while still short-circuiting finished plain-text answers.
+	if (
+		!looksLikeCodingWorkRequest(currentMessageText) &&
+		shouldPreferCompleteDirectReply({
+			replyText: String(messageHandler.plan.reply ?? ""),
+			candidateActions: runnableCandidateActions,
+			contexts: messageHandler.plan.contexts ?? [],
+		})
+	) {
+		return messageHandler;
+	}
 
 	const planningContexts = (messageHandler.plan.contexts ?? []).filter(
 		(context) => context !== SIMPLE_CONTEXT_ID,
@@ -4097,6 +4128,7 @@ const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
 		"TASKS",
 		"TASKS_SPAWN_AGENT",
 		"TERMINAL",
+		"WEB_FETCH",
 		"WEB_SEARCH",
 	].map(normalizeActionIdentifier),
 );
