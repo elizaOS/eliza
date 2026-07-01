@@ -251,7 +251,8 @@ export class TaskService extends Service {
 	/**
 	 * Asynchronous method that checks tasks with "queue" tag, validates them, then executes via runTick.
 	 * Skips the DB query when tasksDirty is false. WHY: avoid redundant getTasks every second when nothing changed.
-	 * If a task's execute() creates/updates tasks and calls markDirty(), the next tick will re-query; tasks created mid-loop run next tick.
+	 * Only a truly EMPTY queue may disarm the tick: repeat tasks and not-yet-due one-shots become due purely by
+	 * time passing, with no create/update to call markDirty(), so any non-empty result re-arms tasksDirty.
 	 *
 	 * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
 	 */
@@ -267,9 +268,13 @@ export class TaskService extends Service {
 			agentIds: [this.runtime.agentId],
 		});
 
-		if (!allTasks) {
+		if (!allTasks || allTasks.length === 0) {
+			// Empty queue: stay disarmed until markDirty() (createTask/updateTask) re-arms.
 			return;
 		}
+
+		// Non-empty queue: re-arm so the next tick re-queries and time-based due-ness is observed.
+		this.tasksDirty = true;
 
 		if (this.stopped) {
 			return;
@@ -475,7 +480,11 @@ export class TaskService extends Service {
 				const meta = latestTask.metadata as TaskMetadata | undefined;
 				const failureCount = (meta?.failureCount ?? 0) + 1;
 				const rawMax = meta?.maxFailures;
-				const neverPause = rawMax === Infinity || rawMax === -1;
+				// maxFailures <= 0 (or Infinity) = never auto-pause. WHY: critical heartbeats (e.g. the
+				// LifeOps scheduler) must survive transient failure storms; a paused heartbeat is a
+				// permanently-dead subsystem until an operator notices. 0/-1 survive JSON round-trips.
+				const neverPause =
+					rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0);
 				const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
 				const newMeta: TaskMetadata & Record<string, unknown> = {
 					...(meta ?? {}),
