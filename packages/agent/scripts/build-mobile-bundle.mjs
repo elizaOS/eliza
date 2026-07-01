@@ -105,23 +105,6 @@ console.log("[build-mobile] output dir:", outDir);
 rmRecursive(outDir);
 await mkdir(outDir, { recursive: true });
 
-const generateCssStringsScript = path.join(
-  repoRoot,
-  "packages",
-  "scripts",
-  "generate-css-strings.mjs",
-);
-if (existsSync(generateCssStringsScript)) {
-  const cssResult = spawnSync(process.execPath, [generateCssStringsScript], {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-  if (cssResult.status !== 0) {
-    console.error("[build-mobile] FATAL: generate-css-strings failed");
-    process.exit(cssResult.status ?? 1);
-  }
-}
-
 // Ensure generated keyword data exists. `@elizaos/shared` ships a
 // runtime-loaded `validation-keyword-data.js` that's produced by
 // `packages/shared/scripts/generate-keywords.mjs` rather than checked into
