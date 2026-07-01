@@ -10,10 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import {
-  LAUNCHER_DOCK_LIMIT,
-  LAUNCHER_STORAGE_KEY,
-} from "../../state/launcher-layout";
+import { LAUNCHER_STORAGE_KEY } from "../../state/launcher-layout";
 import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
 import { Launcher } from "./Launcher";
 
@@ -128,15 +125,17 @@ describe("Launcher", () => {
     expect(onLaunch).not.toHaveBeenCalled();
   });
 
-  it("favorites a view into the dock and persists the layout", () => {
-    // `notes` is not in DEFAULT_LAUNCHER_FAVORITES (#9144), so favoriting it
-    // genuinely adds it to the dock rather than toggling off a pre-seeded id.
+  it("favorites a view as metadata without moving it out of the page grid", () => {
     const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
     render(<Launcher entries={entries} onLaunch={() => {}} />);
     longPressToEdit("Notes");
     fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    // The dock now contains a Notes tile (keyed dock-notes).
-    expect(screen.getByTestId("launcher-tile-notes")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    expect(
+      within(screen.getByTestId("launcher-page-0")).getByTestId(
+        "launcher-tile-notes",
+      ),
+    ).toBeTruthy();
     const stored = JSON.parse(
       window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
     );
@@ -400,10 +399,7 @@ describe("Launcher long-press to edit", () => {
 });
 
 describe("Launcher controlled favorites (desktop tabs)", () => {
-  it("clamps the dock to LAUNCHER_DOCK_LIMIT even when more are supplied", () => {
-    // Controlled mode (onToggleFavorite set) renders the caller's favoriteIds.
-    // A caller that supplies more than the cap must still render at most
-    // LAUNCHER_DOCK_LIMIT dock tiles (the iOS-style 4-slot dock).
+  it("renders controlled favorites as normal page tiles with no dock", () => {
     const ids = ["a", "b", "c", "d", "e", "f"];
     render(
       <Launcher
@@ -413,23 +409,20 @@ describe("Launcher controlled favorites (desktop tabs)", () => {
         onToggleFavorite={() => {}}
       />,
     );
-    const dockTiles = screen
-      .getByTestId("launcher-dock")
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    const pageTiles = screen
+      .getByTestId("launcher-page-0")
       .querySelectorAll('[data-testid^="launcher-tile-"]');
-    expect(dockTiles).toHaveLength(LAUNCHER_DOCK_LIMIT);
+    expect(pageTiles).toHaveLength(ids.length);
   });
 });
 
-describe("Launcher dock favorites (local, uncontrolled)", () => {
-  // None of these ids are in DEFAULT_LAUNCHER_FAVORITES, so the seeded dock
-  // reconciles to empty and each favorite is a genuine add.
+describe("Launcher favorites metadata (local, uncontrolled)", () => {
   const MANY = ["a", "b", "c", "d", "e"].map((id) =>
     entry(id, id.toUpperCase()),
   );
 
-  it("unpins a favorited view from the dock", () => {
-    // `notes` and `archive` are not default-dock ids (#9144), so the seeded dock
-    // reconciles to empty and the dock only exists once we pin `notes`.
+  it("toggles favorite metadata without moving the tile", () => {
     render(
       <Launcher
         entries={[entry("notes", "Notes"), entry("archive", "Archive")]}
@@ -438,36 +431,38 @@ describe("Launcher dock favorites (local, uncontrolled)", () => {
     );
     longPressToEdit("Notes");
     fireEvent.click(screen.getByTestId("launcher-fav-notes"));
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
     expect(
-      within(screen.getByTestId("launcher-dock")).getByText("Notes"),
+      within(screen.getByTestId("launcher-page-0")).getByText("Notes"),
     ).toBeTruthy();
 
-    // Toggle it off again → the dock empties and unmounts.
+    // Toggle it off again: only the metadata changes.
     fireEvent.click(screen.getByTestId("launcher-fav-notes"));
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    expect(
+      within(screen.getByTestId("launcher-page-0")).getByText("Notes"),
+    ).toBeTruthy();
     const stored = JSON.parse(
       window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
     );
     expect(stored.favorites).not.toContain("notes");
   });
 
-  it("evicts the oldest favorite when the dock is full", () => {
+  it("evicts the oldest favorite metadata when the shared cap is full", () => {
     render(<Launcher entries={MANY} onLaunch={() => {}} />);
     longPressToEdit("A");
     for (const id of ["a", "b", "c", "d", "e"]) {
       fireEvent.click(screen.getByTestId(`launcher-fav-${id}`));
     }
-    // Dock caps at 4 → the first-added ("A") is evicted, B–E remain.
-    const dock = within(screen.getByTestId("launcher-dock"));
-    expect(dock.queryByText("A")).toBeNull();
-    expect(dock.getByText("B")).toBeTruthy();
-    expect(dock.getByText("E")).toBeTruthy();
+    // Favorite metadata caps at 4, but all five tiles remain in the grid.
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    const page = within(screen.getByTestId("launcher-page-0"));
+    expect(page.getByText("A")).toBeTruthy();
+    expect(page.getByText("B")).toBeTruthy();
+    expect(page.getByText("E")).toBeTruthy();
     const stored = JSON.parse(
       window.localStorage.getItem(LAUNCHER_STORAGE_KEY) ?? "{}",
     );
     expect(stored.favorites).toEqual(["b", "c", "d", "e"]);
   });
 });
-
-// Keep `within` referenced for future grouped-dock assertions without lint noise.
-void within;

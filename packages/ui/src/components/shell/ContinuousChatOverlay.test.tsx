@@ -1499,7 +1499,7 @@ describe("ContinuousChatOverlay", () => {
   // ── chat-full Launcher. The header row no longer exposes Home /
   // Views / Settings as a mini app nav. It keeps one Launcher icon that
   // returns to the combined Home/Launcher surface; Settings lives in the
-  // Launcher favorites dock.
+  // Launcher grid.
   it("renders only the Launcher in the chat-full header", () => {
     render(
       <ContinuousChatOverlay

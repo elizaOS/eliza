@@ -20,14 +20,16 @@ test.describe("launcher catalog interactions", () => {
     await installDefaultAppRoutes(page);
   });
 
-  async function longPressTile(page: Page, tile: Locator): Promise<void> {
+  async function holdTilePastLongPressThreshold(
+    page: Page,
+    tile: Locator,
+  ): Promise<void> {
     const button = tile.locator("button").first();
     const box = await button.boundingBox();
     if (!box) throw new Error("launcher tile button is not laid out");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.waitForTimeout(500);
-    await page.mouse.up();
   }
 
   test("renders the launcher with visual tiles and a chat composer", async ({
@@ -51,7 +53,7 @@ test.describe("launcher catalog interactions", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("long-press edit mode reveals favorite badges; favoriting fills the dock", async ({
+  test("long-press never creates a favorites row in the app launcher", async ({
     page,
   }) => {
     await openAppPath(page, "/views");
@@ -61,17 +63,16 @@ test.describe("launcher catalog interactions", () => {
 
     const firstTile = page.locator('[data-testid^="launcher-tile-"]').first();
     await expect(firstTile).toBeVisible();
-    const tileId = await firstTile.getAttribute("data-testid");
-    const viewId = (tileId ?? "").replace("launcher-tile-", "");
 
-    // Enter edit mode → the per-tile favorite badge appears.
-    await longPressTile(page, firstTile);
-    const favBadge = page.getByTestId(`launcher-fav-${viewId}`);
-    await expect(favBadge).toBeVisible();
+    await expect(page.getByTestId("launcher-dock")).toHaveCount(0);
 
-    // Favorite the view → it surfaces in the dock.
-    await favBadge.click();
-    await expect(page.getByTestId("launcher-dock")).toBeVisible();
+    // The app's curated launcher is read-only, so long-press must not surface a
+    // special favorites row or per-tile favorite affordances.
+    await holdTilePastLongPressThreshold(page, firstTile);
+    await expect(page.getByTestId("launcher-dock")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="launcher-fav-"]')).toHaveCount(0);
+    await expect(firstTile).toBeVisible();
+    await page.mouse.up();
   });
 
   test("paging dots switch the visible page when present", async ({ page }) => {

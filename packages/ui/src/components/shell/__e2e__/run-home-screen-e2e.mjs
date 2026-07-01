@@ -514,7 +514,7 @@ try {
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
-  // (fixed placement, no reorder/pin/favorites dock). #3
+  // (fixed placement, no reorder/pin affordances). #3
   await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(
