@@ -101,6 +101,11 @@ type ResolvedLifeOperationPlan = {
   operation: LifeOperation | null;
   kind?: LifeKind;
   shouldAct: boolean;
+  /**
+   * Params extracted by the shared `resolveActionArgs` pass (target, minutes,
+   * preset, …). Gap-fillers only — explicit planner-supplied params win.
+   */
+  params?: LifeParams;
 };
 
 type LifeParams = {
@@ -111,6 +116,7 @@ type LifeParams = {
   title?: string;
   target?: string;
   minutes?: number;
+  preset?: string;
   details?: Record<string, unknown>;
   ownerSurface?: string;
 };
@@ -148,10 +154,12 @@ const SUBACTIONS = {
     required: ["target"],
   },
   snooze: {
-    description: "Snooze an occurrence by minutes or preset duration.",
-    descriptionCompressed: "snooze occurrence; duration",
+    description:
+      "Snooze an occurrence by minutes or preset duration. minutes: numeric duration ('snooze 45 minutes' -> 45). preset: one of 15m | 30m | 1h | tonight | tomorrow_morning ('snooze until tomorrow morning' -> tomorrow_morning).",
+    descriptionCompressed:
+      "snooze occurrence; minutes=numeric duration; preset=15m|30m|1h|tonight|tomorrow_morning",
     required: ["target"],
-    optional: ["minutes"],
+    optional: ["minutes", "preset"],
   },
   review: {
     description: "Review progress on a goal.",
@@ -390,6 +398,7 @@ async function routeLifeSubaction(args: {
       confidence: 1,
       missing: [],
       shouldAct: true,
+      params: resolved.params,
     };
   }
 
@@ -466,6 +475,40 @@ function shouldForceLifeCreateExecution(args: {
 }
 
 // ── Helpers ───────────────────────────────────────────
+
+type LifeSnoozePreset = "15m" | "30m" | "1h" | "tonight" | "tomorrow_morning";
+
+const LIFE_SNOOZE_PRESETS: ReadonlySet<string> = new Set([
+  "15m",
+  "30m",
+  "1h",
+  "tonight",
+  "tomorrow_morning",
+] satisfies LifeSnoozePreset[]);
+
+function normalizeSnoozePreset(value: unknown): LifeSnoozePreset | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
+  return LIFE_SNOOZE_PRESETS.has(normalized)
+    ? (normalized as LifeSnoozePreset)
+    : undefined;
+}
+
+/** LLM-extracted params arrive as raw JSON — minutes may be a numeric string. */
+function normalizeSnoozeMinutes(value: unknown): number | undefined {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+}
 
 function requestedOwnership(domain?: LifeOpsDomain) {
   if (domain === "agent_ops") {
@@ -1240,6 +1283,103 @@ function buildOneOffDueAtFromMinuteOfDay(args: {
   return candidate.toISOString();
 }
 
+/** Default local wall-clock minute for dated one-off tasks without an explicit time (9:00 AM). */
+const DEFAULT_ONCE_MINUTE_OF_DAY = 9 * 60;
+
+/**
+ * Resolve a one-off dueAt from the LLM-extracted datetime fields, against
+ * the owner timezone. Returns null when the request carries no resolvable
+ * time expression (or only a past instant) — the caller must then ask the
+ * owner to clarify instead of scheduling anything.
+ */
+export function resolveOnceDueAt(args: {
+  dueDate: string | null;
+  dueInDays: number | null;
+  dueWeekday: number | null;
+  dueInMinutes: number | null;
+  timeOfDayMinute: number | null;
+  now?: Date;
+  timeZone?: string;
+}): string | null {
+  const now = args.now ?? new Date();
+  const timeZone = args.timeZone ?? resolveDefaultTimeZone();
+
+  if (args.dueInMinutes !== null && args.dueInMinutes > 0) {
+    return new Date(now.getTime() + args.dueInMinutes * 60_000).toISOString();
+  }
+
+  const minuteOfDay = args.timeOfDayMinute ?? DEFAULT_ONCE_MINUTE_OF_DAY;
+  const buildCandidate = (localDate: {
+    year: number;
+    month: number;
+    day: number;
+  }) =>
+    buildUtcDateFromLocalParts(timeZone, {
+      ...localDate,
+      hour: Math.floor(minuteOfDay / 60),
+      minute: minuteOfDay % 60,
+      second: 0,
+    });
+
+  if (args.dueDate) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(args.dueDate);
+    if (!match) {
+      return null;
+    }
+    const candidate = buildCandidate({
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+    });
+    // A named date already in the past is unresolvable — clarify, don't shift.
+    return candidate.getTime() > now.getTime() ? candidate.toISOString() : null;
+  }
+
+  const nowParts = getZonedDateParts(now, timeZone);
+  const today = {
+    year: nowParts.year,
+    month: nowParts.month,
+    day: nowParts.day,
+  };
+
+  if (args.dueInDays !== null && args.dueInDays >= 0) {
+    const candidate = buildCandidate(addDaysToLocalDate(today, args.dueInDays));
+    // "today at 8am" after 8am is unresolvable — clarify, don't roll forward.
+    return candidate.getTime() > now.getTime() ? candidate.toISOString() : null;
+  }
+
+  if (
+    args.dueWeekday !== null &&
+    args.dueWeekday >= 0 &&
+    args.dueWeekday <= 6
+  ) {
+    for (let offset = 0; offset <= 7; offset += 1) {
+      const localDate = addDaysToLocalDate(today, offset);
+      const weekday = new Date(
+        Date.UTC(localDate.year, localDate.month - 1, localDate.day, 12),
+      ).getUTCDay();
+      if (weekday !== args.dueWeekday) {
+        continue;
+      }
+      const candidate = buildCandidate(localDate);
+      if (candidate.getTime() > now.getTime()) {
+        return candidate.toISOString();
+      }
+    }
+    return null;
+  }
+
+  if (args.timeOfDayMinute !== null) {
+    return buildOneOffDueAtFromMinuteOfDay({
+      minuteOfDay: args.timeOfDayMinute,
+      now,
+      timeZone,
+    });
+  }
+
+  return null;
+}
+
 function mergeMetadataRecords(
   ...records: Array<Record<string, unknown> | undefined>
 ): Record<string, unknown> | undefined {
@@ -1473,9 +1613,10 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
 /**
  * Convert LLM-extracted params into a typed LifeOpsCadence.
  * Returns null when the LLM output is insufficient to construct a
- * valid cadence, letting the caller fall back to regex-derived values.
+ * valid cadence — for "once" that means no resolvable time expression,
+ * and the caller asks the owner to clarify instead of scheduling.
  */
-function buildCadenceFromLlmParams(
+export function buildCadenceFromLlmParams(
   params: ExtractedTaskParams,
   context?: {
     intent?: string;
@@ -1514,19 +1655,17 @@ function buildCadenceFromLlmParams(
         : ["morning" as const];
 
   if (kind === "once") {
-    if (timeOfDayMinute !== null) {
-      return {
-        cadence: {
-          kind: "once",
-          dueAt: buildOneOffDueAtFromMinuteOfDay({
-            minuteOfDay: timeOfDayMinute,
-            now: context?.now,
-            timeZone: effectiveTimeZone,
-          }),
-        },
-      };
-    }
-    return { cadence: { kind: "once", dueAt: new Date().toISOString() } };
+    const dueAt = resolveOnceDueAt({
+      dueDate: params.dueDate,
+      dueInDays: params.dueInDays,
+      dueWeekday: params.dueWeekday,
+      dueInMinutes: params.dueInMinutes,
+      timeOfDayMinute,
+      now: context?.now,
+      timeZone: effectiveTimeZone,
+    });
+    // No resolvable time expression — never fabricate an immediate dueAt.
+    return dueAt ? { cadence: { kind: "once", dueAt } } : null;
   }
   if (kind === "daily") {
     if (explicitSlots.length >= 2) {
@@ -1636,7 +1775,7 @@ function buildCadenceFromLlmParams(
   return null;
 }
 
-function buildCadenceFromUpdateFields(args: {
+export function buildCadenceFromUpdateFields(args: {
   currentCadence: LifeOpsCadence;
   currentWindowPolicy: LifeOpsWindowPolicy;
   update: ExtractedUpdateFields;
@@ -1817,7 +1956,21 @@ function buildCadenceFromUpdateFields(args: {
       : null;
   }
 
-  return currentCadence.kind === "once" ? { cadence: currentCadence } : null;
+  // once: an explicit new time moves the dueAt. With no new time there is
+  // nothing to change — return null so the caller reports that honestly
+  // instead of re-saving the old dueAt and claiming an update happened.
+  if (kind === "once" && timeOfDayMinute !== null) {
+    return {
+      cadence: {
+        kind: "once",
+        dueAt: buildOneOffDueAtFromMinuteOfDay({
+          minuteOfDay: timeOfDayMinute,
+          timeZone,
+        }),
+      },
+    };
+  }
+  return null;
 }
 
 function hasDefinitionUpdateChanges(
@@ -2387,7 +2540,14 @@ export async function runLifeOperationHandler(
   }
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
   const ownership = requestedOwnership(domain);
-  const targetName = params.target ?? params.title;
+  // Params extracted by the routing pass (resolveActionArgs) fill gaps the
+  // planner left open — snooze minutes/preset and the target especially.
+  const routedParams = operationPlan.params;
+  const targetName =
+    params.target ??
+    params.title ??
+    routedParams?.target ??
+    routedParams?.title;
   const createConfirmed =
     deferredDraftReuseMode === "confirm" ||
     detailBoolean(details, "confirmed") === true;
@@ -2464,6 +2624,12 @@ export async function runLifeOperationHandler(
           intent,
           state: state ?? undefined,
           message: message,
+          timeZone:
+            normalizeLifeTimeZoneToken(
+              detailString(details, "timeZone") ??
+                deferredDefinitionDraft?.request.timezone ??
+                windowPolicy?.timezone,
+            ) ?? undefined,
         });
         const shouldHonorPlannerResponse =
           llmPlan.mode === "respond" &&
@@ -3396,14 +3562,14 @@ export async function runLifeOperationHandler(
         }
         resolvedTargetId = target.id;
       }
-      const preset = detailString(details, "preset") as
-        | "15m"
-        | "30m"
-        | "1h"
-        | "tonight"
-        | "tomorrow_morning"
-        | undefined;
-      const minutes = detailNumber(details, "minutes");
+      const preset =
+        normalizeSnoozePreset(detailString(details, "preset")) ??
+        normalizeSnoozePreset(params.preset) ??
+        normalizeSnoozePreset(routedParams?.preset);
+      const minutes =
+        detailNumber(details, "minutes") ??
+        normalizeSnoozeMinutes(params.minutes) ??
+        normalizeSnoozeMinutes(routedParams?.minutes);
       const snoozed = await service.snoozeOccurrence(resolvedTargetId, {
         preset,
         minutes,
