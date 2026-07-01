@@ -25,12 +25,40 @@ nothing.
 - **`dashboard-*` matrix: GREEN.** browser-workspace, wallet-inventory,
   workflow-editor pass on every touch viewport; character-editor skips exactly
   as it does on the desktop lane (live-stack gate).
-- **`mobile-chromium`: ROTTED — 15/16 red.** The unwatched lane decayed while
-  the same specs stayed green on desktop chromium. Representative root cause
-  (todos decomposed view): the page snapshot shows the todo lanes fully
-  rendered ("Today (1) … Upcoming (1) … Someday (1)") but the spec asserts a
-  desktop-only `Todos` heading that the mobile layout replaces with a
-  "Go back" button. Desktop-only assertions, not (so far) mobile product bugs.
+- **`mobile-chromium`: ROTTED — 15/16 red.** The unwatched lane surfaced the
+  decay first, but the repair pass proved the deeper truth: **the 9
+  decomposed-view failures were not viewport-specific.** The decomposed
+  personal-assistant views were unified into author-once spatial views
+  (`CalendarView`→`CalendarSpatialView`, `TodosView`→`TodosSpatialView`, …),
+  which removed the per-view `<h1>` headings, `lifeops-calendar-section`
+  testid, `/relationships` `data-graph-container`, and `aria-pressed` chips
+  the specs asserted — on **both** desktop and Pixel 7 (identical DOM). The
+  same 9 specs reproduce red on desktop `chromium` against a freshly rebuilt
+  stub stack; the historical desktop green rode stale pre-unification
+  `dist/views/bundle.js` artifacts.
+
+## Repair outcome (same branch)
+
+The specs were rewritten to per-view **semantic** assertions (populated
+agenda/lanes/threads + a driven filter/mode interaction each, asserting the
+server-query narrowing — never "no page error"), the real CDP pinch was
+retargeted to the actual zoom surface (`/apps/relationships`) with the
+gesture anchored to the visible container∩viewport intersection, and the
+diagnostics guard gained a narrow, endpoint-scoped allowlist for the
+expected-negative avatar/background existence probes. Verified:
+`--project=mobile-chromium` **16/16 green** and the same specs on desktop
+`--project=chromium` **16/16 green**, both against an isolated stub stack.
+
+Two REAL product bugs surfaced by the repair (worked around in-spec with
+`KNOWN BUG` markers, filed separately, not papered over):
+
+1. `ShellBackButton` (fixed `left-3 top-3 z-[60]`) **occludes the first
+   filter chip** of the unified spatial views on desktop AND mobile —
+   `document.elementFromPoint` at the chip centers returns the back button;
+   users cannot tap those chips.
+2. `[data-graph-container]` at `/apps/relationships` tracks the zoomed SVG
+   instead of clipping to its parent — an 1188px-wide box on a 412px
+   viewport blows out horizontal layout on Pixel 7.
 
 ## What this change does
 
