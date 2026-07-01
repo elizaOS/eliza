@@ -239,6 +239,30 @@ export class AppsService {
   }
 
   /**
+   * App-scope guard for per-app API keys (#10852).
+   *
+   * A per-app API key (`apps.api_key_id`) is minted as an ordinary org
+   * credential, so on its own it authorizes every org-scoped route. This asserts
+   * that a key used against an `/apps/:id/*` route belongs to THAT app: a key
+   * owned by a *different* app in the same org is rejected — closing cross-app
+   * compromise (delete / rotate-key / redeploy / charge a sibling app) via a
+   * leaked or embedded app key.
+   *
+   * Keys owned by no app (org-level keys) and session auth (no `apiKeyId`) pass
+   * through untouched, so org owners keep full app-management access.
+   *
+   * @returns `true` when the key is scoped to a DIFFERENT app and must be denied.
+   */
+  async isApiKeyScopedToOtherApp(
+    apiKeyId: string | null | undefined,
+    appId: string,
+  ): Promise<boolean> {
+    if (!apiKeyId) return false;
+    const owningApp = await this.getByApiKeyId(apiKeyId);
+    return Boolean(owningApp && owningApp.id !== appId);
+  }
+
+  /**
    * Invalidate app cache (call on update/delete).
    *
    * Clears all derived keys: byId, byApiKeyId, costMarkup. The byId payload may

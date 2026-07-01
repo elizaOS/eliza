@@ -49,6 +49,13 @@ app.get("/", async (c) => {
     if (found.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), id)) {
+      return c.json(
+        { success: false, error: "This API key is scoped to a different app" },
+        403,
+      );
+    }
     return c.json({
       success: true,
       app: await appsService.withDatabaseState(found),
@@ -68,6 +75,13 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   if (!existing) return c.json({ success: false, error: "App not found" }, 404);
   if (existing.organization_id !== user.organization_id) {
     return c.json({ success: false, error: "Access denied" }, 403);
+  }
+  // A per-app API key may only act on its own app, never a sibling (#10852).
+  if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), id)) {
+    return c.json(
+      { success: false, error: "This API key is scoped to a different app" },
+      403,
+    );
   }
 
   const rawBody = await c.req.json();
@@ -159,6 +173,13 @@ app.delete("/", async (c) => {
       return c.json({ success: false, error: "App not found" }, 404);
     if (existing.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
+    }
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), id)) {
+      return c.json(
+        { success: false, error: "This API key is scoped to a different app" },
+        403,
+      );
     }
 
     const deleteGitHubRepo = c.req.query("deleteGitHubRepo") !== "false";

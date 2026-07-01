@@ -19,7 +19,7 @@ async function handlePOST(
     );
   }
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;
 
     const existingApp = await appsService.getById(id);
@@ -40,6 +40,15 @@ async function handlePOST(
           success: false,
           error: "Access denied",
         },
+        { status: 403 },
+      );
+    }
+
+    // A per-app API key may only act on its own app, never a sibling — and must
+    // never rotate another app's key (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(apiKey?.id, id)) {
+      return Response.json(
+        { success: false, error: "This API key is scoped to a different app" },
         { status: 403 },
       );
     }

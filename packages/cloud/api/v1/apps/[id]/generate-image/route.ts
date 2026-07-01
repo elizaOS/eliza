@@ -256,6 +256,15 @@ app.post("/", async (c) => {
     ) {
       return jsonError(c, 403, "Access denied to this app", "access_denied");
     }
+    // A per-app API key may only act on its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), appId)) {
+      return jsonError(
+        c,
+        403,
+        "This API key is scoped to a different app",
+        "access_denied",
+      );
+    }
 
     if (!c.env.BLOB)
       return jsonError(

@@ -15,6 +15,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appChargeRequestsService } from "@/lib/services/app-charge-requests";
+import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -49,6 +50,13 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
+    // A per-app API key may only charge for its own app, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), appId)) {
+      return c.json(
+        { success: false, error: "This API key is scoped to a different app" },
+        403,
+      );
+    }
 
     const body = await c.req.json().catch(() => null);
     const parsed = CreateChargeSchema.safeParse(body);
@@ -93,6 +101,13 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
+    // A per-app API key may only read its own app's charges, never a sibling (#10852).
+    if (await appsService.isApiKeyScopedToOtherApp(c.get("apiKeyId"), appId)) {
+      return c.json(
+        { success: false, error: "This API key is scoped to a different app" },
+        403,
+      );
+    }
 
     const limitParam = c.req.query("limit");
     const limit = limitParam ? Number.parseInt(limitParam, 10) : 50;
