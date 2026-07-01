@@ -119,7 +119,10 @@ beforeAll(async () => {
     await apply();
   } catch (error) {
     pgliteReady = false;
-    console.error("[app-credits-idempotency.test] PGlite/pushSchema unavailable — skipping.", error);
+    console.error(
+      "[app-credits-idempotency.test] PGlite/pushSchema unavailable — skipping.",
+      error,
+    );
   }
 }, PGLITE_TIMEOUT);
 
@@ -160,10 +163,20 @@ describe("deductCredits creator-earnings idempotency (#10423)", () => {
     const { appId, payerUserId, creatorUserId } = await seed();
 
     await runWithRequestContext({ idempotencyKey: "req-A" }, async () =>
-      appCreditsService.deductCredits({ appId, userId: payerUserId, baseCost: 0.01, description: "a" }),
+      appCreditsService.deductCredits({
+        appId,
+        userId: payerUserId,
+        baseCost: 0.01,
+        description: "a",
+      }),
     );
     await runWithRequestContext({ idempotencyKey: "req-B" }, async () =>
-      appCreditsService.deductCredits({ appId, userId: payerUserId, baseCost: 0.01, description: "b" }),
+      appCreditsService.deductCredits({
+        appId,
+        userId: payerUserId,
+        baseCost: 0.01,
+        description: "b",
+      }),
     );
     expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.02, 6);
   });
