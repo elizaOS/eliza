@@ -21,6 +21,7 @@ export * from "./clipboard";
 export * from "./cloud-status";
 export * from "./desktop-bug-report";
 export * from "./desktop-dialogs";
+export * from "./desktop-hotkey";
 export * from "./desktop-workspace";
 export * from "./documents-upload-image";
 export * from "./eliza-cloud-model-route";

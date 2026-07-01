@@ -1,3 +1,4 @@
+import { getInternalToolAppDescriptors } from "@elizaos/ui/components/apps/internal-tool-apps";
 import type { DesktopClickAuditItem } from "@elizaos/ui/utils/desktop-workspace";
 
 interface DesktopTrayMenuItem {
@@ -6,6 +7,36 @@ interface DesktopTrayMenuItem {
   /** i18n key for {@link label}; resolved at menu-build time. */
   labelKey?: string;
   type?: "normal" | "separator";
+}
+
+/**
+ * Prefix for tray items that open an internal tool view in its own desktop
+ * window (#10716). The renderer's `DesktopTrayRuntime` matches this prefix,
+ * resolves the descriptor by slug, and opens the view window via the same
+ * `eliza:navigate:view` bus the launcher uses — so the tray view list stays in
+ * lockstep with the launcher catalog instead of duplicating a static list.
+ */
+export const TRAY_APP_ITEM_PREFIX = "tray-app-";
+
+/** Stable tray-item slug for an internal tool app name (`@elizaos/x` → `x`). */
+export function desktopTrayAppSlug(name: string): string {
+  return name.replace(/^@elizaos\//, "");
+}
+
+/**
+ * Tray "Views" items generated from the shared internal-tool-app catalog
+ * (`getInternalToolAppDescriptors`), ordered by catalog `order`. Each opens the
+ * view in its own window. Returned separately so callers can splice a
+ * separator around the section.
+ */
+export function buildDesktopTrayViewItems(): DesktopTrayMenuItem[] {
+  return [...getInternalToolAppDescriptors()]
+    .filter((descriptor) => descriptor.windowPath !== null)
+    .sort((a, b) => a.order - b.order)
+    .map((descriptor) => ({
+      id: `${TRAY_APP_ITEM_PREFIX}${desktopTrayAppSlug(descriptor.name)}`,
+      label: descriptor.displayName,
+    }));
 }
 
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
@@ -62,17 +93,33 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
 
 /**
  * Build the tray menu with labels translated by `t`. Separators and any item
- * without a `labelKey` pass through unchanged. The native tray is rebuilt from
- * this at desktop boot, so it reflects the resolved UI language.
+ * without a `labelKey` pass through unchanged. A generated "Views" section
+ * (one item per internal tool view, each opening its own window — #10716) is
+ * spliced in after the fixed open-surface items. The native tray is rebuilt
+ * from this at desktop boot, so it reflects the resolved UI language.
  */
 export function buildLocalizedTrayMenu(
   t: (key: string, vars?: { defaultValue?: string }) => string,
 ): DesktopTrayMenuItem[] {
-  return DESKTOP_TRAY_MENU_ITEMS.map((item) =>
+  const localize = (item: DesktopTrayMenuItem): DesktopTrayMenuItem =>
     item.labelKey
       ? { ...item, label: t(item.labelKey, { defaultValue: item.label }) }
-      : { ...item },
-  );
+      : { ...item };
+
+  const viewItems = buildDesktopTrayViewItems();
+  const viewsSection: DesktopTrayMenuItem[] =
+    viewItems.length > 0
+      ? [{ id: "tray-sep-views", type: "separator" }, ...viewItems]
+      : [];
+
+  const result: DesktopTrayMenuItem[] = [];
+  for (const item of DESKTOP_TRAY_MENU_ITEMS) {
+    result.push(localize(item));
+    if (item.id === "tray-open-voice-controls") {
+      result.push(...viewsSection);
+    }
+  }
+  return result;
 }
 
 export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [

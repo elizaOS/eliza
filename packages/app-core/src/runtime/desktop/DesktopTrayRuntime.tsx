@@ -1,13 +1,17 @@
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
+  openDesktopAppWindow,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
+import { getInternalToolAppDescriptors } from "@elizaos/ui/components/apps/internal-tool-apps";
 import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
+
+import { desktopTrayAppSlug, TRAY_APP_ITEM_PREFIX } from "./tray-menu";
 
 interface TrayActionDetail {
   itemId?: string;
@@ -179,8 +183,26 @@ export function DesktopTrayRuntime() {
               ipcChannel: "desktop:quit",
             });
             return;
-          default:
+          default: {
+            // Tray "Views" items open the tool view in its own window (#10716),
+            // resolving the descriptor from the same catalog the tray menu was
+            // built from.
+            if (itemId.startsWith(TRAY_APP_ITEM_PREFIX)) {
+              const slug = itemId.slice(TRAY_APP_ITEM_PREFIX.length);
+              const descriptor = getInternalToolAppDescriptors().find(
+                (candidate) => desktopTrayAppSlug(candidate.name) === slug,
+              );
+              if (descriptor?.windowPath) {
+                await openDesktopAppWindow({
+                  slug,
+                  title: descriptor.displayName,
+                  path: descriptor.windowPath,
+                  alwaysOnTop: false,
+                });
+              }
+            }
             return;
+          }
         }
       };
 

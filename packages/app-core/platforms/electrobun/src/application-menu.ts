@@ -173,9 +173,15 @@ export function parseSettingsWindowAction(
   return tabHint || undefined;
 }
 
-function buildAppsMenu(): ApplicationMenuItem {
+/**
+ * "Views" submenu — opens each internal tool view directly in its own window
+ * from the menu bar, without going through the in-app launcher (#10716). Each
+ * `apps:<slug>` action is handled in `index.ts` (`handleAppEntryMenuAction`),
+ * which opens the app window (or the details page for configurable views).
+ */
+function buildViewsMenu(): ApplicationMenuItem {
   return {
-    label: "Apps",
+    label: "Views",
     submenu: APP_MENU_ENTRIES.map((entry) => ({
       label: entry.displayName,
       action: `apps:${entry.slug}`,
@@ -188,6 +194,11 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
   return {
     label: "Desktop",
     submenu: [
+      // Click path for the programmable global chat hotkey (#10716); the
+      // accelerator itself is registered globally (works when backgrounded) and
+      // configured in Desktop settings, so no local accelerator is bound here.
+      { label: "Summon Chat", action: "summon-chat" },
+      { type: "separator" },
       { label: "Desktop Workspace", action: "open-settings-desktop" },
       { label: "Voice Controls", action: "open-settings-voice" },
       { label: "Permissions", action: "open-settings-permissions" },
@@ -335,7 +346,7 @@ export function buildApplicationMenu({
       ],
     },
     buildDesktopMenu(isMac),
-    buildAppsMenu(),
+    buildViewsMenu(),
     {
       label: "Window",
       submenu: [
