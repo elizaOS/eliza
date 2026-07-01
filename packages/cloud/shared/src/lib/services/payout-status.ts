@@ -7,6 +7,7 @@
 
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import { ELIZA_DECIMALS, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -64,6 +65,22 @@ class PayoutStatusService {
     const networks: NetworkStatus[] = [];
     const warnings: string[] = [];
     const env = getCloudAwareEnv();
+    if (shouldBlockPayoutAssumeOperational(env)) {
+      const message =
+        "PAYOUT_STATUS_ASSUME_OPERATIONAL=1 cannot be used in production; perform live hot-wallet balance checks before accepting redemptions.";
+      const status: PayoutSystemStatus = {
+        operational: false,
+        networks: this.unavailableNetworksForProductionAssumption(env, message),
+        warnings: [message],
+        lastChecked: new Date(),
+      };
+      this.cachedStatus = status;
+      this.cacheExpiry = new Date(Date.now() + this.CACHE_TTL_MS);
+      logger.error("[PayoutStatus] Refusing assumed-operational payout status in production", {
+        message,
+      });
+      return status;
+    }
     const skipLiveBalanceChecks = this.shouldSkipLiveBalanceChecks(env);
     // Opt-in (PAYOUT_STATUS_ASSUME_OPERATIONAL=1): when the live balance read is
     // skipped, treat a CONFIGURED wallet as operational instead of "no_balance".
@@ -207,6 +224,31 @@ class PayoutStatusService {
 
   private shouldSkipLiveBalanceChecks(env: NodeJS.ProcessEnv): boolean {
     return env.PAYOUT_STATUS_SKIP_LIVE_BALANCE === "1";
+  }
+
+  private unavailableNetworksForProductionAssumption(
+    env: NodeJS.ProcessEnv,
+    message: string,
+  ): NetworkStatus[] {
+    const evmConfigured = Boolean(
+      env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY || env.EVM_PAYOUT_WALLET_ADDRESS,
+    );
+    const solanaConfigured = Boolean(
+      env.SOLANA_PAYOUT_PRIVATE_KEY || env.SOLANA_PAYOUT_WALLET_ADDRESS,
+    );
+
+    return (["ethereum", "base", "bnb", "solana"] as const).map((network) => {
+      const configured = network === "solana" ? solanaConfigured : evmConfigured;
+      return {
+        network,
+        configured,
+        walletAddress: null,
+        balance: 0,
+        hasBalance: false,
+        status: "not_configured",
+        message,
+      };
+    });
   }
 
   private buildSkippedBalanceStatus(
