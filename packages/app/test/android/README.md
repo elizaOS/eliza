@@ -10,6 +10,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
 | `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
 | `touch-gesture.android.spec.ts` | The installed Android WebView receives a real OS touch swipe on the chat grabber and opens the launcher rail without falling back to mouse input, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + `adb shell input swipe` |
+| `sleep-wake.android.spec.ts` | The installed app emits pause/resume lifecycle events across a real Android sleep/wake cycle, returns to the home shell, and remains interactive, with JSON, screenshot, screenrecord, and logcat artifacts | Playwright Android driver + adb power events |
 | `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
@@ -43,6 +44,9 @@ bun run --cwd packages/app test:e2e:android:view-runtime-soak
 
 # Real Android touch swipe on the chat grabber (#9943).
 bun run --cwd packages/app test:e2e:android:touch-gesture
+
+# #9943 sleep/wake lifecycle regression against the real Android WebView.
+bun run --cwd packages/app test:e2e:android:sleep-wake
 
 # Route-only/WebView-only pass when the local chat smoke is already done.
 bun run --cwd packages/app test:e2e:android:routes
