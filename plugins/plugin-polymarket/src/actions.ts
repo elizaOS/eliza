@@ -9,7 +9,7 @@ import type {
   ProviderDataRecord,
   State,
 } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { getActiveRoutingContextsForTurn, Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
   PolymarketDisabledResponse,
@@ -35,59 +35,6 @@ const POLYMARKET_PLACE_ORDER_COMPAT_NAME = "POLYMARKET_PLACE_ORDER";
 function toCallbackData(data: ProviderDataRecord): Content["data"] {
   return data as Content["data"];
 }
-const POLYMARKET_READ_KEYWORDS = [
-  "polymarket",
-  "prediction market",
-  "market",
-  "markets",
-  "orderbook",
-  "positions",
-  "odds",
-  "forecast",
-  "predicción",
-  "mercado",
-  "pronóstico",
-  "marché",
-  "prévision",
-  "prognose",
-  "markt",
-  "mercado",
-  "previsão",
-  "mercato",
-  "previsione",
-  "予測市場",
-  "オッズ",
-  "预测市场",
-  "赔率",
-  "예측 시장",
-  "배당",
-] as const;
-const POLYMARKET_TRADE_KEYWORDS = [
-  ...POLYMARKET_READ_KEYWORDS,
-  "buy",
-  "sell",
-  "trade",
-  "order",
-  "comprar",
-  "vender",
-  "orden",
-  "acheter",
-  "vendre",
-  "ordre",
-  "kaufen",
-  "verkaufen",
-  "auftrag",
-  "comprare",
-  "vendere",
-  "注文",
-  "買う",
-  "売る",
-  "买入",
-  "卖出",
-  "订单",
-  "매수",
-  "매도",
-] as const;
 
 const READ_KINDS = [
   "status",
@@ -234,15 +181,27 @@ function readOp(
   return null;
 }
 
+/**
+ * True when the turn is routed to a prediction-market context. Reads the
+ * planner's canonical routing decision (`state.values.__contextRouting`, via
+ * `getActiveRoutingContextsForTurn`) plus the legacy `selectedContexts`
+ * signals — never an English/multilingual keyword match on raw message text
+ * (#10471).
+ */
 function hasSelectedContext(
+  message: Memory,
   state: State | undefined,
   contexts: readonly string[] = POLYMARKET_ACTION_CONTEXTS,
 ): boolean {
-  const selected = new Set<string>();
+  const selected = new Set<string>(
+    getActiveRoutingContextsForTurn(state, message).map((context) =>
+      `${context}`.toLowerCase(),
+    ),
+  );
   const collect = (value: unknown) => {
     if (!Array.isArray(value)) return;
     for (const item of value) {
-      if (typeof item === "string") selected.add(item);
+      if (typeof item === "string") selected.add(item.toLowerCase());
     }
   };
   collect(
@@ -260,23 +219,7 @@ function hasSelectedContext(
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
-  return contexts.some((context) => selected.has(context));
-}
-
-function hasKeywordIntent(
-  message: Memory,
-  state: State | undefined,
-  keywords: readonly string[],
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+  return contexts.some((context) => selected.has(context.toLowerCase()));
 }
 
 async function fetchPolymarketJson<T>(
@@ -834,9 +777,7 @@ export const polymarketAction: Action = {
     },
   ],
   validate: async (_runtime, message: Memory, state?: State) =>
-    hasSelectedContext(state) ||
-    hasKeywordIntent(message, state, POLYMARKET_READ_KEYWORDS) ||
-    hasKeywordIntent(message, state, POLYMARKET_TRADE_KEYWORDS),
+    hasSelectedContext(message, state),
   handler: async (runtime, _message, _state, options, callback) => {
     const op = readOp(options);
     if (!op) {
