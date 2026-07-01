@@ -268,7 +268,7 @@ describe("PUT /api/v1/apps/:id", () => {
     expect(monetizeRes.status).toBe(200);
 
     // 2) baseline the org credit balance + the app's creator earnings.
-    const baselineBalanceRes = await api.get("/api/v1/app-credits/balance", {
+    const baselineBalanceRes = await api.get(`/api/v1/app-credits/balance?app_id=${appId}`, {
       headers: bearerHeaders(),
     });
     expect(baselineBalanceRes.status).toBe(200);
@@ -321,7 +321,7 @@ describe("PUT /api/v1/apps/:id", () => {
     let earningsIncreased = false;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       await new Promise((r) => setTimeout(r, 750));
-      const balanceRes = await api.get("/api/v1/app-credits/balance", {
+      const balanceRes = await api.get(`/api/v1/app-credits/balance?app_id=${appId}`, {
         headers: bearerHeaders(),
       });
       const balanceNow = Number(
