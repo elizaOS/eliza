@@ -200,7 +200,14 @@ export function bucket(color: string): Bucket {
   // Very light + near-achromatic = white.
   if (lum > 0.95 && saturation < 0.05) return "white";
   // Achromatic (gray scale): neutral, or black only when genuinely dark.
-  if (saturation < 0.15) return lum < 0.08 ? "black" : "neutral";
+  // Gate on ABSOLUTE chroma too, not just the saturation RATIO: at low
+  // luminance a 1–2/255 channel spread yields a high `chroma/max` ratio yet is
+  // perceptually black — so a dark scrim like `rgba(10,10,12,0.5)` (chroma 2,
+  // ratio 0.17) must not escape this gate and get hue-classified as a saturated
+  // "blue" (240°), which mislabels an essentially-black overlay as a brand
+  // violation. A genuinely-saturated dark navy `rgb(10,10,40)` has chroma 30 and
+  // still falls through to the blue band below.
+  if (saturation < 0.15 || chroma < 12) return lum < 0.08 ? "black" : "neutral";
 
   // Chromatic — classify by hue (degrees, 0–360).
   let hue = 0;

@@ -50,6 +50,18 @@ describe("bucket (#8796 no-blue / orange detection)", () => {
     // return, letting a dark-blue brand violation escape the no-blue rule.
     expect(bucket("rgb(10, 10, 40)")).toBe("blue");
   });
+  it("treats a near-black dark scrim as black, not blue — audit false-positive (#10710)", () => {
+    // rgba(10,10,12): chroma is only 2 (b just 2 above r,g), but at this low
+    // luminance chroma/max = 0.17 slips past the saturation-ratio gate and the
+    // hue lands at 240° → a naive classifier mislabels an essentially-BLACK
+    // scrim as "blue". Because the chat overlay paints this scrim on EVERY view,
+    // that single false-positive dragged all 236 default view/viewport combos to
+    // `needs-work`. The absolute-chroma floor keeps it out of the blue band.
+    expect(bucket("rgba(10, 10, 12, 0.5)")).toBe("black");
+    expect(bucket("rgb(12, 12, 14)")).toBe("black");
+    // A faint cool-gray light surface likewise stays neutral, not blue.
+    expect(bucket("rgb(240, 241, 244)")).toBe("neutral");
+  });
   it("buckets near-black and pure white", () => {
     expect(bucket("rgb(10, 10, 10)")).toBe("black");
     expect(bucket("rgb(255, 255, 255)")).toBe("white");
