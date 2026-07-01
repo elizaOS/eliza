@@ -48,7 +48,7 @@
     "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "strip-literal": "^3.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"

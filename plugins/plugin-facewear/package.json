@@ -63,7 +63,7 @@
     "@abandonware/noble": "^1.9.2-25"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.2",
     "@types/node": "^25.0.3",
     "@types/react": "^19.2.3",
     "@types/react-dom": "^19.2.3",
