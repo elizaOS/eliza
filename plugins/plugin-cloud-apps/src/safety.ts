@@ -72,7 +72,16 @@ export interface PendingCloudAppConfirmation {
 export function readStructuredConfirmation(options?: unknown): boolean | null {
   if (!options || typeof options !== "object") return null;
   const opts = options as Record<string, unknown>;
-  const value = opts.confirm ?? opts.confirmed;
+  // Validated action parameters arrive nested under `options.parameters` on the
+  // real planner path (execute-planned-tool-call.ts sets `handlerOptions.parameters
+  // = validation.args`); only direct handler calls / scenario `action`-kind turns
+  // place them at the top level. Read the nested location first, then fall back.
+  const params =
+    opts.parameters && typeof opts.parameters === "object"
+      ? (opts.parameters as Record<string, unknown>)
+      : undefined;
+  const value =
+    params?.confirm ?? params?.confirmed ?? opts.confirm ?? opts.confirmed;
   if (value === true || value === false) return value;
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
