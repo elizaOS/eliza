@@ -79,4 +79,56 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		expect(result.continueChain).toBeUndefined();
 		expect(result.success).toBe(true);
 	});
+
+	// Regression for elizaOS/eliza#8007: a multi-step sub-planner collapse must
+	// surface EVERY executed sub-step to the parent loop — not only the terminal
+	// one — so the outer planner can see which ops already succeeded and advance
+	// instead of re-running the umbrella action from the first step.
+	it("aggregates all sub-steps into the diagnostic text and data", () => {
+		const multiStep = {
+			status: "finished",
+			finalMessage: "Opened a PR for hello-world.",
+			trajectory: {
+				steps: [
+					{
+						iteration: 1,
+						toolCall: { name: "provision_workspace" },
+						result: { success: true, text: "workspace ws-1 ready" },
+					},
+					{
+						iteration: 2,
+						toolCall: { name: "spawn_agent" },
+						result: { success: true, text: "spawned agent a-1" },
+					},
+					{
+						iteration: 3,
+						toolCall: { name: "submit_workspace" },
+						result: { success: false, error: "no diff to submit" },
+					},
+				],
+			},
+		} as unknown as SubResult;
+
+		const result = subPlannerResultToPlannerToolResult(multiStep);
+
+		// The diagnostic text (what the parent planner reasons over) carries the
+		// full progression, not just the terminal step.
+		expect(result.text).toContain("provision_workspace");
+		expect(result.text).toContain("spawn_agent");
+		expect(result.text).toContain("submit_workspace");
+		expect(result.text).toContain("✓");
+		expect(result.text).toContain("✗");
+
+		// The user-facing text stays the synthesized final message.
+		expect(result.userFacingText).toBe("Opened a PR for hello-world.");
+
+		// Structured sub-step data lets downstream action context see which ops
+		// already completed.
+		expect(result.data?.completedSubActions).toEqual([
+			"provision_workspace",
+			"spawn_agent",
+		]);
+		expect(Array.isArray(result.data?.subSteps)).toBe(true);
+		expect((result.data?.subSteps as unknown[]).length).toBe(3);
+	});
 });

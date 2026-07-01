@@ -5096,6 +5096,77 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 	return false;
 }
 
+/**
+ * One entry per executed sub-planner step, projected for the parent loop. This
+ * is the structured record the outer planner's next turn reasons over so it can
+ * see which multi-step operations already succeeded and advance to the next one
+ * instead of re-dispatching the umbrella action from scratch (issue
+ * elizaOS/eliza#8007).
+ */
+interface SubPlannerSubStep {
+	action: string;
+	success: boolean;
+	summary?: string;
+	error?: string;
+}
+
+const SUB_STEP_SUMMARY_MAX_CHARS = 400;
+
+function truncateSubStepText(text: string): string {
+	const trimmed = text.trim();
+	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
+	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}…`;
+}
+
+function collectSubPlannerSubSteps(
+	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
+): SubPlannerSubStep[] {
+	const subSteps: SubPlannerSubStep[] = [];
+	for (const step of subResult.trajectory.steps) {
+		if (!step.toolCall?.name || !step.result) continue;
+		const result = step.result;
+		const errorText =
+			typeof result.error === "string"
+				? result.error
+				: result.error instanceof Error
+					? result.error.message
+					: undefined;
+		const summarySource =
+			typeof result.text === "string" && result.text.trim().length > 0
+				? result.text
+				: typeof result.userFacingText === "string"
+					? result.userFacingText
+					: undefined;
+		subSteps.push({
+			action: step.toolCall.name,
+			success: result.success,
+			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
+			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
+		});
+	}
+	return subSteps;
+}
+
+/**
+ * Diagnostic, log-shaped projection of the full sub-planner trajectory. Renders
+ * every executed sub-step as `✓/✗ <action> — <summary/error>` so the parent
+ * planner's tool-result message carries the progression (e.g.
+ * `provision_workspace ✓, spawn_agent ✓, submit_workspace ✗`) instead of only
+ * the terminal step. Without this the outer LLM cannot tell that step 1 already
+ * succeeded and re-dispatches the umbrella action on every CONTINUE turn.
+ */
+function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
+	return subSteps
+		.map((step) => {
+			const marker = step.success ? "✓" : "✗";
+			const detail = step.error ?? step.summary;
+			return detail
+				? `${marker} ${step.action} — ${detail}`
+				: `${marker} ${step.action}`;
+		})
+		.join("\n");
+}
+
 export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
@@ -5104,11 +5175,36 @@ export function subPlannerResultToPlannerToolResult(
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
+
+	// Aggregate EVERY executed sub-step — not just the terminal one — so the
+	// parent planner's next turn can see which operations already succeeded and
+	// advance to the next op instead of re-running the umbrella action from the
+	// first step (issue elizaOS/eliza#8007). The per-step progression flows to
+	// the outer LLM through `text` (the diagnostic tool-result projection) and
+	// to downstream action context through `data.subSteps` /
+	// `data.completedSubActions`.
+	const subSteps = collectSubPlannerSubSteps(subResult);
+	const diagnosticText = renderSubStepDiagnosticText(subSteps);
+	const completedSubActions = subSteps
+		.filter((step) => step.success)
+		.map((step) => step.action);
+
 	return {
 		success,
-		text: userFacingText,
+		// Diagnostic channel: the whole progression, so CONTINUE re-planning
+		// sees the completed steps. Falls back to the user-facing text when the
+		// sub-planner executed no discrete steps.
+		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
 		userFacingText,
-		data: lastStep?.result?.data,
+		data: {
+			...(lastStep?.result?.data ?? {}),
+			...(subSteps.length > 0
+				? {
+						subSteps,
+						completedSubActions,
+					}
+				: {}),
+		},
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
 		// loop. A sub-action that returns `continueChain: false` (e.g.
