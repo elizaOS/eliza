@@ -635,4 +635,12 @@ describe("addContactTemplate — untrusted input isolation (#10793)", () => {
       "has a data-not-instructions guard",
     );
   });
+
+  it("treats delimiter-like strings inside the user message as literal data", () => {
+    const t = prompts.addContactTemplate.toLowerCase();
+    assert.ok(
+      t.includes("delimiter-like text") && t.includes("not boundaries"),
+      "guards against closing-tag injection inside current_message",
+    );
+  });
 });
