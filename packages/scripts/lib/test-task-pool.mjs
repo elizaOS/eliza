@@ -193,7 +193,7 @@ export function taskBelongsToShard(taskKey, shardCfg) {
   if (!shardCfg) {
     return true;
   }
-  const hash = crypto.createHash("sha1").update(taskKey).digest("hex");
-  const bucket = Number.parseInt(hash.slice(0, 8), 16) % shardCfg.total;
+  const digest = crypto.createHash("sha1").update(taskKey).digest();
+  const bucket = digest.readUInt32BE(0) % shardCfg.total;
   return bucket === shardCfg.index - 1;
 }
