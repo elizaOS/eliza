@@ -5,12 +5,11 @@
  * So this action NEVER deletes on the first ask:
  *   1. First turn ("delete my Acme app"): resolve the app, return a confirmation
  *      prompt naming the exact app + what's destroyed. `deleteApp` is NOT called.
- *   2. Follow-up turn carrying an explicit confirmation token ("delete Acme —
- *      yes"): `client.deleteApp(id)` runs exactly once.
+ *   2. Follow-up turn carrying structured `confirm: true` for the pending
+ *      prompt: `client.deleteApp(id)` runs exactly once.
  *
- * The confirm signal is parsed from the user's plain message text via the shared
- * {@link isExplicitConfirmation} helper, so it works the same on every connector
- * and does not rely on a GUI button.
+ * The handler never parses raw user prose for confirmation. The planner supplies
+ * a structured boolean and the action consumes a pending confirmation task.
  */
 
 import type { AppDto } from "@elizaos/cloud-sdk";
@@ -29,7 +28,14 @@ import {
   resolveApp,
   resolveCloudApiKey,
 } from "../client.js";
-import { confirmationPrompt, isExplicitConfirmation } from "../safety.js";
+import {
+  confirmationPrompt,
+  confirmationRoomId,
+  deleteCloudAppConfirmation,
+  findPendingCloudAppConfirmation,
+  persistCloudAppConfirmation,
+  readStructuredConfirmation,
+} from "../safety.js";
 
 const NO_KEY_MESSAGE =
   "I can't reach Eliza Cloud yet — no Cloud API key is configured. Add your ELIZAOS_CLOUD_API_KEY and I can manage your apps.";
@@ -37,6 +43,9 @@ const NO_REFERENCE_MESSAGE =
   "Which app would you like to delete? Tell me its name.";
 const ERROR_MESSAGE =
   "I couldn't delete that app right now — the Cloud API returned an error. Try again in a moment.";
+const NO_PENDING_CONFIRMATION_MESSAGE =
+  "I don't have a pending delete confirmation for this room. Tell me which app to delete first, and I'll ask for confirmation.";
+const CANCELED_MESSAGE = "Canceled. No Cloud app was deleted.";
 
 /** What `deleteApp` destroys — surfaced verbatim in the confirmation prompt. */
 const DESTROYED_RESOURCES = ["its running container", "its tenant database"];
@@ -66,6 +75,21 @@ export const deleteAppAction: Action = {
   contexts: ["settings", "finance", "apps"],
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
+  parameters: [
+    {
+      name: "appName",
+      description: "Name, slug, or id of the Cloud app to delete.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "confirm",
+      description:
+        "Follow-up confirmation. Set true only when the user is confirming the pending delete prompt for this app; set false when canceling.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+  ],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return resolveCloudApiKey(runtime) !== null;
@@ -86,6 +110,99 @@ export const deleteAppAction: Action = {
         text: "No Eliza Cloud API key configured.",
         userFacingText: NO_KEY_MESSAGE,
         data: { reason: "no_key" },
+      };
+    }
+
+    const roomId = confirmationRoomId(runtime, message);
+    const confirmation = readStructuredConfirmation(options);
+    const pending = await findPendingCloudAppConfirmation(
+      runtime,
+      roomId,
+      "DELETE_APP",
+    );
+
+    if (confirmation !== null) {
+      if (!pending) {
+        await callback?.({
+          text: NO_PENDING_CONFIRMATION_MESSAGE,
+          actions: ["DELETE_APP"],
+        });
+        return {
+          success: false,
+          text: "No pending delete confirmation.",
+          userFacingText: NO_PENDING_CONFIRMATION_MESSAGE,
+          data: { reason: "no_pending_confirmation", deleted: false },
+        };
+      }
+
+      await deleteCloudAppConfirmation(runtime, pending.taskId);
+      if (confirmation === false) {
+        await callback?.({ text: CANCELED_MESSAGE, actions: ["DELETE_APP"] });
+        return {
+          success: true,
+          text: CANCELED_MESSAGE,
+          userFacingText: CANCELED_MESSAGE,
+          verifiedUserFacing: true,
+          data: { deleted: false, canceled: true },
+        };
+      }
+
+      const target = {
+        id: pending.metadata.appId,
+        name: pending.metadata.appName,
+        slug: pending.metadata.appSlug ?? pending.metadata.appName,
+      };
+      try {
+        const result = await client.deleteApp(target.id);
+        const reply = `Deleted "${target.name}". Its container and tenant database are gone.`;
+        await callback?.({ text: reply, actions: ["DELETE_APP"] });
+        return {
+          success: true,
+          text: result.message || `Deleted ${target.name}.`,
+          userFacingText: reply,
+          verifiedUserFacing: true,
+          data: {
+            app: { id: target.id, name: target.name, slug: target.slug },
+            deleted: true,
+            cleaned: result.cleaned,
+          },
+        };
+      } catch (err) {
+        logger.warn(
+          `[DELETE_APP] deleteApp(${target.id}) failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        await callback?.({ text: ERROR_MESSAGE, actions: ["DELETE_APP"] });
+        return {
+          success: false,
+          text: "Failed to delete Eliza Cloud app.",
+          userFacingText: ERROR_MESSAGE,
+          error: err instanceof Error ? err : new Error(String(err)),
+          data: { reason: "error", deleted: false },
+        };
+      }
+    }
+
+    if (pending) {
+      const msg =
+        `Deletion for "${pending.metadata.appName}" is still waiting for confirmation. ` +
+        `Reply with a clear confirmation or cancellation.`;
+      await callback?.({ text: msg, actions: ["DELETE_APP"] });
+      return {
+        success: true,
+        text: `Awaiting structured confirmation to delete ${pending.metadata.appName}.`,
+        userFacingText: msg,
+        verifiedUserFacing: true,
+        data: {
+          app: {
+            id: pending.metadata.appId,
+            name: pending.metadata.appName,
+            slug: pending.metadata.appSlug,
+          },
+          deleted: false,
+          confirmationRequired: true,
+        },
       };
     }
 
@@ -133,56 +250,26 @@ export const deleteAppAction: Action = {
 
     const target = app;
     const confirmTarget = confirmTargetFor(target);
-    const messageText = message.content?.text ?? "";
-
-    // Phase 1 — no explicit confirmation in THIS message → ask, do not delete.
-    if (!isExplicitConfirmation(messageText, confirmTarget)) {
-      const prompt = confirmationPrompt(confirmTarget, DESTROYED_RESOURCES);
-      await callback?.({ text: prompt, actions: ["DELETE_APP"] });
-      return {
-        success: true,
-        text: `Awaiting explicit confirmation to delete ${target.name}.`,
-        userFacingText: prompt,
-        verifiedUserFacing: true,
-        data: {
-          app: { id: target.id, name: target.name, slug: target.slug },
-          deleted: false,
-          confirmationRequired: true,
-        },
-      };
-    }
-
-    // Phase 2 — explicit confirmation present → delete exactly once.
-    try {
-      const result = await client.deleteApp(target.id);
-      const reply = `Deleted "${target.name}". Its container and tenant database are gone.`;
-      await callback?.({ text: reply, actions: ["DELETE_APP"] });
-      return {
-        success: true,
-        text: result.message || `Deleted ${target.name}.`,
-        userFacingText: reply,
-        verifiedUserFacing: true,
-        data: {
-          app: { id: target.id, name: target.name, slug: target.slug },
-          deleted: true,
-          cleaned: result.cleaned,
-        },
-      };
-    } catch (err) {
-      logger.warn(
-        `[DELETE_APP] deleteApp(${target.id}) failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      await callback?.({ text: ERROR_MESSAGE, actions: ["DELETE_APP"] });
-      return {
-        success: false,
-        text: "Failed to delete Eliza Cloud app.",
-        userFacingText: ERROR_MESSAGE,
-        error: err instanceof Error ? err : new Error(String(err)),
-        data: { reason: "error", deleted: false },
-      };
-    }
+    await persistCloudAppConfirmation(runtime, {
+      roomId,
+      action: "DELETE_APP",
+      appId: target.id,
+      appName: target.name,
+      appSlug: target.slug,
+    });
+    const prompt = confirmationPrompt(confirmTarget, DESTROYED_RESOURCES);
+    await callback?.({ text: prompt, actions: ["DELETE_APP"] });
+    return {
+      success: true,
+      text: `Awaiting structured confirmation to delete ${target.name}.`,
+      userFacingText: prompt,
+      verifiedUserFacing: true,
+      data: {
+        app: { id: target.id, name: target.name, slug: target.slug },
+        deleted: false,
+        confirmationRequired: true,
+      },
+    };
   },
 
   examples: [
@@ -191,13 +278,13 @@ export const deleteAppAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: 'This will delete "Acme Bot" (…). This permanently destroys its running container and its tenant database. This can\'t be undone. To go ahead, reply: delete Acme Bot — yes.',
+          text: 'This will delete "Acme Bot" (…). This permanently destroys its running container and its tenant database. This can\'t be undone. To go ahead, reply that you confirm delete Acme Bot.',
           actions: ["DELETE_APP"],
         },
       },
     ],
     [
-      { name: "{{user}}", content: { text: "delete Acme Bot — yes" } },
+      { name: "{{user}}", content: { text: "I confirm deleting Acme Bot" } },
       {
         name: "{{agent}}",
         content: {

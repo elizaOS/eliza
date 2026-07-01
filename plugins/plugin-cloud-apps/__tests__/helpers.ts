@@ -26,7 +26,7 @@ import type {
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
 } from "@elizaos/cloud-sdk";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
@@ -53,6 +53,11 @@ type WithdrawAppEarningsFn = (
 type RegenerateAppApiKeyFn = (
   id: string,
 ) => Promise<RegenerateAppApiKeyResponse>;
+
+type CloudAppsTestRuntime = Pick<
+  IAgentRuntime,
+  "agentId" | "getSetting" | "getTasks" | "createTask" | "deleteTask"
+>;
 
 interface SdkState {
   listApps: ListAppsFn;
@@ -109,6 +114,7 @@ function defaultState(): SdkState {
 }
 
 const state: SdkState = defaultState();
+const TEST_AGENT_ID = "agent-0000-0000-0000-000000000000" as UUID;
 
 export function setListApps(fn: ListAppsFn): void {
   state.listApps = fn;
@@ -199,9 +205,38 @@ export class FakeElizaCloudClient {
 export function makeRuntime(
   settings: Record<string, string | undefined> = {},
 ): IAgentRuntime {
-  return {
-    getSetting: (key: string) => settings[key] as unknown,
-  } as unknown as IAgentRuntime;
+  const tasks: Task[] = [];
+  let taskCounter = 0;
+  const runtime: CloudAppsTestRuntime = {
+    agentId: TEST_AGENT_ID,
+    getSetting: (key: string) => settings[key] ?? null,
+    getTasks: (params) =>
+      Promise.resolve(
+        tasks.filter((task) => {
+          const agentMatches = params.agentIds.includes(task.agentId);
+          const tagMatches =
+            !params.tags ||
+            params.tags.every((tag) => task.tags?.includes(tag));
+          return agentMatches && tagMatches;
+        }),
+      ),
+    createTask: (task: Task) => {
+      const id =
+        `task-0000-0000-0000-${String(++taskCounter).padStart(12, "0")}` as UUID;
+      tasks.push({
+        ...task,
+        id,
+        agentId: task.agentId ?? TEST_AGENT_ID,
+      });
+      return Promise.resolve(id);
+    },
+    deleteTask: (id: UUID) => {
+      const idx = tasks.findIndex((task) => task.id === id);
+      if (idx >= 0) tasks.splice(idx, 1);
+      return Promise.resolve();
+    },
+  };
+  return runtime as IAgentRuntime;
 }
 
 /** A runtime with a valid Cloud API key configured. */

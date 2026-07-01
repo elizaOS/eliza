@@ -5,11 +5,11 @@
  * Two layers protect the user's money, and NO secret/credential ever transits a
  * connector:
  *
- *   1. Two-phase confirm (reuses {@link isExplicitConfirmation} from safety.ts).
+ *   1. Two-phase confirm (structured `confirm` + pending task in safety.ts).
  *      The first ask NEVER moves money — it returns a confirmation prompt naming
  *      the exact app + amount, plus a connector-agnostic CTA to the dashboard
- *      earnings page. Money moves only when the FOLLOW-UP message carries an
- *      explicit confirmation token ("withdraw Acme — yes").
+ *      earnings page. Money moves only when a later turn carries structured
+ *      `confirm: true` for that pending prompt.
  *
  *   2. The "safe path" on confirm calls `client.withdrawAppEarnings(id, …)`,
  *      which wraps `POST /api/v1/apps/:id/earnings/withdraw`. That endpoint is
@@ -46,9 +46,12 @@ import {
 } from "../client.js";
 import {
   buildConnectorCta,
-  type ConfirmTarget,
   type ConnectorCta,
-  isExplicitConfirmation,
+  confirmationRoomId,
+  deleteCloudAppConfirmation,
+  findPendingCloudAppConfirmation,
+  persistCloudAppConfirmation,
+  readStructuredConfirmation,
 } from "../safety.js";
 import { extractEarningsView } from "./get-app-earnings.js";
 
@@ -58,9 +61,9 @@ const NO_REFERENCE_MESSAGE =
   "Which app's earnings would you like to withdraw? Tell me its name.";
 const ERROR_MESSAGE =
   "I couldn't process that withdrawal right now — the Cloud API returned an error. Nothing was withdrawn. Try again in a moment.";
-
-/** Verbs that, with an affirmation word, count as a withdraw confirmation. */
-const WITHDRAW_VERBS = ["withdraw", "cash out", "cashout", "pay out", "payout"];
+const NO_PENDING_CONFIRMATION_MESSAGE =
+  "I don't have a pending withdrawal confirmation for this room. Tell me which app earnings to withdraw first, and I'll ask for confirmation.";
+const CANCELED_MESSAGE = "Canceled. No app earnings were withdrawn.";
 
 function usd(n: number): string {
   return `$${n.toFixed(2)}`;
@@ -105,10 +108,6 @@ export function parseWithdrawAmount(
   return null;
 }
 
-function confirmTargetFor(app: AppDto): ConfirmTarget {
-  return { name: app.name, id: app.id, aliases: [app.slug] };
-}
-
 function notFoundMessage(reference: string, available: string[]): string {
   const base = `I couldn't find an app matching "${reference}".`;
   if (available.length === 0) {
@@ -133,6 +132,29 @@ export const withdrawAppEarningsAction: Action = {
   contexts: ["settings", "finance", "apps"],
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
+  parameters: [
+    {
+      name: "appName",
+      description:
+        "Name, slug, or id of the Cloud app whose earnings to withdraw.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "amount",
+      description:
+        "Optional USD amount to withdraw on the first ask. Omit to withdraw the full available balance.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "confirm",
+      description:
+        "Follow-up confirmation. Set true only when the user is confirming the pending withdrawal prompt for this app and amount; set false when canceling.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+  ],
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return resolveCloudApiKey(runtime) !== null;
@@ -156,6 +178,147 @@ export const withdrawAppEarningsAction: Action = {
         text: "No Eliza Cloud API key configured.",
         userFacingText: NO_KEY_MESSAGE,
         data: { reason: "no_key" },
+      };
+    }
+
+    const roomId = confirmationRoomId(runtime, message);
+    const confirmation = readStructuredConfirmation(options);
+    const pending = await findPendingCloudAppConfirmation(
+      runtime,
+      roomId,
+      "WITHDRAW_APP_EARNINGS",
+    );
+
+    if (confirmation !== null) {
+      if (!pending || typeof pending.metadata.amount !== "number") {
+        await callback?.({
+          text: NO_PENDING_CONFIRMATION_MESSAGE,
+          actions: ["WITHDRAW_APP_EARNINGS"],
+        });
+        return {
+          success: false,
+          text: "No pending withdrawal confirmation.",
+          userFacingText: NO_PENDING_CONFIRMATION_MESSAGE,
+          data: { reason: "no_pending_confirmation", withdrawn: false },
+        };
+      }
+
+      await deleteCloudAppConfirmation(runtime, pending.taskId);
+      if (confirmation === false) {
+        await callback?.({
+          text: CANCELED_MESSAGE,
+          actions: ["WITHDRAW_APP_EARNINGS"],
+        });
+        return {
+          success: true,
+          text: CANCELED_MESSAGE,
+          userFacingText: CANCELED_MESSAGE,
+          verifiedUserFacing: true,
+          data: { withdrawn: false, canceled: true },
+        };
+      }
+
+      const target = {
+        id: pending.metadata.appId,
+        name: pending.metadata.appName,
+        slug: pending.metadata.appSlug ?? pending.metadata.appName,
+      };
+      const amount = pending.metadata.amount;
+      const cta =
+        pending.metadata.cta ??
+        buildConnectorCta(
+          `Open ${target.name}'s earnings dashboard`,
+          `${resolveCloudSiteBaseUrl(runtime)}/dashboard/apps/${target.id}?tab=earnings`,
+          "link",
+        );
+      try {
+        const request: WithdrawAppEarningsRequest = {
+          amount,
+          idempotency_key: newIdempotencyKey(),
+        };
+        const result = await client.withdrawAppEarnings(target.id, request);
+        if (result.success === false) {
+          const msg = `Couldn't withdraw from "${target.name}": ${
+            result.error ?? result.message ?? "the request was rejected"
+          }. Nothing was withdrawn.`;
+          await callback?.({ text: msg, actions: ["WITHDRAW_APP_EARNINGS"] });
+          return {
+            success: false,
+            text: "Withdrawal rejected by the Cloud API.",
+            userFacingText: msg,
+            data: { reason: "rejected", withdrawn: false, cta },
+          };
+        }
+        const newBalance =
+          typeof result.newBalance === "number" ? result.newBalance : null;
+        const reply =
+          `Requested a payout of ${usd(amount)} from "${target.name}". ` +
+          (result.message
+            ? `${result.message} `
+            : "It's now in your redeemable balance. ") +
+          (newBalance !== null
+            ? `Remaining withdrawable: ${usd(newBalance)}. `
+            : "") +
+          `Finish the cash-out here: ${cta.url}`;
+        await callback?.({ text: reply, actions: ["WITHDRAW_APP_EARNINGS"] });
+        return {
+          success: true,
+          text: `Withdrawal of ${usd(amount)} requested for ${target.name}.`,
+          userFacingText: reply,
+          verifiedUserFacing: true,
+          data: {
+            app: { id: target.id, name: target.name, slug: target.slug },
+            amount,
+            withdrawn: true,
+            transactionId: result.transactionId ?? null,
+            newBalance,
+            cta,
+          },
+        };
+      } catch (err) {
+        logger.warn(
+          `[WITHDRAW_APP_EARNINGS] withdrawAppEarnings(${target.id}) failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        await callback?.({
+          text: ERROR_MESSAGE,
+          actions: ["WITHDRAW_APP_EARNINGS"],
+        });
+        return {
+          success: false,
+          text: "Failed to withdraw earnings.",
+          userFacingText: ERROR_MESSAGE,
+          error: err instanceof Error ? err : new Error(String(err)),
+          data: { reason: "error", withdrawn: false, cta },
+        };
+      }
+    }
+
+    if (pending) {
+      const msg =
+        `Withdrawal for "${pending.metadata.appName}" is still waiting for confirmation. ` +
+        `Reply with a clear confirmation or cancellation.`;
+      await callback?.({
+        text: msg,
+        actions: ["WITHDRAW_APP_EARNINGS"],
+      });
+      return {
+        success: true,
+        text: `Awaiting structured confirmation to withdraw from ${pending.metadata.appName}.`,
+        userFacingText: msg,
+        verifiedUserFacing: true,
+        data: {
+          app: {
+            id: pending.metadata.appId,
+            name: pending.metadata.appName,
+            slug: pending.metadata.appSlug,
+          },
+          amount: pending.metadata.amount,
+          withdrawn: false,
+          confirmationRequired: true,
+          cta: pending.metadata.cta,
+        },
       };
     }
 
@@ -333,100 +496,35 @@ export const withdrawAppEarningsAction: Action = {
       };
     }
 
-    const confirmTarget = confirmTargetFor(target);
-    const messageText = message.content?.text ?? "";
-
-    // Phase 1 — no explicit confirmation → confirm + hand off CTA, NO money call.
-    if (
-      !isExplicitConfirmation(messageText, confirmTarget, {
-        verbs: WITHDRAW_VERBS,
-      })
-    ) {
-      const prompt =
-        `This will request a payout of ${usd(amount)} from "${target.name}" ` +
-        `(${target.id}). The funds move to your redeemable balance; you finish ` +
-        `the cash-out on your dashboard — I never touch your bank details or keys. ` +
-        `To go ahead, reply: withdraw ${usd(amount)} from ${target.name} — yes. ` +
-        `Or open the dashboard: ${cta.url}`;
-      await callback?.({ text: prompt, actions: ["WITHDRAW_APP_EARNINGS"] });
-      return {
-        success: true,
-        text: `Awaiting explicit confirmation to withdraw ${usd(amount)} from ${target.name}.`,
-        userFacingText: prompt,
-        verifiedUserFacing: true,
-        data: {
-          app: { id: target.id, name: target.name, slug: target.slug },
-          amount,
-          withdrawn: false,
-          confirmationRequired: true,
-          cta,
-        },
-      };
-    }
-
-    // Phase 2 — explicit confirmation → the safe, idempotent, server-gated path.
-    try {
-      const request: WithdrawAppEarningsRequest = {
+    await persistCloudAppConfirmation(runtime, {
+      roomId,
+      action: "WITHDRAW_APP_EARNINGS",
+      appId: target.id,
+      appName: target.name,
+      appSlug: target.slug,
+      amount,
+      cta,
+    });
+    const prompt =
+      `This will request a payout of ${usd(amount)} from "${target.name}" ` +
+      `(${target.id}). The funds move to your redeemable balance; you finish ` +
+      `the cash-out on your dashboard — I never touch your bank details or keys. ` +
+      `To go ahead, reply that you confirm withdrawing ${usd(amount)} from ${target.name}. ` +
+      `Or open the dashboard: ${cta.url}`;
+    await callback?.({ text: prompt, actions: ["WITHDRAW_APP_EARNINGS"] });
+    return {
+      success: true,
+      text: `Awaiting structured confirmation to withdraw ${usd(amount)} from ${target.name}.`,
+      userFacingText: prompt,
+      verifiedUserFacing: true,
+      data: {
+        app: { id: target.id, name: target.name, slug: target.slug },
         amount,
-        idempotency_key: newIdempotencyKey(),
-      };
-      const result = await client.withdrawAppEarnings(target.id, request);
-      if (result.success === false) {
-        const msg = `Couldn't withdraw from "${target.name}": ${
-          result.error ?? result.message ?? "the request was rejected"
-        }. Nothing was withdrawn.`;
-        await callback?.({ text: msg, actions: ["WITHDRAW_APP_EARNINGS"] });
-        return {
-          success: false,
-          text: "Withdrawal rejected by the Cloud API.",
-          userFacingText: msg,
-          data: { reason: "rejected", withdrawn: false, cta },
-        };
-      }
-      const newBalance =
-        typeof result.newBalance === "number" ? result.newBalance : null;
-      const reply =
-        `Requested a payout of ${usd(amount)} from "${target.name}". ` +
-        (result.message
-          ? `${result.message} `
-          : "It's now in your redeemable balance. ") +
-        (newBalance !== null
-          ? `Remaining withdrawable: ${usd(newBalance)}. `
-          : "") +
-        `Finish the cash-out here: ${cta.url}`;
-      await callback?.({ text: reply, actions: ["WITHDRAW_APP_EARNINGS"] });
-      return {
-        success: true,
-        text: `Withdrawal of ${usd(amount)} requested for ${target.name}.`,
-        userFacingText: reply,
-        verifiedUserFacing: true,
-        data: {
-          app: { id: target.id, name: target.name, slug: target.slug },
-          amount,
-          withdrawn: true,
-          transactionId: result.transactionId ?? null,
-          newBalance,
-          cta,
-        },
-      };
-    } catch (err) {
-      logger.warn(
-        `[WITHDRAW_APP_EARNINGS] withdrawAppEarnings(${target.id}) failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      await callback?.({
-        text: ERROR_MESSAGE,
-        actions: ["WITHDRAW_APP_EARNINGS"],
-      });
-      return {
-        success: false,
-        text: "Failed to withdraw earnings.",
-        userFacingText: ERROR_MESSAGE,
-        error: err instanceof Error ? err : new Error(String(err)),
-        data: { reason: "error", withdrawn: false, cta },
-      };
-    }
+        withdrawn: false,
+        confirmationRequired: true,
+        cta,
+      },
+    };
   },
 
   examples: [
@@ -438,16 +536,13 @@ export const withdrawAppEarningsAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: 'This will request a payout of $42.00 from "Acme Bot" (…). The funds move to your redeemable balance; you finish the cash-out on your dashboard — I never touch your bank details or keys. To go ahead, reply: withdraw $42.00 from Acme Bot — yes.',
+          text: 'This will request a payout of $42.00 from "Acme Bot" (…). The funds move to your redeemable balance; you finish the cash-out on your dashboard — I never touch your bank details or keys. To go ahead, reply that you confirm withdrawing $42.00 from Acme Bot.',
           actions: ["WITHDRAW_APP_EARNINGS"],
         },
       },
     ],
     [
-      {
-        name: "{{user}}",
-        content: { text: "withdraw $42 from Acme Bot — yes" },
-      },
+      { name: "{{user}}", content: { text: "I confirm the Acme Bot payout" } },
       {
         name: "{{agent}}",
         content: {
