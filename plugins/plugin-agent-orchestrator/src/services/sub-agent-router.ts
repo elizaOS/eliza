@@ -1074,14 +1074,18 @@ export class SubAgentRouter extends Service {
       // Remember the best (longest) result for this root origin so the spawn
       // cap (tasks.ts) can relay it instead of re-spawning when a weak model's
       // later completion for the SAME user request comes back truncated/blocked.
-      // Key on the connector message id only — the stable root id the router
-      // stamps onto each synthetic re-spawn inbound and that tasks.ts reads back
-      // (so record + enforce agree); a request without one simply isn't capped.
-      if (origin.parentConnectorMessageId) {
-        this.recordOriginResult(
-          `${origin.parentConnectorMessageId}\0${session.agentType}`,
-          { text, deliverable },
-        );
+      // Key on the stable root id — the connector message id when present, else
+      // the user message id the router stamps onto each synthetic re-spawn
+      // inbound as `spawnRootMessageId` (dashboard/web has no connector id).
+      // This MUST match tasks.ts's `spawnOriginKey` derivation so record +
+      // enforce agree on every transport (#8875).
+      const originResultKey =
+        origin.parentConnectorMessageId ?? origin.spawnRootMessageId;
+      if (originResultKey) {
+        this.recordOriginResult(`${originResultKey}\0${session.agentType}`, {
+          text,
+          deliverable,
+        });
       }
       const preview = (deliverable ?? text).trim().slice(0, 200);
       void getNotifier(this.runtime)
@@ -1218,6 +1222,12 @@ export class SubAgentRouter extends Service {
               : {}),
             ...(origin.parentConnectorMessageId
               ? { originConnectorMessageId: origin.parentConnectorMessageId }
+              : {}),
+            // Re-stamp the stable root id so the NEXT re-spawn anchors its
+            // per-origin cap key to the same user request on connector-less
+            // (dashboard/web) transports. (#8875)
+            ...(origin.spawnRootMessageId
+              ? { spawnRootMessageId: origin.spawnRootMessageId }
               : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
             ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
@@ -1752,6 +1762,9 @@ interface OriginInfo {
   userId?: UUID;
   parentMessageId?: UUID;
   parentConnectorMessageId?: string;
+  /** Stable per-request root id for the per-origin spawn cap; present on every
+   * transport (connector message id, else the origin user message id). (#8875) */
+  spawnRootMessageId?: string;
   label: string;
   source?: string;
 }
@@ -1772,6 +1785,26 @@ function swarmRoomsMetadata(
 
 function pickPlainString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+/**
+ * The stable per-request root id read from a session's metadata for the
+ * per-origin spawn cap (#8875). MUST resolve to the same value that tasks.ts's
+ * `spawnRootIdFor` produced when the session was spawned, so the router's
+ * `recordOriginResult` and the action's cap enforcement key on the same origin
+ * on every transport. Newer spawns persist `spawnRootMessageId`; the fallbacks
+ * keep sessions that predate this change (in-flight across a deploy) capped by
+ * their stable id too.
+ */
+export function spawnRootIdFromMeta(
+  meta: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!meta) return undefined;
+  return (
+    pickPlainString(meta.spawnRootMessageId) ??
+    pickPlainString(meta.originConnectorMessageId) ??
+    pickUuid(meta.messageId)
+  );
 }
 
 function readOrigin(session: SessionInfo): OriginInfo | null {
@@ -1795,6 +1828,7 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
     userId: pickUuid(meta.userId),
     parentMessageId: pickUuid(meta.messageId),
     parentConnectorMessageId: pickPlainString(meta.originConnectorMessageId),
+    spawnRootMessageId: spawnRootIdFromMeta(meta),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
