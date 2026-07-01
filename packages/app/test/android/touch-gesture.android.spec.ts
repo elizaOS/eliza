@@ -179,7 +179,7 @@ async function completeFirstRunIfNeeded(page: Page) {
   const firstRunVisible = await page.evaluate(() =>
     Boolean(
       document.querySelector('[data-testid="first-run-runtime-chooser"]') ||
-        /How should Eliza run|Choose how Eliza should run/i.test(
+        /First, where should your agent run/i.test(
           document.body?.innerText ?? "",
         ),
     ),

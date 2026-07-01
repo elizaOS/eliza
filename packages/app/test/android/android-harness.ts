@@ -370,9 +370,9 @@ export async function isFirstRunShowing(page: Page): Promise<boolean> {
     .evaluate(() =>
       Boolean(
         document.querySelector(
-          '[data-testid="first-run-runtime-chooser"], [data-testid="first-run-chat"]',
+          '[data-testid="first-run-runtime-chooser"], [data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
         ) ||
-          /Choose first-run|How should Eliza run|Choose how Eliza should run/i.test(
+          /First, where should your agent run/i.test(
             document.body?.innerText ?? "",
           ),
       ),
