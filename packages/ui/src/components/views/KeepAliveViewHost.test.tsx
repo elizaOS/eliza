@@ -21,6 +21,10 @@ import {
   registerViewPolicy,
   viewLifecycleController,
 } from "../../state/view-lifecycle";
+import {
+  VIEW_RUNTIME_TELEMETRY_EVENT,
+  type ViewRuntimeTelemetryEvent,
+} from "../../view-runtime-telemetry";
 import { KeepAliveViewHost } from "./KeepAliveViewHost";
 
 // Render telemetry is gated on test/dev env; vitest sets NODE_ENV=test so
@@ -55,6 +59,34 @@ function TimerView(): React.JSX.Element {
 }
 
 describe("KeepAliveViewHost — rerender storm", () => {
+  it("emits a runtime show sample when a routed view mounts", () => {
+    const events: ViewRuntimeTelemetryEvent[] = [];
+    const handler = (e: Event) =>
+      events.push((e as CustomEvent<ViewRuntimeTelemetryEvent>).detail);
+    window.addEventListener(VIEW_RUNTIME_TELEMETRY_EVENT, handler);
+
+    try {
+      render(
+        <KeepAliveViewHost
+          activeViewId="runtime-probe"
+          renderView={() => <CalmView />}
+        />,
+      );
+
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            viewId: "runtime-probe",
+            phase: "active",
+            reason: "show",
+          }),
+        ]),
+      );
+    } finally {
+      window.removeEventListener(VIEW_RUNTIME_TELEMETRY_EVENT, handler);
+    }
+  });
+
   it("flags a per-view render storm without flagging a calm sibling", () => {
     registerViewPolicy("calm", { keepAlive: true });
     registerViewPolicy("storm", { keepAlive: true });

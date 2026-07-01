@@ -37,6 +37,9 @@ bun run --cwd packages/app test:e2e:android:onboarding
 # Native Capacitor plugin x WebView smoke against host or local backend.
 bun run --cwd packages/app test:e2e:android:native-plugin-view
 
+# Full #10196 view-runtime telemetry soak against the real Android WebView.
+bun run --cwd packages/app test:e2e:android:view-runtime-soak
+
 # Route-only/WebView-only pass when the local chat smoke is already done.
 bun run --cwd packages/app test:e2e:android:routes
 ```

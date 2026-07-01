@@ -22,6 +22,7 @@ import {
   Profiler,
   type ProfilerOnRenderCallback,
   useCallback,
+  useEffect,
   useRef,
 } from "react";
 import { percentile } from "../../hooks/frame-budget";
@@ -141,6 +142,10 @@ export function ViewTelemetryProfiler({
     },
     [viewId],
   );
+
+  useEffect(() => {
+    emit("active", "show");
+  }, [emit]);
 
   useViewLifecycle({
     onShow: () => emit("active", "show"),

@@ -5075,6 +5075,7 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
+  "ElizaAgentWatchdogPolicy.java",
   "ElizaAccessibilityService.java",
   "ElizaAssistActivity.java",
   "ElizaBootReceiver.java",
