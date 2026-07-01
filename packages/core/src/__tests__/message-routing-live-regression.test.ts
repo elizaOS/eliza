@@ -3,6 +3,7 @@ import { parseActionParams } from "../actions";
 import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
+	applyDirectCurrentCandidateBackstopToMessageHandler,
 	extractPlannerActionNames,
 	findWebLookupActionName,
 	findWebLookupActionNames,
@@ -20,6 +21,84 @@ const logger = {
 	warn: vi.fn(),
 	error: vi.fn(),
 };
+
+describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () => {
+	// Live regression: the Stage-1 model sometimes answers in plain prose instead
+	// of the structured field envelope. That path (synthesizeSimpleReplyFromPlainText)
+	// runs through applyDirectCurrentCandidateBackstopToMessageHandler, which infers
+	// WEB_FETCH/WEB_SEARCH candidates for almost any interrogative — so a COMPLETE
+	// plain-text answer ("Your lucky number is 4291.", a solved riddle) was promoted
+	// to requiresTool=true and forced through a pointless web search + a slow extra
+	// planner round, while the identical answer in JSON form went direct. The valve
+	// mirrors the structured path's shouldPreferCompleteDirectReply.
+	const WEB_ACTIONS = [
+		{ name: "REPLY" },
+		{ name: "WEB_SEARCH", similes: ["SEARCH_WEB"] },
+		{ name: "WEB_FETCH" },
+		{ name: "TASKS" },
+	] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+	const simplePlainReply = (reply: string) => ({
+		processMessage: "RESPOND" as const,
+		plan: { contexts: ["simple"], reply, simple: true },
+		thought: "",
+	});
+
+	it("keeps a COMPLETE plain-text answer direct instead of forcing a web search", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply("Your lucky number is 4291."),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "my lucky number is 4291. what is my lucky number?",
+			},
+		);
+		// inference DOES tag this with WEB_FETCH/WEB_SEARCH, but the finished
+		// answer + weak signals must win: stays simple, no forced tool.
+		expect(out.plan.simple).not.toBe(false);
+		expect(out.plan.requiresTool).not.toBe(true);
+	});
+
+	it("keeps a solved-reasoning plain-text answer direct", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply(
+				"3 minutes. Each machine makes one widget in 3 minutes, so 100 machines run in parallel and still finish in 3 minutes.",
+			),
+			{
+				actions: WEB_ACTIONS,
+				messageText:
+					"if 3 machines make 3 widgets in 3 minutes, how long for 100 machines to make 100 widgets?",
+			},
+		);
+		expect(out.plan.simple).not.toBe(false);
+		expect(out.plan.requiresTool).not.toBe(true);
+	});
+
+	it("still forces the tool for a live-info ACK reply (not a complete answer)", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply("Checking the current price now."),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "what is the current price of bitcoin right now?",
+			},
+		);
+		// an ack fails looksLikeCompleteDirectReply → live-info still fetches.
+		expect(out.plan.requiresTool).toBe(true);
+		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
+	});
+
+	it("still plans a coding-work request even with a complete-looking reply", () => {
+		const out = applyDirectCurrentCandidateBackstopToMessageHandler(
+			simplePlainReply(
+				"I'll build a simple hello-world web page with an h1 and some basic styling for you.",
+			),
+			{
+				actions: WEB_ACTIONS,
+				messageText: "build me a simple hello-world web page",
+			},
+		);
+		// coding work must not be short-circuited by the complete-reply valve.
+		expect(out.plan.requiresTool).toBe(true);
+	});
+});
 
 describe("live routing regressions", () => {
 	it("extracts inline params from planner action strings", () => {
