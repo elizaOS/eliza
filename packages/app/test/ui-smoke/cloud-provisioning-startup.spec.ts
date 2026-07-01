@@ -120,19 +120,23 @@ async function clickIfVisible(
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
-  // For an already-authenticated user, first-run onboarding skips the "How should
-  // Eliza run?" runtime choice and goes straight to the "Choose your agent"
-  // picker, fetching the account's existing cloud agents. Driving "Create new"
-  // provisions a fresh agent through the local cloud proxy. A brand-new account
-  // with zero agents skips the picker entirely and auto-creates — both paths land
-  // on the same create route, so absence of the picker is fine.
-  const createNew = page.getByTestId("onboarding-agent-create");
-  await createNew.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {
-    /* no picker: zero-agent account auto-creates without a picker step */
-  });
-  if (await createNew.isVisible().catch(() => false)) {
-    await createNew.click();
-  }
+  const cloudRuntime = page.getByTestId("first-run-chooser-cloud");
+  if (await clickIfVisible(cloudRuntime, 10_000)) return;
+
+  // Some authenticated recovery paths can still hydrate directly at the agent
+  // picker before the floating runtime chooser paints.
+  const createNew = page
+    .getByTestId("onboarding-agent-create")
+    .or(page.getByRole("button", { name: /create a new agent/i }));
+  await clickIfVisible(createNew, 2_000);
+}
+
+async function chooseNewCloudAgent(page: Page): Promise<void> {
+  const createNew = page
+    .getByTestId("onboarding-agent-create")
+    .or(page.getByRole("button", { name: /create a new agent/i }));
+  await createNew.waitFor({ state: "visible", timeout: 30_000 });
+  await createNew.click();
 }
 
 async function installCloudConnectionRoutes(
@@ -165,6 +169,22 @@ async function installCloudConnectionRoutes(
       low: false,
       critical: false,
       authRejected: false,
+    });
+  });
+}
+
+async function installFreshFirstRunConfigRoute(page: Page): Promise<void> {
+  await page.route("**/api/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      meta: { firstRunComplete: false },
+      agents: {
+        list: [],
+        defaults: {},
+      },
     });
   });
 }
@@ -414,6 +434,7 @@ for (const viewport of VIEWPORTS) {
     );
 
     await installDefaultAppRoutes(page);
+    await installFreshFirstRunConfigRoute(page);
     await installCloudConnectionRoutes(page, "cloud-provisioning-smoke-user");
     await installDirectCloudLoginRoutes(page, "cloud-provisioning-smoke-user");
     await installDirectCloudSandboxRoutes(page, {
@@ -665,6 +686,7 @@ for (const viewport of VIEWPORTS) {
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );
+    await chooseNewCloudAgent(page);
 
     // "Create new" in the picker provisions a fresh dedicated cloud agent via the
     // local cloud proxy, then writes the first-run profile.
