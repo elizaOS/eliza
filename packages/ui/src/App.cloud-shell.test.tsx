@@ -156,6 +156,11 @@ describe("window-shell route classification (behavioral)", () => {
     });
     // ?shell=pill is gone; old links should resolve to the main window.
     expect(parseWindowShellRoute("?shell=pill")).toEqual({ mode: "main" });
+    // The first-run onboarding overlay shell was removed; old links should
+    // resolve to the normal main window rather than a duplicate onboarding card.
+    expect(parseWindowShellRoute("?shellMode=onboarding-overlay")).toEqual({
+      mode: "main",
+    });
     // Unknown surface tab is not a valid detached target → main.
     expect(parseWindowShellRoute("?shell=surface&tab=bogus")).toEqual({
       mode: "main",

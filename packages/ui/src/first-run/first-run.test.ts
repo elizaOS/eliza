@@ -21,6 +21,7 @@ import {
   savePersistedFirstRunState,
   validateFirstRunSubmitDraft,
 } from "./first-run";
+import { resolveFirstRunInferenceDefault } from "./first-run-config";
 
 const fallbackDraft: FirstRunProfileDraft = {
   agentName: "Fallback Agent",
@@ -90,6 +91,25 @@ describe("first-run flow", () => {
     );
     expect(firstRunRuntimeTarget("cloud")).toBe("elizacloud");
     expect(firstRunRuntimeTarget("remote")).toBe("remote");
+  });
+
+  it("resolves role-correct first-run inference defaults by runtime target", () => {
+    expect(resolveFirstRunInferenceDefault("elizacloud")).toEqual({
+      firstRunProvider: "elizacloud",
+      omitRuntimeProvider: false,
+    });
+    expect(resolveFirstRunInferenceDefault("elizacloud-hybrid")).toEqual({
+      firstRunProvider: "elizacloud",
+      omitRuntimeProvider: false,
+    });
+    expect(resolveFirstRunInferenceDefault("local")).toEqual({
+      firstRunProvider: "",
+      omitRuntimeProvider: true,
+    });
+    expect(resolveFirstRunInferenceDefault("remote")).toEqual({
+      firstRunProvider: "",
+      omitRuntimeProvider: true,
+    });
   });
 
   it("requires a cloud connection for cloud and local+cloud-inference only", () => {

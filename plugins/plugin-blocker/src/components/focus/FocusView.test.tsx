@@ -122,7 +122,7 @@ describe("FocusView — phases", () => {
 
   it("renders the empty state when available, inactive, nothing blocked", async () => {
     render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
-    await screen.findByText("Idle");
+    await screen.findByText("No active focus block.");
   });
 
   it("renders the active state with times, count, list, and Release control", async () => {
@@ -148,7 +148,7 @@ describe("FocusView — actions", () => {
     await screen.findByText("network down");
     fireEvent.click(agent("retry"));
 
-    await screen.findByText("Idle");
+    await screen.findByText("No active focus block.");
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 
@@ -166,7 +166,7 @@ describe("FocusView — actions", () => {
     fireEvent.click(agent("release"));
 
     await waitFor(() => expect(releaseBlock).toHaveBeenCalledTimes(1));
-    await screen.findByText("Idle");
+    await screen.findByText("No active focus block.");
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 

@@ -99,7 +99,6 @@ import {
 import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
-  isOnboardingOverlayWindowShell,
   isStandaloneWindowShell,
   resolveWindowShellRoute,
   shouldInstallMainWindowFirstRunPatches,
@@ -1943,20 +1942,6 @@ function setupPlatformStyles(): void {
   const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);
   root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
   document.body.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
-
-  // First-run onboarding overlay: same transparent-surface treatment as the
-  // chat overlay so the native transparent/passthrough window shows the desktop
-  // through everything except the floating onboarding card.
-  const onboardingOverlayShell =
-    isOnboardingOverlayWindowShell(windowShellRoute);
-  root.classList.toggle(
-    "eliza-onboarding-overlay-shell",
-    onboardingOverlayShell,
-  );
-  document.body.classList.toggle(
-    "eliza-onboarding-overlay-shell",
-    onboardingOverlayShell,
-  );
 
   // Record the resolved window shell mode once at boot. Detached/overlay
   // windows route on `?shellMode=`; logging it makes a mis-routed surface

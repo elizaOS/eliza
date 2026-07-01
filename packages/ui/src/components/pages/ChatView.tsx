@@ -1,4 +1,4 @@
-import { Check, Copy, RotateCcw } from "lucide-react";
+import { Check, Copy, RotateCcw, Search } from "lucide-react";
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -14,6 +14,7 @@ import {
 import { type CodingAgentSession, client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
+import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
@@ -868,6 +869,21 @@ export function ChatView({
       </button>
     ) : null;
 
+  const searchMessagesButton = (
+    <button
+      type="button"
+      data-testid="chat-view-message-search-button"
+      aria-label="Search messages"
+      title="Search messages"
+      onClick={() => {
+        window.dispatchEvent(new CustomEvent(CHAT_MESSAGE_SEARCH_EVENT));
+      }}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt"
+    >
+      <Search className="h-[18px] w-[18px]" aria-hidden />
+    </button>
+  );
+
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -875,21 +891,20 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible || resetConversationButton ? (
-            <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
-              {copyConversationButton}
-              {resetConversationButton}
-              {continuousChatToggleVisible ? (
-                <ContinuousChatToggle
-                  compact
-                  value={continuousChatMode}
-                  onChange={handleContinuousChatModeChange}
-                  disabled={isComposerLocked}
-                  data-testid="chat-view-continuous-chat-toggle-game-modal"
-                />
-              ) : null}
-            </div>
-          ) : null}
+          <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+            {searchMessagesButton}
+            {copyConversationButton}
+            {resetConversationButton}
+            {continuousChatToggleVisible ? (
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle-game-modal"
+              />
+            ) : null}
+          </div>
           <AgentActivityBox
             sessions={ptySessions}
             onSessionClick={onPtySessionClick ?? focusTerminalSession}
@@ -940,21 +955,20 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible || resetConversationButton ? (
-            <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
-              {copyConversationButton}
-              {resetConversationButton}
-              {continuousChatToggleVisible ? (
-                <ContinuousChatToggle
-                  compact
-                  value={continuousChatMode}
-                  onChange={handleContinuousChatModeChange}
-                  disabled={isComposerLocked}
-                  data-testid="chat-view-continuous-chat-toggle"
-                />
-              ) : null}
-            </div>
-          ) : null}
+          <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+            {searchMessagesButton}
+            {copyConversationButton}
+            {resetConversationButton}
+            {continuousChatToggleVisible ? (
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle"
+              />
+            ) : null}
+          </div>
         </>
       }
     >

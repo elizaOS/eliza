@@ -1039,10 +1039,18 @@ export function MessageContent({
   // Fast path: single plain-text segment (most messages)
   if (segments.length === 1 && segments[0].kind === "text") {
     return (
-      <MessageTextBody
-        text={segments[0].text}
-        boldSlashCommand={message.role === "user"}
-      />
+      <>
+        {message.role === "assistant" && message.reasoning?.trim() ? (
+          <ThinkingBlock reasoning={message.reasoning} />
+        ) : null}
+        <MessageTextBody
+          text={segments[0].text}
+          boldSlashCommand={message.role === "user"}
+        />
+        {message.attachments?.length ? (
+          <MessageAttachments attachments={message.attachments} />
+        ) : null}
+      </>
     );
   }
 

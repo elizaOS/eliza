@@ -99,6 +99,7 @@ export {
   type InventoryChainFilters,
   LIFECYCLE_MESSAGES,
   type LifecycleAction,
+  type LoadConversationMessagesOptions,
   type LoadConversationMessagesResult,
   type NavigationEventsApi,
   SETUP_STEPS,

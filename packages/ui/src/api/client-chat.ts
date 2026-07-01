@@ -18,6 +18,8 @@ import type {
   ConversationChannelType,
   ConversationGreeting,
   ConversationMessage,
+  ConversationMessageLoadOptions,
+  ConversationMessageSearchResponse,
   ConversationMetadata,
   CreateConversationOptions,
   DatabaseConfigResponse,
@@ -314,8 +316,12 @@ declare module "./client-base" {
     }>;
     getConversationMessages(
       id: string,
-      options?: { signal?: AbortSignal },
+      options?: ConversationMessageLoadOptions,
     ): Promise<{ messages: ConversationMessage[] }>;
+    searchConversationMessages(
+      query: string,
+      options?: { limit?: number; offset?: number; signal?: AbortSignal },
+    ): Promise<ConversationMessageSearchResponse>;
     /**
      * Fetch the cross-channel inbox. Returns the most recent
      * messages across every connector room the agent participates in,
@@ -941,22 +947,29 @@ ElizaClient.prototype.getConversationMessages = async function (
   options,
 ) {
   let response: { messages: ConversationMessage[] } | null = null;
-  try {
-    response = await invokeLocalDesktopChatRpc<{
-      messages: ConversationMessage[];
-    }>(this.getBaseUrl(), {
-      rpcMethod: "getConversationMessages",
-      ipcChannel: "agent",
-      params: { id },
-    });
-  } catch {
-    response = null;
+  if (!options?.aroundMessageId) {
+    try {
+      response = await invokeLocalDesktopChatRpc<{
+        messages: ConversationMessage[];
+      }>(this.getBaseUrl(), {
+        rpcMethod: "getConversationMessages",
+        ipcChannel: "agent",
+        params: { id },
+      });
+    } catch {
+      response = null;
+    }
   }
   // The HTTP path is abortable (a rapid conversation swipe cancels the prior
   // in-flight load so stacked requests don't race to set the thread); the
   // desktop bridge path is local + fast and ignores the signal.
+  const params = new URLSearchParams();
+  if (options?.aroundMessageId) {
+    params.set("aroundMessageId", options.aroundMessageId);
+  }
+  const query = params.toString();
   response ??= await this.fetch<{ messages: ConversationMessage[] }>(
-    `/api/conversations/${encodeURIComponent(id)}/messages`,
+    `/api/conversations/${encodeURIComponent(id)}/messages${query ? `?${query}` : ""}`,
     options?.signal ? { signal: options.signal } : undefined,
   );
   return {
@@ -966,6 +979,20 @@ ElizaClient.prototype.getConversationMessages = async function (
       return text === message.text ? message : { ...message, text };
     }),
   };
+};
+
+ElizaClient.prototype.searchConversationMessages = async function (
+  this: ElizaClient,
+  query,
+  options?,
+) {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) params.set("limit", String(options.limit));
+  if (options?.offset !== undefined)
+    params.set("offset", String(options.offset));
+  return this.fetch(`/api/conversations/messages/search?${params}`, {
+    ...(options?.signal ? { signal: options.signal } : {}),
+  });
 };
 
 ElizaClient.prototype.getInboxMessages = async function (

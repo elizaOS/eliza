@@ -26,6 +26,7 @@ import {
 } from "./chat-conversation-guards";
 import type { AppState, LifecycleAction, UiShellMode } from "./internal";
 import {
+  type LoadConversationMessagesOptions,
   type LoadConversationMessagesResult,
   loadActiveConversationId,
 } from "./internal";
@@ -448,6 +449,7 @@ export interface UseChatCallbacksDeps {
   loadConversations: () => Promise<Conversation[] | null>;
   loadConversationMessages: (
     convId: string,
+    options?: LoadConversationMessagesOptions,
   ) => Promise<LoadConversationMessagesResult>;
   /** Warm the message cache for adjacent conversations (smooth swipe nav). */
   prefetchConversationMessages: (ids: readonly string[]) => void;
@@ -1093,15 +1095,20 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   ]);
 
   const handleSelectConversation = useCallback(
-    async (id: string) => {
+    async (id: string, options?: LoadConversationMessagesOptions) => {
       conversationHydrationEpochRef.current += 1;
       // Read the LIVE active id from the ref, not the closure: callers can hold
       // a stale `handleSelectConversation` captured before another navigation
       // changes `activeConversationId`. Using the closure here made selecting
       // that previous conversation hit this early-return and silently no-op.
       const currentActiveId = activeConversationIdRef.current;
-      if (id === currentActiveId && conversationMessagesRef.current.length > 0)
+      if (
+        id === currentActiveId &&
+        conversationMessagesRef.current.length > 0 &&
+        !options?.aroundMessageId
+      ) {
         return;
+      }
 
       send.interruptActiveChatPipeline();
 
@@ -1131,7 +1138,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         next.delete(id);
         return next;
       });
-      const loaded = await loadConversationMessages(id);
+      const loaded = await loadConversationMessages(id, options);
       if (loaded.ok === true) return;
       const loadedMessage = loaded.message;
 

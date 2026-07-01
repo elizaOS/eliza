@@ -113,7 +113,7 @@ function useSupportsHover(): boolean {
   );
 }
 
-function getChatMessageAnchorId(messageId: string): string {
+export function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
 }
 

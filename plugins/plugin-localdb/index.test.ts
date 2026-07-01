@@ -21,6 +21,48 @@ afterEach(async () => {
 });
 
 describe("plugin-localdb node adapter", () => {
+  it("filters message content through inherited textContains semantics", async () => {
+    const dir = await makeTempDir();
+    const adapter = createDatabaseAdapter("agent-1" as never, dir);
+    await adapter.initialize();
+
+    await adapter.createMemories([
+      {
+        tableName: "messages",
+        memory: {
+          id: "00000000-0000-0000-0000-000000000210" as never,
+          agentId: "00000000-0000-0000-0000-000000000201" as never,
+          entityId: "00000000-0000-0000-0000-000000000202" as never,
+          roomId: "00000000-0000-0000-0000-000000000203" as never,
+          content: { text: "Alpha launch notes" },
+          createdAt: 1_000,
+        },
+      },
+      {
+        tableName: "messages",
+        memory: {
+          id: "00000000-0000-0000-0000-000000000211" as never,
+          agentId: "00000000-0000-0000-0000-000000000201" as never,
+          entityId: "00000000-0000-0000-0000-000000000202" as never,
+          roomId: "00000000-0000-0000-0000-000000000203" as never,
+          content: { text: "unrelated" },
+          createdAt: 2_000,
+        },
+      },
+    ]);
+
+    const results = await adapter.getMemories({
+      tableName: "messages",
+      roomId: "00000000-0000-0000-0000-000000000203" as never,
+      textContains: "alpha",
+    });
+
+    expect(results.map((memory) => memory.content.text)).toEqual([
+      "Alpha launch notes",
+    ]);
+    await adapter.close();
+  });
+
   it("persists storage data across adapter restarts", async () => {
     const dir = await makeTempDir();
     const first = createDatabaseAdapter("agent-1" as never, dir);

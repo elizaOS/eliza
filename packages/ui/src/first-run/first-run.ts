@@ -6,6 +6,7 @@ import type { UiLanguage } from "../i18n";
 import {
   type BuildFirstRunRuntimeConfigResult,
   buildFirstRunRuntimeConfig,
+  resolveFirstRunInferenceDefault,
 } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
@@ -414,14 +415,13 @@ export function buildFirstRunSubmitPlan(args: {
     args.draft.runtime,
     args.draft.localInference,
   );
-  const cloudInference =
-    args.draft.runtime === "cloud" || serverTarget === "elizacloud-hybrid";
+  const inferenceDefault = resolveFirstRunInferenceDefault(serverTarget);
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: serverTarget,
     firstRunCloudApiKey: "",
-    firstRunProvider: cloudInference ? "elizacloud" : "",
+    firstRunProvider: inferenceDefault.firstRunProvider,
     firstRunApiKey: "",
-    omitRuntimeProvider: !cloudInference,
+    omitRuntimeProvider: inferenceDefault.omitRuntimeProvider,
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",
     firstRunPrimaryModel: "",

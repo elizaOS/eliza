@@ -8,13 +8,48 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+const searchConversationMessagesMock = vi.hoisted(() => vi.fn());
+const firstRunFinishRuntimeMock = vi.hoisted(() => vi.fn());
+const firstRunUpdateDraftMock = vi.hoisted(() => vi.fn());
+const firstRunSetStepMock = vi.hoisted(() => vi.fn());
+const firstRunControllerMock = vi.hoisted(() => ({
+  step: "runtime",
+  draft: {
+    runtime: "cloud",
+    localInference: "cloud-inference",
+    remoteApiBase: "",
+    remoteToken: "",
+  },
+  localRuntimeAvailable: true,
+  cloudOnly: false,
+  submitting: false,
+  busyText: null,
+  error: null,
+  cloudLoginFallbackUrl: null,
+  cloudError: null,
+  pickerAgents: [],
+  pickerPhase: "ready",
+  pickerError: null,
+  pickerActiveAgentId: null,
+  pickerBindingId: null,
+  updateDraft: firstRunUpdateDraftMock,
+  setStep: firstRunSetStepMock,
+  finishRuntime: firstRunFinishRuntimeMock,
+  onPickAgent: vi.fn(),
+  onCreateNewAgent: vi.fn(),
+  onRetryPicker: vi.fn(),
+  onBackFromPicker: vi.fn(),
+}));
 
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
+    searchConversationMessages: searchConversationMessagesMock,
     // Transcription archival is best-effort and fire-and-forget; resolve so the
     // attachment path (the user-facing behavior) is what the test asserts.
     createTranscript: vi
@@ -29,17 +64,28 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
-import type { Conversation } from "../../api/client-types-chat";
-import { CHAT_PREFILL_EVENT } from "../../events";
+vi.mock("../../first-run/use-first-run-controller", () => ({
+  useFirstRunController: () => firstRunControllerMock,
+}));
+
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../../api/client-types-chat";
+import { CHAT_MESSAGE_SEARCH_EVENT, CHAT_PREFILL_EVENT } from "../../events";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
+import { __setAppValueForTests } from "../../state/app-store";
 import {
   getShellSurface,
   resetShellSurfaceForTests,
 } from "../../state/shell-surface-store";
+import { AppContext } from "../../state/useApp";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { readViewInteractions } from "../../view-telemetry";
+import { MessageContent } from "../chat/MessageContent";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import {
   buildConversationNav,
@@ -54,8 +100,42 @@ beforeAll(() => {
 // Unmount between tests so renders don't accumulate in the shared document.
 afterEach(() => {
   cleanup();
+  searchConversationMessagesMock.mockReset();
+  firstRunFinishRuntimeMock.mockReset();
+  firstRunUpdateDraftMock.mockReset();
+  firstRunSetStepMock.mockReset();
+  Object.assign(firstRunControllerMock, {
+    step: "runtime",
+    draft: {
+      runtime: "cloud",
+      localInference: "cloud-inference",
+      remoteApiBase: "",
+      remoteToken: "",
+    },
+    localRuntimeAvailable: true,
+    cloudOnly: false,
+    submitting: false,
+    busyText: null,
+    error: null,
+    cloudLoginFallbackUrl: null,
+    cloudError: null,
+    pickerAgents: [],
+    pickerPhase: "ready",
+    pickerError: null,
+    pickerActiveAgentId: null,
+    pickerBindingId: null,
+  });
+  __setAppValueForTests(null);
   resetShellSurfaceForTests();
 });
+
+function clearViewTelemetryForTest(): void {
+  (
+    globalThis as typeof globalThis & {
+      __ELIZA_VIEW_INTERACTION_TELEMETRY__?: unknown[];
+    }
+  ).__ELIZA_VIEW_INTERACTION_TELEMETRY__ = [];
+}
 
 function makeController(
   overrides: Partial<ShellController> = {},
@@ -92,6 +172,25 @@ function makeController(
     clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
+}
+
+function renderWithApp(node: ReactElement) {
+  const appValue = {
+    t: (key: string, vars?: Record<string, unknown>) =>
+      String(vars?.defaultValue ?? key),
+    sendActionMessage: vi.fn(),
+    setTab: vi.fn(),
+    handleChatRetry: vi.fn(),
+    loadPlugins: vi.fn(() => Promise.resolve()),
+    setActionNotice: vi.fn(),
+  } as never;
+  __setAppValueForTests(appValue);
+  return {
+    ...render(
+      <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
+    ),
+    appValue,
+  };
 }
 
 describe("ContinuousChatOverlay", () => {
@@ -990,6 +1089,88 @@ describe("ContinuousChatOverlay", () => {
     expect(openSettings).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps overlay and ChatView message renderers structurally aligned", () => {
+    const corpus = [
+      {
+        id: "user-command",
+        role: "user",
+        content: "/imagine a glass terminal",
+        createdAt: 1,
+      },
+      {
+        id: "assistant-rich",
+        role: "assistant",
+        content:
+          "Here is the patch:\n```ts\nconst answer = 42;\n```\n[CHOICE:approval id=c1]\nyes=Approve\nno=Reject\n[/CHOICE]",
+        createdAt: 2,
+        reasoning: "Checked the route contract before replying.",
+      },
+      {
+        id: "assistant-plain-reasoning",
+        role: "assistant",
+        content: "Plain answer after a private check.",
+        createdAt: 3,
+        reasoning: "Plain-text fast path still needs a reasoning disclosure.",
+      },
+      {
+        id: "assistant-provider",
+        role: "assistant",
+        content: "No model provider is configured.",
+        createdAt: 4,
+        failureKind: "no_provider",
+      },
+    ] satisfies ShellController["messages"];
+    const toConversationMessage = (
+      message: (typeof corpus)[number],
+    ): ConversationMessage => ({
+      id: message.id,
+      role: message.role,
+      text: message.content,
+      timestamp: message.createdAt,
+      reasoning: "reasoning" in message ? message.reasoning : undefined,
+      failureKind: "failureKind" in message ? message.failureKind : undefined,
+    });
+    const structuralFacts = (root: HTMLElement) => ({
+      codeBlocks: root.querySelectorAll('[data-testid="code-block"]').length,
+      slashTokens: root.querySelectorAll('[data-testid="slash-command-token"]')
+        .length,
+      hasApproveChoice: root.textContent?.includes("Approve") ?? false,
+      thinkingDisclosures: Array.from(root.querySelectorAll("button")).filter(
+        (button) => button.textContent?.includes("Thinking"),
+      ).length,
+      hasNoProviderGate:
+        root.textContent?.includes("Connect a provider to chat") ?? false,
+      hasSettingsCta:
+        root.textContent?.includes("Open Settings") ||
+        root.textContent?.includes("Open settings") ||
+        false,
+    });
+
+    const overlay = renderWithApp(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: corpus,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    const overlayFacts = structuralFacts(overlay.container);
+    cleanup();
+
+    const chatView = renderWithApp(
+      <div>
+        {corpus.map((message) => (
+          <MessageContent
+            key={message.id}
+            message={toConversationMessage(message)}
+          />
+        ))}
+      </div>,
+    );
+
+    expect(structuralFacts(chatView.container)).toEqual(overlayFacts);
+  });
+
   it("press-and-hold copies an assistant message and flashes confirmation", () => {
     vi.useFakeTimers();
     try {
@@ -1450,6 +1631,111 @@ describe("ContinuousChatOverlay", () => {
     await vi.waitFor(() => expect(navigateHome).toHaveBeenCalledTimes(1));
   });
 
+  it("opens message search and jumps with an anchored conversation load", async () => {
+    searchConversationMessagesMock.mockResolvedValueOnce({
+      results: [
+        {
+          messageId: "message-hit",
+          conversationId: "conversation-hit",
+          roomId: "room-hit",
+          role: "assistant",
+          text: "needle result",
+          snippet: "needle result",
+          createdAt: 42,
+          score: 2,
+        },
+      ],
+      count: 1,
+    });
+    const selectConversationAroundMessage = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          selectConversationAroundMessage,
+        } as Partial<ShellController>)}
+      />,
+    );
+    openSheetToHalf();
+
+    fireEvent.click(screen.getByTestId("chat-full-search"));
+    fireEvent.change(screen.getByTestId("chat-message-search-input"), {
+      target: { value: "needle" },
+    });
+
+    await waitFor(() =>
+      expect(searchConversationMessagesMock).toHaveBeenCalledWith(
+        "needle",
+        expect.objectContaining({ limit: 20 }),
+      ),
+    );
+    fireEvent.click(await screen.findByTestId("chat-message-search-result"));
+
+    expect(selectConversationAroundMessage).toHaveBeenCalledWith(
+      "conversation-hit",
+      { messageId: "message-hit" },
+    );
+  });
+
+  it("uses the same search input for conversation title matches", async () => {
+    searchConversationMessagesMock.mockResolvedValueOnce({
+      results: [],
+      count: 0,
+    });
+    const selectConversation = vi.fn();
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          conversations: [
+            {
+              id: "conv-launch",
+              title: "Launch planning",
+              roomId: "room-launch",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+            },
+            {
+              id: "conv-budget",
+              title: "Budget notes",
+              roomId: "room-budget",
+              createdAt: "2026-01-02T00:00:00.000Z",
+              updatedAt: "2026-01-02T00:00:00.000Z",
+            },
+          ],
+          selectConversation,
+        } as Partial<ShellController>)}
+      />,
+    );
+    openSheetToHalf();
+
+    fireEvent.click(screen.getByTestId("chat-full-search"));
+    fireEvent.change(screen.getByTestId("chat-message-search-input"), {
+      target: { value: "launch" },
+    });
+
+    const result = await screen.findByTestId("chat-conversation-search-result");
+    expect(result.textContent).toContain("Launch planning");
+    expect(result.textContent).not.toContain("Budget notes");
+    await waitFor(() =>
+      expect(searchConversationMessagesMock).toHaveBeenCalledWith(
+        "launch",
+        expect.objectContaining({ limit: 20 }),
+      ),
+    );
+    fireEvent.click(result);
+
+    expect(selectConversation).toHaveBeenCalledWith("conv-launch");
+  });
+
+  it("opens message search from the top chat bar event", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(CHAT_MESSAGE_SEARCH_EVENT));
+    });
+
+    expect(screen.getByTestId("chat-message-search-input")).toBeTruthy();
+  });
+
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
     it("renders breathing dots without a text label while thinking", () => {
@@ -1654,6 +1940,7 @@ describe("ContinuousChatOverlay swipe-nav", () => {
   }
 
   it("a committed LEFT swipe selects the next (older) conversation", () => {
+    clearViewTelemetryForTest();
     const { controller, onSelect } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
@@ -1667,9 +1954,19 @@ describe("ContinuousChatOverlay swipe-nav", () => {
 
     // "b" → next/older is "c".
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("c");
+    expect(readViewInteractions()).toContainEqual(
+      expect.objectContaining({
+        source: "chat-overlay",
+        action: "conversation-swipe",
+        viewId: "b",
+        query: "next",
+        count: 1,
+      }),
+    );
   });
 
   it("a committed RIGHT swipe selects the previous (newer) conversation", () => {
+    clearViewTelemetryForTest();
     const { controller, onSelect } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
@@ -1682,6 +1979,15 @@ describe("ContinuousChatOverlay swipe-nav", () => {
 
     // "b" → prev/newer is "a".
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("a");
+    expect(readViewInteractions()).toContainEqual(
+      expect.objectContaining({
+        source: "chat-overlay",
+        action: "conversation-swipe",
+        viewId: "b",
+        query: "prev",
+        count: 1,
+      }),
+    );
   });
 
   it("lights an edge hint with the live drag offset while swiping", async () => {
@@ -1826,5 +2132,88 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
     // Thread stays mounted, but with no in-flight load there is no spinner.
     expect(document.getElementById("continuous-thread")).not.toBeNull();
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
+  });
+
+  it("renders first-run setup as chat content instead of an empty-thread spinner", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [],
+          conversationLoading: true,
+        } as Partial<ShellController>)}
+        firstRunRequired
+      />,
+    );
+
+    openSheetToHalf();
+    expect(screen.getByTestId("first-run-chat-prompt")).toBeTruthy();
+    expect(screen.getByTestId("first-run-chat-controls")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Let's set up your Eliza agent. Choose where the agent should run.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByText(
+          "Let's set up your Eliza agent. Choose where the agent should run.",
+        )
+        .closest('[data-testid="thread-line"]')
+        ?.getAttribute("data-role"),
+    ).toBe("assistant");
+    expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
+    expect(screen.getByTestId("choice-cloud")).toBeTruthy();
+    expect(screen.getByTestId("choice-local")).toBeTruthy();
+    expect(screen.getByTestId("choice-remote")).toBeTruthy();
+  });
+
+  it("routes first-run runtime choices through the existing controller", async () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ messages: [] })}
+        firstRunRequired
+      />,
+    );
+
+    openSheetToHalf();
+    fireEvent.click(screen.getByTestId("choice-cloud"));
+
+    await waitFor(() => {
+      expect(firstRunUpdateDraftMock).toHaveBeenCalledWith("runtime", "cloud");
+      expect(firstRunFinishRuntimeMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("uses the credential widget for the optional remote access token", () => {
+    Object.assign(firstRunControllerMock, {
+      step: "remote",
+      draft: {
+        ...firstRunControllerMock.draft,
+        runtime: "remote",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "",
+      },
+    });
+
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ messages: [] })}
+        firstRunRequired
+      />,
+    );
+
+    openSheetToHalf();
+    fireEvent.change(screen.getByTestId("credential-secret-input"), {
+      target: { value: "token-123" },
+    });
+    fireEvent.click(screen.getByTestId("credential-secret-submit"));
+
+    expect(firstRunUpdateDraftMock).toHaveBeenCalledWith(
+      "remoteToken",
+      "token-123",
+    );
+    expect(
+      screen.getByText("Access token staged for this connection."),
+    ).toBeTruthy();
   });
 });

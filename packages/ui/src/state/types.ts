@@ -785,6 +785,10 @@ export type LoadConversationMessagesResult =
   | { ok: true }
   | { ok: false; status?: number; message: string };
 
+export interface LoadConversationMessagesOptions {
+  aroundMessageId?: string;
+}
+
 export const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 export const AGENT_READY_TIMEOUT_MS = 120_000;
 
@@ -837,7 +841,10 @@ export interface AppActions {
   handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: (title?: string) => Promise<void>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
-  handleSelectConversation: (id: string) => Promise<void>;
+  handleSelectConversation: (
+    id: string,
+    options?: LoadConversationMessagesOptions,
+  ) => Promise<void>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */

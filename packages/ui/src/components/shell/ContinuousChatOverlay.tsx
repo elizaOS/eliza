@@ -11,6 +11,7 @@ import {
   Minimize2,
   Music,
   RotateCcw,
+  Search,
   SendHorizontal,
 } from "lucide-react";
 import {
@@ -28,6 +29,8 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type {
   ChatTurnStatus,
+  Conversation,
+  ConversationMessageSearchResult,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import {
@@ -39,11 +42,14 @@ import {
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
+  CHAT_MESSAGE_SEARCH_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
+import { AgentPicker } from "../../first-run/AgentPicker";
+import { useFirstRunController } from "../../first-run/use-first-run-controller";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -61,12 +67,17 @@ import {
   MAX_CHAT_IMAGES,
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
+import { openExternalUrl } from "../../utils/openExternalUrl";
+import { emitViewInteraction } from "../../view-telemetry";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
+import { ChoiceWidget } from "../chat/widgets/ChoiceWidget";
+import { CredentialRequestWidget } from "../chat/widgets/credential-request-widget";
+import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import {
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
@@ -1005,16 +1016,253 @@ const ThreadLine = React.memo(function ThreadLine({
   );
 });
 
+function firstRunSeedText(args: {
+  step: ReturnType<typeof useFirstRunController>["step"];
+  cloudOnly: boolean;
+  cloudLoginUrl: string | null;
+}): string {
+  if (args.cloudLoginUrl) {
+    return "Sign in to Eliza Cloud to finish setting up this agent.";
+  }
+  if (args.step === "pick-agent") {
+    return "Choose the Eliza Cloud agent you want to use, or create a fresh one.";
+  }
+  if (args.step === "inference" && !args.cloudOnly) {
+    return "Your agent can run on this device. Where should it run its AI inference?";
+  }
+  if (args.step === "remote" && !args.cloudOnly) {
+    return "Connect this app to an agent server you already run.";
+  }
+  return "Let's set up your Eliza agent. Choose where the agent should run.";
+}
+
+function FirstRunChatPrompt({
+  reduce,
+}: {
+  reduce?: boolean;
+}): React.JSX.Element {
+  const c = useFirstRunController();
+  const [remoteTokenDraft, setRemoteTokenDraft] = React.useState(
+    c.draft.remoteToken,
+  );
+  const busy = c.submitting;
+  const cloudLoginUrl = React.useMemo(() => {
+    if (c.cloudLoginFallbackUrl) return c.cloudLoginFallbackUrl;
+    const match = (c.cloudError ?? "").match(/https?:\/\/\S+/);
+    return match ? match[0] : null;
+  }, [c.cloudError, c.cloudLoginFallbackUrl]);
+  const statusMessage = busy
+    ? c.busyText
+    : (c.error ?? (cloudLoginUrl ? null : c.cloudError));
+  const seedText = firstRunSeedText({
+    step: c.step,
+    cloudOnly: c.cloudOnly,
+    cloudLoginUrl,
+  });
+  const seedMessage = React.useMemo<ShellMessage>(
+    () => ({
+      id: `first-run:${c.step}:${cloudLoginUrl ? "cloud-login" : "setup"}`,
+      role: "assistant",
+      content: seedText,
+      createdAt: 0,
+    }),
+    [cloudLoginUrl, c.step, seedText],
+  );
+
+  const finish = React.useCallback(async () => {
+    try {
+      await c.finishRuntime();
+    } catch {
+      // The controller owns the visible error state.
+    }
+  }, [c]);
+
+  const chooseRuntime = React.useCallback(
+    (value: string) => {
+      if (value === "cloud") {
+        c.updateDraft("runtime", "cloud");
+        void finish();
+        return;
+      }
+      if (value === "local") {
+        c.updateDraft("runtime", "local");
+        c.setStep("inference");
+        return;
+      }
+      if (value === "remote") {
+        c.updateDraft("runtime", "remote");
+        c.setStep("remote");
+      }
+    },
+    [c, finish],
+  );
+
+  const chooseInference = React.useCallback(
+    (value: string) => {
+      if (value === "back") {
+        c.setStep("runtime");
+        return;
+      }
+      if (value === "cloud-inference" || value === "all-local") {
+        c.updateDraft("localInference", value);
+        void finish();
+      }
+    },
+    [c, finish],
+  );
+
+  React.useEffect(() => {
+    setRemoteTokenDraft(c.draft.remoteToken);
+  }, [c.draft.remoteToken]);
+
+  return (
+    <section
+      data-testid="first-run-chat-prompt"
+      className="mb-3"
+      aria-label="First-run setup"
+    >
+      <ThreadLine message={seedMessage} floating reduce={reduce} />
+      <div
+        data-testid="first-run-chat-controls"
+        className={cn(
+          "ml-0 max-w-[34rem] rounded-2xl rounded-tl-md border border-white/15 bg-black/45 p-3 text-sm text-white shadow-xl backdrop-blur-md",
+          FLOAT_SHADOW,
+        )}
+      >
+        {cloudLoginUrl ? (
+          <CredentialRequestWidget
+            variant={{
+              kind: "oauth-link",
+              provider: "Eliza Cloud",
+              authorizeUrl: cloudLoginUrl,
+              status: busy ? "connecting" : "idle",
+            }}
+            onAuthorize={(url) => void openExternalUrl(url)}
+          />
+        ) : c.step === "pick-agent" ? (
+          <AgentPicker
+            agents={c.pickerAgents}
+            activeAgentId={c.pickerActiveAgentId}
+            phase={c.pickerPhase}
+            errorMessage={c.pickerError}
+            bindingAgentId={c.pickerBindingId}
+            onPick={c.onPickAgent}
+            onCreateNew={c.onCreateNewAgent}
+            onRetry={c.onRetryPicker}
+            onBack={c.onBackFromPicker}
+            showBack={!c.cloudOnly}
+          />
+        ) : c.step === "inference" && !c.cloudOnly ? (
+          <ChoiceWidget
+            id="first-run-inference"
+            scope="first-run inference"
+            options={[
+              { value: "cloud-inference", label: "Cloud inference" },
+              { value: "all-local", label: "On-device inference" },
+              { value: "back", label: "Back" },
+            ]}
+            onChoose={chooseInference}
+          />
+        ) : c.step === "remote" && !c.cloudOnly ? (
+          <div className="space-y-3">
+            <label className="block text-xs font-medium text-white/75">
+              Server address
+              <input
+                data-testid="first-run-chat-remote-url"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={c.draft.remoteApiBase}
+                onChange={(event) =>
+                  c.updateDraft("remoteApiBase", event.currentTarget.value)
+                }
+                placeholder="https://agent.example.com"
+                className="mt-1 h-9 w-full rounded-sm border border-white/20 bg-white/10 px-3 text-sm text-white outline-none placeholder:text-white/40"
+              />
+            </label>
+            <CredentialRequestWidget
+              variant={{
+                kind: "paste-secret",
+                label: "Access token",
+                placeholder: "Leave blank to pair with a code",
+                helpText:
+                  "Use the server's ELIZA_API_TOKEN when it has one configured.",
+              }}
+              onSubmitSecret={(value) => {
+                setRemoteTokenDraft(value);
+                c.updateDraft("remoteToken", value);
+              }}
+            />
+            {remoteTokenDraft ? (
+              <div className="text-[11px] text-white/55" role="status">
+                Access token staged for this connection.
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => c.setStep("runtime")}
+                className="rounded-sm px-3 py-1.5 text-xs font-medium text-white/75 hover:bg-white/10 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                data-testid="first-run-chat-remote-connect"
+                disabled={busy || c.draft.remoteApiBase.trim().length === 0}
+                onClick={() => void finish()}
+                className="rounded-sm bg-white px-3 py-1.5 text-xs font-semibold text-[#FF5800] disabled:opacity-50"
+              >
+                Connect
+              </button>
+            </div>
+          </div>
+        ) : (
+          <ChoiceWidget
+            id="first-run-runtime"
+            scope="first-run runtime"
+            options={[
+              { value: "cloud", label: "Eliza Cloud" },
+              ...(c.localRuntimeAvailable
+                ? [{ value: "local", label: "This device" }]
+                : []),
+              ...(c.cloudOnly
+                ? []
+                : [{ value: "remote", label: "Remote agent" }]),
+            ]}
+            onChoose={chooseRuntime}
+          />
+        )}
+
+        {statusMessage ? (
+          <p
+            data-testid="first-run-chat-status"
+            className="mt-3 text-[11px] leading-relaxed text-white/65"
+            role={busy ? "status" : "alert"}
+          >
+            {statusMessage}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function ContinuousChatOverlay({
   controller,
   agentName = "Eliza",
   slash: slashProp,
+  firstRunRequired = false,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
   agentName?: string;
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
+  /** Render first-run setup as chat content instead of a startup overlay. */
+  firstRunRequired?: boolean;
 }): React.JSX.Element {
   const {
     messages,
@@ -1057,14 +1305,28 @@ export function ContinuousChatOverlay({
   // capture until a horizontal commit, so vertical thread scrolling is
   // unaffected; it is only bound while the sheet is open (below).
   const [swipeDx, setSwipeDx] = React.useState(0);
+  const emitConversationSwipeTelemetry = React.useCallback(
+    (direction: "next" | "prev") => {
+      emitViewInteraction({
+        source: "chat-overlay",
+        action: "conversation-swipe",
+        viewId: conversationNav.activeId ?? undefined,
+        query: direction,
+        count: conversationNav.index,
+      });
+    },
+    [conversationNav.activeId, conversationNav.index],
+  );
   const conversationSwipe = usePullGesture({
     onDragX: setSwipeDx,
     onSwipeLeft: () => {
       setSwipeDx(0);
+      emitConversationSwipeTelemetry("next");
       conversationNav.goNext();
     },
     onSwipeRight: () => {
       setSwipeDx(0);
+      emitConversationSwipeTelemetry("prev");
       conversationNav.goPrev();
     },
   });
@@ -1700,7 +1962,8 @@ export function ContinuousChatOverlay({
   ]);
 
   const hasThread = visibleMessages.length > 0;
-  const hasRevealableThread = hasThread || conversationLoading;
+  const hasRevealableThread =
+    hasThread || conversationLoading || firstRunRequired;
 
   // Track the VISUAL viewport so the chat sizes to — and sits above — whatever
   // the mobile keyboard leaves visible. `height` shrinks when the keyboard opens
@@ -2296,6 +2559,137 @@ export function ContinuousChatOverlay({
     // Open to at least HALF; if already at half/full, keep the taller mode.
     setMode((m) => (m === "half" || m === "full" ? m : "half"));
   }, [hasRevealableThread, sheetOpen]);
+
+  const [messageSearchOpen, setMessageSearchOpen] = React.useState(false);
+  const [messageSearchQuery, setMessageSearchQuery] = React.useState("");
+  const [messageSearchResults, setMessageSearchResults] = React.useState<
+    ConversationMessageSearchResult[]
+  >([]);
+  const [messageSearchLoading, setMessageSearchLoading] = React.useState(false);
+  const [messageSearchError, setMessageSearchError] = React.useState<
+    string | null
+  >(null);
+  const messageSearchAbortRef = React.useRef<AbortController | null>(null);
+  const messageSearchInputRef = React.useRef<HTMLInputElement | null>(null);
+  const messageSearchTitleResults = React.useMemo(() => {
+    const query = messageSearchQuery.trim().toLowerCase();
+    if (query.length < 2) return [];
+    return (controller.conversations ?? [])
+      .filter((conversation: Conversation) =>
+        conversation.title.toLowerCase().includes(query),
+      )
+      .slice(0, 8);
+  }, [controller.conversations, messageSearchQuery]);
+
+  const openMessageSearch = React.useCallback(() => {
+    setMessageSearchOpen(true);
+    setMessageSearchError(null);
+  }, []);
+
+  const closeMessageSearch = React.useCallback(() => {
+    messageSearchAbortRef.current?.abort();
+    messageSearchAbortRef.current = null;
+    setMessageSearchOpen(false);
+    setMessageSearchLoading(false);
+  }, []);
+
+  const runMessageSearch = React.useCallback(() => {
+    const query = messageSearchQuery.trim();
+    if (query.length < 2) {
+      setMessageSearchResults([]);
+      setMessageSearchError(null);
+      return;
+    }
+    messageSearchAbortRef.current?.abort();
+    const abort = new AbortController();
+    messageSearchAbortRef.current = abort;
+    setMessageSearchLoading(true);
+    setMessageSearchError(null);
+    void client
+      .searchConversationMessages(query, { limit: 20, signal: abort.signal })
+      .then((response) => {
+        if (abort.signal.aborted) return;
+        setMessageSearchResults(response.results);
+      })
+      .catch((err) => {
+        if (abort.signal.aborted) return;
+        setMessageSearchResults([]);
+        setMessageSearchError(
+          err instanceof Error ? err.message : "Message search failed",
+        );
+      })
+      .finally(() => {
+        if (messageSearchAbortRef.current === abort) {
+          messageSearchAbortRef.current = null;
+        }
+        if (!abort.signal.aborted) setMessageSearchLoading(false);
+      });
+  }, [messageSearchQuery]);
+
+  React.useEffect(() => {
+    if (!messageSearchOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      messageSearchInputRef.current?.focus();
+    });
+    const timer = window.setTimeout(runMessageSearch, 180);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [messageSearchOpen, runMessageSearch]);
+
+  const jumpToMessageSearchResult = React.useCallback(
+    (result: ConversationMessageSearchResult) => {
+      if (controller.selectConversationAroundMessage) {
+        controller.selectConversationAroundMessage(result.conversationId, {
+          messageId: result.messageId,
+        });
+      } else {
+        controller.selectConversation?.(result.conversationId);
+      }
+      setMessageSearchOpen(false);
+      setMode((mode) => (mode === "full" ? mode : "half"));
+      const anchorId = getChatMessageAnchorId(result.messageId);
+      window.setTimeout(() => {
+        const target = document.getElementById(anchorId);
+        target?.scrollIntoView({
+          behavior: reduce ? "auto" : "smooth",
+          block: "center",
+        });
+        if (target) {
+          target.animate(
+            [
+              { outline: "0 solid rgba(255,255,255,0)", outlineOffset: "0px" },
+              {
+                outline: "3px solid rgba(255,255,255,0.82)",
+                outlineOffset: "5px",
+              },
+              { outline: "0 solid rgba(255,255,255,0)", outlineOffset: "10px" },
+            ],
+            { duration: reduce ? 1 : 1400, easing: "ease-out" },
+          );
+        }
+      }, 160);
+    },
+    [controller, reduce],
+  );
+
+  const jumpToConversationSearchResult = React.useCallback(
+    (conversationId: string) => {
+      controller.selectConversation?.(conversationId);
+      setMessageSearchOpen(false);
+      setMode((mode) => (mode === "full" ? mode : "half"));
+    },
+    [controller],
+  );
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onOpenSearch = () => openMessageSearch();
+    window.addEventListener(CHAT_MESSAGE_SEARCH_EVENT, onOpenSearch);
+    return () =>
+      window.removeEventListener(CHAT_MESSAGE_SEARCH_EVENT, onOpenSearch);
+  }, [openMessageSearch]);
 
   // Interactive tour control: the tutorial drives the chat into a clean, known
   // state at the start of each frame (so the spotlight always lands on the right
@@ -2911,6 +3305,121 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
+      {messageSearchOpen ? (
+        <div
+          className="pointer-events-auto fixed inset-0 z-40 flex items-start justify-center bg-black/35 px-3 pt-[max(1rem,var(--safe-area-top,0px))]"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeMessageSearch();
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search messages"
+            className={cn(
+              "flex max-h-[min(32rem,calc(100vh-2rem))] w-full max-w-xl flex-col rounded-sm border border-white/15 bg-black/90 text-white shadow-2xl",
+              FLOAT_SHADOW,
+            )}
+          >
+            <div className="flex items-center gap-2 border-b border-white/10 p-3">
+              <Search className="h-4 w-4 shrink-0 text-white/65" aria-hidden />
+              <input
+                ref={messageSearchInputRef}
+                value={messageSearchQuery}
+                onChange={(event) => setMessageSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") closeMessageSearch();
+                }}
+                placeholder="Search messages"
+                aria-label="Search messages"
+                className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/45"
+                data-testid="chat-message-search-input"
+              />
+              <button
+                type="button"
+                onClick={closeMessageSearch}
+                className="rounded-sm px-2 py-1 text-xs text-white/65 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            <div
+              className="min-h-40 overflow-y-auto p-2"
+              data-testid="chat-message-search-results"
+            >
+              {messageSearchLoading ? (
+                <div className="flex h-32 items-center justify-center text-sm text-white/60">
+                  Searching...
+                </div>
+              ) : messageSearchError ? (
+                <div className="flex h-32 items-center justify-center px-4 text-center text-sm text-red-200">
+                  {messageSearchError}
+                </div>
+              ) : messageSearchQuery.trim().length < 2 ? (
+                <div className="flex h-32 items-center justify-center text-sm text-white/50">
+                  Type at least 2 characters
+                </div>
+              ) : messageSearchTitleResults.length === 0 &&
+                messageSearchResults.length === 0 ? (
+                <div className="flex h-32 items-center justify-center text-sm text-white/50">
+                  No matches
+                </div>
+              ) : (
+                <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                  {messageSearchTitleResults.length > 0 ? (
+                    <li className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-normal text-white/45">
+                      Conversations
+                    </li>
+                  ) : null}
+                  {messageSearchTitleResults.map((conversation) => (
+                    <li key={`conversation-${conversation.id}`}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          jumpToConversationSearchResult(conversation.id)
+                        }
+                        className="block w-full rounded-sm px-3 py-2 text-left transition-colors hover:bg-white/10 focus:bg-white/10 focus:outline-none"
+                        data-testid="chat-conversation-search-result"
+                      >
+                        <span className="block text-[11px] uppercase tracking-normal text-white/45">
+                          Conversation
+                        </span>
+                        <span className="mt-1 block text-sm leading-5 text-white/88">
+                          {conversation.title}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {messageSearchResults.length > 0 ? (
+                    <li className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-normal text-white/45">
+                      Messages
+                    </li>
+                  ) : null}
+                  {messageSearchResults.map((result) => (
+                    <li key={result.messageId}>
+                      <button
+                        type="button"
+                        onClick={() => jumpToMessageSearchResult(result)}
+                        className="block w-full rounded-sm px-3 py-2 text-left transition-colors hover:bg-white/10 focus:bg-white/10 focus:outline-none"
+                        data-testid="chat-message-search-result"
+                      >
+                        <span className="block text-[11px] uppercase tracking-normal text-white/45">
+                          {result.role}
+                        </span>
+                        <span className="mt-1 block text-sm leading-5 text-white/88">
+                          {result.snippet}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {/* Dimming scrim behind the open chat. It fades in WITH the reveal and
           captures pointer events while open; clicking it COLLAPSES the chat back
           to the input. Collapsed → pointer-events-none, so the view behind stays
@@ -3267,6 +3776,12 @@ export function ContinuousChatOverlay({
                     onClick={() => clearConversation()}
                     testId="chat-full-clear"
                   />
+                  <HeaderButton
+                    icon={Search}
+                    label="search messages"
+                    onClick={openMessageSearch}
+                    testId="chat-full-search"
+                  />
                 </div>
                 {transcriptionMode ? (
                   <div
@@ -3340,7 +3855,9 @@ export function ContinuousChatOverlay({
                       spinner so the open sheet reads as "loading," never as a
                       broken empty box. Cache-hit swipes paint instantly, so this
                       only shows on a genuine network wait. */}
-                  {visibleMessages.length === 0 && conversationLoading ? (
+                  {visibleMessages.length === 0 &&
+                  conversationLoading &&
+                  !firstRunRequired ? (
                     <div
                       data-testid="chat-thread-loading"
                       className="pointer-events-none absolute inset-0 grid place-items-center"
@@ -3361,6 +3878,9 @@ export function ContinuousChatOverlay({
                   {/* `mt-auto` keeps the latest line at the bottom (nearest the input)
                   until the thread overflows, then it scrolls. */}
                   <div className="mt-auto flex flex-col pb-3 pt-1">
+                    {firstRunRequired ? (
+                      <FirstRunChatPrompt reduce={reduce} />
+                    ) : null}
                     {hasTopics
                       ? // Topic-grouped transcript: each cluster collapses via a
                         // gesture on its header (no visible buttons).

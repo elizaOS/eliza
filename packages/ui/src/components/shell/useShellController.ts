@@ -2,6 +2,7 @@ import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import type {
   ChatTurnStatus,
+  Conversation,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import {
@@ -170,6 +171,13 @@ export interface ShellController {
   setComposerHasDraft: (hasDraft: boolean) => void;
   /** Clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
+  /** Select an existing conversation and hydrate its transcript. */
+  selectConversation?: (id: string) => void;
+  /** Select a conversation and hydrate a message window around a specific hit. */
+  selectConversationAroundMessage?: (
+    id: string,
+    options: { messageId: string },
+  ) => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
@@ -183,6 +191,8 @@ export interface ShellController {
   stop: () => void;
   /** Horizontal-swipe navigation between conversations (sheet-open only). */
   conversationNav: ConversationNav;
+  /** Conversation list for local shell affordances such as title search. */
+  conversations?: readonly Conversation[];
   /** True while a conversation switch or clear is fetching messages. The overlay
    *  only renders the spinner when the visible thread is empty. */
   conversationLoading?: boolean;
@@ -337,6 +347,15 @@ export function useShellController(): ShellController {
   const selectConversation = React.useCallback(
     (id: string) => {
       runWithConversationLoading(() => handleSelectConversation(id));
+    },
+    [handleSelectConversation, runWithConversationLoading],
+  );
+
+  const selectConversationAroundMessage = React.useCallback(
+    (id: string, options: { messageId: string }) => {
+      runWithConversationLoading(() =>
+        handleSelectConversation(id, { aroundMessageId: options.messageId }),
+      );
     },
     [handleSelectConversation, runWithConversationLoading],
   );
@@ -1254,12 +1273,15 @@ export function useShellController(): ShellController {
     needsAudioUnlock: voiceOutput.needsAudioUnlock,
     unlockAudio: voiceOutput.unlockAudio,
     clearConversation,
+    selectConversation,
+    selectConversationAroundMessage,
     openSettings,
     navigateHome,
     navigateToViews,
     currentTab: tab,
     stop: stopTurn,
     conversationNav,
+    conversations,
     // Revealability is driven by the EXPLICIT, sequence-guarded loading flag
     // (set by runWithConversationLoading on clear/select/new and cleared in its
     // finally) — never by `messages.length === 0`. A bare message-count heuristic

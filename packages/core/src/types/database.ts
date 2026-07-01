@@ -910,6 +910,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		/**
+		 * Case-insensitive keyword predicate over `Memory.content.text`.
+		 * SQL adapters push this into the database; in-memory adapters use the
+		 * same includes semantics for tests and local runs.
+		 */
+		textContains?: string;
+		/**
 		 * Order by column (currently only 'createdAt' supported for security).
 		 * Whitelisted to prevent SQL injection. Default behavior: ORDER BY created_at DESC.
 		 */

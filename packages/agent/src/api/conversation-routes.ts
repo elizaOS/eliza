@@ -32,6 +32,7 @@ import {
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
+  parsePositiveInteger,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
@@ -63,6 +64,7 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
+import { scoreMemoryText } from "./memory-routes.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -84,6 +86,10 @@ interface DiscordProfileLike {
   rawUserId?: string;
   username?: string;
 }
+
+const MESSAGE_SEARCH_DEFAULT_LIMIT = 20;
+const MESSAGE_SEARCH_MAX_LIMIT = 50;
+const MESSAGE_SEARCH_SNIPPET_RADIUS = 72;
 
 // Lazy memoized loader — previously module-scope `await import`, which forced
 // @elizaos/plugin-discord (and its transitive deps) to load on every agent
@@ -118,6 +124,34 @@ function getDiscordConversationApi(): Promise<DiscordConversationModule> {
     "@elizaos/plugin-discord"
   ) as Promise<unknown> as Promise<DiscordConversationModule>;
   return discordConversationPromise;
+}
+
+function clampMessageSearchLimit(value: string | null): number {
+  const parsed = parsePositiveInteger(value, MESSAGE_SEARCH_DEFAULT_LIMIT);
+  return Math.min(parsed, MESSAGE_SEARCH_MAX_LIMIT);
+}
+
+function normalizeMessageSearchQuery(value: string | null): string {
+  return (value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function buildMessageSearchSnippet(text: string, query: string): string {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (!normalizedText) return "";
+  const index = normalizedText.toLowerCase().indexOf(query.toLowerCase());
+  if (index < 0) {
+    return normalizedText.length <= MESSAGE_SEARCH_SNIPPET_RADIUS * 2
+      ? normalizedText
+      : `${normalizedText.slice(0, MESSAGE_SEARCH_SNIPPET_RADIUS * 2).trimEnd()}...`;
+  }
+  const start = Math.max(0, index - MESSAGE_SEARCH_SNIPPET_RADIUS);
+  const end = Math.min(
+    normalizedText.length,
+    index + query.length + MESSAGE_SEARCH_SNIPPET_RADIUS,
+  );
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < normalizedText.length ? "..." : "";
+  return `${prefix}${normalizedText.slice(start, end).trim()}${suffix}`;
 }
 
 function mayNeedDiscordMessageEnrichment(source: unknown): boolean {
@@ -1277,6 +1311,10 @@ export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, error, state } = ctx;
+  const requestUrl = new URL(
+    req.url ?? "",
+    `http://${req.headers.host ?? "localhost"}`,
+  );
 
   if (
     !pathname.startsWith("/api/conversations") ||
@@ -1301,6 +1339,101 @@ export async function handleConversationRoutes(
       );
     json(res, { conversations: convos });
     return true;
+  }
+
+  // ── GET /api/conversations/messages/search ─────────────────────────
+  if (method === "GET" && pathname === "/api/conversations/messages/search") {
+    if (!state.runtime) {
+      json(res, { results: [], count: 0 });
+      return true;
+    }
+
+    const query = normalizeMessageSearchQuery(requestUrl.searchParams.get("q"));
+    if (query.length < 2) {
+      error(res, "Search query must be at least 2 characters", 400);
+      return true;
+    }
+
+    const limit = clampMessageSearchLimit(requestUrl.searchParams.get("limit"));
+    const offset = parsePositiveInteger(
+      requestUrl.searchParams.get("offset"),
+      0,
+    );
+    const runtime = state.runtime;
+    const conversationsByRoomId = new Map<string, ConversationMeta>();
+    const waifuAccess = resolveWaifuChatAccess(req);
+    for (const conv of state.conversations.values()) {
+      if (!canWaifuAccessConversation(waifuAccess, conv)) {
+        continue;
+      }
+      conversationsByRoomId.set(conv.roomId, conv);
+    }
+
+    try {
+      const memories = await runtime.getMemories({
+        tableName: "messages",
+        agentId: runtime.agentId,
+        textContains: query,
+        includeEmbedding: false,
+        limit,
+        offset,
+      });
+
+      const results = memories
+        .map((memory) => {
+          const roomId = memory.roomId;
+          const conversation = roomId
+            ? conversationsByRoomId.get(roomId)
+            : undefined;
+          if (!roomId || !conversation) return null;
+          const rawText =
+            (memory.content as { text?: string } | undefined)?.text?.trim() ??
+            "";
+          if (!rawText) return null;
+          const score = scoreMemoryText(rawText, query);
+          if (score <= 0) return null;
+          const role =
+            memory.entityId === runtime.agentId ? "assistant" : "user";
+          return {
+            messageId: memory.id ?? "",
+            conversationId: conversation.id,
+            roomId,
+            role,
+            text: rawText,
+            snippet: buildMessageSearchSnippet(rawText, query),
+            createdAt: memory.createdAt ?? 0,
+            score,
+          };
+        })
+        .filter(
+          (result): result is NonNullable<typeof result> => result !== null,
+        )
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return b.createdAt - a.createdAt;
+        })
+        .slice(0, limit);
+
+      logger.info(
+        {
+          queryLength: query.length,
+          limit,
+          offset,
+          rawHits: memories.length,
+          results: results.length,
+        },
+        "[ConversationSearch] keyword message search completed",
+      );
+      json(res, { results, count: results.length });
+      return true;
+    } catch (err) {
+      logger.error(
+        { error: getErrorMessage(err) },
+        "[ConversationSearch] keyword message search failed",
+      );
+      error(res, "Failed to search conversation messages", 500);
+      return true;
+    }
   }
 
   // ── POST /api/conversations ─────────────────────────────────────────
@@ -1402,11 +1535,48 @@ export async function handleConversationRoutes(
     }
     const runtime = state.runtime;
     try {
-      const memories = await runtime.getMemories({
-        roomId: conv.roomId,
-        tableName: "messages",
-        limit: 200,
-      });
+      const aroundMessageId = requestUrl.searchParams
+        .get("aroundMessageId")
+        ?.trim();
+      let memories: Awaited<ReturnType<AgentRuntime["getMemories"]>>;
+      if (aroundMessageId) {
+        const [anchor] = await runtime.getMemoriesByIds(
+          [aroundMessageId as UUID],
+          "messages",
+        );
+        if (!anchor || anchor.roomId !== conv.roomId) {
+          error(res, "Message not found", 404);
+          return true;
+        }
+        const anchorCreatedAt = anchor.createdAt ?? 0;
+        const before = await runtime.getMemories({
+          roomId: conv.roomId,
+          tableName: "messages",
+          end: anchorCreatedAt,
+          limit: 100,
+          includeEmbedding: false,
+        });
+        const after = await runtime.getMemories({
+          roomId: conv.roomId,
+          tableName: "messages",
+          start: anchorCreatedAt,
+          limit: 100,
+          orderDirection: "asc",
+          includeEmbedding: false,
+        });
+        const byId = new Map<string, (typeof before)[number]>();
+        for (const memory of [...before, ...after]) {
+          if (memory.id) byId.set(memory.id, memory);
+        }
+        memories = Array.from(byId.values());
+      } else {
+        memories = await runtime.getMemories({
+          roomId: conv.roomId,
+          tableName: "messages",
+          limit: 200,
+          includeEmbedding: false,
+        });
+      }
       // Sort by createdAt ascending
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
       const agentId = runtime.agentId;

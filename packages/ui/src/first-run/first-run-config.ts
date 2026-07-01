@@ -66,6 +66,11 @@ export interface BuildFirstRunRuntimeConfigResult {
   featureSetup: FirstRunCapabilitySetup | undefined;
 }
 
+export interface FirstRunInferenceDefault {
+  firstRunProvider: "elizacloud" | "";
+  omitRuntimeProvider: boolean;
+}
+
 type FirstRunModelConfig = {
   nanoModel: string | undefined;
   smallModel: string | undefined;
@@ -95,6 +100,15 @@ function resolveArgsServerTarget(
   args: Pick<BuildFirstRunConnectionArgs, "firstRunRuntimeTarget">,
 ): FirstRunRuntimeTarget {
   return args.firstRunRuntimeTarget ?? "";
+}
+
+export function resolveFirstRunInferenceDefault(
+  serverTarget: FirstRunRuntimeTarget,
+): FirstRunInferenceDefault {
+  if (isElizaCloudFirstRunTarget(serverTarget)) {
+    return { firstRunProvider: "elizacloud", omitRuntimeProvider: false };
+  }
+  return { firstRunProvider: "", omitRuntimeProvider: true };
 }
 
 function resolveFirstRunPrimaryModel(args: {

@@ -11,7 +11,10 @@
 export const VIEW_INTERACTION_TELEMETRY_EVENT =
   "eliza:view-interaction-telemetry";
 
-export type ViewInteractionSource = "launcher" | "view-catalog";
+export type ViewInteractionSource =
+  | "launcher"
+  | "view-catalog"
+  | "chat-overlay";
 
 export type ViewInteractionAction =
   | "launch"
@@ -19,6 +22,7 @@ export type ViewInteractionAction =
   | "unfavorite"
   | "reorder"
   | "page-swipe"
+  | "conversation-swipe"
   | "edit-mode-enter"
   | "edit-mode-exit"
   | "search"

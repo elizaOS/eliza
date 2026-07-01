@@ -362,6 +362,36 @@ describe("Memory Integration Tests", () => {
       expect(memories.length).toBe(2);
     });
 
+    it("should filter content text with SQL-backed literal keyword semantics", async () => {
+      await adapter.createMemory(createTestMemory({ text: "Alpha launch notes" }), "messages");
+      await adapter.createMemory(createTestMemory({ text: "literal 100% ready" }), "messages");
+      await adapter.createMemory(createTestMemory({ text: "unrelated" }), "messages");
+
+      const alpha = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "messages",
+        textContains: "alpha",
+        includeEmbedding: false,
+      });
+      expect(alpha.map((memory) => memory.content.text)).toEqual(["Alpha launch notes"]);
+
+      const alphaByAgent = await adapter.getMemories({
+        agentId: testAgentId,
+        tableName: "messages",
+        textContains: "alpha",
+        includeEmbedding: false,
+      });
+      expect(alphaByAgent.map((memory) => memory.content.text)).toEqual(["Alpha launch notes"]);
+
+      const literal = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "messages",
+        textContains: "100%",
+        includeEmbedding: false,
+      });
+      expect(literal.map((memory) => memory.content.text)).toEqual(["literal 100% ready"]);
+    });
+
     it("should respect start/end filters when timestamp is 0", async () => {
       await adapter.createMemory(
         {

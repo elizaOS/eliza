@@ -36,26 +36,13 @@ export function CompactOnboarding(): React.ReactElement {
   // Host-overridable brand glyph (whitelabel seam); falls back to ElizaMark.
   const BrandMark = getBootConfig().brandMark ?? ElizaMark;
 
-  // Detect whether this component is running inside the onboarding overlay
-  // shell (a separate transparent NSWindow). If so, closing the window after
-  // the first-run API completes triggers the main process to create the
-  // dashboard. In the full app shell `completeFirstRun` handles the transition.
-  const isOverlayShell = React.useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("shellMode") ===
-        "onboarding-overlay",
-    [],
-  );
-
   const finishAndMaybeClose = React.useCallback(async () => {
     try {
       await c.finishRuntime();
-      if (isOverlayShell) window.close();
     } catch {
       // Errors are already surfaced via the controller's error state.
     }
-  }, [c, isOverlayShell]);
+  }, [c]);
 
   const chooseCloud = React.useCallback(() => {
     c.updateDraft("runtime", "cloud");

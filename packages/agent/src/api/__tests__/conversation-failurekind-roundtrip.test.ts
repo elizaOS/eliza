@@ -159,6 +159,9 @@ function createState(
     character: { name: "Test Agent" },
     logger,
     getMemories: vi.fn(async () => memories),
+    getMemoriesByIds: vi.fn(async (ids: UUID[]) =>
+      memories.filter((memory) => ids.includes(memory.id as UUID)),
+    ),
     ensureConnection: vi.fn(async () => undefined),
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
@@ -223,6 +226,7 @@ function createCtx(
   method: string,
   pathname: string,
   state: ConversationRouteState,
+  url = pathname,
 ): {
   ctx: ConversationRouteContext;
   record: MockResponseRecord;
@@ -231,7 +235,7 @@ function createCtx(
   const { res, record } = createMockRes();
   const captured: CapturedJson = { payload: undefined };
   const ctx: ConversationRouteContext = {
-    req: createReq(method, pathname),
+    req: createReq(method, url),
     res,
     method,
     pathname,
@@ -321,6 +325,183 @@ describe("conversation failureKind round-trip", () => {
     };
     const assistant = payload.messages.find((m) => m.role === "assistant");
     expect(assistant?.failureKind).toBeUndefined();
+  });
+
+  it("GET /messages/search pushes the text predicate into memory lookup", async () => {
+    const hitId = stringToUuid("search-hit");
+    const state = createState([
+      {
+        id: hitId,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        createdAt: 4_000,
+        content: { text: "Alpha launch notes", source: "agent_response" },
+        metadata: { type: "message" },
+      },
+    ]);
+    const runtime = state.runtime as unknown as {
+      getMemories: ReturnType<typeof vi.fn>;
+    };
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/messages/search",
+      state,
+      "/api/conversations/messages/search?q=alpha&limit=5",
+    );
+
+    await handleConversationRoutes(ctx);
+
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: "messages",
+        agentId: AGENT_ID,
+        textContains: "alpha",
+        includeEmbedding: false,
+        limit: 5,
+      }),
+    );
+    const payload = captured.payload as {
+      results: Array<{ messageId: string; conversationId: string }>;
+      count: number;
+    };
+    expect(payload.count).toBe(1);
+    expect(payload.results[0]).toMatchObject({
+      messageId: hitId,
+      conversationId: "conv-1",
+    });
+  });
+
+  it("GET /messages/search stays a single predicate-backed lookup across many conversations", async () => {
+    const targetIndex = 1_500;
+    const targetRoomId = stringToUuid(`room-${targetIndex}`) as UUID;
+    const hitId = stringToUuid("search-scale-hit");
+    const state = createState([
+      {
+        id: hitId,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: targetRoomId,
+        createdAt: 4_000,
+        content: {
+          text: "needle scale message",
+          source: "agent_response",
+        },
+        metadata: { type: "message" },
+      },
+    ]);
+    state.conversations.clear();
+    for (let index = 0; index < 2_000; index++) {
+      const roomId = stringToUuid(`room-${index}`) as UUID;
+      state.conversations.set(`conv-${index}`, {
+        id: `conv-${index}`,
+        title: `Conversation ${index}`,
+        roomId,
+        createdAt: new Date(index).toISOString(),
+        updatedAt: new Date(index).toISOString(),
+      });
+    }
+    const runtime = state.runtime as unknown as {
+      getMemories: ReturnType<typeof vi.fn>;
+    };
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/messages/search",
+      state,
+      "/api/conversations/messages/search?q=needle&limit=10",
+    );
+
+    await handleConversationRoutes(ctx);
+
+    expect(runtime.getMemories).toHaveBeenCalledTimes(1);
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: "messages",
+        agentId: AGENT_ID,
+        textContains: "needle",
+        includeEmbedding: false,
+        limit: 10,
+      }),
+    );
+    const payload = captured.payload as {
+      results: Array<{ messageId: string; conversationId: string }>;
+      count: number;
+    };
+    expect(payload.count).toBe(1);
+    expect(payload.results[0]).toMatchObject({
+      messageId: hitId,
+      conversationId: `conv-${targetIndex}`,
+    });
+  });
+
+  it("GET /messages can hydrate a window around an older search hit", async () => {
+    const older = {
+      id: stringToUuid("older-msg"),
+      entityId: USER_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      createdAt: 1_000,
+      content: { text: "older context", source: "api" },
+      metadata: { type: "message" },
+    };
+    const anchor = {
+      id: stringToUuid("anchor-msg"),
+      entityId: AGENT_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      createdAt: 2_000,
+      content: { text: "needle hit", source: "agent_response" },
+      metadata: { type: "message" },
+    };
+    const newer = {
+      id: stringToUuid("newer-msg"),
+      entityId: USER_ID,
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      createdAt: 3_000,
+      content: { text: "newer context", source: "api" },
+      metadata: { type: "message" },
+    };
+    const state = createState([older, anchor, newer]);
+    const runtime = state.runtime as unknown as {
+      getMemories: ReturnType<typeof vi.fn>;
+      getMemoriesByIds: ReturnType<typeof vi.fn>;
+    };
+    runtime.getMemories.mockImplementation(
+      async (params: { start?: number }) =>
+        params.start === anchor.createdAt ? [anchor, newer] : [anchor, older],
+    );
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+      `/api/conversations/conv-1/messages?aroundMessageId=${anchor.id}`,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    expect(runtime.getMemoriesByIds).toHaveBeenCalledWith(
+      [anchor.id],
+      "messages",
+    );
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ end: anchor.createdAt, limit: 100 }),
+    );
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        start: anchor.createdAt,
+        limit: 100,
+        orderDirection: "asc",
+      }),
+    );
+    const payload = captured.payload as {
+      messages: Array<{ id: string; text: string }>;
+    };
+    expect(payload.messages.map((message) => message.id)).toEqual([
+      older.id,
+      anchor.id,
+      newer.id,
+    ]);
   });
 
   it("streaming `done` frame carries failureKind when the result carries one", async () => {

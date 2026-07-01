@@ -323,6 +323,27 @@ export interface ConversationMessage {
   };
 }
 
+export interface ConversationMessageSearchResult {
+  messageId: string;
+  conversationId: string;
+  roomId: string;
+  role: "user" | "assistant";
+  text: string;
+  snippet: string;
+  createdAt: number;
+  score: number;
+}
+
+export interface ConversationMessageSearchResponse {
+  results: ConversationMessageSearchResult[];
+  count: number;
+}
+
+export interface ConversationMessageLoadOptions {
+  signal?: AbortSignal;
+  aroundMessageId?: string;
+}
+
 export type ConversationChannelType =
   | "DM"
   | "GROUP"

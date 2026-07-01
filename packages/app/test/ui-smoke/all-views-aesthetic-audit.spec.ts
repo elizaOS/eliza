@@ -415,26 +415,71 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const readPaint = async (): Promise<{
           readableChars: number;
           overlayPresent: boolean;
+          loadingViewVisible: boolean;
         }> => {
-          const readableChars = await viewRoot
-            .evaluate(
-              (root) =>
-                (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
-                  .length,
-            )
-            .catch(() => 0);
+          const paint = await page
+            .evaluate((selector) => {
+              const isVisible = (element: HTMLElement): boolean => {
+                const style = getComputedStyle(element);
+                if (
+                  style.display === "none" ||
+                  style.visibility === "hidden" ||
+                  style.contentVisibility === "hidden"
+                ) {
+                  return false;
+                }
+                return element.getClientRects().length > 0;
+              };
+              const walker = document.createTreeWalker(
+                document.body,
+                NodeFilter.SHOW_TEXT,
+                {
+                  acceptNode(node) {
+                    const value = node.textContent?.trim();
+                    if (!value) return NodeFilter.FILTER_REJECT;
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (parent.closest(selector)) {
+                      return NodeFilter.FILTER_REJECT;
+                    }
+                    return isVisible(parent)
+                      ? NodeFilter.FILTER_ACCEPT
+                      : NodeFilter.FILTER_REJECT;
+                  },
+                },
+              );
+              const chunks: string[] = [];
+              while (walker.nextNode()) {
+                chunks.push(walker.currentNode.textContent ?? "");
+              }
+              const text = chunks.join(" ").trim().replace(/\s+/g, " ");
+              return {
+                readableChars: text.length,
+                loadingViewVisible: /\bLoading view\b/.test(text),
+              };
+            }, overlaySelector)
+            .catch(() => ({
+              readableChars: 0,
+              loadingViewVisible: false,
+            }));
           const overlayPresent = await page
             .locator(overlaySelector)
             .first()
             .count()
             .then((c) => c > 0)
             .catch(() => false);
-          return { readableChars, overlayPresent };
+          return {
+            readableChars: paint.loadingViewVisible ? 0 : paint.readableChars,
+            overlayPresent,
+            loadingViewVisible: paint.loadingViewVisible,
+          };
         };
         let paint = await readPaint();
         for (
           let attempt = 0;
-          attempt < 12 && paint.readableChars < 10 && !paint.overlayPresent;
+          attempt < 20 &&
+          (paint.loadingViewVisible ||
+            (paint.readableChars < 10 && !paint.overlayPresent));
           attempt += 1
         ) {
           await page.waitForTimeout(1000);

@@ -104,7 +104,7 @@ describe("FocusSpatialView one source, three modalities", () => {
     const lines = renderViewToLines(<FocusSpatialView snapshot={empty} />, 54);
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
-    expect(flat).toContain("Idle");
+    expect(flat).toContain("No active focus block.");
   });
 
   it("hides the Release control when the block cannot be released early", () => {

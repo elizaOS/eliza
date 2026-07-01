@@ -557,8 +557,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     roomId?: UUID;
     worldId?: UUID;
     metadata?: Record<string, unknown>;
+    textContains?: string;
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
+    includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
+    const textContains = params.textContains?.trim().toLowerCase();
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
       if (params.agentId && m.agentId !== params.agentId) return false;
@@ -574,10 +579,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           if (md[k] !== v) return false;
         }
       }
+      if (textContains) {
+        const text = (m.content as { text?: unknown } | undefined)?.text;
+        if (typeof text !== "string" || !text.toLowerCase().includes(textContains)) {
+          return false;
+        }
+      }
       return true;
     });
 
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const direction = params.orderDirection ?? "desc";
+    memories.sort((a, b) => {
+      const ta = a.createdAt ?? 0;
+      const tb = b.createdAt ?? 0;
+      if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
+      return direction === "asc"
+        ? String(a.id ?? "").localeCompare(String(b.id ?? ""))
+        : String(b.id ?? "").localeCompare(String(a.id ?? ""));
+    });
 
     const offset = params.offset ?? 0;
     const limit = params.limit ?? params.count;

@@ -29,6 +29,7 @@ import {
   type CharacterData,
   type Conversation,
   type ConversationMessage,
+  type ConversationMessageLoadOptions,
   client,
   type ExtensionStatus,
   type StewardWebhookEventType,
@@ -316,7 +317,10 @@ export function useDataLoaders(deps: DataLoadersDeps) {
   }, [setConversations]);
 
   const loadConversationMessages = useCallback(
-    async (convId: string): Promise<LoadConversationMessagesResult> => {
+    async (
+      convId: string,
+      options?: ConversationMessageLoadOptions,
+    ): Promise<LoadConversationMessagesResult> => {
       // A newer active-conversation load supersedes any prior in-flight one so a
       // rapid swipe doesn't let an older fetch clobber the latest thread.
       activeMessageLoadAbortRef.current?.abort();
@@ -326,7 +330,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
       // Instant paint from the prefetch cache (a swiped-to neighbor) so the
       // thread never flashes empty mid-swipe; the fetch below still revalidates.
-      const cached = conversationMessageCacheRef.current.get(convId);
+      const cached = options?.aroundMessageId
+        ? undefined
+        : conversationMessageCacheRef.current.get(convId);
       if (cached) {
         greetingFiredRef.current = hasConversationBootstrapMessage(cached);
         conversationMessagesRef.current = cached;
@@ -336,6 +342,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       try {
         const { messages } = await client.getConversationMessages(convId, {
           signal,
+          aroundMessageId: options?.aroundMessageId,
         });
         // Superseded by a newer load while in flight — let the newer one own the
         // thread instead of committing this stale result.

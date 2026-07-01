@@ -61,7 +61,12 @@ export function FocusSpatialView({
 }: FocusSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card gap={1} padding={1}>
+    <Card
+      gap={2}
+      padding={{ top: 8, right: 4, bottom: 4, left: 12 }}
+      width="100%"
+      height="100%"
+    >
       <FocusBody snapshot={snapshot} dispatch={dispatch} />
     </Card>
   );
@@ -130,9 +135,12 @@ function FocusBody({
       return <FocusActiveBody snapshot={snapshot} dispatch={dispatch} />;
     default:
       return (
-        <Text tone="muted" style="caption">
-          Idle
-        </Text>
+        <>
+          <Text bold>Focus</Text>
+          <Text tone="muted" style="caption">
+            No active focus block.
+          </Text>
+        </>
       );
   }
 }

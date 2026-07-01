@@ -77,7 +77,6 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import { CompactOnboarding } from "./first-run/CompactOnboarding";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -367,7 +366,6 @@ function useIsPopout(): boolean {
  */
 type ShellMode =
   | "chat-overlay"
-  | "onboarding-overlay"
   | "tray-popover"
   | "voice-selftest"
   | "voice-workbench"
@@ -392,7 +390,6 @@ function readShellMode(): ShellMode {
     window.ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
-  if (raw === "onboarding-overlay") return "onboarding-overlay";
   if (raw === "tray-popover") return "tray-popover";
   if (raw === "voice-selftest") return "voice-selftest";
   if (raw === "voice-workbench") return "voice-workbench";
@@ -439,24 +436,6 @@ function TrayPopoverShell() {
       className="fixed inset-0 overflow-y-auto bg-transparent p-3"
     >
       <WidgetHost slot="home" layout="stack" />
-    </div>
-  );
-}
-
-/**
- * First-run onboarding overlay surface. Renders ONLY the floating
- * CompactOnboarding card over a transparent, click-through background — no app
- * chrome. The native overlay window is `transparent` + `passthrough`, so the
- * empty (pointer-events-none) region lets clicks fall through to the desktop
- * behind while the card stays interactive.
- */
-function OnboardingOverlayShell() {
-  return (
-    <div
-      data-testid="onboarding-overlay-shell"
-      className="pointer-events-none fixed inset-0 bg-transparent"
-    >
-      <CompactOnboarding />
     </div>
   );
 }
@@ -1551,6 +1530,14 @@ function ShellFoundationMount() {
   );
 }
 
+function needsBootstrapSessionForAppShell(): boolean {
+  try {
+    return !sessionStorage.getItem("eliza_session");
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Reads the shared shell controller from context and renders the always-present
  * continuous chat overlay — one ambient glass conversation (the app's single
@@ -1560,10 +1547,13 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus } = useAppSelectorShallow((s) => ({
-    characterData: s.characterData,
-    agentStatus: s.agentStatus,
-  }));
+  const { characterData, agentStatus, startupCoordinator, firstRunComplete } =
+    useAppSelectorShallow((s) => ({
+      characterData: s.characterData,
+      agentStatus: s.agentStatus,
+      startupCoordinator: s.startupCoordinator,
+      firstRunComplete: s.firstRunComplete,
+    }));
   const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
@@ -1576,6 +1566,10 @@ function ContinuousChatOverlayMount(): ReactNode {
       controller={controller}
       agentName={agentName}
       slash={slash}
+      firstRunRequired={
+        startupCoordinator.phase === "first-run-required" ||
+        (startupCoordinator.phase === "ready" && !firstRunComplete)
+      }
     />
   );
 }
@@ -1652,6 +1646,7 @@ export function App() {
     activeGameViewerUrl,
     gameOverlayEnabled,
     uiShellMode,
+    firstRunCloudProvisionedContainer,
     t,
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
@@ -1667,6 +1662,7 @@ export function App() {
     activeGameViewerUrl: s.activeGameViewerUrl,
     gameOverlayEnabled: s.gameOverlayEnabled,
     uiShellMode: s.uiShellMode,
+    firstRunCloudProvisionedContainer: s.firstRunCloudProvisionedContainer,
     t: s.t,
   }));
   const { companionShell: CompanionShell } = useBootConfig();
@@ -1683,10 +1679,18 @@ export function App() {
   // pre-shell phases (session restore, backend polling, first-run, pairing,
   // error) keep the full-screen StartupScreen. Runtime-dependent effects and
   // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
-  const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
+  const firstRunBootstrapRequired =
+    startupCoordinator.phase === "first-run-required" &&
+    firstRunCloudProvisionedContainer &&
+    needsBootstrapSessionForAppShell();
+  const isShellPaintableNow =
+    isShellPaintable(startupCoordinator.phase) ||
+    (startupCoordinator.phase === "first-run-required" &&
+      !firstRunBootstrapRequired);
 
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isShellPaintableNow || isPopout,
+    skip:
+      !isShellPaintableNow || isPopout || startupCoordinator.phase !== "ready",
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -2139,20 +2143,6 @@ export function App() {
     return (
       <BugReportProvider value={bugReport}>
         <TrayPopoverShell />
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  // First-run onboarding overlay window — render JUST the floating onboarding
-  // card over a transparent, click-through background, no app chrome or
-  // startup gate.
-  if (shellMode === "onboarding-overlay") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <OnboardingOverlayShell />
-        </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
     );
