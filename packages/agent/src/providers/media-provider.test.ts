@@ -217,6 +217,16 @@ describe("media audio provider routing", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/voiceId/);
   });
+
+  it("does not expose a direct Eliza Cloud audio fetch provider", () => {
+    expect(() =>
+      createAudioProvider(undefined, {
+        cloudMediaDisabled: false,
+        elizaCloudApiKey: "eliza_cloud_key",
+        elizaCloudBaseUrl: "https://api.elizacloud.ai/api/v1",
+      }),
+    ).toThrow(/ModelType\.AUDIO\/TEXT_TO_SPEECH/);
+  });
 });
 
 describe("media image provider routing", () => {
@@ -355,6 +365,16 @@ describe("media video provider routing", () => {
       error: "No video returned from FAL",
     });
     expect(calls).toHaveLength(1);
+  });
+
+  it("does not expose a direct Eliza Cloud video fetch provider", () => {
+    expect(() =>
+      createVideoProvider(undefined, {
+        cloudMediaDisabled: false,
+        elizaCloudApiKey: "eliza_cloud_key",
+        elizaCloudBaseUrl: "https://api.elizacloud.ai/api/v1",
+      }),
+    ).toThrow(/ModelType\.VIDEO/);
   });
 });
 
