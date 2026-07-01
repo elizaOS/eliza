@@ -66,6 +66,5 @@ the main tree; blocked in a fresh worktree only by the documented cross-plugin
 subpath cascade (`plugin-*/subpath` not built) — infra, not a scenario defect.
 
 ## Session PRs (7)
-Merged: #10711/#10740, #10717/#10750, #10712/#10760, #10722/#10766, #10710/#10795.
-Open (adversarial-QA bug fixes): #10824 (chat-sheet stale assertion),
-#10833 (ui e2e tailwind/postcss deps).
+Merged: #10711/#10740, #10717/#10750, #10712/#10760, #10722/#10766, #10710/#10795,
+#10824 (chat-sheet stale assertion), #10833 (ui e2e tailwind/postcss deps).
