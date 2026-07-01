@@ -179,7 +179,7 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
       ref={ref}
       type="button"
       onClick={onBack}
-      className="-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:text-accent   "
+      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
       {...agentProps}
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -290,7 +290,7 @@ function MobileHub({
 }) {
   return (
     <div className="w-full pb-32">
-      <h1 className="mb-4 min-h-10 pl-12 text-2xl font-semibold tracking-tight text-txt-strong">
+      <h1 className="mb-4 min-h-10 pl-14 text-2xl font-semibold tracking-tight text-txt-strong">
         {t("nav.settings", { defaultValue: "Settings" })}
       </h1>
       <SettingsStack>
@@ -460,7 +460,7 @@ export function SettingsView({
 
   return (
     <ShellViewAgentSurface viewId="settings">
-      <ContentLayout inModal={inModal}>
+      <ContentLayout inModal={inModal} contentClassName="max-sm:pt-1">
         <div data-testid="settings-shell">
           {isTwoPane ? (
             <DesktopLayout
@@ -472,7 +472,7 @@ export function SettingsView({
               onSelect={openSection}
             />
           ) : activeSectionDef ? (
-            <div className="w-full pb-32">
+            <div className="w-full pb-32 max-sm:pt-8">
               <SettingsSectionContent
                 section={activeSectionDef}
                 t={t}

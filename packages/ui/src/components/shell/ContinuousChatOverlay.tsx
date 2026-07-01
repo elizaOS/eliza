@@ -3413,7 +3413,7 @@ export function ContinuousChatOverlay({
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]"
+        className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.68)_46%,rgba(0,0,0,0.78)_100%)]"
         // Opacity follows the live history height (motion value) — no re-render
         // during a drag. Pointer events stay disabled so background gestures
         // keep their original targets while chat is open.
@@ -3640,8 +3640,10 @@ export function ContinuousChatOverlay({
               // backdrop blur, so it is intentionally absent. Inline (not a
               // Tailwind class) so it renders identically in the raw-esbuild e2e.
               backgroundColor: fullBleed
-                ? "rgba(10,10,12,0.62)"
-                : "rgba(10,10,12,0.5)",
+                ? "rgba(10,10,12,0.7)"
+                : threadPresented
+                  ? "rgba(10,10,12,0.68)"
+                  : "rgba(10,10,12,0.52)",
               backgroundImage:
                 "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 24%)",
               // Full-bleed: extend the glass UP through the safe-area-top so the
