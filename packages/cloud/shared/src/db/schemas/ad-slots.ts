@@ -12,7 +12,7 @@
  * credits_allocated/credits_spent; publisher payout = `redeemable_earnings`.
  */
 
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -48,8 +48,13 @@ export const adSlots = pgTable(
     format: text("format").$type<AdSlotFormat>().notNull(),
     status: text("status").$type<AdSlotStatus>().notNull().default("active"),
 
-    /** Minimum price the publisher accepts, in USD per 1000 impressions (CPM). */
-    floor_cpm: numeric("floor_cpm", { precision: 10, scale: 4 }).notNull().default("1.0000"),
+    /**
+     * Minimum price the publisher accepts, in USD per 1000 impressions (CPM).
+     * The advertiser debit happens at the credits ledger's scale-2 (whole
+     * cents), so a slot only fills when its per-impression price is at least
+     * $0.01 — i.e. a floor CPM of at least $10. The default is that minimum.
+     */
+    floor_cpm: numeric("floor_cpm", { precision: 10, scale: 4 }).notNull().default("10.0000"),
 
     total_impressions: integer("total_impressions").notNull().default(0),
     total_clicks: integer("total_clicks").notNull().default(0),
@@ -91,12 +96,25 @@ export const adSlotEvents = pgTable(
     impression_id: text("impression_id").notNull(),
     /** Revenue attributed to this event (publisher share of the served price). */
     revenue: numeric("revenue", { precision: 12, scale: 6 }).notNull().default("0.000000"),
+    /**
+     * When the publisher earnings credit for this impression settled. NULL on
+     * an impression with revenue means the payout is pending — the impression
+     * row (written in the same transaction as the advertiser debit) is the
+     * durable pending-payout record, settled idempotently after commit and
+     * retried on subsequent serves. Never NULL-and-forgotten: unsettled rows
+     * are visible drift by construction.
+     */
+    payout_settled_at: timestamp("payout_settled_at"),
 
     created_at: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
     slot_idx: index("ad_slot_events_slot_idx").on(table.slot_id),
     campaign_idx: index("ad_slot_events_campaign_idx").on(table.campaign_id),
+    // Cheap pending-payout scan: only unsettled impressions are indexed.
+    unsettled_payout_idx: index("ad_slot_events_unsettled_payout_idx")
+      .on(table.created_at)
+      .where(sql`${table.payout_settled_at} IS NULL AND ${table.type} = 'impression'`),
     // (impression_id, type) is unique — the backstop that makes an impression /
     // click record (and its money movement) exactly-once.
     event_unique: uniqueIndex("ad_slot_events_impression_type_idx").on(

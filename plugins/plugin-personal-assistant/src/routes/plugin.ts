@@ -1,21 +1,26 @@
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent";
+import { AuthStore } from "@elizaos/app-core";
+import {
+  ensureRouteAuthorized,
+  ensureSessionForRequest,
+  getCompatApiToken,
+  getProvidedApiToken,
+  tokenMatches,
+} from "@elizaos/app-core/api/auth";
+import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
 import type {
   AgentRuntime,
   LegacyRouteHandler,
   Plugin,
-  RoleName,
-  RolesWorldMetadata,
   Route,
   UUID,
 } from "@elizaos/core";
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  ROLE_RANK,
   resolveCanonicalOwnerId,
-  resolveEntityRole,
   stringToUuid,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
@@ -93,49 +98,48 @@ function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   return null;
 }
 
-function routeActorEntityId(
-  req: http.IncomingMessage,
-  runtime: AgentRuntime | null,
-): UUID | null {
-  const headerActor =
-    firstHeaderValue(req.headers["x-eliza-entity-id"]) ??
-    firstHeaderValue(req.headers["x-eliza-actor-entity-id"]);
-  if (headerActor) {
-    return headerActor as UUID;
-  }
-  return routeOwnerEntityId(runtime);
+function runtimeAuthDb(runtime: AgentRuntime): unknown {
+  return (runtime as { adapter?: { db?: unknown } | null }).adapter?.db;
 }
 
-async function resolveRouteActorRole(
-  runtime: AgentRuntime,
-  actorEntityId: UUID,
-): Promise<RoleName> {
-  const ownerEntityId = routeOwnerEntityId(runtime);
-  if (ownerEntityId && actorEntityId === ownerEntityId) {
-    return "OWNER";
+function hasConfiguredOwnerToken(req: http.IncomingMessage): boolean {
+  const expectedToken = getCompatApiToken();
+  const providedToken = getProvidedApiToken(req);
+  return Boolean(
+    expectedToken &&
+      providedToken &&
+      tokenMatches(expectedToken, providedToken),
+  );
+}
+
+async function requestHasOwnerRouteRole(args: {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  runtime: AgentRuntime;
+}): Promise<boolean> {
+  const { req, res, runtime } = args;
+  if (isTrustedLocalRequest(req)) {
+    return true;
   }
 
-  const worlds =
-    typeof runtime.getAllWorlds === "function"
-      ? await runtime.getAllWorlds()
-      : [];
-  let bestRole: RoleName = "GUEST";
-  for (const world of worlds) {
-    const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
-    const role = await resolveEntityRole(
-      runtime,
-      world,
-      metadata,
-      actorEntityId,
-    );
-    if (ROLE_RANK[role] > ROLE_RANK[bestRole]) {
-      bestRole = role;
-    }
-    if (ROLE_RANK[bestRole] >= ROLE_RANK.ADMIN) {
-      return bestRole;
-    }
+  const db = runtimeAuthDb(runtime);
+  if (!db) {
+    return hasConfiguredOwnerToken(req);
   }
-  return bestRole;
+
+  if (
+    process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&
+    hasConfiguredOwnerToken(req)
+  ) {
+    return true;
+  }
+
+  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
+  const context = await ensureSessionForRequest(req, res, {
+    store,
+    allowBootstrapBearer: false,
+  });
+  return context?.identity?.kind === "owner";
 }
 
 export async function requireLifeOpsRouteOwnerAdminAccess(args: {
@@ -149,15 +153,14 @@ export async function requireLifeOpsRouteOwnerAdminAccess(args: {
     return false;
   }
 
-  const actorEntityId = routeActorEntityId(req, runtime);
-  if (!actorEntityId) {
-    error(res, "LifeOps routes require OWNER or ADMIN access", 403);
-    return false;
-  }
-
   try {
-    const role = await resolveRouteActorRole(runtime, actorEntityId);
-    if (ROLE_RANK[role] >= ROLE_RANK.ADMIN) {
+    const authorized = await ensureRouteAuthorized(req, res, {
+      current: runtime,
+    });
+    if (!authorized) {
+      return false;
+    }
+    if (await requestHasOwnerRouteRole({ req, res, runtime })) {
       return true;
     }
   } catch {

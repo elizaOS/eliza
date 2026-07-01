@@ -4,11 +4,13 @@
  * The serve transaction inserts the impression event FIRST (its unique
  * (impression_id, type) index is the exactly-once gate) and only then debits
  * the advertiser's campaign budget + increments the slot counters. A replayed
- * serve hits the unique index and moves no money twice. Publisher earnings are
- * credited separately (idempotent on the same impression_id) by the service.
+ * serve hits the unique index and moves no money twice. The impression row is
+ * also the durable pending-payout record (payout_settled_at NULL): the service
+ * credits publisher earnings idempotently after commit and marks it settled,
+ * retrying unsettled rows on later serves.
  */
 
-import { and, desc, eq, gt, gte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { adCampaigns } from "../schemas/ad-campaigns";
 import { adCreatives } from "../schemas/ad-creatives";
@@ -19,6 +21,7 @@ import {
   adSlotEvents,
   adSlots,
 } from "../schemas/ad-slots";
+import { apps } from "../schemas/apps";
 
 /** A creative chosen to fill a slot, with its owning campaign. */
 export interface EligibleAd {
@@ -29,6 +32,18 @@ export interface EligibleAd {
   callToAction: string | null;
   destinationUrl: string | null;
   media: unknown;
+}
+
+/** An impression whose publisher earnings credit has not yet settled. */
+export interface PendingPayout {
+  eventId: string;
+  impressionId: string;
+  revenue: string;
+  slotId: string;
+  slotName: string;
+  appId: string;
+  campaignId: string | null;
+  creatorUserId: string | null;
 }
 
 class AdServeBudgetExhausted extends Error {
@@ -122,7 +137,11 @@ export class AdSlotsRepository {
    * Exactly-once serve: insert the impression event (unique gate), debit the
    * campaign budget, and bump slot + campaign impression counters — all in one
    * transaction. Returns the event, or null if this impression_id was already
-   * recorded (a replay) so the caller moves no money twice.
+   * recorded (a replay) or the campaign's remaining budget no longer covers
+   * the price — either way the caller moves no money.
+   *
+   * `price` must already be a whole-cent amount (the service refuses sub-cent
+   * prices), so the scale-2 debit below is lossless.
    */
   async recordServe(input: {
     slotId: string;
@@ -236,6 +255,45 @@ export class AdSlotsRepository {
       }
       return event;
     });
+  }
+
+  /**
+   * Impressions whose publisher payout has not settled yet, oldest first,
+   * joined to the slot + app so the settle step knows who to pay. Reads the
+   * write node — a serve settles its own just-committed impression inline.
+   */
+  async findUnsettledPayouts(limit = 25): Promise<PendingPayout[]> {
+    return dbWrite
+      .select({
+        eventId: adSlotEvents.id,
+        impressionId: adSlotEvents.impression_id,
+        revenue: adSlotEvents.revenue,
+        slotId: adSlotEvents.slot_id,
+        slotName: adSlots.name,
+        appId: adSlots.app_id,
+        campaignId: adSlotEvents.campaign_id,
+        creatorUserId: apps.created_by_user_id,
+      })
+      .from(adSlotEvents)
+      .innerJoin(adSlots, eq(adSlotEvents.slot_id, adSlots.id))
+      .innerJoin(apps, eq(adSlots.app_id, apps.id))
+      .where(
+        and(
+          eq(adSlotEvents.type, "impression"),
+          isNull(adSlotEvents.payout_settled_at),
+          gt(adSlotEvents.revenue, sql`0`),
+        ),
+      )
+      .orderBy(asc(adSlotEvents.created_at))
+      .limit(limit);
+  }
+
+  /** Mark an impression's publisher payout settled (idempotent). */
+  async markPayoutSettled(eventId: string): Promise<void> {
+    await dbWrite
+      .update(adSlotEvents)
+      .set({ payout_settled_at: new Date() })
+      .where(and(eq(adSlotEvents.id, eventId), isNull(adSlotEvents.payout_settled_at)));
   }
 
   async analytics(slotId: string): Promise<{

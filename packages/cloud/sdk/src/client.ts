@@ -1,6 +1,7 @@
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
+  type ActivateAppFrontendResponse,
   type AffiliateCodeResponse,
   type AgentLifecycleResponse,
   type AgentListResponse,
@@ -63,12 +64,10 @@ import {
   DEFAULT_ELIZA_CLOUD_API_ORIGIN,
   DEFAULT_ELIZA_CLOUD_BASE_URL,
   type DeleteAppResponse,
-  type ActivateAppFrontendResponse,
   type DeployAppFrontendInput,
   type DeployAppFrontendResponse,
   type DeployAppInput,
   type DeployAppResponse,
-  type ListAppFrontendDeploymentsResponse,
   type ElizaCloudClientOptions,
   type EmbeddingsRequest,
   type EmbeddingsResponse,
@@ -87,6 +86,7 @@ import {
   type ListAdSlotsResponse,
   type ListAppChargesResponse,
   type ListAppDomainsResponse,
+  type ListAppFrontendDeploymentsResponse,
   type ListAppsResponse,
   type ListInfluencersResponse,
   type ListRedemptionsResponse,
@@ -930,6 +930,28 @@ export class ElizaCloudClient {
     return this.request<ContainerListResponse>("GET", "/api/v1/containers");
   }
 
+  /**
+   * `POST /api/v1/marketing/inventory` — create an ad slot so an app can earn
+   * from serving ads on its surface (SSP, #10687).
+   */
+  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
+    return this.request<CreateAdSlotResponse>(
+      "POST",
+      "/api/v1/marketing/inventory",
+      {
+        json: input,
+      },
+    );
+  }
+
+  /** `GET /api/v1/marketing/inventory` — list the org's ad slots. */
+  listAdSlots(): Promise<ListAdSlotsResponse> {
+    return this.request<ListAdSlotsResponse>(
+      "GET",
+      "/api/v1/marketing/inventory",
+    );
+  }
+
   /** `POST /api/v1/marketing/influencers` — publish an influencer profile to earn from bookings (#10687). */
   createInfluencerProfile(
     input: CreateInfluencerProfileInput,
@@ -960,28 +982,6 @@ export class ElizaCloudClient {
       {
         json: input,
       },
-    );
-  }
-
-  /**
-   * `POST /api/v1/marketing/inventory` — create an ad slot so an app can earn
-   * from serving ads on its surface (SSP, #10687).
-   */
-  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
-    return this.request<CreateAdSlotResponse>(
-      "POST",
-      "/api/v1/marketing/inventory",
-      {
-        json: input,
-      },
-    );
-  }
-
-  /** `GET /api/v1/marketing/inventory` — list the org's ad slots. */
-  listAdSlots(): Promise<ListAdSlotsResponse> {
-    return this.request<ListAdSlotsResponse>(
-      "GET",
-      "/api/v1/marketing/inventory",
     );
   }
 

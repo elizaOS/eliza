@@ -434,5 +434,8 @@ describe("routerLoopTransition — fuzz over event orderings", () => {
     expect(state.completionFirstPostedSession.size).toBe(
       ROUTER_LOOP_STATE_BOUND,
     );
-  });
+    // Deliberately heavy: 3×BOUND distinct keys × 3 transitions each. On a
+    // loaded CI box the pure-CPU loop runs ~4-6s, over vitest's 5s default —
+    // give it real headroom so the leak invariant isn't a flaky red.
+  }, 30_000);
 });

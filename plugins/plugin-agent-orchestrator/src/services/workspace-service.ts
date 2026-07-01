@@ -69,7 +69,7 @@ import {
 export type { AuthPromptCallback } from "./workspace-github.js";
 
 import { readConfigEnvKey } from "./config-env.js";
-import { normalizeRepositoryInput } from "./repo-input.js";
+import { assertSafeGitRemote, normalizeRepositoryInput } from "./repo-input.js";
 import {
   commit as gitCommit,
   createPR as gitCreatePR,
@@ -138,9 +138,20 @@ function lookupDefaultBranch(
   token?: string,
 ): Promise<string | null> {
   return new Promise((resolve) => {
+    try {
+      // Reject unsafe remotes (ext::, file://, leading "-", …) BEFORE spawning
+      // git — an unsafe URL is treated as an unresolved default branch, and the
+      // subsequent clone rejects it as the hard gate. See assertSafeGitRemote.
+      assertSafeGitRemote(repoUrl);
+    } catch {
+      resolve(null);
+      return;
+    }
     execFile(
       "git",
-      ["ls-remote", "--symref", repoUrl, "HEAD"],
+      // `--` ends option parsing so a repo that survives validation can never
+      // be reinterpreted as a git flag.
+      ["ls-remote", "--symref", "--", repoUrl, "HEAD"],
       {
         timeout: 10_000,
         encoding: "utf-8",
@@ -191,10 +202,20 @@ function isGitHubRepository(repo: string): boolean {
   return false;
 }
 
+// Restrict which transports git may use for these spawns. Blocks `ext`
+// (arbitrary command execution), `file` (local repo disclosure), and the git://
+// daemon (unauthenticated / MITM-able), while keeping the transports real
+// remotes use. Defense-in-depth alongside assertSafeGitRemote — this also
+// covers transports reached indirectly (HTTP redirects, submodules).
+const GIT_ALLOWED_PROTOCOLS = "http:https:ssh";
+
 function gitHubTokenEnv(repo: string, token?: string): NodeJS.ProcessEnv {
-  if (!token || !isGitHubRepository(repo)) return process.env;
+  if (!token || !isGitHubRepository(repo)) {
+    return { ...process.env, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
+  }
   return {
     ...process.env,
+    GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS,
     GIT_CONFIG_COUNT: "1",
     GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
@@ -357,6 +378,12 @@ export class CodingWorkspaceService {
       workspace: CloneOverrideWorkspace,
       token?: string,
     ) => {
+      // Hard gate: reject unsafe remotes before spawning git. Throws
+      // UnsafeGitRemoteError (propagated to the provision caller) for ext::,
+      // file://, leading-"-" argument injection, etc.
+      const safeRepo = assertSafeGitRemote(
+        normalizeRepositoryInput(workspace.repo),
+      );
       await new Promise<void>((resolve, reject) => {
         execFile(
           "git",
@@ -364,7 +391,10 @@ export class CodingWorkspaceService {
             "clone",
             "--branch",
             workspace.branch.baseBranch,
-            normalizeRepositoryInput(workspace.repo),
+            // `--` ends option parsing; the repo and target dir are strictly
+            // positional and can never be reinterpreted as git flags.
+            "--",
+            safeRepo,
             ".",
           ],
           {

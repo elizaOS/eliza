@@ -1,16 +1,36 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const getTransactionByStripePaymentIntent = mock(async () => ({
-  id: "tx-credit",
-  organization_id: "org-1",
-  amount: "100",
-}));
+type MockCreditTransaction = {
+  id: string;
+  organization_id: string;
+  amount: string;
+  type?: string;
+};
+
+const getTransactionByStripePaymentIntent = mock(
+  async (
+    _paymentIntentId: string,
+  ): Promise<MockCreditTransaction | undefined> => ({
+    id: "tx-credit",
+    organization_id: "org-1",
+    amount: "100",
+    type: "credit",
+  }),
+);
 const getClawedBackUsdForPaymentIntent = mock(async () => 0);
 const clawbackCredits = mock(async () => ({
   newBalance: 25,
   appliedAmount: 20,
   shortfallAmount: 0,
   alreadyProcessed: false,
+}));
+const refundCredits = mock(async () => ({
+  transaction: {
+    id: "tx-reinstated",
+    organization_id: "org-1",
+    amount: "45",
+  },
+  newBalance: 70,
 }));
 
 mock.module("@/db/helpers", () => ({
@@ -39,6 +59,7 @@ mock.module("@/lib/services/credits", () => ({
     getTransactionByStripePaymentIntent,
     getClawedBackUsdForPaymentIntent,
     clawbackCredits,
+    refundCredits,
   },
 }));
 mock.module("@/lib/services/discord", () => ({
@@ -69,6 +90,7 @@ describe("stripe queue credit clawbacks", () => {
       id: "tx-credit",
       organization_id: "org-1",
       amount: "100",
+      type: "credit",
     });
     getClawedBackUsdForPaymentIntent.mockClear();
     getClawedBackUsdForPaymentIntent.mockResolvedValue(0);
@@ -78,6 +100,15 @@ describe("stripe queue credit clawbacks", () => {
       appliedAmount: 20,
       shortfallAmount: 0,
       alreadyProcessed: false,
+    });
+    refundCredits.mockClear();
+    refundCredits.mockResolvedValue({
+      transaction: {
+        id: "tx-reinstated",
+        organization_id: "org-1",
+        amount: "45",
+      },
+      newBalance: 70,
     });
   });
 
@@ -116,8 +147,53 @@ describe("stripe queue credit clawbacks", () => {
       metadata: {
         payment_intent_id: "pi_1",
         reversed_usd: 50,
+        capped_reversed_usd: 50,
         source: "charge.refunded",
         reference: "charge ch_1",
+      },
+    });
+  });
+
+  test("charge.refunded caps clawback at credits actually granted", async () => {
+    getTransactionByStripePaymentIntent.mockResolvedValueOnce({
+      id: "tx-credit",
+      organization_id: "org-1",
+      amount: "40",
+    });
+
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_refund_gross",
+        eventType: "charge.refunded",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_refund_gross",
+          type: "charge.refunded",
+          data: {
+            object: {
+              id: "ch_taxed",
+              amount_refunded: 5000,
+              payment_intent: "pi_taxed",
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(clawbackCredits).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      amount: 40,
+      description: "Stripe charge.refunded clawback — charge ch_taxed",
+      stripePaymentIntentId: "stripe:refund:ch_taxed:5000",
+      metadata: {
+        payment_intent_id: "pi_taxed",
+        reversed_usd: 50,
+        capped_reversed_usd: 40,
+        source: "charge.refunded",
+        reference: "charge ch_taxed",
       },
     });
   });
@@ -183,9 +259,90 @@ describe("stripe queue credit clawbacks", () => {
       metadata: {
         payment_intent_id: "pi_1",
         reversed_usd: 75,
+        capped_reversed_usd: 75,
         source: "charge.dispute.funds_withdrawn",
         reference: "dispute dp_1 (charge ch_1)",
       },
     });
+  });
+
+  test("charge.dispute.funds_reinstated restores only the applied dispute clawback", async () => {
+    getTransactionByStripePaymentIntent.mockImplementationOnce(async (key) => {
+      expect(key).toBe("stripe:dispute:dp_1");
+      return {
+        id: "tx-clawback",
+        organization_id: "org-1",
+        amount: "-45",
+        type: "clawback",
+      };
+    });
+
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_dispute_reinstated",
+        eventType: "charge.dispute.funds_reinstated",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_dispute_reinstated",
+          type: "charge.dispute.funds_reinstated",
+          data: {
+            object: {
+              id: "dp_1",
+              amount: 7500,
+              charge: "ch_1",
+              payment_intent: "pi_1",
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(refundCredits).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      amount: 45,
+      description:
+        "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_1 (charge ch_1)",
+      stripePaymentIntentId: "stripe:dispute:dp_1:reinstated",
+      metadata: {
+        payment_intent_id: "pi_1",
+        reinstated_usd: 75,
+        applied_reinstatement_usd: 45,
+        clawback_key: "stripe:dispute:dp_1",
+        source: "charge.dispute.funds_reinstated",
+        reference: "dispute dp_1 (charge ch_1)",
+      },
+    });
+  });
+
+  test("charge.dispute.funds_reinstated is a no-op without a matching clawback", async () => {
+    getTransactionByStripePaymentIntent.mockResolvedValueOnce(undefined);
+
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_dispute_reinstated_noop",
+        eventType: "charge.dispute.funds_reinstated",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_dispute_reinstated_noop",
+          type: "charge.dispute.funds_reinstated",
+          data: {
+            object: {
+              id: "dp_missing",
+              amount: 7500,
+              charge: "ch_1",
+              payment_intent: "pi_1",
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(refundCredits).not.toHaveBeenCalled();
   });
 });
