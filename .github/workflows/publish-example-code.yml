@@ -37,7 +37,7 @@ jobs:
         with:
           filter: blob:none
 
-      - name: Check whether this version is already on npm
+      - name: Decide whether to publish (version-new AND deps installable)
         id: check
         run: |
           set -euo pipefail
@@ -46,13 +46,44 @@ jobs:
           VERSION=$(jq -r .version "$PKG_JSON")
           echo "Package: ${NAME}@${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          # Publish only if this exact name@version is NOT already published.
-          # `npm view` exits non-zero (E404) for an unpublished version.
+
+          # (1) Publish only if this exact name@version is NOT already published.
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "Already published — skipping."
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # (2) Preflight: `npm publish` rewrites this package's `workspace:*`
+          # @elizaos/* deps to `^<local monorepo version>`. If those versions are
+          # not on npm, the published package would be UNINSTALLABLE. Refuse to
+          # publish until every @elizaos workspace dep resolves at its local
+          # version — otherwise the monorepo 2.x beta line must be released first.
+          missing=""
+          while read -r dep localver; do
+            [ -z "$dep" ] && continue
+            if ! npm view "${dep}@${localver}" version >/dev/null 2>&1; then
+              missing="${missing} ${dep}@${localver}"
+            fi
+          done < <(
+            jq -r '.dependencies | to_entries[]
+                   | select(.key|startswith("@elizaos/"))
+                   | select(.value|startswith("workspace:"))
+                   | .key' "$PKG_JSON" |
+            while read -r dep; do
+              short="${dep#@elizaos/}"
+              for base in packages plugins; do
+                f="$base/$short/package.json"
+                if [ -f "$f" ]; then echo "$dep $(jq -r .version "$f")"; break; fi
+              done
+            done
+          )
+
+          if [ -n "$missing" ]; then
+            echo "::warning::Skipping publish — @elizaos deps not on npm at the required version(s):${missing}. Release the monorepo 2.x line first (see #10059)."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Not on npm yet — will publish."
+            echo "Version is new and all @elizaos deps resolve on npm — will publish."
             echo "should_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
