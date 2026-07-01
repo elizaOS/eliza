@@ -359,8 +359,10 @@ jobs:
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
+    # previews always use GitHub-hosted runners because the shared deploy robot
+    # can fail before any cleanup step while staging downloaded setup actions.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -662,8 +664,10 @@ jobs:
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
+    # previews always use GitHub-hosted runners because the shared deploy robot
+    # can fail before any cleanup step while staging downloaded setup actions.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}

@@ -38,9 +38,19 @@ function detectEmbeddingPreset() {
   return EMBEDDING_PRESETS.fallback;
 }
 
+function selectEmbeddingTierFromHardware() {
+  return "fallback";
+}
+
+function selectEmbeddingPresetFromHardware() {
+  return EMBEDDING_PRESETS.fallback;
+}
+
 module.exports = {
   COMPACT_ELIZA_1_EMBEDDING,
   EMBEDDING_PRESETS,
   detectEmbeddingPreset,
   detectEmbeddingTier,
+  selectEmbeddingPresetFromHardware,
+  selectEmbeddingTierFromHardware,
 };

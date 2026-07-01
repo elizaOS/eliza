@@ -455,17 +455,24 @@ function primaryVoiceFileForTier(id: Eliza1TierId): string {
   return "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf";
 }
 
+function asrFileForTier(id: Eliza1TierId): string {
+  return `asr/mmproj-audio-${tierSlug(id)}-bf16.gguf`;
+}
+
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const spec = TIER_SPECS[id];
   const components: SourceComponentMap = {
     text: bundleComponent(id, spec.textFile),
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
+    asr: bundleComponent(id, asrFileForTier(id)),
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
   };
 
-  // Gemma ASR artifacts are not hosted yet. Do not advertise retired pre-Gemma
-  // ASR files as active tier components. Runtime ASR remains gated by bundle
-  // manifest provenance until Gemma ASR files are published.
+  // Runtime ASR remains gated by the bundle manifest + provenance checks. The
+  // catalog points at the Gemma audio mmproj artifact the active manifests use;
+  // the fused runtime treats the bundle's `asr/` directory as the loadability
+  // gate so additional ASR files can be added without changing this source
+  // component handle.
 
   // LiteRT-LM single-file bundle for the on-device runtime: text + vision +
   // audio + MTP packed into one QAT (.litertlm) artifact, parallel to the

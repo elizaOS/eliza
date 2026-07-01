@@ -1,4 +1,5 @@
 import os from "node:os";
+import type { HardwareProbe } from "../services/types.js";
 
 export type EmbeddingTier = "fallback" | "standard" | "performance";
 
@@ -13,6 +14,11 @@ export interface EmbeddingPreset {
 	contextSize: number;
 	downloadSizeMB: number;
 }
+
+type EmbeddingHardwareProbe = Pick<
+	HardwareProbe,
+	"appleSilicon" | "gpu" | "totalRamGb"
+>;
 
 const GTE_SMALL_EMBEDDING = {
 	// gte-small: 384-dim general-purpose text embedding, ~64MB fp16 GGUF.
@@ -40,8 +46,8 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 	},
 	standard: {
 		tier: "standard",
-		label: "Efficient (Metal GPU)",
-		description: "gte-small local embeddings with Metal acceleration",
+		label: "Efficient (accelerated)",
+		description: "gte-small local embeddings with local accelerator offload",
 		model: GTE_SMALL_EMBEDDING.model,
 		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
 		dimensions: GTE_SMALL_EMBEDDING.dimensions,
@@ -65,6 +71,33 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 };
 
 const BYTES_PER_GB = 1024 ** 3;
+
+function hasAcceleratedEmbeddingBackend(
+	hardware: EmbeddingHardwareProbe,
+): boolean {
+	const backend = hardware.gpu?.backend;
+	return (
+		backend === "cuda" ||
+		backend === "metal" ||
+		backend === "vulkan" ||
+		hardware.appleSilicon
+	);
+}
+
+export function selectEmbeddingTierFromHardware(
+	hardware: EmbeddingHardwareProbe,
+): EmbeddingTier {
+	if (hardware.totalRamGb <= 8) return "fallback";
+	if (!hasAcceleratedEmbeddingBackend(hardware)) return "fallback";
+	if (hardware.totalRamGb >= 128) return "performance";
+	return "standard";
+}
+
+export function selectEmbeddingPresetFromHardware(
+	hardware: EmbeddingHardwareProbe,
+): EmbeddingPreset {
+	return EMBEDDING_PRESETS[selectEmbeddingTierFromHardware(hardware)];
+}
 
 export function detectEmbeddingTier(): EmbeddingTier {
 	const totalRamGB = Math.round(os.totalmem() / BYTES_PER_GB);

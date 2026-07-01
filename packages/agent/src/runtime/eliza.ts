@@ -909,10 +909,22 @@ export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
 ): Promise<void> {
-  const { detectEmbeddingPreset } = await import(
-    "@elizaos/plugin-local-inference/runtime/embedding-presets"
-  );
-  const detectedPreset = detectEmbeddingPreset();
+  const { detectEmbeddingPreset, selectEmbeddingPresetFromHardware } =
+    await import("@elizaos/plugin-local-inference/runtime/embedding-presets");
+  let detectedPreset = detectEmbeddingPreset();
+  let detectedGpuBackend: "cuda" | "metal" | "vulkan" | null = null;
+  try {
+    const { probeHardware } = await import(
+      "@elizaos/plugin-local-inference/services"
+    );
+    const hardware = await probeHardware();
+    detectedPreset = selectEmbeddingPresetFromHardware(hardware);
+    detectedGpuBackend = hardware.gpu?.backend ?? null;
+  } catch (err) {
+    logger.warn(
+      `[eliza] Local embedding hardware probe failed; using sync preset fallback: ${formatError(err)}`,
+    );
+  }
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
     384, 512, 768, 1024, 1536, 2048, 3072,
   ]);
@@ -1001,10 +1013,18 @@ export async function configureLocalEmbeddingPlugin(
   }
 
   // Performance tuning
-  // Disable mmap on Metal to prevent "different text" errors with some models
+  // Disable mmap on Metal to prevent "different text" errors with some models.
+  // CUDA/Vulkan keep mmap enabled; the model is tiny and the file-backed load is
+  // the safer default there.
+  const resolvedGpuLayers =
+    configuredGpuLayers ?? process.env.LOCAL_EMBEDDING_GPU_LAYERS;
+  const shouldDisableMmap =
+    resolvedGpuLayers === "auto" &&
+    (detectedGpuBackend === "metal" ||
+      (detectedGpuBackend === null && process.platform === "darwin"));
   setEnvIfMissing(
     "LOCAL_EMBEDDING_USE_MMAP",
-    detectedPreset.gpuLayers === "auto" ? "false" : "true",
+    shouldDisableMmap ? "false" : "true",
   );
 
   setEnvIfMissing("MODELS_DIR", path.join(resolveStateDir(), "models"));
