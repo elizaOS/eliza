@@ -991,6 +991,8 @@ class CryptoPaymentsService {
           organizationId: payment.organization_id,
           amount: receivedAmount.toNumber(),
           description: `Crypto payment (${payCurrency} on ${payment.network})`,
+          stripePaymentIntentId: `crypto:${payment.id}`,
+          db: tx,
           metadata: {
             crypto_payment_id: payment.id,
             transaction_hash: txHash,

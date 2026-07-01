@@ -48,6 +48,28 @@ mock.module("../discord", () => ({
     async logPayment() {},
   },
 }));
+mock.module("../oxapay", () => ({
+  isOxaPayConfigured: () => true,
+  oxaPayService: {
+    async getPaymentStatus() {
+      return {
+        status: "confirmed",
+        transactions: [
+          {
+            txHash: "0xhashManual",
+            amount: "10",
+            currency: "USDT",
+            nativeAmount: "10",
+            usdAmount: "10",
+          },
+        ],
+      };
+    },
+    isPaymentConfirmed(status: string) {
+      return status === "confirmed";
+    },
+  },
+}));
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
@@ -215,6 +237,46 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       expect(await creditRowCount()).toBe(1);
       expect(await orgBalance()).toBeCloseTo(10, 6);
       expect(await paymentStatus()).toBe("confirmed");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "manual tx-hash confirmation is also atomic and idempotent for plain top-ups",
+    async () => {
+      if (!pgliteReady) return;
+      await seedPendingPayment();
+
+      invoiceCreateShouldThrow = true;
+      const failed = await cryptoPaymentsService.verifyAndConfirmByTxHash(
+        PAYMENT_ID,
+        "0xhashManual",
+      );
+      expect(failed.success).toBe(false);
+      expect(failed.message).toBe("simulated invoice insert conflict");
+      expect(await creditRowCount()).toBe(0);
+      expect(await orgBalance()).toBeCloseTo(0, 6);
+      expect(await paymentStatus()).toBe("pending");
+
+      invoiceCreateShouldThrow = false;
+      const confirmed = await cryptoPaymentsService.verifyAndConfirmByTxHash(
+        PAYMENT_ID,
+        "0xhashManual",
+      );
+      expect(confirmed.success).toBe(true);
+      expect(await creditRowCount()).toBe(1);
+      expect(await orgBalance()).toBeCloseTo(10, 6);
+
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET status='pending' WHERE id='${PAYMENT_ID}';`,
+      );
+      const replayed = await cryptoPaymentsService.verifyAndConfirmByTxHash(
+        PAYMENT_ID,
+        "0xhashManual",
+      );
+      expect(replayed.success).toBe(true);
+      expect(await creditRowCount()).toBe(1);
+      expect(await orgBalance()).toBeCloseTo(10, 6);
     },
     PGLITE_TIMEOUT,
   );
