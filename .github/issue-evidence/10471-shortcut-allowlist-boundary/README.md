@@ -84,7 +84,7 @@ Remove or convert:
 - Reply-shape or honesty detectors that blank or rewrite model output by
   English-only regex.
 
-## Related #10471 conversion evidence
+## Related #10471 conversion evidence in this tree
 
 - `10471-planner-enum-op-inference.md`
 - `10471-honesty-detectors-english-only.md`
@@ -95,9 +95,10 @@ Remove or convert:
 - `10471-playlist-op-structured/`
 - `10471-music-routing-zones/`
 - `10471-wikipedia-provider-context/`
-- `10471-play-music-query-structured/`
-- `10471-music-library-provider/`
-- `10471-views-delete-structured-confirm/`
+
+Additional #10471 conversion PRs carry their own evidence directories on their
+respective branches. This boundary inventory only lists evidence paths present
+on this branch so reviewers can verify every referenced artifact locally.
 
 ## Validation
 
