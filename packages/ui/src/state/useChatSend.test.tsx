@@ -1012,9 +1012,9 @@ describe("useChatSend — structured SSE error surfaces the gate (#10231)", () =
     // The assistant turn carries the structured gate (renderer swaps in the
     // "Connect a provider" UI) — the empty placeholder is NOT dropped…
     const messages = deps.conversationMessagesRef.current;
-    const assistant = messages.find(
-      (m) => m.role === "assistant",
-    ) as (ConversationMessage & { failureKind?: string }) | undefined;
+    const assistant = messages.find((m) => m.role === "assistant") as
+      | (ConversationMessage & { failureKind?: string })
+      | undefined;
     expect(assistant?.failureKind).toBe("no_provider");
     // …and no generic error notice is shown (the gate replaces it).
     expect(deps.setActionNotice).not.toHaveBeenCalled();

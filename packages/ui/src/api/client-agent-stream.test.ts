@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
+import { StreamGenerationError } from "./client-base";
 
 describe("ElizaClient agent streaming transport", () => {
   it("resolves chat streams immediately after a terminal done event", async () => {
@@ -116,6 +117,44 @@ describe("ElizaClient agent streaming transport", () => {
         values: { workflowId: "workflow-1" },
       },
     ]);
+  });
+
+  it("preserves structured terminal error events as StreamGenerationError", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"error","message":"no provider configured","failureKind":"no_provider"}\n\n',
+      ),
+    });
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    let thrown: unknown;
+    try {
+      await client.streamChatEndpoint(
+        "/api/conversations/conversation-id/messages/stream",
+        "hello",
+        vi.fn(),
+      );
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(StreamGenerationError);
+    expect(thrown).toMatchObject({
+      message: "no provider configured",
+      failureKind: "no_provider",
+    });
   });
 
   it("omits reasoning when the done event has no thought", async () => {
