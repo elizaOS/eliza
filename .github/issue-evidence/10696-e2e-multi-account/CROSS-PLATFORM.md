@@ -33,12 +33,16 @@ environment walls that need the operator's interactive machine:
   → Privacy → Screen Recording + a process restart). So the desktop app is
   proven to build + run with this code; the *pixels* need the operator to grant
   that permission once, then re-run the same command + capture.
-- **iOS simulator / real device**: no prebuilt sim app; requires
-  `bun run --cwd packages/app build:ios` + install + seeding 2 accounts into the
-  app container, then `xcrun simctl io booted screenshot` (or
-  `bun run --cwd packages/app capture:ios-sim`). Two real iPhones are paired
-  (`xcrun devicectl list devices`) for the on-device run. Because the webview
-  loads the identical bundle, the result matches the mobile-390 web capture above.
+- **iOS simulator — RUNS (proven, real capture)**: the Eliza app (`ai.elizaos.app`)
+  is installed on the iPhone 16 Pro simulator; `xcrun simctl launch` + `xcrun
+  simctl io screenshot` captured it running (`ios-sim-launch.png` — home screen,
+  no Screen-Recording permission needed for simctl). Navigating the sim to the
+  accounts settings needs UI automation (simctl can't tap; no registered
+  deep-link scheme) or pointing the app at the seeded backend — the accounts
+  webview renders the identical bundle as the mobile-390 web capture above.
+- **Real iOS device**: two iPhones are paired and available
+  (`xcrun devicectl list devices` → Shaw's iPhone 15 Pro, MoonCycles iPhone 16
+  Pro Max); on-device install is the same Capacitor build + trust flow.
 
 A seeded dev instance is left running on :2138 (UI) / :31337 (API) with 2
 accounts/tier so the operator can point a native build at it and capture without
