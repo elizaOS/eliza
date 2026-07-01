@@ -216,9 +216,22 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Recover a canonical MUSIC subaction from model PROSE when strict-XML parsing
+ * failed. The guarantee is honest ambiguity refusal: a clean single-token echo
+ * ("pause", "queue add") resolves directly, but any prose that references more
+ * than one distinct enum resolves to none. Every source — the ordered candidate
+ * extractors (`<action>…`, `action[:=]…`, backtick, leading-bullet) AND the
+ * word-boundary set-scan — contributes into a single `found` set, and the token
+ * is returned only when exactly one distinct enum was seen overall. First-match
+ * across candidates is deliberately NOT used: "It could be `pause`, but the
+ * final enum may be skip." must refuse, not silently pick `pause`.
+ */
 function extractModelActionToken(text: string): MusicSubaction | null {
   const direct = normalizeSubaction(text);
   if (direct) return direct;
+
+  const found = new Set<MusicSubaction>();
 
   const candidates = [
     text.match(/<action>\s*([^<]+?)\s*<\/action>/i)?.[1],
@@ -228,10 +241,11 @@ function extractModelActionToken(text: string): MusicSubaction | null {
   ];
   for (const candidate of candidates) {
     const resolved = normalizeSubaction(candidate);
-    if (resolved) return resolved;
+    if (resolved) found.add(resolved);
   }
 
-  const found = new Set<MusicSubaction>();
+  // Word-boundary set-scan: `[^a-zA-Z0-9_]` boundaries keep `play` from
+  // matching inside `play_query` / `playlist_play`.
   for (const subaction of MUSIC_SUBACTIONS) {
     const pattern = new RegExp(
       `(^|[^a-zA-Z0-9_])${escapeRegExp(subaction)}([^a-zA-Z0-9_]|$)`,
@@ -239,6 +253,7 @@ function extractModelActionToken(text: string): MusicSubaction | null {
     );
     if (pattern.test(text)) found.add(subaction);
   }
+
   return found.size === 1 ? [...found][0] : null;
 }
 
@@ -339,6 +354,8 @@ Allowed actions:
 
 Request:
 ${text}
+
+Output the single best-matching enum token only — no prose, no markdown, no explanation, no alternatives. If the request maps to several actions, choose the one that resolves it.
 
 Return ONLY:
 <response><action>play|pause|resume|skip|stop|queue_view|queue_add|queue_clear|playlist_play|playlist_save|search|play_query|download|play_audio|set_routing|set_zone|generate|extend|custom_generate</action></response>`;
