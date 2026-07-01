@@ -31,7 +31,7 @@ import {
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
 /** Operation carried by the `background:apply` event. */
-export type BackgroundApplyOp = "set" | "undo" | "reset";
+export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
 
 /**
  * Payload broadcast to the renderer. Mirrors the contract consumed by
@@ -50,6 +50,7 @@ export interface BackgroundApplyPayload {
 /** The resolved plan for one BACKGROUND invocation. */
 type BackgroundPlan =
 	| { op: "undo" }
+	| { op: "redo" }
 	| { op: "reset" }
 	| { op: "set"; mode: "shader"; color: string; colorLabel: string }
 	| { op: "set"; mode: "image"; imageUrl: string }
@@ -62,6 +63,7 @@ const BACKGROUND_NOUN_RE = /\b(background|wallpaper|backdrop)\b/i;
 // History verbs (checked before set, so "go back" isn't read as an edit).
 const UNDO_RE =
 	/\b(undo|revert|go back|change it back|put it back|previous)\b/i;
+const REDO_RE = /\b(redo|un-?undo|step forward)\b/i;
 const RESET_RE = /\b(reset|restore (?:the )?default|default|factory)\b/i;
 // "set/make/change … background …" — a request to apply something.
 const SET_RE = /\b(set|make|change|use|turn|switch|give me|apply|put)\b/i;
@@ -209,6 +211,7 @@ export function inferBackgroundPlan(
 
 	if (!mentionsBackground) return null;
 
+	if (explicitOp === "redo" || REDO_RE.test(trimmed)) return { op: "redo" };
 	if (
 		explicitOp === "undo" ||
 		(UNDO_RE.test(trimmed) && !RESET_RE.test(trimmed))
@@ -323,20 +326,21 @@ export function createBackgroundAction(
 			"CHANGE_WALLPAPER",
 			"EDIT_BACKGROUND",
 			"UNDO_BACKGROUND",
+			"REDO_BACKGROUND",
 			"RESET_BACKGROUND",
 		],
 		description:
-			"Change the app background from chat: set a color, use an uploaded image, generate one from a description, undo the last change, or reset to default. Drives the unified background shared by the home and every view.",
+			"Change the app background from chat: set a color, use an uploaded image, generate one from a description, undo/redo the last change, or reset to default. Drives the unified background shared by the home and every view.",
 		descriptionCompressed:
-			"background set color|image|generate|undo|reset — recolor the app background, set an uploaded/generated wallpaper, undo, or reset to default",
+			"background set color|image|generate|undo|redo|reset — recolor the app background, set an uploaded/generated wallpaper, undo/redo, or reset to default",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "op",
-				description: "Operation: set | undo | reset.",
+				description: "Operation: set | undo | redo | reset.",
 				required: false,
-				schema: { type: "string", enum: ["set", "undo", "reset"] },
+				schema: { type: "string", enum: ["set", "undo", "redo", "reset"] },
 			},
 			{
 				name: "color",
@@ -397,6 +401,12 @@ export function createBackgroundAction(
 					const reply = "Reverted the background to the previous one.";
 					await callback?.({ text: reply });
 					return { success: true, text: reply, values: { op: "undo" } };
+				}
+				if (plan.op === "redo") {
+					await emit({ op: "redo" });
+					const reply = "Restored the background change you had undone.";
+					await callback?.({ text: reply });
+					return { success: true, text: reply, values: { op: "redo" } };
 				}
 				if (plan.op === "reset") {
 					await emit({ op: "reset" });
@@ -464,6 +474,16 @@ export function createBackgroundAction(
 					name: "{{agentName}}",
 					content: {
 						text: 'Generated a new background from "misty forest".',
+						action: "BACKGROUND",
+					},
+				},
+			],
+			[
+				{ name: "{{user1}}", content: { text: "redo the background" } },
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Restored the background change you had undone.",
 						action: "BACKGROUND",
 					},
 				},

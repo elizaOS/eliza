@@ -125,7 +125,10 @@ function NotificationRow({
         type="button"
         aria-label="Dismiss notification"
         onClick={handleRemove}
-        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-0 transition-opacity hover:bg-card hover:text-txt  group-hover:opacity-100"
+        // Visible at rest (dimmed): on touch there is no hover, and an
+        // invisible-but-hit-testable X silently deleted the notification on a
+        // near-edge tap. Full opacity on hover AND keyboard focus.
+        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-50 transition-opacity hover:bg-card hover:text-txt group-hover:opacity-100 focus-visible:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>

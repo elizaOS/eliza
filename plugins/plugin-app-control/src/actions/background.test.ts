@@ -49,6 +49,26 @@ describe("inferBackgroundPlan", () => {
 		});
 	});
 
+	it("detects redo", () => {
+		expect(
+			inferBackgroundPlan("redo the background change", undefined),
+		).toEqual({
+			op: "redo",
+		});
+	});
+
+	it("redo wins over undo phrasing when the user says un-undo", () => {
+		expect(inferBackgroundPlan("un-undo the wallpaper", undefined)).toEqual({
+			op: "redo",
+		});
+	});
+
+	it("plain undo still resolves to undo (not redo)", () => {
+		expect(inferBackgroundPlan("undo the background", undefined)).toEqual({
+			op: "undo",
+		});
+	});
+
 	it("detects reset", () => {
 		expect(
 			inferBackgroundPlan("reset the background to default", undefined),
@@ -200,6 +220,18 @@ describe("BACKGROUND action handler", () => {
 			vi.fn(),
 		);
 		expect(emitted).toEqual([{ op: "undo" }]);
+	});
+
+	it("broadcasts redo", async () => {
+		const { action, emitted } = setup();
+		await action.handler(
+			runtime,
+			message("redo the background"),
+			undefined,
+			undefined,
+			vi.fn(),
+		);
+		expect(emitted).toEqual([{ op: "redo" }]);
 	});
 
 	it("reports a clear error when the broadcast fails", async () => {

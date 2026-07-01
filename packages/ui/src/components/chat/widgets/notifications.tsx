@@ -1,7 +1,14 @@
 import type { AgentNotification } from "@elizaos/core";
 import { Bell } from "lucide-react";
 import { categoryIcon } from "../../../state/notifications/category-icon";
-import { useNotifications } from "../../../state/notifications/notification-store";
+import {
+  isSafeDeepLink,
+  navigateDeepLink,
+} from "../../../state/notifications/navigate-deep-link";
+import {
+  markNotificationRead,
+  useNotifications,
+} from "../../../state/notifications/notification-store";
 import { rankHomeNotifications } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
@@ -78,11 +85,18 @@ export function NotificationsWidget(props: WidgetProps) {
         tone={urgent ? "danger" : top.priority === "high" ? "warn" : "default"}
         testId="widget-notifications"
         ariaLabel={`Notifications: ${unreadCount} unread, latest ${top.title}. Open inbox.`}
-        onActivate={() =>
-          top.deepLink
-            ? nav.openView(top.deepLink, "inbox")
-            : nav.openView("/inbox", "inbox")
-        }
+        onActivate={() => {
+          // Mirror NotificationCenter's row behavior exactly: mark read, then
+          // navigate through the scheme-checked deep-link helper (deepLink is
+          // producer/LLM-influenceable — raw pushState both broke https links
+          // and skipped the safety allowlist). Unsafe/missing → inbox.
+          if (!top.readAt) void markNotificationRead(top.id);
+          if (top.deepLink && isSafeDeepLink(top.deepLink)) {
+            navigateDeepLink(top.deepLink);
+          } else {
+            nav.openView("/inbox", "inbox");
+          }
+        }}
       />
     );
   }
