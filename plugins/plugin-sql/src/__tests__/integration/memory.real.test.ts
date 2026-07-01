@@ -397,19 +397,32 @@ describe("Memory Integration Tests", () => {
       expect(count).toBe(2);
     });
 
-    it("should default adapter memory reads and counts to the messages table", async () => {
+    it("should require tableName on reads and default counts to the messages table", async () => {
       await adapter.createMemory(createTestMemory({ text: "message one" }), "messages");
       await adapter.createMemory(createTestMemory({ text: "message two" }), "messages");
+      // Seed a different table to prove reads/counts are table-scoped.
+      await adapter.createMemory(createTestMemory({ text: "fact one" }), "facts");
+
+      // getMemories has NO default table: tableName is required by the
+      // IDatabaseAdapter contract (packages/core/src/types/database.ts), and
+      // omitting it (only possible by bypassing the types) is a loud error,
+      // not a silent empty read.
+      await expect(adapter.getMemories({ roomId: testRoomId } as never)).rejects.toThrow(
+        /tableName/
+      );
 
       const memories = await adapter.getMemories({
         roomId: testRoomId,
-      } as never);
-      const count = await adapter.countMemories(testRoomId, false);
-
+        tableName: "messages",
+      });
       expect(memories).toHaveLength(2);
       expect(memories.map((memory) => memory.content.text)).toEqual(
         expect.arrayContaining(["message one", "message two"])
       );
+
+      // countMemories keeps its documented legacy default: an omitted
+      // tableName counts the messages table only (the "facts" row is excluded).
+      const count = await adapter.countMemories(testRoomId, false);
       expect(count).toBe(2);
     });
 
