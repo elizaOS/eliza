@@ -7,6 +7,7 @@
 export * from "./ad-accounts";
 export * from "./ad-campaigns";
 export * from "./ad-creatives";
+export * from "./ad-slots";
 export * from "./ad-transactions";
 export * from "./admin-users";
 export * from "./affiliates";
