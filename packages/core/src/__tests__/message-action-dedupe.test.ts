@@ -56,7 +56,7 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		// A fire-and-forget sub-action (e.g. TASKS_SPAWN_AGENT) returns
 		// continueChain:false. Without propagating it through the umbrella
 		// result, the parent planner loop evaluates CONTINUE and re-runs the
-		// umbrella — producing duplicate spawns on a single user turn.
+		// umbrella, producing duplicate spawns on a single user turn.
 		const result = subPlannerResultToPlannerToolResult(
 			subResult(
 				{ success: true, text: "On it.", continueChain: false },
@@ -81,8 +81,8 @@ describe("subPlannerResultToPlannerToolResult", () => {
 	});
 
 	// Regression for elizaOS/eliza#8007: a multi-step sub-planner collapse must
-	// surface EVERY executed sub-step to the parent loop — not only the terminal
-	// one — so the outer planner can see which ops already succeeded and advance
+	// surface EVERY executed sub-step to the parent loop, not only the terminal
+	// one, so the outer planner can see which ops already succeeded and advance
 	// instead of re-running the umbrella action from the first step.
 	it("aggregates all sub-steps into the diagnostic text and data", () => {
 		const multiStep = {
@@ -116,8 +116,8 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		expect(result.text).toContain("provision_workspace");
 		expect(result.text).toContain("spawn_agent");
 		expect(result.text).toContain("submit_workspace");
-		expect(result.text).toContain("✓");
-		expect(result.text).toContain("✗");
+		expect(result.text).toContain("OK");
+		expect(result.text).toContain("FAIL");
 
 		// The user-facing text stays the synthesized final message.
 		expect(result.userFacingText).toBe("Opened a PR for hello-world.");

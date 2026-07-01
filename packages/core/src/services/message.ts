@@ -5115,7 +5115,7 @@ const SUB_STEP_SUMMARY_MAX_CHARS = 400;
 function truncateSubStepText(text: string): string {
 	const trimmed = text.trim();
 	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}…`;
+	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
 }
 
 function collectSubPlannerSubSteps(
@@ -5149,19 +5149,20 @@ function collectSubPlannerSubSteps(
 
 /**
  * Diagnostic, log-shaped projection of the full sub-planner trajectory. Renders
- * every executed sub-step as `✓/✗ <action> — <summary/error>` so the parent
+ * every executed sub-step as `OK/FAIL <action>: <summary/error>` so the parent
  * planner's tool-result message carries the progression (e.g.
- * `provision_workspace ✓, spawn_agent ✓, submit_workspace ✗`) instead of only
- * the terminal step. Without this the outer LLM cannot tell that step 1 already
- * succeeded and re-dispatches the umbrella action on every CONTINUE turn.
+ * `OK provision_workspace, OK spawn_agent, FAIL submit_workspace`) instead of
+ * only the terminal step. Without this the outer LLM cannot tell that step 1
+ * already succeeded and re-dispatches the umbrella action on every CONTINUE
+ * turn.
  */
 function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
 	return subSteps
 		.map((step) => {
-			const marker = step.success ? "✓" : "✗";
+			const marker = step.success ? "OK" : "FAIL";
 			const detail = step.error ?? step.summary;
 			return detail
-				? `${marker} ${step.action} — ${detail}`
+				? `${marker} ${step.action}: ${detail}`
 				: `${marker} ${step.action}`;
 		})
 		.join("\n");
@@ -5176,7 +5177,7 @@ export function subPlannerResultToPlannerToolResult(
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
 
-	// Aggregate EVERY executed sub-step — not just the terminal one — so the
+	// Aggregate every executed sub-step, not just the terminal one, so the
 	// parent planner's next turn can see which operations already succeeded and
 	// advance to the next op instead of re-running the umbrella action from the
 	// first step (issue elizaOS/eliza#8007). The per-step progression flows to
@@ -5188,6 +5189,19 @@ export function subPlannerResultToPlannerToolResult(
 	const completedSubActions = subSteps
 		.filter((step) => step.success)
 		.map((step) => step.action);
+	const terminalData = lastStep?.result?.data;
+	const data =
+		terminalData || subSteps.length > 0
+			? {
+					...(terminalData ?? {}),
+					...(subSteps.length > 0
+						? {
+								subSteps,
+								completedSubActions,
+							}
+						: {}),
+				}
+			: undefined;
 
 	return {
 		success,
@@ -5196,21 +5210,13 @@ export function subPlannerResultToPlannerToolResult(
 		// sub-planner executed no discrete steps.
 		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
 		userFacingText,
-		data: {
-			...(lastStep?.result?.data ?? {}),
-			...(subSteps.length > 0
-				? {
-						subSteps,
-						completedSubActions,
-					}
-				: {}),
-		},
+		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
 		// loop. A sub-action that returns `continueChain: false` (e.g.
-		// TASKS_SPAWN_AGENT — fire-and-forget) terminates the sub-planner,
+		// TASKS_SPAWN_AGENT, fire-and-forget) terminates the sub-planner,
 		// but without this the parent planner loop never sees the flag,
-		// evaluates CONTINUE, and re-runs the umbrella action — producing
+		// evaluates CONTINUE, and re-runs the umbrella action, producing
 		// duplicate spawns on a single user turn.
 		continueChain: lastStep?.result?.continueChain,
 	};

@@ -7,9 +7,9 @@ import { runPlannerLoop } from "../planner-loop";
  *  successful tool call."
  *
  * The reported repro was a multi-step orchestrator turn (TASKS
- * provision_workspace → spawn_agent → submit_workspace) where the planner kept
- * re-dispatching the first op (`provision_workspace`) on every CONTINUE turn —
- * 8 successive `ACTION_STARTED actionName=TASKS op=provision_workspace` events —
+ * provision_workspace -> spawn_agent -> submit_workspace) where the planner kept
+ * re-dispatching the first op (`provision_workspace`) on every CONTINUE turn,
+ * 8 successive `ACTION_STARTED actionName=TASKS op=provision_workspace` events,
  * until the trajectory limit fired and Discord showed the 120s timeout.
  *
  * Two framework mechanisms now bound and unblock this loop; these tests pin
@@ -19,11 +19,11 @@ import { runPlannerLoop } from "../planner-loop";
  *     messages (via `trajectoryStepsToMessages`), so a capable model can see
  *     "provision already succeeded, now spawn" and advance.
  *  2. When a weak model instead re-issues the IDENTICAL successful call, the
- *     redundant-success loop-breaker executes it once, skips the repeats, and —
- *     past `maxRepeatedToolCalls` — forces one terminal synthesis instead of
+ *     redundant-success loop-breaker executes it once, skips the repeats, and
+ *     past `maxRepeatedToolCalls` forces one terminal synthesis instead of
  *     running the turn to the trajectory/token limit.
  */
-describe("v5 planner #8007 — multi-step orchestrator advance", () => {
+describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 	const REPO = "acme/hello-world";
 
 	it("advances through distinct sub-ops instead of restarting from the first", async () => {
@@ -95,7 +95,7 @@ describe("v5 planner #8007 — multi-step orchestrator advance", () => {
 			evaluate,
 		});
 
-		// The planner advanced through all three distinct ops in order — it did
+		// The planner advanced through all three distinct ops in order; it did
 		// NOT re-dispatch provision_workspace on the second CONTINUE turn.
 		expect(executed).toEqual([
 			"provision_workspace",
@@ -106,7 +106,7 @@ describe("v5 planner #8007 — multi-step orchestrator advance", () => {
 		expect(result.finalMessage).toContain("PR opened");
 
 		// The prior successful step must be visible to the model on the next
-		// planner turn — this is the exact signal #8007 said was missing ("the
+		// planner turn; this is the exact signal #8007 said was missing ("the
 		// LLM does not see 'you already provisioned a workspace, now spawn'").
 		const secondTurnMessages = JSON.stringify(seenMessages[1] ?? []);
 		expect(secondTurnMessages).toContain("provision_workspace completed");
@@ -116,7 +116,7 @@ describe("v5 planner #8007 — multi-step orchestrator advance", () => {
 		// Exact #8007 repro: the planner keeps emitting the same
 		// TASKS provision_workspace call every CONTINUE turn. The redundant
 		// loop-breaker runs it once, skips the repeats, and forces a terminal
-		// synthesis — no TrajectoryLimitExceeded, no 120s Discord timeout.
+		// synthesis: no TrajectoryLimitExceeded, no 120s Discord timeout.
 		const provision = {
 			id: "p1",
 			name: "TASKS",
