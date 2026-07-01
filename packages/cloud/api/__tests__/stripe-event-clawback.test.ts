@@ -6,7 +6,12 @@ const getTransactionByStripePaymentIntent = mock(async () => ({
   amount: "100",
 }));
 const getClawedBackUsdForPaymentIntent = mock(async () => 0);
-const clawbackCredits = mock(async () => ({ newBalance: 25 }));
+const clawbackCredits = mock(async () => ({
+  newBalance: 25,
+  appliedAmount: 20,
+  shortfallAmount: 0,
+  alreadyProcessed: false,
+}));
 
 mock.module("@/db/helpers", () => ({
   dbRead: {},
@@ -68,7 +73,12 @@ describe("stripe queue credit clawbacks", () => {
     getClawedBackUsdForPaymentIntent.mockClear();
     getClawedBackUsdForPaymentIntent.mockResolvedValue(0);
     clawbackCredits.mockClear();
-    clawbackCredits.mockResolvedValue({ newBalance: 25 });
+    clawbackCredits.mockResolvedValue({
+      newBalance: 25,
+      appliedAmount: 20,
+      shortfallAmount: 0,
+      alreadyProcessed: false,
+    });
   });
 
   test("charge.refunded claws back only the new cumulative refund delta", async () => {

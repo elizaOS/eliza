@@ -74,7 +74,7 @@ beforeAll(async () => {
         id uuid PRIMARY KEY,
         name text NOT NULL DEFAULT 'test-org',
         slug text NOT NULL DEFAULT 'test-org',
-        credit_balance numeric(20,6) NOT NULL DEFAULT '0',
+        credit_balance numeric(20,6) NOT NULL DEFAULT '0' CHECK (credit_balance >= 0),
         settings jsonb DEFAULT '{}',
         stripe_customer_id text,
         billing_email text,
@@ -498,17 +498,15 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
 });
 
 /**
- * #10920: a Stripe refund / chargeback must claw back the credits the top-up
- * granted — even below zero, since the org may already have spent them —
- * idempotently, so a re-delivered webhook or a growing cumulative partial-refund
- * total never double-charges.
+ * #10920: a Stripe refund / chargeback must claw back credits the top-up
+ * granted, while respecting the live credit_balance >= 0 check constraint.
  */
 describe("CreditsService.clawbackCredits (#10920)", () => {
   test(
-    "decrements the balance BELOW zero and records a negative clawback tx",
+    "floors the balance at zero and records unrecovered shortfall metadata",
     async () => {
       if (!pgliteReady) return;
-      await seedOrg("50"); // org spent a $1000 top-up down to $50
+      await seedOrg("50"); // org spent a $100 top-up down to $50
       const r = await creditsService.clawbackCredits({
         organizationId: ORG_ID,
         amount: 100,
@@ -516,9 +514,23 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         stripePaymentIntentId: "stripe:refund:ch_1:10000",
         metadata: { payment_intent_id: "pi_1" },
       });
-      expect(await getBalance()).toBeCloseTo(-50, 6);
-      expect(r.newBalance).toBeCloseTo(-50, 6);
+
+      expect(await getBalance()).toBeCloseTo(0, 6);
+      expect(r.newBalance).toBeCloseTo(0, 6);
+      expect(r.appliedAmount).toBeCloseTo(50, 6);
+      expect(r.shortfallAmount).toBeCloseTo(50, 6);
+      expect(r.alreadyProcessed).toBe(false);
       expect(await countByType("clawback")).toBe(1);
+
+      const clawbackRow = await dbWrite.execute(
+        `SELECT amount, metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'clawback';`,
+      );
+      const row = clawbackRow.rows[0] as {
+        amount: string;
+        metadata: Record<string, unknown>;
+      };
+      expect(Number(row.amount)).toBeCloseTo(-50, 6);
+      expect(Number(row.metadata.unrecovered_clawback_usd)).toBeCloseTo(50, 6);
     },
     PGLITE_TIMEOUT,
   );
@@ -529,23 +541,32 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
       if (!pgliteReady) return;
       await seedOrg("100");
       const key = "stripe:refund:ch_2:5000";
-      for (let i = 0; i < 2; i++) {
-        await creditsService.clawbackCredits({
-          organizationId: ORG_ID,
-          amount: 50,
-          description: "refund clawback",
-          stripePaymentIntentId: key,
-          metadata: { payment_intent_id: "pi_2" },
-        });
-      }
+
+      const first = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 50,
+        description: "refund clawback",
+        stripePaymentIntentId: key,
+        metadata: { payment_intent_id: "pi_2" },
+      });
+      const second = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 50,
+        description: "refund clawback",
+        stripePaymentIntentId: key,
+        metadata: { payment_intent_id: "pi_2" },
+      });
+
       expect(await getBalance()).toBeCloseTo(50, 6); // clawed once, not twice
       expect(await countByType("clawback")).toBe(1);
+      expect(second.transaction.id).toBe(first.transaction.id);
+      expect(second.alreadyProcessed).toBe(true);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "getClawedBackUsdForPaymentIntent sums prior clawbacks (for partial-refund deltas)",
+    "getClawedBackUsdForPaymentIntent sums prior applied clawbacks (for partial-refund deltas)",
     async () => {
       if (!pgliteReady) return;
       await seedOrg("100");
@@ -563,6 +584,7 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
         stripePaymentIntentId: "stripe:refund:ch_3:5000",
         metadata: { payment_intent_id: "pi_3" },
       });
+
       expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_3")).toBeCloseTo(50, 6);
       expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_none")).toBe(0);
       // Balance clawed the full $50 across the two partials.

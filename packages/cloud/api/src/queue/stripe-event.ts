@@ -849,9 +849,11 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
 /**
  * Claw back org credits for the portion of a top-up charge that Stripe reversed.
  * Balance top-ups grant credits 1:1 with USD, so `usdReversed` credits are
- * removed — allowing the balance to go negative, since the org may already have
- * spent them. Only the DELTA past what was already clawed for this payment intent
- * is removed, so multiple partial refunds and re-delivered webhooks are safe.
+ * removed up to the org's current balance. Any unrecovered portion is recorded
+ * on the clawback transaction metadata because the organizations table has a
+ * nonnegative balance constraint. Only the DELTA past what was already clawed
+ * for this payment intent is removed, so multiple partial refunds and
+ * re-delivered webhooks are safe.
  */
 async function clawbackForReversal(params: {
   paymentIntentId: string | undefined;
@@ -896,8 +898,20 @@ async function clawbackForReversal(params: {
       reference,
     },
   });
+
+  if (result.alreadyProcessed) {
+    logger.info(
+      `[Stripe Queue] ${source} ${reference}: clawback key ${idempotencyKey} already processed`,
+    );
+    return;
+  }
+
   logger.warn(
-    `[Stripe Queue] Clawed back $${delta.toFixed(2)} from org ${grant.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
+    `[Stripe Queue] Clawed back $${result.appliedAmount.toFixed(2)} from org ${grant.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
+    {
+      requestedUsd: delta,
+      unrecoveredUsd: result.shortfallAmount,
+    },
   );
 }
 
