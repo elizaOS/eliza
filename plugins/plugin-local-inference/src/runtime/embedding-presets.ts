@@ -1,6 +1,13 @@
 import os from "node:os";
+import { detectGpu } from "../services/gpu-detect.js";
 
 export type EmbeddingTier = "fallback" | "standard" | "performance";
+export type EmbeddingAcceleratorBackend = "cuda" | "metal" | "vulkan";
+
+export interface EmbeddingHardwareProfile {
+	totalRamGB: number;
+	gpuBackend?: EmbeddingAcceleratorBackend | null;
+}
 
 export interface EmbeddingPreset {
 	tier: EmbeddingTier;
@@ -29,8 +36,7 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 	fallback: {
 		tier: "fallback",
 		label: "Efficient (CPU)",
-		description:
-			"gte-small local embeddings for Intel Macs and low-RAM machines",
+		description: "gte-small local embeddings for CPU-only and low-RAM machines",
 		model: GTE_SMALL_EMBEDDING.model,
 		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
 		dimensions: GTE_SMALL_EMBEDDING.dimensions,
@@ -40,8 +46,8 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 	},
 	standard: {
 		tier: "standard",
-		label: "Efficient (Metal GPU)",
-		description: "gte-small local embeddings with Metal acceleration",
+		label: "Efficient (GPU)",
+		description: "gte-small local embeddings with GPU acceleration",
 		model: GTE_SMALL_EMBEDDING.model,
 		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
 		dimensions: GTE_SMALL_EMBEDDING.dimensions,
@@ -65,15 +71,36 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 };
 
 const BYTES_PER_GB = 1024 ** 3;
+const LOW_RAM_FALLBACK_GB = 8;
+const PERFORMANCE_RAM_GB = 128;
+
+export function detectEmbeddingTierForHardware(
+	hardware: EmbeddingHardwareProfile,
+): EmbeddingTier {
+	if (hardware.totalRamGB <= LOW_RAM_FALLBACK_GB) return "fallback";
+	if (!hardware.gpuBackend) return "fallback";
+	if (hardware.totalRamGB >= PERFORMANCE_RAM_GB) return "performance";
+	return "standard";
+}
+
+export function detectEmbeddingPresetForHardware(
+	hardware: EmbeddingHardwareProfile,
+): EmbeddingPreset {
+	return EMBEDDING_PRESETS[detectEmbeddingTierForHardware(hardware)];
+}
+
+function detectLocalEmbeddingGpuBackend(): EmbeddingAcceleratorBackend | null {
+	if (process.platform === "darwin") return "metal";
+	const gpu = detectGpu();
+	return gpu.nvidiaPresent && gpu.gpu ? "cuda" : null;
+}
 
 export function detectEmbeddingTier(): EmbeddingTier {
 	const totalRamGB = Math.round(os.totalmem() / BYTES_PER_GB);
-	const isMac = process.platform === "darwin";
-	const isAppleSilicon = isMac && process.arch === "arm64";
-
-	if (!isAppleSilicon || totalRamGB <= 8) return "fallback";
-	if (totalRamGB >= 128) return "performance";
-	return "standard";
+	return detectEmbeddingTierForHardware({
+		totalRamGB,
+		gpuBackend: detectLocalEmbeddingGpuBackend(),
+	});
 }
 
 export function detectEmbeddingPreset(): EmbeddingPreset {

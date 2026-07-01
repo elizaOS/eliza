@@ -55,8 +55,12 @@ export {
 // Embedding preset detection exported for runtime boot wiring.
 export {
 	detectEmbeddingPreset,
+	detectEmbeddingPresetForHardware,
 	detectEmbeddingTier,
+	detectEmbeddingTierForHardware,
 	EMBEDDING_PRESETS,
+	type EmbeddingAcceleratorBackend,
+	type EmbeddingHardwareProfile,
 	type EmbeddingPreset,
 	type EmbeddingTier,
 } from "./runtime/embedding-presets.js";
