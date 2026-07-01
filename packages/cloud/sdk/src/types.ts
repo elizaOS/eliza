@@ -1131,7 +1131,8 @@ export interface AppDomainDto {
   registrar: "external" | "cloudflare";
   status: "pending" | "active" | "expired" | "suspended" | "transferring";
   verified: boolean;
-  sslStatus: "pending" | "provisioning" | "active" | "error";
+  /** Nullable: the ssl_status column has a default but no NOT NULL constraint. */
+  sslStatus: "pending" | "provisioning" | "active" | "error" | null;
   expiresAt: string | null;
   cloudflareZoneId: string | null;
   /**

@@ -466,10 +466,35 @@ export function memoryRuntime(
 ): MemoryRuntime {
   const facts: Memory[] = [];
   let counter = 0;
+  const tasks: Task[] = [];
+  let taskCounter = 0;
   const runtime = {
-    agentId: "agent-0000-0000-0000-000000000000",
+    agentId: TEST_AGENT_ID,
     __facts: facts,
     getSetting: (key: string) => settings[key] as unknown,
+    // Same in-memory task store as makeRuntime, so actions that combine the
+    // two-phase confirm machine WITH facts writes run for real here too.
+    getTasks: (params: { agentIds: string[]; tags?: string[] }) =>
+      Promise.resolve(
+        tasks.filter((task) => {
+          const agentMatches = params.agentIds.includes(task.agentId);
+          const tagMatches =
+            !params.tags ||
+            params.tags.every((tag) => task.tags?.includes(tag));
+          return agentMatches && tagMatches;
+        }),
+      ),
+    createTask: (task: Task) => {
+      const id =
+        `task-0000-0000-0000-${String(++taskCounter).padStart(12, "0")}` as UUID;
+      tasks.push({ ...task, id, agentId: task.agentId ?? TEST_AGENT_ID });
+      return Promise.resolve(id);
+    },
+    deleteTask: (id: UUID) => {
+      const idx = tasks.findIndex((task) => task.id === id);
+      if (idx >= 0) tasks.splice(idx, 1);
+      return Promise.resolve();
+    },
     getMemories: (params: { tableName: string }) =>
       Promise.resolve(params.tableName === "facts" ? [...facts] : []),
     createMemory: (memory: Memory, tableName: string) => {

@@ -9,21 +9,35 @@
  *      charge, and renewal price. Money moves only when a later turn carries
  *      structured `confirm: true` for that pending prompt, and the purchase
  *      uses the app + domain FROZEN at quote time (never re-parsed prose).
- *   2. Quotes expire: a pending purchase older than {@link CONFIRM_TTL_MS} is
- *      discarded and re-quoted instead of charging a stale price.
- *   3. The server is the real gate: `POST /apps/:id/domains/buy` debits fail-
+ *   2. The confirmed PRICE is enforced, not just quoted: the confirm turn
+ *      re-checks availability and refuses to buy when the current price no
+ *      longer matches the confirmed cents — it re-quotes instead, so the org
+ *      is never debited an amount the user did not confirm. Quotes also
+ *      expire ({@link CONFIRM_TTL_MS}) and are re-quoted rather than charged.
+ *   3. Interrupted purchases are never lost or lied about. The server's 502
+ *      `persist_failed_recoverable` means charged + registered but not
+ *      attached; a retried buy finishes it FREE. That state is persisted as a
+ *      durable fact (domain-facts.ts), so canceling the staged recovery, an
+ *      expired session, or a later fresh "buy X" all still route to the free
+ *      recovery — and every reply about it states that the charge stands.
+ *      Recovery confirmations carry no new charge, so they never expire; if
+ *      the domain turns out to be freshly AVAILABLE at recovery time, the
+ *      handler re-quotes at the current price instead of silently buying.
+ *   4. The server is the real gate: `POST /apps/:id/domains/buy` debits fail-
  *      closed (402 before any registration), is idempotent per org+domain (a
- *      retry replays the earlier success instead of re-charging), refunds
- *      exactly once if the registrar fails after the debit, and recovers a
- *      charged-but-unattached purchase WITHOUT a new charge. This handler maps
- *      each of those outcomes to an honest reply — it never says "bought" on a
- *      failure and never says "you were charged twice" paths exist.
+ *      retry replays the earlier success instead of re-charging), and refunds
+ *      exactly once if the registrar fails after the debit. This handler maps
+ *      each outcome to an honest reply — it never says "bought" on a failure
+ *      and never says "not charged" when money may have moved.
  *
  * The CTA ({@link buildConnectorCta}) carries ONLY a label + https URL —
  * money/credentials never transit the connector.
  */
 
-import type { BuyAppDomainResponse } from "@elizaos/cloud-sdk";
+import type {
+  BuyAppDomainResponse,
+  CheckAppDomainResponse,
+} from "@elizaos/cloud-sdk";
 import type {
   Action,
   ActionResult,
@@ -38,6 +52,11 @@ import {
   resolveCloudApiKey,
   resolveCloudSiteBaseUrl,
 } from "../client.js";
+import {
+  hasInterruptedDomainPurchase,
+  recordInterruptedDomainPurchase,
+  removeInterruptedDomainPurchase,
+} from "../domain-facts.js";
 import {
   cloudErrorInfo,
   extractDomainReferences,
@@ -79,6 +98,9 @@ function pendingExpired(
   pending: PendingCloudAppConfirmation,
   now: number = Date.now(),
 ): boolean {
+  // A recovery retry completes with no new charge — there is no stale PRICE
+  // to protect, and expiring it would strand a paid, unattached domain.
+  if (pending.metadata.recovery === true) return false;
   const at =
     typeof pending.metadata.intentCreatedAt === "string"
       ? Date.parse(pending.metadata.intentCreatedAt)
@@ -126,6 +148,105 @@ async function executeBuy(
     }
     return { err };
   }
+}
+
+/** Stage a purchase confirmation and return the prompt reply. */
+async function stagePurchaseConfirmation(
+  runtime: IAgentRuntime,
+  callback: HandlerCallback | undefined,
+  args: {
+    roomId: string;
+    app: { id: string; name: string; slug?: string };
+    domain: string;
+    priceUsdCents: number;
+    renewalUsdCents: number;
+    cta: ConnectorCta;
+    /** Extra sentence prepended to the standard prompt (e.g. "price changed"). */
+    preamble?: string;
+    defaultedApp?: boolean;
+  },
+): Promise<ActionResult> {
+  const { roomId, app, domain, priceUsdCents, renewalUsdCents, cta } = args;
+  await persistCloudAppConfirmation(runtime, {
+    roomId,
+    action: "BUY_APP_DOMAIN",
+    appId: app.id,
+    appName: app.name,
+    appSlug: app.slug,
+    amount: priceUsdCents / 100,
+    amountUsdCents: priceUsdCents,
+    domain,
+    cta,
+  });
+  const prompt =
+    `${args.preamble ? `${args.preamble} ` : ""}` +
+    `Buying ${domain} for "${app.name}" (${app.id}) will charge ${usdFromCents(priceUsdCents)} ` +
+    `from your Eliza Cloud credit balance now, and it auto-renews at ${usdFromCents(renewalUsdCents)}/yr ` +
+    `(manage or cancel on the dashboard). To go ahead, reply that you confirm buying ${domain}. ` +
+    `Or use the dashboard: ${cta.url}`;
+  await callback?.({ text: prompt, actions: ["BUY_APP_DOMAIN"] });
+  return {
+    success: true,
+    text: `Awaiting structured confirmation to buy ${domain} for ${app.name} at ${usdFromCents(priceUsdCents)}.`,
+    userFacingText: prompt,
+    verifiedUserFacing: true,
+    data: {
+      app: { id: app.id, name: app.name, slug: app.slug },
+      domain,
+      amount: priceUsdCents / 100,
+      renewalUsdCents,
+      purchased: false,
+      confirmationRequired: true,
+      ...(args.defaultedApp !== undefined
+        ? { defaultedApp: args.defaultedApp }
+        : {}),
+      cta,
+    },
+  };
+}
+
+/** Stage a no-charge recovery confirmation and return the prompt reply. */
+async function stageRecoveryConfirmation(
+  runtime: IAgentRuntime,
+  callback: HandlerCallback | undefined,
+  args: {
+    roomId: string;
+    app: { id: string; name: string; slug?: string };
+    domain: string;
+    cta: ConnectorCta;
+    reason: string;
+  },
+): Promise<ActionResult> {
+  const { roomId, app, domain, cta } = args;
+  await persistCloudAppConfirmation(runtime, {
+    roomId,
+    action: "BUY_APP_DOMAIN",
+    appId: app.id,
+    appName: app.name,
+    appSlug: app.slug,
+    domain,
+    recovery: true,
+    cta,
+  });
+  const msg =
+    `${domain} was charged and registered to you, but the final attach to "${app.name}" didn't complete. ` +
+    `Reply that you confirm and I'll finish the setup — you will NOT be charged again.`;
+  await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
+  return {
+    success: false,
+    text: `Purchase of ${domain} registered but not attached; staged a no-charge recovery retry.`,
+    userFacingText: msg,
+    verifiedUserFacing: true,
+    data: {
+      reason: args.reason,
+      purchased: true,
+      attached: false,
+      confirmationRequired: true,
+      recovery: true,
+      domain,
+      cta,
+    },
+  };
 }
 
 export const buyAppDomainAction: Action = {
@@ -211,7 +332,40 @@ export const buyAppDomainAction: Action = {
       }
 
       await deleteCloudAppConfirmation(runtime, pending.taskId);
+      const isRecovery = pending.metadata.recovery === true;
+      const target = {
+        id: pending.metadata.appId,
+        name: pending.metadata.appName,
+        slug: pending.metadata.appSlug,
+      };
+      const domain = pending.metadata.domain;
+      const cta = pending.metadata.cta ?? domainsCta(runtime, target);
+
       if (confirmation === false) {
+        if (isRecovery) {
+          // The purchase already happened — canceling only skips the attach.
+          // Never claim "no domain was purchased"; the debit stands and the
+          // domain is registered to the org.
+          const msg =
+            `Okay — I won't finish the setup now. Keep in mind ${domain} was already charged and registered to you; ` +
+            `only the attach to "${target.name}" is missing. Say "buy ${domain}" again anytime and I'll complete it ` +
+            `without a new charge, or finish on the dashboard: ${cta.url}`;
+          await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
+          return {
+            success: true,
+            text: `Recovery of ${domain} canceled; the earlier charge and registration stand.`,
+            userFacingText: msg,
+            verifiedUserFacing: true,
+            data: {
+              reason: "recovery_canceled",
+              purchased: true,
+              attached: false,
+              canceled: true,
+              domain,
+              cta,
+            },
+          };
+        }
         await callback?.({
           text: CANCELED_MESSAGE,
           actions: ["BUY_APP_DOMAIN"],
@@ -224,12 +378,6 @@ export const buyAppDomainAction: Action = {
           data: { purchased: false, canceled: true },
         };
       }
-
-      const target = {
-        id: pending.metadata.appId,
-        name: pending.metadata.appName,
-      };
-      const domain = pending.metadata.domain;
 
       if (pendingExpired(pending)) {
         const msg =
@@ -245,7 +393,127 @@ export const buyAppDomainAction: Action = {
         };
       }
 
-      const cta = pending.metadata.cta ?? domainsCta(runtime, target);
+      // Re-verify availability + price at purchase time. The server debits
+      // the CURRENT price, so buying without this check could charge an
+      // amount the user never confirmed.
+      let recheck: CheckAppDomainResponse;
+      try {
+        recheck = await client.checkAppDomain(target.id, { domain });
+      } catch (err) {
+        logger.warn(
+          `[BUY_APP_DOMAIN] confirm-time checkAppDomain(${target.id}, ${domain}) failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        const msg = `I couldn't re-verify ${domain} with Eliza Cloud just now, so I didn't buy anything. Ask me to buy ${domain} again in a moment.`;
+        await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
+        return {
+          success: false,
+          text: `Confirm-time re-check failed for ${domain}; refused to buy blind.`,
+          userFacingText: msg,
+          error: err instanceof Error ? err : new Error(String(err)),
+          data: { reason: "precheck_failed", purchased: false, domain },
+        };
+      }
+
+      let proceedToBuy = false;
+      if (isRecovery) {
+        if (recheck.available) {
+          // The domain is genuinely registrable now — that would be a NEW
+          // charge at the current price, which the user has not confirmed.
+          const priceUsdCents = recheck.price?.totalUsdCents;
+          if (typeof priceUsdCents !== "number" || priceUsdCents <= 0) {
+            await callback?.({
+              text: ERROR_MESSAGE,
+              actions: ["BUY_APP_DOMAIN"],
+            });
+            return {
+              success: false,
+              text: `Recovery re-check for ${domain} returned available with no price; refusing to buy.`,
+              userFacingText: ERROR_MESSAGE,
+              data: { reason: "no_price", purchased: false, domain },
+            };
+          }
+          return stagePurchaseConfirmation(runtime, callback, {
+            roomId,
+            app: target,
+            domain,
+            priceUsdCents,
+            renewalUsdCents: recheck.renewal?.totalUsdCents ?? priceUsdCents,
+            cta,
+            preamble: `${domain} is showing as openly available to register now, so finishing it would be a NEW purchase rather than a free recovery.`,
+          });
+        }
+        proceedToBuy = true; // still unavailable → the free recovery path
+      } else if (!recheck.available) {
+        if (
+          await hasInterruptedDomainPurchase(
+            runtime,
+            message,
+            target.id,
+            domain,
+          )
+        ) {
+          proceedToBuy = true; // our own charged+registered orphan — buy recovers it free
+        } else {
+          const msg = `${domain} is no longer available to register — it may have just been taken. You were NOT charged.`;
+          await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
+          return {
+            success: false,
+            text: `${domain} became unavailable between quote and confirm; no purchase.`,
+            userFacingText: msg,
+            verifiedUserFacing: true,
+            data: { reason: "unavailable", purchased: false, domain },
+          };
+        }
+      } else {
+        const priceUsdCents = recheck.price?.totalUsdCents;
+        const confirmedUsdCents = pending.metadata.amountUsdCents;
+        if (typeof priceUsdCents !== "number" || priceUsdCents <= 0) {
+          await callback?.({
+            text: ERROR_MESSAGE,
+            actions: ["BUY_APP_DOMAIN"],
+          });
+          return {
+            success: false,
+            text: `Confirm-time re-check for ${domain} returned no price; refusing to buy.`,
+            userFacingText: ERROR_MESSAGE,
+            data: { reason: "no_price", purchased: false, domain },
+          };
+        }
+        if (
+          typeof confirmedUsdCents !== "number" ||
+          priceUsdCents !== confirmedUsdCents
+        ) {
+          // Price moved (or the confirmed amount is missing) — never charge a
+          // figure the user did not see. Re-quote at the current price.
+          return stagePurchaseConfirmation(runtime, callback, {
+            roomId,
+            app: target,
+            domain,
+            priceUsdCents,
+            renewalUsdCents: recheck.renewal?.totalUsdCents ?? priceUsdCents,
+            cta,
+            preamble:
+              typeof confirmedUsdCents === "number"
+                ? `The price of ${domain} changed from ${usdFromCents(confirmedUsdCents)} to ${usdFromCents(priceUsdCents)} since I quoted you, so I didn't charge anything.`
+                : `I couldn't verify the price you confirmed for ${domain}, so I didn't charge anything.`,
+          });
+        }
+        proceedToBuy = true;
+      }
+
+      if (!proceedToBuy) {
+        // Unreachable by construction — every branch above returns or sets it.
+        await callback?.({ text: ERROR_MESSAGE, actions: ["BUY_APP_DOMAIN"] });
+        return {
+          success: false,
+          text: "Internal confirm-turn state error; no purchase attempted.",
+          userFacingText: ERROR_MESSAGE,
+          data: { reason: "error", purchased: false, domain },
+        };
+      }
+
       const outcome = await executeBuy(() =>
         client.buyAppDomain(target.id, { domain }),
       );
@@ -301,37 +569,22 @@ export const buyAppDomainAction: Action = {
         }
 
         if (info.status === 502 && info.code === "persist_failed_recoverable") {
-          // Charged + registered, but the attach didn't complete. The server
-          // finishes it on a retried buy WITHOUT a new charge — stage a fresh
-          // confirmation so one more confirm completes the setup.
-          await persistCloudAppConfirmation(runtime, {
-            roomId,
-            action: "BUY_APP_DOMAIN",
-            appId: target.id,
-            appName: target.name,
-            appSlug: pending.metadata.appSlug,
+          // Charged + registered, but the attach didn't complete. Persist the
+          // durable marker FIRST (it is what keeps the free recovery reachable
+          // after cancels/restarts), then stage the recovery confirmation.
+          await recordInterruptedDomainPurchase(
+            runtime,
+            message,
+            { id: target.id, name: target.name },
             domain,
-            recovery: true,
+          );
+          return stageRecoveryConfirmation(runtime, callback, {
+            roomId,
+            app: target,
+            domain,
             cta,
+            reason: "persist_failed_recoverable",
           });
-          const msg =
-            `${domain} was charged and registered to you, but the final attach to "${target.name}" didn't complete. ` +
-            `Reply that you confirm and I'll finish the setup — you will NOT be charged again.`;
-          await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
-          return {
-            success: false,
-            text: `Purchase of ${domain} registered but not attached; staged a no-charge recovery retry.`,
-            userFacingText: msg,
-            verifiedUserFacing: true,
-            data: {
-              reason: "persist_failed_recoverable",
-              purchased: true,
-              attached: false,
-              confirmationRequired: true,
-              domain,
-              cta,
-            },
-          };
         }
 
         if (info.status === 502) {
@@ -374,8 +627,15 @@ export const buyAppDomainAction: Action = {
         };
       }
 
-      // The app row (custom domain / URL) just changed server-side.
+      // The app row (custom domain / URL) just changed server-side, and any
+      // interrupted-purchase marker for this domain is now resolved.
       invalidateAppsCache(runtime);
+      await removeInterruptedDomainPurchase(
+        runtime,
+        message,
+        target.id,
+        domain,
+      );
 
       const zoneNote = res.pendingZoneProvisioning
         ? " DNS is still being set up — it can take a few minutes to go live."
@@ -410,9 +670,16 @@ export const buyAppDomainAction: Action = {
     }
 
     if (pending && !pendingExpired(pending)) {
-      const msg =
-        `The purchase of ${pending.metadata.domain ?? "that domain"} for "${pending.metadata.appName}" is still waiting for confirmation. ` +
-        `Reply with a clear confirmation or cancellation.`;
+      const requested = extractDomainReferences(message, options);
+      const otherDomain =
+        requested.length === 1 && requested[0] !== pending.metadata.domain
+          ? requested[0]
+          : null;
+      const msg = otherDomain
+        ? `I'm still waiting on the pending purchase of ${pending.metadata.domain ?? "a domain"} for "${pending.metadata.appName}". ` +
+          `Reply with a clear confirmation or cancellation first — then I can look at ${otherDomain}.`
+        : `The purchase of ${pending.metadata.domain ?? "that domain"} for "${pending.metadata.appName}" is still waiting for confirmation. ` +
+          `Reply with a clear confirmation or cancellation.`;
       await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
       return {
         success: true,
@@ -425,6 +692,7 @@ export const buyAppDomainAction: Action = {
             name: pending.metadata.appName,
           },
           domain: pending.metadata.domain,
+          ...(otherDomain ? { deferredDomain: otherDomain } : {}),
           purchased: false,
           confirmationRequired: true,
           cta: pending.metadata.cta,
@@ -519,7 +787,7 @@ export const buyAppDomainAction: Action = {
     const app = resolved.app;
 
     // Read-only pre-check: never stage a purchase the server would reject.
-    let check: Awaited<ReturnType<typeof client.checkAppDomain>>;
+    let check: CheckAppDomainResponse;
     try {
       check = await client.checkAppDomain(app.id, { domain });
     } catch (err) {
@@ -545,24 +813,44 @@ export const buyAppDomainAction: Action = {
         const { domains: attached } = await client.listAppDomains(app.id);
         alreadyAttached = (attached ?? []).some((d) => d.domain === domain);
       } catch {
-        // best-effort — fall through to the generic unavailable message
+        // best-effort — fall through to the other unavailable branches
       }
-      const msg = alreadyAttached
-        ? `${domain} is already attached to "${app.name}" — nothing to buy.`
-        : `${domain} isn't available to register. Want me to check some alternatives?`;
+      if (alreadyAttached) {
+        // Any interrupted-purchase marker is stale once the attach exists.
+        await removeInterruptedDomainPurchase(runtime, message, app.id, domain);
+        const msg = `${domain} is already attached to "${app.name}" — nothing to buy.`;
+        await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
+        return {
+          success: true,
+          text: `${domain} already attached to ${app.name}.`,
+          userFacingText: msg,
+          verifiedUserFacing: true,
+          data: { reason: "already_attached", purchased: false, domain },
+        };
+      }
+
+      // A domain WE charged + registered but never attached also reads as
+      // "unavailable" — route it to the free recovery instead of dead-ending.
+      if (
+        await hasInterruptedDomainPurchase(runtime, message, app.id, domain)
+      ) {
+        return stageRecoveryConfirmation(runtime, callback, {
+          roomId,
+          app,
+          domain,
+          cta: domainsCta(runtime, app),
+          reason: "recovery_staged",
+        });
+      }
+
+      const msg = `${domain} isn't available to register. Want me to check some alternatives?`;
       await callback?.({ text: msg, actions: ["BUY_APP_DOMAIN"] });
       return {
-        success: alreadyAttached,
-        text: alreadyAttached
-          ? `${domain} already attached to ${app.name}.`
-          : `${domain} not available to register.`,
+        success: false,
+        text: `${domain} not available to register.`,
         userFacingText: msg,
         verifiedUserFacing: true,
-        data: {
-          reason: alreadyAttached ? "already_attached" : "unavailable",
-          purchased: false,
-          domain,
-        },
+        data: { reason: "unavailable", purchased: false, domain },
       };
     }
 
@@ -577,42 +865,16 @@ export const buyAppDomainAction: Action = {
         data: { reason: "no_price", domain },
       };
     }
-    const renewalUsdCents = check.renewal?.totalUsdCents ?? priceUsdCents;
-    const amount = priceUsdCents / 100;
 
-    const cta = domainsCta(runtime, app);
-    await persistCloudAppConfirmation(runtime, {
+    return stagePurchaseConfirmation(runtime, callback, {
       roomId,
-      action: "BUY_APP_DOMAIN",
-      appId: app.id,
-      appName: app.name,
-      appSlug: app.slug,
-      amount,
+      app,
       domain,
-      cta,
+      priceUsdCents,
+      renewalUsdCents: check.renewal?.totalUsdCents ?? priceUsdCents,
+      cta: domainsCta(runtime, app),
+      defaultedApp: resolved.defaulted === true,
     });
-    const prompt =
-      `Buying ${domain} for "${app.name}" (${app.id}) will charge ${usdFromCents(priceUsdCents)} ` +
-      `from your Eliza Cloud credit balance now, and it auto-renews at ${usdFromCents(renewalUsdCents)}/yr ` +
-      `(manage or cancel on the dashboard). To go ahead, reply that you confirm buying ${domain}. ` +
-      `Or use the dashboard: ${cta.url}`;
-    await callback?.({ text: prompt, actions: ["BUY_APP_DOMAIN"] });
-    return {
-      success: true,
-      text: `Awaiting structured confirmation to buy ${domain} for ${app.name} at ${usdFromCents(priceUsdCents)}.`,
-      userFacingText: prompt,
-      verifiedUserFacing: true,
-      data: {
-        app: { id: app.id, name: app.name, slug: app.slug },
-        domain,
-        amount,
-        renewalUsdCents,
-        purchased: false,
-        confirmationRequired: true,
-        defaultedApp: resolved.defaulted === true,
-        cta,
-      },
-    };
   },
 
   examples: [

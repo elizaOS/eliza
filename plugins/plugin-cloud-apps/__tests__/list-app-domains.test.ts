@@ -160,3 +160,47 @@ describe("LIST_APP_DOMAINS", () => {
     expect(result?.data?.reason).toBe("error");
   });
 });
+
+describe("LIST_APP_DOMAINS remaining exits", () => {
+  it("degrades gracefully with no API key", async () => {
+    const result = await listAppDomainsAction.handler?.(
+      unkeyedRuntime(),
+      makeMessage("list my domains"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.data?.reason).toBe("no_key");
+  });
+
+  it("surfaces the TXT verification VALUE for an unverified external domain", async () => {
+    setListAppDomains(() =>
+      Promise.resolve({
+        success: true,
+        domains: [
+          {
+            id: "ad_2",
+            domain: "example.org",
+            registrar: "external",
+            status: "pending",
+            verified: false,
+            sslStatus: "pending",
+            expiresAt: null,
+            cloudflareZoneId: null,
+            verificationToken: "eliza-verify-abc123",
+          },
+        ],
+      }),
+    );
+    const runtime = keyedRuntime();
+    const result = await listAppDomainsAction.handler?.(
+      runtime,
+      makeMessage("list Acme Bot domains"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result?.userFacingText).toContain("eliza-verify-abc123");
+  });
+});

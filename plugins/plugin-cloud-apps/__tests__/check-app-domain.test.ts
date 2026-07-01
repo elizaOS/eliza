@@ -175,3 +175,51 @@ describe("CHECK_APP_DOMAIN", () => {
     expect(result?.data?.reason).toBe("error");
   });
 });
+
+describe("CHECK_APP_DOMAIN remaining exits", () => {
+  it("degrades gracefully with no API key", async () => {
+    const result = await checkAppDomainAction.handler?.(
+      unkeyedRuntime(),
+      makeMessage("is example.com available?"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.data?.reason).toBe("no_key");
+  });
+
+  it("keeps partial results when one of several checks fails", async () => {
+    setCheckAppDomain((_id, input) => {
+      if (input.domain === "b-two.com") {
+        return Promise.reject(new Error("boom"));
+      }
+      return Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: true,
+        currency: "USD",
+        years: 1,
+        price: {
+          wholesaleUsdCents: 1029,
+          marginUsdCents: 370,
+          totalUsdCents: 1399,
+          marginBps: 3600,
+        },
+        renewal: { totalUsdCents: 1399 },
+      });
+    });
+    const runtime = keyedRuntime();
+    const result = await checkAppDomainAction.handler?.(
+      runtime,
+      makeMessage("check a-one.com and b-two.com"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.userFacingText).toContain("a-one.com is available");
+    expect(result?.userFacingText).toContain("Couldn't check b-two.com");
+    expect(result?.data?.failed).toEqual(["b-two.com"]);
+  });
+});

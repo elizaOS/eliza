@@ -24,8 +24,21 @@ import {
  */
 const DOMAIN_SHAPE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
 
-/** Find domain-shaped tokens inside free text ("buy example.com for my bot"). */
-const DOMAIN_TOKEN = /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}/gi;
+/**
+ * Find domain-shaped tokens inside free text ("buy example.com for my bot").
+ *
+ * The left guard rejects tokens glued to letters/digits/`._@-` so an IDN like
+ * "münchen.de" is never mangled into a bogus ASCII tail ("nchen.de") and an
+ * email's domain part is not extracted as a purchase target. Labels are a flat
+ * `[a-z0-9-]{0,62}` run (no nested optional groups → linear scan, no
+ * catastrophic backtracking on pasted dotted text); trailing-hyphen shapes the
+ * flat run admits are rejected by {@link isValidDomain} afterwards.
+ */
+const DOMAIN_TOKEN =
+  /(?<![\p{L}\p{N}._@-])(?:[a-z0-9][a-z0-9-]{0,62}\.)+[a-z]{2,24}(?![\p{L}\p{N}-])/giu;
+
+/** Bound the prose scan — nobody names a purchase target 4000 chars in. */
+const MAX_SCANNED_TEXT = 4000;
 
 /** True when `value` is a registrable-looking domain (server-schema mirror). */
 export function isValidDomain(value: string): boolean {
@@ -72,7 +85,7 @@ export function extractDomainReferences(
       return isValidDomain(domain) ? [domain] : [];
     }
   }
-  const text = message.content?.text ?? "";
+  const text = (message.content?.text ?? "").slice(0, MAX_SCANNED_TEXT);
   const seen = new Set<string>();
   for (const match of text.matchAll(DOMAIN_TOKEN)) {
     const domain = normalizeDomain(match[0]);
@@ -97,12 +110,27 @@ export interface DomainTargetApp extends ResolvedApp {
   apps: AppDto[];
 }
 
+/** Planner-option keys that carry an explicit app reference (client.ts mirror). */
+const EXPLICIT_APP_KEYS = ["app", "appName", "name", "id", "appId"] as const;
+
+function hasExplicitAppReference(options?: unknown): boolean {
+  const params = actionParams(options);
+  return EXPLICIT_APP_KEYS.some(
+    (key) =>
+      typeof params[key] === "string" &&
+      (params[key] as string).trim().length > 0,
+  );
+}
+
 /**
  * Resolve the app a domain action targets. Like {@link resolveApp}, plus a
  * sole-app default: domain requests often name only the domain ("buy
  * example.com"), so when the free-text reference matches nothing and the user
- * has exactly one app, that app is the unambiguous target. With several apps
- * and no match the caller must ask (never guess where a purchase attaches).
+ * has exactly one app, that app is the unambiguous target. The default is
+ * suppressed when the planner supplied an EXPLICIT app reference that matched
+ * nothing — the user named a specific app, so guessing a different one is
+ * wrong even with only one to guess. With several apps and no match the
+ * caller must ask (never guess where a purchase attaches).
  */
 export async function resolveDomainTargetApp(
   client: ElizaCloudClient,
@@ -111,8 +139,14 @@ export async function resolveDomainTargetApp(
 ): Promise<DomainTargetApp> {
   const reference = extractAppReference(message, actionParams(options));
   if (looksLikeAppId(reference)) {
-    const { app } = await client.getApp(reference);
-    if (app) return { app, available: [app.name], apps: [app] };
+    // A stale/foreign UUID must fall through to name resolution (and its
+    // helpful which-app reply), not abort the whole action on the 404.
+    try {
+      const { app } = await client.getApp(reference);
+      if (app) return { app, available: [app.name], apps: [app] };
+    } catch {
+      // fall through to list-based resolution
+    }
   }
   const { apps } = await client.listApps();
   const list = apps ?? [];
@@ -127,7 +161,7 @@ export async function resolveDomainTargetApp(
       apps: list,
     };
   }
-  if (list.length === 1) {
+  if (list.length === 1 && !hasExplicitAppReference(options)) {
     return { app: list[0], available, defaulted: true, apps: list };
   }
   return { app: null, available, apps: list };
@@ -172,19 +206,24 @@ export function formatDomainLine(domain: {
   registrar: string;
   status: string;
   verified: boolean;
-  sslStatus: string;
+  /** Nullable: the ssl_status column has a default but no NOT NULL. */
+  sslStatus: string | null;
   expiresAt: string | null;
+  /** The TXT verification token (present for unverified external domains). */
+  verificationToken?: string | null;
 }): string {
   const parts = [
     domain.registrar === "cloudflare"
       ? "registered through Eliza Cloud"
       : "external",
     domain.status,
-    `SSL ${domain.sslStatus}`,
+    `SSL ${domain.sslStatus ?? "pending"}`,
   ];
   if (domain.registrar === "external" && !domain.verified) {
     parts.push(
-      `needs DNS verification (add the TXT record at _eliza-cloud-verify.${domain.domain})`,
+      domain.verificationToken
+        ? `needs DNS verification (add a TXT record at _eliza-cloud-verify.${domain.domain} with value ${domain.verificationToken})`
+        : `needs DNS verification (add the TXT record at _eliza-cloud-verify.${domain.domain})`,
     );
   }
   if (domain.expiresAt) {

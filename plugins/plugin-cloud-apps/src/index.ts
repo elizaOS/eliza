@@ -98,6 +98,7 @@ export { withdrawAppEarningsAction } from "./actions/withdraw-app-earnings.js";
 export * from "./app-facts.js";
 export * from "./client.js";
 export * from "./deploy-gate.js";
+export * from "./domain-facts.js";
 export * from "./domain-intent.js";
 export { cloudAppsProvider } from "./providers/cloud-apps.js";
 export * from "./reachability.js";

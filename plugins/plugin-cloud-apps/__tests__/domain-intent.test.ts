@@ -160,3 +160,57 @@ describe("formatDomainLine", () => {
     expect(line).toContain("_eliza-cloud-verify.example.org");
   });
 });
+
+describe("extractDomainReferences boundaries", () => {
+  it("never mangles an IDN into a bogus ASCII tail", () => {
+    expect(extractDomainReferences(msg("register münchen.de please"))).toEqual(
+      [],
+    );
+  });
+
+  it("does not treat an email's domain part as a purchase target", () => {
+    expect(
+      extractDomainReferences(msg("email me at user@example.com")),
+    ).toEqual([]);
+  });
+
+  it("keeps a long TLD intact instead of splitting it", () => {
+    expect(extractDomainReferences(msg("buy example.community"))).toEqual([
+      "example.community",
+    ]);
+  });
+
+  it("stays linear on pathological dotted input and drops over-long tokens", () => {
+    const junk = `${"a.".repeat(500)}com`;
+    expect(extractDomainReferences(msg(`look at ${junk}`))).toEqual([]);
+  });
+});
+
+describe("formatDomainLine edge values", () => {
+  it("renders a null sslStatus as pending, not 'SSL null'", () => {
+    const line = formatDomainLine({
+      domain: "example.com",
+      registrar: "cloudflare",
+      status: "pending",
+      verified: false,
+      sslStatus: null,
+      expiresAt: null,
+    });
+    expect(line).toContain("SSL pending");
+    expect(line).not.toContain("null");
+  });
+
+  it("includes the TXT record VALUE when the verification token is known", () => {
+    const line = formatDomainLine({
+      domain: "example.org",
+      registrar: "external",
+      status: "pending",
+      verified: false,
+      sslStatus: "pending",
+      expiresAt: null,
+      verificationToken: "eliza-verify-abc123",
+    });
+    expect(line).toContain("_eliza-cloud-verify.example.org");
+    expect(line).toContain("eliza-verify-abc123");
+  });
+});

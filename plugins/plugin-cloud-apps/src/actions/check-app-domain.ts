@@ -180,30 +180,40 @@ export const checkAppDomainAction: Action = {
       };
     }
 
+    // Per-domain checks are independent — a failure on one must not discard
+    // the quotes already fetched for the others.
     const toCheck = domains.slice(0, MAX_DOMAINS_PER_CHECK);
     const quotes: DomainQuote[] = [];
-    try {
-      for (const domain of toCheck) {
+    const failed: string[] = [];
+    for (const domain of toCheck) {
+      try {
         const res = await client.checkAppDomain(app.id, { domain });
         quotes.push(toQuote(res));
+      } catch (err) {
+        logger.warn(
+          `[CHECK_APP_DOMAIN] checkAppDomain(${app.id}, ${domain}) failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        failed.push(domain);
       }
-    } catch (err) {
-      logger.warn(
-        `[CHECK_APP_DOMAIN] checkAppDomain(${app.id}) failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+    }
+    if (quotes.length === 0) {
       await callback?.({ text: ERROR_MESSAGE, actions: ["CHECK_APP_DOMAIN"] });
       return {
         success: false,
         text: "Domain availability check failed.",
         userFacingText: ERROR_MESSAGE,
-        error: err instanceof Error ? err : new Error(String(err)),
-        data: { reason: "error" },
+        data: { reason: "error", failed },
       };
     }
 
     const lines = quotes.map(quoteLine);
+    for (const domain of failed) {
+      lines.push(
+        `✖ Couldn't check ${domain} right now — try again in a moment.`,
+      );
+    }
     const firstAvailable = quotes.find((q) => q.available);
     if (firstAvailable) {
       lines.push(
@@ -224,7 +234,11 @@ export const checkAppDomainAction: Action = {
         .join(", ")}.`,
       userFacingText: reply,
       verifiedUserFacing: true,
-      data: { app: { id: app.id, name: app.name, slug: app.slug }, quotes },
+      data: {
+        app: { id: app.id, name: app.name, slug: app.slug },
+        quotes,
+        ...(failed.length > 0 ? { failed } : {}),
+      },
     };
   },
 

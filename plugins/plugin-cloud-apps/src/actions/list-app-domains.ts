@@ -165,6 +165,7 @@ export const listAppDomainsAction: Action = {
             verified: d.verified,
             sslStatus: d.sslStatus,
             expiresAt: d.expiresAt,
+            verificationToken: d.verificationToken,
           })),
         },
       };

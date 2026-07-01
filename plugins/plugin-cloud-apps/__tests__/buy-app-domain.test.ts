@@ -16,6 +16,8 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  makeRoomMessage,
+  memoryRuntime,
   resetSdk,
   setBuyAppDomain,
   setCheckAppDomain,
@@ -577,7 +579,16 @@ describe("BUY_APP_DOMAIN server outcomes", () => {
     expect(first?.data?.confirmationRequired).toBe(true);
     expect(first?.userFacingText).toContain("NOT be charged again");
 
-    // The staged recovery confirm completes via the server's free recovery branch.
+    // The staged recovery confirm completes via the server's free recovery
+    // branch — a registered-but-unattached orphan reads as unavailable to the
+    // availability check, which is exactly what routes into the free recovery.
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: false,
+      }),
+    );
     const { calls } = trackBuys({
       alreadyRegistered: true,
       recoveredFromRegistrar: true,
@@ -597,6 +608,71 @@ describe("BUY_APP_DOMAIN server outcomes", () => {
     expect(second?.userFacingText).toContain("without charging you again");
   });
 
+  it("recovery confirm on a now-AVAILABLE domain re-quotes as a NEW purchase instead of silently buying", async () => {
+    const runtime = keyedRuntime();
+    setBuyAppDomain(() =>
+      Promise.reject(
+        cloudError(
+          502,
+          "Domain was registered and charged, but final setup did not complete.",
+          "persist_failed_recoverable",
+        ),
+      ),
+    );
+    await stageAndConfirm(runtime); // leaves a recovery pending
+
+    // Domain now reads as genuinely available — buying would debit a price
+    // the user never confirmed, so the handler must re-quote, not buy.
+    const { calls } = trackBuys();
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(result?.data?.confirmationRequired).toBe(true);
+    expect(result?.data?.purchased).toBe(false);
+    expect(result?.userFacingText).toContain("NEW purchase");
+    expect(result?.userFacingText).toContain("$13.99");
+  });
+
+  it("recovery pendings never expire (no price at stake)", async () => {
+    const runtime = keyedRuntime();
+    await persistCloudAppConfirmation(runtime, {
+      roomId: String(runtime.agentId),
+      action: "BUY_APP_DOMAIN",
+      appId: APP.id,
+      appName: APP.name,
+      domain: "example.com",
+      recovery: true,
+      intentCreatedAt: new Date(Date.now() - CONFIRM_TTL_MS * 10).toISOString(),
+    });
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: false,
+      }),
+    );
+    const { calls } = trackBuys({
+      alreadyRegistered: true,
+      recoveredFromRegistrar: true,
+      debited: undefined,
+    });
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(1);
+    expect(result?.success).toBe(true);
+    expect(result?.userFacingText).toContain("without charging you again");
+  });
+
   it("unknown error → honest uncertain outcome pointing at the domains tab", async () => {
     const runtime = keyedRuntime();
     setBuyAppDomain(() => Promise.reject(new Error("socket hang up")));
@@ -613,5 +689,383 @@ describe("BUY_APP_DOMAIN server outcomes", () => {
     expect(result?.success).toBe(true);
     expect(result?.data?.pendingZoneProvisioning).toBe(true);
     expect(result?.userFacingText).toContain("DNS is still being set up");
+  });
+});
+
+describe("BUY_APP_DOMAIN price enforcement", () => {
+  it("re-quotes instead of buying when the price changed between quote and confirm", async () => {
+    const runtime = keyedRuntime();
+    const { calls } = trackBuys();
+    await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    // Price jumps before the user confirms.
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: true,
+        currency: "USD",
+        years: 1,
+        price: {
+          wholesaleUsdCents: 1200,
+          marginUsdCents: 399,
+          totalUsdCents: 1599,
+          marginBps: 3600,
+        },
+        renewal: { totalUsdCents: 1599 },
+      }),
+    );
+    const requote = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(requote?.data?.confirmationRequired).toBe(true);
+    expect(requote?.userFacingText).toContain("changed from $13.99 to $15.99");
+    expect(requote?.userFacingText).toContain("didn't charge anything");
+
+    // Confirming the NEW quote (price now stable at $15.99) buys exactly once.
+    const confirmed = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(1);
+    expect(confirmed?.success).toBe(true);
+  });
+
+  it("refuses to buy when the confirm-time re-check fails, and says so honestly", async () => {
+    const runtime = keyedRuntime();
+    const { calls } = trackBuys();
+    await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    setCheckAppDomain(() => Promise.reject(new Error("network down")));
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(result?.success).toBe(false);
+    expect(result?.data?.reason).toBe("precheck_failed");
+    expect(result?.userFacingText).toContain("didn't buy anything");
+  });
+
+  it("reports honestly (not charged, no buy) when the domain got taken between quote and confirm", async () => {
+    const runtime = keyedRuntime();
+    const { calls } = trackBuys();
+    await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: false,
+      }),
+    );
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(result?.data?.reason).toBe("unavailable");
+    expect(result?.userFacingText).toContain("NOT charged");
+  });
+
+  it("stages the amount from a quote with distinct purchase/renewal prices and reports the real debit", async () => {
+    const runtime = keyedRuntime();
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: true,
+        currency: "USD",
+        years: 1,
+        price: {
+          wholesaleUsdCents: 1911,
+          marginUsdCents: 688,
+          totalUsdCents: 2599,
+          marginBps: 3600,
+        },
+        renewal: { totalUsdCents: 1899 },
+      }),
+    );
+    const staged = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(staged?.data?.amount).toBe(25.99);
+    expect(staged?.data?.renewalUsdCents).toBe(1899);
+    expect(staged?.userFacingText).toContain("charge $25.99");
+    expect(staged?.userFacingText).toContain("auto-renews at $18.99/yr");
+
+    const { calls } = trackBuys({
+      debited: { totalUsdCents: 2599, currency: "USD" },
+    });
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(1);
+    expect(result?.userFacingText).toContain("charged $25.99");
+  });
+
+  it("falls back to the confirmed amount when the server omits `debited`", async () => {
+    const runtime = keyedRuntime();
+    trackBuys({ debited: undefined });
+    await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.userFacingText).toContain("charged $13.99");
+  });
+
+  it('falls back to "the quoted price" when both debited and the confirmed amount are missing', async () => {
+    const runtime = keyedRuntime();
+    // A recovery pending carries no amount; a (contract-violating) bare
+    // success without debited/alreadyRegistered flags exercises the last
+    // defensive fallback.
+    await persistCloudAppConfirmation(runtime, {
+      roomId: String(runtime.agentId),
+      action: "BUY_APP_DOMAIN",
+      appId: APP.id,
+      appName: APP.name,
+      domain: "example.com",
+      recovery: true,
+    });
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: false,
+      }),
+    );
+    setBuyAppDomain((_id, input) =>
+      Promise.resolve({ success: true, domain: input.domain }),
+    );
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.userFacingText).toContain("the quoted price");
+  });
+});
+
+describe("BUY_APP_DOMAIN recovery lifecycle (durable fact)", () => {
+  it("cancel is honest about the standing charge and a later fresh ask still reaches the free recovery", async () => {
+    const runtime = memoryRuntime();
+    const message = makeRoomMessage("buy example.com for Acme Bot");
+
+    // 1. Quote + confirm; the buy lands as charged+registered-but-unattached.
+    await buyAppDomainAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      undefined,
+    );
+    setBuyAppDomain(() =>
+      Promise.reject(
+        cloudError(
+          502,
+          "Domain was registered and charged, but final setup did not complete.",
+          "persist_failed_recoverable",
+        ),
+      ),
+    );
+    const interrupted = await buyAppDomainAction.handler?.(
+      runtime,
+      makeRoomMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(interrupted?.data?.reason).toBe("persist_failed_recoverable");
+    expect(runtime.__facts.length).toBe(1); // durable marker written
+
+    // 2. Cancel the staged recovery — the reply must NOT claim "no domain was
+    //    purchased" and the marker must survive.
+    const canceled = await buyAppDomainAction.handler?.(
+      runtime,
+      makeRoomMessage("no, not now"),
+      undefined,
+      { confirm: false },
+      undefined,
+    );
+    expect(canceled?.data?.reason).toBe("recovery_canceled");
+    expect(canceled?.userFacingText).toContain("already charged");
+    expect(canceled?.userFacingText).toContain("without a new charge");
+    expect(canceled?.userFacingText).not.toContain("No domain was purchased");
+    expect(runtime.__facts.length).toBe(1);
+
+    // 3. A later fresh "buy X" reads unavailable — the marker routes it back
+    //    to the free recovery instead of "isn't available to register".
+    setCheckAppDomain((_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: false,
+      }),
+    );
+    const reask = await buyAppDomainAction.handler?.(
+      runtime,
+      makeRoomMessage("buy example.com again please"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(reask?.data?.reason).toBe("recovery_staged");
+    expect(reask?.data?.confirmationRequired).toBe(true);
+    expect(reask?.userFacingText).toContain("NOT be charged again");
+
+    // 4. Confirming completes the free recovery and clears the marker.
+    const { calls } = trackBuys({
+      alreadyRegistered: true,
+      recoveredFromRegistrar: true,
+      debited: undefined,
+    });
+    const done = await buyAppDomainAction.handler?.(
+      runtime,
+      makeRoomMessage("confirm"),
+      undefined,
+      { confirm: true },
+      undefined,
+    );
+    expect(calls.length).toBe(1);
+    expect(done?.success).toBe(true);
+    expect(done?.userFacingText).toContain("without charging you again");
+    expect(runtime.__facts.length).toBe(0);
+  });
+});
+
+describe("BUY_APP_DOMAIN remaining exits", () => {
+  it("degrades gracefully with no API key", async () => {
+    const runtime = unkeyedRuntime();
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.data?.reason).toBe("no_key");
+  });
+
+  it("returns an honest generic error when app resolution fails", async () => {
+    setListApps(() => Promise.reject(new Error("boom")));
+    const runtime = keyedRuntime();
+    const { calls } = trackBuys();
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(result?.success).toBe(false);
+    expect(result?.data?.reason).toBe("error");
+  });
+
+  it("returns an honest generic error when the first-ask availability check fails", async () => {
+    setCheckAppDomain(() => Promise.reject(new Error("boom")));
+    const runtime = keyedRuntime();
+    const { calls } = trackBuys();
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(result?.data?.reason).toBe("error");
+    expect(result?.userFacingText).toContain("Nothing was purchased");
+  });
+
+  it("mentions the requested OTHER domain when nudging about an existing pending", async () => {
+    const runtime = keyedRuntime();
+    trackBuys();
+    await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Acme Bot"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("actually can you buy othersite.net instead"),
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(result?.data?.confirmationRequired).toBe(true);
+    expect(result?.data?.deferredDomain).toBe("othersite.net");
+    expect(result?.userFacingText).toContain("othersite.net");
+    expect(result?.userFacingText).toContain("example.com");
+  });
+
+  it("does NOT default to the sole app when an explicit appName matched nothing", async () => {
+    const runtime = keyedRuntime();
+    const { calls } = trackBuys();
+    const result = await buyAppDomainAction.handler?.(
+      runtime,
+      makeMessage("buy example.com for Ghost App"),
+      undefined,
+      { appName: "Ghost App" },
+      undefined,
+    );
+    expect(calls.length).toBe(0);
+    expect(result?.data?.reason).toBe("not_found");
+    expect(result?.userFacingText).toContain("Acme Bot");
   });
 });

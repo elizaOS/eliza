@@ -62,6 +62,12 @@ export interface CloudAppConfirmationMetadata {
   appName: string;
   appSlug?: string;
   amount?: number;
+  /**
+   * The confirmed charge in integer USD cents (BUY_APP_DOMAIN) — compared
+   * exactly against the re-checked price at purchase time so the server never
+   * debits a price the user did not confirm.
+   */
+  amountUsdCents?: number;
   /** The exact domain a pending BUY_APP_DOMAIN confirmation is for. */
   domain?: string;
   /**
