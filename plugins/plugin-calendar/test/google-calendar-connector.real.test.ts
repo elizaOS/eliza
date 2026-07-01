@@ -18,8 +18,8 @@
 import {
   GoogleApiClientFactory,
   type GoogleAuthClient,
-  type GoogleCredentialResolver,
   GoogleCalendarClient,
+  type GoogleCredentialResolver,
 } from "@elizaos/plugin-google";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import { Auth } from "googleapis";
@@ -74,7 +74,9 @@ describe.skipIf(!LIVE)(
   "Google Calendar connector — live events.list parser validation",
   () => {
     it("live primary-calendar events normalize into valid LifeOps DTOs", async () => {
-      const factory = new GoogleApiClientFactory(new StaticTokenResolver(TOKEN));
+      const factory = new GoogleApiClientFactory(
+        new StaticTokenResolver(TOKEN),
+      );
       const client = new GoogleCalendarClient(factory);
 
       const now = new Date();

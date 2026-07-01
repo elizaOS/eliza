@@ -19,10 +19,7 @@
     "min_nonadjacent_clearance_mm": -145.0,
     "worst_event": {
       "clearance_mm": -145.0,
-      "pair": [
-        "left_elbow",
-        "torso"
-      ],
+      "pair": ["left_elbow", "torso"],
       "pose": "left_shoulder_roll_joint=-0.800"
     },
     "penetration_events": 98,

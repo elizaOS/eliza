@@ -6,10 +6,7 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun"
-    ],
+    "types": ["node", "bun"],
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -17,39 +14,17 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/src/index.node.ts"
-      ],
-      "@elizaos/logger": [
-        "../../packages/logger/src/index.ts"
-      ],
-      "@elizaos/logger/*": [
-        "../../packages/logger/src/*"
-      ],
-      "@elizaos/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
-      "@elizaos/shared/*": [
-        "../../packages/shared/src/*"
-      ],
-      "@elizaos/*": [
-        "../../node_modules/@elizaos/*"
-      ],
-      "@elizaos/tui": [
-        "../../packages/tui/src/index.ts"
-      ],
-      "@elizaos/tui/*": [
-        "../../packages/tui/src/*"
-      ],
-      "@elizaos/contracts": [
-        "../../packages/contracts/src/index.ts"
-      ],
-      "@elizaos/contracts/*": [
-        "../../packages/contracts/src/*"
-      ],
-      "@elizaos/ui": [
-        "../../packages/ui/dist/index.d.ts"
-      ],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "@elizaos/tui": ["../../packages/tui/src/index.ts"],
+      "@elizaos/tui/*": ["../../packages/tui/src/*"],
+      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../../packages/contracts/src/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/agent-surface": [
         "../../packages/ui/dist/agent-surface/index.d.ts"
       ],
@@ -59,35 +34,15 @@
       "@elizaos/ui/spatial/tui": [
         "../../packages/ui/dist/spatial/tui/index.d.ts"
       ],
-      "@elizaos/ui/spatial": [
-        "../../packages/ui/dist/spatial/index.d.ts"
-      ],
-      "@elizaos/ui/*": [
-        "../../packages/ui/dist/*"
-      ],
-      "react": [
-        "./node_modules/@types/react"
-      ],
-      "react/jsx-runtime": [
-        "./node_modules/@types/react/jsx-runtime"
-      ],
-      "react/jsx-dev-runtime": [
-        "./node_modules/@types/react/jsx-dev-runtime"
-      ],
-      "react-dom": [
-        "./node_modules/react-dom"
-      ],
-      "lucide-react": [
-        "./node_modules/lucide-react"
-      ]
+      "@elizaos/ui/spatial": ["../../packages/ui/dist/spatial/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+      "react/jsx-dev-runtime": ["./node_modules/@types/react/jsx-dev-runtime"],
+      "react-dom": ["./node_modules/react-dom"],
+      "lucide-react": ["./node_modules/lucide-react"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts"
-  ],
-  "exclude": [
-    "src/**/*.stories.ts"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.stories.ts"]
 }

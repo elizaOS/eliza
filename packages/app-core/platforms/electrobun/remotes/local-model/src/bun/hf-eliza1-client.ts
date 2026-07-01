@@ -1,9 +1,9 @@
-import { ELIZA_1_HF_REPO } from "./protocol.ts";
 import {
   getEliza1BundleTiers,
   getEliza1Catalog,
   getEliza1VoiceComponents,
 } from "./eliza1-catalog.ts";
+import { ELIZA_1_HF_REPO } from "./protocol.ts";
 
 export type HuggingFaceTreeEntry = {
   type?: string;

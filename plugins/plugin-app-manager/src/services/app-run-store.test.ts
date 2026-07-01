@@ -189,7 +189,9 @@ describe("app run store", () => {
       }),
     );
     expect(first?.recentEvents.at(-1)?.eventId).toBe("event-5");
-    expect(first?.recentEvents.find((item) => item.eventId === "event-23")).toEqual(
+    expect(
+      first?.recentEvents.find((item) => item.eventId === "event-23"),
+    ).toEqual(
       expect.objectContaining({
         kind: "status",
         severity: "info",
@@ -225,9 +227,8 @@ describe("app run store", () => {
     expect(runs).toHaveLength(1);
     expect(fs.existsSync(resolveAppRunStoreFilePath(stateDir))).toBe(true);
     expect(
-      JSON.parse(
-        fs.readFileSync(resolveAppRunStoreFilePath(stateDir), "utf8"),
-      ).version,
+      JSON.parse(fs.readFileSync(resolveAppRunStoreFilePath(stateDir), "utf8"))
+        .version,
     ).toBe(2);
   });
 
@@ -261,9 +262,8 @@ describe("app run store", () => {
       fs.readFileSync(resolveAppRunStoreFilePath(stateDir), "utf8"),
     );
     expect(written.version).toBe(2);
-    expect(written.runs.map((entry: { runId: string }) => entry.runId)).toEqual([
-      "newer",
-      "older",
-    ]);
+    expect(written.runs.map((entry: { runId: string }) => entry.runId)).toEqual(
+      ["newer", "older"],
+    );
   });
 });

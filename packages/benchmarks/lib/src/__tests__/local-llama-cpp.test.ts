@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
-  MTP_BINARY_PATH,
   expandHome,
+  MTP_BINARY_PATH,
   probeMtpFork,
   resolveLocalBaseUrl,
   startLocalServer,

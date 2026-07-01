@@ -9,8 +9,8 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { throwFileRemoteError } from "./errors.ts";
-import { loadFileLimits, type FileLimits } from "./file-limits.ts";
-import { PathGuard, type GuardedPath } from "./path-guard.ts";
+import { type FileLimits, loadFileLimits } from "./file-limits.ts";
+import { type GuardedPath, PathGuard } from "./path-guard.ts";
 import type {
   FileListParams,
   FileListResult,
@@ -102,9 +102,7 @@ export class FileRemoteService {
         const stat = await this.toFileStat(entryGuarded);
         totalAfterIgnore += 1;
         if (result.length < limit) result.push(stat);
-      } catch {
-        continue;
-      }
+      } catch {}
     }
 
     return {

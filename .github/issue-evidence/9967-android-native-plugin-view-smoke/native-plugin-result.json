@@ -50,18 +50,14 @@
         "androidRole": "android.app.role.HOME",
         "available": true,
         "held": false,
-        "holders": [
-          "com.android.settings"
-        ]
+        "holders": ["com.android.settings"]
       },
       {
         "role": "dialer",
         "androidRole": "android.app.role.DIALER",
         "available": true,
         "held": false,
-        "holders": [
-          "com.google.android.dialer"
-        ]
+        "holders": ["com.google.android.dialer"]
       },
       {
         "role": "sms",
@@ -75,9 +71,7 @@
         "androidRole": "android.app.role.ASSISTANT",
         "available": true,
         "held": false,
-        "holders": [
-          "com.google.android.googlequicksearchbox"
-        ]
+        "holders": ["com.google.android.googlequicksearchbox"]
       }
     ]
   },

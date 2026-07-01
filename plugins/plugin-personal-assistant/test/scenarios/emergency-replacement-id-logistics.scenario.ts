@@ -23,7 +23,12 @@ export default scenario({
       name: "triage-lost-id",
       text: "My wallet with ID was lost before tomorrow's flight. Find replacement ID options, TSA fallback, police report steps, card freezes, and itinerary risk.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "calendar_action", "priority"],
-      responseIncludesAny: ["replacement", "TSA", "police report", "card freezes"],
+      responseIncludesAny: [
+        "replacement",
+        "TSA",
+        "police report",
+        "card freezes",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
     {

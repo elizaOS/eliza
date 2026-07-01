@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Scenario, ScenarioOutcome } from "../src/types.js";
 import { aggregateByCategory, scoreScenario } from "../src/scoring/scorer.js";
+import type { Scenario, ScenarioOutcome } from "../src/types.js";
 
 /**
  * ConfigBench scoring. The critical safety property: ANY failing critical check

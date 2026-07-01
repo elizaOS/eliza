@@ -146,7 +146,9 @@ export class CalendarMigrationService extends Service {
   override capabilityDescription =
     "Non-destructive one-time copy of calendar rows from app_lifeops into app_calendar during the plugin-calendar carve-out.";
 
-  static async start(runtime: IAgentRuntime): Promise<CalendarMigrationService> {
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<CalendarMigrationService> {
     const service = new CalendarMigrationService(runtime);
     await service.run();
     return service;

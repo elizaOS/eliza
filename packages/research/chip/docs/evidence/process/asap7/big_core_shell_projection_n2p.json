@@ -1,10 +1,5 @@
 {
-  "advanced_targets": [
-    "n2p",
-    "a14",
-    "intel_14a",
-    "samsung_sf2p"
-  ],
+  "advanced_targets": ["n2p", "a14", "intel_14a", "samsung_sf2p"],
   "asap7_baseline": {
     "dyn_power_mw_per_mhz": null,
     "leakage_mw": null,

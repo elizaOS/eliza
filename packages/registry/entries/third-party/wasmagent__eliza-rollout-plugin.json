@@ -6,6 +6,13 @@
   "homepage": "https://github.com/WasmAgent/wasmagent-js/tree/main/packages/eliza-rollout-plugin",
   "version": "1.0.3",
   "directory": "packages/eliza-rollout-plugin",
-  "tags": ["training-data", "rlaif", "dpo", "ppo", "rollout", "fine-tuning", "wasmagent"]
+  "tags": [
+    "training-data",
+    "rlaif",
+    "dpo",
+    "ppo",
+    "rollout",
+    "fine-tuning",
+    "wasmagent"
+  ]
 }
-

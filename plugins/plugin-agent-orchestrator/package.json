@@ -78,7 +78,7 @@
     "smithers-orchestrator": "0.26.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",

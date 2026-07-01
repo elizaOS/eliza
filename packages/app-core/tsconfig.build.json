@@ -28,9 +28,7 @@
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/dist/index.d.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": [
-        "../plugin-remote-manifest/dist/*"
-      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/dist/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
       "@elizaos/capacitor-canvas": [

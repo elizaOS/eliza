@@ -12,9 +12,7 @@ import {
   requireConfirmation,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import {
-  PLAYBOOK_UNSUPPORTED_FLOW_ERROR,
-} from "@elizaos/plugin-finances/subscriptions-playbooks";
+import { PLAYBOOK_UNSUPPORTED_FLOW_ERROR } from "@elizaos/plugin-finances/subscriptions-playbooks";
 import type { LifeOpsSubscriptionExecutor } from "@elizaos/plugin-finances/subscriptions-types";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { messageText } from "../lifeops/google/format-helpers.js";

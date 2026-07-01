@@ -21,14 +21,14 @@
  */
 import { execFileSync } from "node:child_process";
 import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
   existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 const REPO = process.cwd();
 const args = process.argv.slice(2);
@@ -176,13 +176,22 @@ for (const pkgDir of pkgs) {
     (body.match(/^Unused devDependencies \((\d+)\)/m) || [])[1] || "0";
   const timedOut = rc === 143 || rc === 137;
   writeFileSync(outFile, `# ${pkgDir}  rc=${rc}\n${body}`);
-  summary.push({ pkgDir, files: +files, deps: +deps, ddeps: +ddeps, rc, timedOut });
+  summary.push({
+    pkgDir,
+    files: +files,
+    deps: +deps,
+    ddeps: +ddeps,
+    rc,
+    timedOut,
+  });
   console.error(
     `  ${pkgDir.padEnd(46)} files=${files} deps=${deps} devDeps=${ddeps} ${timedOut ? "TIMEOUT/OOM" : ""}`,
   );
 }
 
-summary.sort((a, b) => b.files + b.deps + b.ddeps - (a.files + a.deps + a.ddeps));
+summary.sort(
+  (a, b) => b.files + b.deps + b.ddeps - (a.files + a.deps + a.ddeps),
+);
 writeFileSync(join(OUT, "_summary.json"), JSON.stringify(summary, null, 2));
 const totFiles = summary.reduce((s, x) => s + x.files, 0);
 const totDeps = summary.reduce((s, x) => s + x.deps + x.ddeps, 0);
@@ -191,4 +200,6 @@ console.error(
   `\n[knip-per-package] done. candidate unused files=${totFiles}, unused deps=${totDeps}. ` +
     `timeouts/OOM: ${failed.length}${failed.length ? " (" + failed.join(", ") + ")" : ""}`,
 );
-console.error(`[knip-per-package] per-package output + _summary.json in ${OUT}`);
+console.error(
+  `[knip-per-package] per-package output + _summary.json in ${OUT}`,
+);

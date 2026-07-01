@@ -32,46 +32,44 @@ function analysis(
         models: 0,
         artifacts: artifacts.length,
       },
-      coverage:
-        coverage ??
-        {
-          dataSources: {
-            huggingFace: 0,
-            feed: 0,
-            natural: 0,
-            scenarios: 0,
-            tests: 0,
-            trainingJsonl: 0,
-          },
-          readableSamples: {
-            huggingFace: 0,
-            feed: 0,
-            natural: 0,
-            scenarios: 0,
-            tests: 0,
-            trainingJsonl: 0,
-            total: 0,
-          },
-          evals: {
-            artifacts: 0,
-            comparisons: 0,
-            scoredComparisons: 0,
-          },
-          benchmarks: {
-            matrices: 0,
-            comparisons: 0,
-            scoredComparisons: 0,
-            caseSamples: 0,
-            tiers: [],
-            allEliza1TiersCovered: false,
-            tierCoverage: [],
-          },
-          models: {
-            artifacts: 0,
-            stagedBundles: 0,
-            inventory: [],
-          },
+      coverage: coverage ?? {
+        dataSources: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
         },
+        readableSamples: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+          total: 0,
+        },
+        evals: {
+          artifacts: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+        },
+        benchmarks: {
+          matrices: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+          caseSamples: 0,
+          tiers: [],
+          allEliza1TiersCovered: false,
+          tierCoverage: [],
+        },
+        models: {
+          artifacts: 0,
+          stagedBundles: 0,
+          inventory: [],
+        },
+      },
       artifacts,
     },
   };
@@ -196,54 +194,50 @@ describe("training readiness report", () => {
           },
           payload: {
             rows: [
-              ...["2b", "4b", "9b", "27b"].flatMap(
-                (tier, index) => [
-                  {
-                    modelId: `eliza-1-${tier}-base`,
-                    benchmark: "hermes",
-                    score: 0.4 + index * 0.01,
-                    variant: "base",
-                    tier,
-                    metrics: { useMocks: false },
+              ...["2b", "4b", "9b", "27b"].flatMap((tier, index) => [
+                {
+                  modelId: `eliza-1-${tier}-base`,
+                  benchmark: "hermes",
+                  score: 0.4 + index * 0.01,
+                  variant: "base",
+                  tier,
+                  metrics: { useMocks: false },
+                },
+                {
+                  modelId: `eliza-1-${tier}-trained`,
+                  benchmark: "hermes",
+                  score: 0.5 + index * 0.01,
+                  variant: "trained",
+                  tier,
+                  metrics: { useMocks: false },
+                  raw: {
+                    useMocks: false,
+                    caseSamples:
+                      tier === "2b"
+                        ? [
+                            {
+                              caseId: "message-route",
+                              prompt: "send David the update",
+                              expectedAction: "MESSAGE",
+                              actualAction: "MESSAGE",
+                              pass: true,
+                              trajectoryPath: "/tmp/cases/message-route.json",
+                            },
+                          ]
+                        : [],
                   },
-                  {
-                    modelId: `eliza-1-${tier}-trained`,
-                    benchmark: "hermes",
-                    score: 0.5 + index * 0.01,
-                    variant: "trained",
-                    tier,
-                    metrics: { useMocks: false },
-                    raw: {
-                      useMocks: false,
-                      caseSamples:
-                        tier === "2b"
-                          ? [
-                              {
-                                caseId: "message-route",
-                                prompt: "send David the update",
-                                expectedAction: "MESSAGE",
-                                actualAction: "MESSAGE",
-                                pass: true,
-                                trajectoryPath: "/tmp/cases/message-route.json",
-                              },
-                            ]
-                          : [],
-                    },
-                  },
-                ],
-              ),
+                },
+              ]),
             ],
-            comparisons: ["2b", "4b", "9b", "27b"].map(
-              (tier, index) => ({
-                tier,
-                benchmark: "hermes",
-                baseScore: 0.4 + index * 0.01,
-                trainedScore: 0.5 + index * 0.01,
-                referenceScore: 0.8,
-                improvementPercent: 25,
-                referenceModelId: "cerebras/gpt-oss-120b",
-              }),
-            ),
+            comparisons: ["2b", "4b", "9b", "27b"].map((tier, index) => ({
+              tier,
+              benchmark: "hermes",
+              baseScore: 0.4 + index * 0.01,
+              trainedScore: 0.5 + index * 0.01,
+              referenceScore: 0.8,
+              improvementPercent: 25,
+              referenceModelId: "cerebras/gpt-oss-120b",
+            })),
           },
         },
         ...eliza1ModelRegistryArtifacts(),
@@ -395,8 +389,7 @@ describe("training readiness report", () => {
       report.checks.find((item) => item.id === "eval_comparison"),
     ).toMatchObject({
       status: "partial",
-      note:
-        "A comparison artifact is present, but it does not include base score, trained score, and percentage improvement from the Eliza harness.",
+      note: "A comparison artifact is present, but it does not include base score, trained score, and percentage improvement from the Eliza harness.",
       recommendedAction: {
         capability: "terminal-training-run-collection",
       },
@@ -456,8 +449,7 @@ describe("training readiness report", () => {
       label: "Base vs trained Eliza harness eval comparison",
       status: "ready",
       recommendedAction: null,
-      note:
-        "A scored base-vs-trained Eliza harness or eval comparison with percentage improvement is present.",
+      note: "A scored base-vs-trained Eliza harness or eval comparison with percentage improvement is present.",
     });
   });
 
@@ -722,8 +714,7 @@ describe("training readiness report", () => {
       report.checks.find((item) => item.id === "feed_generation"),
     ).toMatchObject({
       status: "partial",
-      note:
-        "A feed generation artifact is present, but it is a dry run or has no generated trajectory rows.",
+      note: "A feed generation artifact is present, but it is a dry run or has no generated trajectory rows.",
       recommendedAction: {
         capability: "terminal-training-feed-generate",
         params: { dryRun: false },
@@ -968,8 +959,7 @@ describe("training readiness report", () => {
     ).toMatchObject({
       status: "partial",
       artifactCount: 2,
-      note:
-        "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
+      note: "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
       recommendedAction: {
         capability: "terminal-training-build-analysis-index",
       },

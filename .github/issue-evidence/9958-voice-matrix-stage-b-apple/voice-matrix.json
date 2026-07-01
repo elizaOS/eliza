@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",
@@ -64,13 +53,8 @@
         "voices": "owner"
       },
       "class": "stt-evaluation",
-      "command": [
-        "node",
-        "packages/scripts/stage-b-stt-bench.mjs"
-      ],
-      "evidence": [
-        ".github/issue-evidence/9958-stt-stage-b-eval"
-      ],
+      "command": ["node", "packages/scripts/stage-b-stt-bench.mjs"],
+      "evidence": [".github/issue-evidence/9958-stt-stage-b-eval"],
       "probe": {
         "available": true,
         "reason": "command passed (2026-06-30T04:58:46.738Z)"

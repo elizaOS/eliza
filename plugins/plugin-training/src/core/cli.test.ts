@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRunCollectionOptionsFromCliArgs,
-  formatTrainingCollectionPreflightSummary,
   formatListTrainingCollectionsSummary,
   formatRunCollectionSummary,
+  formatTrainingCollectionPreflightSummary,
 } from "./cli.js";
 import type { TrainingCollectionRunResult } from "./training-collection-runner.js";
 
@@ -561,7 +561,9 @@ describe("training CLI collection options", () => {
       },
     } as unknown as TrainingCollectionRunResult);
 
-    expect(lines).toContain("[run-collection] readme=/tmp/collection/README.md");
+    expect(lines).toContain(
+      "[run-collection] readme=/tmp/collection/README.md",
+    );
     expect(lines).toContain(
       "[run-collection] collection-index=/tmp/collection-index.html json=/tmp/collection-index.json",
     );
@@ -803,7 +805,8 @@ describe("training CLI collection options", () => {
         {
           generatedAt: "2026-01-02T03:04:05.000Z",
           outputDir: "/tmp/training/collections/run-1",
-          manifestPath: "/tmp/training/collections/run-1/collection-manifest.json",
+          manifestPath:
+            "/tmp/training/collections/run-1/collection-manifest.json",
           readmePath: "/tmp/training/collections/run-1/README.md",
           analysisIndexHtmlPath:
             "/tmp/training/collections/run-1/analysis/index.html",

@@ -64,7 +64,9 @@ describe("computer-use MCP tool catalog", () => {
     expect(findComputerUseMcpTool("computer_left_click")?.destructive).toBe(
       true,
     );
-    expect(findComputerUseMcpTool("computer_set_value")?.destructive).toBe(true);
+    expect(findComputerUseMcpTool("computer_set_value")?.destructive).toBe(
+      true,
+    );
   });
 });
 

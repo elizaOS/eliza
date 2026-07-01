@@ -82,10 +82,7 @@
                         "description": "Operation type. 'abort' preempts turn; others stage mutations for lifeops_thread_control."
                       },
                       "workThreadId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
+                        "type": ["string", "null"],
                         "description": "Target thread id. Required for steer/stop/merge/attach_source/schedule_followup/mark_*; optional for abort (current turn) and create."
                       },
                       "sourceWorkThreadIds": {
@@ -96,62 +93,35 @@
                         }
                       },
                       "sourceRef": {
-                        "type": [
-                          "object",
-                          "null"
-                        ],
+                        "type": ["object", "null"],
                         "additionalProperties": false,
                         "properties": {
                           "connector": {
                             "type": "string"
                           },
                           "channelName": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "channelKind": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "roomId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "externalThreadId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "accountId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "grantId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "canRead": {
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
+                            "type": ["boolean", "null"]
                           },
                           "canMutate": {
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
+                            "type": ["boolean", "null"]
                           }
                         },
                         "required": [
@@ -168,17 +138,11 @@
                         "description": "For attach_source: the source ref to attach."
                       },
                       "instruction": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
+                        "type": ["string", "null"],
                         "description": "What to do for create/steer/schedule_followup. Brief, action-oriented."
                       },
                       "reason": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
+                        "type": ["string", "null"],
                         "description": "Why this op (especially useful for abort and stop)."
                       }
                     },
@@ -378,11 +342,7 @@
             "score": 1,
             "rank": 0,
             "rrfScore": 0.032522,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 1,
               "bm25": 0.843098,
@@ -394,11 +354,7 @@
             "score": 1,
             "rank": 1,
             "rrfScore": 0.032266,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 1,
@@ -410,11 +366,7 @@
             "score": 1,
             "rank": 2,
             "rrfScore": 0.031514,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 1,
               "bm25": 0.115342,
@@ -426,11 +378,7 @@
             "score": 0.980437,
             "rank": 3,
             "rrfScore": 0.03125,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.344958,
@@ -442,11 +390,7 @@
             "score": 0.938812,
             "rank": 4,
             "rrfScore": 0.028543,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.076165,
@@ -458,11 +402,7 @@
             "score": 0.91589,
             "rank": 5,
             "rrfScore": 0.027052,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028171,
@@ -474,11 +414,7 @@
             "score": 0.914691,
             "rank": 6,
             "rrfScore": 0.026974,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028123,
@@ -490,11 +426,7 @@
             "score": 0.905835,
             "rank": 7,
             "rrfScore": 0.026398,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028123,
@@ -506,11 +438,7 @@
             "score": 0.905681,
             "rank": 8,
             "rrfScore": 0.026387,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088887,
@@ -522,11 +450,7 @@
             "score": 0.903682,
             "rank": 9,
             "rrfScore": 0.026257,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088774,
@@ -538,11 +462,7 @@
             "score": 0.902526,
             "rank": 10,
             "rrfScore": 0.026182,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.437966,
@@ -554,11 +474,7 @@
             "score": 0.901015,
             "rank": 11,
             "rrfScore": 0.026084,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028137,
@@ -570,11 +486,7 @@
             "score": 0.900499,
             "rank": 12,
             "rrfScore": 0.02605,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028123,
@@ -586,11 +498,7 @@
             "score": 0.898396,
             "rank": 13,
             "rrfScore": 0.025914,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088729,
@@ -602,11 +510,7 @@
             "score": 0.896571,
             "rank": 14,
             "rrfScore": 0.025795,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088887,
@@ -618,11 +522,7 @@
             "score": 0.896492,
             "rank": 15,
             "rrfScore": 0.02579,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.003087,
@@ -634,11 +534,7 @@
             "score": 0.895302,
             "rank": 16,
             "rrfScore": 0.025712,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028123,
@@ -650,11 +546,7 @@
             "score": 0.893247,
             "rank": 17,
             "rrfScore": 0.025579,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088729,
@@ -666,11 +558,7 @@
             "score": 0.891837,
             "rank": 18,
             "rrfScore": 0.025487,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.030023,
@@ -682,11 +570,7 @@
             "score": 0.8914,
             "rank": 19,
             "rrfScore": 0.025459,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088887,
@@ -698,11 +582,7 @@
             "score": 0.888232,
             "rank": 20,
             "rrfScore": 0.025253,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.088729,
@@ -714,11 +594,7 @@
             "score": 0.887315,
             "rank": 21,
             "rrfScore": 0.025193,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028123,
@@ -730,11 +606,7 @@
             "score": 0.886905,
             "rank": 22,
             "rrfScore": 0.025166,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.030023,
@@ -746,11 +618,7 @@
             "score": 0.886782,
             "rank": 23,
             "rrfScore": 0.025158,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.029968,
@@ -762,11 +630,7 @@
             "score": 0.882461,
             "rank": 24,
             "rrfScore": 0.024877,
-            "matchedBy": [
-              "keyword",
-              "bm25",
-              "contextMatch"
-            ],
+            "matchedBy": ["keyword", "bm25", "contextMatch"],
             "stageScores": {
               "keyword": 0.333333,
               "bm25": 0.028123,
@@ -847,10 +711,7 @@
                   "description": "1-4 structured questions: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "question",
-                      "header"
-                    ],
+                    "required": ["question", "header"],
                     "properties": {
                       "question": {
                         "type": "string"
@@ -865,9 +726,7 @@
                         "type": "array",
                         "items": {
                           "type": "object",
-                          "required": [
-                            "label"
-                          ],
+                          "required": ["label"],
                           "properties": {
                             "label": {
                               "type": "string"
@@ -921,9 +780,7 @@
             "strict": true,
             "parameters": {
               "type": "object",
-              "required": [
-                "action"
-              ],
+              "required": ["action"],
               "properties": {
                 "action": {
                   "type": "string",
@@ -960,19 +817,12 @@
                 "scope": {
                   "type": "string",
                   "description": "Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requesting user's slot, or...",
-                  "enum": [
-                    "user",
-                    "global"
-                  ]
+                  "enum": ["user", "global"]
                 },
                 "trait": {
                   "type": "string",
                   "description": "set_trait/clear_trait: which trait to modify. One of verbosity, tone, formality.",
-                  "enum": [
-                    "verbosity",
-                    "tone",
-                    "formality"
-                  ]
+                  "enum": ["verbosity", "tone", "formality"]
                 },
                 "value": {
                   "type": "string",
@@ -981,11 +831,7 @@
                 "mode": {
                   "type": "string",
                   "description": "set_reply_gate: gate mode. One of always, on_mention, never_until_lift. 'never_until_lift' is the canonical \"shut up\" mode.",
-                  "enum": [
-                    "always",
-                    "on_mention",
-                    "never_until_lift"
-                  ]
+                  "enum": ["always", "on_mention", "never_until_lift"]
                 },
                 "directive": {
                   "type": "string",
@@ -1015,9 +861,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"dashboard\" for this virtual. do not change).",
-                  "enum": [
-                    "dashboard"
-                  ],
+                  "enum": ["dashboard"],
                   "default": "dashboard"
                 },
                 "sourceId": {
@@ -1128,9 +972,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"list_sources\" for this virtual. do not change).",
-                  "enum": [
-                    "list_sources"
-                  ],
+                  "enum": ["list_sources"],
                   "default": "list_sources"
                 },
                 "sourceId": {
@@ -1241,9 +1083,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"add_source\" for this virtual. do not change).",
-                  "enum": [
-                    "add_source"
-                  ],
+                  "enum": ["add_source"],
                   "default": "add_source"
                 },
                 "sourceId": {
@@ -1354,9 +1194,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"remove_source\" for this virtual. do not change).",
-                  "enum": [
-                    "remove_source"
-                  ],
+                  "enum": ["remove_source"],
                   "default": "remove_source"
                 },
                 "sourceId": {
@@ -1467,9 +1305,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"import_csv\" for this virtual. do not change).",
-                  "enum": [
-                    "import_csv"
-                  ],
+                  "enum": ["import_csv"],
                   "default": "import_csv"
                 },
                 "sourceId": {
@@ -1580,9 +1416,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"list_transactions\" for this virtual. do not change).",
-                  "enum": [
-                    "list_transactions"
-                  ],
+                  "enum": ["list_transactions"],
                   "default": "list_transactions"
                 },
                 "sourceId": {
@@ -1693,9 +1527,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"recurring_charges\" for this virtual. do not change).",
-                  "enum": [
-                    "recurring_charges"
-                  ],
+                  "enum": ["recurring_charges"],
                   "default": "recurring_charges"
                 },
                 "sourceId": {
@@ -1957,11 +1789,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -2002,9 +1830,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"feed\" for this virtual. do not change).",
-                  "enum": [
-                    "feed"
-                  ],
+                  "enum": ["feed"],
                   "default": "feed"
                 },
                 "intent": {
@@ -2144,11 +1970,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -2189,9 +2011,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"next_event\" for this virtual. do not change).",
-                  "enum": [
-                    "next_event"
-                  ],
+                  "enum": ["next_event"],
                   "default": "next_event"
                 },
                 "intent": {
@@ -2331,11 +2151,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -2376,9 +2192,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"search_events\" for this virtual. do not change).",
-                  "enum": [
-                    "search_events"
-                  ],
+                  "enum": ["search_events"],
                   "default": "search_events"
                 },
                 "intent": {
@@ -2518,11 +2332,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -2563,9 +2373,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"create_event\" for this virtual. do not change).",
-                  "enum": [
-                    "create_event"
-                  ],
+                  "enum": ["create_event"],
                   "default": "create_event"
                 },
                 "intent": {
@@ -2705,11 +2513,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -2750,9 +2554,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"update_event\" for this virtual. do not change).",
-                  "enum": [
-                    "update_event"
-                  ],
+                  "enum": ["update_event"],
                   "default": "update_event"
                 },
                 "intent": {
@@ -2892,11 +2694,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -2937,9 +2735,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"delete_event\" for this virtual. do not change).",
-                  "enum": [
-                    "delete_event"
-                  ],
+                  "enum": ["delete_event"],
                   "default": "delete_event"
                 },
                 "intent": {
@@ -3079,11 +2875,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -3124,9 +2916,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"trip_window\" for this virtual. do not change).",
-                  "enum": [
-                    "trip_window"
-                  ],
+                  "enum": ["trip_window"],
                   "default": "trip_window"
                 },
                 "intent": {
@@ -3266,11 +3056,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -3311,9 +3097,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"bulk_reschedule\" for this virtual. do not change).",
-                  "enum": [
-                    "bulk_reschedule"
-                  ],
+                  "enum": ["bulk_reschedule"],
                   "default": "bulk_reschedule"
                 },
                 "intent": {
@@ -3453,11 +3237,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -3498,9 +3278,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"check_availability\" for this virtual. do not change).",
-                  "enum": [
-                    "check_availability"
-                  ],
+                  "enum": ["check_availability"],
                   "default": "check_availability"
                 },
                 "intent": {
@@ -3640,11 +3418,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -3685,9 +3459,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"propose_times\" for this virtual. do not change).",
-                  "enum": [
-                    "propose_times"
-                  ],
+                  "enum": ["propose_times"],
                   "default": "propose_times"
                 },
                 "intent": {
@@ -3827,11 +3599,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -3872,9 +3640,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"update_preferences\" for this virtual. do not change).",
-                  "enum": [
-                    "update_preferences"
-                  ],
+                  "enum": ["update_preferences"],
                   "default": "update_preferences"
                 },
                 "intent": {
@@ -4014,11 +3780,7 @@
                   "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                   "items": {
                     "type": "object",
-                    "required": [
-                      "label",
-                      "startLocal",
-                      "endLocal"
-                    ],
+                    "required": ["label", "startLocal", "endLocal"],
                     "properties": {
                       "label": {
                         "type": "string"
@@ -4059,10 +3821,7 @@
                 "action": {
                   "type": "string",
                   "description": "approve | reject.",
-                  "enum": [
-                    "approve",
-                    "reject"
-                  ]
+                  "enum": ["approve", "reject"]
                 },
                 "requestId": {
                   "type": "string",
@@ -4088,9 +3847,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"approve\" for this virtual. do not change).",
-                  "enum": [
-                    "approve"
-                  ],
+                  "enum": ["approve"],
                   "default": "approve"
                 },
                 "requestId": {
@@ -4117,9 +3874,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"reject\" for this virtual. do not change).",
-                  "enum": [
-                    "reject"
-                  ],
+                  "enum": ["reject"],
                   "default": "reject"
                 },
                 "requestId": {
@@ -4159,10 +3914,7 @@
                 "kind": {
                   "type": "string",
                   "description": "Optional backing kind override.",
-                  "enum": [
-                    "definition",
-                    "goal"
-                  ]
+                  "enum": ["definition", "goal"]
                 },
                 "intent": {
                   "type": "string",
@@ -4203,9 +3955,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"today\" for this virtual. do not change).",
-                  "enum": [
-                    "today"
-                  ],
+                  "enum": ["today"],
                   "default": "today"
                 },
                 "intent": {
@@ -4250,9 +4000,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"by_metric\" for this virtual. do not change).",
-                  "enum": [
-                    "by_metric"
-                  ],
+                  "enum": ["by_metric"],
                   "default": "by_metric"
                 },
                 "intent": {
@@ -4297,9 +4045,7 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"status\" for this virtual. do not change).",
-                  "enum": [
-                    "status"
-                  ],
+                  "enum": ["status"],
                   "default": "status"
                 },
                 "intent": {
@@ -4344,18 +4090,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"summary\" for this virtual. do not change).",
-                  "enum": [
-                    "summary"
-                  ],
+                  "enum": ["summary"],
                   "default": "summary"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4409,18 +4150,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"today\" for this virtual. do not change).",
-                  "enum": [
-                    "today"
-                  ],
+                  "enum": ["today"],
                   "default": "today"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4474,18 +4210,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"weekly\" for this virtual. do not change).",
-                  "enum": [
-                    "weekly"
-                  ],
+                  "enum": ["weekly"],
                   "default": "weekly"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4539,18 +4270,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"by_app\" for this virtual. do not change).",
-                  "enum": [
-                    "by_app"
-                  ],
+                  "enum": ["by_app"],
                   "default": "by_app"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4604,18 +4330,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"by_website\" for this virtual. do not change).",
-                  "enum": [
-                    "by_website"
-                  ],
+                  "enum": ["by_website"],
                   "default": "by_website"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4669,18 +4390,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"activity_report\" for this virtual. do not change).",
-                  "enum": [
-                    "activity_report"
-                  ],
+                  "enum": ["activity_report"],
                   "default": "activity_report"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4734,18 +4450,13 @@
                 "action": {
                   "type": "string",
                   "description": "Subaction discriminator (auto-set to \"browser_activity\" for this virtual. do not change).",
-                  "enum": [
-                    "browser_activity"
-                  ],
+                  "enum": ["browser_activity"],
                   "default": "browser_activity"
                 },
                 "source": {
                   "type": "string",
                   "description": "source filter: app|website",
-                  "enum": [
-                    "app",
-                    "website"
-                  ]
+                  "enum": ["app", "website"]
                 },
                 "identifier": {
                   "type": "string",
@@ -4976,10 +4687,7 @@
                     "description": "1-4 structured questions: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "question",
-                        "header"
-                      ],
+                      "required": ["question", "header"],
                       "properties": {
                         "question": {
                           "type": "string"
@@ -4994,9 +4702,7 @@
                           "type": "array",
                           "items": {
                             "type": "object",
-                            "required": [
-                              "label"
-                            ],
+                            "required": ["label"],
                             "properties": {
                               "label": {
                                 "type": "string"
@@ -5032,9 +4738,7 @@
               },
               "PERSONALITY": {
                 "type": "object",
-                "required": [
-                  "action"
-                ],
+                "required": ["action"],
                 "properties": {
                   "action": {
                     "type": "string",
@@ -5071,19 +4775,12 @@
                   "scope": {
                     "type": "string",
                     "description": "Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requesting user's slot, or...",
-                    "enum": [
-                      "user",
-                      "global"
-                    ]
+                    "enum": ["user", "global"]
                   },
                   "trait": {
                     "type": "string",
                     "description": "set_trait/clear_trait: which trait to modify. One of verbosity, tone, formality.",
-                    "enum": [
-                      "verbosity",
-                      "tone",
-                      "formality"
-                    ]
+                    "enum": ["verbosity", "tone", "formality"]
                   },
                   "value": {
                     "type": "string",
@@ -5092,11 +4789,7 @@
                   "mode": {
                     "type": "string",
                     "description": "set_reply_gate: gate mode. One of always, on_mention, never_until_lift. 'never_until_lift' is the canonical \"shut up\" mode.",
-                    "enum": [
-                      "always",
-                      "on_mention",
-                      "never_until_lift"
-                    ]
+                    "enum": ["always", "on_mention", "never_until_lift"]
                   },
                   "directive": {
                     "type": "string",
@@ -5120,9 +4813,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"dashboard\" for this virtual. do not change).",
-                    "enum": [
-                      "dashboard"
-                    ],
+                    "enum": ["dashboard"],
                     "default": "dashboard"
                   },
                   "sourceId": {
@@ -5227,9 +4918,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"list_sources\" for this virtual. do not change).",
-                    "enum": [
-                      "list_sources"
-                    ],
+                    "enum": ["list_sources"],
                     "default": "list_sources"
                   },
                   "sourceId": {
@@ -5334,9 +5023,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"add_source\" for this virtual. do not change).",
-                    "enum": [
-                      "add_source"
-                    ],
+                    "enum": ["add_source"],
                     "default": "add_source"
                   },
                   "sourceId": {
@@ -5441,9 +5128,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"remove_source\" for this virtual. do not change).",
-                    "enum": [
-                      "remove_source"
-                    ],
+                    "enum": ["remove_source"],
                     "default": "remove_source"
                   },
                   "sourceId": {
@@ -5548,9 +5233,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"import_csv\" for this virtual. do not change).",
-                    "enum": [
-                      "import_csv"
-                    ],
+                    "enum": ["import_csv"],
                     "default": "import_csv"
                   },
                   "sourceId": {
@@ -5655,9 +5338,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"list_transactions\" for this virtual. do not change).",
-                    "enum": [
-                      "list_transactions"
-                    ],
+                    "enum": ["list_transactions"],
                     "default": "list_transactions"
                   },
                   "sourceId": {
@@ -5762,9 +5443,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"recurring_charges\" for this virtual. do not change).",
-                    "enum": [
-                      "recurring_charges"
-                    ],
+                    "enum": ["recurring_charges"],
                     "default": "recurring_charges"
                   },
                   "sourceId": {
@@ -6020,11 +5699,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -6059,9 +5734,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"feed\" for this virtual. do not change).",
-                    "enum": [
-                      "feed"
-                    ],
+                    "enum": ["feed"],
                     "default": "feed"
                   },
                   "intent": {
@@ -6201,11 +5874,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -6240,9 +5909,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"next_event\" for this virtual. do not change).",
-                    "enum": [
-                      "next_event"
-                    ],
+                    "enum": ["next_event"],
                     "default": "next_event"
                   },
                   "intent": {
@@ -6382,11 +6049,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -6421,9 +6084,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"search_events\" for this virtual. do not change).",
-                    "enum": [
-                      "search_events"
-                    ],
+                    "enum": ["search_events"],
                     "default": "search_events"
                   },
                   "intent": {
@@ -6563,11 +6224,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -6602,9 +6259,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"create_event\" for this virtual. do not change).",
-                    "enum": [
-                      "create_event"
-                    ],
+                    "enum": ["create_event"],
                     "default": "create_event"
                   },
                   "intent": {
@@ -6744,11 +6399,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -6783,9 +6434,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"update_event\" for this virtual. do not change).",
-                    "enum": [
-                      "update_event"
-                    ],
+                    "enum": ["update_event"],
                     "default": "update_event"
                   },
                   "intent": {
@@ -6925,11 +6574,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -6964,9 +6609,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"delete_event\" for this virtual. do not change).",
-                    "enum": [
-                      "delete_event"
-                    ],
+                    "enum": ["delete_event"],
                     "default": "delete_event"
                   },
                   "intent": {
@@ -7106,11 +6749,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -7145,9 +6784,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"trip_window\" for this virtual. do not change).",
-                    "enum": [
-                      "trip_window"
-                    ],
+                    "enum": ["trip_window"],
                     "default": "trip_window"
                   },
                   "intent": {
@@ -7287,11 +6924,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -7326,9 +6959,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"bulk_reschedule\" for this virtual. do not change).",
-                    "enum": [
-                      "bulk_reschedule"
-                    ],
+                    "enum": ["bulk_reschedule"],
                     "default": "bulk_reschedule"
                   },
                   "intent": {
@@ -7468,11 +7099,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -7507,9 +7134,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"check_availability\" for this virtual. do not change).",
-                    "enum": [
-                      "check_availability"
-                    ],
+                    "enum": ["check_availability"],
                     "default": "check_availability"
                   },
                   "intent": {
@@ -7649,11 +7274,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -7688,9 +7309,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"propose_times\" for this virtual. do not change).",
-                    "enum": [
-                      "propose_times"
-                    ],
+                    "enum": ["propose_times"],
                     "default": "propose_times"
                   },
                   "intent": {
@@ -7830,11 +7449,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -7869,9 +7484,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"update_preferences\" for this virtual. do not change).",
-                    "enum": [
-                      "update_preferences"
-                    ],
+                    "enum": ["update_preferences"],
                     "default": "update_preferences"
                   },
                   "intent": {
@@ -8011,11 +7624,7 @@
                     "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "label",
-                        "startLocal",
-                        "endLocal"
-                      ],
+                      "required": ["label", "startLocal", "endLocal"],
                       "properties": {
                         "label": {
                           "type": "string"
@@ -8050,10 +7659,7 @@
                   "action": {
                     "type": "string",
                     "description": "approve | reject.",
-                    "enum": [
-                      "approve",
-                      "reject"
-                    ]
+                    "enum": ["approve", "reject"]
                   },
                   "requestId": {
                     "type": "string",
@@ -8073,9 +7679,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"approve\" for this virtual. do not change).",
-                    "enum": [
-                      "approve"
-                    ],
+                    "enum": ["approve"],
                     "default": "approve"
                   },
                   "requestId": {
@@ -8096,9 +7700,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"reject\" for this virtual. do not change).",
-                    "enum": [
-                      "reject"
-                    ],
+                    "enum": ["reject"],
                     "default": "reject"
                   },
                   "requestId": {
@@ -8132,10 +7734,7 @@
                   "kind": {
                     "type": "string",
                     "description": "Optional backing kind override.",
-                    "enum": [
-                      "definition",
-                      "goal"
-                    ]
+                    "enum": ["definition", "goal"]
                   },
                   "intent": {
                     "type": "string",
@@ -8170,9 +7769,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"today\" for this virtual. do not change).",
-                    "enum": [
-                      "today"
-                    ],
+                    "enum": ["today"],
                     "default": "today"
                   },
                   "intent": {
@@ -8211,9 +7808,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"by_metric\" for this virtual. do not change).",
-                    "enum": [
-                      "by_metric"
-                    ],
+                    "enum": ["by_metric"],
                     "default": "by_metric"
                   },
                   "intent": {
@@ -8252,9 +7847,7 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"status\" for this virtual. do not change).",
-                    "enum": [
-                      "status"
-                    ],
+                    "enum": ["status"],
                     "default": "status"
                   },
                   "intent": {
@@ -8293,18 +7886,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"summary\" for this virtual. do not change).",
-                    "enum": [
-                      "summary"
-                    ],
+                    "enum": ["summary"],
                     "default": "summary"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",
@@ -8352,18 +7940,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"today\" for this virtual. do not change).",
-                    "enum": [
-                      "today"
-                    ],
+                    "enum": ["today"],
                     "default": "today"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",
@@ -8411,18 +7994,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"weekly\" for this virtual. do not change).",
-                    "enum": [
-                      "weekly"
-                    ],
+                    "enum": ["weekly"],
                     "default": "weekly"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",
@@ -8470,18 +8048,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"by_app\" for this virtual. do not change).",
-                    "enum": [
-                      "by_app"
-                    ],
+                    "enum": ["by_app"],
                     "default": "by_app"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",
@@ -8529,18 +8102,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"by_website\" for this virtual. do not change).",
-                    "enum": [
-                      "by_website"
-                    ],
+                    "enum": ["by_website"],
                     "default": "by_website"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",
@@ -8588,18 +8156,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"activity_report\" for this virtual. do not change).",
-                    "enum": [
-                      "activity_report"
-                    ],
+                    "enum": ["activity_report"],
                     "default": "activity_report"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",
@@ -8647,18 +8210,13 @@
                   "action": {
                     "type": "string",
                     "description": "Subaction discriminator (auto-set to \"browser_activity\" for this virtual. do not change).",
-                    "enum": [
-                      "browser_activity"
-                    ],
+                    "enum": ["browser_activity"],
                     "default": "browser_activity"
                   },
                   "source": {
                     "type": "string",
                     "description": "source filter: app|website",
-                    "enum": [
-                      "app",
-                      "website"
-                    ]
+                    "enum": ["app", "website"]
                   },
                   "identifier": {
                     "type": "string",

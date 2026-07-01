@@ -73,10 +73,7 @@
         "python3 scripts/check_cpu_ap_completion_gate.py --require-complete"
       ],
       "id": "L2_rv64gc_linux_boot",
-      "must_remain_blocked": [
-        "rva23_claim",
-        "phone_2028_claim"
-      ],
+      "must_remain_blocked": ["rva23_claim", "phone_2028_claim"],
       "name": "single-hart Rocket RV64GC Linux bring-up"
     },
     {
@@ -96,9 +93,7 @@
         "SMP or documented single-hart exception rationale"
       ],
       "id": "L3_rva23_profile_candidate",
-      "must_remain_blocked": [
-        "phone_2028_claim"
-      ],
+      "must_remain_blocked": ["phone_2028_claim"],
       "name": "RVA23-oriented Linux AP candidate"
     },
     {

@@ -111,7 +111,11 @@ describe("applyPaymentProtection", () => {
       agentId: "agent-1",
     });
 
-    await wrapped.handler?.({ method: "POST" } as never, res as never, runtime as never);
+    await wrapped.handler?.(
+      { method: "POST" } as never,
+      res as never,
+      runtime as never,
+    );
 
     expect(handler).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(402);

@@ -36,7 +36,9 @@ export function detailNumber(
   key: string,
 ): number | undefined {
   const value = details?.[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 export function detailBoolean(

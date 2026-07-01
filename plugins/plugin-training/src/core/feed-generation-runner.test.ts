@@ -168,7 +168,9 @@ process.stdout.write("[DRY RUN] Would generate feed trajectories\\n");
     );
     expect(exported).toContain("feed-dry-run-trader-1");
     expect(exported).toContain("DRY_RUN");
-    expect(exported).toContain("trader market observation for dry-run tick 1 of 2");
+    expect(exported).toContain(
+      "trader market observation for dry-run tick 1 of 2",
+    );
     expect(exported).toContain("planned trader feed decision");
   });
 });

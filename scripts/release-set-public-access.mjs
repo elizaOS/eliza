@@ -5,8 +5,9 @@
 // lerna publishes via libnpmpublish and honours each package's
 // publishConfig.access (NOT the npmrc `access` key), so it must be set
 // per-package. Private packages are skipped by lerna entirely and left alone.
-import { readFileSync, writeFileSync } from "node:fs";
+
 import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const files = execSync("git ls-files '*package.json'")
   .toString()
@@ -29,4 +30,6 @@ for (const file of files) {
   writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
   changed += 1;
 }
-console.log(`[release] set publishConfig.access=public on ${changed} package(s)`);
+console.log(
+  `[release] set publishConfig.access=public on ${changed} package(s)`,
+);

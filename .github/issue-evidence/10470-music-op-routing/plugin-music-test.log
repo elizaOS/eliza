@@ -1,0 +1,9 @@
+$ vitest run
+
+ RUN  v4.1.5 /home/shaw/milady/eliza-wt-10470-music-op-routing/plugins/plugin-music
+
+
+ Test Files  7 passed (7)
+      Tests  45 passed (45)
+   Start at  14:55:25
+   Duration  7.44s (transform 18.19s, setup 226ms, import 25.34s, tests 163ms, environment 1ms)

@@ -12,7 +12,9 @@
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/api": ["../../packages/ui/dist/api/index.d.ts"],
       "@elizaos/ui/api/*": ["../../packages/ui/dist/api/*"],
-      "@elizaos/ui/components": ["../../packages/ui/dist/components/index.d.ts"],
+      "@elizaos/ui/components": [
+        "../../packages/ui/dist/components/index.d.ts"
+      ],
       "@elizaos/ui/components/*": ["../../packages/ui/dist/components/*"],
       "@elizaos/ui/spatial": ["../../packages/ui/dist/spatial/index.d.ts"],
       "@elizaos/ui/spatial/tui": [
@@ -25,9 +27,7 @@
       "@elizaos/plugin-local-inference/services": [
         "../plugin-local-inference/dist/services/index.d.ts"
       ],
-      "@elizaos/plugin-local-inference/*": [
-        "../plugin-local-inference/dist/*"
-      ]
+      "@elizaos/plugin-local-inference/*": ["../plugin-local-inference/dist/*"]
     }
   },
   "include": ["src"],

@@ -105,9 +105,7 @@ describe("lint-lane-coverage analyzer", () => {
     );
 
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_TESTS);
-    expect(codes).toContain(
-      laneCoverage.ISSUE_CODES.MISSING_DETERMINISTIC_E2E,
-    );
+    expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_DETERMINISTIC_E2E);
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_TESTS);
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_E2E);
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_VIEW_TESTS);
@@ -134,9 +132,7 @@ describe("lint-lane-coverage analyzer", () => {
         entries: [
           {
             plugin: "plugin-allowlisted",
-            issues: [
-              laneCoverage.ISSUE_CODES.MISSING_DETERMINISTIC_E2E,
-            ],
+            issues: [laneCoverage.ISSUE_CODES.MISSING_DETERMINISTIC_E2E],
             reason: "tracked as fixture debt",
           },
         ],

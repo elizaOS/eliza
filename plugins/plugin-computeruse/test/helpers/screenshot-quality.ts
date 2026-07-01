@@ -1,8 +1,9 @@
 import { expect } from "vitest";
+
 export {
   analyzePngScreenshot,
-  screenshotQualityIssues,
   type ScreenshotQuality,
+  screenshotQualityIssues,
 } from "../../src/platform/screenshot-quality.ts";
 
 import {

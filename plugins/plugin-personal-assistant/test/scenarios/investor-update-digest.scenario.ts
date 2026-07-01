@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "investor-update-digest",
-  title: "Assistant compresses investor update inputs into approval-ready draft",
+  title:
+    "Assistant compresses investor update inputs into approval-ready draft",
   domain: "executive.briefing",
   tags: ["lifeops", "executive-assistant", "briefing", "documents"],
   isolation: "per-scenario",

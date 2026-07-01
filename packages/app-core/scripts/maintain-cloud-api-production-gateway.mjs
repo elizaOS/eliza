@@ -10,8 +10,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const verifyScript = path.join(scriptDir, "verify-cloud-api-production-deploy.mjs");
-const deployScript = path.join(scriptDir, "deploy-cloud-api-production-gateway.mjs");
+const verifyScript = path.join(
+  scriptDir,
+  "verify-cloud-api-production-deploy.mjs",
+);
+const deployScript = path.join(
+  scriptDir,
+  "deploy-cloud-api-production-gateway.mjs",
+);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -27,7 +33,9 @@ function run(command, args, options = {}) {
 }
 
 function main() {
-  console.log("[cloud-api-gateway-maintain] verifying production gateway contract");
+  console.log(
+    "[cloud-api-gateway-maintain] verifying production gateway contract",
+  );
   const first = run("node", [verifyScript], { timeout: 180_000 });
   if (first.status === 0) {
     process.stdout.write(first.output);
@@ -36,12 +44,19 @@ function main() {
   }
 
   process.stdout.write(first.output);
-  console.log("[cloud-api-gateway-maintain] drift detected; running production repair deploy");
-  const repair = run("node", [deployScript], { inherit: true, timeout: 600_000 });
+  console.log(
+    "[cloud-api-gateway-maintain] drift detected; running production repair deploy",
+  );
+  const repair = run("node", [deployScript], {
+    inherit: true,
+    timeout: 600_000,
+  });
   if (repair.status !== 0) {
     throw new Error(`production repair deploy failed with ${repair.status}`);
   }
-  console.log("[cloud-api-gateway-maintain] PASS repaired production gateway contract");
+  console.log(
+    "[cloud-api-gateway-maintain] PASS repaired production gateway contract",
+  );
 }
 
 try {

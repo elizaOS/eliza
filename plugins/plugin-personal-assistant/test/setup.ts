@@ -1,5 +1,5 @@
-import { vi } from "vitest";
 import Module from "node:module";
+import { vi } from "vitest";
 
 const requireFromHere = Module.createRequire(import.meta.url);
 const react = requireFromHere("react") as typeof import("react");

@@ -27,8 +27,8 @@ import {
 // Test-only: PA owns the app_lifeops audit/task tables + their schema bootstrap.
 // The goals plugin SOURCE never imports PA (verified by the boundary contract).
 import { LifeOpsRepository } from "../../plugin-personal-assistant/src/lifeops/repository.ts";
-import { goalsDbSchema } from "../src/db/schema.ts";
 import { GoalsRepository } from "../src/db/goals-repository.ts";
+import { goalsDbSchema } from "../src/db/schema.ts";
 import { executeRawSql } from "../src/db/sql.ts";
 import { createOwnerGoalsService } from "../src/goals-runtime.ts";
 import type { GoalsService } from "../src/goals-service.ts";

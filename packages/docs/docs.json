@@ -52,12 +52,7 @@
         "groups": [
           {
             "group": "Welcome",
-            "pages": [
-              "index",
-              "installation",
-              "quickstart",
-              "tracks/overview"
-            ]
+            "pages": ["index", "installation", "quickstart", "tracks/overview"]
           },
           {
             "group": "Use Eliza",
@@ -76,11 +71,7 @@
           },
           {
             "group": "Project",
-            "pages": [
-              "changelog",
-              "direction",
-              "build-and-release"
-            ]
+            "pages": ["changelog", "direction", "build-and-release"]
           }
         ]
       },
@@ -347,11 +338,7 @@
           },
           {
             "group": "Monetization",
-            "pages": [
-              "cloud/earnings",
-              "cloud/monetized-apps",
-              "cloud/billing"
-            ]
+            "pages": ["cloud/earnings", "cloud/monetized-apps", "cloud/billing"]
           },
           {
             "group": "API Reference",
@@ -383,10 +370,7 @@
           },
           {
             "group": "Protocols",
-            "pages": [
-              "cloud/a2a",
-              "cloud/mcp"
-            ]
+            "pages": ["cloud/a2a", "cloud/mcp"]
           },
           {
             "group": "Reference",
@@ -431,10 +415,7 @@
         "groups": [
           {
             "group": "Embodiment",
-            "pages": [
-              "tracks/training/robot",
-              "tracks/training/feed"
-            ]
+            "pages": ["tracks/training/robot", "tracks/training/feed"]
           }
         ]
       },
@@ -443,11 +424,7 @@
         "groups": [
           {
             "group": "CLI",
-            "pages": [
-              "cli/overview",
-              "cli/create-project",
-              "cli/create-plugin"
-            ]
+            "pages": ["cli/overview", "cli/create-project", "cli/create-plugin"]
           }
         ]
       },

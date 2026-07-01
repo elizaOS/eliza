@@ -22,16 +22,8 @@
       "id": "rf_keepout_and_prescan_plan",
       "domain": "rf",
       "actual": {
-        "cellular_keepout_mm": [
-          62.0,
-          6.0,
-          2.0
-        ],
-        "wifi_bt_keepout_mm": [
-          34.0,
-          5.0,
-          2.0
-        ],
+        "cellular_keepout_mm": [62.0, 6.0, 2.0],
+        "wifi_bt_keepout_mm": [34.0, 5.0, 2.0],
         "rf_keepout_check": true,
         "candidate_us_sar_limit_w_per_kg_1g": 1.6
       },

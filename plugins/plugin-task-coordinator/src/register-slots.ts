@@ -20,11 +20,11 @@ import type {
   TaskCoordinatorPtyConsoleBaseProps,
 } from "@elizaos/ui/slots/task-coordinator-slots";
 import {
+  type ComponentType,
   createElement,
+  type LazyExoticComponent,
   lazy,
   Suspense,
-  type ComponentType,
-  type LazyExoticComponent,
 } from "react";
 
 function lazySlot<P extends object>(

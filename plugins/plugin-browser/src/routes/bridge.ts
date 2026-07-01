@@ -1001,10 +1001,8 @@ export async function handleBrowserBridgeRoutes(
       if (!auth) {
         return;
       }
-      const body = await readJsonBody<UpdateBrowserBridgeSessionProgressRequest>(
-        req,
-        res,
-      );
+      const body =
+        await readJsonBody<UpdateBrowserBridgeSessionProgressRequest>(req, res);
       if (!body) return;
       if (!isBrowserBridgeRouteBodyObject(body)) {
         rejectMalformedBrowserBridgePayload(ctx);

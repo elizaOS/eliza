@@ -60,10 +60,7 @@
       "assets": "object"
     }
   },
-  "required_calibration_assets": [
-    "clock_source",
-    "power_meter"
-  ],
+  "required_calibration_assets": ["clock_source", "power_meter"],
   "calibration_asset_required_fields": [
     "status",
     "source",

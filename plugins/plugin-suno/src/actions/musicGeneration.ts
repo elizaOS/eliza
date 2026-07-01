@@ -61,13 +61,7 @@ export function inferSubaction(params: SunoMusicGenerationParams): SunoMusicSuba
     // key/mode/reference_audio) — both structured signals the planner emits in
     // any language. Default 'generate'.
     if (params.audio_id) return 'extend';
-    if (
-        params.reference_audio ||
-        params.style ||
-        params.bpm ||
-        params.key ||
-        params.mode
-    ) {
+    if (params.reference_audio || params.style || params.bpm || params.key || params.mode) {
         return 'custom_generate';
     }
     return 'generate';

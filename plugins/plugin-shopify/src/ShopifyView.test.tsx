@@ -19,8 +19,8 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { interact } from "./shopify-interact";
 import { ShopifyView } from "./ShopifyView";
+import { interact } from "./shopify-interact";
 
 configure({ asyncUtilTimeout: 5000 });
 
@@ -121,8 +121,10 @@ function mockFetch() {
       if (url === "/api/shopify/products" && init?.method === "POST") {
         return jsonResponse({ product: sampleProducts.products[0] });
       }
-      if (url.startsWith("/api/shopify/orders")) return jsonResponse(sampleOrders);
-      if (url === "/api/shopify/inventory") return jsonResponse(sampleInventory);
+      if (url.startsWith("/api/shopify/orders"))
+        return jsonResponse(sampleOrders);
+      if (url === "/api/shopify/inventory")
+        return jsonResponse(sampleInventory);
       if (url.includes("/api/shopify/inventory/") && init?.method === "POST") {
         return jsonResponse({ adjusted: true });
       }
@@ -262,7 +264,9 @@ describe("ShopifyView — orders + customers filters", () => {
     await screen.findByText("Eliza Store");
 
     fireEvent.click(agent("tab-orders"));
-    await waitFor(() => expect(agent("orders-filter-unfulfilled")).toBeTruthy());
+    await waitFor(() =>
+      expect(agent("orders-filter-unfulfilled")).toBeTruthy(),
+    );
 
     fireEvent.click(agent("orders-filter-unfulfilled"));
 

@@ -20,9 +20,7 @@
     {
       "id": "display_touch_stack",
       "rfq_package_id": "display_touch_stack",
-      "required_items": [
-        "display_lcm_ctp"
-      ],
+      "required_items": ["display_lcm_ctp"],
       "required_evidence": [
         "quote",
         "2d_drawing",
@@ -87,17 +85,13 @@
         "mating_connector",
         "touch_display_bringup_data"
       ],
-      "missing_supplier_items": [
-        "display_lcm_ctp"
-      ],
+      "missing_supplier_items": ["display_lcm_ctp"],
       "pass": false
     },
     {
       "id": "usb_audio_bottom_io",
       "rfq_package_id": "usb_c_and_bottom_audio",
-      "required_items": [
-        "usb_c"
-      ],
+      "required_items": ["usb_c"],
       "required_evidence": [
         "quote",
         "2d_drawing",
@@ -162,17 +156,13 @@
         "insertion_force_data",
         "splash_gasket_review"
       ],
-      "missing_supplier_items": [
-        "usb_c"
-      ],
+      "missing_supplier_items": ["usb_c"],
       "pass": false
     },
     {
       "id": "power_volume_buttons",
       "rfq_package_id": "buttons_haptics_service",
-      "required_items": [
-        "side_buttons"
-      ],
+      "required_items": ["side_buttons"],
       "required_evidence": [
         "quote",
         "2d_drawing",
@@ -237,18 +227,13 @@
         "gasket_material_spec",
         "compression_set_data"
       ],
-      "missing_supplier_items": [
-        "side_buttons"
-      ],
+      "missing_supplier_items": ["side_buttons"],
       "pass": false
     },
     {
       "id": "camera_modules",
       "rfq_package_id": "camera_stack",
-      "required_items": [
-        "rear_camera",
-        "front_camera"
-      ],
+      "required_items": ["rear_camera", "front_camera"],
       "required_evidence": [
         "quote",
         "2d_drawing",
@@ -325,19 +310,13 @@
         "optical_center_datum",
         "sample_capture_evidence"
       ],
-      "missing_supplier_items": [
-        "rear_camera",
-        "front_camera"
-      ],
+      "missing_supplier_items": ["rear_camera", "front_camera"],
       "pass": false
     },
     {
       "id": "wireless_modules",
       "rfq_package_id": "",
-      "required_items": [
-        "cellular_redcap",
-        "wifi_bt"
-      ],
+      "required_items": ["cellular_redcap", "wifi_bt"],
       "required_evidence": [
         "quote",
         "2d_drawing",
@@ -417,18 +396,13 @@
         "antenna_keepout",
         "certification_path"
       ],
-      "missing_supplier_items": [
-        "cellular_redcap",
-        "wifi_bt"
-      ],
+      "missing_supplier_items": ["cellular_redcap", "wifi_bt"],
       "pass": false
     },
     {
       "id": "orange_enclosure_tooling",
       "rfq_package_id": "orange_enclosure_tooling",
-      "required_items": [
-        "orange_enclosure_tooling"
-      ],
+      "required_items": ["orange_enclosure_tooling"],
       "required_evidence": [
         "toolmaker_quote",
         "tool_drawing",
@@ -494,9 +468,7 @@
         "gate_runner_ejector_strategy",
         "texture_color_standard"
       ],
-      "missing_supplier_items": [
-        "orange_enclosure_tooling"
-      ],
+      "missing_supplier_items": ["orange_enclosure_tooling"],
       "pass": false
     }
   ],

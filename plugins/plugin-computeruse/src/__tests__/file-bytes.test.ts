@@ -47,9 +47,9 @@ describe("binary file ops (read_bytes / write_bytes)", () => {
 
     const r = await readBytes(file, 2, 3);
     expect(r.success).toBe(true);
-    expect(Buffer.from(r.bytes ?? "", "base64").equals(Buffer.from([12, 13, 14]))).toBe(
-      true,
-    );
+    expect(
+      Buffer.from(r.bytes ?? "", "base64").equals(Buffer.from([12, 13, 14])),
+    ).toBe(true);
   });
 
   it("write_bytes creates parent directories", async () => {

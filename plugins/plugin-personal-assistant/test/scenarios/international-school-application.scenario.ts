@@ -22,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "assemble-application-packet",
       text: "The Zurich school application is due Friday. Assemble transcripts, vaccination form routing, teacher recommendation asks, passport copies, and interview slots across our calendars.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "calendar_action", "owner_send_message"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "calendar_action",
+        "owner_send_message",
+      ],
       responseIncludesAny: ["transcripts", "teacher", "passport", "interview"],
       plannerExcludes: ["OWNER_HEALTH"],
     },

@@ -62,8 +62,7 @@ export const conflictDetectAction: Action = {
   parameters: [
     {
       name: "action",
-      description:
-        "Conflict op: scan_today | scan_week | scan_event_proposal.",
+      description: "Conflict op: scan_today | scan_week | scan_event_proposal.",
       required: true,
       schema: { type: "string", enum: [...CONFLICT_DETECT_OPS] },
     },

@@ -5,7 +5,13 @@ export default scenario({
   id: "keynote-slide-fact-check-approval",
   title: "Assistant fact-checks keynote slides before approval",
   domain: "executive.briefing",
-  tags: ["lifeops", "executive-assistant", "briefing", "documents", "approvals"],
+  tags: [
+    "lifeops",
+    "executive-assistant",
+    "briefing",
+    "documents",
+    "approvals",
+  ],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

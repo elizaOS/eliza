@@ -26,11 +26,7 @@
     "ittage_useful_aging"
   ],
   "max_branches_per_trace": 0,
-  "ranking": [
-    "h2p_lowconf_only",
-    "baseline",
-    "h2p_off"
-  ],
+  "ranking": ["h2p_lowconf_only", "baseline", "h2p_off"],
   "results": {
     "baseline": {
       "ittage_counter_totals": {
@@ -193,9 +189,7 @@
     "l2_ftb_deferred_by_timing_model",
     "l2_ftb_late_redirect"
   ],
-  "trace_filter": [
-    "compression_proxy"
-  ],
+  "trace_filter": ["compression_proxy"],
   "trace_set": [
     {
       "branches": 5396802,

@@ -1,8 +1,6 @@
 {
   "checkpoint": "checkpoints/text_conditioned_brax_v1",
-  "tiers": [
-    1
-  ],
+  "tiers": [1],
   "n_tasks": 11,
   "n_programmatic_pass": 0,
   "n_vlm_pass": 0,

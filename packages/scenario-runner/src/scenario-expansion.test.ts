@@ -51,7 +51,9 @@ async function writeFixtureScenario(): Promise<string> {
 describe("scenario-runner edge expansion", () => {
   afterEach(async () => {
     await Promise.all(
-      tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+      tempDirs
+        .splice(0)
+        .map((dir) => rm(dir, { recursive: true, force: true })),
     );
   });
 
@@ -112,7 +114,7 @@ describe("scenario-runner edge expansion", () => {
   it("detects authored ids that collide with generated edge ids", async () => {
     const dir = await makeTempScenarioDir();
     await writeScenarioFile(dir, "base.scenario.ts", [
-      'export default {',
+      "export default {",
       '  id: "fixture.todo.create",',
       '  title: "Create fixture todo",',
       '  domain: "fixture",',
@@ -120,7 +122,7 @@ describe("scenario-runner edge expansion", () => {
       "};",
     ]);
     await writeScenarioFile(dir, "colliding.scenario.ts", [
-      'export default {',
+      "export default {",
       '  id: "fixture.todo.create--edge-permission-denied",',
       '  title: "Authored collision",',
       '  domain: "fixture",',
@@ -161,7 +163,7 @@ describe("scenario-runner edge expansion", () => {
       'if (process.env.SHOULD_NOT_IMPORT_SCENARIO === "1") {',
       '  throw new Error("scenario module was imported");',
       "}",
-      'export default {',
+      "export default {",
       '  id: "fixture.static.only",',
       '  title: "Static only",',
       '  domain: "fixture",',

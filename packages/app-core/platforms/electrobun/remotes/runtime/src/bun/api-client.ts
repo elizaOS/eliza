@@ -1,9 +1,4 @@
 import { createApiBridgeError, isApiBridgeError } from "./errors.ts";
-import {
-  clearRuntimeApiDiscoveryCache,
-  discoverRuntimeApiRoutes,
-  findAvailableRoute,
-} from "./route-discovery.ts";
 import type {
   AgentMessageParams,
   AgentMessageResult,
@@ -13,6 +8,11 @@ import type {
   RuntimeHealthAttempt,
   RuntimeHealthResult,
 } from "./protocol.ts";
+import {
+  clearRuntimeApiDiscoveryCache,
+  discoverRuntimeApiRoutes,
+  findAvailableRoute,
+} from "./route-discovery.ts";
 
 const HEALTH_PATHS = ["/api/dev/stack", "/api/status", "/api/health"] as const;
 const DEFAULT_TIMEOUT_MS = 1500;

@@ -74,7 +74,7 @@ function parseArgs(argv) {
   }
   if (
     args.method &&
-    !(["apple-script", "private-api", "shortcuts"].includes(args.method))
+    !["apple-script", "private-api", "shortcuts"].includes(args.method)
   ) {
     throw new Error("--method must be apple-script, private-api, or shortcuts");
   }
@@ -109,8 +109,10 @@ function writeEvidence({
       ? {
           target: diagnostics.bridge.shortcutsRunTarget,
           inputContract: diagnostics.bridge.shortcutsInputContract ?? null,
-          latestInputPath: Array.isArray(diagnostics.bridge.recentShortcutInputs)
-            ? diagnostics.bridge.recentShortcutInputs[0]?.path ?? null
+          latestInputPath: Array.isArray(
+            diagnostics.bridge.recentShortcutInputs,
+          )
+            ? (diagnostics.bridge.recentShortcutInputs[0]?.path ?? null)
             : null,
         }
       : null,
@@ -126,7 +128,8 @@ async function getJson(url) {
   const response = await fetch(url);
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(`${url} failed (${response.status}): ${text}`);
+  if (!response.ok)
+    throw new Error(`${url} failed (${response.status}): ${text}`);
   return body;
 }
 
@@ -146,7 +149,8 @@ async function postJson(url, body) {
   });
   const text = await response.text();
   const parsed = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(`${url} failed (${response.status}): ${text}`);
+  if (!response.ok)
+    throw new Error(`${url} failed (${response.status}): ${text}`);
   return parsed;
 }
 
@@ -197,7 +201,9 @@ function printShortcutDiagnostics(diagnostics) {
     `[bluebubbles-validate] shortcut target=${bridge.shortcutsRunTarget} input=${contract?.inputType ?? "unknown"} required=${requiredKeys} optional=${optionalKeys}`,
   );
   if (latestInput?.path) {
-    console.log(`[bluebubbles-validate] latest preserved Shortcut input=${latestInput.path}`);
+    console.log(
+      `[bluebubbles-validate] latest preserved Shortcut input=${latestInput.path}`,
+    );
   }
 }
 
@@ -240,8 +246,8 @@ async function main() {
   const unexpectedBlockers = unexpectedDoctorBlockers(doctor);
   if (unexpectedBlockers.length > 0) {
     const error = `Refusing to validate while bridge prerequisites are blocked: ${unexpectedBlockers
-        .map((check) => `${check.name}: ${check.detail ?? check.status}`)
-        .join("; ")}`;
+      .map((check) => `${check.name}: ${check.detail ?? check.status}`)
+      .join("; ")}`;
     writeEvidence({
       evidencePath: args.evidencePath,
       ok: false,
@@ -284,10 +290,14 @@ async function main() {
   console.log(
     `[bluebubbles-validate] PASS ${result.validation.method} validated at ${result.validation.validatedAt}`,
   );
-  console.log("[bluebubbles-validate] Next: bun run --cwd packages/app-core sms-gateway:verify:bluebubbles");
+  console.log(
+    "[bluebubbles-validate] Next: bun run --cwd packages/app-core sms-gateway:verify:bluebubbles",
+  );
 }
 
 main().catch((error) => {
-  console.error(`[bluebubbles-validate] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[bluebubbles-validate] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

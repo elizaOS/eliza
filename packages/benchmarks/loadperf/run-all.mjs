@@ -21,14 +21,14 @@
 import { spawnSync } from "node:child_process";
 import {
   HERE,
-  RESULTS_ROOT,
-  readLatest,
-  mkdirSync,
-  writeFileSync,
-  ms,
+  join,
   kb,
   mb,
-  join,
+  mkdirSync,
+  ms,
+  RESULTS_ROOT,
+  readLatest,
+  writeFileSync,
 } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
@@ -80,8 +80,14 @@ function main() {
   const summaryDir = join(RESULTS_ROOT, "summary");
   mkdirSync(summaryDir, { recursive: true });
   const stamp = NOW.replace(/[:.]/g, "-");
-  writeFileSync(join(summaryDir, `${stamp}.json`), JSON.stringify(summary, null, 2));
-  writeFileSync(join(summaryDir, "latest.json"), JSON.stringify(summary, null, 2));
+  writeFileSync(
+    join(summaryDir, `${stamp}.json`),
+    JSON.stringify(summary, null, 2),
+  );
+  writeFileSync(
+    join(summaryDir, "latest.json"),
+    JSON.stringify(summary, null, 2),
+  );
 
   const md = renderMarkdown(ran, results);
   writeFileSync(join(summaryDir, `${stamp}.md`), md);
@@ -97,8 +103,10 @@ function main() {
 
 function checkRow(c) {
   if (c.unit === "ms") return `${c.name}: ${ms(c.value)} / ${ms(c.budget)}`;
-  if (c.unit === "MB") return `${c.name}: ${c.value == null ? "—" : `${c.value.toFixed(1)} MB`} / ${c.budget} MB`;
-  if (c.unit === "bytes") return `${c.name}: ${c.value == null ? "—" : kb(c.value)} / ${kb(c.budget)}`;
+  if (c.unit === "MB")
+    return `${c.name}: ${c.value == null ? "—" : `${c.value.toFixed(1)} MB`} / ${c.budget} MB`;
+  if (c.unit === "bytes")
+    return `${c.name}: ${c.value == null ? "—" : kb(c.value)} / ${kb(c.budget)}`;
   return `${c.name}: ${c.value ?? "—"} / ${c.budget}`;
 }
 
@@ -114,7 +122,12 @@ function renderMarkdown(ran, results) {
   lines.push("| KPI | Status |");
   lines.push("| --- | --- |");
   for (const r of ran) {
-    const badge = { pass: "PASS", fail: "FAIL", skipped: "skipped", off: "off" }[r.status];
+    const badge = {
+      pass: "PASS",
+      fail: "FAIL",
+      skipped: "skipped",
+      off: "off",
+    }[r.status];
     lines.push(`| ${r.kpi} | ${badge} |`);
   }
   lines.push("");
@@ -140,22 +153,39 @@ function renderMarkdown(ran, results) {
     }
     const s = rec.summary ?? {};
     if (r.kpi === "bundle") {
-      lines.push(`- total brotli: ${mb(s.totalBrotli ?? 0)} across ${s.assetCount ?? "?"} assets`);
-      lines.push(`- initial entry: ${kb(s.initialEntryBrotli ?? 0)} (${(s.initialEntryFiles ?? []).join(", ") || "?"})`);
-      if (s.largestChunk) lines.push(`- largest chunk: ${s.largestChunk.name} ${kb(s.largestChunk.brotli)}`);
+      lines.push(
+        `- total brotli: ${mb(s.totalBrotli ?? 0)} across ${s.assetCount ?? "?"} assets`,
+      );
+      lines.push(
+        `- initial entry: ${kb(s.initialEntryBrotli ?? 0)} (${(s.initialEntryFiles ?? []).join(", ") || "?"})`,
+      );
+      if (s.largestChunk)
+        lines.push(
+          `- largest chunk: ${s.largestChunk.name} ${kb(s.largestChunk.brotli)}`,
+        );
       lines.push(`- duplicate waste: ${mb(s.duplicateWastedBrotli ?? 0)}`);
     } else if (r.kpi === "boot") {
       lines.push(`- mode: ${s.mode ?? "?"}`);
       lines.push(`- ready: ${ms(s.readyMs)}`);
-      lines.push(`- peak RSS: ${s.peakRssMb == null ? "—" : `${s.peakRssMb} MB`}`);
+      lines.push(
+        `- peak RSS: ${s.peakRssMb == null ? "—" : `${s.peakRssMb} MB`}`,
+      );
     } else if (r.kpi === "frontend") {
-      lines.push(`- FCP: ${ms(s.fcpMs)}  LCP: ${ms(s.lcpMs)}  CLS: ${(s.cls ?? 0).toFixed?.(3) ?? s.cls}`);
-      lines.push(`- JS transferred: ${kb(s.jsTransferredBytes ?? 0)} over ${s.requestCount ?? "?"} requests`);
+      lines.push(
+        `- FCP: ${ms(s.fcpMs)}  LCP: ${ms(s.lcpMs)}  CLS: ${(s.cls ?? 0).toFixed?.(3) ?? s.cls}`,
+      );
+      lines.push(
+        `- JS transferred: ${kb(s.jsTransferredBytes ?? 0)} over ${s.requestCount ?? "?"} requests`,
+      );
       lines.push(`- long tasks: ${ms(s.longTasksMs)}`);
     } else if (r.kpi === "statesync") {
-      lines.push(`- clients: ${s.clients ?? "?"}  broadcasts: ${s.broadcastsObserved ?? "?"}`);
+      lines.push(
+        `- clients: ${s.clients ?? "?"}  broadcasts: ${s.broadcastsObserved ?? "?"}`,
+      );
       lines.push(`- skew p50/p95: ${ms(s.skewP50Ms)} / ${ms(s.skewP95Ms)}`);
-      lines.push(`- desync events: ${s.desyncEvents ?? "?"}  reconnect: ${ms(s.reconnectMs)}`);
+      lines.push(
+        `- desync events: ${s.desyncEvents ?? "?"}  reconnect: ${ms(s.reconnectMs)}`,
+      );
     }
     lines.push("");
     if (Array.isArray(rec.checks) && rec.checks.length) {
@@ -170,7 +200,9 @@ function renderMarkdown(ran, results) {
 
   lines.push("---");
   lines.push("");
-  lines.push("Budgets are defined in `budgets.json`. Ratchet them down as optimizations land.");
+  lines.push(
+    "Budgets are defined in `budgets.json`. Ratchet them down as optimizations land.",
+  );
   lines.push("");
   return lines.join("\n");
 }

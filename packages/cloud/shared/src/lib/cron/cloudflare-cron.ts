@@ -54,6 +54,10 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "* * * * *": [
     "/api/v1/cron/deployment-monitor",
     "/api/v1/cron/health-check",
+    // Alerts ops when the provisioning-worker daemon's heartbeat goes
+    // stale/absent — the daemon can't page about its own death, so this
+    // runs separately on the Worker (#9853).
+    "/api/v1/cron/provisioning-worker-health",
     "/api/v1/cron/process-provisioning-jobs",
     "/api/cron/process-stripe-queue",
     "/api/v1/cron/pool-replenish",

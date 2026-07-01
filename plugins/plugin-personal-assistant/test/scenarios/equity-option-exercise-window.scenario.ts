@@ -22,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "triage-exercise-window",
       text: "Check whether any equity options have an exercise deadline this month. Pull grant docs, strike price, tax estimate, liquidity constraints, and broker steps.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "SCHEDULED_TASKS"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "OWNER_FINANCES",
+        "SCHEDULED_TASKS",
+      ],
       responseIncludesAny: ["deadline", "strike", "tax", "broker"],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },

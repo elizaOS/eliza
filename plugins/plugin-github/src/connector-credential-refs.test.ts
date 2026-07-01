@@ -154,10 +154,7 @@ describe("GitHub connector credential refs", () => {
         caller: "plugin-github-test",
       }),
     ).resolves.toBeNull();
-    expect(vault.reveal).toHaveBeenCalledWith(
-      validRef,
-      "plugin-github-test",
-    );
+    expect(vault.reveal).toHaveBeenCalledWith(validRef, "plugin-github-test");
   });
 
   it("persists credentials with fallback vault and credential-ref writers", async () => {

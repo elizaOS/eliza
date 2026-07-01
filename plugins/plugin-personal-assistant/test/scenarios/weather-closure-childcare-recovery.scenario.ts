@@ -23,7 +23,12 @@ export default scenario({
       name: "build-weather-closure-plan",
       text: "School closed for weather. Find backup childcare, carpool changes, my immovable meetings, partner availability, and who needs an update.",
       plannerIncludesAny: ["calendar_action", "owner_send_message", "priority"],
-      responseIncludesAny: ["backup childcare", "carpool", "meetings", "update"],
+      responseIncludesAny: [
+        "backup childcare",
+        "carpool",
+        "meetings",
+        "update",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
     {

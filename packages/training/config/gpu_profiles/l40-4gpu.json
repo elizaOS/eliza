@@ -17,4 +17,3 @@
   "fsdp_enabled": true,
   "notes": "4x L40 with tensor parallelism. Target for Gemma 4 31B production runs."
 }
-

@@ -8,10 +8,7 @@
       "id": "voice-workbench-room",
       "title": "Voice Workbench: multi-speaker room over a voice turn",
       "domain": "voice",
-      "tags": [
-        "deterministic",
-        "voice"
-      ],
+      "tags": ["deterministic", "voice"],
       "status": "passed",
       "durationMs": 0,
       "turns": [

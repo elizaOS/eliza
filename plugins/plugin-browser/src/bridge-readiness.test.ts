@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type {
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeSettings,
-} from "./contracts.js";
 import {
   browserBridgeCompanionIsRecent,
   browserBridgePermissionsReady,
   isBrowserBridgePaused,
   resolveBrowserBridgeReadiness,
 } from "./bridge-readiness.js";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "./contracts.js";
 
 const nowMs = Date.parse("2026-06-02T12:00:00.000Z");
 
@@ -47,10 +47,7 @@ function companion(
 describe("browser bridge readiness", () => {
   it("detects pause and recent companion windows", () => {
     expect(
-      isBrowserBridgePaused(
-        { pauseUntil: "2026-06-02T12:01:00.000Z" },
-        nowMs,
-      ),
+      isBrowserBridgePaused({ pauseUntil: "2026-06-02T12:01:00.000Z" }, nowMs),
     ).toBe(true);
     expect(
       browserBridgeCompanionIsRecent(
@@ -67,9 +64,9 @@ describe("browser bridge readiness", () => {
   });
 
   it("checks required permissions and site access", () => {
-    expect(browserBridgePermissionsReady(settings, companion().permissions)).toBe(
-      true,
-    );
+    expect(
+      browserBridgePermissionsReady(settings, companion().permissions),
+    ).toBe(true);
     expect(
       browserBridgePermissionsReady(
         { ...settings, siteAccessMode: "current_site_only" },
@@ -93,12 +90,15 @@ describe("browser bridge readiness", () => {
   });
 
   it("resolves readiness states from settings and companions", () => {
-    expect(resolveBrowserBridgeReadiness(settings, [companion()], nowMs))
-      .toMatchObject({
-        ready: true,
-        state: "ready",
-        recentConnectedCompanions: [expect.objectContaining({ id: "companion-1" })],
-      });
+    expect(
+      resolveBrowserBridgeReadiness(settings, [companion()], nowMs),
+    ).toMatchObject({
+      ready: true,
+      state: "ready",
+      recentConnectedCompanions: [
+        expect.objectContaining({ id: "companion-1" }),
+      ],
+    });
 
     expect(
       resolveBrowserBridgeReadiness(

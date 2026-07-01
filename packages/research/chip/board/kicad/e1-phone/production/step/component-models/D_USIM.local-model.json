@@ -131,18 +131,7 @@
     }
   ],
   "pad_count": 10,
-  "pad_names": [
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10"
-  ],
+  "pad_names": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
   "pad_visual_count": 10,
   "pattern_binding_status": "pinout_bound_public_or_captured_contract",
   "pattern_bound": true,

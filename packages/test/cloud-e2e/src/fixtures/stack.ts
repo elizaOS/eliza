@@ -229,8 +229,9 @@ async function killProc(proc: SpawnedProc): Promise<void> {
 }
 
 async function closeCloudSharedDatabaseConnections(): Promise<void> {
-  const { closeDatabaseConnectionsForTests } =
-    await import("@elizaos/cloud-shared/db/client");
+  const { closeDatabaseConnectionsForTests } = await import(
+    "@elizaos/cloud-shared/db/client"
+  );
   await closeDatabaseConnectionsForTests();
 }
 

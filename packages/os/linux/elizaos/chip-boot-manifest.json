@@ -15,10 +15,7 @@
   "sha256": "07519ebc789eb1cb83d9aea94a72265ca694e147af24d1f0d5070214450c1eb1",
   "notes": "Chip-objective contract manifest for generated Eliza AP/chip-emulator Linux boot. qemu-virt evidence remains reference-only OS evidence and is not used as chip proof.",
   "validation": {
-    "requiredEvidence": [
-      "generated-eliza-ap-boot",
-      "elizaos-agent-live"
-    ],
+    "requiredEvidence": ["generated-eliza-ap-boot", "elizaos-agent-live"],
     "evidence": [
       {
         "id": "generated-eliza-ap-boot",

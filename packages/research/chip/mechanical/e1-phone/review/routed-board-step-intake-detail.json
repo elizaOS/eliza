@@ -26,10 +26,7 @@
         "x": 37.0,
         "y": 121.8
       },
-      "route_classes": [
-        "high_current_power",
-        "power"
-      ],
+      "route_classes": ["high_current_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -51,10 +48,7 @@
         "x": 42.0,
         "y": 121.8
       },
-      "route_classes": [
-        "high_current_power",
-        "power"
-      ],
+      "route_classes": ["high_current_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -76,10 +70,7 @@
         "x": 31.45,
         "y": 121.8
       },
-      "route_classes": [
-        "cc_sbu_control",
-        "test_access"
-      ],
+      "route_classes": ["cc_sbu_control", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -100,10 +91,7 @@
         "x": 23.0,
         "y": 118.4
       },
-      "route_classes": [
-        "cc_sbu_control",
-        "test_access"
-      ],
+      "route_classes": ["cc_sbu_control", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -124,10 +112,7 @@
         "x": 32.0,
         "y": 121.8
       },
-      "route_classes": [
-        "cc_sbu_control",
-        "test_access"
-      ],
+      "route_classes": ["cc_sbu_control", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -148,10 +133,7 @@
         "x": 30.2,
         "y": 118.4
       },
-      "route_classes": [
-        "cc_sbu_control",
-        "test_access"
-      ],
+      "route_classes": ["cc_sbu_control", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -172,9 +154,7 @@
         "x": 26.45,
         "y": 121.8
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
+      "route_classes": ["usb2_diff"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -201,9 +181,7 @@
         "x": 44.6,
         "y": 118.4
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
+      "route_classes": ["usb2_diff"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -230,9 +208,7 @@
         "x": 27.0,
         "y": 121.8
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
+      "route_classes": ["usb2_diff"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -259,9 +235,7 @@
         "x": 37.4,
         "y": 118.4
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
+      "route_classes": ["usb2_diff"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -288,10 +262,7 @@
         "x": 39.0,
         "y": 118.0
       },
-      "route_classes": [
-        "high_current_power",
-        "power"
-      ],
+      "route_classes": ["high_current_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -312,10 +283,7 @@
         "x": 43.0,
         "y": 112.0
       },
-      "route_classes": [
-        "high_current_power",
-        "power"
-      ],
+      "route_classes": ["high_current_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -336,10 +304,7 @@
         "x": 42.0,
         "y": 116.0
       },
-      "route_classes": [
-        "high_current_power",
-        "power"
-      ],
+      "route_classes": ["high_current_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -361,10 +326,7 @@
         "x": 45.0,
         "y": 112.0
       },
-      "route_classes": [
-        "high_current_power",
-        "power"
-      ],
+      "route_classes": ["high_current_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "split_interconnect_and_audio_haptics",
@@ -386,10 +348,7 @@
         "x": 60.0,
         "y": 35.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -410,10 +369,7 @@
         "x": 58.0,
         "y": 55.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -434,10 +390,7 @@
         "x": 61.0,
         "y": 35.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -458,10 +411,7 @@
         "x": 59.0,
         "y": 58.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -482,10 +432,7 @@
         "x": 62.0,
         "y": 35.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -506,10 +453,7 @@
         "x": 60.0,
         "y": 61.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -530,12 +474,8 @@
         "x": 45.0,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -557,12 +497,8 @@
         "x": 42.0,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -584,12 +520,8 @@
         "x": 45.5,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -611,12 +543,8 @@
         "x": 42.5,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -638,12 +566,8 @@
         "x": 48.0,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -665,12 +589,8 @@
         "x": 45.0,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -692,12 +612,8 @@
         "x": 48.5,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -719,12 +635,8 @@
         "x": 45.5,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -746,12 +658,8 @@
         "x": 50.0,
         "y": 15.5
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -773,12 +681,8 @@
         "x": 47.0,
         "y": 23.5
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -800,12 +704,8 @@
         "x": 50.5,
         "y": 15.5
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -827,12 +727,8 @@
         "x": 47.5,
         "y": 23.5
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -854,12 +750,8 @@
         "x": 52.0,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -881,12 +773,8 @@
         "x": 49.0,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -908,12 +796,8 @@
         "x": 52.5,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -935,12 +819,8 @@
         "x": 49.5,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -962,12 +842,8 @@
         "x": 54.0,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -989,12 +865,8 @@
         "x": 51.0,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1016,12 +888,8 @@
         "x": 54.5,
         "y": 16.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1043,12 +911,8 @@
         "x": 51.5,
         "y": 24.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1070,12 +934,8 @@
         "x": 53.0,
         "y": 20.5
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1092,12 +952,8 @@
         "x": 43.6,
         "y": 26.2
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1114,12 +970,8 @@
         "x": 54.0,
         "y": 20.5
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1136,12 +988,8 @@
         "x": 44.4,
         "y": 26.2
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1158,12 +1006,8 @@
         "x": 55.0,
         "y": 20.5
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1180,12 +1024,8 @@
         "x": 45.2,
         "y": 26.2
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1202,12 +1042,8 @@
         "x": 56.0,
         "y": 20.5
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1224,12 +1060,8 @@
         "x": 46.0,
         "y": 26.2
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -1246,12 +1078,8 @@
         "x": 29.0,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1273,12 +1101,8 @@
         "x": 28.0,
         "y": 22.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1300,12 +1124,8 @@
         "x": 29.5,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1327,12 +1147,8 @@
         "x": 28.5,
         "y": 22.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1354,12 +1170,8 @@
         "x": 32.0,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1381,12 +1193,8 @@
         "x": 43.2,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1408,12 +1216,8 @@
         "x": 32.5,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1435,12 +1239,8 @@
         "x": 43.7,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1462,12 +1262,8 @@
         "x": 34.0,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1489,12 +1285,8 @@
         "x": 44.2,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1516,12 +1308,8 @@
         "x": 34.5,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1543,12 +1331,8 @@
         "x": 44.7,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1570,12 +1354,8 @@
         "x": 36.0,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1597,12 +1377,8 @@
         "x": 45.2,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1624,12 +1400,8 @@
         "x": 36.5,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1651,12 +1423,8 @@
         "x": 45.7,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1678,12 +1446,8 @@
         "x": 38.0,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1705,12 +1469,8 @@
         "x": 46.2,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1732,12 +1492,8 @@
         "x": 38.5,
         "y": 14.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1759,12 +1515,8 @@
         "x": 46.7,
         "y": 10.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1786,12 +1538,8 @@
         "x": 38.0,
         "y": 17.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1813,12 +1561,8 @@
         "x": 43.2,
         "y": 14.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1840,12 +1584,8 @@
         "x": 38.5,
         "y": 17.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1867,12 +1607,8 @@
         "x": 43.7,
         "y": 14.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1894,12 +1630,8 @@
         "x": 40.0,
         "y": 17.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1921,12 +1653,8 @@
         "x": 44.2,
         "y": 14.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1948,12 +1676,8 @@
         "x": 40.5,
         "y": 17.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -1975,12 +1699,8 @@
         "x": 44.7,
         "y": 14.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -2002,12 +1722,8 @@
         "x": 42.0,
         "y": 17.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -2029,12 +1745,8 @@
         "x": 45.2,
         "y": 14.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -2056,12 +1768,8 @@
         "x": 42.5,
         "y": 17.0
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -2083,12 +1791,8 @@
         "x": 45.7,
         "y": 14.8
       },
-      "route_classes": [
-        "mipi_dphy_diff"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["mipi_dphy_diff"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "mipi_dphy_diff_impedance_ohm",
@@ -2110,12 +1814,8 @@
         "x": 43.2,
         "y": 18.7
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2132,12 +1832,8 @@
         "x": 43.2,
         "y": 22.6
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2154,12 +1850,8 @@
         "x": 44.2,
         "y": 18.7
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2176,12 +1868,8 @@
         "x": 44.2,
         "y": 22.6
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2198,9 +1886,7 @@
         "x": 12.2,
         "y": 6.7
       },
-      "route_classes": [
-        "rf_single"
-      ],
+      "route_classes": ["rf_single"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2226,9 +1912,7 @@
         "x": 17.0,
         "y": 4.2
       },
-      "route_classes": [
-        "rf_single"
-      ],
+      "route_classes": ["rf_single"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2254,9 +1938,7 @@
         "x": 18.4,
         "y": 6.7
       },
-      "route_classes": [
-        "rf_single"
-      ],
+      "route_classes": ["rf_single"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2282,9 +1964,7 @@
         "x": 22.0,
         "y": 4.2
       },
-      "route_classes": [
-        "rf_single"
-      ],
+      "route_classes": ["rf_single"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2310,9 +1990,7 @@
         "x": 59.0,
         "y": 6.7
       },
-      "route_classes": [
-        "rf_single"
-      ],
+      "route_classes": ["rf_single"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2338,9 +2016,7 @@
         "x": 61.0,
         "y": 4.2
       },
-      "route_classes": [
-        "rf_single"
-      ],
+      "route_classes": ["rf_single"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2366,12 +2042,8 @@
         "x": 18.0,
         "y": 13.0
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["usb2_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2388,12 +2060,8 @@
         "x": 30.0,
         "y": 10.0
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["usb2_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2410,12 +2078,8 @@
         "x": 18.5,
         "y": 13.5
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["usb2_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2432,12 +2096,8 @@
         "x": 30.5,
         "y": 10.5
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["usb2_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2454,12 +2114,8 @@
         "x": 20.0,
         "y": 15.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2481,12 +2137,8 @@
         "x": 31.0,
         "y": 11.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2508,12 +2160,8 @@
         "x": 20.5,
         "y": 15.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2535,12 +2183,8 @@
         "x": 31.5,
         "y": 11.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2562,12 +2206,8 @@
         "x": 22.0,
         "y": 17.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2589,12 +2229,8 @@
         "x": 32.0,
         "y": 12.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2616,12 +2252,8 @@
         "x": 22.5,
         "y": 17.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2643,12 +2275,8 @@
         "x": 32.5,
         "y": 12.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2670,12 +2298,8 @@
         "x": 25.0,
         "y": 18.5
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2692,12 +2316,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2714,12 +2334,8 @@
         "x": 25.5,
         "y": 19.5
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2736,12 +2352,8 @@
         "x": 39.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -2758,10 +2370,7 @@
         "x": 10.0,
         "y": 25.5
       },
-      "route_classes": [
-        "rf_single",
-        "test_access"
-      ],
+      "route_classes": ["rf_single", "test_access"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2787,10 +2396,7 @@
         "x": 18.0,
         "y": 27.0
       },
-      "route_classes": [
-        "rf_single",
-        "test_access"
-      ],
+      "route_classes": ["rf_single", "test_access"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2816,10 +2422,7 @@
         "x": 15.0,
         "y": 25.5
       },
-      "route_classes": [
-        "rf_single",
-        "test_access"
-      ],
+      "route_classes": ["rf_single", "test_access"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2845,10 +2448,7 @@
         "x": 23.0,
         "y": 27.0
       },
-      "route_classes": [
-        "rf_single",
-        "test_access"
-      ],
+      "route_classes": ["rf_single", "test_access"],
       "source_domains": [
         "cellular_wifi_bt_rf_host",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -2874,12 +2474,8 @@
         "x": 22.0,
         "y": 20.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2901,12 +2497,8 @@
         "x": 30.0,
         "y": 12.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2928,12 +2520,8 @@
         "x": 22.5,
         "y": 20.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2955,12 +2543,8 @@
         "x": 30.5,
         "y": 12.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -2982,12 +2566,8 @@
         "x": 24.0,
         "y": 22.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -3009,12 +2589,8 @@
         "x": 31.0,
         "y": 13.0
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -3036,12 +2612,8 @@
         "x": 24.5,
         "y": 22.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -3063,12 +2635,8 @@
         "x": 31.5,
         "y": 13.5
       },
-      "route_classes": [
-        "pcie_diff"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["pcie_diff"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "pcie_diff_impedance_ohm",
@@ -3090,12 +2658,8 @@
         "x": 29.0,
         "y": 24.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3112,12 +2676,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3134,12 +2694,8 @@
         "x": 29.5,
         "y": 25.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3156,12 +2712,8 @@
         "x": 39.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3178,12 +2730,8 @@
         "x": 36.0,
         "y": 8.0
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3200,12 +2748,8 @@
         "x": 40.5,
         "y": 7.8
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3222,12 +2766,8 @@
         "x": 36.5,
         "y": 8.5
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3244,12 +2784,8 @@
         "x": 41.0,
         "y": 7.8
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3266,12 +2802,8 @@
         "x": 37.0,
         "y": 9.0
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3288,12 +2820,8 @@
         "x": 41.5,
         "y": 7.8
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3310,12 +2838,8 @@
         "x": 37.5,
         "y": 9.5
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3332,12 +2856,8 @@
         "x": 42.0,
         "y": 7.8
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3354,12 +2874,8 @@
         "x": 27.0,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3376,12 +2892,8 @@
         "x": 25.5,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3398,12 +2910,8 @@
         "x": 27.5,
         "y": 9.0
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3420,12 +2928,8 @@
         "x": 26.0,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3442,12 +2946,8 @@
         "x": 32.0,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3464,12 +2964,8 @@
         "x": 35.5,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3486,12 +2982,8 @@
         "x": 32.5,
         "y": 9.0
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3508,12 +3000,8 @@
         "x": 36.0,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3530,12 +3018,8 @@
         "x": 45.0,
         "y": 122.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3552,12 +3036,8 @@
         "x": 39.0,
         "y": 127.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3574,12 +3054,8 @@
         "x": 45.5,
         "y": 123.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3596,12 +3072,8 @@
         "x": 39.5,
         "y": 127.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3618,12 +3090,8 @@
         "x": 50.0,
         "y": 123.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3640,12 +3108,8 @@
         "x": 40.0,
         "y": 127.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3662,12 +3126,8 @@
         "x": 51.0,
         "y": 123.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3684,12 +3144,8 @@
         "x": 40.5,
         "y": 127.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3706,12 +3162,8 @@
         "x": 52.8,
         "y": 128.7
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3728,12 +3180,8 @@
         "x": 49.8,
         "y": 130.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3750,12 +3198,8 @@
         "x": 53.8,
         "y": 129.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3772,12 +3216,8 @@
         "x": 52.2,
         "y": 130.2
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3794,12 +3234,8 @@
         "x": 18.0,
         "y": 20.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3816,12 +3252,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3838,12 +3270,8 @@
         "x": 18.5,
         "y": 20.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3860,12 +3288,8 @@
         "x": 39.0,
         "y": 29.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -3882,10 +3306,7 @@
         "x": 27.6,
         "y": 121.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -3906,10 +3327,7 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "high_current_power",
-        "test_access"
-      ],
+      "route_classes": ["high_current_power", "test_access"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "usb_c_power_sidekey_spine"
@@ -3930,11 +3348,7 @@
         "x": 34.8,
         "y": 118.0
       },
-      "route_classes": [
-        "camera_power",
-        "display_bias_power",
-        "test_access"
-      ],
+      "route_classes": ["camera_power", "display_bias_power", "test_access"],
       "source_domains": [
         "display_touch_mipi_dsi",
         "factory_test_fiducials_and_manufacturing_coupons",
@@ -3956,11 +3370,7 @@
         "x": 38.5,
         "y": 29.0
       },
-      "route_classes": [
-        "camera_power",
-        "display_bias_power",
-        "test_access"
-      ],
+      "route_classes": ["camera_power", "display_bias_power", "test_access"],
       "source_domains": [
         "display_touch_mipi_dsi",
         "factory_test_fiducials_and_manufacturing_coupons",
@@ -3982,12 +3392,8 @@
         "x": 42.0,
         "y": 121.0
       },
-      "route_classes": [
-        "power"
-      ],
-      "source_domains": [
-        "factory_test_fiducials_and_manufacturing_coupons"
-      ],
+      "route_classes": ["power"],
+      "source_domains": ["factory_test_fiducials_and_manufacturing_coupons"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4004,12 +3410,8 @@
         "x": 10.0,
         "y": 10.0
       },
-      "route_classes": [
-        "power"
-      ],
-      "source_domains": [
-        "factory_test_fiducials_and_manufacturing_coupons"
-      ],
+      "route_classes": ["power"],
+      "source_domains": ["factory_test_fiducials_and_manufacturing_coupons"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4026,12 +3428,8 @@
         "x": 21.0,
         "y": 121.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4048,12 +3446,8 @@
         "x": 25.0,
         "y": 126.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4070,12 +3464,8 @@
         "x": 22.0,
         "y": 122.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4092,12 +3482,8 @@
         "x": 26.0,
         "y": 126.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4114,12 +3500,8 @@
         "x": 51.0,
         "y": 119.5
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4136,12 +3518,8 @@
         "x": 55.0,
         "y": 122.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4158,12 +3536,8 @@
         "x": 52.0,
         "y": 120.5
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4180,12 +3554,8 @@
         "x": 56.0,
         "y": 123.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4202,12 +3572,8 @@
         "x": 30.0,
         "y": 4.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4224,12 +3590,8 @@
         "x": 60.0,
         "y": 4.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4246,12 +3608,8 @@
         "x": 34.0,
         "y": 126.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4268,12 +3626,8 @@
         "x": 56.0,
         "y": 124.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4290,12 +3644,8 @@
         "x": 35.0,
         "y": 126.0
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["usb2_diff"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "usb2_diff_impedance_ohm",
@@ -4317,12 +3667,8 @@
         "x": 37.0,
         "y": 121.8
       },
-      "route_classes": [
-        "usb2_diff"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["usb2_diff"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "usb2_diff_impedance_ohm",
@@ -4344,12 +3690,8 @@
         "x": 54.8,
         "y": 24.8
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4366,12 +3708,8 @@
         "x": 43.0,
         "y": 112.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4388,12 +3726,8 @@
         "x": 55.3,
         "y": 24.8
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4410,12 +3744,8 @@
         "x": 44.0,
         "y": 112.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4432,12 +3762,8 @@
         "x": 50.5,
         "y": 24.8
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4454,12 +3780,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4476,12 +3798,8 @@
         "x": 50.8,
         "y": 25.3
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4498,12 +3816,8 @@
         "x": 38.5,
         "y": 29.5
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4520,12 +3834,8 @@
         "x": 51.1,
         "y": 25.8
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4542,12 +3852,8 @@
         "x": 39.0,
         "y": 30.0
       },
-      "route_classes": [
-        "high_current_power"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["high_current_power"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4564,12 +3870,8 @@
         "x": 46.5,
         "y": 24.8
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4586,12 +3888,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4608,12 +3906,8 @@
         "x": 47.0,
         "y": 24.8
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4630,12 +3924,8 @@
         "x": 38.5,
         "y": 29.0
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4652,12 +3942,8 @@
         "x": 47.5,
         "y": 24.8
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4674,12 +3960,8 @@
         "x": 39.0,
         "y": 29.0
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4696,12 +3978,8 @@
         "x": 48.0,
         "y": 24.8
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4718,12 +3996,8 @@
         "x": 39.5,
         "y": 29.0
       },
-      "route_classes": [
-        "cc_sbu_control"
-      ],
-      "source_domains": [
-        "usb_c_power_sidekey_spine"
-      ],
+      "route_classes": ["cc_sbu_control"],
+      "source_domains": ["usb_c_power_sidekey_spine"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4740,10 +4014,7 @@
         "x": 42.4,
         "y": 22.8
       },
-      "route_classes": [
-        "display_bias_power",
-        "power"
-      ],
+      "route_classes": ["display_bias_power", "power"],
       "source_domains": [
         "display_touch_mipi_dsi",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -4764,10 +4035,7 @@
         "x": 56.4,
         "y": 121.0
       },
-      "route_classes": [
-        "display_bias_power",
-        "power"
-      ],
+      "route_classes": ["display_bias_power", "power"],
       "source_domains": [
         "display_touch_mipi_dsi",
         "factory_test_fiducials_and_manufacturing_coupons"
@@ -4788,12 +4056,8 @@
         "x": 42.9,
         "y": 22.8
       },
-      "route_classes": [
-        "display_bias_power"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_bias_power"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4810,12 +4074,8 @@
         "x": 56.0,
         "y": 120.5
       },
-      "route_classes": [
-        "display_bias_power"
-      ],
-      "source_domains": [
-        "display_touch_mipi_dsi"
-      ],
+      "route_classes": ["display_bias_power"],
+      "source_domains": ["display_touch_mipi_dsi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4832,12 +4092,8 @@
         "x": 43.2,
         "y": 22.6
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4854,12 +4110,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4876,12 +4128,8 @@
         "x": 43.7,
         "y": 22.6
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4898,12 +4146,8 @@
         "x": 38.5,
         "y": 29.0
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4920,12 +4164,8 @@
         "x": 44.2,
         "y": 22.6
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4942,12 +4182,8 @@
         "x": 39.0,
         "y": 29.0
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4964,12 +4200,8 @@
         "x": 44.7,
         "y": 22.6
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -4986,12 +4218,8 @@
         "x": 39.5,
         "y": 29.0
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5008,12 +4236,8 @@
         "x": 43.2,
         "y": 18.7
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5030,12 +4254,8 @@
         "x": 38.0,
         "y": 29.5
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5052,12 +4272,8 @@
         "x": 44.2,
         "y": 18.7
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5074,12 +4290,8 @@
         "x": 38.5,
         "y": 29.5
       },
-      "route_classes": [
-        "display_camera_control"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["display_camera_control"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5096,10 +4308,7 @@
         "x": 49.2,
         "y": 118.0
       },
-      "route_classes": [
-        "camera_power",
-        "power"
-      ],
+      "route_classes": ["camera_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "front_rear_camera_mipi_csi"
@@ -5120,10 +4329,7 @@
         "x": 36.8,
         "y": 22.8
       },
-      "route_classes": [
-        "camera_power",
-        "power"
-      ],
+      "route_classes": ["camera_power", "power"],
       "source_domains": [
         "factory_test_fiducials_and_manufacturing_coupons",
         "front_rear_camera_mipi_csi"
@@ -5144,12 +4350,8 @@
         "x": 48.7,
         "y": 117.5
       },
-      "route_classes": [
-        "camera_power"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["camera_power"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5166,12 +4368,8 @@
         "x": 37.3,
         "y": 22.8
       },
-      "route_classes": [
-        "camera_power"
-      ],
-      "source_domains": [
-        "front_rear_camera_mipi_csi"
-      ],
+      "route_classes": ["camera_power"],
+      "source_domains": ["front_rear_camera_mipi_csi"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5188,12 +4386,8 @@
         "x": 24.0,
         "y": 18.0
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5215,12 +4409,8 @@
         "x": 30.0,
         "y": 10.0
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5242,12 +4432,8 @@
         "x": 24.5,
         "y": 18.5
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5269,12 +4455,8 @@
         "x": 30.5,
         "y": 10.5
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5296,12 +4478,8 @@
         "x": 25.0,
         "y": 19.0
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5323,12 +4501,8 @@
         "x": 31.0,
         "y": 11.0
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5350,12 +4524,8 @@
         "x": 25.5,
         "y": 19.5
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5377,12 +4547,8 @@
         "x": 31.5,
         "y": 11.5
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5404,12 +4570,8 @@
         "x": 26.0,
         "y": 20.0
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5431,12 +4593,8 @@
         "x": 32.0,
         "y": 12.0
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5458,12 +4616,8 @@
         "x": 26.5,
         "y": 20.5
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5485,12 +4639,8 @@
         "x": 32.5,
         "y": 12.5
       },
-      "route_classes": [
-        "rf_single"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["rf_single"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": [
         {
           "constraint": "rf_single_impedance_ohm",
@@ -5512,12 +4662,8 @@
         "x": 28.0,
         "y": 26.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5534,12 +4680,8 @@
         "x": 38.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5556,12 +4698,8 @@
         "x": 28.5,
         "y": 26.5
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5578,12 +4716,8 @@
         "x": 38.5,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5600,12 +4734,8 @@
         "x": 29.0,
         "y": 27.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5622,12 +4752,8 @@
         "x": 39.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5644,12 +4770,8 @@
         "x": 29.5,
         "y": 27.5
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5666,12 +4788,8 @@
         "x": 39.5,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5688,12 +4806,8 @@
         "x": 30.0,
         "y": 28.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5710,12 +4824,8 @@
         "x": 40.0,
         "y": 29.0
       },
-      "route_classes": [
-        "wireless_control_bt_uart"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["wireless_control_bt_uart"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5732,12 +4842,8 @@
         "x": 15.0,
         "y": 15.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5754,12 +4860,8 @@
         "x": 10.0,
         "y": 10.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5776,12 +4878,8 @@
         "x": 15.5,
         "y": 15.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5798,12 +4896,8 @@
         "x": 10.5,
         "y": 10.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5820,12 +4914,8 @@
         "x": 16.0,
         "y": 16.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5842,12 +4932,8 @@
         "x": 11.0,
         "y": 11.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5864,12 +4950,8 @@
         "x": 16.5,
         "y": 16.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5886,12 +4968,8 @@
         "x": 11.5,
         "y": 11.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5908,12 +4986,8 @@
         "x": 17.0,
         "y": 17.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5930,12 +5004,8 @@
         "x": 12.0,
         "y": 12.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5952,12 +5022,8 @@
         "x": 18.0,
         "y": 17.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5974,12 +5040,8 @@
         "x": 12.5,
         "y": 12.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -5996,12 +5058,8 @@
         "x": 18.5,
         "y": 17.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6018,12 +5076,8 @@
         "x": 13.0,
         "y": 13.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6040,12 +5094,8 @@
         "x": 19.0,
         "y": 18.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6062,12 +5112,8 @@
         "x": 13.5,
         "y": 13.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6084,12 +5130,8 @@
         "x": 19.5,
         "y": 18.5
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6106,12 +5148,8 @@
         "x": 14.0,
         "y": 14.0
       },
-      "route_classes": [
-        "sim_nfc_sensor"
-      ],
-      "source_domains": [
-        "cellular_wifi_bt_rf_host"
-      ],
+      "route_classes": ["sim_nfc_sensor"],
+      "source_domains": ["cellular_wifi_bt_rf_host"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6128,12 +5166,8 @@
         "x": 35.0,
         "y": 8.0
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6150,12 +5184,8 @@
         "x": 40.0,
         "y": 7.8
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6172,12 +5202,8 @@
         "x": 35.5,
         "y": 8.5
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6194,12 +5220,8 @@
         "x": 40.5,
         "y": 7.8
       },
-      "route_classes": [
-        "ufs_mphy"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["ufs_mphy"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6216,12 +5238,8 @@
         "x": 30.5,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6238,12 +5256,8 @@
         "x": 30.5,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6260,12 +5274,8 @@
         "x": 31.0,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6282,12 +5292,8 @@
         "x": 31.0,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6304,12 +5310,8 @@
         "x": 31.5,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6326,12 +5328,8 @@
         "x": 31.5,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6348,12 +5346,8 @@
         "x": 32.0,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6370,12 +5364,8 @@
         "x": 32.0,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6392,12 +5382,8 @@
         "x": 33.0,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6414,12 +5400,8 @@
         "x": 33.5,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6436,12 +5418,8 @@
         "x": 34.0,
         "y": 8.5
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6458,12 +5436,8 @@
         "x": 34.5,
         "y": 7.8
       },
-      "route_classes": [
-        "lpddr"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["lpddr"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6480,12 +5454,8 @@
         "x": 39.0,
         "y": 14.0
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6502,12 +5472,8 @@
         "x": 44.0,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6524,12 +5490,8 @@
         "x": 39.5,
         "y": 14.5
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6546,12 +5508,8 @@
         "x": 44.5,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6568,12 +5526,8 @@
         "x": 40.0,
         "y": 15.0
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6590,12 +5544,8 @@
         "x": 45.0,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6612,12 +5562,8 @@
         "x": 40.5,
         "y": 15.5
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6634,12 +5580,8 @@
         "x": 45.5,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6656,12 +5598,8 @@
         "x": 41.0,
         "y": 16.0
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6678,12 +5616,8 @@
         "x": 46.0,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6700,12 +5634,8 @@
         "x": 41.5,
         "y": 16.5
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6722,12 +5652,8 @@
         "x": 46.5,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6744,12 +5670,8 @@
         "x": 42.0,
         "y": 17.0
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6766,12 +5688,8 @@
         "x": 47.0,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6788,12 +5706,8 @@
         "x": 42.5,
         "y": 17.5
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6810,12 +5724,8 @@
         "x": 47.5,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6832,12 +5742,8 @@
         "x": 43.0,
         "y": 18.0
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6854,12 +5760,8 @@
         "x": 48.0,
         "y": 16.2
       },
-      "route_classes": [
-        "debug_boot"
-      ],
-      "source_domains": [
-        "compute_memory_storage_escape"
-      ],
+      "route_classes": ["debug_boot"],
+      "source_domains": ["compute_memory_storage_escape"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6876,12 +5778,8 @@
         "x": 28.0,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6898,12 +5796,8 @@
         "x": 14.0,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6920,12 +5814,8 @@
         "x": 28.5,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6942,12 +5832,8 @@
         "x": 14.5,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6964,12 +5850,8 @@
         "x": 29.0,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -6986,12 +5868,8 @@
         "x": 15.0,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7008,12 +5886,8 @@
         "x": 29.5,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7030,12 +5904,8 @@
         "x": 15.5,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7052,12 +5922,8 @@
         "x": 13.0,
         "y": 119.4
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7074,12 +5940,8 @@
         "x": 14.0,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7096,12 +5958,8 @@
         "x": 13.5,
         "y": 119.4
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7118,12 +5976,8 @@
         "x": 14.5,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7140,12 +5994,8 @@
         "x": 39.0,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7162,12 +6012,8 @@
         "x": 14.0,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7184,12 +6030,8 @@
         "x": 39.5,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7206,12 +6048,8 @@
         "x": 14.5,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7228,12 +6066,8 @@
         "x": 40.0,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7250,12 +6084,8 @@
         "x": 15.0,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7272,12 +6102,8 @@
         "x": 40.5,
         "y": 127.2
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     },
     {
@@ -7294,12 +6120,8 @@
         "x": 15.5,
         "y": 124.0
       },
-      "route_classes": [
-        "audio_control_aon"
-      ],
-      "source_domains": [
-        "split_interconnect_and_audio_haptics"
-      ],
+      "route_classes": ["audio_control_aon"],
+      "source_domains": ["split_interconnect_and_audio_haptics"],
       "controlled_impedance_targets_ohm": []
     }
   ],
@@ -7314,10 +6136,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 2,
@@ -7328,10 +6147,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 3,
@@ -7342,10 +6158,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 4,
@@ -7356,10 +6169,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 5,
@@ -7370,10 +6180,7 @@
       },
       "size_mm": 0.55,
       "drill_mm": 0.25,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 6,
@@ -7384,10 +6191,7 @@
       },
       "size_mm": 0.55,
       "drill_mm": 0.25,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 7,
@@ -7398,10 +6202,7 @@
       },
       "size_mm": 0.55,
       "drill_mm": 0.25,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 8,
@@ -7412,10 +6213,7 @@
       },
       "size_mm": 0.55,
       "drill_mm": 0.25,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 9,
@@ -7426,10 +6224,7 @@
       },
       "size_mm": 0.4,
       "drill_mm": 0.18,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 10,
@@ -7440,10 +6235,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 11,
@@ -7454,10 +6246,7 @@
       },
       "size_mm": 0.4,
       "drill_mm": 0.18,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 12,
@@ -7468,10 +6257,7 @@
       },
       "size_mm": 0.4,
       "drill_mm": 0.18,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 13,
@@ -7482,10 +6268,7 @@
       },
       "size_mm": 0.4,
       "drill_mm": 0.18,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 14,
@@ -7496,10 +6279,7 @@
       },
       "size_mm": 0.4,
       "drill_mm": 0.18,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 15,
@@ -7510,10 +6290,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 16,
@@ -7524,10 +6301,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 17,
@@ -7538,10 +6312,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 18,
@@ -7552,10 +6323,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 19,
@@ -7566,10 +6334,7 @@
       },
       "size_mm": 0.35,
       "drill_mm": 0.15,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 20,
@@ -7580,10 +6345,7 @@
       },
       "size_mm": 0.35,
       "drill_mm": 0.15,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 21,
@@ -7594,10 +6356,7 @@
       },
       "size_mm": 0.4,
       "drill_mm": 0.18,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 22,
@@ -7608,10 +6367,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 23,
@@ -7622,10 +6378,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     },
     {
       "index": 24,
@@ -7636,10 +6389,7 @@
       },
       "size_mm": 0.45,
       "drill_mm": 0.2,
-      "layers": [
-        "F.Cu",
-        "B.Cu"
-      ]
+      "layers": ["F.Cu", "B.Cu"]
     }
   ],
   "filled_copper_zone_record_count": 2,
@@ -7649,11 +6399,7 @@
       "index": 12,
       "name": "E1Phone_LOCAL_GND_TOP_ISLAND_POUR",
       "net": "GND",
-      "layers": [
-        "F.Cu",
-        "In1.GND",
-        "B.Cu"
-      ],
+      "layers": ["F.Cu", "In1.GND", "B.Cu"],
       "polygon_point_count": 16,
       "filled_polygon_count": 3,
       "bbox_mm": {
@@ -7669,11 +6415,7 @@
       "index": 13,
       "name": "E1Phone_LOCAL_GND_BOTTOM_ISLAND_POUR",
       "net": "GND",
-      "layers": [
-        "F.Cu",
-        "In8.GND",
-        "B.Cu"
-      ],
+      "layers": ["F.Cu", "In8.GND", "B.Cu"],
       "polygon_point_count": 16,
       "filled_polygon_count": 3,
       "bbox_mm": {
@@ -9301,12 +8043,7 @@
       "cad_part": "battery_connector_lead_flex",
       "from": "battery_pouch",
       "to": "main_pcb",
-      "represented_nets": [
-        "VBAT",
-        "SYS",
-        "BAT_NTC",
-        "BAT_ID"
-      ],
+      "represented_nets": ["VBAT", "SYS", "BAT_NTC", "BAT_ID"],
       "represented_route_ids": [
         "BATTERY_VBAT",
         "BATTERY_SYS",
@@ -9327,11 +8064,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "battery_power_flex",
         "connection_type": "battery_lead_flex",
-        "cad_span_mm": [
-          8.0,
-          1.2,
-          0.12
-        ],
+        "cad_span_mm": [8.0, 1.2, 0.12],
         "nominal_visual_width_mm": 1.2,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 8.0,
@@ -9360,14 +8093,8 @@
       "cad_part": "bottom_microphone_flex_leads",
       "from": "main_pcb",
       "to": "bottom_mic",
-      "represented_nets": [
-        "PDM_CLK",
-        "PDM_DAT"
-      ],
-      "represented_route_ids": [
-        "PDM_CLK",
-        "PDM_DAT"
-      ],
+      "represented_nets": ["PDM_CLK", "PDM_DAT"],
+      "represented_route_ids": ["PDM_CLK", "PDM_DAT"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -9382,11 +8109,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "microphone_flex",
-        "cad_span_mm": [
-          8.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [8.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 8.0,
@@ -9415,14 +8138,8 @@
       "cad_part": "bottom_speaker_lead_pair",
       "from": "main_pcb",
       "to": "bottom_speaker_module",
-      "represented_nets": [
-        "SPK_P",
-        "SPK_N"
-      ],
-      "represented_route_ids": [
-        "SPEAKER_P",
-        "SPEAKER_N"
-      ],
+      "represented_nets": ["SPK_P", "SPK_N"],
+      "represented_route_ids": ["SPEAKER_P", "SPEAKER_N"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -9437,11 +8154,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "insulated_wire_pair",
         "connection_type": "speaker_lead_pair",
-        "cad_span_mm": [
-          10.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [10.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 10.0,
@@ -9470,14 +8183,8 @@
       "cad_part": "antenna_aperture_tuner",
       "from": "cellular_lga_module_keepout",
       "to": "cellular_bottom_antenna_keepout",
-      "represented_nets": [
-        "CELL_RF_DIV",
-        "RF_VBAT"
-      ],
-      "represented_route_ids": [
-        "CELL_DIV_RF",
-        "RF_VBAT_TP"
-      ],
+      "represented_nets": ["CELL_RF_DIV", "RF_VBAT"],
+      "represented_route_ids": ["CELL_DIV_RF", "RF_VBAT_TP"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -9492,11 +8199,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "rf_tuner_interconnect",
         "connection_type": "rf_antenna_aperture_tuner",
-        "cad_span_mm": [
-          2.0,
-          2.0,
-          0.5
-        ],
+        "cad_span_mm": [2.0, 2.0, 0.5],
         "nominal_visual_width_mm": 2.0,
         "nominal_visual_thickness_mm": 0.5,
         "visual_marker_length_mm": 2.0,
@@ -9505,9 +8208,7 @@
         "min_bend_radius_mm": 1.5,
         "bend_radius_basis": "local_rf_tuner_interconnect_min_bend_radius_requirement_1.5mm_pending_tuner_state_table_matching_and_vna_evidence",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "rf_single_impedance_ohm=50ohm"
-        ],
+        "controlled_impedance_targets": ["rf_single_impedance_ohm=50ohm"],
         "impedance_requirement": "50 ohm RF tuner connection and antenna vendor review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -9527,12 +8228,8 @@
       "cad_part": "cellular_div_rf_feed_development_envelope",
       "from": "cellular_lga_module_keepout",
       "to": "cellular_bottom_antenna_keepout",
-      "represented_nets": [
-        "CELL_RF_DIV"
-      ],
-      "represented_route_ids": [
-        "CELL_DIV_RF"
-      ],
+      "represented_nets": ["CELL_RF_DIV"],
+      "represented_route_ids": ["CELL_DIV_RF"],
       "represented_net_count": 1,
       "represented_route_count": 1,
       "represented_route_record_count": 1,
@@ -9547,11 +8244,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "rf_50ohm_feed",
         "connection_type": "rf_50r_feed_envelope",
-        "cad_span_mm": [
-          0.45,
-          12.0,
-          0.28
-        ],
+        "cad_span_mm": [0.45, 12.0, 0.28],
         "nominal_visual_width_mm": 0.45,
         "nominal_visual_thickness_mm": 0.28,
         "visual_marker_length_mm": 12.0,
@@ -9560,9 +8253,7 @@
         "min_bend_radius_mm": 1.5,
         "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "rf_single_impedance_ohm=50ohm"
-        ],
+        "controlled_impedance_targets": ["rf_single_impedance_ohm=50ohm"],
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -9582,12 +8273,8 @@
       "cad_part": "cellular_gnss_rf_feed_development_envelope",
       "from": "cellular_lga_module_keepout",
       "to": "gnss_lna_package_marker",
-      "represented_nets": [
-        "CELL_GNSS_RF"
-      ],
-      "represented_route_ids": [
-        "GNSS_RF"
-      ],
+      "represented_nets": ["CELL_GNSS_RF"],
+      "represented_route_ids": ["GNSS_RF"],
       "represented_net_count": 1,
       "represented_route_count": 1,
       "represented_route_record_count": 1,
@@ -9602,11 +8289,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "rf_50ohm_feed",
         "connection_type": "rf_50r_feed_envelope",
-        "cad_span_mm": [
-          0.45,
-          10.0,
-          0.28
-        ],
+        "cad_span_mm": [0.45, 10.0, 0.28],
         "nominal_visual_width_mm": 0.45,
         "nominal_visual_thickness_mm": 0.28,
         "visual_marker_length_mm": 10.0,
@@ -9615,9 +8298,7 @@
         "min_bend_radius_mm": 1.5,
         "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "rf_single_impedance_ohm=50ohm"
-        ],
+        "controlled_impedance_targets": ["rf_single_impedance_ohm=50ohm"],
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -9671,11 +8352,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "pcb_copper_trace_group",
         "connection_type": "cellular_host_control_trace",
-        "cad_span_mm": [
-          12.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [12.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 12.0,
@@ -9684,9 +8361,7 @@
         "min_bend_radius_mm": 0.0,
         "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "pcie_diff_impedance_ohm=85ohm"
-        ],
+        "controlled_impedance_targets": ["pcie_diff_impedance_ohm=85ohm"],
         "impedance_requirement": "USB2/PCIe differential impedance plus reset/disable routing review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -9706,12 +8381,8 @@
       "cad_part": "cellular_rf_feed_development_envelope",
       "from": "cellular_lga_module_keepout",
       "to": "cellular_top_antenna_keepout",
-      "represented_nets": [
-        "CELL_RF_MAIN"
-      ],
-      "represented_route_ids": [
-        "CELL_MAIN_RF"
-      ],
+      "represented_nets": ["CELL_RF_MAIN"],
+      "represented_route_ids": ["CELL_MAIN_RF"],
       "represented_net_count": 1,
       "represented_route_count": 1,
       "represented_route_record_count": 1,
@@ -9726,11 +8397,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "rf_50ohm_feed",
         "connection_type": "rf_50r_feed_envelope",
-        "cad_span_mm": [
-          0.45,
-          15.0,
-          0.35
-        ],
+        "cad_span_mm": [0.45, 15.0, 0.35],
         "nominal_visual_width_mm": 0.45,
         "nominal_visual_thickness_mm": 0.35,
         "visual_marker_length_mm": 15.0,
@@ -9739,9 +8406,7 @@
         "min_bend_radius_mm": 1.5,
         "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "rf_single_impedance_ohm=50ohm"
-        ],
+        "controlled_impedance_targets": ["rf_single_impedance_ohm=50ohm"],
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -9761,12 +8426,7 @@
       "cad_part": "charger_battery_power_sense_trace_marker",
       "from": "charger_package_marker",
       "to": "battery_connector_package_marker",
-      "represented_nets": [
-        "VBAT",
-        "SYS",
-        "BAT_NTC",
-        "BAT_ID"
-      ],
+      "represented_nets": ["VBAT", "SYS", "BAT_NTC", "BAT_ID"],
       "represented_route_ids": [
         "BATTERY_VBAT",
         "BATTERY_SYS",
@@ -9787,11 +8447,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "pcb_copper_trace_group",
         "connection_type": "board_battery_power_sense_trace",
-        "cad_span_mm": [
-          4.0,
-          4.8,
-          0.12
-        ],
+        "cad_span_mm": [4.0, 4.8, 0.12],
         "nominal_visual_width_mm": 4.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 4.8,
@@ -9856,11 +8512,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "board_to_board_edge_connector",
         "connection_type": "compute_som_edge_connector",
-        "cad_span_mm": [
-          65.0,
-          2.6,
-          0.3
-        ],
+        "cad_span_mm": [65.0, 2.6, 0.3],
         "nominal_visual_width_mm": 2.6,
         "nominal_visual_thickness_mm": 0.3,
         "visual_marker_length_mm": 65.0,
@@ -9869,9 +8521,7 @@
         "min_bend_radius_mm": null,
         "bend_radius_basis": "local_board_to_board_connector_mating_height_and_wipe_basis_no_bend_radius_pending_connector_supplier_stack_drawing",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "usb2_diff_impedance_ohm=90ohm"
-        ],
+        "controlled_impedance_targets": ["usb2_diff_impedance_ohm=90ohm"],
         "impedance_requirement": "host high-speed and memory escape constraints required",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -9891,14 +8541,8 @@
       "cad_part": "display_bias_power_flex_marker",
       "from": "backlight_bias_package_marker",
       "to": "display_fpc_connector",
-      "represented_nets": [
-        "DISP_AVDD_5V5",
-        "DISP_AVEE_N5V5"
-      ],
-      "represented_route_ids": [
-        "DISP_AVDD",
-        "DISP_AVEE"
-      ],
+      "represented_nets": ["DISP_AVDD_5V5", "DISP_AVEE_N5V5"],
+      "represented_route_ids": ["DISP_AVDD", "DISP_AVEE"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -9913,11 +8557,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "display_bias_power_flex",
-        "cad_span_mm": [
-          6.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [6.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 6.0,
@@ -9992,11 +8632,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "display_touch_fpc",
-        "cad_span_mm": [
-          10.0,
-          6.0,
-          0.12
-        ],
+        "cad_span_mm": [10.0, 6.0, 0.12],
         "nominal_visual_width_mm": 6.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 10.0,
@@ -10005,9 +8641,7 @@
         "min_bend_radius_mm": 1.0,
         "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "mipi_dphy_diff_impedance_ohm=100ohm"
-        ],
+        "controlled_impedance_targets": ["mipi_dphy_diff_impedance_ohm=100ohm"],
         "impedance_requirement": "MIPI D-PHY differential routing; supplier FPC stackup required",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -10027,14 +8661,8 @@
       "cad_part": "earpiece_receiver_lead_flex",
       "from": "main_pcb",
       "to": "earpiece_receiver",
-      "represented_nets": [
-        "SPK_P",
-        "SPK_N"
-      ],
-      "represented_route_ids": [
-        "SPEAKER_P",
-        "SPEAKER_N"
-      ],
+      "represented_nets": ["SPK_P", "SPK_N"],
+      "represented_route_ids": ["SPEAKER_P", "SPEAKER_N"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -10049,11 +8677,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "insulated_wire_pair",
         "connection_type": "earpiece_receiver_lead_flex",
-        "cad_span_mm": [
-          14.0,
-          0.8,
-          0.12
-        ],
+        "cad_span_mm": [14.0, 0.8, 0.12],
         "nominal_visual_width_mm": 0.8,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 14.0,
@@ -10118,11 +8742,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "camera_fpc",
-        "cad_span_mm": [
-          9.0,
-          0.8,
-          0.12
-        ],
+        "cad_span_mm": [9.0, 0.8, 0.12],
         "nominal_visual_width_mm": 0.8,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 9.0,
@@ -10131,9 +8751,7 @@
         "min_bend_radius_mm": 1.0,
         "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "mipi_dphy_diff_impedance_ohm=100ohm"
-        ],
+        "controlled_impedance_targets": ["mipi_dphy_diff_impedance_ohm=100ohm"],
         "impedance_requirement": "MIPI CSI D-PHY differential routing; supplier FPC stackup required",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -10153,16 +8771,8 @@
       "cad_part": "front_camera_power_flex_marker",
       "from": "main_pcb",
       "to": "front_camera_module",
-      "represented_nets": [
-        "CAM_AVDD_2V8",
-        "CAM_DVDD_1V2",
-        "CAM1_RESET_N"
-      ],
-      "represented_route_ids": [
-        "CAM_AVDD",
-        "CAM_DVDD",
-        "CAM1_RESET"
-      ],
+      "represented_nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM1_RESET_N"],
+      "represented_route_ids": ["CAM_AVDD", "CAM_DVDD", "CAM1_RESET"],
       "represented_net_count": 3,
       "represented_route_count": 3,
       "represented_route_record_count": 3,
@@ -10177,11 +8787,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "camera_power_flex",
-        "cad_span_mm": [
-          7.0,
-          0.7,
-          0.12
-        ],
+        "cad_span_mm": [7.0, 0.7, 0.12],
         "nominal_visual_width_mm": 0.7,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 7.0,
@@ -10210,13 +8816,8 @@
       "cad_part": "haptic_flex_tail",
       "from": "main_pcb",
       "to": "haptic_lra",
-      "represented_nets": [
-        "HAPTIC_OUT"
-      ],
-      "represented_route_ids": [
-        "HAPTIC_OUT_A",
-        "HAPTIC_OUT_B"
-      ],
+      "represented_nets": ["HAPTIC_OUT"],
+      "represented_route_ids": ["HAPTIC_OUT_A", "HAPTIC_OUT_B"],
       "represented_net_count": 1,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -10231,11 +8832,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "haptic_flex",
-        "cad_span_mm": [
-          12.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [12.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 12.0,
@@ -10264,12 +8861,7 @@
       "cad_part": "nfc_loop_antenna_flex_marker",
       "from": "nfc_controller_package_marker",
       "to": "nfc_loop_match_marker",
-      "represented_nets": [
-        "NFC_RF_P",
-        "NFC_RF_N",
-        "NFC_IRQ_N",
-        "NFC_EN"
-      ],
+      "represented_nets": ["NFC_RF_P", "NFC_RF_N", "NFC_IRQ_N", "NFC_EN"],
       "represented_route_ids": [
         "NFC_RF_P_LOOP",
         "NFC_RF_N_LOOP",
@@ -10290,11 +8882,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_antenna_loop",
         "connection_type": "nfc_loop_antenna_flex_marker",
-        "cad_span_mm": [
-          6.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [6.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 6.0,
@@ -10359,11 +8947,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "pcb_copper_trace_group",
         "connection_type": "board_power_control_trace",
-        "cad_span_mm": [
-          10.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [10.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 10.0,
@@ -10392,10 +8976,7 @@
       "cad_part": "radio_shield_ground_spring_marker",
       "from": "radio_shield_can",
       "to": "main_pcb",
-      "represented_nets": [
-        "GND",
-        "SHIELD_GND"
-      ],
+      "represented_nets": ["GND", "SHIELD_GND"],
       "represented_route_ids": [
         "GND_STITCH_TOP",
         "GND_STITCH_BOTTOM",
@@ -10415,11 +8996,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "ground_spring_contact",
         "connection_type": "shield_ground_spring",
-        "cad_span_mm": [
-          3.6,
-          0.7,
-          0.22
-        ],
+        "cad_span_mm": [3.6, 0.7, 0.22],
         "nominal_visual_width_mm": 0.7,
         "nominal_visual_thickness_mm": 0.22,
         "visual_marker_length_mm": 3.6,
@@ -10428,9 +9005,7 @@
         "min_bend_radius_mm": 0.0,
         "bend_radius_basis": "local_ground_spring_contact_deflection_basis_no_flex_bend_radius_pending_supplier_force_wipe_plating_drawing",
         "controlled_impedance_required": false,
-        "controlled_impedance_targets": [
-          "usb2_diff_impedance_ohm=90ohm"
-        ],
+        "controlled_impedance_targets": ["usb2_diff_impedance_ohm=90ohm"],
         "impedance_requirement": "low_inductance_chassis_ground_contact_required",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -10494,11 +9069,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "camera_fpc",
-        "cad_span_mm": [
-          12.0,
-          0.8,
-          0.12
-        ],
+        "cad_span_mm": [12.0, 0.8, 0.12],
         "nominal_visual_width_mm": 0.8,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 12.0,
@@ -10507,9 +9078,7 @@
         "min_bend_radius_mm": 1.0,
         "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "mipi_dphy_diff_impedance_ohm=100ohm"
-        ],
+        "controlled_impedance_targets": ["mipi_dphy_diff_impedance_ohm=100ohm"],
         "impedance_requirement": "MIPI CSI D-PHY differential routing; supplier FPC stackup required",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -10529,16 +9098,8 @@
       "cad_part": "rear_camera_power_flex_marker",
       "from": "main_pcb",
       "to": "rear_camera_module",
-      "represented_nets": [
-        "CAM_AVDD_2V8",
-        "CAM_DVDD_1V2",
-        "CAM0_RESET_N"
-      ],
-      "represented_route_ids": [
-        "CAM_AVDD",
-        "CAM_DVDD",
-        "CAM0_RESET"
-      ],
+      "represented_nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM0_RESET_N"],
+      "represented_route_ids": ["CAM_AVDD", "CAM_DVDD", "CAM0_RESET"],
       "represented_net_count": 3,
       "represented_route_count": 3,
       "represented_route_record_count": 3,
@@ -10553,11 +9114,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "camera_power_flex",
-        "cad_span_mm": [
-          8.0,
-          0.7,
-          0.12
-        ],
+        "cad_span_mm": [8.0, 0.7, 0.12],
         "nominal_visual_width_mm": 0.7,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 8.0,
@@ -10586,14 +9143,8 @@
       "cad_part": "sensor_hub_i2c_flex_marker",
       "from": "main_pcb",
       "to": "sensor_hub_package_marker",
-      "represented_nets": [
-        "SENSOR_I2C_SCL",
-        "SENSOR_I2C_SDA"
-      ],
-      "represented_route_ids": [
-        "SENSOR_I2C_SCL",
-        "SENSOR_I2C_SDA"
-      ],
+      "represented_nets": ["SENSOR_I2C_SCL", "SENSOR_I2C_SDA"],
+      "represented_route_ids": ["SENSOR_I2C_SCL", "SENSOR_I2C_SDA"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -10608,11 +9159,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "sensor_hub_i2c_flex",
-        "cad_span_mm": [
-          5.0,
-          0.8,
-          0.12
-        ],
+        "cad_span_mm": [5.0, 0.8, 0.12],
         "nominal_visual_width_mm": 0.8,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 5.0,
@@ -10641,16 +9188,8 @@
       "cad_part": "side_key_flex_tail",
       "from": "main_pcb",
       "to": "power_button_cap",
-      "represented_nets": [
-        "PWR_KEY_N",
-        "VOL_UP_N",
-        "VOL_DOWN_N"
-      ],
-      "represented_route_ids": [
-        "AON_WAKE",
-        "VOL_UP",
-        "VOL_DOWN"
-      ],
+      "represented_nets": ["PWR_KEY_N", "VOL_UP_N", "VOL_DOWN_N"],
+      "represented_route_ids": ["AON_WAKE", "VOL_UP", "VOL_DOWN"],
       "represented_net_count": 3,
       "represented_route_count": 3,
       "represented_route_record_count": 3,
@@ -10665,11 +9204,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "side_key_flex",
-        "cad_span_mm": [
-          1.0,
-          28.0,
-          0.12
-        ],
+        "cad_span_mm": [1.0, 28.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 28.0,
@@ -10734,11 +9269,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "sim_esim_signal_marker",
-        "cad_span_mm": [
-          1.0,
-          9.0,
-          0.12
-        ],
+        "cad_span_mm": [1.0, 9.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 9.0,
@@ -10767,13 +9298,8 @@
       "cad_part": "soc_shield_ground_spring_marker",
       "from": "soc_shield_can",
       "to": "main_pcb",
-      "represented_nets": [
-        "GND"
-      ],
-      "represented_route_ids": [
-        "GND_STITCH_TOP",
-        "GND_STITCH_BOTTOM"
-      ],
+      "represented_nets": ["GND"],
+      "represented_route_ids": ["GND_STITCH_TOP", "GND_STITCH_BOTTOM"],
       "represented_net_count": 1,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -10788,11 +9314,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "ground_spring_contact",
         "connection_type": "shield_ground_spring",
-        "cad_span_mm": [
-          3.6,
-          0.7,
-          0.22
-        ],
+        "cad_span_mm": [3.6, 0.7, 0.22],
         "nominal_visual_width_mm": 0.7,
         "nominal_visual_thickness_mm": 0.22,
         "visual_marker_length_mm": 3.6,
@@ -10855,11 +9377,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "top_bottom_board_flex",
-        "cad_span_mm": [
-          2.4,
-          88.0,
-          0.18
-        ],
+        "cad_span_mm": [2.4, 88.0, 0.18],
         "nominal_visual_width_mm": 2.4,
         "nominal_visual_thickness_mm": 0.18,
         "visual_marker_length_mm": 88.0,
@@ -10868,9 +9386,7 @@
         "min_bend_radius_mm": 1.0,
         "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "usb2_diff_impedance_ohm=90ohm"
-        ],
+        "controlled_impedance_targets": ["usb2_diff_impedance_ohm=90ohm"],
         "impedance_requirement": "USB2/MIPI/audio/control flex stackup required",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -10890,14 +9406,8 @@
       "cad_part": "top_microphone_flex_tail",
       "from": "main_pcb",
       "to": "top_mic",
-      "represented_nets": [
-        "PDM_CLK",
-        "PDM_DAT"
-      ],
-      "represented_route_ids": [
-        "PDM_CLK",
-        "PDM_DAT"
-      ],
+      "represented_nets": ["PDM_CLK", "PDM_DAT"],
+      "represented_route_ids": ["PDM_CLK", "PDM_DAT"],
       "represented_net_count": 2,
       "represented_route_count": 2,
       "represented_route_record_count": 2,
@@ -10912,11 +9422,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "microphone_flex",
-        "cad_span_mm": [
-          0.8,
-          18.0,
-          0.12
-        ],
+        "cad_span_mm": [0.8, 18.0, 0.12],
         "nominal_visual_width_mm": 0.8,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 18.0,
@@ -10945,13 +9451,7 @@
       "cad_part": "usb_c_power_data_escape_tail",
       "from": "usb_c_receptacle",
       "to": "main_pcb",
-      "represented_nets": [
-        "VBUS",
-        "USB_CC1",
-        "USB_CC2",
-        "USB_DP",
-        "USB_DN"
-      ],
+      "represented_nets": ["VBUS", "USB_CC1", "USB_CC2", "USB_DP", "USB_DN"],
       "represented_route_ids": [
         "USB_VBUS",
         "USB_CC1",
@@ -10973,11 +9473,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "flexible_printed_circuit",
         "connection_type": "usb_c_escape_flex",
-        "cad_span_mm": [
-          18.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [18.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 18.0,
@@ -10986,9 +9482,7 @@
         "min_bend_radius_mm": 1.0,
         "bend_radius_basis": "local_fpc_min_bend_radius_requirement_1mm_pending_supplier_fpc_stackup_stiffener_and_bend_drawing",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "usb2_diff_impedance_ohm=90ohm"
-        ],
+        "controlled_impedance_targets": ["usb2_diff_impedance_ohm=90ohm"],
         "impedance_requirement": "USB2 differential impedance plus VBUS current capacity",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -11008,13 +9502,7 @@
       "cad_part": "usb_pd_controller_escape_trace_marker",
       "from": "usb_c_receptacle",
       "to": "usb_pd_controller_package_marker",
-      "represented_nets": [
-        "VBUS",
-        "USB_CC1",
-        "USB_CC2",
-        "USB_DP",
-        "USB_DN"
-      ],
+      "represented_nets": ["VBUS", "USB_CC1", "USB_CC2", "USB_DP", "USB_DN"],
       "represented_route_ids": [
         "USB_VBUS",
         "USB_CC1",
@@ -11036,11 +9524,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "pcb_copper_trace_group",
         "connection_type": "board_power_usb_trace",
-        "cad_span_mm": [
-          9.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [9.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 9.0,
@@ -11049,9 +9533,7 @@
         "min_bend_radius_mm": 0.0,
         "bend_radius_basis": "local_routed_pcb_copper_no_flex_bend_radius_stackup_and_trace_width_basis_pending_clean_or_waived_drc_erc_si_pi_review",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "usb2_diff_impedance_ohm=90ohm"
-        ],
+        "controlled_impedance_targets": ["usb2_diff_impedance_ohm=90ohm"],
         "impedance_requirement": "USB2 differential impedance plus VBUS/CC current and ESD review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -11123,11 +9605,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "pcb_copper_trace_group",
         "connection_type": "wifi_bt_host_control_trace",
-        "cad_span_mm": [
-          13.0,
-          1.0,
-          0.12
-        ],
+        "cad_span_mm": [13.0, 1.0, 0.12],
         "nominal_visual_width_mm": 1.0,
         "nominal_visual_thickness_mm": 0.12,
         "visual_marker_length_mm": 13.0,
@@ -11159,12 +9637,8 @@
       "cad_part": "wifi_bt_rf_feed_development_envelope",
       "from": "wifi_bt_module_keepout",
       "to": "wifi_bt_side_antenna_keepout",
-      "represented_nets": [
-        "WIFI_BT_RF0"
-      ],
-      "represented_route_ids": [
-        "WIFI_RF0"
-      ],
+      "represented_nets": ["WIFI_BT_RF0"],
+      "represented_route_ids": ["WIFI_RF0"],
       "represented_net_count": 1,
       "represented_route_count": 1,
       "represented_route_record_count": 1,
@@ -11179,11 +9653,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "rf_50ohm_feed",
         "connection_type": "rf_50r_feed_envelope",
-        "cad_span_mm": [
-          10.0,
-          0.45,
-          0.35
-        ],
+        "cad_span_mm": [10.0, 0.45, 0.35],
         "nominal_visual_width_mm": 0.45,
         "nominal_visual_thickness_mm": 0.35,
         "visual_marker_length_mm": 10.0,
@@ -11192,9 +9662,7 @@
         "min_bend_radius_mm": 1.5,
         "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "rf_single_impedance_ohm=50ohm"
-        ],
+        "controlled_impedance_targets": ["rf_single_impedance_ohm=50ohm"],
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false
@@ -11214,12 +9682,8 @@
       "cad_part": "wifi_bt_rf1_feed_development_envelope",
       "from": "wifi_bt_module_keepout",
       "to": "wifi_bt_side_antenna_keepout",
-      "represented_nets": [
-        "WIFI_BT_RF1"
-      ],
-      "represented_route_ids": [
-        "WIFI_RF1"
-      ],
+      "represented_nets": ["WIFI_BT_RF1"],
+      "represented_route_ids": ["WIFI_RF1"],
       "represented_net_count": 1,
       "represented_route_count": 1,
       "represented_route_record_count": 1,
@@ -11234,11 +9698,7 @@
         "basis": "local_generated_step_bounding_box_and_routed_development_records_not_supplier_drawing",
         "physical_medium": "rf_50ohm_feed",
         "connection_type": "rf_50r_feed_envelope",
-        "cad_span_mm": [
-          10.0,
-          0.45,
-          0.28
-        ],
+        "cad_span_mm": [10.0, 0.45, 0.28],
         "nominal_visual_width_mm": 0.45,
         "nominal_visual_thickness_mm": 0.28,
         "visual_marker_length_mm": 10.0,
@@ -11247,9 +9707,7 @@
         "min_bend_radius_mm": 1.5,
         "bend_radius_basis": "local_rf_feed_min_bend_radius_requirement_1.5mm_pending_50ohm_stackup_matching_and_vna_evidence",
         "controlled_impedance_required": true,
-        "controlled_impedance_targets": [
-          "rf_single_impedance_ohm=50ohm"
-        ],
+        "controlled_impedance_targets": ["rf_single_impedance_ohm=50ohm"],
         "impedance_requirement": "50 ohm RF feed with matching network and antenna review",
         "slack_or_service_loop_status": "not_validated_local_marker_only_supplier_harness_or_fpc_drawing_required",
         "release_credit": false

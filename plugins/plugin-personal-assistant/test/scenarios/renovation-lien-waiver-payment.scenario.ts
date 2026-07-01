@@ -23,7 +23,12 @@ export default scenario({
       name: "triage-contractor-payment",
       text: "The renovation contractor wants the final payment. Pull invoice, lien waiver, punch list, inspection signoff, warranty docs, and payment deadline.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "approval"],
-      responseIncludesAny: ["invoice", "lien waiver", "punch list", "inspection"],
+      responseIncludesAny: [
+        "invoice",
+        "lien waiver",
+        "punch list",
+        "inspection",
+      ],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },
     {

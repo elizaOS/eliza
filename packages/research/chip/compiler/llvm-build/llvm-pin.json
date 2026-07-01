@@ -139,9 +139,7 @@
     "-fstack-clash-protection",
     "-fstack-protector-strong"
   ],
-  "release_flags_pgo_attach": [
-    "-fprofile-sample-use=${AUTOFDO_PROFILE}"
-  ],
+  "release_flags_pgo_attach": ["-fprofile-sample-use=${AUTOFDO_PROFILE}"],
   "release_flags_propeller_attach": [
     "-Wl,--symbol-ordering-file=${PROPELLER_SYMBOL_ORDER}",
     "-Wl,--no-keep-text-section-prefix"

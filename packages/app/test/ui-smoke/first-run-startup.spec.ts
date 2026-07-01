@@ -203,12 +203,8 @@ test("fresh first-run offers to restore an existing local backup before onboardi
     page.getByTestId("choice-__first_run__:backup-restore:start-fresh"),
   ).toBeVisible();
 
-  await page
-    .getByTestId("choice-__first_run__:backup-restore:latest")
-    .click();
-  await expect
-    .poll(() => restoreRequests.length, { timeout: 15_000 })
-    .toBe(1);
+  await page.getByTestId("choice-__first_run__:backup-restore:latest").click();
+  await expect.poll(() => restoreRequests.length, { timeout: 15_000 }).toBe(1);
   expect(restoreRequests[0]).toContain("agent-2026-06-30.eliza-backup");
   await expect(
     chatOverlay.getByText("Backup restored", { exact: false }),

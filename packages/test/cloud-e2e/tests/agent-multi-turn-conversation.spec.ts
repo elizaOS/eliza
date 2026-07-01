@@ -100,8 +100,9 @@ async function chatUsageRows(
 ): Promise<
   Array<{ inputTokens: number; outputTokens: number; model: string | null }>
 > {
-  const { usageRecordsRepository } =
-    await import("@elizaos/cloud-shared/db/repositories/usage-records");
+  const { usageRecordsRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/usage-records"
+  );
   const rows = await usageRecordsRepository.listByOrganization(orgId, 50);
   return rows
     .filter((r) => r.type === "chat" && r.model === USAGE_MODEL)
@@ -161,8 +162,9 @@ test.describe("multi-turn agent conversation (mock LLM, keyless)", () => {
 
     // ── 3. provision to running — shared tier is running on create. Assert the
     //       persisted state AND the live bridge heartbeat before messaging. ────
-    const { agentSandboxesRepository } =
-      await import("@elizaos/cloud-shared/db/repositories/agent-sandboxes");
+    const { agentSandboxesRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+    );
     const persisted = await agentSandboxesRepository.findByIdAndOrg(
       agentId,
       seededUser.organizationId,

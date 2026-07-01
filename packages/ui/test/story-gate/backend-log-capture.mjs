@@ -28,14 +28,7 @@ import { dirname } from "node:path";
  *           maxBytes?: number, grep?: RegExp }} opts
  */
 export async function captureBackendLogs(opts) {
-  const {
-    apiBase,
-    token,
-    out,
-    maxLines = 800,
-    maxBytes = 512000,
-    grep,
-  } = opts;
+  const { apiBase, token, out, maxLines = 800, maxBytes = 512000, grep } = opts;
   if (!apiBase) return { ok: false, reason: "no apiBase" };
 
   const url = new URL("/api/dev/console-log", apiBase);

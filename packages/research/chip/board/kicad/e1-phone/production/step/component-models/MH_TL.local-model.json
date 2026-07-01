@@ -66,20 +66,14 @@
   "npth_mechanical_feature_count": 1,
   "npth_mechanical_features": [
     {
-      "at_mm": [
-        0.0,
-        0.0
-      ],
+      "at_mm": [0.0, 0.0],
       "drill_mm": 1.2,
       "electrical_terminal": false,
       "hole_type": "np_thru_hole",
       "name": "",
       "plating": "non_plated",
       "shape": "circle",
-      "size_mm": [
-        2.0,
-        2.0
-      ]
+      "size_mm": [2.0, 2.0]
     }
   ],
   "pad_contract_covered_count": 1,
@@ -92,9 +86,7 @@
     }
   ],
   "pad_count": 1,
-  "pad_names": [
-    ""
-  ],
+  "pad_names": [""],
   "pad_visual_count": 1,
   "pattern_binding_status": "support_pattern_bound_to_explicit_local_terminal_contract",
   "pattern_bound": true,

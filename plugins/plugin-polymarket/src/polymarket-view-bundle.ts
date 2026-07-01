@@ -3,5 +3,6 @@
 // exposes the named exports the view loader reads (`PolymarketView`,
 // `interact`). Kept separate from PolymarketView.tsx so that file exports only
 // React components and stays Fast-Refresh-compatible in dev.
-export { interact } from "./polymarket-view.interact";
+
 export { PolymarketView } from "./PolymarketView";
+export { interact } from "./polymarket-view.interact";

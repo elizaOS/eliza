@@ -117,9 +117,7 @@ describe("relationships KnowledgeGraph backing — real PGLite", () => {
     // list() reads SELECT ... FROM app_lifeops.life_relationships — real read-back.
     const edges = await rels.list({ fromEntityId: owner.entityId });
     expect(
-      edges.some(
-        (e) => e.toEntityId === org.entityId && e.type === "works_at",
-      ),
+      edges.some((e) => e.toEntityId === org.entityId && e.type === "works_at"),
     ).toBe(true);
   });
 });

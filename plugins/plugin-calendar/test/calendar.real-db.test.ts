@@ -22,7 +22,10 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import type { LifeOpsCalendarEvent, LifeOpsReminderPlan } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsReminderPlan,
+} from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
@@ -30,9 +33,9 @@ import {
 } from "../../../packages/test/helpers/real-runtime.ts";
 import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.ts";
 import {
+  type CalendarHostGate,
   CalendarRepository,
   CalendarService,
-  type CalendarHostGate,
   calendarSchema,
   createLifeOpsCalendarSyncState,
 } from "../src/service/index.ts";
@@ -183,7 +186,11 @@ describe("CalendarRepository + CalendarService — real PGLite", () => {
 
     // ON CONFLICT DO UPDATE: re-upsert with a new title updates the same row.
     await repository.upsertCalendarEvent(
-      { ...event, title: "Standup (moved)", updatedAt: new Date().toISOString() },
+      {
+        ...event,
+        title: "Standup (moved)",
+        updatedAt: new Date().toISOString(),
+      },
       "owner",
     );
     const reread = (

@@ -37,8 +37,8 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -140,7 +140,10 @@ function resolveSdk() {
 function resolveNdk(sdk) {
   if (process.env.ELIZA_NDK_VERSION) {
     const p = path.join(sdk, "ndk", process.env.ELIZA_NDK_VERSION);
-    if (!existsSync(p)) die(`ELIZA_NDK_VERSION ${process.env.ELIZA_NDK_VERSION} not found under ${path.join(sdk, "ndk")}`);
+    if (!existsSync(p))
+      die(
+        `ELIZA_NDK_VERSION ${process.env.ELIZA_NDK_VERSION} not found under ${path.join(sdk, "ndk")}`,
+      );
     return p;
   }
   const ndkRoot = path.join(sdk, "ndk");
@@ -183,7 +186,9 @@ const forkSrc = path.join(
   "plugins/plugin-local-inference/native/llama.cpp",
 );
 if (!existsSync(path.join(forkSrc, "tools/omnivoice/CMakeLists.txt"))) {
-  die(`fork omnivoice CMakeLists missing under ${forkSrc} — run git submodule update --init --recursive`);
+  die(
+    `fork omnivoice CMakeLists missing under ${forkSrc} — run git submodule update --init --recursive`,
+  );
 }
 
 const buildDir = path.join(
@@ -221,9 +226,12 @@ if (arm64SimdFlags.length > 0) {
 // eliza_inference_abi_version()=="10", kokoro_supported()==1, and synthesizes
 // PCM on-device with only libc/libm/libdl NEEDED.
 const baseConfigure = [
-  "-S", forkSrc,
-  "-B", buildDir,
-  "-G", "Ninja",
+  "-S",
+  forkSrc,
+  "-B",
+  buildDir,
+  "-G",
+  "Ninja",
   `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
   `-DANDROID_ABI=${abi}`,
   `-DANDROID_PLATFORM=${platform}`,
@@ -282,7 +290,14 @@ try {
 } catch {
   jobs = 4;
 }
-run("cmake", ["--build", buildDir, "--target", "elizainference", "-j", String(jobs)]);
+run("cmake", [
+  "--build",
+  buildDir,
+  "--target",
+  "elizainference",
+  "-j",
+  String(jobs),
+]);
 
 const binDir = path.join(buildDir, "bin");
 const builtSo = path.join(binDir, "libelizainference.so");
@@ -310,15 +325,20 @@ const VULKAN_SIBLINGS = [
   "libllama-common.so",
   "libmtmd.so",
 ];
-const SIBLINGS_TO_CLEAN = VULKAN_SIBLINGS.filter((n) => n !== "libelizainference.so");
+const SIBLINGS_TO_CLEAN = VULKAN_SIBLINGS.filter(
+  (n) => n !== "libelizainference.so",
+);
 
-const toStage = variant === "vulkan" ? VULKAN_SIBLINGS : ["libelizainference.so"];
+const toStage =
+  variant === "vulkan" ? VULKAN_SIBLINGS : ["libelizainference.so"];
 if (variant === "cpu") {
   for (const sib of SIBLINGS_TO_CLEAN) {
     const stale = path.join(jniDir, sib);
     if (existsSync(stale)) {
       rmSync(stale);
-      log(`removed stale Vulkan sibling ${sib} (CPU variant is self-contained)`);
+      log(
+        `removed stale Vulkan sibling ${sib} (CPU variant is self-contained)`,
+      );
     }
   }
 }
@@ -339,7 +359,9 @@ for (const name of toStage) {
 // in-process), not musl — but libvulkan resolves from the device at runtime.
 const readelf = ndkTool(ndk, "llvm-readelf");
 const engineSo = path.join(jniDir, "libelizainference.so");
-const dyn = execFileSync(readelf, ["--dyn-syms", engineSo], { encoding: "utf8" });
+const dyn = execFileSync(readelf, ["--dyn-syms", engineSo], {
+  encoding: "utf8",
+});
 const symCount = (dyn.match(/eliza_inference_/g) || []).length;
 const needed = execFileSync(readelf, ["-d", engineSo], { encoding: "utf8" })
   .split("\n")
@@ -348,7 +370,8 @@ const needed = execFileSync(readelf, ["-d", engineSo], { encoding: "utf8" })
   .filter(Boolean);
 const muslNeeded = needed.filter((n) => /musl/i.test(n));
 if (symCount === 0) die("staged .so exports no eliza_inference_* symbols");
-if (muslNeeded.length > 0) die(`staged .so has musl NEEDED deps: ${muslNeeded.join(", ")}`);
+if (muslNeeded.length > 0)
+  die(`staged .so has musl NEEDED deps: ${muslNeeded.join(", ")}`);
 
 if (variant === "vulkan") {
   const vulkanSo = path.join(jniDir, "libggml-vulkan.so");

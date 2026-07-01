@@ -32,7 +32,9 @@ function chips(sessions: number, decisions: number, age: string) {
           {`${decisions} decisions`}
         </TaskMetaChip>
       ) : null}
-      <TaskMetaChip icon={<Terminal className="h-3 w-3" />}>coding</TaskMetaChip>
+      <TaskMetaChip icon={<Terminal className="h-3 w-3" />}>
+        coding
+      </TaskMetaChip>
       <span className="text-2xs text-muted/80">{age}</span>
     </>
   );

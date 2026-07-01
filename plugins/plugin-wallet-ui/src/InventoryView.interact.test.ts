@@ -175,10 +175,14 @@ describe("wallet interact capabilities", () => {
 
   it("coerces a missing or invalid trading-profile window to 30d", async () => {
     await interact("terminal-wallet-trading-profile");
-    expect(walletClient.getWalletTradingProfile).toHaveBeenLastCalledWith("30d");
+    expect(walletClient.getWalletTradingProfile).toHaveBeenLastCalledWith(
+      "30d",
+    );
 
     await interact("terminal-wallet-trading-profile", { window: "bogus" });
-    expect(walletClient.getWalletTradingProfile).toHaveBeenLastCalledWith("30d");
+    expect(walletClient.getWalletTradingProfile).toHaveBeenLastCalledWith(
+      "30d",
+    );
   });
 
   it("rejects unknown interact capabilities", async () => {

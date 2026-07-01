@@ -9,7 +9,10 @@
       "footprint": "AUDIO_CODEC_QFN48_DEV",
       "candidate": "Cirrus Logic/Wolfson WM8962 QFN class or Cirrus CS47L35 smart codec class",
       "supplier": "Cirrus Logic",
-      "evidence_type": ["public_datasheet", "package_drawing_possible_after_exact_mpn"],
+      "evidence_type": [
+        "public_datasheet",
+        "package_drawing_possible_after_exact_mpn"
+      ],
       "source_urls": [
         "https://statics.cirrus.com/pubs/proDatasheet/WM8962_Rev4.4.pdf",
         "https://www.jp.cirrus.com/products/cs47l35/"
@@ -24,7 +27,11 @@
       "footprint": "BACKLIGHT_BIAS_POWER_DEV",
       "candidate": "TI LM3697 or SG Micro SGM37603 class white LED backlight driver",
       "supplier": "Texas Instruments / SG Micro",
-      "evidence_type": ["manufacturer_product_page", "datasheet", "land_pattern_in_datasheet_for_exact_part"],
+      "evidence_type": [
+        "manufacturer_product_page",
+        "datasheet",
+        "land_pattern_in_datasheet_for_exact_part"
+      ],
       "source_urls": [
         "https://www.ti.com/product/LM3697/part-details/LM3697YFQR",
         "https://www.sg-micro.com/product/SGM37603"
@@ -53,7 +60,11 @@
       "footprint": "CAMERA_24P_0P50_DEV",
       "candidate": "SincereFirst SF-XR3855A-A0 OV13855 13MP AF MIPI camera module",
       "supplier": "SincereFirst / Guangzhou Sincere Information Technology",
-      "evidence_type": ["vendor_page", "made_in_china_listing", "module_catalog_pdf"],
+      "evidence_type": [
+        "vendor_page",
+        "made_in_china_listing",
+        "module_catalog_pdf"
+      ],
       "source_urls": [
         "https://www.sincerefirst.com/sincerefirst-solution/6009.html",
         "https://sincerefirst.en.made-in-china.com/product/ZYhRSQCxZMVc/China-Human-Tracking-4K-30fps-Image-Sensor-Ov13855-CMOS-13MP-Ai-Embedded-Camera-Module-for-Android.html",
@@ -70,7 +81,11 @@
       "footprint": "CAMERA_30P_0P50_DEV",
       "candidate": "SincereFirst GC5035 5MP MIPI camera module family",
       "supplier": "SincereFirst / camera module OEM",
-      "evidence_type": ["vendor_page", "marketplace_listing_signal", "rfq_required"],
+      "evidence_type": [
+        "vendor_page",
+        "marketplace_listing_signal",
+        "rfq_required"
+      ],
       "source_urls": [
         "https://www.cameramodule.com/fpc-camera-module/mipi-camera-module/arduino-5mp-camera-module.html",
         "https://www.asmec.co.jp/file.upload/images/Gid1993Pdf_SINCERE%20FIRST%20FPC%20Camera%20Module%20List%28%E7%9B%AE%E5%BD%95%29_2024-03-27.pdf"
@@ -85,7 +100,11 @@
       "footprint": "DISPLAY_40P_0P30_DEV",
       "candidate": "Chenghao CH550FH01A / CH550FH01A-CT 5.5 inch 1080x1920 MIPI touch display",
       "supplier": "Shenzhen Chenghao Optoelectronic",
-      "evidence_type": ["vendor_page", "public_pdf", "marketplace_listing_signal"],
+      "evidence_type": [
+        "vendor_page",
+        "public_pdf",
+        "marketplace_listing_signal"
+      ],
       "source_urls": [
         "https://www.chenghaolcd.com/sale-26717023-5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.html",
         "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf",
@@ -102,7 +121,11 @@
       "footprint": "FUEL_GAUGE_WLCSP_DEV",
       "candidate": "Analog Devices MAX17055 or TI BQ27426 class single-cell fuel gauge",
       "supplier": "Analog Devices / Texas Instruments",
-      "evidence_type": ["manufacturer_product_page", "datasheet", "price_signal"],
+      "evidence_type": [
+        "manufacturer_product_page",
+        "datasheet",
+        "price_signal"
+      ],
       "source_urls": [
         "https://www.analog.com/en/products/max17055.html",
         "https://www.ti.com/product/BQ27426",
@@ -118,7 +141,11 @@
       "footprint": "HAPTIC_DRIVER_WLCSP_DEV",
       "candidate": "TI DRV2625 9-ball DSBGA haptic driver",
       "supplier": "Texas Instruments",
-      "evidence_type": ["manufacturer_datasheet", "pinout", "land_pattern_example"],
+      "evidence_type": [
+        "manufacturer_datasheet",
+        "pinout",
+        "land_pattern_example"
+      ],
       "source_urls": [
         "https://www.ti.com/lit/ds/symlink/drv2625.pdf",
         "https://www.ti.com/product/DRV2625"
@@ -133,7 +160,12 @@
       "footprint": "NFC_CONTROLLER_QFN_DEV",
       "candidate": "ST ST25R3916 or ST25R3916B QFN32 NFC controller",
       "supplier": "STMicroelectronics",
-      "evidence_type": ["manufacturer_product_page", "datasheet", "cad_resources", "footprint_example"],
+      "evidence_type": [
+        "manufacturer_product_page",
+        "datasheet",
+        "cad_resources",
+        "footprint_example"
+      ],
       "source_urls": [
         "https://www.st.com/en/nfc/st25r3916.html",
         "https://www.st.com/resource/en/datasheet/st25r3916.pdf",
@@ -164,7 +196,11 @@
       "footprint": "QUECTEL_RG255C_GEOMETRY_DEV",
       "candidate": "Quectel RG255C LGA 5G RedCap module",
       "supplier": "Quectel",
-      "evidence_type": ["manufacturer_product_page", "public_specification_pdf", "third_party_cad_listing"],
+      "evidence_type": [
+        "manufacturer_product_page",
+        "public_specification_pdf",
+        "third_party_cad_listing"
+      ],
       "source_urls": [
         "https://www.quectel.com.cn/product/5g-rg255c-series",
         "https://www.quectel.com/content/uploads/2024/03/Quectel_RG255C_Series_5G_Module_Specification_V1.0.0_Preliminary_20240411.pdf?wpId=114147",
@@ -180,7 +216,11 @@
       "footprint": "SENSOR_HUB_QFN_DEV",
       "candidate": "Bosch BMI270 or ST LSM6DSO32 IMU class; current QFN24 placeholder does not match these LGA14 candidates",
       "supplier": "Bosch Sensortec / STMicroelectronics",
-      "evidence_type": ["manufacturer_product_page", "datasheet", "cad_resources"],
+      "evidence_type": [
+        "manufacturer_product_page",
+        "datasheet",
+        "cad_resources"
+      ],
       "source_urls": [
         "https://www.bosch-sensortec.com/products/motion-sensors/imus/bmi270/",
         "https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf",
@@ -197,7 +237,11 @@
       "footprint": "USIM_ESD_LEVELSHIFT_DEV",
       "candidate": "TI TXS4555, NXP/Nexperia NVT4555/NXT4556 class SIM interface level translator and supply/protection ICs",
       "supplier": "Texas Instruments / NXP / Nexperia",
-      "evidence_type": ["manufacturer_product_page", "datasheet", "mpn_selection_required"],
+      "evidence_type": [
+        "manufacturer_product_page",
+        "datasheet",
+        "mpn_selection_required"
+      ],
       "source_urls": [
         "https://www.ti.com/product/TXS4555/part-details/TXS4555RUTR",
         "https://www.ti.com/lit/ds/symlink/txs4555.pdf",
@@ -267,9 +311,7 @@
     {
       "function": "usb_pd_controller",
       "candidate": "TI TPS65987DDH",
-      "source_urls": [
-        "https://www.ti.com/product/TPS65987D"
-      ],
+      "source_urls": ["https://www.ti.com/product/TPS65987D"],
       "assessment": "Capable but potentially over-sized/over-cost for USB2 charging-only phone; firmware/policy flow required.",
       "can_be_used_for_release": false
     }

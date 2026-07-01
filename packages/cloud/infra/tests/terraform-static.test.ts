@@ -63,7 +63,10 @@ describe("Apps tenant-DB connection scaling (#8321 P0 #2)", () => {
     "utf-8",
   );
   const mainTf = readFileSync(join(HETZNER_APPS_SHARED, "main.tf"), "utf-8");
-  const outputsTf = readFileSync(join(HETZNER_APPS_SHARED, "outputs.tf"), "utf-8");
+  const outputsTf = readFileSync(
+    join(HETZNER_APPS_SHARED, "outputs.tf"),
+    "utf-8",
+  );
 
   test("raises the Postgres connection ceiling above the default 100", () => {
     expect(tenantDbInit).toContain("max_connections = 500");
@@ -83,7 +86,9 @@ describe("Apps tenant-DB connection scaling (#8321 P0 #2)", () => {
     );
     // auth_user resolves per-tenant SCRAM via a SECURITY DEFINER lookup, not superuser.
     expect(tenantDbInit).toContain("SECURITY DEFINER");
-    expect(tenantDbInit).toContain("GRANT EXECUTE ON FUNCTION public.pgbouncer_user_lookup");
+    expect(tenantDbInit).toContain(
+      "GRANT EXECUTE ON FUNCTION public.pgbouncer_user_lookup",
+    );
   });
 
   test("threads a stable pgbouncer auth credential through terraform", () => {
@@ -95,7 +100,9 @@ describe("Apps tenant-DB connection scaling (#8321 P0 #2)", () => {
 
   test("exposes the pooler endpoint operators set as the app-facing cluster host", () => {
     expect(outputsTf).toContain('output "tenant_db_pooler_endpoint"');
-    expect(outputsTf).toContain('value       = "${cidrhost(var.subnet_cidr, 10)}:6432"');
+    expect(outputsTf).toContain(
+      'value       = "${cidrhost(var.subnet_cidr, 10)}:6432"',
+    );
     // The admin/DDL DSN must stay on :5432 (never through the pooler).
     expect(outputsTf).toContain(":5432/postgres?sslmode=require");
   });

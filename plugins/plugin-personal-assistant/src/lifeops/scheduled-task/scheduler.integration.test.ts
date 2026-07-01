@@ -22,12 +22,12 @@ import {
 } from "../../../test/helpers/runtime.ts";
 import { createGlobalPauseStore } from "../global-pause/store.ts";
 import { LifeOpsRepository } from "../repository.ts";
-import { processDueScheduledTasks } from "./scheduler.ts";
-import { getScheduledTaskRunner } from "./service.ts";
 import {
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type ScheduledTask,
 } from "./index.ts";
+import { processDueScheduledTasks } from "./scheduler.ts";
+import { getScheduledTaskRunner } from "./service.ts";
 
 interface ScheduledTaskSeed
   extends Omit<ScheduledTask, "taskId" | "state" | "createdBy"> {

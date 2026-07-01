@@ -1,5 +1,5 @@
-import { createServer } from "node:http";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
@@ -18,10 +18,10 @@ const outputDirs: string[] = [];
 function stubLocalBenchmarkModels(modelIds: string[]): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
-    new Response(
-      JSON.stringify({ data: modelIds.map((id) => ({ id })) }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    )) as unknown as typeof fetch;
+    new Response(JSON.stringify({ data: modelIds.map((id) => ({ id })) }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch;
   return () => {
     globalThis.fetch = originalFetch;
   };
@@ -1161,9 +1161,7 @@ describe("training collection runner", () => {
     expect(readme).toContain("## Eval Comparisons");
     expect(readme).toContain("/models/eliza-1-0b-trained");
     expect(readme).toContain("local_model_comparison.json");
-    expect(readme).toContain(
-      "[local_model_comparison.json](file://",
-    );
+    expect(readme).toContain("[local_model_comparison.json](file://");
     expect(readme).toContain("message-route");
     expect(readme).toContain("[message-route.json](file://");
     expect(readme).toContain(
@@ -1171,7 +1169,7 @@ describe("training collection runner", () => {
     );
     expect(readme).toContain("## Readiness Gaps");
     expect(readme).toContain("Recommended Params");
-    expect(readme).toContain("{\"dryRun\":false}");
+    expect(readme).toContain('{"dryRun":false}');
     expect(readme).toContain("## Coverage");
     expect(readme).toContain("## Baseline Progression");
     expect(readme).toContain("Benchmark comparisons: scored=");

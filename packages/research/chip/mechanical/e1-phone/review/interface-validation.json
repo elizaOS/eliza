@@ -45,11 +45,7 @@
         "xy_clearance_mm": 0.63,
         "z_clearance_mm": 0.175,
         "cycle_rating": 20000,
-        "insertion_keepout_mm": [
-          12.5,
-          10.5,
-          5.0
-        ]
+        "insertion_keepout_mm": [12.5, 10.5, 5.0]
       },
       "target": ">=0.15 mm shell clearance, >=10000 cycle supplier class, molded saddle present",
       "pass": true,

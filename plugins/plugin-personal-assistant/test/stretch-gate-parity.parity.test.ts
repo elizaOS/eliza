@@ -31,15 +31,15 @@
  * naturally when W2-D / W2-F register the missing gates).
  */
 
-import { describe, expect, it } from "vitest";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
 import type {
   GateEvaluationContext,
   ScheduledTask,
 } from "@elizaos/plugin-scheduling";
+import {
+  createTaskGateRegistry,
+  registerBuiltInGates,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it } from "vitest";
 
 /** Reproduces the legacy stretch-decider's weekend + late-evening rules. */
 function legacyStretchDecision(args: {

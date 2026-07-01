@@ -18,26 +18,10 @@
       "base_geom": "geom_134",
       "base_geom_type": "mesh",
       "body_tree_distance": 5,
-      "part_sample_point_m": [
-        -0.00584,
-        -0.0429,
-        1.27113
-      ],
-      "base_sample_point_m": [
-        -0.00618,
-        -0.042,
-        1.26999
-      ],
-      "part_to_base_vector_m": [
-        -0.00034,
-        0.0009,
-        -0.00113
-      ],
-      "part_to_base_vector_mm": [
-        -0.342,
-        0.897,
-        -1.134
-      ]
+      "part_sample_point_m": [-0.00584, -0.0429, 1.27113],
+      "base_sample_point_m": [-0.00618, -0.042, 1.26999],
+      "part_to_base_vector_m": [-0.00034, 0.0009, -0.00113],
+      "part_to_base_vector_mm": [-0.342, 0.897, -1.134]
     },
     {
       "pose": "left_shoulder_pitch_joint_low__left_elbow_joint_low",
@@ -51,26 +35,10 @@
       "base_geom": "geom_117",
       "base_geom_type": "mesh",
       "body_tree_distance": 5,
-      "part_sample_point_m": [
-        -0.00718,
-        0.02037,
-        1.20628
-      ],
-      "base_sample_point_m": [
-        -0.00931,
-        0.02118,
-        1.20568
-      ],
-      "part_to_base_vector_m": [
-        -0.00212,
-        0.00081,
-        -0.0006
-      ],
-      "part_to_base_vector_mm": [
-        -2.124,
-        0.811,
-        -0.596
-      ]
+      "part_sample_point_m": [-0.00718, 0.02037, 1.20628],
+      "base_sample_point_m": [-0.00931, 0.02118, 1.20568],
+      "part_to_base_vector_m": [-0.00212, 0.00081, -0.0006],
+      "part_to_base_vector_mm": [-2.124, 0.811, -0.596]
     },
     {
       "pose": "right_hip_roll_joint_high",
@@ -84,26 +52,10 @@
       "base_geom": "geom_18",
       "base_geom_type": "mesh",
       "body_tree_distance": 8,
-      "part_sample_point_m": [
-        0.01517,
-        0.11211,
-        0.32101
-      ],
-      "base_sample_point_m": [
-        0.01471,
-        0.1261,
-        0.33207
-      ],
-      "part_to_base_vector_m": [
-        -0.00046,
-        0.01398,
-        0.01106
-      ],
-      "part_to_base_vector_mm": [
-        -0.461,
-        13.985,
-        11.061
-      ]
+      "part_sample_point_m": [0.01517, 0.11211, 0.32101],
+      "base_sample_point_m": [0.01471, 0.1261, 0.33207],
+      "part_to_base_vector_m": [-0.00046, 0.01398, 0.01106],
+      "part_to_base_vector_mm": [-0.461, 13.985, 11.061]
     }
   ],
   "regions": {
@@ -114,9 +66,7 @@
         "right_shin_shell": {
           "blocker_count": 1,
           "minimum_clearance_mm": 17.836,
-          "poses": [
-            "right_hip_roll_joint_high"
-          ]
+          "poses": ["right_hip_roll_joint_high"]
         }
       }
     },

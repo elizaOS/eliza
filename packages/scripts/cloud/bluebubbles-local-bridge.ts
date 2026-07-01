@@ -20,7 +20,14 @@
 
 import { Database } from "bun:sqlite";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -29,12 +36,12 @@ import {
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
-  outboundReadiness as computeOutboundReadiness,
-  recipientFromChatGuid,
-  senderOptions as computeSenderOptions,
-  shortcutValidationMatches,
   type BlueBubblesSendMethod,
+  outboundReadiness as computeOutboundReadiness,
+  senderOptions as computeSenderOptions,
   type OutboundReadiness,
+  recipientFromChatGuid,
+  shortcutValidationMatches,
 } from "./bluebubbles-local-bridge-readiness";
 
 type BlueBubblesHandle = {
@@ -181,7 +188,8 @@ const blueBubblesSendTimeoutMs = Number.parseInt(
   10,
 );
 const blueBubblesAutoStart =
-  process.env.BLUEBUBBLES_AUTO_START !== "false" && process.platform === "darwin";
+  process.env.BLUEBUBBLES_AUTO_START !== "false" &&
+  process.platform === "darwin";
 const shortcutsSendShortcutName = (
   process.env.BLUEBUBBLES_SHORTCUT_NAME ?? "Eliza Cloud Send Message Ready"
 ).trim();
@@ -287,7 +295,9 @@ function readBlueBubblesWebhooks(): BlueBubblesWebhook[] {
 function readBlueBubblesQueueCount(): number {
   const db = new Database(blueBubblesConfigDbPath(), { readonly: true });
   try {
-    const row = db.query<{ count: number }, []>("select count(*) as count from queue").get();
+    const row = db
+      .query<{ count: number }, []>("select count(*) as count from queue")
+      .get();
     return row?.count ?? 0;
   } finally {
     db.close();
@@ -520,7 +530,8 @@ async function readBlueBubblesServerInfo(): Promise<
   }
 
   return {
-    error: firstError instanceof Error ? firstError.message : String(firstError),
+    error:
+      firstError instanceof Error ? firstError.message : String(firstError),
   };
 }
 
@@ -575,7 +586,12 @@ async function readPendingReplies(): Promise<PendingReply[]> {
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? (parsed as PendingReply[]) : [];
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
       return [];
     }
     throw error;
@@ -588,7 +604,12 @@ async function readOutboundValidation(): Promise<OutboundValidationRecord | null
       await readFile(outboundValidationPath, "utf8"),
     ) as OutboundValidationRecord;
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
       return null;
     }
     throw error;
@@ -599,9 +620,13 @@ async function writeOutboundValidation(
   record: OutboundValidationRecord,
 ): Promise<void> {
   await mkdir(dirname(outboundValidationPath), { recursive: true });
-  await writeFile(outboundValidationPath, `${JSON.stringify(record, null, 2)}\n`, {
-    mode: 0o600,
-  });
+  await writeFile(
+    outboundValidationPath,
+    `${JSON.stringify(record, null, 2)}\n`,
+    {
+      mode: 0o600,
+    },
+  );
 }
 
 async function writePendingReplies(replies: PendingReply[]): Promise<void> {
@@ -638,7 +663,12 @@ async function readRecentShortcutInputs(
       .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt))
       .slice(0, limit);
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
       return [];
     }
     throw error;
@@ -840,10 +870,16 @@ async function gatewayDoctor(): Promise<{
   next: string[];
 }> {
   const diagnostics = await gatewayDiagnostics();
-  const senderOptionsSummary = diagnostics.senderOptions as OutboundReadiness[] | undefined;
+  const senderOptionsSummary = diagnostics.senderOptions as
+    | OutboundReadiness[]
+    | undefined;
   const bridge = (diagnostics.bridge ?? {}) as {
     status?: string;
-    outboundReadiness?: { ready?: boolean; method?: string; reasons?: string[] };
+    outboundReadiness?: {
+      ready?: boolean;
+      method?: string;
+      reasons?: string[];
+    };
     pendingReplyCount?: number;
     recentShortcutInputs?: ShortcutInputSnapshot[];
     hasGatewaySecret?: boolean;
@@ -861,7 +897,9 @@ async function gatewayDoctor(): Promise<{
     shortcuts?: ShortcutsDiagnostics;
   };
 
-  const serverInfo = blueBubbles.serverInfo ?? { error: "server info unavailable" };
+  const serverInfo = blueBubbles.serverInfo ?? {
+    error: "server info unavailable",
+  };
   const serverInfoReady = hasServerInfoData(serverInfo ?? {});
   const outbound = bridge.outboundReadiness;
   const webhookEvents = blueBubbles.expectedWebhookEvents ?? [];
@@ -874,14 +912,18 @@ async function gatewayDoctor(): Promise<{
     {
       name: "cloud-secret",
       status: gatewaySecret ? "pass" : "blocked",
-      detail: gatewaySecret ? "configured" : "BLUEBUBBLES_GATEWAY_SECRET missing",
+      detail: gatewaySecret
+        ? "configured"
+        : "BLUEBUBBLES_GATEWAY_SECRET missing",
     },
     {
       name: "bluebubbles-server",
       status: serverInfoReady ? "pass" : "blocked",
       detail: serverInfoReady
         ? `server=${serverInfo.data?.server_version ?? "unknown"}`
-        : (serverInfo && "error" in serverInfo ? serverInfo.error : "server info unavailable"),
+        : serverInfo && "error" in serverInfo
+          ? serverInfo.error
+          : "server info unavailable",
     },
     {
       name: "inbound-webhook",
@@ -901,7 +943,8 @@ async function gatewayDoctor(): Promise<{
         ? `${outbound.method ?? blueBubblesSendMethod} ready`
         : [
             ...(outbound?.reasons ?? ["outbound readiness unavailable"]),
-            blueBubbles.config?.enablePrivateApi || blueBubbles.config?.privateApiMode
+            blueBubbles.config?.enablePrivateApi ||
+            blueBubbles.config?.privateApiMode
               ? `BlueBubbles config private_api=${blueBubbles.config?.enablePrivateApi ?? "unknown"} mode=${blueBubbles.config?.privateApiMode ?? "unknown"}`
               : null,
           ]
@@ -919,7 +962,9 @@ async function gatewayDoctor(): Promise<{
   if (!outbound?.ready) {
     const readyAlternates =
       senderOptionsSummary
-        ?.filter((option) => option.ready && option.method !== blueBubblesSendMethod)
+        ?.filter(
+          (option) => option.ready && option.method !== blueBubblesSendMethod,
+        )
         .map((option) => option.method) ?? [];
     if (readyAlternates.length > 0) {
       next.push(
@@ -931,7 +976,9 @@ async function gatewayDoctor(): Promise<{
         "Restore Messages AppleEvents/Automation access for the bridge, or switch BLUEBUBBLES_SEND_METHOD to a ready sender.",
       );
     } else if (blueBubblesSendMethod === "private-api") {
-      next.push("Connect the BlueBubbles private API helper and disable SIP for private-api mode.");
+      next.push(
+        "Connect the BlueBubbles private API helper and disable SIP for private-api mode.",
+      );
     } else if (blueBubblesSendMethod === "shortcuts") {
       const shortcutInstalled = macos.shortcuts?.shortcuts?.includes(
         shortcutsSendShortcutName,
@@ -983,7 +1030,9 @@ async function gatewayDoctor(): Promise<{
   }
 
   return {
-    status: checks.every((check) => check.status === "pass") ? "ready" : "blocked",
+    status: checks.every((check) => check.status === "pass")
+      ? "ready"
+      : "blocked",
     checks,
     next,
   };
@@ -1097,7 +1146,10 @@ async function sendBlueBubblesReply(
   }
 }
 
-async function sendShortcutsReply(chatGuid: string, text: string): Promise<void> {
+async function sendShortcutsReply(
+  chatGuid: string,
+  text: string,
+): Promise<void> {
   await mkdir(shortcutsInputDir, { recursive: true });
   const inputPath = join(
     shortcutsInputDir,
@@ -1235,12 +1287,15 @@ async function handleWebhook(
         error: sendError,
       });
       queuedReplyId = pending.id;
-      console.error("[bluebubbles-local-bridge] queued reply after send failure", {
-        queuedReplyId,
-        chatGuid,
-        sourceMessageId: messageId,
-        error: sendError,
-      });
+      console.error(
+        "[bluebubbles-local-bridge] queued reply after send failure",
+        {
+          queuedReplyId,
+          chatGuid,
+          sourceMessageId: messageId,
+          error: sendError,
+        },
+      );
     }
   }
 
@@ -1283,7 +1338,9 @@ async function validateOutboundSend(
   }
 
   const method = input.method ?? blueBubblesSendMethod;
-  if (!(["apple-script", "private-api", "shortcuts"] as const).includes(method)) {
+  if (
+    !(["apple-script", "private-api", "shortcuts"] as const).includes(method)
+  ) {
     throw new Error(`unsupported outbound validation method: ${method}`);
   }
 
@@ -1291,8 +1348,12 @@ async function validateOutboundSend(
   const record: OutboundValidationRecord = {
     validatedAt: new Date().toISOString(),
     method,
-    shortcutName: method === "shortcuts" ? shortcutsSendShortcutName : undefined,
-    shortcutId: method === "shortcuts" ? shortcutsSendShortcutId ?? undefined : undefined,
+    shortcutName:
+      method === "shortcuts" ? shortcutsSendShortcutName : undefined,
+    shortcutId:
+      method === "shortcuts"
+        ? (shortcutsSendShortcutId ?? undefined)
+        : undefined,
     recipient,
     messagePreview:
       message.length > 160 ? `${message.slice(0, 157)}...` : message,

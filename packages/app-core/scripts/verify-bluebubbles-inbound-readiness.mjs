@@ -45,7 +45,8 @@ async function getJson(url) {
   const response = await fetch(url);
   const text = await response.text();
   const body = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(`${url} failed (${response.status}): ${text}`);
+  if (!response.ok)
+    throw new Error(`${url} failed (${response.status}): ${text}`);
   return body;
 }
 
@@ -53,7 +54,9 @@ function requireCheck(checks, name) {
   const check = checks.find((entry) => entry.name === name);
   if (!check) throw new Error(`Missing BlueBubbles doctor check: ${name}`);
   if (check.status !== "pass") {
-    throw new Error(`BlueBubbles ${name} blocked: ${check.detail ?? check.status}`);
+    throw new Error(
+      `BlueBubbles ${name} blocked: ${check.detail ?? check.status}`,
+    );
   }
   return check;
 }
@@ -64,7 +67,12 @@ async function main() {
   const diagnostics = await getJson(`${args.bridgeUrl}/diagnostics`);
   const checks = Array.isArray(doctor.checks) ? doctor.checks : [];
 
-  for (const name of ["bridge", "cloud-secret", "bluebubbles-server", "inbound-webhook"]) {
+  for (const name of [
+    "bridge",
+    "cloud-secret",
+    "bluebubbles-server",
+    "inbound-webhook",
+  ]) {
     requireCheck(checks, name);
   }
 

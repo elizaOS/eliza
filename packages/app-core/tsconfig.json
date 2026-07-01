@@ -27,15 +27,11 @@
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": [
-        "../plugin-remote-manifest/src/*"
-      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
-      "@elizaos/plugin-registry/*": [
-        "../../plugins/plugin-registry/src/*"
-      ],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/app-core/*": ["./src/*"],

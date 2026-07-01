@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const REQUIRED_CHECK_IDS = new Set([
   "probe",
@@ -123,7 +123,13 @@ for (const id of REQUIRED_CHECK_IDS) {
 }
 
 if (requireComplete) {
-  for (const key of ["deviceModel", "iosVersion", "buildId", "validatedAt", "validator"]) {
+  for (const key of [
+    "deviceModel",
+    "iosVersion",
+    "buildId",
+    "validatedAt",
+    "validator",
+  ]) {
     if (!nonEmptyString(manifest.evidence[key])) {
       fail(`--require-complete needs evidence.${key}`);
     }

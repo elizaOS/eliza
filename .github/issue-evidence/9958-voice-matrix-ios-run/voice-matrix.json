@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",
@@ -76,9 +65,7 @@
         "--slug",
         "voice-ios"
       ],
-      "evidence": [
-        ".github/issue-evidence/9958-voice-ios-ios-sim.*"
-      ],
+      "evidence": [".github/issue-evidence/9958-voice-ios-ios-sim.*"],
       "probe": {
         "available": false,
         "reason": "set ELIZA_VOICE_IOS_READY=1 after booting an iOS simulator and installing the current app build with voice assets"
@@ -107,9 +94,7 @@
         "--package-path",
         "plugins/plugin-native-talkmode/ios"
       ],
-      "evidence": [
-        "plugins/plugin-native-talkmode/ios/Tests"
-      ],
+      "evidence": ["plugins/plugin-native-talkmode/ios/Tests"],
       "probe": {
         "available": true,
         "reason": "command passed (2026-06-30T07:14:00.171Z)"
@@ -145,9 +130,7 @@
         "--package-path",
         "plugins/plugin-native-swabble/ios"
       ],
-      "evidence": [
-        "plugins/plugin-native-swabble/ios/Tests"
-      ],
+      "evidence": ["plugins/plugin-native-swabble/ios/Tests"],
       "probe": {
         "available": true,
         "reason": "command passed (2026-06-30T07:14:02.754Z)"

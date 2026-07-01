@@ -276,7 +276,8 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
 
   const retryPolicy = getValidationRetryPolicy();
   const appAssetRoot = env.ELIZA_CDN_APP_ASSET_ROOT || "packages/app/public";
-  const homepageAssetRoot = env.ELIZA_CDN_HOMEPAGE_ASSET_ROOT || "packages/homepage/public";
+  const homepageAssetRoot =
+    env.ELIZA_CDN_HOMEPAGE_ASSET_ROOT || "packages/homepage/public";
   const [missingApp, missingHomepage] = await Promise.all([
     validateGroup(manifest.app, {
       repository,

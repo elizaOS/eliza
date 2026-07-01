@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ScenarioOutcome } from "../src/types.js";
 import {
   allResponseText,
   checkAgentResponded,
@@ -7,6 +6,7 @@ import {
   checkResponseContains,
   checkValueNotInResponse,
 } from "../src/scenarios/checks.js";
+import type { ScenarioOutcome } from "../src/types.js";
 
 /**
  * ConfigBench scenario checks score secret-leak prevention. The security checks

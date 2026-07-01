@@ -241,4 +241,105 @@ describe("PUT /api/v1/apps/:id", () => {
     );
     expect([400, 404]).toContain(res.status);
   });
+
+  // #10423 item 3 — per-app monetization attribution end-to-end. Proves the
+  // money chain the issue requires: a monetized app's inference charge lands on
+  // the app's credits and the creator's earnings (not just the caller's org).
+  // The platform-authoritative ELIZA_APP_ID injection into deployed containers
+  // (items 1-2) is unit/integration-tested in #10433; this asserts the live
+  // billing attribution via the X-App-Id inference header. Skip-gated like every
+  // group-* e2e — runs in the staging lane with TEST_API_KEY + a provider key.
+  test("monetized app: an inference charge attributes to the app's credits + creator earnings (#10423)", async () => {
+    if (!shouldRunAuthed()) return;
+
+    // 1) create the app and enable monetization with a markup.
+    const appId = await createTestApp();
+    const markupPct = 25;
+    const monetizeRes = await api.put(
+      `/api/v1/apps/${appId}`,
+      { monetization_enabled: true, inference_markup_percentage: markupPct },
+      { headers: bearerHeaders() },
+    );
+    expect(monetizeRes.status).toBe(200);
+
+    // 2) baseline the org credit balance + the app's creator earnings.
+    const baselineBalanceRes = await api.get("/api/v1/app-credits/balance", {
+      headers: bearerHeaders(),
+    });
+    expect(baselineBalanceRes.status).toBe(200);
+    const baselineBalance = Number(
+      ((await baselineBalanceRes.json()) as { credit_balance?: number })
+        .credit_balance ?? 0,
+    );
+
+    const baselineEarningsRes = await api.get(
+      `/api/v1/apps/${appId}/earnings`,
+      { headers: bearerHeaders() },
+    );
+    expect(baselineEarningsRes.status).toBe(200);
+    const baselineEarnings = Number(
+      (
+        (await baselineEarningsRes.json()) as {
+          total_creator_earnings?: number;
+        }
+      ).total_creator_earnings ?? 0,
+    );
+
+    // 3) drive a real inference attributed to the app via the X-App-Id header.
+    const inferenceRes = await api.post(
+      "/api/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        max_tokens: 8,
+        messages: [{ role: "user", content: "Say hi in one word." }],
+      },
+      {
+        headers: {
+          ...bearerHeaders(),
+          "X-App-Id": appId,
+        },
+      },
+    );
+    // If the staging Worker has no configured provider key the forward 502s —
+    // that's an env gap, not an attribution failure, so assert 200 explicitly.
+    expect(inferenceRes.status).toBe(200);
+    const usage = (
+      (await inferenceRes.json()) as {
+        usage?: { total_tokens?: number };
+      }
+    ).usage;
+    expect(usage?.total_tokens).toBeGreaterThan(0);
+
+    // 4) reconcile fires post-response in the settle chain — poll briefly for the
+    //    debit + the creator-earnings credit to land.
+    let balanceDropped = false;
+    let earningsIncreased = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 750));
+      const balanceRes = await api.get("/api/v1/app-credits/balance", {
+        headers: bearerHeaders(),
+      });
+      const balanceNow = Number(
+        ((await balanceRes.json()) as { credit_balance?: number })
+          .credit_balance ?? baselineBalance,
+      );
+      if (balanceNow < baselineBalance) balanceDropped = true;
+
+      const earningsRes = await api.get(`/api/v1/apps/${appId}/earnings`, {
+        headers: bearerHeaders(),
+      });
+      const earningsNow = Number(
+        ((await earningsRes.json()) as { total_creator_earnings?: number })
+          .total_creator_earnings ?? baselineEarnings,
+      );
+      if (earningsNow > baselineEarnings) earningsIncreased = true;
+
+      if (balanceDropped && earningsIncreased) break;
+    }
+
+    // The org paid (base + markup) AND the creator earned the markup — i.e. the
+    // charge attributed to the app, not just consumed the caller's credits.
+    expect(balanceDropped).toBe(true);
+    expect(earningsIncreased).toBe(true);
+  });
 });

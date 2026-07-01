@@ -22,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "triage-tuition-contract",
       text: "The school sent next year's tuition contract. Extract payment schedule, withdrawal penalty, scholarship status, bus options, and signature deadline.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "SCHEDULED_TASKS"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "OWNER_FINANCES",
+        "SCHEDULED_TASKS",
+      ],
       responseIncludesAny: ["payment", "withdrawal", "scholarship", "deadline"],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },

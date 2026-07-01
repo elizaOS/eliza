@@ -1,16 +1,26 @@
 import type { Check } from "../types.js";
+import { auditActionsComprehensive } from "./audit-actions.js";
 import {
   branchProtectionScript,
   codeownersPresent,
   securityMd,
 } from "./codeowners.js";
 import {
+  auditLogRetention,
   dbSslmode,
   kmsAdoption,
   piiEncryptionColumns,
   softDeleteColumns,
-  auditLogRetention,
 } from "./db-and-pii.js";
+import {
+  auditDispatcherEmits,
+  auditRedaction,
+  kmsHmacRoundtrip,
+  kmsRoundtrip,
+  kmsSignatureRoundtrip,
+} from "./dynamic.js";
+import { k8sSecurityContext, networkPoliciesPresent } from "./k8s.js";
+import { alertRulesPresent, monitoringConfig } from "./observability.js";
 import {
   firmwareSigningScript,
   pluginSignatureVerify,
@@ -22,17 +32,7 @@ import {
   noCommittedSecrets,
   workflowPermissions,
 } from "./supply-chain.js";
-import { alertRulesPresent, monitoringConfig } from "./observability.js";
-import { k8sSecurityContext, networkPoliciesPresent } from "./k8s.js";
-import { auditActionsComprehensive } from "./audit-actions.js";
 import { modelArtifactSigning, trainingConsentBasis } from "./training.js";
-import {
-  auditDispatcherEmits,
-  auditRedaction,
-  kmsHmacRoundtrip,
-  kmsRoundtrip,
-  kmsSignatureRoundtrip,
-} from "./dynamic.js";
 
 export const ALL_CHECKS: readonly Check[] = [
   // CC6 — Access
