@@ -23,6 +23,7 @@ import {
   type CreditReservation,
   creditsService,
   InsufficientCreditsError,
+  MIN_RESERVATION,
 } from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
@@ -414,10 +415,18 @@ export class AppCreditsService {
   ): Promise<CreditReservation> {
     const { appId, userId, estimatedBaseCost, description, metadata, idempotencyKey, app } = params;
 
+    // A $0 estimate (free/unpriced model) must still open a valid hold:
+    // reserveAndDeductCredits throws on amount <= 0, which surfaced as a 500 on
+    // /v1/chat/completions and /v1/messages for monetized apps. Floor the hold
+    // at MIN_RESERVATION — the same floor the org-credits reservation path
+    // applies — and reconcile trues it up to actual cost (refunding the floor
+    // when actual stays $0).
+    const flooredEstimate = Math.max(estimatedBaseCost, MIN_RESERVATION);
+
     const deduction = await this.deductCredits({
       appId,
       userId,
-      baseCost: estimatedBaseCost,
+      baseCost: flooredEstimate,
       description,
       metadata: withChargeIdempotencyKey(metadata, idempotencyKey),
       app,
@@ -440,7 +449,9 @@ export class AppCreditsService {
         const reconciliation = await this.reconcileCredits({
           appId,
           userId,
-          estimatedBaseCost,
+          // Reconcile against the FLOORED estimate — that is what was actually
+          // debited; using the raw $0 estimate would skip refunding the floor.
+          estimatedBaseCost: flooredEstimate,
           actualBaseCost,
           description,
           metadata: withChargeIdempotencyKey(metadata, idempotencyKey),
