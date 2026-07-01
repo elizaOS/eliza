@@ -50,6 +50,10 @@ template, and feature issue template, showing the visible evidence checklists.
   clean worktree. It fails in `audit:type-safety-ratchet` before lint/typecheck
   because the current baseline is exceeded (`as unknown as: 108 current > 77
   baseline`), unrelated to this docs/template diff.
+- `record-command-skip-mode.log` contains a successful
+  `bun run test:e2e:record -- --skip-tests --skip-sheets --skip-viewer` command
+  verification, matching the lightweight recording-command check used by the
+  merged completion PR.
 - `e2e-record-partial-failures.txt` preserves failure context from the partial
   recording run. The exact command was interrupted after starting 1,091 tests
   because it was projected to run for hours; it is not proven green here.
