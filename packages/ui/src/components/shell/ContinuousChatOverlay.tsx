@@ -1,5 +1,7 @@
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  Check,
+  Copy,
   FileText,
   Film,
   LayoutGrid,
@@ -8,8 +10,11 @@ import {
   Mic,
   Minimize2,
   Music,
+  Pencil,
   RotateCcw,
   SendHorizontal,
+  Square,
+  Volume2,
 } from "lucide-react";
 import {
   AnimatePresence,
@@ -783,11 +788,119 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
   );
 }
 
+/**
+ * One icon-only control in a message's click-to-reveal action row (#10713).
+ * Overlay glass styling: no card fill, neutral resting → neutral-opacity hover;
+ * an active (e.g. playing) control tints with the orange accent. `stopPropagation`
+ * keeps a tap on the button from re-toggling the row or ending text selection.
+ */
+function ThreadLineActionButton({
+  label,
+  icon,
+  onClick,
+  active,
+  testId,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+  testId?: string;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+        active
+          ? "bg-[rgb(255,88,0)]/25 text-white"
+          : "bg-white/10 text-white/80 hover:bg-white/20",
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
+/**
+ * Inline editor for a user message (#10713). Prefilled with the message text;
+ * ⌘/Ctrl+Enter resends the edit, Escape cancels. `stopPropagation` on the
+ * container keeps clicks inside from toggling the message's reveal row.
+ */
+function ThreadLineEditor({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}): React.JSX.Element {
+  const ref = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+  return (
+    <div className="flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+      <textarea
+        ref={ref}
+        data-testid="thread-line-edit-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            onSave();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        rows={Math.min(6, Math.max(1, value.split("\n").length))}
+        className="w-full resize-none rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere] focus:border-white/40"
+      />
+      <div className="flex items-center justify-end gap-1.5">
+        <button
+          type="button"
+          data-testid="thread-line-edit-cancel"
+          onClick={onCancel}
+          className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-testid="thread-line-edit-save"
+          onClick={onSave}
+          className="rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const ThreadLine = React.memo(function ThreadLine({
   message,
   floating,
   reduce,
   onCopy,
+  onSpeak,
+  onEdit,
+  speaking,
   onOpenSettings,
   turnStatus,
   suppressReasoning,
@@ -795,8 +908,15 @@ const ThreadLine = React.memo(function ThreadLine({
   message: ShellMessage;
   floating?: boolean;
   reduce?: boolean;
-  /** Copy this message's text (assistant bubbles only). Stable identity. */
+  /** Copy this message's text. Used by both the press-and-hold shortcut
+   *  (assistant) and the reveal-row Copy control (both roles). Stable identity. */
   onCopy?: (text: string) => void;
+  /** Speak an assistant message aloud (reveal-row Play). Stable identity. */
+  onSpeak?: (text: string) => void;
+  /** Save an edited user message and resend it (reveal-row Edit). Stable id. */
+  onEdit?: (text: string) => void;
+  /** True while assistant voice output is playing — drives Play↔Stop. */
+  speaking?: boolean;
   /** Jump to Settings from the no_provider gate. Stable identity. */
   onOpenSettings?: () => void;
   /** Rich status for the in-flight (empty) assistant bubble (#8813). Only the
@@ -863,6 +983,83 @@ const ThreadLine = React.memo(function ThreadLine({
       }
     : null;
 
+  // Click-to-reveal per-message action row (#10713): tapping a bubble reveals
+  // Copy + Play (assistant) or Copy + Edit (user) beneath it; an outside tap
+  // dismisses. This is the primary extraction affordance on pointer devices; the
+  // press-and-hold copy above stays as a secondary touch shortcut.
+  const trimmed = message.content.trim();
+  const lineRef = React.useRef<HTMLDivElement | null>(null);
+  const [revealed, setRevealed] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [editDraft, setEditDraft] = React.useState("");
+  const [rowCopied, setRowCopied] = React.useState(false);
+  const rowCopiedTimer = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (rowCopiedTimer.current !== null)
+        window.clearTimeout(rowCopiedTimer.current);
+    },
+    [],
+  );
+
+  const canRowCopy = !!onCopy && trimmed.length > 0;
+  const canSpeak = isAssistant && !!onSpeak && trimmed.length > 0;
+  // A user turn is editable unless it's an optimistic (temp-) turn not yet
+  // acknowledged by the server — mirrors the composite ChatMessage's canEdit.
+  const canEdit =
+    isUser && !!onEdit && trimmed.length > 0 && !message.id.startsWith("temp-");
+  const hasActions = canRowCopy || canSpeak || canEdit;
+
+  const toggleRevealed = React.useCallback(() => {
+    if (!hasActions || editing) return;
+    // Never hijack a text-selection drag: a click that finishes a highlight must
+    // not also toggle the row (the bubble text stays selectable to copy).
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (sel && sel.toString().trim().length > 0) return;
+    setRevealed((v) => !v);
+  }, [hasActions, editing]);
+
+  React.useEffect(() => {
+    if (!revealed) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (lineRef.current && !lineRef.current.contains(e.target as Node)) {
+        setRevealed(false);
+        setEditing(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, [revealed]);
+
+  const handleRowCopy = React.useCallback(() => {
+    onCopy?.(message.content);
+    setRowCopied(true);
+    if (rowCopiedTimer.current !== null)
+      window.clearTimeout(rowCopiedTimer.current);
+    rowCopiedTimer.current = window.setTimeout(() => setRowCopied(false), 1100);
+  }, [onCopy, message.content]);
+
+  const handleSpeak = React.useCallback(() => {
+    onSpeak?.(message.content);
+  }, [onSpeak, message.content]);
+
+  const openEditor = React.useCallback(() => {
+    setEditDraft(message.content);
+    setEditing(true);
+  }, [message.content]);
+
+  const saveEdit = React.useCallback(() => {
+    const next = editDraft.trim();
+    setEditing(false);
+    setRevealed(false);
+    if (next && next !== message.content.trim()) onEdit?.(next);
+  }, [editDraft, message.content, onEdit]);
+
+  const cancelEdit = React.useCallback(() => {
+    setEditing(false);
+    setRevealed(false);
+  }, []);
+
   // A failed turn the user can't recover from without wiring a provider: render
   // a structured gate (not the raw error text) with a one-tap jump to Settings.
   if (isAssistant && message.failureKind === "no_provider") {
@@ -910,6 +1107,7 @@ const ThreadLine = React.memo(function ThreadLine({
 
   return (
     <motion.div
+      ref={lineRef}
       data-testid="thread-line"
       data-role={message.role}
       // New turns rise+fade in. Transform/opacity only; reduced motion collapses
@@ -924,12 +1122,21 @@ const ThreadLine = React.memo(function ThreadLine({
         isUser ? "justify-end" : "justify-start",
       )}
     >
+      {/* Bubble + its click-to-reveal action row stack vertically, aligned to the
+          turn's side (#10713). */}
+      <div
+        className={cn(
+          "flex max-w-[80%] flex-col gap-1",
+          isUser ? "items-end" : "items-start",
+        )}
+      >
       <div
         {...(copyHandlers ?? {})}
+        onClick={toggleRevealed}
         className={cn(
           // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
           // hashes / paths so they can't blow out the bubble width on a phone.
-          "relative max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
+          "relative w-fit max-w-full whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
           // The chrome-free transcript renders floating: each bubble carries its
           // own dark glass so it stays legible directly over whatever view is
           // behind. The light tone is for any embedding that supplies its own
@@ -938,6 +1145,8 @@ const ThreadLine = React.memo(function ThreadLine({
           // Message text must remain selectable for normal highlight/copy.
           // Assistant bubbles still keep the press-and-hold copy shortcut.
           "select-text [-webkit-touch-callout:default]",
+          // Tapping a bubble with actions reveals its row (pointer affordance).
+          hasActions && !editing && "cursor-pointer",
           // #10698: no per-message fill — text floats transparently on the one
           // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
           // hairline edge remains to define the item boundary.
@@ -948,6 +1157,15 @@ const ThreadLine = React.memo(function ThreadLine({
               : "text-white/90",
         )}
       >
+        {isUser && editing ? (
+          <ThreadLineEditor
+            value={editDraft}
+            onChange={setEditDraft}
+            onSave={saveEdit}
+            onCancel={cancelEdit}
+          />
+        ) : (
+          <>
         <div data-chat-selectable="true">
           {isAssistant &&
           !message.content.trim() &&
@@ -1010,6 +1228,57 @@ const ThreadLine = React.memo(function ThreadLine({
             </motion.span>
           ) : null}
         </AnimatePresence>
+          </>
+        )}
+      </div>
+      {revealed && !editing && hasActions ? (
+        <div
+          data-testid="thread-line-actions"
+          className={cn(
+            "flex items-center gap-1.5",
+            isUser ? "pr-1" : "pl-1",
+          )}
+        >
+          {canRowCopy ? (
+            <ThreadLineActionButton
+              label={rowCopied ? "Copied" : "Copy"}
+              testId="thread-line-copy"
+              icon={
+                rowCopied ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )
+              }
+              onClick={handleRowCopy}
+              active={rowCopied}
+            />
+          ) : null}
+          {canSpeak ? (
+            <ThreadLineActionButton
+              label={speaking ? "Stop" : "Play audio"}
+              testId="thread-line-speak"
+              icon={
+                speaking ? (
+                  <Square className="h-3.5 w-3.5" />
+                ) : (
+                  <Volume2 className="h-3.5 w-3.5" />
+                )
+              }
+              onClick={handleSpeak}
+              active={speaking}
+            />
+          ) : null}
+          {canEdit ? (
+            <ThreadLineActionButton
+              label="Edit"
+              testId="thread-line-edit"
+              icon={<Pencil className="h-3.5 w-3.5" />}
+              onClick={openEditor}
+            />
+          ) : null}
+        </div>
+      ) : null}
       </div>
     </motion.div>
   );
@@ -1080,6 +1349,9 @@ export function ContinuousChatOverlay({
     clearConversation,
     stop,
     modelStatus,
+    speak,
+    stopSpeaking,
+    speaking,
   } = controller;
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
@@ -1121,11 +1393,33 @@ export function ContinuousChatOverlay({
     },
   });
 
-  // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
-  // the memoized ThreadLine isn't re-rendered every parent tick.
+  // Copy a message (press-and-hold shortcut + reveal-row Copy). Stable identity
+  // so the memoized ThreadLine isn't re-rendered every parent tick.
   const handleCopyMessage = React.useCallback((text: string) => {
     void copyTextToClipboard(text);
   }, []);
+
+  // Play an assistant message aloud from its reveal row (#10713). Toggling: a tap
+  // while already speaking stops playback; otherwise it speaks this message.
+  const handleSpeakMessage = React.useCallback(
+    (text: string) => {
+      if (speaking) {
+        stopSpeaking?.();
+        return;
+      }
+      speak?.(text);
+    },
+    [speaking, speak, stopSpeaking],
+  );
+
+  // Save an edited user message and resend it as a new turn (#10713) — the same
+  // send path a typed turn uses, so the agent sees the corrected text.
+  const handleEditResend = React.useCallback(
+    (text: string) => {
+      send(text);
+    },
+    [send],
+  );
 
   const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
 
@@ -1415,6 +1709,9 @@ export function ContinuousChatOverlay({
           floating
           reduce={reduce}
           onCopy={handleCopyMessage}
+          onSpeak={handleSpeakMessage}
+          onEdit={handleEditResend}
+          speaking={speaking}
           onOpenSettings={openSettings}
           turnStatus={isInFlight ? turnStatus : undefined}
           suppressReasoning={responding && isLastAssistant}
@@ -1425,6 +1722,9 @@ export function ContinuousChatOverlay({
       visibleMessages.length,
       reduce,
       handleCopyMessage,
+      handleSpeakMessage,
+      handleEditResend,
+      speaking,
       openSettings,
       responding,
       turnStatus,
