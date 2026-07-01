@@ -24,7 +24,10 @@ import {
   withReusedElizaCharacterOwnership,
 } from "@/lib/services/eliza-agent-config";
 import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  AgentQuotaExceededError,
+  elizaSandboxService,
+} from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -39,6 +42,22 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+/**
+ * Per-org ceiling on live (non-terminal) dedicated agent sandboxes, by credit
+ * tier. Mirrors the balance tiers already enforced for cloud characters in
+ * `/api/v1/app/agents` (`AGENT_LIMITS`), applied here to the `agent_sandboxes`
+ * (container) path so a `forceCreate` loop on a trivial balance can't exhaust
+ * the shared fleet (#11023). A trivial (~$0.11) balance lands in the smallest
+ * tier, bounding the DoS; funded orgs scale up.
+ */
+function getMaxNonTerminalAgentsForOrg(creditBalance: number | undefined): number {
+  const balance = Number(creditBalance ?? 0);
+  if (balance >= 100.0) return 500;
+  if (balance >= 10.0) return 100;
+  if (balance >= 1.0) return 20;
+  return 5;
+}
 
 const dockerImageSchema = z
   .string()
@@ -341,8 +360,13 @@ app.post("/", async (c) => {
   const shouldProvisionEagerly =
     autoProvision && tierProvisionsEagerly(executionTier);
 
+  // Captured from the credit gate below so the forceCreate quota (#11023) can
+  // scale the org's live-agent ceiling by its balance tier.
+  let orgBalanceForQuota: number | undefined;
+
   if (shouldProvisionEagerly) {
     const creditCheck = await checkAgentCreditGate(user.organization_id);
+    orgBalanceForQuota = creditCheck.balance;
     if (!creditCheck.allowed) {
       logger.warn("[agent-api] Agent creation blocked: insufficient credits", {
         orgId: user.organization_id,
@@ -373,23 +397,46 @@ app.post("/", async (c) => {
     }
   }
 
-  const { agent, idempotent } = await elizaSandboxService.createAgent({
-    organizationId: user.organization_id,
-    userId: user.id,
-    agentName: parsed.data.agentName,
-    characterId: parsed.data.characterId,
-    dockerImage: parsed.data.dockerImage,
-    agentConfig: parsed.data.characterId
-      ? withReusedElizaCharacterOwnership(sanitizedConfig)
-      : sanitizedConfig,
-    environmentVars: parsed.data.environmentVars,
-    executionTier,
-    // Default reuses the org's existing non-terminal agent (idempotent create);
-    // `forceCreate` opts out so a caller that needs a SEPARATE record (the
-    // shared→dedicated handoff's migration target) mints a fresh agent instead
-    // of getting the shared one handed back.
-    reuseExistingNonTerminal: !parsed.data.forceCreate,
-  });
+  let created: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
+  try {
+    created = await elizaSandboxService.createAgent({
+      organizationId: user.organization_id,
+      userId: user.id,
+      agentName: parsed.data.agentName,
+      characterId: parsed.data.characterId,
+      dockerImage: parsed.data.dockerImage,
+      agentConfig: parsed.data.characterId
+        ? withReusedElizaCharacterOwnership(sanitizedConfig)
+        : sanitizedConfig,
+      environmentVars: parsed.data.environmentVars,
+      executionTier,
+      // Default reuses the org's existing non-terminal agent (idempotent create);
+      // `forceCreate` opts out so a caller that needs a SEPARATE record (the
+      // shared→dedicated handoff's migration target) mints a fresh agent instead
+      // of getting the shared one handed back.
+      reuseExistingNonTerminal: !parsed.data.forceCreate,
+      // A user-facing forceCreate bypasses the reuse guard, so bound it by the
+      // org's balance-tiered live-agent ceiling — enforced atomically under the
+      // advisory lock — so it can't mint unbounded dedicated containers (#11023).
+      maxNonTerminalAgents: parsed.data.forceCreate
+        ? getMaxNonTerminalAgentsForOrg(orgBalanceForQuota)
+        : undefined,
+    });
+  } catch (error) {
+    if (error instanceof AgentQuotaExceededError) {
+      logger.warn("[agent-api] Agent creation blocked: per-org quota exceeded", {
+        orgId: user.organization_id,
+        count: error.count,
+        max: error.max,
+      });
+      throw new ApiError(429, "agent_quota_exceeded", error.message, {
+        currentAgents: error.count,
+        maxAgents: error.max,
+      });
+    }
+    throw error;
+  }
+  const { agent, idempotent } = created;
 
   // Idempotent reuse: the org already had a non-terminal agent, so createAgent
   // returned it instead of minting a duplicate. It is already provisioned (or
