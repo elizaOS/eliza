@@ -1313,7 +1313,21 @@ export function useChatSend(deps: UseChatSendDeps) {
         chatSendQueueRef.current.push({
           rawInput,
           channelType: options?.channelType ?? "DM",
-          conversationId: options?.conversationId,
+          // Snapshot the target conversation at ENQUEUE, not at drain (#10700).
+          // The shell send() path (text + voice VOICE_DM converse turns) passes
+          // no explicit conversationId, so without this snapshot the turn's
+          // target was bound late in runQueuedChatSend as
+          // `activeConversationIdRef.current` at drain time — a clearConversation
+          // (new chat) between enqueue and drain then misrouted the turn to the
+          // NEW conversation. The composer path (handleChatSend) already
+          // snapshots activeConversationIdRef.current; this makes every enqueue
+          // deterministic the same way. A null/"" snapshot (no active
+          // conversation yet) is preserved as undefined so the drain still
+          // creates a fresh conversation for a true cold-open first message.
+          conversationId:
+            options?.conversationId ??
+            activeConversationIdRef.current ??
+            undefined,
           images: options?.images,
           metadata: buildChatViewMetadata(tab, options?.metadata),
           resolve,
@@ -1323,7 +1337,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         void flushQueuedChatSends();
       });
     },
-    [flushQueuedChatSends, setChatSending, tab],
+    [activeConversationIdRef, flushQueuedChatSends, setChatSending, tab],
   );
 
   const handleChatSend = useCallback(
