@@ -44,7 +44,10 @@ interface EmbedHandshakeDeps {
   win?: Window;
   fetchImpl?: typeof fetch;
   client?: EmbedClient;
+  timeoutMs?: number;
 }
+
+const DEFAULT_EMBED_AUTH_TIMEOUT_MS = 10_000;
 
 export function isEmbedPath(pathname: string): boolean {
   return pathname === "/embed" || pathname.startsWith("/embed/");
@@ -133,12 +136,17 @@ export async function runEmbedHandshake(
   const fetchImpl = deps.fetchImpl ?? fetch;
   const accountId = params.get("accountId") ?? undefined;
   const base = embedClient.getBaseUrl().replace(/\/+$/, "");
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_EMBED_AUTH_TIMEOUT_MS;
 
   let response: Response;
+  const abortController =
+    typeof AbortController !== "undefined" ? new AbortController() : null;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
-    response = await fetchImpl(`${base}/api/embed/auth`, {
+    const authRequest = fetchImpl(`${base}/api/embed/auth`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: abortController?.signal,
       body: JSON.stringify({
         platform,
         signedLaunchPayload,
@@ -146,8 +154,19 @@ export async function runEmbedHandshake(
         ...(oauthState ? { state: oauthState } : {}),
       }),
     });
+    const timeout = new Promise<"timeout">((resolve) => {
+      timeoutHandle = setTimeout(() => resolve("timeout"), timeoutMs);
+    });
+    const result = await Promise.race([authRequest, timeout]);
+    if (result === "timeout") {
+      abortController?.abort();
+      return { status: "failed", reason: "network_timeout" };
+    }
+    response = result;
   } catch {
     return { status: "failed", reason: "network_error" };
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 
   if (!response.ok) {

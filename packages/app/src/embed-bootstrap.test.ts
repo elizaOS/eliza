@@ -239,4 +239,31 @@ describe("runEmbedHandshake", () => {
     expect(outcome).toEqual({ status: "failed", reason: "network_error" });
     expect(setToken).not.toHaveBeenCalled();
   });
+
+  it("fails closed when the auth request times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, setToken } = fakeClient();
+      const fetchImpl = vi.fn(
+        (_url: string, _init?: RequestInit) => new Promise<Response>(() => {}),
+      );
+      const outcomePromise = runEmbedHandshake({
+        win: fakeWin("/embed", "?platform=telegram", "tg"),
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        client,
+        timeoutMs: 25,
+      });
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await expect(outcomePromise).resolves.toEqual({
+        status: "failed",
+        reason: "network_timeout",
+      });
+      expect(setToken).not.toHaveBeenCalled();
+      expect(fetchImpl.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
