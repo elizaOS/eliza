@@ -250,6 +250,7 @@ describe("curateLauncherPages — full realistic view set", () => {
         curateLauncherPages(REAL_VIEWS, {
           isAosp: false,
           enabledKinds: ENABLED,
+          cloudActive: true,
         }),
       ),
     ).toEqual([
