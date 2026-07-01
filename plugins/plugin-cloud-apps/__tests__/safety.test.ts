@@ -19,6 +19,33 @@ describe("readStructuredConfirmation", () => {
     expect(readStructuredConfirmation({ confirm: "0" })).toBe(false);
   });
 
+  it("reads the confirmation from the real planner path (options.parameters)", () => {
+    // The runtime nests validated action parameters under options.parameters
+    // (execute-planned-tool-call.ts). Reading only the top level made confirm
+    // invisible on every real turn, so the destructive action could never fire.
+    expect(readStructuredConfirmation({ parameters: { confirm: true } })).toBe(
+      true,
+    );
+    expect(readStructuredConfirmation({ parameters: { confirm: false } })).toBe(
+      false,
+    );
+    expect(readStructuredConfirmation({ parameters: { confirmed: "1" } })).toBe(
+      true,
+    );
+    expect(readStructuredConfirmation({ parameters: {} })).toBe(null);
+    // The nested (planner-extracted) value is authoritative over any top-level.
+    expect(
+      readStructuredConfirmation({
+        parameters: { confirm: false },
+        confirm: true,
+      }),
+    ).toBe(false);
+    // Prose is still never treated as confirmation, even when nested.
+    expect(readStructuredConfirmation({ parameters: { confirm: "yes" } })).toBe(
+      null,
+    );
+  });
+
   it("does not infer confirmation from user prose", () => {
     expect(readStructuredConfirmation(undefined)).toBe(null);
     expect(readStructuredConfirmation({ text: "yes delete Acme Bot" })).toBe(
