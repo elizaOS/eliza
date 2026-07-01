@@ -4,6 +4,7 @@ import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/client";
 import { appImageGenerationIdempotency } from "@/db/schemas/app-image-generation-idempotency";
 import { jsonError } from "@/lib/api/cloud-worker-errors";
+import { appKeyScopeViolation } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -256,6 +257,14 @@ app.post("/", async (c) => {
     ) {
       return jsonError(c, 403, "Access denied to this app", "access_denied");
     }
+    // #10852: an app's API key must not spend credits via a SIBLING app.
+    const scopeViolation = await appKeyScopeViolation(
+      c.get("authMethod"),
+      c.get("apiKeyId"),
+      appId,
+    );
+    if (scopeViolation)
+      return jsonError(c, 403, scopeViolation, "access_denied");
 
     if (!c.env.BLOB)
       return jsonError(

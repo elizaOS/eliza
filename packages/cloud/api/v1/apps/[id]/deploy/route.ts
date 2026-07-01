@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import { appsDeployOrganizationDecision } from "@/api-app/lib/apps-deploy-gate";
 import { containersRepository } from "@/db/repositories/containers";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { appKeyScopeViolation } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDeploymentsService } from "@/lib/services/app-deployments";
 import { appsService } from "@/lib/services/apps";
@@ -55,6 +56,14 @@ app.post("/", async (c) => {
       // 403 — the caller is authed but not the owning org.
       return c.json({ success: false, error: "Access denied" }, 403);
     }
+    // #10852: an app's API key must not deploy a SIBLING app in the same org.
+    const scopeViolation = await appKeyScopeViolation(
+      c.get("authMethod"),
+      c.get("apiKeyId"),
+      appId,
+    );
+    if (scopeViolation)
+      return c.json({ success: false, error: scopeViolation }, 403);
 
     const deployGate = appsDeployOrganizationDecision(
       c.env,

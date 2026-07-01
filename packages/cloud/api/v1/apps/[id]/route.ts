@@ -10,6 +10,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { appKeyScopeViolation } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appCleanupService } from "@/lib/services/app-cleanup";
 import { appsService } from "@/lib/services/apps";
@@ -69,6 +70,14 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   if (existing.organization_id !== user.organization_id) {
     return c.json({ success: false, error: "Access denied" }, 403);
   }
+  // #10852: an app's API key must not mutate a SIBLING app in the same org.
+  const scopeViolation = await appKeyScopeViolation(
+    c.get("authMethod"),
+    c.get("apiKeyId"),
+    id,
+  );
+  if (scopeViolation)
+    return c.json({ success: false, error: scopeViolation }, 403);
 
   const rawBody = await c.req.json();
   const validationResult = UpdateAppSchema.safeParse(rawBody);
@@ -160,6 +169,14 @@ app.delete("/", async (c) => {
     if (existing.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
+    // #10852: an app's API key must not delete a SIBLING app in the same org.
+    const scopeViolation = await appKeyScopeViolation(
+      c.get("authMethod"),
+      c.get("apiKeyId"),
+      id,
+    );
+    if (scopeViolation)
+      return c.json({ success: false, error: scopeViolation }, 403);
 
     const deleteGitHubRepo = c.req.query("deleteGitHubRepo") !== "false";
 

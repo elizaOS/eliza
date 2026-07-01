@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { appKeyScopeViolation } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -49,6 +50,14 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
+    // #10852: an app's API key must not open charge requests for a SIBLING app.
+    const scopeViolation = await appKeyScopeViolation(
+      c.get("authMethod"),
+      c.get("apiKeyId"),
+      appId,
+    );
+    if (scopeViolation)
+      return c.json({ success: false, error: scopeViolation }, 403);
 
     const body = await c.req.json().catch(() => null);
     const parsed = CreateChargeSchema.safeParse(body);
