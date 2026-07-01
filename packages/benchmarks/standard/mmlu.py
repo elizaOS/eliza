@@ -41,7 +41,14 @@ BENCHMARK_ID = "mmlu"
 DATASET_VERSION = "cais/mmlu@2023-09-15"
 EXPANDED_DATASET_VERSION = "cais/mmlu@2023-09-15+edge-v1"
 DATASET_NAME = "cais/mmlu"
-DEFAULT_MAX_TOKENS = 256
+# Reasoning models (gpt-oss, o-series, …) spend completion tokens on hidden
+# reasoning before emitting the visible answer. At the old 256-token default they
+# routinely exhausted the budget mid-reasoning and returned an EMPTY visible
+# answer, which the harness scored as wrong — silently depressing a real ~0.92 to
+# ~0.48 (gpt-oss-120b, abstract_algebra: 11/25 empty). A single MCQ letter costs
+# ~1 token, so the only reason to raise this is reasoning headroom; non-reasoning
+# models stop early and are unaffected. See the truncation warning in `run`.
+DEFAULT_MAX_TOKENS = 2048
 
 
 SYSTEM_PROMPT = (
@@ -241,6 +248,23 @@ class MMLURunner:
                 f"MMLU generated empty visible output for all {n} evaluated examples; "
                 "treating this as a harness/model transport error rather than accuracy=0"
             )
+        empty_output_rate = round(empty_outputs / n, 4)
+        if empty_outputs:
+            # Partial empties silently depress the score: they are scored as wrong
+            # even though the harness never got an answer. Surface it loudly so a
+            # truncated run is never mistaken for a real low score (the usual cause
+            # is a reasoning model exhausting max_tokens on hidden reasoning).
+            log.warning(
+                "MMLU: %d/%d (%.0f%%) evaluated examples returned empty visible "
+                "output and were scored as misses — the accuracy UNDERSTATES the "
+                "model. Reasoning models can exhaust max_tokens (%d) on hidden "
+                "reasoning before the answer; raise --max-tokens or lower reasoning "
+                "effort, then re-run.",
+                empty_outputs,
+                n,
+                100 * empty_output_rate,
+                self._max_tokens,
+            )
 
         accuracy = correct / n
         subject_accuracy: dict[str, float] = {
@@ -262,6 +286,7 @@ class MMLURunner:
             raw_json={
                 "subject_accuracy": subject_accuracy,
                 "empty_outputs": empty_outputs,
+                "empty_output_rate": empty_output_rate,
             },
             failures=failures,
             elapsed_s=stats.elapsed(),
