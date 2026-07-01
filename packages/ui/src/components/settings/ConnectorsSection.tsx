@@ -49,8 +49,11 @@ type ConnectorStatusTone = "ok" | "warn" | "off";
  * Whether Settings → Connectors should render the generic plugin-config (env
  * credential) form for the selected connector mode.
  *
- * The form is shown ONLY for a `local-config` mode whose setup target is the
- * plugin itself and that actually declares parameters. Every other mode kind —
+ * The form is shown for a `local-config` mode whose setup target is the
+ * plugin itself and that actually declares parameters — and for connectors
+ * with NO declared mode list at all (farcaster, bluesky, matrix, nostr, …):
+ * those have no dedicated panel to protect, so a declared-parameters plugin
+ * gets the credential form instead of a dead-end. Every other mode kind —
  * `local-setup` (iMessage Full-Disk-Access status, Signal/WhatsApp QR pairing,
  * Discord/Telegram desktop panels), `plugin-managed` account lists, and
  * `cloud-managed` gateways — keeps its dedicated {@link ConnectorSetupPanel}
@@ -59,12 +62,13 @@ type ConnectorStatusTone = "ok" | "warn" | "off";
  * reachable instead of being overwritten by a raw env form.
  */
 export function shouldRenderConnectorConfigForm(args: {
-  managementMode: ConnectorMode["managementMode"];
+  managementMode: ConnectorMode["managementMode"] | undefined;
   hasParameters: boolean;
   setupTargetsPlugin: boolean;
 }): boolean {
   return (
-    args.managementMode === "local-config" &&
+    (args.managementMode === "local-config" ||
+      args.managementMode === undefined) &&
     args.hasParameters &&
     args.setupTargetsPlugin
   );
@@ -140,7 +144,10 @@ function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
   const showPluginConfig = shouldRenderConnectorConfigForm({
     managementMode: selectedMode?.managementMode,
     hasParameters: plugin.parameters.length > 0,
-    setupTargetsPlugin: setupPluginId === plugin.id,
+    // Mirror the canonical /connectors fallback: a connector with no declared
+    // mode list has no companion setup plugin, so its own credential form is
+    // the setup surface (previously a dead-end "uses its own setup surface").
+    setupTargetsPlugin: (setupPluginId ?? plugin.id) === plugin.id,
   });
   const pendingConfig = pluginConfigs[plugin.id] ?? {};
   const hasPendingConfig = Object.keys(pendingConfig).length > 0;
