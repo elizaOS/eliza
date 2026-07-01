@@ -39,7 +39,8 @@ commands, on any device, with zero TOS exposure.
 - **Service `PtyService`** (`serviceType = "PTY_SERVICE"`, `services/pty-service.ts`)
   — exposes `consoleBridge` (the `ConsoleBridge` the agent server drives) plus
   `startSession` / `stopSession` / `listSessions` / `hasSession`.
-- **Routes** (`routes/pty-routes.ts`, authenticated, `rawPath`):
+- **Routes** (`routes/pty-routes.ts`, authenticated + terminal-token gated for
+  HTTP callers, `rawPath`):
   - `POST /api/pty/sessions` — spawn (`kind: "eliza-code"`; returns `{ session }`).
   - `GET /api/pty/sessions` — list live sessions.
   - `DELETE /api/pty/sessions/:id` — kill a session.
@@ -99,6 +100,7 @@ bun run --cwd plugins/plugin-pty lint
 |---|---|---|
 | `PTY_INTERACTIVE_ENABLED` | `true` | Set `false` (or run a store build) to disable spawning. |
 | `PTY_ALLOWED_DIRECTORY` | process cwd | Directory sessions are confined to. |
+| `ELIZA_TERMINAL_RUN_TOKEN` | — | Required step-up token for HTTP access to PTY spawn/list/stop routes. Send as `X-Eliza-Terminal-Token` or `terminalToken`. |
 | `PTY_ELIZA_CLOUD_API_KEY` / `OPENAI_API_KEY` | — | Eliza Cloud key eliza-code authenticates with. |
 | `ELIZA_CODE_BIN` | auto-resolved | Absolute path to built `eliza-code` `dist/index.js`. |
 | `ELIZA_BUILD_VARIANT` | — | `store` disables interactive spawning. |
@@ -125,6 +127,8 @@ session cwd.
 - **node-pty is an `optionalDependency`** (native). Under Bun it isn't used at
   all; under Node it is required for spawning.
 - Never log the spawn request body — it can carry an API key.
+- PTY child processes do **not** inherit the full server `process.env`; only a
+  small runtime allowlist plus explicit eliza-code spec env is passed through.
 - See the root `AGENTS.md` for repo-wide conventions.
 
 ## ⛔ NON-NEGOTIABLE — evidence & real end-to-end tests

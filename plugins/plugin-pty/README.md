@@ -10,10 +10,15 @@ This plugin is that missing keystone.
 
 - **Opt-in** — add `@elizaos/plugin-pty` to an agent's plugin list (no
   `autoEnable`; dormant otherwise). Disabled on store builds.
+- **Terminal-token gated** — HTTP callers must provide
+  `ELIZA_TERMINAL_RUN_TOKEN` as `X-Eliza-Terminal-Token` or `terminalToken`;
+  generic API auth alone cannot spawn, list, or stop PTY sessions.
 - **Runtime-aware engine** — Bun native truePty under Bun (node-pty's write path
   is broken there), `@lydell/node-pty` under Node.
 - **Routes** — `POST /api/pty/sessions` (spawn), `GET /api/pty/sessions` (list),
   `DELETE /api/pty/sessions/:id` (stop).
+- **Minimal child env** — PTY processes get only safe terminal/runtime env plus
+  explicit eliza-code settings, not the full server `process.env`.
 
 See [CLAUDE.md](./CLAUDE.md) for architecture, the cerebras wiring, config, and
 the evidence standard.

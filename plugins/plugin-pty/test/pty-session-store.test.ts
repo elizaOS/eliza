@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { SessionOutputEvent } from "../services/pty-contract";
 import {
   PtyConsoleBridge,
@@ -24,8 +24,23 @@ const spec = (over: Partial<PtySpawnSpec> = {}): PtySpawnSpec => ({
   ...over,
 });
 
+const savedEnv = new Map<string, string | undefined>();
+
+function setEnv(key: string, value: string): void {
+  if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
+  process.env[key] = value;
+}
+
+afterEach(() => {
+  for (const [key, value] of savedEnv) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  savedEnv.clear();
+});
+
 describe("PtySessionStore.start", () => {
-  it("spawns with the spec's file/args and merges env over process.env", async () => {
+  it("spawns with the spec's file/args and a minimal allowed env", async () => {
     const { store, fake } = makeStore();
     const info = await store.start(spec());
     expect(fake.calls).toHaveLength(1);
@@ -34,13 +49,39 @@ describe("PtySessionStore.start", () => {
     expect(call.args).toEqual(["/bin/eliza-code.js", "--interactive"]);
     expect(call.opts.cwd).toBe("/work/repo");
     expect(call.opts.env?.OPENAI_API_KEY).toBe("sk-1");
-    // process.env survives the merge (PATH exists on every platform we run on).
+    expect(call.opts.env?.OPENAI_BASE_URL).toBeUndefined();
+    expect(call.opts.env?.PWD).toBe("/work/repo");
+    expect(call.opts.env?.TERM).toBe("xterm-256color");
+    // A small safe process-env allowlist survives so the runner can start.
     expect(call.opts.env?.PATH ?? call.opts.env?.Path).toBeDefined();
     expect(call.opts.cols).toBe(120);
     expect(call.opts.rows).toBe(30);
     expect(info.sessionId).toMatch(/[0-9a-f-]{36}/);
     expect(info.pid).toBe(fake.ptys[0].pid);
     expect(info.exited).toBe(false);
+  });
+
+  it("does not inherit unrelated server process.env secrets", async () => {
+    setEnv("AWS_SECRET_ACCESS_KEY", "aws-secret");
+    setEnv("DATABASE_URL", "postgres://secret");
+    setEnv("ELIZA_API_TOKEN", "api-secret");
+
+    const { store, fake } = makeStore();
+    await store.start(
+      spec({
+        env: {
+          OPENAI_API_KEY: "sk-1",
+          TERM: "xterm-256color",
+          AWS_SECRET_ACCESS_KEY: "should-not-pass",
+        },
+      }),
+    );
+
+    const env = fake.calls[0].opts.env;
+    expect(env?.OPENAI_API_KEY).toBe("sk-1");
+    expect(env?.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+    expect(env?.DATABASE_URL).toBeUndefined();
+    expect(env?.ELIZA_API_TOKEN).toBeUndefined();
   });
 
   it("streams PTY output through the bridge as session_output {sessionId,data}", async () => {

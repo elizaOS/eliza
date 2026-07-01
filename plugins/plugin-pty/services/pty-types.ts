@@ -46,8 +46,9 @@ export interface PtySpawnSpec {
   /** Working directory; the session is confined here. */
   cwd: string;
   /**
-   * Environment overrides merged over `process.env` at spawn time. Values are
-   * merged, not replaced, so PATH/HOME etc. survive.
+   * Explicit environment for the PTY child. The store combines allowed keys from
+   * this object with a small safe process-env allowlist; it does not inherit the
+   * full server environment.
    */
   env?: Record<string, string | undefined>;
   /** Initial terminal size. Defaults to 120x30. */

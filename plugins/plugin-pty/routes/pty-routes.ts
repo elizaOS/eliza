@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import {
   type IAgentRuntime,
   logger,
@@ -36,6 +37,76 @@ function getStr(runtime: IAgentRuntime, key: string): string | undefined {
 
 function getService(ctx: RouteHandlerContext): PtyService | null {
   return (ctx.runtime.getService("PTY_SERVICE") as PtyService | null) ?? null;
+}
+
+function timingSafeTokenMatches(expected: string, provided: string): boolean {
+  const expectedBytes = Buffer.from(expected);
+  const providedBytes = Buffer.from(provided);
+  return (
+    expectedBytes.length === providedBytes.length &&
+    timingSafeEqual(expectedBytes, providedBytes)
+  );
+}
+
+function header(ctx: RouteHandlerContext, name: string): string | undefined {
+  return str(
+    ctx.headers[name] ??
+      ctx.headers[name.toLowerCase()] ??
+      ctx.headers[name.toUpperCase()],
+  );
+}
+
+function query(ctx: RouteHandlerContext, name: string): string | undefined {
+  const value = ctx.query[name];
+  return str(Array.isArray(value) ? value[0] : value);
+}
+
+function bodyToken(body: Record<string, unknown>): string | undefined {
+  return str(body.terminalToken) ?? str(body.ptyToken);
+}
+
+function providedTerminalToken(
+  ctx: RouteHandlerContext,
+  body: Record<string, unknown> = {},
+): string | undefined {
+  return (
+    header(ctx, "x-eliza-terminal-token") ??
+    header(ctx, "x-pty-terminal-token") ??
+    bodyToken(body) ??
+    query(ctx, "terminalToken") ??
+    query(ctx, "ptyToken")
+  );
+}
+
+function ptyAccessRejection(
+  ctx: RouteHandlerContext,
+  body: Record<string, unknown> = {},
+): RouteHandlerResult | null {
+  const expected =
+    getStr(ctx.runtime, "ELIZA_TERMINAL_RUN_TOKEN") ??
+    getStr(ctx.runtime, "PTY_TERMINAL_RUN_TOKEN");
+
+  // Compatibility mode: trusted in-process callers keep working in local
+  // builds unless the operator explicitly configures a terminal step-up token.
+  if (!expected) {
+    if (ctx.inProcess) return null;
+    return json(403, {
+      error:
+        "Interactive PTY routes require a terminal token (ELIZA_TERMINAL_RUN_TOKEN) for HTTP access.",
+    });
+  }
+
+  const provided = providedTerminalToken(ctx, body);
+  if (!provided) {
+    return json(401, {
+      error:
+        "Missing terminal token. Provide X-Eliza-Terminal-Token or terminalToken.",
+    });
+  }
+  if (!timingSafeTokenMatches(expected, provided)) {
+    return json(401, { error: "Invalid terminal token." });
+  }
+  return null;
 }
 
 /**
@@ -80,6 +151,10 @@ async function spawnHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
   const { runtime } = ctx;
+  const body = (ctx.body ?? {}) as Record<string, unknown>;
+  const rejection = ptyAccessRejection(ctx, body);
+  if (rejection) return rejection;
+
   if (!interactiveEnabled(runtime)) {
     return json(403, {
       error:
@@ -89,7 +164,6 @@ async function spawnHandler(
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
 
-  const body = (ctx.body ?? {}) as Record<string, unknown>;
   const kind = str(body.kind) ?? "eliza-code";
   if (kind !== "eliza-code") {
     return json(400, {
@@ -140,6 +214,9 @@ async function spawnHandler(
 async function listHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
+  const rejection = ptyAccessRejection(ctx);
+  if (rejection) return rejection;
+
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   return json(200, { sessions: svc.listSessions() });
@@ -149,6 +226,9 @@ async function listHandler(
 async function bufferedOutputHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
+  const rejection = ptyAccessRejection(ctx);
+  if (rejection) return rejection;
+
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   const id = ctx.params?.id;
@@ -163,6 +243,9 @@ async function bufferedOutputHandler(
 async function stopHandler(
   ctx: RouteHandlerContext,
 ): Promise<RouteHandlerResult> {
+  const rejection = ptyAccessRejection(ctx);
+  if (rejection) return rejection;
+
   const svc = getService(ctx);
   if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
   const id = ctx.params?.id;
@@ -172,8 +255,11 @@ async function stopHandler(
 }
 
 /**
- * Private (authenticated) routes. `rawPath` keeps the `/api/pty/*` URLs stable
- * for the cockpit client instead of prefixing them with the plugin name.
+ * Sensitive developer terminal routes. Generic route authentication is not
+ * enough: HTTP callers must pass the terminal step-up token, while in-process
+ * local calls remain compatible only when no token is configured. `rawPath`
+ * keeps the `/api/pty/*` URLs stable for the cockpit client instead of
+ * prefixing them with the plugin name.
  */
 export const ptyRoutes: Route[] = [
   {

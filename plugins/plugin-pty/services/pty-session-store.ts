@@ -26,6 +26,67 @@ const DEFAULT_OUTPUT_BUFFER_CHARS = 200_000;
 /** How long an exited session's record lingers for a final drain before removal. */
 const EXITED_SESSION_TTL_MS = 15_000;
 
+/**
+ * Small, non-secret process env that a child terminal commonly needs to start
+ * (path lookup, home directory, locale, color). Do not add account/API secrets.
+ */
+const SAFE_INHERITED_ENV_KEYS = new Set([
+  "PATH",
+  "Path",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "COLORTERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "FORCE_COLOR",
+  "NO_COLOR",
+  "BUN_INSTALL",
+  "XDG_CACHE_HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+]);
+
+/** Explicit spawn-spec env the eliza-code PTY is allowed to receive. */
+const ALLOWED_SPEC_ENV_KEYS = new Set([
+  "ELIZA_CODE_PROVIDER",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_MEDIUM_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "CODING_TOOLS_WORKSPACE_ROOTS",
+  "SHELL_ALLOWED_DIRECTORY",
+  "TERM",
+  "COLORTERM",
+  "FORCE_COLOR",
+  "NO_COLOR",
+]);
+
+function buildPtyEnv(
+  specEnv: Record<string, string | undefined> | undefined,
+  cwd: string,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const key of SAFE_INHERITED_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  for (const [key, value] of Object.entries(specEnv ?? {})) {
+    if (ALLOWED_SPEC_ENV_KEYS.has(key)) env[key] = value;
+  }
+  env.PWD = cwd;
+  env.TERM = specEnv?.TERM ?? process.env.TERM ?? "xterm-256color";
+  return env;
+}
+
 /** Resolves the node-pty `spawn` implementation lazily (native, optional dep). */
 export type PtySpawnResolver = () => Promise<PtySpawn>;
 
@@ -175,11 +236,7 @@ export class PtySessionStore {
     }
     const spawn = this.resolvedSpawn;
 
-    const env: Record<string, string | undefined> = {
-      ...process.env,
-      ...(spec.env ?? {}),
-      TERM: spec.env?.TERM ?? process.env.TERM ?? "xterm-256color",
-    };
+    const env = buildPtyEnv(spec.env, cwd);
 
     const pty = spawn(spec.command, spec.args, {
       cwd,

@@ -41,16 +41,21 @@ function ctx(
   runtime: IAgentRuntime,
   body?: unknown,
   params?: Record<string, string>,
+  opts?: {
+    headers?: Record<string, string>;
+    query?: Record<string, string>;
+    inProcess?: boolean;
+  },
 ) {
   return {
     body,
     params: params ?? {},
-    query: {},
-    headers: {},
+    query: opts?.query ?? {},
+    headers: opts?.headers ?? {},
     method: "POST",
     path: "/api/pty/sessions",
     runtime,
-    inProcess: true,
+    inProcess: opts?.inProcess ?? true,
   };
 }
 
@@ -71,6 +76,70 @@ afterEach(() => {
 });
 
 describe("POST /api/pty/sessions", () => {
+  it("403s HTTP callers when no terminal token is configured", async () => {
+    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk-cloud" } });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd() }, undefined, {
+        inProcess: false,
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect((res.body as { error: string }).error).toMatch(/terminal token/i);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("401s HTTP callers that omit a configured terminal token", async () => {
+    const h = makeHarness({
+      settings: {
+        OPENAI_API_KEY: "sk-cloud",
+        ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd() }, undefined, {
+        inProcess: false,
+      }),
+    );
+    expect(res.status).toBe(401);
+    expect((res.body as { error: string }).error).toMatch(/missing/i);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("401s HTTP callers with an invalid terminal token", async () => {
+    const h = makeHarness({
+      settings: {
+        OPENAI_API_KEY: "sk-cloud",
+        ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd() }, undefined, {
+        headers: { "x-eliza-terminal-token": "wrong" },
+        inProcess: false,
+      }),
+    );
+    expect(res.status).toBe(401);
+    expect((res.body as { error: string }).error).toMatch(/invalid/i);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("accepts HTTP callers with the configured terminal token", async () => {
+    const h = makeHarness({
+      settings: {
+        OPENAI_API_KEY: "sk-cloud",
+        ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { kind: "eliza-code", cwd: process.cwd() }, undefined, {
+        headers: { "x-eliza-terminal-token": "pty-secret" },
+        inProcess: false,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls).toHaveLength(1);
+  });
+
   it("spawns an interactive eliza-code session and returns its id", async () => {
     const h = makeHarness({ settings: { OPENAI_API_KEY: "sk-cloud" } });
     const res = await routeByName("pty-spawn-session")(
@@ -144,6 +213,34 @@ describe("POST /api/pty/sessions", () => {
 });
 
 describe("GET + DELETE /api/pty/sessions", () => {
+  it("requires terminal authorization to list or stop sessions over HTTP", async () => {
+    const h = makeHarness({
+      settings: {
+        OPENAI_API_KEY: "sk",
+        ELIZA_TERMINAL_RUN_TOKEN: "pty-secret",
+      },
+    });
+    const spawn = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }, undefined, {
+        headers: { "x-eliza-terminal-token": "pty-secret" },
+        inProcess: false,
+      }),
+    );
+    const id = (spawn.body as { session: { sessionId: string } }).session
+      .sessionId;
+
+    const list = await routeByName("pty-list-sessions")(
+      ctx(h.runtime, undefined, undefined, { inProcess: false }),
+    );
+    expect(list.status).toBe(401);
+
+    const stop = await routeByName("pty-stop-session")(
+      ctx(h.runtime, undefined, { id }, { inProcess: false }),
+    );
+    expect(stop.status).toBe(401);
+    expect(h.svc?.hasSession(id)).toBe(true);
+  });
+
   it("lists live sessions", async () => {
     const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
     await routeByName("pty-spawn-session")(
