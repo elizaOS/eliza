@@ -181,7 +181,7 @@ assertGate(
   },
 );
 
-// Non-code changes (top-level files) are outside the code roots — no fail-safe.
+// Non-code changes (top-level files) are outside the code roots - no fail-safe.
 assertGate(
   "top-level non-code changes skip cleanly",
   runGate({ config: "test", files: ["README.md"] }),
@@ -196,7 +196,7 @@ assertGate(
 );
 
 // An ignored docs path alongside a real orphan code path still trips the
-// fail-safe — the orphan is what matters.
+// fail-safe - the orphan is what matters.
 assertGate(
   "mixed docs + orphan code trips fail-safe",
   runGate({

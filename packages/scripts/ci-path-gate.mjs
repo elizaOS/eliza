@@ -90,7 +90,7 @@ const CONFIGS = {
         lanes: ["server"],
         patterns: ["packages/elizaos/**", "packages/skills/**"],
         reason:
-          "elizaos CLI or runtime skills — test:server runs these suites (previously unmapped: a CLI/skills-only PR skipped every test lane)",
+          "elizaos CLI or runtime skills - test:server runs these suites (previously unmapped: a CLI/skills-only PR skipped every test lane)",
       },
       {
         lanes: ["plugins", "zero_key"],
@@ -112,7 +112,7 @@ const CONFIGS = {
         "packages/cloud/docs-redirect/**",
       ],
       reason:
-        "unmapped code path — no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
+        "unmapped code path - no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
     },
   },
   "scenario-pr": {
@@ -521,7 +521,7 @@ function markdown(config, { changedFiles, matchesByLane, labels, eventName }) {
               return `\`${source.path}\` matched \`${source.pattern}\` (${source.reason})`;
             }
             if (source.kind === "failsafe") {
-              return `\`${source.path}\` unmapped → fail-safe (${source.reason})`;
+              return `\`${source.path}\` unmapped -> fail-safe (${source.reason})`;
             }
             if (source.kind === "label") {
               return source.reason;
