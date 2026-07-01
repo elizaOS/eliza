@@ -48,6 +48,7 @@ import type { Plugin } from "@elizaos/core";
 import { createAppAction } from "./actions/create-app.js";
 import { deleteAppAction } from "./actions/delete-app.js";
 import { deployAppAction } from "./actions/deploy-app.js";
+import { deployFrontendAction } from "./actions/deploy-frontend.js";
 import { getAppAction } from "./actions/get-app.js";
 import { getAppDeployStatusAction } from "./actions/get-app-deploy-status.js";
 import { getAppEarningsAction } from "./actions/get-app-earnings.js";
@@ -61,6 +62,7 @@ import { cloudAppsProvider } from "./providers/cloud-apps.js";
 export { createAppAction } from "./actions/create-app.js";
 export { deleteAppAction } from "./actions/delete-app.js";
 export { deployAppAction } from "./actions/deploy-app.js";
+export { deployFrontendAction } from "./actions/deploy-frontend.js";
 export { getAppAction } from "./actions/get-app.js";
 export { getAppDeployStatusAction } from "./actions/get-app-deploy-status.js";
 export { getAppEarningsAction } from "./actions/get-app-earnings.js";
@@ -85,6 +87,7 @@ export const cloudAppsPlugin: Plugin = {
     getAppAction,
     createAppAction,
     deployAppAction,
+    deployFrontendAction,
     getAppDeployStatusAction,
     deleteAppAction,
     updateAppAction,

@@ -17,6 +17,8 @@ import type {
   CreateAppInput,
   CreateAppResponse,
   DeleteAppResponse,
+  DeployAppFrontendInput,
+  DeployAppFrontendResponse,
   DeployAppInput,
   DeployAppResponse,
   ListAppsResponse,
@@ -31,6 +33,10 @@ import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
 type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
+type DeployAppFrontendFn = (
+  id: string,
+  input: DeployAppFrontendInput,
+) => Promise<DeployAppFrontendResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -64,6 +70,7 @@ interface SdkState {
   getApp: GetAppFn;
   createApp: CreateAppFn;
   deployApp: DeployAppFn;
+  deployAppFrontend: DeployAppFrontendFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -90,6 +97,23 @@ function defaultState(): SdkState {
         deploymentId: "dep_1",
         status: "BUILDING",
         startedAt: "2026-06-29T00:00:00.000Z",
+      }),
+    deployAppFrontend: () =>
+      Promise.resolve({
+        success: true,
+        deployment: {
+          id: "fe_dep_1",
+          app_id: "app_1",
+          version: 1,
+          status: "active",
+          r2_prefix: "app-frontends/o/app_1/fe_dep_1/",
+          content_hash: "a".repeat(64),
+          file_count: 1,
+          total_bytes: 100,
+          error: null,
+          created_at: "2026-06-29T00:00:00.000Z",
+          activated_at: "2026-06-29T00:00:00.000Z",
+        },
       }),
     getAppDeployStatus: () =>
       Promise.resolve({
@@ -127,6 +151,9 @@ export function setCreateApp(fn: CreateAppFn): void {
 }
 export function setDeployApp(fn: DeployAppFn): void {
   state.deployApp = fn;
+}
+export function setDeployAppFrontend(fn: DeployAppFrontendFn): void {
+  state.deployAppFrontend = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -168,6 +195,12 @@ export class FakeElizaCloudClient {
   }
   deployApp(id: string, input?: DeployAppInput): Promise<DeployAppResponse> {
     return state.deployApp(id, input);
+  }
+  deployAppFrontend(
+    id: string,
+    input: DeployAppFrontendInput,
+  ): Promise<DeployAppFrontendResponse> {
+    return state.deployAppFrontend(id, input);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);

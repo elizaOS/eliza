@@ -52,8 +52,12 @@ import {
   DEFAULT_ELIZA_CLOUD_API_ORIGIN,
   DEFAULT_ELIZA_CLOUD_BASE_URL,
   type DeleteAppResponse,
+  type ActivateAppFrontendResponse,
+  type DeployAppFrontendInput,
+  type DeployAppFrontendResponse,
   type DeployAppInput,
   type DeployAppResponse,
+  type ListAppFrontendDeploymentsResponse,
   type ElizaCloudClientOptions,
   type EmbeddingsRequest,
   type EmbeddingsResponse,
@@ -789,6 +793,47 @@ export class ElizaCloudClient {
     return this.routes.getApiV1AppsByIdDeployStatus<AppDeployStatusResponse>({
       pathParams: { id: appId },
     });
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/frontend` — publish a managed static-site bundle
+   * (create → content-address files to R2 → finalize manifest → activate) in
+   * one call. Returns the (by default active) deployment. The site is then
+   * served with SEO + page analytics at the app's frontend host / custom domain.
+   */
+  deployAppFrontend(
+    appId: string,
+    input: DeployAppFrontendInput,
+  ): Promise<DeployAppFrontendResponse> {
+    return this.request<DeployAppFrontendResponse>(
+      "POST",
+      `/api/v1/apps/${encodeURIComponent(appId)}/frontend`,
+      { json: input },
+    );
+  }
+
+  /** `GET /api/v1/apps/:id/frontend` — list frontend deployments + the active id. */
+  listAppFrontendDeployments(
+    appId: string,
+  ): Promise<ListAppFrontendDeploymentsResponse> {
+    return this.request<ListAppFrontendDeploymentsResponse>(
+      "GET",
+      `/api/v1/apps/${encodeURIComponent(appId)}/frontend`,
+    );
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/frontend/:deploymentId/activate` — make a deployment
+   * the live one. Activating an older deployment is a rollback.
+   */
+  activateAppFrontend(
+    appId: string,
+    deploymentId: string,
+  ): Promise<ActivateAppFrontendResponse> {
+    return this.request<ActivateAppFrontendResponse>(
+      "POST",
+      `/api/v1/apps/${encodeURIComponent(appId)}/frontend/${encodeURIComponent(deploymentId)}/activate`,
+    );
   }
 
   /** `DELETE /api/v1/apps/:id` — delete an app and clean up its resources. */
