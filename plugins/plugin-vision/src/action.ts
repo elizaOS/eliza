@@ -12,6 +12,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
+import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
 import { assertValidVisionImageBuffer } from "./image-input";
 import {
@@ -25,22 +26,6 @@ const VISION_ACTION_TIMEOUT_MS = 10_000;
 const MAX_VISION_TEXT_LENGTH = 4000;
 const MAX_VISION_ENTITIES = 25;
 
-const VISION_OPS = [
-  "describe",
-  "capture",
-  "get_screen",
-  "set_mode",
-  "enable_camera",
-  "disable_camera",
-  "enable_screen",
-  "disable_screen",
-  "name_entity",
-  "identify_person",
-  "track_entity",
-] as const;
-
-type VisionOp = (typeof VISION_OPS)[number];
-
 const ALL_VISION_CONTEXTS = [
   "media",
   "screen_time",
@@ -48,197 +33,6 @@ const ALL_VISION_CONTEXTS = [
   "memory",
   "settings",
 ] as const;
-
-const GET_SCREEN_KEYWORDS = [
-  "get_screen",
-  "get screen",
-  "read the screen",
-  "read screen",
-  "screen text",
-  "text on screen",
-  "what's on my screen",
-  "whats on my screen",
-  "what is on my screen",
-  "screen contents",
-  "ocr",
-  "extract text",
-];
-
-const DESCRIBE_KEYWORDS = [
-  "describe",
-  "scene",
-  "see",
-  "look",
-  "camera",
-  "screen",
-  "object",
-  "person",
-  "escena",
-  "ver",
-  "camara",
-  "décrire",
-  "scène",
-  "voir",
-  "beschreiben",
-  "szene",
-  "sehen",
-  "descrivi",
-  "scena",
-  "vedi",
-  "説明",
-  "見える",
-  "场景",
-  "描述",
-  "看见",
-  "장면",
-  "설명",
-  "보여",
-];
-
-const CAPTURE_KEYWORDS = [
-  "capture",
-  "image",
-  "photo",
-  "picture",
-  "snapshot",
-  "screenshot",
-  "camera",
-  "captura",
-  "foto",
-  "imagen",
-  "capturer",
-  "photo",
-  "bild",
-  "foto",
-  "capturare",
-  "写真",
-  "画像",
-  "スクリーンショット",
-  "拍照",
-  "截图",
-  "이미지",
-  "사진",
-  "스크린샷",
-];
-
-const SET_MODE_KEYWORDS = [
-  "vision",
-  "mode",
-  "camera",
-  "screen",
-  "both",
-  "disable",
-  "enable",
-  "off",
-  "visión",
-  "camara",
-  "pantalla",
-  "écran",
-  "kamera",
-  "bildschirm",
-  "schermo",
-  "ビジョン",
-  "カメラ",
-  "画面",
-  "视觉",
-  "相机",
-  "屏幕",
-  "비전",
-  "카메라",
-  "화면",
-];
-
-const NAME_ENTITY_KEYWORDS = [
-  "name",
-  "named",
-  "call",
-  "person",
-  "entity",
-  "remember",
-  "object",
-  "nombre",
-  "llama",
-  "persona",
-  "nom",
-  "appelle",
-  "personne",
-  "name",
-  "nenne",
-  "person",
-  "nome",
-  "chiama",
-  "persona",
-  "名前",
-  "呼ぶ",
-  "人",
-  "命名",
-  "叫",
-  "人",
-  "이름",
-  "불러",
-  "사람",
-];
-
-const IDENTIFY_PERSON_KEYWORDS = [
-  "identify",
-  "recognize",
-  "who is",
-  "person",
-  "face",
-  "seen before",
-  "identificar",
-  "reconoces",
-  "persona",
-  "visage",
-  "reconnais",
-  "personne",
-  "erkennen",
-  "gesicht",
-  "person",
-  "riconosci",
-  "persona",
-  "識別",
-  "誰",
-  "顔",
-  "识别",
-  "是谁",
-  "人",
-  "식별",
-  "누구",
-  "얼굴",
-];
-
-const TRACK_ENTITY_KEYWORDS = [
-  "track",
-  "follow",
-  "watch",
-  "keep an eye",
-  "entity",
-  "person",
-  "object",
-  "rastrear",
-  "seguir",
-  "vigilar",
-  "persona",
-  "suivre",
-  "surveiller",
-  "personne",
-  "verfolgen",
-  "beobachten",
-  "person",
-  "traccia",
-  "segui",
-  "persona",
-  "追跡",
-  "見張",
-  "人",
-  "跟踪",
-  "关注",
-  "人",
-  "추적",
-  "지켜봐",
-  "사람",
-];
 
 function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
@@ -323,86 +117,6 @@ function selectedContextMatches(
 function visionServiceIsActive(runtime: IAgentRuntime): boolean {
   const visionService = runtime.getService<VisionService>("VISION");
   return Boolean(visionService?.isActive());
-}
-
-function normalizeOp(value: unknown): VisionOp | null {
-  if (typeof value !== "string") return null;
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-  if (!normalized) return null;
-  const aliases: Record<string, VisionOp> = {
-    describe_scene: "describe",
-    scene: "describe",
-    capture_image: "capture",
-    image: "capture",
-    photo: "capture",
-    snapshot: "capture",
-    screenshot: "capture",
-    set_vision_mode: "set_mode",
-    mode: "set_mode",
-    vision_mode: "set_mode",
-    camera_on: "enable_camera",
-    turn_on_camera: "enable_camera",
-    start_camera: "enable_camera",
-    camera_off: "disable_camera",
-    turn_off_camera: "disable_camera",
-    stop_camera: "disable_camera",
-    screen_on: "enable_screen",
-    turn_on_screen: "enable_screen",
-    start_screen: "enable_screen",
-    screen_off: "disable_screen",
-    turn_off_screen: "disable_screen",
-    stop_screen: "disable_screen",
-    name: "name_entity",
-    identify: "identify_person",
-    recognize: "identify_person",
-    track: "track_entity",
-    follow: "track_entity",
-  };
-  if (aliases[normalized]) return aliases[normalized];
-  return (VISION_OPS as readonly string[]).includes(normalized)
-    ? (normalized as VisionOp)
-    : null;
-}
-
-function inferOpFromMessage(text: string): VisionOp | null {
-  const lower = text.toLowerCase();
-  if (
-    NAME_ENTITY_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(call|name|named)\b/.test(lower)
-  ) {
-    return "name_entity";
-  }
-  if (
-    IDENTIFY_PERSON_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(who|identify|recognize)\b/.test(lower)
-  ) {
-    return "identify_person";
-  }
-  if (
-    TRACK_ENTITY_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(track|follow|watch|keep an eye)\b/.test(lower)
-  ) {
-    return "track_entity";
-  }
-  if (
-    SET_MODE_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(mode|enable|disable|turn off|turn on)\b/.test(lower)
-  ) {
-    return "set_mode";
-  }
-  if (GET_SCREEN_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
-    return "get_screen";
-  }
-  if (CAPTURE_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
-    return "capture";
-  }
-  if (DESCRIBE_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
-    return "describe";
-  }
-  return null;
 }
 
 /** Structural view of plugin-computeruse's screenshot capability (no hard dep). */
@@ -976,21 +690,9 @@ async function runSetMode(
   }
 
   try {
-    const explicitMode =
-      typeof options.mode === "string" ? options.mode.toLowerCase() : "";
-    const messageText =
-      explicitMode || message.content.text?.toLowerCase() || "";
-    let newMode: VisionMode | null = null;
-
-    if (messageText.includes("off") || messageText.includes("disable")) {
-      newMode = VisionMode.OFF;
-    } else if (messageText.includes("both")) {
-      newMode = VisionMode.BOTH;
-    } else if (messageText.includes("screen")) {
-      newMode = VisionMode.SCREEN;
-    } else if (messageText.includes("camera")) {
-      newMode = VisionMode.CAMERA;
-    }
+    // #10471: the mode comes from the structured `mode` param, matched exactly
+    // against the VisionMode enum — never a substring test on message text.
+    const newMode = normalizeVisionMode(options.mode);
 
     if (!newMode) {
       const thought =
@@ -1112,17 +814,14 @@ async function runNameEntity(
       };
     }
 
-    const messageText = message.content.text?.toLowerCase() || "";
-    const explicitName =
-      typeof options.name === "string" ? options.name.trim() : "";
-    const nameMatch = explicitName
-      ? [explicitName, explicitName]
-      : messageText.match(/(?:named?|call(?:ed)?|is)\s+(\w+)/i);
+    // #10471: the entity name comes from the structured `name` param, not a
+    // regex over the raw message text.
+    const name = typeof options.name === "string" ? options.name.trim() : "";
 
-    if (!nameMatch) {
-      const thought = "Could not extract name from message.";
+    if (!name) {
+      const thought = "No structured name parameter was provided.";
       const text =
-        'I couldn\'t understand what name to assign. Please say something like "The person is named Alice".';
+        'I couldn\'t understand what name to assign. Provide a "name" parameter (e.g. name: "Alice").';
       await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
       if (callback) {
         await callback({ thought, text, actions: ["VISION"] });
@@ -1134,7 +833,6 @@ async function runNameEntity(
       };
     }
 
-    const name = nameMatch[1];
     const entityTracker = visionService.getEntityTracker();
 
     await entityTracker.updateEntities(
@@ -1635,11 +1333,11 @@ export const visionAction: Action = {
     _responses?: Memory[],
   ): Promise<ActionResult> => {
     const params = readActionParams(_options);
-    const explicitOp = normalizeOp(
+    // #10471: the operation comes from the planner's structured discriminator,
+    // never from English keyword-matching the raw message text.
+    const inferredOp = normalizeOp(
       params.action ?? params.subaction ?? params.op,
     );
-    const inferredOp =
-      explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
 
     if (!inferredOp) {
       const text = `VISION could not determine the operation. Specify one of: ${VISION_OPS.join(", ")}.`;
