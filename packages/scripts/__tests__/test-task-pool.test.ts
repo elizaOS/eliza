@@ -290,9 +290,7 @@ describe("CI plugin sharding contract", () => {
     expect(testWorkflow).toMatch(
       /plugin-tests:\s+name:\s+Plugin Tests \(\$\{\{ matrix\.shard \}\}\/4\)[\s\S]*?strategy:[\s\S]*?fail-fast:\s+false[\s\S]*?matrix:[\s\S]*?shard:\s+\[1,\s*2,\s*3,\s*4\]/,
     );
-    expect(testWorkflow).toMatch(
-      /TEST_SHARD:\s+\$\{\{ matrix\.shard \}\}\/4/,
-    );
+    expect(testWorkflow).toMatch(/TEST_SHARD:\s+\$\{\{ matrix\.shard \}\}\/4/);
     expect(testWorkflow).toMatch(
       /plugin-tests-status:\s+name:\s+Plugin Tests[\s\S]*?needs:[\s\S]*?-\s+plugin-tests/,
     );

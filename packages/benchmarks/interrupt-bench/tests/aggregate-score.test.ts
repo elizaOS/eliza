@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ScenarioResult } from "../src/types.js";
 import { aggregateScore } from "../src/report.js";
+import type { ScenarioResult } from "../src/types.js";
 
 /**
  * Interrupt-bench aggregate scoring: a weight-averaged base score (0-100), a -5

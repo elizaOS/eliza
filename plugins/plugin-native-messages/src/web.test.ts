@@ -49,16 +49,18 @@ describe("MessagesWeb fallback", () => {
     ).rejects.toThrow("body is required");
   });
 
-  it.each([undefined, null, 42, "sms"])(
-    "rejects non-object outbound SMS payload %s as missing an address",
-    async (options) => {
-      const messages = new MessagesWeb();
+  it.each([
+    undefined,
+    null,
+    42,
+    "sms",
+  ])("rejects non-object outbound SMS payload %s as missing an address", async (options) => {
+    const messages = new MessagesWeb();
 
-      await expect(
-        messages.sendSms(options as unknown as SendSmsOptions),
-      ).rejects.toThrow("address is required");
-    },
-  );
+    await expect(
+      messages.sendSms(options as unknown as SendSmsOptions),
+    ).rejects.toThrow("address is required");
+  });
 
   it.each([
     0,

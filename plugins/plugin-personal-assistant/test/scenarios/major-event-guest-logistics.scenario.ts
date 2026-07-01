@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "major-event-guest-logistics",
-  title: "Assistant coordinates high-stakes guest logistics with approval gates",
+  title:
+    "Assistant coordinates high-stakes guest logistics with approval gates",
   domain: "executive.schedule",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging"],
   isolation: "per-scenario",

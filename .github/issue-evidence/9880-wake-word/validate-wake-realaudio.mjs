@@ -42,7 +42,18 @@ function transcribe(phrase, idx) {
   // --interactive keeps it audible through the speakers for the recording.
   execFileSync("say", ["-o", aiff, phrase]);
   execFileSync("say", [phrase]); // audible pass for the video
-  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, "-ar", "16000", "-ac", "1", wav]);
+  execFileSync("ffmpeg", [
+    "-y",
+    "-loglevel",
+    "error",
+    "-i",
+    aiff,
+    "-ar",
+    "16000",
+    "-ac",
+    "1",
+    wav,
+  ]);
   const out = execFileSync(WHISPER, ["-m", MODEL, "-f", wav, "-nt"], {
     encoding: "utf8",
   });
@@ -61,7 +72,9 @@ const CASES = [
 ];
 
 console.log(`\n=== Real-audio wake-word validation (#9880) ===`);
-console.log(`ASR: whisper.cpp Metal · matcher: matchWakeName (shipped UI code)\n`);
+console.log(
+  `ASR: whisper.cpp Metal · matcher: matchWakeName (shipped UI code)\n`,
+);
 
 let pass = 0;
 const rows = [];
@@ -72,11 +85,21 @@ CASES.forEach(([phrase, name, expectMatch, expectCmd], i) => {
     m.matched === expectMatch &&
     (!expectMatch || m.command.includes(expectCmd));
   if (ok) pass += 1;
-  rows.push({ spoken: phrase, name, transcript, matched: m.matched, command: m.command, expectMatch, ok });
+  rows.push({
+    spoken: phrase,
+    name,
+    transcript,
+    matched: m.matched,
+    command: m.command,
+    expectMatch,
+    ok,
+  });
   console.log(`${ok ? "✅ PASS" : "❌ FAIL"}  name="${name}"`);
   console.log(`   spoken:     "${phrase}"`);
   console.log(`   ASR heard:  "${transcript}"`);
-  console.log(`   matched=${m.matched} (expected ${expectMatch})  command="${m.command}"\n`);
+  console.log(
+    `   matched=${m.matched} (expected ${expectMatch})  command="${m.command}"\n`,
+  );
 });
 
 console.log(`=== ${pass}/${CASES.length} real-audio cases passed ===\n`);

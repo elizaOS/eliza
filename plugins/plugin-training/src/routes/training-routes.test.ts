@@ -2,8 +2,8 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
 import type { TrajectoryListResult } from "@elizaos/agent";
+import { afterEach, describe, expect, it } from "vitest";
 import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
   handleTrainingRoutes,
@@ -150,13 +150,7 @@ describe("training routes", () => {
     const root = await makeTempDir();
     const workspaceRoot = join(root, "workspace");
     await mkdir(
-      join(
-        workspaceRoot,
-        "packages",
-        "app-core",
-        "test",
-        "benchmarks",
-      ),
+      join(workspaceRoot, "packages", "app-core", "test", "benchmarks"),
       { recursive: true },
     );
     await writeFile(
@@ -249,7 +243,10 @@ describe("training routes", () => {
       ...trainingService(),
       listTrajectories: async (options: Record<string, unknown>) => {
         calls.push(options);
-        return listResult([trajRecord("traj-keep"), trajRecord("traj-drop")], 2);
+        return listResult(
+          [trajRecord("traj-keep"), trajRecord("traj-drop")],
+          2,
+        );
       },
       getTrajectoryById: async (id: string) => {
         const runId = id === "traj-keep" ? "app-run-1" : "app-run-2";
@@ -320,9 +317,7 @@ describe("training routes", () => {
       payload.manifest.steps.find((step) => step.id === "feed"),
     ).toMatchObject({ status: "skipped" });
     expect(
-      payload.manifest.steps.find(
-        (step) => step.id === "natural_trajectories",
-      ),
+      payload.manifest.steps.find((step) => step.id === "natural_trajectories"),
     ).toMatchObject({
       status: "succeeded",
       result: {
@@ -356,7 +351,7 @@ describe("training routes", () => {
       fakeBun,
       [
         "#!/bin/sh",
-        "mkdir -p \"$(dirname \"$ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH\")\"",
+        'mkdir -p "$(dirname "$ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH")"',
         "cat > \"$ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH\" <<'JSON'",
         '{"schema":"eliza_action_selection_benchmark_report","summary":{"total":0,"passed":0,"failed":0},"results":[]}',
         "JSON",

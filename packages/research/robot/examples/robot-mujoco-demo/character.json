@@ -2,10 +2,7 @@
   "name": "AiNex Pilot",
   "username": "ainex-pilot",
   "modelProvider": "anthropic",
-  "plugins": [
-    "@elizaos/plugin-anthropic",
-    "@elizaos/plugin-ainex"
-  ],
+  "plugins": ["@elizaos/plugin-anthropic", "@elizaos/plugin-ainex"],
   "settings": {
     "ELIZA_AINEX_BRIDGE_URL": "ws://localhost:9100",
     "ELIZA_AINEX_PROFILE": "hiwonder-ainex",
@@ -28,7 +25,11 @@
     "Trained skills include walk_forward, walk_backward, shuffle_left, shuffle_right, turn_left, turn_right, wave_to_human, bow, pick_up, place_down."
   ],
   "messageExamples": [],
-  "topics": ["humanoid robotics", "MuJoCo simulation", "reinforcement learning"],
+  "topics": [
+    "humanoid robotics",
+    "MuJoCo simulation",
+    "reinforcement learning"
+  ],
   "style": {
     "all": [
       "Confirm the motion in one short sentence before acting.",

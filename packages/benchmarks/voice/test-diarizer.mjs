@@ -101,7 +101,8 @@ function makeMultiSpeakerFixture() {
 
   const silSamples = Math.floor(silSec * sampleRate);
   const speechSamples = Math.floor(speechSec * sampleRate);
-  const totalSamples = silSamples + speechSamples + silSamples + speechSamples + silSamples;
+  const totalSamples =
+    silSamples + speechSamples + silSamples + speechSamples + silSamples;
 
   const pcm = new Float32Array(totalSamples);
 
@@ -111,14 +112,18 @@ function makeMultiSpeakerFixture() {
     let phase = 0;
     for (let i = 0; i < speechSamples; i++) {
       const tInSpeech = i / sampleRate;
-      const f0 = f0Base + 30 * Math.sin(2 * Math.PI * 3 * tInSpeech) + (rng() - 0.5) * 4;
+      const f0 =
+        f0Base + 30 * Math.sin(2 * Math.PI * 3 * tInSpeech) + (rng() - 0.5) * 4;
       phase += f0 / sampleRate;
       let excitation = 0;
       if (phase >= 1) {
         phase -= 1;
         excitation = 1;
       }
-      const amp = Math.max(0, 0.6 * (1 + Math.sin(2 * Math.PI * 4 * tInSpeech - Math.PI / 2)));
+      const amp = Math.max(
+        0,
+        0.6 * (1 + Math.sin(2 * Math.PI * 4 * tInSpeech - Math.PI / 2)),
+      );
       excitation *= amp;
       pcm[startSample + i] = bank.step(excitation) * 0.15;
     }
@@ -135,8 +140,16 @@ function makeMultiSpeakerFixture() {
   return {
     pcm,
     sampleRate,
-    speakerA: { startSample: speakerAStart, endSample: speakerAStart + speechSamples, f0: 200 },
-    speakerB: { startSample: speakerBStart, endSample: speakerBStart + speechSamples, f0: 120 },
+    speakerA: {
+      startSample: speakerAStart,
+      endSample: speakerAStart + speechSamples,
+      f0: 200,
+    },
+    speakerB: {
+      startSample: speakerBStart,
+      endSample: speakerBStart + speechSamples,
+      f0: 120,
+    },
   };
 }
 
@@ -145,13 +158,13 @@ function makeMultiSpeakerFixture() {
 // ---------------------------------------------------------------------------
 
 const PYANNOTE_CLASS_TO_SPEAKERS = [
-  [],       // 0: silence
-  [0],      // 1: speaker 0 only
-  [1],      // 2: speaker 1 only
-  [2],      // 3: speaker 2 only
-  [0, 1],   // 4: speakers 0+1 overlap
-  [0, 2],   // 5: speakers 0+2 overlap
-  [1, 2],   // 6: speakers 1+2 overlap
+  [], // 0: silence
+  [0], // 1: speaker 0 only
+  [1], // 2: speaker 1 only
+  [2], // 3: speaker 2 only
+  [0, 1], // 4: speakers 0+1 overlap
+  [0, 2], // 5: speakers 0+2 overlap
+  [1, 2], // 6: speakers 1+2 overlap
 ];
 
 const PYANNOTE_FRAME_STRIDE_MS = (1_000 * 5) / 293; // ~17.06 ms
@@ -170,7 +183,13 @@ function softmax(row) {
   return out;
 }
 
-function classifyFramesToSegments(classProbs, frames, classCount, startMs, frameStrideMs) {
+function classifyFramesToSegments(
+  classProbs,
+  frames,
+  classCount,
+  startMs,
+  frameStrideMs,
+) {
   const open = new Map();
   const closed = [];
   let speechFrames = 0;
@@ -182,7 +201,10 @@ function classifyFramesToSegments(classProbs, frames, classCount, startMs, frame
     let winner = 0;
     let winnerProb = probs[0];
     for (let c = 1; c < classCount; c++) {
-      if (probs[c] > winnerProb) { winner = c; winnerProb = probs[c]; }
+      if (probs[c] > winnerProb) {
+        winner = c;
+        winnerProb = probs[c];
+      }
     }
     const activeSpeakers = PYANNOTE_CLASS_TO_SPEAKERS[winner] ?? [];
     const isOverlap = activeSpeakers.length > 1;
@@ -202,12 +224,19 @@ function classifyFramesToSegments(classProbs, frames, classCount, startMs, frame
         existing.count++;
         existing.hasOverlap = existing.hasOverlap || isOverlap;
       } else {
-        open.set(sid, { startFrame: f, endFrame: f + 1, confSum: winnerProb, count: 1, hasOverlap: isOverlap });
+        open.set(sid, {
+          startFrame: f,
+          endFrame: f + 1,
+          confSum: winnerProb,
+          count: 1,
+          hasOverlap: isOverlap,
+        });
       }
     }
   }
 
-  for (const [sid, run] of open.entries()) closed.push({ ...run, speakerId: sid });
+  for (const [sid, run] of open.entries())
+    closed.push({ ...run, speakerId: sid });
 
   const segments = closed
     .map((run) => ({
@@ -217,7 +246,9 @@ function classifyFramesToSegments(classProbs, frames, classCount, startMs, frame
       confidence: run.count > 0 ? run.confSum / run.count : 0,
       hasOverlap: run.hasOverlap,
     }))
-    .sort((a, b) => a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs);
+    .sort((a, b) =>
+      a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs,
+    );
 
   const localSpeakers = new Set(segments.map((s) => s.localSpeakerId));
   return {
@@ -237,7 +268,12 @@ function classifyFramesToSegments(classProbs, frames, classCount, startMs, frame
  *
  * This exercises the classifyFramesToSegments path without the native library.
  */
-function buildSyntheticLabelTensor(fixture, windowStartSample, windowSamples, windowFrames) {
+function buildSyntheticLabelTensor(
+  fixture,
+  windowStartSample,
+  windowSamples,
+  windowFrames,
+) {
   const classCount = 7;
   const probs = new Float32Array(windowFrames * classCount);
   const framesPerSample = windowFrames / windowSamples;
@@ -246,12 +282,15 @@ function buildSyntheticLabelTensor(fixture, windowStartSample, windowSamples, wi
     const centerSample = windowStartSample + Math.floor(f / framesPerSample);
     let label = 0; // silence
 
-    const inA = centerSample >= fixture.speakerA.startSample &&
-                centerSample < fixture.speakerA.endSample;
-    const inB = centerSample >= fixture.speakerB.startSample &&
-                centerSample < fixture.speakerB.endSample;
+    const inA =
+      centerSample >= fixture.speakerA.startSample &&
+      centerSample < fixture.speakerA.endSample;
+    const inB =
+      centerSample >= fixture.speakerB.startSample &&
+      centerSample < fixture.speakerB.endSample;
 
-    if (inA) label = 1;      // speaker 0 (A)
+    if (inA)
+      label = 1; // speaker 0 (A)
     else if (inB) label = 2; // speaker 1 (B)
 
     probs[f * classCount + label] = 10.0; // strong logit for winner
@@ -281,16 +320,30 @@ async function tryNativeDiarizer(ggufPath) {
   let windowIndex = 0;
 
   while (windowStart < fixture.pcm.length) {
-    const windowPcm = fixture.pcm.slice(windowStart, Math.min(windowStart + WINDOW, fixture.pcm.length));
+    const windowPcm = fixture.pcm.slice(
+      windowStart,
+      Math.min(windowStart + WINDOW, fixture.pcm.length),
+    );
     if (windowPcm.length < 16_000) break; // too short
 
-    const padded = windowPcm.length < WINDOW
-      ? (() => { const p = new Float32Array(WINDOW); p.set(windowPcm); return p; })()
-      : windowPcm;
+    const padded =
+      windowPcm.length < WINDOW
+        ? (() => {
+            const p = new Float32Array(WINDOW);
+            p.set(windowPcm);
+            return p;
+          })()
+        : windowPcm;
 
     const out = await diarizer.segment(padded);
-    const { PyannoteDiarizer, classifyFramesToSegments: cfs, PYANNOTE_FRAME_STRIDE_MS: stride, PYANNOTE_CLASS_COUNT: cc } =
-      await import("../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts");
+    const {
+      PyannoteDiarizer,
+      classifyFramesToSegments: cfs,
+      PYANNOTE_FRAME_STRIDE_MS: stride,
+      PYANNOTE_CLASS_COUNT: cc,
+    } = await import(
+      "../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts"
+    );
 
     const probs = new Float32Array(out.labels.length * 7);
     for (let frame = 0; frame < out.labels.length; frame++) {
@@ -300,7 +353,12 @@ async function tryNativeDiarizer(ggufPath) {
     const startMs = (windowStart / fixture.sampleRate) * 1000;
     const result = cfs(probs, out.labels.length, 7, startMs, stride);
     allSegments.push(...result.segments);
-    windowResults.push({ windowIndex, startMs, ...result, latencyMs: out.latencyMs });
+    windowResults.push({
+      windowIndex,
+      startMs,
+      ...result,
+      latencyMs: out.latencyMs,
+    });
     windowStart += WINDOW;
     windowIndex++;
   }
@@ -339,8 +397,19 @@ async function runPureJsDiarization(ggufPath) {
     if (windowLen < 16_000) break;
 
     const startMs = (windowStart / fixture.sampleRate) * 1000;
-    const probs = buildSyntheticLabelTensor(fixture, windowStart, windowLen, FRAMES_PER_WINDOW);
-    const result = classifyFramesToSegments(probs, FRAMES_PER_WINDOW, CLASS_COUNT, startMs, PYANNOTE_FRAME_STRIDE_MS);
+    const probs = buildSyntheticLabelTensor(
+      fixture,
+      windowStart,
+      windowLen,
+      FRAMES_PER_WINDOW,
+    );
+    const result = classifyFramesToSegments(
+      probs,
+      FRAMES_PER_WINDOW,
+      CLASS_COUNT,
+      startMs,
+      PYANNOTE_FRAME_STRIDE_MS,
+    );
 
     allSegments.push(...result.segments);
     windowResults.push({ windowIndex, startMs, ...result });
@@ -390,9 +459,17 @@ async function main() {
     result = await tryNativeDiarizer(ggufPath);
     console.log(`[test-diarizer] backend: ggml-native`);
   } catch (err) {
-    nativeAttemptError = { name: err?.name, code: err?.code, message: err instanceof Error ? err.message : String(err) };
-    console.warn(`[test-diarizer] native diarizer unavailable (${err?.code ?? err?.name}): ${err instanceof Error ? err.message : err}`);
-    console.log(`[test-diarizer] falling back to pure-JS synthetic-labels path`);
+    nativeAttemptError = {
+      name: err?.name,
+      code: err?.code,
+      message: err instanceof Error ? err.message : String(err),
+    };
+    console.warn(
+      `[test-diarizer] native diarizer unavailable (${err?.code ?? err?.name}): ${err instanceof Error ? err.message : err}`,
+    );
+    console.log(
+      `[test-diarizer] falling back to pure-JS synthetic-labels path`,
+    );
     result = await runPureJsDiarization(ggufPath);
   }
 
@@ -401,25 +478,39 @@ async function main() {
   }
 
   const fixture = result.fixture;
-  const speakerAStartMs = (fixture.speakerA.startSample / fixture.sampleRate) * 1000;
-  const speakerAEndMs = (fixture.speakerA.endSample / fixture.sampleRate) * 1000;
-  const speakerBStartMs = (fixture.speakerB.startSample / fixture.sampleRate) * 1000;
-  const speakerBEndMs = (fixture.speakerB.endSample / fixture.sampleRate) * 1000;
+  const speakerAStartMs =
+    (fixture.speakerA.startSample / fixture.sampleRate) * 1000;
+  const speakerAEndMs =
+    (fixture.speakerA.endSample / fixture.sampleRate) * 1000;
+  const speakerBStartMs =
+    (fixture.speakerB.startSample / fixture.sampleRate) * 1000;
+  const speakerBEndMs =
+    (fixture.speakerB.endSample / fixture.sampleRate) * 1000;
 
   console.log(`\n[test-diarizer] fixture layout:`);
-  console.log(`  speaker A: ${speakerAStartMs.toFixed(0)}-${speakerAEndMs.toFixed(0)} ms (f0≈${fixture.speakerA.f0}Hz)`);
-  console.log(`  speaker B: ${speakerBStartMs.toFixed(0)}-${speakerBEndMs.toFixed(0)} ms (f0≈${fixture.speakerB.f0}Hz)`);
+  console.log(
+    `  speaker A: ${speakerAStartMs.toFixed(0)}-${speakerAEndMs.toFixed(0)} ms (f0≈${fixture.speakerA.f0}Hz)`,
+  );
+  console.log(
+    `  speaker B: ${speakerBStartMs.toFixed(0)}-${speakerBEndMs.toFixed(0)} ms (f0≈${fixture.speakerB.f0}Hz)`,
+  );
   console.log(`\n[test-diarizer] diarization result:`);
   console.log(`  segments: ${result.allSegments.length}`);
   console.log(`  distinct local speakers: ${result.localSpeakerCount}`);
   for (const seg of result.allSegments) {
-    console.log(`  [${seg.startMs.toFixed(0)}-${seg.endMs.toFixed(0)}ms] speaker=${seg.localSpeakerId} conf=${seg.confidence.toFixed(3)} overlap=${seg.hasOverlap}`);
+    console.log(
+      `  [${seg.startMs.toFixed(0)}-${seg.endMs.toFixed(0)}ms] speaker=${seg.localSpeakerId} conf=${seg.confidence.toFixed(3)} overlap=${seg.hasOverlap}`,
+    );
   }
 
   // Verification: did we detect at least 2 distinct speakers?
-  const speakerIds = [...new Set(result.allSegments.map((s) => s.localSpeakerId))];
+  const speakerIds = [
+    ...new Set(result.allSegments.map((s) => s.localSpeakerId)),
+  ];
   const pass = speakerIds.length >= 2;
-  console.log(`\n[test-diarizer] PASS: ${pass} (detected ${speakerIds.length} distinct local speakers; need ≥ 2)`);
+  console.log(
+    `\n[test-diarizer] PASS: ${pass} (detected ${speakerIds.length} distinct local speakers; need ≥ 2)`,
+  );
 
   return result;
 }

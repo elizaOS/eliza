@@ -16,19 +16,19 @@
 
 import {
   APP_DIST,
-  walk,
-  measureFile,
-  loadBudgets,
-  recordResult,
-  kb,
-  mb,
-  pct,
-  relative,
   basename,
-  extname,
-  readFileSync,
   existsSync,
+  extname,
   join,
+  kb,
+  loadBudgets,
+  mb,
+  measureFile,
+  pct,
+  readFileSync,
+  recordResult,
+  relative,
+  walk,
 } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
@@ -43,17 +43,29 @@ function logicalName(file) {
   return name;
 }
 
-const HEAVY_LIB_KEYWORDS = ["three", "lucide-react", "phonemizer", "draco", "vrm", "babylon", "monaco"];
+const HEAVY_LIB_KEYWORDS = [
+  "three",
+  "lucide-react",
+  "phonemizer",
+  "draco",
+  "vrm",
+  "babylon",
+  "monaco",
+];
 
 function detectInitialEntries() {
   // index.html references the eager entry module(s). Multiple html files = multiple entry points.
   const entries = new Set();
   for (const html of walk(APP_DIST).filter((f) => f.endsWith(".html"))) {
     const src = readFileSync(html, "utf8");
-    for (const m of src.matchAll(/<script[^>]+type="module"[^>]+src="([^"]+)"/g)) {
+    for (const m of src.matchAll(
+      /<script[^>]+type="module"[^>]+src="([^"]+)"/g,
+    )) {
       entries.add(basename(m[1]));
     }
-    for (const m of src.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g)) {
+    for (const m of src.matchAll(
+      /<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g,
+    )) {
       entries.add(basename(m[1]));
     }
   }
@@ -106,7 +118,9 @@ function computeEagerGraph(assets, entryNames) {
 
 function main() {
   if (!existsSync(APP_DIST)) {
-    console.error(`[bundle-kpi] no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`);
+    console.error(
+      `[bundle-kpi] no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`,
+    );
     process.exit(2);
   }
 
@@ -201,18 +215,40 @@ function main() {
   const budgets = loadBudgets().bundle;
   const maxDup = duplicates[0]?.wastedBrotli ?? 0;
   const checks = [
-    { name: "initialEntryBrotli", value: initialEntryBrotli, budget: budgets.initialEntryBrotliBytes },
-    { name: "totalAssetsBrotli", value: totalBrotli, budget: budgets.totalAssetsBrotliBytes },
-    { name: "largestChunkBrotli", value: largest?.brotli ?? 0, budget: budgets.largestChunkBrotliBytes },
-    { name: "maxDuplicateLibBytes", value: maxDup, budget: budgets.maxDuplicateLibBytes },
+    {
+      name: "initialEntryBrotli",
+      value: initialEntryBrotli,
+      budget: budgets.initialEntryBrotliBytes,
+    },
+    {
+      name: "totalAssetsBrotli",
+      value: totalBrotli,
+      budget: budgets.totalAssetsBrotliBytes,
+    },
+    {
+      name: "largestChunkBrotli",
+      value: largest?.brotli ?? 0,
+      budget: budgets.largestChunkBrotliBytes,
+    },
+    {
+      name: "maxDuplicateLibBytes",
+      value: maxDup,
+      budget: budgets.maxDuplicateLibBytes,
+    },
   ];
   // Eager-graph budget is opt-in (only checked when a budget is declared) so this
   // stays backward-compatible with existing budgets.json files.
   if (budgets.eagerGraphBrotliBytes != null)
-    checks.push({ name: "eagerGraphBrotli", value: eagerBrotli, budget: budgets.eagerGraphBrotliBytes });
+    checks.push({
+      name: "eagerGraphBrotli",
+      value: eagerBrotli,
+      budget: budgets.eagerGraphBrotliBytes,
+    });
   for (const c of checks) c.pass = c.value <= c.budget;
 
-  const offenders = assets.filter((a) => a.brotli > budgets.perChunkWarnBrotliBytes);
+  const offenders = assets.filter(
+    (a) => a.brotli > budgets.perChunkWarnBrotliBytes,
+  );
 
   const result = {
     summary: {
@@ -225,13 +261,23 @@ function main() {
       eagerRaw,
       eagerBrotli,
       lazyBrotli,
-      largestChunk: largest ? { name: largest.name, raw: largest.raw, brotli: largest.brotli } : null,
+      largestChunk: largest
+        ? { name: largest.name, raw: largest.raw, brotli: largest.brotli }
+        : null,
       duplicateWastedBrotli: duplicates.reduce((s, d) => s + d.wastedBrotli, 0),
     },
-    topChunks: assets.slice(0, 25).map((a) => ({ name: a.name, raw: a.raw, brotli: a.brotli, eager: eager.has(a.name) })),
+    topChunks: assets.slice(0, 25).map((a) => ({
+      name: a.name,
+      raw: a.raw,
+      brotli: a.brotli,
+      eager: eager.has(a.name),
+    })),
     duplicates: duplicates.slice(0, 20),
     libSpread,
-    offendersOverWarn: offenders.map((a) => ({ name: a.name, brotli: a.brotli })),
+    offendersOverWarn: offenders.map((a) => ({
+      name: a.name,
+      brotli: a.brotli,
+    })),
     checks,
     pass: checks.every((c) => c.pass),
   };
@@ -252,31 +298,47 @@ function print(r, file) {
   console.log(`assets:            ${s.assetCount} JS/CSS files`);
   console.log(`total raw:         ${mb(s.totalRaw)}`);
   console.log(`total brotli:      ${mb(s.totalBrotli)}`);
-  console.log(`EAGER (first paint): ${kb(s.eagerBrotli)} brotli / ${mb(s.eagerRaw)} raw across ${s.eagerChunkCount} chunks`);
+  console.log(
+    `EAGER (first paint): ${kb(s.eagerBrotli)} brotli / ${mb(s.eagerRaw)} raw across ${s.eagerChunkCount} chunks`,
+  );
   console.log(`lazy (on demand):  ${kb(s.lazyBrotli)} brotli`);
-  console.log(`initial entry:     ${kb(s.initialEntryBrotli)} brotli  (${s.initialEntryFiles.join(", ") || "?"})`);
+  console.log(
+    `initial entry:     ${kb(s.initialEntryBrotli)} brotli  (${s.initialEntryFiles.join(", ") || "?"})`,
+  );
   if (s.largestChunk)
-    console.log(`largest chunk:     ${s.largestChunk.name}  ${kb(s.largestChunk.brotli)} brotli / ${mb(s.largestChunk.raw)} raw`);
-  console.log(`dup waste:         ${mb(s.duplicateWastedBrotli)} brotli (same chunk emitted per entry point)`);
+    console.log(
+      `largest chunk:     ${s.largestChunk.name}  ${kb(s.largestChunk.brotli)} brotli / ${mb(s.largestChunk.raw)} raw`,
+    );
+  console.log(
+    `dup waste:         ${mb(s.duplicateWastedBrotli)} brotli (same chunk emitted per entry point)`,
+  );
 
   console.log("\n-- top 12 chunks by brotli  (E=eager / lazy) --");
   for (const c of r.topChunks.slice(0, 12)) {
-    console.log(`  ${c.eager ? "E" : " "} ${kb(c.brotli).padStart(11)}  ${pct(c.brotli, s.totalBrotli).padStart(6)}  ${c.name}`);
+    console.log(
+      `  ${c.eager ? "E" : " "} ${kb(c.brotli).padStart(11)}  ${pct(c.brotli, s.totalBrotli).padStart(6)}  ${c.name}`,
+    );
   }
 
   console.log("\n-- duplicate chunks (wasted = extra copies) --");
   for (const d of r.duplicates.slice(0, 10)) {
-    console.log(`  ${d.copies}x  ${kb(d.wastedBrotli).padStart(11)} wasted  ${d.logical} (each ${kb(d.eachBrotli)})`);
+    console.log(
+      `  ${d.copies}x  ${kb(d.wastedBrotli).padStart(11)} wasted  ${d.logical} (each ${kb(d.eachBrotli)})`,
+    );
   }
 
   console.log("\n-- heavy library spread --");
   for (const l of r.libSpread) {
-    console.log(`  ${kb(l.totalBrotli).padStart(11)}  ${l.lib}: ${l.chunkCount} chunk(s) [${l.chunkNames.join(", ")}]`);
+    console.log(
+      `  ${kb(l.totalBrotli).padStart(11)}  ${l.lib}: ${l.chunkCount} chunk(s) [${l.chunkNames.join(", ")}]`,
+    );
   }
 
   console.log("\n-- budget checks --");
   for (const c of r.checks) {
-    console.log(`  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${kb(c.value)} / budget ${kb(c.budget)}`);
+    console.log(
+      `  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${kb(c.value)} / budget ${kb(c.budget)}`,
+    );
   }
   console.log(`\nresult: ${r.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`);
 }

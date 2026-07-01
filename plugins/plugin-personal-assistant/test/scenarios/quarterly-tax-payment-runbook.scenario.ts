@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "quarterly-tax-payment-runbook",
-  title: "Assistant prepares a quarterly tax payment runbook with approval gates",
+  title:
+    "Assistant prepares a quarterly tax payment runbook with approval gates",
   domain: "executive.money",
   tags: ["lifeops", "executive-assistant", "money", "approvals", "tax"],
   isolation: "per-scenario",

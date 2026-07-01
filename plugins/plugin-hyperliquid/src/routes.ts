@@ -393,10 +393,7 @@ function readFirstValidPrivateKey(
   return null;
 }
 
-function readEnvString(
-  env: HyperliquidEnv,
-  key: string,
-): string | undefined {
+function readEnvString(env: HyperliquidEnv, key: string): string | undefined {
   const value = env[key]?.trim();
   return value ? value : undefined;
 }

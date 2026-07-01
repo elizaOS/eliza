@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
-import { dirExists, readUtf8Safe } from "../util/fs.js";
-import { walk } from "../util/fs.js";
+import { dirExists, readUtf8Safe, walk } from "../util/fs.js";
 
 export const pluginSignatureVerify: Check = {
   id: "CC6.8-plugin-signature-verify",

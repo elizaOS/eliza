@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  canonicalElizaOneTierSort,
   ELIZA_ONE_BENCHMARK_TIER_LIST,
   ELIZA_ONE_BENCHMARK_TIERS,
   elizaOneActionBenchmarkPairs,
   elizaOneBenchmarkModelId,
-  canonicalElizaOneTierSort,
   normalizeElizaOneBenchmarkTier,
   parseElizaOneBenchmarkTiers,
 } from "./eliza1-benchmark-recipe.js";

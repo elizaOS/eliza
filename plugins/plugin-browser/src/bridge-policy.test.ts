@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
   browserBridgeDomainFromUrl,
+  DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
   resolveBrowserBridgeCompanionPairingTokenExpiresAt,
   resolveBrowserBridgeCompanionPairingTokenTtlMs,
 } from "./bridge-policy.js";

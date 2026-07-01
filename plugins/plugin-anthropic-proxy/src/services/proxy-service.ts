@@ -8,11 +8,11 @@
  * the mode and getProxyUrl().
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ProxyServer } from "../proxy/server.js";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { Pair } from "../proxy/sanitize.js";
+import { ProxyServer } from "../proxy/server.js";
 import type { SystemPromptStripConfig } from "../proxy/system-prompt.js";
 
 export type ProxyMode = "inline" | "shared" | "off";
@@ -130,7 +130,9 @@ function readSystemPromptStrip(value: unknown): SystemPromptStripConfig {
     minStripLen !== undefined &&
     (!Number.isFinite(minStripLen) || minStripLen < 0)
   ) {
-    throw new Error("systemPromptStrip.minStripLen must be a non-negative number");
+    throw new Error(
+      "systemPromptStrip.minStripLen must be a non-negative number",
+    );
   }
   return {
     start: record.start,
@@ -243,14 +245,14 @@ export class AnthropicProxyService extends Service {
     const config = resolveConfig();
     service.proxyConfig = config;
     if (config.configError) {
-    service.startError = config.configError;
-    logger.warn(
-      `[anthropic-proxy] ${service.startError} — falling back to off`,
-    );
-    service.effectiveMode = "off";
-    service.effectiveUrl = null;
-    return service;
-  }
+      service.startError = config.configError;
+      logger.warn(
+        `[anthropic-proxy] ${service.startError} — falling back to off`,
+      );
+      service.effectiveMode = "off";
+      service.effectiveUrl = null;
+      return service;
+    }
 
     if (config.mode === "off") {
       service.effectiveMode = "off";

@@ -99,10 +99,14 @@ describe("capturePageContext", () => {
   it("bounds large text, heading, link, and form collections", () => {
     document.body.innerHTML = [
       ...Array.from({ length: 20 }, (_, index) => `<h1>Heading ${index}</h1>`),
-      ...Array.from({ length: 50 }, (_, index) => `<a href="/${index}">Link ${index}</a>`),
+      ...Array.from(
+        { length: 50 },
+        (_, index) => `<a href="/${index}">Link ${index}</a>`,
+      ),
       ...Array.from(
         { length: 15 },
-        (_, index) => `<form action="/${index}"><input name="field-${index}" /></form>`,
+        (_, index) =>
+          `<form action="/${index}"><input name="field-${index}" /></form>`,
       ),
       `<p>${"x".repeat(13_000)}</p>`,
     ].join("");

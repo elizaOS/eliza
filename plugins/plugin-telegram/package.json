@@ -44,7 +44,7 @@
     "type-detect": "^4.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@elizaos/config": "latest",
     "@elizaos/test-harness": "workspace:*",
     "tsup": "^8.5.1",

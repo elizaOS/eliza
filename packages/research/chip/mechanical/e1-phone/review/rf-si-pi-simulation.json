@@ -3,11 +3,7 @@
   "evidence_class": "analytical_rf_si_pi_prescan_not_chamber_measured",
   "claim_boundary": "Closed-form / first-principles analytical pre-scan of antenna efficiency (Chu/McLean + Bode-Fano), transmission-line impedance & loss (Hammerstad-Jensen), and power-integrity IR drop / droop. Not a chamber, VNA, scope, or PDN-VNA measurement and cannot satisfy RF/SI/PI release gates.",
   "device": {
-    "envelope_mm": [
-      78.0,
-      153.6,
-      12.7
-    ],
+    "envelope_mm": [78.0, 153.6, 12.7],
     "enclosure": "PC+ABS er~3.0, flush back"
   },
   "cited_limits": [
@@ -24,16 +20,9 @@
       {
         "band": "cellular_low_band",
         "role": "cellular_main",
-        "freq_GHz": [
-          0.7,
-          0.96
-        ],
+        "freq_GHz": [0.7, 0.96],
         "f_center_GHz": 0.8198,
-        "keepout_mm": [
-          62.0,
-          6.0,
-          2.0
-        ],
+        "keepout_mm": [62.0, 6.0, 2.0],
         "keepout_volume_mm3": 744.0,
         "chu_sphere_radius_mm": 31.161,
         "ka": 0.5354,
@@ -190,16 +179,9 @@
       {
         "band": "cellular_mid_high",
         "role": "cellular_main",
-        "freq_GHz": [
-          1.7,
-          2.7
-        ],
+        "freq_GHz": [1.7, 2.7],
         "f_center_GHz": 2.1424,
-        "keepout_mm": [
-          62.0,
-          6.0,
-          2.0
-        ],
+        "keepout_mm": [62.0, 6.0, 2.0],
         "keepout_volume_mm3": 744.0,
         "chu_sphere_radius_mm": 31.161,
         "ka": 1.3992,
@@ -220,16 +202,9 @@
       {
         "band": "cellular_n78",
         "role": "cellular_main",
-        "freq_GHz": [
-          3.3,
-          3.8
-        ],
+        "freq_GHz": [3.3, 3.8],
         "f_center_GHz": 3.5412,
-        "keepout_mm": [
-          62.0,
-          6.0,
-          2.0
-        ],
+        "keepout_mm": [62.0, 6.0, 2.0],
         "keepout_volume_mm3": 744.0,
         "chu_sphere_radius_mm": 31.161,
         "ka": 2.3127,
@@ -250,16 +225,9 @@
       {
         "band": "wifi_2g4",
         "role": "wifi_bt_chain",
-        "freq_GHz": [
-          2.4,
-          2.4835
-        ],
+        "freq_GHz": [2.4, 2.4835],
         "f_center_GHz": 2.4414,
-        "keepout_mm": [
-          34.0,
-          5.0,
-          2.0
-        ],
+        "keepout_mm": [34.0, 5.0, 2.0],
         "keepout_volume_mm3": 340.0,
         "chu_sphere_radius_mm": 17.212,
         "ka": 0.8807,
@@ -280,16 +248,9 @@
       {
         "band": "wifi_5g",
         "role": "wifi_bt_chain",
-        "freq_GHz": [
-          5.15,
-          5.85
-        ],
+        "freq_GHz": [5.15, 5.85],
         "f_center_GHz": 5.4889,
-        "keepout_mm": [
-          34.0,
-          5.0,
-          2.0
-        ],
+        "keepout_mm": [34.0, 5.0, 2.0],
         "keepout_volume_mm3": 340.0,
         "chu_sphere_radius_mm": 17.212,
         "ka": 1.98,
@@ -310,16 +271,9 @@
       {
         "band": "wifi_6g",
         "role": "wifi_bt_chain",
-        "freq_GHz": [
-          5.925,
-          7.125
-        ],
+        "freq_GHz": [5.925, 7.125],
         "f_center_GHz": 6.4974,
-        "keepout_mm": [
-          34.0,
-          5.0,
-          2.0
-        ],
+        "keepout_mm": [34.0, 5.0, 2.0],
         "keepout_volume_mm3": 340.0,
         "chu_sphere_radius_mm": 17.212,
         "ka": 2.3438,
@@ -340,16 +294,9 @@
       {
         "band": "gnss_l1",
         "role": "gnss_rx",
-        "freq_GHz": [
-          1.559,
-          1.61
-        ],
+        "freq_GHz": [1.559, 1.61],
         "f_center_GHz": 1.5843,
-        "keepout_mm": [
-          34.0,
-          5.0,
-          2.0
-        ],
+        "keepout_mm": [34.0, 5.0, 2.0],
         "keepout_volume_mm3": 340.0,
         "chu_sphere_radius_mm": 17.212,
         "ka": 0.5715,

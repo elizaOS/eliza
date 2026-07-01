@@ -7,53 +7,24 @@
     {
       "pose": "hip_roll adduct 15deg",
       "collisions": [
-        [
-          "right_hip_yaw_link",
-          "left_knee_link"
-        ],
-        [
-          "right_knee_link",
-          "left_hip_yaw_link"
-        ],
-        [
-          "right_knee_link",
-          "left_knee_link"
-        ],
-        [
-          "right_hip_yaw_link",
-          "left_hip_yaw_link"
-        ]
+        ["right_hip_yaw_link", "left_knee_link"],
+        ["right_knee_link", "left_hip_yaw_link"],
+        ["right_knee_link", "left_knee_link"],
+        ["right_hip_yaw_link", "left_hip_yaw_link"]
       ]
     },
     {
       "pose": "hip_roll adduct 30deg",
       "collisions": [
-        [
-          "right_hip_yaw_link",
-          "left_knee_link"
-        ],
-        [
-          "right_knee_link",
-          "left_hip_yaw_link"
-        ],
-        [
-          "right_knee_link",
-          "left_knee_link"
-        ],
-        [
-          "right_hip_yaw_link",
-          "left_hip_yaw_link"
-        ]
+        ["right_hip_yaw_link", "left_knee_link"],
+        ["right_knee_link", "left_hip_yaw_link"],
+        ["right_knee_link", "left_knee_link"],
+        ["right_hip_yaw_link", "left_hip_yaw_link"]
       ]
     },
     {
       "pose": "hip_roll adduct 45deg",
-      "collisions": [
-        [
-          "right_hip_yaw_link",
-          "left_hip_yaw_link"
-        ]
-      ]
+      "collisions": [["right_hip_yaw_link", "left_hip_yaw_link"]]
     },
     {
       "pose": "knee flex 0deg",

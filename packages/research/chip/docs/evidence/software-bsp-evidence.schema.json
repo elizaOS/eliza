@@ -84,9 +84,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "evidence"
-      ],
+      "required": ["evidence"],
       "type": "object"
     }
   },
@@ -97,9 +95,7 @@
   "generated_utc": "2026-05-20T10:12:30Z",
   "properties": {
     "claim_boundary": {
-      "enum": [
-        "external_transcripts_only"
-      ],
+      "enum": ["external_transcripts_only"],
       "type": "string"
     },
     "schema_version": {
@@ -124,21 +120,11 @@
           "$ref": "#/$defs/target"
         }
       },
-      "required": [
-        "buildroot",
-        "linux",
-        "opensbi",
-        "u-boot",
-        "aosp"
-      ],
+      "required": ["buildroot", "linux", "opensbi", "u-boot", "aosp"],
       "type": "object"
     }
   },
-  "required": [
-    "schema_version",
-    "claim_boundary",
-    "targets"
-  ],
+  "required": ["schema_version", "claim_boundary", "targets"],
   "title": "Eliza software BSP evidence manifest",
   "type": "object"
 }

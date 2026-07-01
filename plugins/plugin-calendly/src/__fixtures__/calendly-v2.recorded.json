@@ -47,7 +47,11 @@
         "created_at": "2026-06-10T12:00:00.000000Z",
         "updated_at": "2026-06-10T12:00:00.000000Z",
         "event_memberships": [
-          { "user": "https://api.calendly.com/users/AAAAAAAAAAAAAAAA", "user_email": "ada@example.com", "user_name": "Ada Lovelace" }
+          {
+            "user": "https://api.calendly.com/users/AAAAAAAAAAAAAAAA",
+            "user_email": "ada@example.com",
+            "user_name": "Ada Lovelace"
+          }
         ]
       }
     ],

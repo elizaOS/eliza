@@ -40,7 +40,9 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     // getBootConfig().cloudApiBase, and the compat fetch reads the cloud token
     // from the global the controller normally sets at sign-in.
     const prevBoot = getBootConfig();
-    const prevToken = (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL];
+    const prevToken = (globalThis as Record<string, unknown>)[
+      CLOUD_TOKEN_GLOBAL
+    ];
     setBootConfig({ ...prevBoot, cloudApiBase });
     (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL] = authToken;
 

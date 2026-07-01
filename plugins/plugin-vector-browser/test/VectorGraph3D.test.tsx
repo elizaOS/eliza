@@ -295,9 +295,7 @@ describe("VectorGraph3D", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Unavailable"),
-      ).toBeTruthy();
+      expect(screen.getByText("Unavailable")).toBeTruthy();
     });
   });
 });

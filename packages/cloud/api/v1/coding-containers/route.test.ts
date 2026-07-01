@@ -200,7 +200,9 @@ describe("coding containers route", () => {
       error: "Insufficient credits",
     });
 
-    const response = await postCodingContainer("ghcr.io/dexploarer/bnancy:latest");
+    const response = await postCodingContainer(
+      "ghcr.io/dexploarer/bnancy:latest",
+    );
 
     expect(response.status).toBe(402);
     expect(await response.json()).toEqual(
@@ -217,9 +219,14 @@ describe("coding containers route", () => {
   });
 
   test("provisions when the org is funded (passes the credit gate)", async () => {
-    checkAgentCreditGate.mockResolvedValueOnce({ allowed: true, balance: 12.5 });
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 12.5,
+    });
 
-    const response = await postCodingContainer("ghcr.io/dexploarer/bnancy:latest");
+    const response = await postCodingContainer(
+      "ghcr.io/dexploarer/bnancy:latest",
+    );
 
     expect(response.status).toBe(200);
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");

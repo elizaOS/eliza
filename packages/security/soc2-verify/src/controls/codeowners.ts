@@ -94,7 +94,9 @@ export const securityMd: Check = {
         files: candidates,
       };
     }
-    const refs = found.filter((p) => /security@elizalabs\.ai/.test(readUtf8(p)));
+    const refs = found.filter((p) =>
+      /security@elizalabs\.ai/.test(readUtf8(p)),
+    );
     return refs.length > 0
       ? {
           status: "pass",

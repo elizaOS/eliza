@@ -151,7 +151,11 @@ describe("perpetualMarketAction validation gating", () => {
 
   it("validates regardless of phrasing or language when the context is active", async () => {
     const runtime = makeRuntime(null);
-    for (const text of ["mercados perpetuos", "ポジションを見せて", "随便什么"]) {
+    for (const text of [
+      "mercados perpetuos",
+      "ポジションを見せて",
+      "随便什么",
+    ]) {
       const result = await perpetualMarketAction.validate?.(
         runtime,
         makeMessage(text),

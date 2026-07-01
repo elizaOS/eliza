@@ -333,11 +333,6 @@
     "403.gcc-16B.champsimtrace.xz"
   ],
   "variants_missing": [],
-  "variants_requested": [
-    "lru",
-    "drrip",
-    "ship",
-    "srrip"
-  ],
+  "variants_requested": ["lru", "drrip", "ship", "srrip"],
   "warmup_instructions": 2000000
 }

@@ -16,13 +16,7 @@
     "skippedScenarioRows": 0,
     "unknownOutcomeRows": 0
   },
-  "runIds": [
-    "f39e297f-e254-4579-92c9-e8ae7a329865"
-  ],
-  "scenarioIds": [
-    "backup.restore-recall"
-  ],
-  "agentIds": [
-    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
-  ]
+  "runIds": ["f39e297f-e254-4579-92c9-e8ae7a329865"],
+  "scenarioIds": ["backup.restore-recall"],
+  "agentIds": ["546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"]
 }

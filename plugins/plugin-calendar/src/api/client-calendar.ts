@@ -20,11 +20,11 @@ import type {
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
 } from "@elizaos/shared";
-import { ElizaClient } from "@elizaos/ui/api";
 // Load the `@elizaos/ui` barrel so the `declare module "@elizaos/ui"`
 // augmentation below resolves; the calendar methods are exposed on the
 // public `ElizaClient` surface that consumers import from `@elizaos/ui`.
 import type {} from "@elizaos/ui";
+import { ElizaClient } from "@elizaos/ui/api";
 
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(

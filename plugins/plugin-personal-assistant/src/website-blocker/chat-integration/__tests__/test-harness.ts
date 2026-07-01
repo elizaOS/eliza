@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/pglite";
 import {
   resetSelfControlStatusCache,
   setSelfControlPluginConfig,
 } from "@elizaos/plugin-blocker/services/website-blocker/index";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
 
 export interface BlockRuleTestHarness {
   runtime: IAgentRuntime;

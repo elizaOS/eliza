@@ -15,12 +15,12 @@ import {
   startMocks,
 } from "../scripts/start-mocks.ts";
 import { createBenchmarkRuntimeFixturesEnvironment } from "./benchmark-runtime-fixtures.ts";
-import { createDeterministicLlmProxyPlugin } from "./llm-proxy-plugin.ts";
 import {
   createLifeOpsSimulatorRuntimeFixtures,
   type LifeOpsSimulatorSeedResult,
   seedLifeOpsSimulatorRuntime,
 } from "./lifeops-simulator.ts";
+import { createDeterministicLlmProxyPlugin } from "./llm-proxy-plugin.ts";
 import { seedBenchmarkLifeOpsFixtures } from "./seed-benchmark-fixtures.ts";
 import {
   seedGoogleConnectorGrant,

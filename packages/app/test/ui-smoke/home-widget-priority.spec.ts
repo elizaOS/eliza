@@ -769,9 +769,7 @@ test.describe("home widget priority (#9143)", () => {
     // swipe dispatches) and screenshot the launcher to capture the consolidated
     // home↔launcher pair on the same surface.
     const surface = page.getByTestId("home-launcher-surface");
-    const launcherPage = page.getByTestId(
-      "home-launcher-launcher-page",
-    );
+    const launcherPage = page.getByTestId("home-launcher-launcher-page");
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent("eliza:home-launcher:navigate", {

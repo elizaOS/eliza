@@ -51,9 +51,7 @@
   "wake_and_combo_cases": [
     {
       "case_id": "power_wake_from_off",
-      "buttons": [
-        "power"
-      ],
+      "buttons": ["power"],
       "state_before": "off",
       "expected_state_after": "",
       "event_trace_ref": "",
@@ -61,9 +59,7 @@
     },
     {
       "case_id": "power_wake_from_suspend",
-      "buttons": [
-        "power"
-      ],
+      "buttons": ["power"],
       "state_before": "suspend",
       "expected_state_after": "",
       "event_trace_ref": "",
@@ -71,10 +67,7 @@
     },
     {
       "case_id": "power_volume_up_recovery",
-      "buttons": [
-        "power",
-        "volume_up"
-      ],
+      "buttons": ["power", "volume_up"],
       "state_before": "boot",
       "expected_state_after": "",
       "event_trace_ref": "",
@@ -82,10 +75,7 @@
     },
     {
       "case_id": "power_volume_down_fastboot",
-      "buttons": [
-        "power",
-        "volume_down"
-      ],
+      "buttons": ["power", "volume_down"],
       "state_before": "boot",
       "expected_state_after": "",
       "event_trace_ref": "",
@@ -108,16 +98,12 @@
   "owner": "first_article_validation",
   "created_at": "blocked_not_executed",
   "tool_or_supplier_revision": "blocked_not_executed",
-  "input_artifact_hashes": [
-    "blocked_not_executed"
-  ],
+  "input_artifact_hashes": ["blocked_not_executed"],
   "reviewer": "blocked_not_reviewed",
   "reviewed_at": "blocked_not_reviewed",
   "disposition": "blocked_not_executed",
   "board_serial": "blocked_not_executed",
-  "supplier_lot_ids": [
-    "blocked_not_executed"
-  ],
+  "supplier_lot_ids": ["blocked_not_executed"],
   "fixture_id": "blocked_not_executed",
   "fixture_calibration_id": "blocked_not_executed",
   "test_software_revision": "blocked_not_executed",

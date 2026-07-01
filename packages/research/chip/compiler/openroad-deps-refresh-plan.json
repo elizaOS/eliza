@@ -20,7 +20,10 @@
       "release_date": "2026-01",
       "rationale": "OR-Tools 9.15 ships CP-SAT and routing improvements plus protobuf realignment. Source-compatible API surface with 9.14 for the call sites OpenROAD uses (CP-SAT in dpl/gpl). Low-risk bump, recommended by upstream for SAT-driven detailed placement.",
       "blocking": false,
-      "installer_lines": ["72:OR_TOOLS_VERSION_BIG=\"9.14\"", "73:OR_TOOLS_VERSION_SMALL=\"${OR_TOOLS_VERSION_BIG}.6206\""]
+      "installer_lines": [
+        "72:OR_TOOLS_VERSION_BIG=\"9.14\"",
+        "73:OR_TOOLS_VERSION_SMALL=\"${OR_TOOLS_VERSION_BIG}.6206\""
+      ]
     },
     {
       "name": "abseil-cpp",
@@ -30,7 +33,10 @@
       "release_date": "2026-02",
       "rationale": "Patch release of the same LTS line (20260107). Upstream OpenROAD PR #10308 (merged) already moved to 20260107.1 in the Bazel-only deps; CMake DependencyInstaller still references .0. Bumping CMake to match keeps Bazel/CMake builds in lock-step and picks up Abseil bugfixes for hash-set and time utilities.",
       "blocking": false,
-      "installer_lines": ["66:ABSL_VERSION=\"20260107.0\"", "67:ABSL_CHECKSUM=\"2a7add2ee848dd4591f41b0f6339d624\""],
+      "installer_lines": [
+        "66:ABSL_VERSION=\"20260107.0\"",
+        "67:ABSL_CHECKSUM=\"2a7add2ee848dd4591f41b0f6339d624\""
+      ],
       "checksum_action": "recompute ABSL_CHECKSUM for the .1 tarball; do not reuse .0 hash"
     },
     {
@@ -41,7 +47,10 @@
       "release_date": "2026-03",
       "rationale": "PCRE2 10.42 (2022) -> 10.47 (2026) closes ~3 years of UTF-8 buffer-handling, JIT compilation, and CVE-class fixes (including CVE-2024-* and CVE-2025-* series). PCRE2 is a transitive dep via SWIG's regex handling; no OpenROAD source change required. This is the staleest dep in the tree and the highest-priority security bump.",
       "blocking": false,
-      "installer_lines": ["53:PCRE_VERSION=\"10.42\"", "54:PCRE_CHECKSUM=\"37d2f77cfd411a3ddf1c64e1d72e43f7\""],
+      "installer_lines": [
+        "53:PCRE_VERSION=\"10.42\"",
+        "54:PCRE_CHECKSUM=\"37d2f77cfd411a3ddf1c64e1d72e43f7\""
+      ],
       "checksum_action": "recompute PCRE_CHECKSUM for the 10.47 tarball"
     },
     {
@@ -52,7 +61,10 @@
       "release_date": "2025-Q4",
       "rationale": "SWIG 4.3.2 ships Tcl-binding fixes (typemap regressions and Tcl 9 compatibility) that directly affect OpenROAD's Tcl shell. 4.3.1->4.3.2 are pure bugfix releases on the 4.3 line; no language/binding behavioral break for the OpenROAD .i files.",
       "blocking": false,
-      "installer_lines": ["55:SWIG_VERSION=\"4.3.0\"", "56:SWIG_CHECKSUM=\"9f74c7f402aa28d9f75e67d1990ee6fb\""],
+      "installer_lines": [
+        "55:SWIG_VERSION=\"4.3.0\"",
+        "56:SWIG_CHECKSUM=\"9f74c7f402aa28d9f75e67d1990ee6fb\""
+      ],
       "checksum_action": "recompute SWIG_CHECKSUM for the 4.3.2 tarball"
     }
   ],
@@ -62,7 +74,10 @@
       "current_version": "1.89.0",
       "do_not_bump_to": "1.90.0",
       "reason": "Upstream OpenROAD Boost 1.90 PR was closed without merge; 1.90 changes Boost.Geometry and Boost.Polygon headers in ways OpenROAD's odb/gui code has not been adapted to. Hold until upstream reopens and merges.",
-      "installer_lines": ["57:BOOST_VERSION_BIG=\"1.89\"", "58:BOOST_VERSION_SMALL=\"${BOOST_VERSION_BIG}.0\""]
+      "installer_lines": [
+        "57:BOOST_VERSION_BIG=\"1.89\"",
+        "58:BOOST_VERSION_SMALL=\"${BOOST_VERSION_BIG}.0\""
+      ]
     },
     {
       "name": "spdlog",
@@ -76,7 +91,10 @@
       "current_version": "3.31.9",
       "do_not_bump": true,
       "reason": "DependencyInstaller hard-pins CMake 3.31 and ships matching aarch64/x86_64 checksums (CMAKE_CHECKSUM_AARCH64, CMAKE_CHECKSUM_X86_64). Bumping requires regenerating both checksums and confirming all CMakeLists.txt minimums; out of scope for a dep-only refresh.",
-      "installer_lines": ["49:CMAKE_VERSION_BIG=\"3.31\"", "50:CMAKE_VERSION_SMALL=\"${CMAKE_VERSION_BIG}.9\""]
+      "installer_lines": [
+        "49:CMAKE_VERSION_BIG=\"3.31\"",
+        "50:CMAKE_VERSION_SMALL=\"${CMAKE_VERSION_BIG}.9\""
+      ]
     },
     {
       "name": "eigen",

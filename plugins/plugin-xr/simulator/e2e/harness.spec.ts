@@ -27,9 +27,9 @@ test.describe("XR harness — pose → ray → hit → press", () => {
     await xrPage.startSession();
 
     // Aim the right controller at the Submit panel, then read telemetry back.
-    expect(await xrPage.aimControllerAt("right", '[data-agent-id="submit"]')).toBe(
-      true,
-    );
+    expect(
+      await xrPage.aimControllerAt("right", '[data-agent-id="submit"]'),
+    ).toBe(true);
     const telemetry = await xrPage.getElementTelemetry();
 
     // Element telemetry carries real screen rects for every tagged element.
@@ -40,7 +40,11 @@ test.describe("XR harness — pose → ray → hit → press", () => {
     const rightRay = telemetry.rays.find((r) => r.source === "right");
     expect(rightRay).toBeDefined();
     expect(
-      Math.hypot(rightRay!.direction.x, rightRay!.direction.y, rightRay!.direction.z),
+      Math.hypot(
+        rightRay!.direction.x,
+        rightRay!.direction.y,
+        rightRay!.direction.z,
+      ),
     ).toBeCloseTo(1, 5);
 
     // …and the COMPUTED hit resolves to the Submit element, not pixels.
@@ -53,16 +57,16 @@ test.describe("XR harness — pose → ray → hit → press", () => {
   }) => {
     await xrPage.goto("/");
     await xrPage.startSession();
-    expect(await xrPage.aimControllerAt("right", '[data-agent-id="submit"]')).toBe(
-      true,
-    );
+    expect(
+      await xrPage.aimControllerAt("right", '[data-agent-id="submit"]'),
+    ).toBe(true);
 
     // The aimed controller is a connected device whose ray resolves to the target.
     const telemetry = await xrPage.getElementTelemetry();
     expect(telemetry.controllers.right).toBeDefined();
-    expect(
-      telemetry.hits.find((h) => h.source === "right")?.elementId,
-    ).toBe("submit");
+    expect(telemetry.hits.find((h) => h.source === "right")?.elementId).toBe(
+      "submit",
+    );
 
     // Firing select/squeeze drives IWER input and resolves cleanly. The
     // session-level select EVENT dispatch needs the immersive render loop

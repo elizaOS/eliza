@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   canonicalElizaOneTierSort,
@@ -17,13 +16,7 @@ export const ACTION_SELECTION_BENCHMARK_ID = "eliza_harness_action_selection";
 export const LOCAL_EVAL_COMPARISON_BENCHMARK_ID =
   "eliza_harness_local_eval_comparison";
 
-export const ELIZA_ONE_MATRIX_TIERS = [
-  "0b",
-  "2b",
-  "4b",
-  "9b",
-  "27b",
-] as const;
+export const ELIZA_ONE_MATRIX_TIERS = ["0b", "2b", "4b", "9b", "27b"] as const;
 
 export type ElizaOneMatrixTier = (typeof ELIZA_ONE_MATRIX_TIERS)[number];
 export type BenchmarkMatrixVariant = "reference" | "base" | "trained";

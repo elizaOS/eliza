@@ -122,7 +122,16 @@ function collectCrossPackageSpecifiers(binFile, packageDir) {
   return crossPackage;
 }
 
-const FILE_EXTS = [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"];
+const FILE_EXTS = [
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".ts",
+  ".mts",
+  ".cts",
+  ".jsx",
+  ".tsx",
+];
 
 function resolveLocalFile(file) {
   if (fs.existsSync(file) && fs.statSync(file).isFile()) return file;

@@ -1,6 +1,6 @@
+import { startFetchServer } from "../fetch-server";
 import { buildHetznerMockApp } from "./server";
 import type { HetznerStore } from "./store";
-import { startFetchServer } from "../fetch-server";
 
 export type { HetznerMockAppOptions } from "./server";
 export { buildHetznerMockApp } from "./server";

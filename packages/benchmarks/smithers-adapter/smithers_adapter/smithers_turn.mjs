@@ -16,10 +16,13 @@
 // not implement the newer `/responses` endpoint that `@ai-sdk/openai` defaults
 // to for bare model ids.
 
-import { OpenAIAgent } from "smithers-orchestrator";
 import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema } from "ai";
-import { loadOptimizationArtifact, resolveOptimizedSystemPrompt } from "./optimization.mjs";
+import { OpenAIAgent } from "smithers-orchestrator";
+import {
+  loadOptimizationArtifact,
+  resolveOptimizedSystemPrompt,
+} from "./optimization.mjs";
 
 const DEFAULT_BASE_URLS = {
   cerebras: "https://api.cerebras.ai/v1",
@@ -45,7 +48,9 @@ function emit(obj) {
 }
 
 function isGptOss(model) {
-  const bare = String(model || "").split("/").pop();
+  const bare = String(model || "")
+    .split("/")
+    .pop();
   return bare.startsWith("gpt-oss");
 }
 
@@ -59,7 +64,8 @@ function toToolSet(rawTools) {
     const fn = item.function;
     if (typeof fn.name !== "string" || !fn.name) continue;
     set[fn.name] = {
-      description: typeof fn.description === "string" ? fn.description : undefined,
+      description:
+        typeof fn.description === "string" ? fn.description : undefined,
       inputSchema: jsonSchema(
         fn.parameters && typeof fn.parameters === "object"
           ? fn.parameters
@@ -95,7 +101,8 @@ function toToolCallParts(toolCalls) {
   const parts = [];
   for (const tc of toolCalls) {
     if (!tc || typeof tc !== "object") continue;
-    const fn = tc.function && typeof tc.function === "object" ? tc.function : tc;
+    const fn =
+      tc.function && typeof tc.function === "object" ? tc.function : tc;
     const name = fn.name ?? tc.name;
     if (typeof name !== "string" || !name) continue;
     parts.push({
@@ -113,7 +120,10 @@ function toToolCallParts(toolCalls) {
 // flattening to text) so multi-turn function-calling benchmarks keep fidelity.
 // Falls back to text only for shapes that can't be represented structurally.
 function buildMessages(payload) {
-  const ctx = payload.context && typeof payload.context === "object" ? payload.context : {};
+  const ctx =
+    payload.context && typeof payload.context === "object"
+      ? payload.context
+      : {};
   const messages = [];
   const sysPrompt =
     typeof payload.system_prompt === "string" && payload.system_prompt.trim()
@@ -145,11 +155,19 @@ function buildMessages(payload) {
           arr.push(...parts);
           messages.push({ role: "assistant", content: arr });
         } else {
-          messages.push({ role: "assistant", content: content || "(no content)" });
+          messages.push({
+            role: "assistant",
+            content: content || "(no content)",
+          });
         }
       } else if (role === "tool") {
-        const callId = String(m.tool_call_id ?? m.id ?? `call_${messages.length}`);
-        const name = (typeof m.name === "string" && m.name) || toolNameById[callId] || "tool";
+        const callId = String(
+          m.tool_call_id ?? m.id ?? `call_${messages.length}`,
+        );
+        const name =
+          (typeof m.name === "string" && m.name) ||
+          toolNameById[callId] ||
+          "tool";
         messages.push({
           role: "tool",
           content: [
@@ -167,7 +185,10 @@ function buildMessages(payload) {
       hadRaw = true;
     }
   }
-  if (sysPrompt && !messages.some((m) => m.role === "system" && m.content === sysPrompt)) {
+  if (
+    sysPrompt &&
+    !messages.some((m) => m.role === "system" && m.content === sysPrompt)
+  ) {
     messages.unshift({ role: "system", content: sysPrompt });
   }
   const text = String(payload.text ?? "");
@@ -183,14 +204,24 @@ function buildMessages(payload) {
 async function main() {
   const rawIn = await readStdin();
   if (!rawIn) {
-    emit({ text: "", thought: null, actions: [], params: { error: "no stdin" } });
+    emit({
+      text: "",
+      thought: null,
+      actions: [],
+      params: { error: "no stdin" },
+    });
     return;
   }
   let payload;
   try {
     payload = JSON.parse(rawIn);
   } catch (e) {
-    emit({ text: "", thought: null, actions: [], params: { error: `bad stdin json: ${e}` } });
+    emit({
+      text: "",
+      thought: null,
+      actions: [],
+      params: { error: `bad stdin json: ${e}` },
+    });
     return;
   }
 
@@ -200,15 +231,23 @@ async function main() {
     (typeof payload.base_url === "string" && payload.base_url) ||
     DEFAULT_BASE_URLS[provider] ||
     DEFAULT_BASE_URLS.cerebras;
-  const apiKey = typeof payload.api_key === "string" ? payload.api_key : process.env.CEREBRAS_API_KEY || "";
+  const apiKey =
+    typeof payload.api_key === "string"
+      ? payload.api_key
+      : process.env.CEREBRAS_API_KEY || "";
 
-  const ctx = payload.context && typeof payload.context === "object" ? payload.context : {};
+  const ctx =
+    payload.context && typeof payload.context === "object"
+      ? payload.context
+      : {};
 
   // GEPA: when an optimization artifact is configured (SMITHERS_OPTIMIZATION_ARTIFACT,
   // produced by `smithers optimize`), override the benchmark's default system
   // prompt with the optimized one before building messages. A missing/invalid
   // artifact resolves to null and leaves the default prompt untouched.
-  const optimizationArtifact = loadOptimizationArtifact(process.env.SMITHERS_OPTIMIZATION_ARTIFACT);
+  const optimizationArtifact = loadOptimizationArtifact(
+    process.env.SMITHERS_OPTIMIZATION_ARTIFACT,
+  );
   if (optimizationArtifact) {
     const optimizedPrompt = resolveOptimizedSystemPrompt(
       optimizationArtifact,
@@ -222,7 +261,9 @@ async function main() {
 
   const toolChoiceRaw = payload.tool_choice ?? ctx.tool_choice;
   const toolChoice =
-    tools && ["auto", "required", "none"].includes(toolChoiceRaw) ? toolChoiceRaw : undefined;
+    tools && ["auto", "required", "none"].includes(toolChoiceRaw)
+      ? toolChoiceRaw
+      : undefined;
 
   const temperature =
     typeof payload.temperature === "number"
@@ -230,7 +271,10 @@ async function main() {
       : typeof ctx.temperature === "number"
         ? ctx.temperature
         : undefined;
-  const maxTokens = typeof payload.max_tokens === "number" && payload.max_tokens > 0 ? payload.max_tokens : undefined;
+  const maxTokens =
+    typeof payload.max_tokens === "number" && payload.max_tokens > 0
+      ? payload.max_tokens
+      : undefined;
 
   let reasoningEffort = payload.reasoning_effort ?? ctx.reasoning_effort;
   if (!reasoningEffort && isGptOss(modelName)) reasoningEffort = "low";
@@ -246,7 +290,9 @@ async function main() {
     ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
   };
   if (reasoningEffort) {
-    agentOpts.providerOptions = { openai: { reasoningEffort: String(reasoningEffort) } };
+    agentOpts.providerOptions = {
+      openai: { reasoningEffort: String(reasoningEffort) },
+    };
   }
 
   const agent = new OpenAIAgent(agentOpts);
@@ -260,7 +306,12 @@ async function main() {
   function is429(e) {
     const sc = e?.statusCode ?? e?.status ?? e?.cause?.statusCode;
     const msg = String(e?.message || e || "").toLowerCase();
-    return sc === 429 || msg.includes("too many requests") || msg.includes("rate limit") || msg.includes("quota");
+    return (
+      sc === 429 ||
+      msg.includes("too many requests") ||
+      msg.includes("rate limit") ||
+      msg.includes("quota")
+    );
   }
   function retryAfterMs(e) {
     const h = e?.responseHeaders || e?.cause?.responseHeaders || {};
@@ -281,8 +332,11 @@ async function main() {
     } catch (e) {
       lastErr = e;
       if (!is429(e) || attempt === MAX_ATTEMPTS - 1) break;
-      const delay = retryAfterMs(e) ?? BACKOFF[Math.min(attempt, BACKOFF.length - 1)];
-      process.stderr.write(`smithers-turn 429; retry ${attempt + 1}/${MAX_ATTEMPTS} after ${delay}ms\n`);
+      const delay =
+        retryAfterMs(e) ?? BACKOFF[Math.min(attempt, BACKOFF.length - 1)];
+      process.stderr.write(
+        `smithers-turn 429; retry ${attempt + 1}/${MAX_ATTEMPTS} after ${delay}ms\n`,
+      );
       await sleep(delay);
     }
   }
@@ -291,7 +345,9 @@ async function main() {
       text: "",
       thought: null,
       actions: [],
-      params: { error: `${lastErr?.name || "Error"}: ${lastErr?.message || lastErr}` },
+      params: {
+        error: `${lastErr?.name || "Error"}: ${lastErr?.message || lastErr}`,
+      },
     });
     return;
   }
@@ -314,11 +370,16 @@ async function main() {
     prompt_tokens: u.inputTokens ?? u.promptTokens ?? null,
     completion_tokens: u.outputTokens ?? u.completionTokens ?? null,
     total_tokens: u.totalTokens ?? null,
-    cached_tokens: u.cachedInputTokens ?? u.inputTokenDetails?.cacheReadTokens ?? 0,
-    reasoning_tokens: u.reasoningTokens ?? u.outputTokenDetails?.reasoningTokens ?? null,
+    cached_tokens:
+      u.cachedInputTokens ?? u.inputTokenDetails?.cacheReadTokens ?? 0,
+    reasoning_tokens:
+      u.reasoningTokens ?? u.outputTokenDetails?.reasoningTokens ?? null,
   };
 
-  const reasoning = typeof res.reasoningText === "string" && res.reasoningText.trim() ? res.reasoningText : null;
+  const reasoning =
+    typeof res.reasoningText === "string" && res.reasoningText.trim()
+      ? res.reasoningText
+      : null;
   let text = typeof res.text === "string" ? res.text : "";
   if (!text.trim() && reasoning) text = reasoning;
 
@@ -326,10 +387,19 @@ async function main() {
     text,
     thought: reasoning,
     actions: toolCalls.map((t) => t.name),
-    params: { tool_calls: toolCalls, usage, finish_reason: res.finishReason ?? null },
+    params: {
+      tool_calls: toolCalls,
+      usage,
+      finish_reason: res.finishReason ?? null,
+    },
   });
 }
 
 main().catch((e) => {
-  emit({ text: "", thought: null, actions: [], params: { error: `fatal: ${e?.message || e}` } });
+  emit({
+    text: "",
+    thought: null,
+    actions: [],
+    params: { error: `fatal: ${e?.message || e}` },
+  });
 });

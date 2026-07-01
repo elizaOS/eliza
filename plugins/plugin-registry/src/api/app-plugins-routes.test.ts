@@ -48,9 +48,7 @@ vi.mock("@elizaos/app-core/registry", () => ({
 
 vi.mock("@elizaos/app-core/services/vault-mirror", () => ({
   _resetSharedVaultForTesting: vi.fn(),
-  mirrorPluginSensitiveToVault: vi.fn(() =>
-    Promise.resolve({ failures: [] }),
-  ),
+  mirrorPluginSensitiveToVault: vi.fn(() => Promise.resolve({ failures: [] })),
   sharedVault: {},
 }));
 

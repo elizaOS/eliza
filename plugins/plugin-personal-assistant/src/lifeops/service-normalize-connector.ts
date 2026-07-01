@@ -29,12 +29,12 @@ import {
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
 } from "../contracts/index.js";
+import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,
 } from "./defaults.js";
 import { normalizeGoogleCapabilities } from "./google-scopes.js";
-import { DEFAULT_BROWSER_PERMISSION_STATE } from "./browser-constants.js";
 import {
   DAY_MINUTES,
   DEFAULT_WORKFLOW_PERMISSION_POLICY,

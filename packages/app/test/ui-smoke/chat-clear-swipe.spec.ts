@@ -314,9 +314,7 @@ test("collapsed chat grabber horizontal swipe opens the launcher rail without op
     timeout: 10_000,
   });
   await expect(overlay).not.toHaveAttribute("data-open", "true");
-  await expect(
-    page.getByTestId("home-launcher-launcher-page"),
-  ).toBeVisible();
+  await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible();
   await expectNoPageDiagnostics(page, testInfo.title);
 });
 
@@ -343,9 +341,7 @@ test.describe("real touch input (CDP dispatchTouchEvent) — #9943 item 6", () =
       timeout: 10_000,
     });
     await expect(overlay).not.toHaveAttribute("data-open", "true");
-    await expect(
-      page.getByTestId("home-launcher-launcher-page"),
-    ).toBeVisible();
+    await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible();
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 });

@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   BENCHMARK_MATRIX_ARTIFACT_SCHEMA,
-  buildBenchmarkMatrixRowsFromArtifactPayload,
   buildBenchmarkMatrixArtifactPayload,
-  writeBenchmarkMatrixArtifactFromArtifacts,
+  buildBenchmarkMatrixRowsFromArtifactPayload,
   writeBenchmarkMatrixArtifact,
+  writeBenchmarkMatrixArtifactFromArtifacts,
 } from "./benchmark-matrix-artifact.js";
 import { EVAL_COMPARISON_ARTIFACT_SCHEMA } from "./eval-comparison-artifact.js";
 

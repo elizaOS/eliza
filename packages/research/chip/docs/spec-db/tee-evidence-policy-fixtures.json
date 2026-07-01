@@ -77,7 +77,7 @@
       "expected_reason": "not-required",
       "expected_trusted": true,
       "evidence": null,
-      "policy": {"required": false},
+      "policy": { "required": false },
       "note": "evidence absent and policy not required"
     },
     {
@@ -85,19 +85,19 @@
       "expected_reason": "missing-evidence",
       "expected_trusted": false,
       "evidence": null,
-      "policy": {"required": true}
+      "policy": { "required": true }
     },
     {
       "id": "kind-not-allowed",
       "expected_reason": "kind-not-allowed",
       "expected_trusted": false,
-      "evidence_overrides": {"kind": "sev-snp"}
+      "evidence_overrides": { "kind": "sev-snp" }
     },
     {
       "id": "provider-not-allowed",
       "expected_reason": "provider-not-allowed",
       "expected_trusted": false,
-      "evidence_overrides": {"provider": "rogue"}
+      "evidence_overrides": { "provider": "rogue" }
     },
     {
       "id": "measurement-mismatch",
@@ -114,7 +114,9 @@
       "expected_trusted": false,
       "policy_overrides": {
         "revokedMeasurements": {
-          "agent": ["sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]
+          "agent": [
+            "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          ]
         }
       }
     },
@@ -122,37 +124,37 @@
       "id": "security-version-too-low",
       "expected_reason": "security-version-too-low",
       "expected_trusted": false,
-      "evidence_overrides": {"securityVersion": 3}
+      "evidence_overrides": { "securityVersion": 3 }
     },
     {
       "id": "security-version-revoked",
       "expected_reason": "security-version-revoked",
       "expected_trusted": false,
-      "policy_overrides": {"revokedSecurityVersions": [7]}
+      "policy_overrides": { "revokedSecurityVersions": [7] }
     },
     {
       "id": "missing-nonce",
       "expected_reason": "missing-nonce",
       "expected_trusted": false,
-      "evidence_freshness_overrides": {"nonce": null}
+      "evidence_freshness_overrides": { "nonce": null }
     },
     {
       "id": "nonce-mismatch",
       "expected_reason": "nonce-mismatch",
       "expected_trusted": false,
-      "evidence_freshness_overrides": {"nonce": "different-nonce"}
+      "evidence_freshness_overrides": { "nonce": "different-nonce" }
     },
     {
       "id": "missing-timestamp",
       "expected_reason": "missing-timestamp",
       "expected_trusted": false,
-      "evidence_freshness_overrides": {"timestamp": null}
+      "evidence_freshness_overrides": { "timestamp": null }
     },
     {
       "id": "timestamp-invalid",
       "expected_reason": "timestamp-invalid",
       "expected_trusted": false,
-      "evidence_freshness_overrides": {"timestamp": "not-a-date"}
+      "evidence_freshness_overrides": { "timestamp": "not-a-date" }
     },
     {
       "id": "timestamp-stale",
@@ -165,22 +167,22 @@
       "id": "claim-mismatch",
       "expected_reason": "claim-mismatch",
       "expected_trusted": false,
-      "evidence_claim_overrides": {"npuProtected": false},
+      "evidence_claim_overrides": { "npuProtected": false },
       "note": "npuProtected revoked: policy requiredClaims.npuProtected fails"
     },
     {
       "id": "invalid-evidence",
       "expected_reason": "invalid-evidence",
       "expected_trusted": false,
-      "evidence_raw": {"provider": "eliza-riscv"},
+      "evidence_raw": { "provider": "eliza-riscv" },
       "note": "evidence with no kind cannot normalize"
     },
     {
       "id": "simulated-evidence-rejected",
       "expected_reason": "simulated-evidence-rejected",
       "expected_trusted": false,
-      "evidence_overrides": {"hardwareVendor": "mock-macos"},
-      "policy_overrides": {"rejectSimulatedEvidence": true},
+      "evidence_overrides": { "hardwareVendor": "mock-macos" },
+      "policy_overrides": { "rejectSimulatedEvidence": true },
       "note": "production profile rejects self-declared non-prod markers (dstack #608 defense)"
     }
   ]

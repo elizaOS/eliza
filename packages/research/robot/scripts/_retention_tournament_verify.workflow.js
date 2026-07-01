@@ -1,71 +1,135 @@
 export const meta = {
-  name: 'alberta-retention-tournament-verify',
-  description: 'Adversarially verify the Alberta retention tournament: recompute metrics from raw matrices, check headline claims, synthesize a report.',
+  name: "alberta-retention-tournament-verify",
+  description:
+    "Adversarially verify the Alberta retention tournament: recompute metrics from raw matrices, check headline claims, synthesize a report.",
   phases: [
-    { title: 'Verify', detail: 'one independent verifier per variant; recompute ACC/BWT/Forgetting from raw matrices' },
-    { title: 'Synthesize', detail: 'check headline claims, pick winner, draft report' },
+    {
+      title: "Verify",
+      detail:
+        "one independent verifier per variant; recompute ACC/BWT/Forgetting from raw matrices",
+    },
+    {
+      title: "Synthesize",
+      detail: "check headline claims, pick winner, draft report",
+    },
   ],
-}
+};
 
-const BASE = args && args.base ? args.base : 'packages/research/robot/evidence/alberta_retention_tournament'
+const BASE =
+  args && args.base
+    ? args.base
+    : "packages/research/robot/evidence/alberta_retention_tournament";
 const VARIANTS = [
-  { name: 'linear', learner: 'alberta', label: 'linear sparse_gated (lookup retention)' },
-  { name: 'cbp_none', learner: 'alberta_cbp', label: 'MLP+CBP, single head (no retention mechanism)' },
-  { name: 'cbp_frozen', learner: 'alberta_cbp', label: 'MLP, frozen random trunk + per-task heads (CBP off)' },
-  { name: 'cbp_multihead', learner: 'alberta_cbp', label: 'MLP, plastic trunk + per-task heads + CBP' },
-  { name: 'cbp_warmupfrz', learner: 'alberta_cbp', label: 'MLP, warmup-then-consolidate trunk + per-task heads' },
-]
+  {
+    name: "linear",
+    learner: "alberta",
+    label: "linear sparse_gated (lookup retention)",
+  },
+  {
+    name: "cbp_none",
+    learner: "alberta_cbp",
+    label: "MLP+CBP, single head (no retention mechanism)",
+  },
+  {
+    name: "cbp_frozen",
+    learner: "alberta_cbp",
+    label: "MLP, frozen random trunk + per-task heads (CBP off)",
+  },
+  {
+    name: "cbp_multihead",
+    learner: "alberta_cbp",
+    label: "MLP, plastic trunk + per-task heads + CBP",
+  },
+  {
+    name: "cbp_warmupfrz",
+    learner: "alberta_cbp",
+    label: "MLP, warmup-then-consolidate trunk + per-task heads",
+  },
+];
 
 const VERIFIER_SCHEMA = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    variant: { type: 'string' },
-    primary_learner: { type: 'string' },
-    seeds: { type: 'integer' },
+    variant: { type: "string" },
+    primary_learner: { type: "string" },
+    seeds: { type: "integer" },
     recomputed: {
-      type: 'object', additionalProperties: false,
-      properties: { acc: { type: 'number' }, bwt: { type: 'number' }, forgetting: { type: 'number' } },
-      required: ['acc', 'bwt', 'forgetting'],
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        acc: { type: "number" },
+        bwt: { type: "number" },
+        forgetting: { type: "number" },
+      },
+      required: ["acc", "bwt", "forgetting"],
     },
     reported: {
-      type: 'object', additionalProperties: false,
-      properties: { acc: { type: 'number' }, bwt: { type: 'number' }, forgetting: { type: 'number' } },
-      required: ['acc', 'bwt', 'forgetting'],
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        acc: { type: "number" },
+        bwt: { type: "number" },
+        forgetting: { type: "number" },
+      },
+      required: ["acc", "bwt", "forgetting"],
     },
-    matches_reported: { type: 'boolean' },
-    mean_diagonal: { type: 'number' },
-    mean_final: { type: 'number' },
-    ppo_acc: { type: 'number' },
-    notes: { type: 'string' },
+    matches_reported: { type: "boolean" },
+    mean_diagonal: { type: "number" },
+    mean_final: { type: "number" },
+    ppo_acc: { type: "number" },
+    notes: { type: "string" },
   },
-  required: ['variant', 'primary_learner', 'seeds', 'recomputed', 'reported', 'matches_reported', 'mean_diagonal', 'mean_final', 'ppo_acc'],
-}
+  required: [
+    "variant",
+    "primary_learner",
+    "seeds",
+    "recomputed",
+    "reported",
+    "matches_reported",
+    "mean_diagonal",
+    "mean_final",
+    "ppo_acc",
+  ],
+};
 
 const SYNTH_SCHEMA = {
-  type: 'object',
+  type: "object",
   additionalProperties: false,
   properties: {
-    winner: { type: 'string' },
+    winner: { type: "string" },
     claims: {
-      type: 'array',
+      type: "array",
       items: {
-        type: 'object', additionalProperties: false,
-        properties: { claim: { type: 'string' }, holds: { type: 'boolean' }, evidence: { type: 'string' } },
-        required: ['claim', 'holds', 'evidence'],
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          claim: { type: "string" },
+          holds: { type: "boolean" },
+          evidence: { type: "string" },
+        },
+        required: ["claim", "holds", "evidence"],
       },
     },
-    ppo_consistent: { type: 'boolean' },
-    report_markdown: { type: 'string' },
-    verdict: { type: 'string' },
+    ppo_consistent: { type: "boolean" },
+    report_markdown: { type: "string" },
+    verdict: { type: "string" },
   },
-  required: ['winner', 'claims', 'ppo_consistent', 'report_markdown', 'verdict'],
-}
+  required: [
+    "winner",
+    "claims",
+    "ppo_consistent",
+    "report_markdown",
+    "verdict",
+  ],
+};
 
-phase('Verify')
-const verified = await parallel(VARIANTS.map((v) => () =>
-  agent(
-    `You are an adversarial verifier. Read the continual-learning benchmark JSON at \`${BASE}/${v.name}/continual_benchmark.json\`.
+phase("Verify");
+const verified = await parallel(
+  VARIANTS.map(
+    (v) => () =>
+      agent(
+        `You are an adversarial verifier. Read the continual-learning benchmark JSON at \`${BASE}/${v.name}/continual_benchmark.json\`.
 
 This run trained learners sequentially on a 4-task continual benchmark; for each (learner, seed) the JSON's \`results\` list has an entry {name, matrix (TxT), baseline, metrics, seed}. \`matrix[i][j]\` = eval return on task j after training phase i.
 
@@ -78,13 +142,14 @@ Do NOT trust the reported \`metrics\`/\`summary\`. Independently recompute, for 
 Also read the reported summary mean for acc/bwt/forgetting for "${v.learner}", and extract ppo's reported mean ACC from the same JSON (for cross-run consistency).
 
 Set matches_reported=true iff your recomputed acc/bwt/forgetting agree with the reported means within 0.5 absolute. Report seeds = number of seeds for the primary learner. Be precise; this is variant "${v.name}" (${v.label}).`,
-    { schema: VERIFIER_SCHEMA, label: `verify:${v.name}`, phase: 'Verify' },
-  ).then((r) => ({ ...r, _name: v.name })),
-))
+        { schema: VERIFIER_SCHEMA, label: `verify:${v.name}`, phase: "Verify" },
+      ).then((r) => ({ ...r, _name: v.name })),
+  ),
+);
 
-const ok = verified.filter(Boolean)
+const ok = verified.filter(Boolean);
 
-phase('Synthesize')
+phase("Synthesize");
 const synthesis = await agent(
   `You are synthesizing the Alberta continual-learning RETENTION tournament. Here are the independently re-verified results (one per variant), as JSON:
 
@@ -101,7 +166,7 @@ Evaluate these headline claims and mark each holds/true-or-false with concrete n
 6. Also report the plastic-trunk tradeoff: cbp_multihead vs cbp_frozen on ACC and Forgetting.
 
 Pick the overall winner (the variant that best combines retention + capacity + beating ppo). Then write \`report_markdown\`: a concise, honest markdown report with (a) a results table (variant | ACC | BWT | Forgetting | mean_diagonal[capacity] | mean_final[retained]), (b) the claim checks with numbers, (c) the plasticity/retention tradeoff in plain language, (d) any caveats (2 seeds = noisy; toy joint_reach env). Do not overclaim. Set verdict to a one-paragraph bottom line.`,
-  { schema: SYNTH_SCHEMA, label: 'synthesize', phase: 'Synthesize' },
-)
+  { schema: SYNTH_SCHEMA, label: "synthesize", phase: "Synthesize" },
+);
 
 return { verified: ok, synthesis }

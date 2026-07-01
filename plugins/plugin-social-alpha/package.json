@@ -54,7 +54,7 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.14",
+		"@biomejs/biome": "2.5.1",
 		"@cypress/react": "^9.0.2",
 		"@radix-ui/react-slot": "^1.0.0",
 		"@radix-ui/react-tabs": "^1.0.0",

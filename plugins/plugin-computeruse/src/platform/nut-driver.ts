@@ -155,7 +155,8 @@ function resolveKeyCode(key: string): number {
   // Modifier names (shift / ctrl / alt / cmd / meta / super / win) — needed so
   // key_down/key_up can hold a bare modifier. These live in MODIFIER_KEYS as
   // nutjs Key names (e.g. "LeftShift"); resolve to the left-hand variant.
-  const modifierNames = MODIFIER_KEYS[canonical] ?? MODIFIER_KEYS[key.trim().toLowerCase()];
+  const modifierNames =
+    MODIFIER_KEYS[canonical] ?? MODIFIER_KEYS[key.trim().toLowerCase()];
   if (modifierNames && modifierNames.length > 0) {
     const code = m.Key[modifierNames[0]];
     if (code !== undefined) return code;

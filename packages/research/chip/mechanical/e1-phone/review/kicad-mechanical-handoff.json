@@ -1,21 +1,11 @@
 {
   "claim_boundary": "Mechanical-to-KiCad constraints from EVT0 CAD; not routed PCB release.",
   "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-  "device_envelope_mm": [
-    78.0,
-    153.6,
-    11.8
-  ],
+  "device_envelope_mm": [78.0, 153.6, 11.8],
   "kicad_outline_check": {
     "pass": true,
-    "kicad_edge_cuts_mm": [
-      64.0,
-      132.0
-    ],
-    "cad_pcb_outline_mm": [
-      64.0,
-      132.0
-    ],
+    "kicad_edge_cuts_mm": [64.0, 132.0],
+    "cad_pcb_outline_mm": [64.0, 132.0],
     "source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
   },
   "constraints": [

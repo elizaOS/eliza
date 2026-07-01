@@ -15,7 +15,10 @@ export default defineConfig({
   workers: 1,
   reporter: "list",
   outputDir: recording
-    ? path.resolve(import.meta.dirname, "../../e2e-recordings/app-core/test-results")
+    ? path.resolve(
+        import.meta.dirname,
+        "../../e2e-recordings/app-core/test-results",
+      )
     : "./test-results",
   use: {
     baseURL: `http://127.0.0.1:${storybookPort}`,

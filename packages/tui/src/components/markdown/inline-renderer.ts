@@ -3,7 +3,11 @@
  */
 
 import type { Token } from "marked";
-import { hasNestedTokens, type InlineStyleContext, type MarkdownTheme } from "./types.js";
+import {
+  hasNestedTokens,
+  type InlineStyleContext,
+  type MarkdownTheme,
+} from "./types.js";
 
 /**
  * Context for inline rendering operations.

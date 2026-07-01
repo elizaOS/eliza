@@ -20,10 +20,7 @@
     "mass_missing_items_subtotal_g": 8.4,
     "mass_ship_target_g": 168.0,
     "mass_ship_target_tolerance_g": 10.0,
-    "mass_ship_target_window_g": [
-      158.0,
-      178.0
-    ],
+    "mass_ship_target_window_g": [158.0, 178.0],
     "mass_max_g": 200.0,
     "mass_within_ship_target_window": false,
     "mass_ship_target_verdict": "PASS",
@@ -34,22 +31,12 @@
   },
   "display": {
     "size_in": 5.5,
-    "resolution_px": [
-      1080,
-      1920
-    ],
+    "resolution_px": [1080, 1920],
     "type": "IPS LCD",
     "interface": "MIPI DSI",
     "touch": "capacitive multi-touch",
-    "cover_glass_mm": [
-      77.1,
-      151.77,
-      0.7
-    ],
-    "active_area_mm": [
-      68.04,
-      120.96
-    ]
+    "cover_glass_mm": [77.1, 151.77, 0.7],
+    "active_area_mm": [68.04, 120.96]
   },
   "compute": {
     "soc_class": "Rockchip RK3566 (quad Cortex-A55, Mali-G52, 1 TOPS NPU)",
@@ -89,11 +76,7 @@
   "battery": {
     "chemistry": "LiPo pouch",
     "candidate": "LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch",
-    "envelope_mm": [
-      64.0,
-      87.0,
-      5.6
-    ],
+    "envelope_mm": [64.0, 87.0, 5.6],
     "capacity_mAh": 5727,
     "nominal_voltage_V": 3.85,
     "energy_Wh": 22.05,

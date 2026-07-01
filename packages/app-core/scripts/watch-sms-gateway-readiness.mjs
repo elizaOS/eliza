@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
-const adbPath = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
+const adbPath =
+  "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 
 function usage() {
   return [
@@ -39,7 +40,8 @@ function parseArgs(argv) {
       return value;
     };
     if (arg === "--timeout") args.timeoutSeconds = Number.parseInt(next(), 10);
-    else if (arg === "--interval") args.intervalSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--interval")
+      args.intervalSeconds = Number.parseInt(next(), 10);
     else if (arg === "--run-install") args.runInstall = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
@@ -130,11 +132,14 @@ function listHostUsbDevices() {
   const devices = [];
   for (const line of result.stdout.split(/\r?\n/)) {
     const nameMatch = line.match(/"USB Product Name"\s*=\s*"([^"]+)"/);
-    const registryMatch = line.match(/\+\-o\s+([^@<]+)@/);
+    const registryMatch = line.match(/\+-o\s+([^@<]+)@/);
     const name = nameMatch?.[1] ?? registryMatch?.[1];
     if (!name) continue;
     const trimmed = name.trim();
-    if (!trimmed || /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)) {
+    if (
+      !trimmed ||
+      /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)
+    ) {
       continue;
     }
     if (!devices.includes(trimmed)) devices.push(trimmed);
@@ -149,7 +154,12 @@ function listHostUsbDevices() {
 }
 
 function readBridgeDoctor() {
-  const result = run("curl", ["-sS", "--max-time", "5", "http://127.0.0.1:8795/doctor"]);
+  const result = run("curl", [
+    "-sS",
+    "--max-time",
+    "5",
+    "http://127.0.0.1:8795/doctor",
+  ]);
   if (result.status !== 0 || !result.stdout.trim()) return null;
   try {
     return JSON.parse(result.stdout);
@@ -225,10 +235,14 @@ async function main() {
       return;
     }
 
-    const pairing = wirelessAdb.find((service) => service.type.includes("_adb-tls-pairing"));
+    const pairing = wirelessAdb.find((service) =>
+      service.type.includes("_adb-tls-pairing"),
+    );
     if (pairing) {
       if (args.runInstall) {
-        console.log(`[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}`);
+        console.log(
+          `[sms-gateway-watch] wireless pairing ready: ${pairing.endpoint}`,
+        );
         runInstallFlow(["--pair", pairing.endpoint, "--connect", "auto"], "60");
       }
       console.log(
@@ -260,7 +274,9 @@ async function main() {
       return;
     }
 
-    const bridgeOutbound = bridgeDoctor?.checks?.find((check) => check.name === "outbound");
+    const bridgeOutbound = bridgeDoctor?.checks?.find(
+      (check) => check.name === "outbound",
+    );
     if (
       bridgeOutbound?.status === "blocked" &&
       /Shortcut outbound validation missing/.test(bridgeOutbound.detail ?? "")
@@ -282,7 +298,9 @@ async function main() {
       .join(" | ");
     const adbSummary =
       adbDeviceRows.length > 0
-        ? adbDeviceRows.map((device) => `${device.serial}:${device.state}`).join(", ")
+        ? adbDeviceRows
+            .map((device) => `${device.serial}:${device.state}`)
+            .join(", ")
         : "none";
     const lastWireless =
       !wirelessSummary && lastWirelessAdbSummary
@@ -294,10 +312,14 @@ async function main() {
     await sleep(Math.max(1, args.intervalSeconds) * 1000);
   }
 
-  throw new Error(`Timed out waiting ${args.timeoutSeconds}s for an SMS gateway path`);
+  throw new Error(
+    `Timed out waiting ${args.timeoutSeconds}s for an SMS gateway path`,
+  );
 }
 
 main().catch((error) => {
-  console.error(`[sms-gateway-watch] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[sms-gateway-watch] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

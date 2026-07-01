@@ -16,6 +16,16 @@
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+} from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
 import {
   ALL_FEATURE_KEYS,
@@ -32,22 +42,6 @@ import {
   registerFeatureFlagRegistry,
   UnknownFeatureFlagError,
 } from "../src/lifeops/registries/index.ts";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
 import {
   createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,

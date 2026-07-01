@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "security-incident-account-lockdown",
-  title: "Assistant triages a suspected account compromise without leaking secrets",
+  title:
+    "Assistant triages a suspected account compromise without leaking secrets",
   domain: "executive.privacy",
   tags: ["lifeops", "executive-assistant", "privacy", "security"],
   isolation: "per-scenario",

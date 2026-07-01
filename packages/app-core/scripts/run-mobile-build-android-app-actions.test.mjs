@@ -132,10 +132,12 @@ android {
   assert.match(patched, /skipped for cloud\/smoke build/);
 
   const repatched = injectCopyForkLlamaLibTask(
-    patched.replace(
-      "project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'",
-      "project.findProperty('elizaCloudBuild') == 'true'",
-    ).replace("skipped for cloud/smoke build", "skipped for cloud build"),
+    patched
+      .replace(
+        "project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'",
+        "project.findProperty('elizaCloudBuild') == 'true'",
+      )
+      .replace("skipped for cloud/smoke build", "skipped for cloud build"),
   );
 
   assert.match(repatched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);

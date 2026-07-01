@@ -2,9 +2,7 @@
   "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "evidence_classes": {
     "ap_benchmark_evidence": {
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"],
       "claim_level": "required_for_ap_completion",
       "required_markers": [
         "claim_level=L3",
@@ -28,17 +26,11 @@
         "build/chipyard/eliza_rocket/simulator"
       ],
       "claim_level": "required_for_ap_completion",
-      "required_manifest_entries": [
-        "verilog",
-        "dts",
-        "simulator"
-      ],
+      "required_manifest_entries": ["verilog", "dts", "simulator"],
       "status": "missing"
     },
     "isa_cache_mmu_evidence": {
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log"],
       "claim_level": "required_for_ap_completion",
       "required_markers": [
         "ISA profile",
@@ -61,9 +53,7 @@
       "status": "missing"
     },
     "linux_boot_transcript": {
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_linux_boot.log"],
       "claim_level": "required_for_ap_completion",
       "required_markers": [
         "Linux early console",
@@ -79,9 +69,7 @@
       "status": "missing"
     },
     "opensbi_boot_transcript": {
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_opensbi_boot.log"],
       "claim_level": "required_for_ap_completion",
       "required_markers": [
         "OpenSBI v1.2",
@@ -118,9 +106,7 @@
       "status": "present"
     },
     "trap_timer_irq_evidence": {
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log"],
       "claim_level": "required_for_ap_completion",
       "required_markers": [
         "mcause",

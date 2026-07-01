@@ -295,10 +295,9 @@ export async function runSmoke({
   // gate's abi/abilist assertions. Omitted by default — the abi stays a
   // report-only detail for the x86_64/arm64 callers.
   if (expectedAbi) {
-    const abilistOut = adbImpl(
-      ["shell", "getprop", "ro.product.cpu.abilist"],
-      { serial },
-    );
+    const abilistOut = adbImpl(["shell", "getprop", "ro.product.cpu.abilist"], {
+      serial,
+    });
     const abilist = abilistOut.stdout.trim();
     if (abi !== expectedAbi || !abilist.split(",").includes(expectedAbi)) {
       results.push({

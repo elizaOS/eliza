@@ -29,9 +29,7 @@ export async function registerTrainingRuntimeHooks(
       .catch(() => null);
     if (!optimizedPromptService) {
       await runtime.registerService(
-        OptimizedPromptService as Parameters<
-          typeof runtime.registerService
-        >[0],
+        OptimizedPromptService as Parameters<typeof runtime.registerService>[0],
       );
       optimizedPromptService = await runtime.getServiceLoadPromise(
         OptimizedPromptService.serviceType,

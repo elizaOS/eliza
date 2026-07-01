@@ -1,8 +1,6 @@
 {
   "autovectorized_count": 19,
-  "checksum_mismatches": [
-    "dot_product_f32_unrolled4"
-  ],
+  "checksum_mismatches": ["dot_product_f32_unrolled4"],
   "checksum_note": "A mismatch on a floating-point reduction kernel (e.g. dot_product_f32_unrolled4) is expected: vectorized reductions sum elements in a different order than the scalar loop and FP addition is non-associative. This is a numeric ordering difference, not a functional defect. Integer kernels must match.",
   "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "claim_level": "functional",

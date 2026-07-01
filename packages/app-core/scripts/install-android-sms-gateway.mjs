@@ -19,7 +19,9 @@ function resolveElizaWorkspaceRoot(startFile) {
   while (true) {
     if (
       fs.existsSync(path.join(current, "package.json")) &&
-      fs.existsSync(path.join(current, "packages", "app-core", "package.json")) &&
+      fs.existsSync(
+        path.join(current, "packages", "app-core", "package.json"),
+      ) &&
       fs.existsSync(path.join(current, "packages", "app", "package.json"))
     ) {
       return current;
@@ -117,14 +119,18 @@ function parseArgs(argv) {
     else if (arg === "--simulate") args.simulate = next();
     else if (arg === "--message") args.message = next();
     else if (arg === "--clear-logcat") args.clearLogcat = true;
-    else if (arg === "--logcat-lines") args.logcatLines = Number.parseInt(next(), 10);
-    else if (arg === "--watch-logs") args.watchLogsSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--logcat-lines")
+      args.logcatLines = Number.parseInt(next(), 10);
+    else if (arg === "--watch-logs")
+      args.watchLogsSeconds = Number.parseInt(next(), 10);
     else if (arg === "--print-apk") args.printApk = true;
     else if (arg === "--doctor") args.doctor = true;
-    else if (arg === "--wait-device") args.waitDeviceSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--wait-device")
+      args.waitDeviceSeconds = Number.parseInt(next(), 10);
     else if (arg === "--pair") args.pairEndpoint = next();
     else if (arg === "--pair-code") args.pairCode = next();
-    else if (arg === "--wait-pair") args.waitPairSeconds = Number.parseInt(next(), 10);
+    else if (arg === "--wait-pair")
+      args.waitPairSeconds = Number.parseInt(next(), 10);
     else if (arg === "--connect") args.connectEndpoint = next();
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
@@ -182,14 +188,23 @@ function resolveAdb(explicit) {
     process.env.ANDROID_SDK_ROOT &&
       path.join(process.env.ANDROID_SDK_ROOT, "platform-tools", "adb"),
     "/opt/homebrew/share/android-commandlinetools/platform-tools/adb",
-    path.join(process.env.HOME || "", "Library", "Android", "sdk", "platform-tools", "adb"),
+    path.join(
+      process.env.HOME || "",
+      "Library",
+      "Android",
+      "sdk",
+      "platform-tools",
+      "adb",
+    ),
   ]);
   if (fromSdk) return fromSdk;
   const pathResult = run("which", ["adb"], { allowFailure: true });
   if (pathResult.status === 0 && pathResult.stdout.trim()) {
     return pathResult.stdout.trim();
   }
-  throw new Error("adb not found. Set --adb, ADB, ANDROID_HOME, or ANDROID_SDK_ROOT.");
+  throw new Error(
+    "adb not found. Set --adb, ADB, ANDROID_HOME, or ANDROID_SDK_ROOT.",
+  );
 }
 
 function adbArgs(serial, args) {
@@ -255,7 +270,10 @@ function listWirelessAdbServices(adbPath) {
     detail:
       services.length > 0
         ? services
-            .map((service) => `${service.name} ${service.type} ${service.endpoint}`)
+            .map(
+              (service) =>
+                `${service.name} ${service.type} ${service.endpoint}`,
+            )
             .join("; ")
         : "no wireless adb services discovered",
   };
@@ -274,7 +292,11 @@ function findWirelessAdbEndpoint(adbPath, serviceType) {
   return match.endpoint;
 }
 
-async function waitForWirelessAdbEndpoint(adbPath, serviceType, timeoutSeconds) {
+async function waitForWirelessAdbEndpoint(
+  adbPath,
+  serviceType,
+  timeoutSeconds,
+) {
   const deadline = Date.now() + timeoutSeconds * 1000;
   let nextStatusAt = 0;
   while (Date.now() <= deadline) {
@@ -306,7 +328,9 @@ async function waitForWirelessAdbEndpoint(adbPath, serviceType, timeoutSeconds) 
 function resolveWirelessEndpoint(adbPath, endpoint, serviceType) {
   if (endpoint === "auto") return findWirelessAdbEndpoint(adbPath, serviceType);
   if (!/^[^:]+:\d+$/.test(endpoint)) {
-    throw new Error(`Wireless adb endpoint must be host:port or auto; received ${endpoint}`);
+    throw new Error(
+      `Wireless adb endpoint must be host:port or auto; received ${endpoint}`,
+    );
   }
   return endpoint;
 }
@@ -314,7 +338,9 @@ function resolveWirelessEndpoint(adbPath, endpoint, serviceType) {
 async function readPairingCode(code) {
   if (code) return code;
   if (!process.stdin.isTTY) {
-    throw new Error("--pair-code or ADB_PAIR_CODE is required for --pair when stdin is not interactive.");
+    throw new Error(
+      "--pair-code or ADB_PAIR_CODE is required for --pair when stdin is not interactive.",
+    );
   }
   const rl = createInterface({
     input: process.stdin,
@@ -332,7 +358,12 @@ async function readPairingCode(code) {
   }
 }
 
-async function resolveWirelessEndpointAsync(adbPath, endpoint, serviceType, waitSeconds) {
+async function resolveWirelessEndpointAsync(
+  adbPath,
+  endpoint,
+  serviceType,
+  waitSeconds,
+) {
   if (endpoint === "auto" && waitSeconds > 0) {
     return waitForWirelessAdbEndpoint(adbPath, serviceType, waitSeconds);
   }
@@ -347,22 +378,34 @@ async function pairWirelessAdb({ adbPath, endpoint, code, waitSeconds }) {
     waitSeconds,
   );
   const pairingCode = await readPairingCode(code);
-  const result = run(adbPath, ["pair", resolved, pairingCode], { allowFailure: true });
+  const result = run(adbPath, ["pair", resolved, pairingCode], {
+    allowFailure: true,
+  });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
   if (result.status !== 0 || !/Successfully paired/i.test(output)) {
     throw new Error(`adb pair ${resolved} failed:\n${output || "no output"}`);
   }
-  console.log(`[android-sms-gateway] Paired wireless adb endpoint ${resolved}.`);
+  console.log(
+    `[android-sms-gateway] Paired wireless adb endpoint ${resolved}.`,
+  );
 }
 
 function connectWirelessAdb({ adbPath, endpoint }) {
-  const resolved = resolveWirelessEndpoint(adbPath, endpoint, "_adb-tls-connect");
+  const resolved = resolveWirelessEndpoint(
+    adbPath,
+    endpoint,
+    "_adb-tls-connect",
+  );
   const result = run(adbPath, ["connect", resolved], { allowFailure: true });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
   if (result.status !== 0 || !/connected to|already connected/i.test(output)) {
-    throw new Error(`adb connect ${resolved} failed:\n${output || "no output"}`);
+    throw new Error(
+      `adb connect ${resolved} failed:\n${output || "no output"}`,
+    );
   }
-  console.log(`[android-sms-gateway] Connected wireless adb endpoint ${resolved}.`);
+  console.log(
+    `[android-sms-gateway] Connected wireless adb endpoint ${resolved}.`,
+  );
 }
 
 function tryConnectWirelessAdb(adbPath, endpoint) {
@@ -403,7 +446,9 @@ function probeTcpEndpoint(endpoint, timeoutMs = 3000) {
     };
     socket.setTimeout(timeoutMs);
     socket.once("connect", () => finish(true, `tcp reachable ${endpoint}`));
-    socket.once("timeout", () => finish(false, `tcp timed out after ${timeoutMs}ms`));
+    socket.once("timeout", () =>
+      finish(false, `tcp timed out after ${timeoutMs}ms`),
+    );
     socket.once("error", (error) => finish(false, error.message));
   });
 }
@@ -442,7 +487,9 @@ function resolveSerial(adbPath, requested) {
   const devices = listDevices(adbPath);
   if (devices.length === 1) return devices[0];
   if (devices.length === 0) {
-    throw new Error("No adb devices are connected. Connect an Android phone with USB debugging enabled.");
+    throw new Error(
+      "No adb devices are connected. Connect an Android phone with USB debugging enabled.",
+    );
   }
   throw new Error(
     `Multiple adb devices are connected; pass --serial. Devices: ${devices.join(", ")}`,
@@ -479,12 +526,22 @@ function dumpGatewayLogs({ adbPath, serial, lines }) {
   const result = adb(
     adbPath,
     serial,
-    ["logcat", "-d", "-t", String(lines), "-v", "time", ...gatewayLogcatFilter()],
+    [
+      "logcat",
+      "-d",
+      "-t",
+      String(lines),
+      "-v",
+      "time",
+      ...gatewayLogcatFilter(),
+    ],
     { allowFailure: true },
   );
   printSection(
     `recent gateway logs (${lines} lines)`,
-    result.status === 0 ? result.stdout : `unavailable: ${result.stderr || result.stdout}`,
+    result.status === 0
+      ? result.stdout
+      : `unavailable: ${result.stderr || result.stdout}`,
   );
 }
 
@@ -511,7 +568,9 @@ function diagnose({ adbPath, serial }) {
   });
   printSection(
     "package",
-    packagePath.status === 0 ? packagePath.stdout : `not installed: ${packagePath.stderr || packagePath.stdout}`,
+    packagePath.status === 0
+      ? packagePath.stdout
+      : `not installed: ${packagePath.stderr || packagePath.stdout}`,
   );
 
   const roles = shell(adbPath, serial, `cmd role get-role-holders ${smsRole}`, {
@@ -519,7 +578,9 @@ function diagnose({ adbPath, serial }) {
   });
   printSection(
     "sms role holders",
-    roles.status === 0 ? roles.stdout : `unavailable: ${roles.stderr || roles.stdout}`,
+    roles.status === 0
+      ? roles.stdout
+      : `unavailable: ${roles.stderr || roles.stdout}`,
   );
 
   const permissions = shell(
@@ -530,7 +591,9 @@ function diagnose({ adbPath, serial }) {
   );
   printSection(
     "runtime permissions",
-    permissions.status === 0 ? permissions.stdout : `unavailable: ${permissions.stderr || permissions.stdout}`,
+    permissions.status === 0
+      ? permissions.stdout
+      : `unavailable: ${permissions.stderr || permissions.stdout}`,
   );
 
   const receivers = shell(
@@ -541,7 +604,9 @@ function diagnose({ adbPath, serial }) {
   );
   printSection(
     "sms deliver receivers",
-    receivers.status === 0 ? receivers.stdout : `unavailable: ${receivers.stderr || receivers.stdout}`,
+    receivers.status === 0
+      ? receivers.stdout
+      : `unavailable: ${receivers.stderr || receivers.stdout}`,
   );
 }
 
@@ -572,7 +637,9 @@ function grantSmsRole({ adbPath, serial }) {
 
 function simulateInboundSms({ adbPath, serial, number, message }) {
   if (!/^emulator-/.test(serial)) {
-    throw new Error("--simulate only works on Android emulators; physical devices require a real inbound SMS.");
+    throw new Error(
+      "--simulate only works on Android emulators; physical devices require a real inbound SMS.",
+    );
   }
   console.log(`[android-sms-gateway] Simulating inbound SMS from ${number}`);
   adb(adbPath, serial, ["emu", "sms", "send", number, message]);
@@ -805,11 +872,15 @@ function hostUsbInventoryFromIoreg() {
   const names = [];
   for (const line of result.stdout.split(/\r?\n/)) {
     const nameMatch = line.match(/"USB Product Name"\s*=\s*"([^"]+)"/);
-    const registryMatch = line.match(/\+\-o\s+([^@<]+)@/);
+    const registryMatch = line.match(/\+-o\s+([^@<]+)@/);
     const name = nameMatch?.[1] ?? registryMatch?.[1];
     if (!name) continue;
     const trimmed = name.trim();
-    if (!trimmed || /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)) continue;
+    if (
+      !trimmed ||
+      /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)
+    )
+      continue;
     if (!names.includes(trimmed)) names.push(trimmed);
   }
   return summarizeUsbDevices(names, "no USB devices enumerated by ioreg");
@@ -817,7 +888,10 @@ function hostUsbInventoryFromIoreg() {
 
 function listHostUsbDevices() {
   if (process.platform !== "darwin") {
-    return { ok: true, detail: "host USB inventory is only available on macOS" };
+    return {
+      ok: true,
+      detail: "host USB inventory is only available on macOS",
+    };
   }
   const profiler = hostUsbInventoryFromSystemProfiler();
   if (profiler.ok) return profiler;
@@ -881,12 +955,17 @@ function apkManifestSummary(apk) {
     ...requiredPermissions
       .filter((perm) => !badging.stdout.includes(`android.permission.${perm}`))
       .map((perm) => `permission:${perm}`),
-    ...requiredManifestMarkers.filter((marker) => !manifest.stdout.includes(marker)),
+    ...requiredManifestMarkers.filter(
+      (marker) => !manifest.stdout.includes(marker),
+    ),
   ];
 
   return {
     ok: missing.length === 0,
-    details: missing.length > 0 ? missing : ["SMS gateway manifest surface is present"],
+    details:
+      missing.length > 0
+        ? missing
+        : ["SMS gateway manifest surface is present"],
   };
 }
 
@@ -918,13 +997,19 @@ async function runDoctor({ apk, adbPath }) {
     adbDetail = error instanceof Error ? error.message : String(error);
   }
   const wirelessPairingServices =
-    wirelessAdb.services?.filter((service) => service.type.includes("_adb-tls-pairing")) ?? [];
+    wirelessAdb.services?.filter((service) =>
+      service.type.includes("_adb-tls-pairing"),
+    ) ?? [];
   const wirelessConnectServices =
-    wirelessAdb.services?.filter((service) => service.type.includes("_adb-tls-connect")) ?? [];
+    wirelessAdb.services?.filter((service) =>
+      service.type.includes("_adb-tls-connect"),
+    ) ?? [];
   let wirelessConnectProbe = null;
   let wirelessTcpProbe = null;
   if (devices.length === 0 && wirelessConnectServices.length > 0) {
-    wirelessTcpProbe = await probeTcpEndpoint(wirelessConnectServices[0].endpoint);
+    wirelessTcpProbe = await probeTcpEndpoint(
+      wirelessConnectServices[0].endpoint,
+    );
     wirelessConnectProbe = tryConnectWirelessAdb(
       adbPath,
       wirelessConnectServices[0].endpoint,
@@ -949,7 +1034,7 @@ async function runDoctor({ apk, adbPath }) {
           ? `no connected adb devices; observed: ${deviceRows.map((device) => `${device.serial} ${device.state}`).join(", ") || "none"}; tcp probe: ${wirelessTcpProbe?.detail ?? "not attempted"}; connect probe: ${wirelessConnectProbe.detail}`
           : deviceRows.length > 0
             ? `no authorized adb devices; observed: ${deviceRows.map((device) => `${device.serial} ${device.state}`).join(", ")}`
-          : "no connected adb devices",
+            : "no connected adb devices",
   });
   const wirelessAdbReady =
     devices.length > 0 || wirelessPairingServices.length > 0 || !wirelessAdb.ok
@@ -973,13 +1058,20 @@ async function runDoctor({ apk, adbPath }) {
 
   const bridge = readBridgeHealth();
   const bridgeBody = bridge.ok ? bridge.body : null;
-  const bridgeChecks = Array.isArray(bridgeBody?.checks) ? bridgeBody.checks : [];
+  const bridgeChecks = Array.isArray(bridgeBody?.checks)
+    ? bridgeBody.checks
+    : [];
   const bridgeStatus = bridgeChecks.find((check) => check.name === "bridge");
-  const bridgeOutbound = bridgeChecks.find((check) => check.name === "outbound");
+  const bridgeOutbound = bridgeChecks.find(
+    (check) => check.name === "outbound",
+  );
   checks.push({
     name: "bridge",
     ok: bridge.ok && bridgeStatus?.status === "pass",
-    detail: bridge.ok ? (bridgeStatus?.detail ?? `doctor status=${bridgeBody?.status ?? "unknown"}`) : bridge.error,
+    detail: bridge.ok
+      ? (bridgeStatus?.detail ??
+        `doctor status=${bridgeBody?.status ?? "unknown"}`)
+      : bridge.error,
   });
   checks.push({
     name: "bridge-outbound",
@@ -1083,6 +1175,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`[android-sms-gateway] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[android-sms-gateway] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

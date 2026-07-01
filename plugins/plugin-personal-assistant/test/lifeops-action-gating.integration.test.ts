@@ -102,7 +102,9 @@ describe("LifeOps plugin action gating", () => {
   });
 
   it("exposes the canonical owner-operation action surface on the plugin", () => {
-    const actionNames = (personalAssistantPlugin.actions ?? []).map((a) => a.name);
+    const actionNames = (personalAssistantPlugin.actions ?? []).map(
+      (a) => a.name,
+    );
     // Spot-check a mix of categories: email, calendar, owner state, scheduling, followups.
     for (const expected of [
       "MESSAGE",
@@ -161,9 +163,9 @@ describe("LifeOps plugin action gating", () => {
   });
 
   it("auto-registers plugin-health after PA runtime registries exist", () => {
-    expect(runtime.plugins.some((plugin) => plugin.name === "plugin-health")).toBe(
-      true,
-    );
+    expect(
+      runtime.plugins.some((plugin) => plugin.name === "plugin-health"),
+    ).toBe(true);
 
     const host = runtime as AgentRuntime & {
       connectorRegistry?: { get(kind: string): unknown };
@@ -193,11 +195,17 @@ describe("LifeOps plugin action gating", () => {
       "OWNER_REMINDERS",
       "OWNER_ALARMS",
     ]) {
-      const action = runtime.actions.find((candidate) => candidate.name === name);
-      expect(action, `${name} should be registered in runtime.actions`).toBeDefined();
-      expect(action?.description ?? "", `${name} should not be a scaffold`).not.toMatch(
-        /scaffold_stub|not migrated|not yet implemented/i,
+      const action = runtime.actions.find(
+        (candidate) => candidate.name === name,
       );
+      expect(
+        action,
+        `${name} should be registered in runtime.actions`,
+      ).toBeDefined();
+      expect(
+        action?.description ?? "",
+        `${name} should not be a scaffold`,
+      ).not.toMatch(/scaffold_stub|not migrated|not yet implemented/i);
     }
   });
 
@@ -296,7 +304,9 @@ describe("LifeOps plugin action gating", () => {
     );
 
     // Legacy umbrella names must NOT be registered as standalone actions.
-    const actionNames = (personalAssistantPlugin.actions ?? []).map((a) => a.name);
+    const actionNames = (personalAssistantPlugin.actions ?? []).map(
+      (a) => a.name,
+    );
     expect(actionNames).not.toContain("MONEY");
     expect(actionNames).not.toContain("PAYMENTS");
     expect(actionNames).not.toContain("SUBSCRIPTIONS");
@@ -321,7 +331,9 @@ describe("LifeOps plugin action gating", () => {
       "list_active",
     ]);
 
-    const actionNames = (personalAssistantPlugin.actions ?? []).map((a) => a.name);
+    const actionNames = (personalAssistantPlugin.actions ?? []).map(
+      (a) => a.name,
+    );
     expect(actionNames).not.toContain("APP_BLOCK");
     expect(actionNames).not.toContain("WEBSITE_BLOCK");
   });
@@ -344,13 +356,17 @@ describe("LifeOps plugin action gating", () => {
       "inject_password",
     ]);
 
-    const actionNames = (personalAssistantPlugin.actions ?? []).map((a) => a.name);
+    const actionNames = (personalAssistantPlugin.actions ?? []).map(
+      (a) => a.name,
+    );
     expect(actionNames).not.toContain("AUTOFILL");
     expect(actionNames).not.toContain("PASSWORD_MANAGER");
   });
 
   it("registers per-action virtuals for the BLOCK / OWNER_FINANCES / CREDENTIALS umbrellas", () => {
-    const actionNames = (personalAssistantPlugin.actions ?? []).map((a) => a.name);
+    const actionNames = (personalAssistantPlugin.actions ?? []).map(
+      (a) => a.name,
+    );
     // Spot-check one virtual per umbrella to confirm `promoteSubactionsToActions`
     // wired the parents through. Virtuals exist alongside the umbrella so the
     // planner gets a discoverable top-level entry per child action.

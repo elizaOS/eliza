@@ -73,7 +73,13 @@ function scene(ocr: SceneOcrBox[]): Scene {
   return {
     timestamp: 1,
     displays: [
-      { id: 0, bounds: [0, 0, 16, 16], scaleFactor: 1, primary: true, name: "f" },
+      {
+        id: 0,
+        bounds: [0, 0, 16, 16],
+        scaleFactor: 1,
+        primary: true,
+        name: "f",
+      },
     ],
     focused_window: null,
     apps: [],

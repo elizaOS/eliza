@@ -49,7 +49,16 @@ function transcribe(phrase, idx) {
   execFileSync("say", ["-o", aiff, phrase]);
   if (!process.env.NO_AUDIO) execFileSync("say", [phrase]); // audible for the video
   execFileSync("ffmpeg", [
-    "-y", "-loglevel", "error", "-i", aiff, "-ar", "16000", "-ac", "1", wav,
+    "-y",
+    "-loglevel",
+    "error",
+    "-i",
+    aiff,
+    "-ar",
+    "16000",
+    "-ac",
+    "1",
+    wav,
   ]);
   return execFileSync(WHISPER, ["-m", MODEL, "-f", wav, "-nt"], {
     encoding: "utf8",
@@ -65,7 +74,9 @@ function runTwoStage(config, transcript) {
     config,
   ));
   if (s.phase !== "confirming")
-    throw new Error(`candidate did not arm a confirm window on ${selectWakePath(config)}`);
+    throw new Error(
+      `candidate did not arm a confirm window on ${selectWakePath(config)}`,
+    );
   return wakeControllerReducer(
     s,
     { type: "stage-b-transcript", transcript, now: 1200 },
@@ -86,15 +97,23 @@ const pathCases = [
 ];
 for (const [name, caps, want] of pathCases) {
   total += 1;
-  const got = selectWakePath({ characterName: name, trainedHeads: HEADS, capabilities: caps });
+  const got = selectWakePath({
+    characterName: name,
+    trainedHeads: HEADS,
+    capabilities: caps,
+  });
   const ok = got === want;
   if (ok) pass += 1;
-  console.log(`${ok ? "✅" : "❌"} name="${name}" caps=${caps === FUSED ? "fused" : "web"} → ${got} (want ${want})`);
+  console.log(
+    `${ok ? "✅" : "❌"} name="${name}" caps=${caps === FUSED ? "fused" : "web"} → ${got} (want ${want})`,
+  );
 }
 
 // ── Part 2: two-stage confirmation on REAL transcribed speech ───────────────
 console.log(`\n=== Two-stage ASR confirmation on real audio ===`);
-console.log(`ASR: whisper.cpp Metal · reducer: wakeControllerReducer (shipped UI code)\n`);
+console.log(
+  `ASR: whisper.cpp Metal · reducer: wakeControllerReducer (shipped UI code)\n`,
+);
 
 // phrase spoken · character name · expect a confirmed wake? · command substring
 const audioCases = [
@@ -117,12 +136,17 @@ for (let i = 0; i < audioCases.length; i++) {
   const [phrase, name, expectMatch, expectCmd] = audioCases[i];
   total += 1;
   const transcript = transcribe(phrase, i);
-  const config = { characterName: name, trainedHeads: HEADS, capabilities: FUSED };
+  const config = {
+    characterName: name,
+    trainedHeads: HEADS,
+    capabilities: FUSED,
+  };
   const emit = runTwoStage(config, transcript);
   const matched = emit != null;
   const ok =
     matched === expectMatch &&
-    (!expectMatch || (emit.command.includes(expectCmd) && emit.path === "two-stage-asr"));
+    (!expectMatch ||
+      (emit.command.includes(expectCmd) && emit.path === "two-stage-asr"));
   if (ok) pass += 1;
   console.log(`${ok ? "✅ PASS" : "❌ FAIL"}  name="${name}"`);
   console.log(`   spoken:     "${phrase}"`);

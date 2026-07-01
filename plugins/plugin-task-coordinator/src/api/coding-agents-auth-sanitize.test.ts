@@ -41,11 +41,11 @@ describe("sanitizeAuthResult", () => {
   });
 
   it("allows http and https auth URLs", () => {
-    expect(sanitizeAuthResult({ url: "http://localhost:1455/callback" })).toEqual(
-      {
-        url: "http://localhost:1455/callback",
-      },
-    );
+    expect(
+      sanitizeAuthResult({ url: "http://localhost:1455/callback" }),
+    ).toEqual({
+      url: "http://localhost:1455/callback",
+    });
     expect(sanitizeAuthResult({ url: "https://example.com/callback" })).toEqual(
       {
         url: "https://example.com/callback",

@@ -10,12 +10,22 @@
       "pinned_tag": "v3.10.0",
       "pinned_commit": "BLOCKED_until_first_clone_resolves_tag",
       "scope": [
-        "rv64i-priv", "rv64m", "rv64a", "rv64c",
-        "rv64f", "rv64d",
-        "rv64-zicsr", "rv64-zifencei",
-        "rv64-zba", "rv64-zbb", "rv64-zbs",
-        "rv64v-vsetvl", "rv64v-load-store-unit",
-        "Privilege-Machine", "Privilege-Supervisor", "Sv39"
+        "rv64i-priv",
+        "rv64m",
+        "rv64a",
+        "rv64c",
+        "rv64f",
+        "rv64d",
+        "rv64-zicsr",
+        "rv64-zifencei",
+        "rv64-zba",
+        "rv64-zbb",
+        "rv64-zbs",
+        "rv64v-vsetvl",
+        "rv64v-load-store-unit",
+        "Privilege-Machine",
+        "Privilege-Supervisor",
+        "Sv39"
       ],
       "preflight_command": "make riscv-arch-test-preflight",
       "run_command": "make riscv-arch-test"

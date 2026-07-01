@@ -21,9 +21,7 @@
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
-      "@elizaos/plugin-shopify": [
-        "../../plugins/plugin-shopify/src/index.ts"
-      ],
+      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
       "@elizaos/plugin-training": ["./src/types/host-external-modules.ts"],
       "@elizaos/plugin-vector-browser": [
         "./src/types/host-external-modules.ts"

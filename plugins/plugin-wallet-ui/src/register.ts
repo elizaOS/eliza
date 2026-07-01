@@ -1,5 +1,6 @@
 import "./register-routes.ts";
 
+export { getExplorerTokenUrl } from "./inventory/chainConfig.ts";
 // Re-export the chain/address constants consumers import from the package root.
 // The app build aliases `@elizaos/plugin-wallet-ui` to THIS module (side-effect
 // entry, not the full barrel), so wallet-consuming plugins
@@ -10,7 +11,6 @@ export {
   isAvaxChainName,
   isBscChainName,
 } from "./inventory/constants.ts";
-export { getExplorerTokenUrl } from "./inventory/chainConfig.ts";
 
 // In a terminal host (the Node agent, no DOM), register the wallet inventory
 // view so it renders inline in the terminal. Lazy + DOM-guarded so the terminal

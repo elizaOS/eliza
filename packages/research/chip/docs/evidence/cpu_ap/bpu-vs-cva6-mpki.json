@@ -37,11 +37,7 @@
         }
       ],
       "e1_tie_count": 3,
-      "e1_ties": [
-        "allocator_gc_barrier",
-        "always_not_taken",
-        "always_taken"
-      ],
+      "e1_ties": ["allocator_gc_barrier", "always_not_taken", "always_taken"],
       "e1_win_count": 27,
       "e1_wins": [
         "alias_thrash",
@@ -117,11 +113,7 @@
         }
       ],
       "e1_tie_count": 3,
-      "e1_ties": [
-        "allocator_gc_barrier",
-        "always_not_taken",
-        "always_taken"
-      ],
+      "e1_ties": ["allocator_gc_barrier", "always_not_taken", "always_taken"],
       "e1_win_count": 27,
       "e1_wins": [
         "alias_thrash",
@@ -1235,20 +1227,8 @@
         "H2P_THRESHOLD": 36,
         "H2P_WEIGHT_W": 6,
         "ITTAGE_CTR_W": 3,
-        "ITTAGE_ENTRIES": [
-          1024,
-          1024,
-          2048,
-          2048,
-          2048
-        ],
-        "ITTAGE_HIST_LEN": [
-          4,
-          10,
-          20,
-          40,
-          80
-        ],
+        "ITTAGE_ENTRIES": [1024, 1024, 2048, 2048, 2048],
+        "ITTAGE_HIST_LEN": [4, 10, 20, 40, 80],
         "ITTAGE_PATH_HISTORY_BITS": 64,
         "ITTAGE_PATH_HISTORY_SHIFT": 2,
         "ITTAGE_PATH_HISTORY_TOKEN_BITS": 8,
@@ -1289,14 +1269,7 @@
         "SC_BIAS_ENTRIES": 2048,
         "SC_CTR_W": 6,
         "SC_ENTRIES_TABLE": 1024,
-        "SC_HIST_LEN": [
-          0,
-          4,
-          10,
-          16,
-          27,
-          44
-        ],
+        "SC_HIST_LEN": [0, 4, 10, 16, 27, 44],
         "SC_LOCAL_HISTORY_BITS": 8,
         "SC_LOCAL_HISTORY_ENTRIES": 1024,
         "SC_TABLES": 6,
@@ -1307,13 +1280,7 @@
         "TAGE_ALT_ON_NA_THRESHOLD": 1,
         "TAGE_CTR_W": 3,
         "TAGE_ENTRIES_TABLE": 8192,
-        "TAGE_HIST_LEN": [
-          8,
-          16,
-          44,
-          90,
-          195
-        ],
+        "TAGE_HIST_LEN": [8, 16, 44, 90, 195],
         "TAGE_TABLES": 5,
         "TAGE_TAG_W": 8,
         "TAGE_UBIT_RESET_PERIOD": 100000,

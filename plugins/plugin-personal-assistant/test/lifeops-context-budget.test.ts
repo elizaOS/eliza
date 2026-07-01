@@ -57,7 +57,11 @@ describe("LifeOps context-budget", () => {
     // (its absence costs 0.5) plus a small contribution from inboxTriage (0.2).
     const score = (remaining: { name: string }[]): number => {
       const names = new Set(remaining.map((p) => p.name));
-      return (names.has("lifeops") ? 0.5 : 0) + (names.has("inboxTriage") ? 0.2 : 0) + 0.3;
+      return (
+        (names.has("lifeops") ? 0.5 : 0) +
+        (names.has("inboxTriage") ? 0.2 : 0) +
+        0.3
+      );
     };
     const { baselineScore, results } = await ablateProviders(payloads, score);
     expect(baselineScore).toBeCloseTo(1.0, 5);

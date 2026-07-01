@@ -9,10 +9,10 @@ import type {
   LocalTtsStatusResult,
   SendMessageOptions,
   SendMessageResult,
-  SynthesizeLocalTtsOptions,
-  SynthesizeLocalTtsResult,
   StartOptions,
   StartResult,
+  SynthesizeLocalTtsOptions,
+  SynthesizeLocalTtsResult,
 } from "./definitions.js";
 
 /**

@@ -11,14 +11,7 @@
   "core": "cva6",
   "core_role": "little_core_e1_pro",
   "excluded_from_rd_wdata": {
-    "csrs": [
-      "mcycle",
-      "minstret",
-      "cycle",
-      "time",
-      "instret",
-      "+ high halves"
-    ],
+    "csrs": ["mcycle", "minstret", "cycle", "time", "instret", "+ high halves"],
     "reason": "performance counters are non-deterministic between cycle-accurate RTL and a functional ISS; core-v-verif's Spike tandem scoreboard excludes them",
     "taint_policy": "registers written from a perf-counter CSR read, and any GPR/memory value transitively derived from them, are excluded from rd_wdata comparison; retired PC and instruction word are NEVER excluded"
   },

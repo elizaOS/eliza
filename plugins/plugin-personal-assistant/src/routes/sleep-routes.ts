@@ -16,8 +16,8 @@ type SleepRouteContext = HealthSleepRouteContext & {
   state: LifeOpsRouteContext["state"];
 };
 
-const handleHealthSleepRoutes = createHealthSleepRouteHandler<SleepRouteContext>(
-  {
+const handleHealthSleepRoutes =
+  createHealthSleepRouteHandler<SleepRouteContext>({
     createService: (ctx: SleepRouteContext): LifeOpsService | null => {
       if (!ctx.state.runtime) {
         ctx.error(ctx.res, "Agent runtime is not available", 503);
@@ -27,8 +27,7 @@ const handleHealthSleepRoutes = createHealthSleepRouteHandler<SleepRouteContext>
         ownerEntityId: ctx.state.adminEntityId,
       });
     },
-  },
-);
+  });
 
 export async function handleSleepRoutes(
   ctx: LifeOpsRouteContext,

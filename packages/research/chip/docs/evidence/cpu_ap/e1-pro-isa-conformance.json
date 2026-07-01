@@ -127,14 +127,8 @@
     "isa_tests_executed": 416,
     "isa_tests_failed": 0,
     "isa_tests_passed": 416,
-    "suites_blocked": [
-      "riscv-compliance"
-    ],
-    "suites_passed_clean": [
-      "riscv-tests-p",
-      "riscv-tests-v",
-      "riscv-arch-test"
-    ]
+    "suites_blocked": ["riscv-compliance"],
+    "suites_passed_clean": ["riscv-tests-p", "riscv-tests-v", "riscv-arch-test"]
   },
   "verdict": "The cv64a6_imafdc_sv39 RTL model (== E1 e1-pro little core) passes 416/416 executed CVA6 ISA tests with 0 failures, each verified by RVFI trace comparison against the Spike golden ISS: 118 machine-mode + 106 Sv39 virtual-mode riscv-tests, plus 192 riscv-arch-test architectural-compliance directed tests (cva6.py iss_regr.log: '193 PASSED, 0 FAILED'). The riscv-arch-test suite -- previously fail-closed BLOCKED at 15/221 on a host-binutils `la x0` assembler incompatibility -- now runs end to end via an LLVM clang compile shim, with every executed test matching Spike. This is measured ISA-correctness evidence of the same class core-v-verif provides, valid at L1_RTL_FULL_SOC. riscv-compliance remains not-yet-run (testlist + legacy riscv-test-env not vendored); the toolchain blocker it shared with riscv-arch-test is resolved."
 }

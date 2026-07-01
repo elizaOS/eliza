@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { type Database, dbWrite } from "../../db/helpers";
+import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
   type AgentBackupSnapshotType,
   type AgentSandbox,
@@ -16,7 +17,6 @@ import {
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
-import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -1262,10 +1262,7 @@ export class ElizaSandboxService {
         // free dedicated compute forever. The service-key resume/restart routes
         // already reactivate; do it here so ALL provision paths re-enter billing.
         // Idempotent + exempt-guarded (ne billing_status 'exempt').
-        await agentBillingRepository.reactivateSandboxBillingAfterFunding(
-          rec.id,
-          new Date(),
-        );
+        await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
 
         logger.info("[agent-sandbox] Provisioned", {
           agentId: rec.id,

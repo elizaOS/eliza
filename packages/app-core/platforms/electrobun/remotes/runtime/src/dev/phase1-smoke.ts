@@ -1,6 +1,6 @@
 import { RuntimeLogBuffer } from "../bun/log-buffer.ts";
-import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";
 import type { RuntimeManagerEvent } from "../bun/protocol.ts";
+import { ElizaRuntimeManager } from "../bun/runtime-manager.ts";
 
 function write(value: string): void {
   process.stdout.write(`${value}\n`);

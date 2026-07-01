@@ -31,7 +31,12 @@ export default scenario({
       name: "draft-beneficiary-update",
       text: "Draft a neutral update for beneficiaries and a separate private note for me on conflict risks. Hold both for my review.",
       plannerIncludesAny: ["owner_send_message", "approval", "privacy"],
-      responseIncludesAny: ["beneficiaries", "private note", "conflict", "review"],
+      responseIncludesAny: [
+        "beneficiaries",
+        "private note",
+        "conflict",
+        "review",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
   ],

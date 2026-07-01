@@ -390,7 +390,10 @@ const vitestResolveAlias: ModuleAlias[] = [
           // `@elizaos/core` alias, which would otherwise treat the source
           // entry file as a directory (`index.node.ts/testing` → ENOTDIR).
           find: /^@elizaos\/core\/testing$/,
-          replacement: path.join(path.dirname(elizaCoreEntry), "testing/index.ts"),
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            "testing/index.ts",
+          ),
         },
         {
           find: "@elizaos/core",

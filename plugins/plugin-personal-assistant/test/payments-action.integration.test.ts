@@ -29,7 +29,6 @@
  */
 
 import type { Memory, UUID } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
 // Audit B Defer #4 folded `PAYMENTS` into the `MONEY` umbrella; exercise the
 // payments handler directly so this integration test still covers the
 // LifeOpsService payments mixin without re-registering the retired action.
@@ -37,6 +36,7 @@ import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentTransaction,
 } from "@elizaos/plugin-finances";
+import { afterEach, describe, expect, it } from "vitest";
 import { runPaymentsHandler } from "../src/actions/payments.ts";
 import {
   createLifeOpsTestRuntime,

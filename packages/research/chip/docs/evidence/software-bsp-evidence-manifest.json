@@ -326,13 +326,7 @@
         },
         {
           "artifact": "Buildroot image manifest",
-          "at_least_one": [
-            [
-              "Image",
-              "vmlinux",
-              "rootfs"
-            ]
-          ],
+          "at_least_one": [["Image", "vmlinux", "rootfs"]],
           "capture_command": "sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot image-manifest",
           "min_bytes": 160,
           "path": "docs/evidence/buildroot/eliza_e1_image_manifest.txt",
