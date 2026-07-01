@@ -186,15 +186,22 @@ app.get("/", async (c) => {
 
     const { category, search, status, scope, limit, offset } = validation.data;
 
-    let mcps: Awaited<ReturnType<typeof userMcpsService.listPublic>>;
+    // Public (foreign) MCPs are redacted — no raw external_endpoint (metered-proxy
+    // bypass) and no created_by_user_id (cross-org user identity). The caller's
+    // OWN MCPs are returned in full. (#10918)
+    type ListedMcp =
+      | Awaited<ReturnType<typeof userMcpsService.listPublic>>[number]
+      | ReturnType<typeof userMcpsService.toPublicMcp>;
+    let mcps: ListedMcp[];
 
     if (scope === "public") {
-      mcps = await userMcpsService.listPublic({
+      const publicMcps = await userMcpsService.listPublic({
         category,
         search,
         limit,
         offset,
       });
+      mcps = publicMcps.map((m) => userMcpsService.toPublicMcp(m));
     } else if (scope === "own") {
       mcps = await userMcpsService.listByOrganization(user.organization_id, {
         status,
@@ -217,7 +224,12 @@ app.get("/", async (c) => {
       ]);
 
       const ownIds = new Set(ownMcps.map((m) => m.id));
-      mcps = [...ownMcps, ...publicMcps.filter((m) => !ownIds.has(m.id))];
+      mcps = [
+        ...ownMcps,
+        ...publicMcps
+          .filter((m) => !ownIds.has(m.id))
+          .map((m) => userMcpsService.toPublicMcp(m)),
+      ];
     }
 
     return c.json({
