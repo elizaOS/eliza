@@ -7681,7 +7681,15 @@ ${section_end}`;
 				);
 				return;
 			}
-			throw error;
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"TEXT_EMBEDDING provider failed dimension probe, skipping embedding setup",
+			);
+			return;
 		}
 		if (!Array.isArray(embedding) || embedding.length === 0) {
 			throw new Error("Invalid embedding received");
