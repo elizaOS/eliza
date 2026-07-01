@@ -24,6 +24,7 @@ import {
 } from "../../utils/desktop-workspace";
 import { Button } from "../ui/button";
 import { SettingsTextarea } from "../ui/settings-controls";
+import { ChatHotkeySettingsGroup } from "./ChatHotkeySettingsGroup";
 import { DesktopWorkspaceDisplay } from "./DesktopWorkspaceDisplay";
 import { useDesktopDiagnosticsText } from "./DesktopWorkspaceDisplay.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -505,6 +506,8 @@ export function DesktopWorkspaceSection({
             </SettingsRow>
           </SettingsGroup>
         </div>
+
+        <ChatHotkeySettingsGroup />
 
         <SettingsGroup
           title={t("desktopworkspacesection.console.title", {

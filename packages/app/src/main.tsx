@@ -122,6 +122,7 @@ import {
   markStartup,
   measureStartup,
 } from "@elizaos/ui/state/startup-telemetry";
+import { getChatOverlayHotkey } from "@elizaos/ui/state/useChatOverlayHotkey";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
@@ -1868,6 +1869,24 @@ async function initializeDesktopShell(): Promise<void> {
     accelerator: "CommandOrControl+K",
   });
 
+  // Programmable chat-overlay summon hotkey (#10716). The command palette keeps
+  // CommandOrControl+K; this is a distinct, user-configurable global shortcut
+  // (default CommandOrControl+Shift+C) that brings the floating chat surface —
+  // which on desktop is the main window — to the foreground. Registered only
+  // when enabled in Desktop settings.
+  const chatOverlayHotkey = getChatOverlayHotkey();
+  if (chatOverlayHotkey.enabled) {
+    await Desktop.registerShortcut({
+      id: "chat-overlay",
+      accelerator: chatOverlayHotkey.accelerator,
+    });
+  }
+
+  const summonChatOverlay = async (): Promise<void> => {
+    await Desktop.showWindow();
+    await Desktop.focusWindow();
+  };
+
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
@@ -1875,6 +1894,8 @@ async function initializeDesktopShell(): Promise<void> {
       const id = (payload as { id?: string } | null | undefined)?.id;
       if (id === "command-palette") {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
+      } else if (id === "chat-overlay") {
+        void summonChatOverlay();
       }
     },
   });
