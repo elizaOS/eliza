@@ -832,11 +832,25 @@ export class AppCreditsService {
     // Use provided app to avoid N+1 query, or fetch if not provided
     const app = providedApp ?? (await appsRepository.findById(appId));
     if (app?.created_by_user_id) {
+      // #10423: make the creator credit IDEMPOTENT. A settlement retry (a
+      // re-run of the chat/message `onFinish` for the SAME request, or a
+      // webhook retry) must not double-credit. Key on a stable per-charge id —
+      // the request idempotency key (inference) or the Stripe payment intent
+      // (purchase) — never on `appId`, which repeats across every charge.
+      // Fall back to the (non-idempotent) app-scoped id only when no per-charge
+      // key is present, preserving the prior behavior for callers without one.
+      const chargeKey =
+        (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
+        (typeof metadata.stripePaymentIntentId === "string" && metadata.stripePaymentIntentId) ||
+        null;
+      const sourceId = chargeKey ? `${chargeKey}:${type}` : appId;
+
       const result = await redeemableEarningsService.addEarnings({
         userId: app.created_by_user_id,
         amount,
         source: "miniapp", // Database enum value - "miniapp" refers to apps
-        sourceId: appId,
+        sourceId,
+        dedupeBySourceId: chargeKey !== null,
         description:
           type === "inference_markup"
             ? `Inference markup from app: ${app.name || appId}`
@@ -848,6 +862,15 @@ export class AppCreditsService {
           ...metadata,
         },
       });
+
+      if (result.deduplicated) {
+        logger.info("[AppCredits] Creator earning already recorded — skipped duplicate", {
+          appId,
+          creatorId: app.created_by_user_id,
+          amount,
+          sourceId,
+        });
+      }
 
       if (!result.success) {
         logger.error("[AppCredits] Failed to credit redeemable earnings", {
