@@ -57,7 +57,7 @@ const provision = mock(async () => ({
 
 const snapshot = mock(async () => undefined);
 
-mock.module("../../../_lib/auth", () => ({
+mock.module("../compat/_lib/auth", () => ({
   requireCompatAuth,
 }));
 
@@ -95,8 +95,12 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { default: resumeRoute } = await import("./resume/route");
-const { default: restartRoute } = await import("./restart/route");
+const { default: resumeRoute } = await import(
+  "../compat/agents/[id]/resume/route"
+);
+const { default: restartRoute } = await import(
+  "../compat/agents/[id]/restart/route"
+);
 
 describe("compat agent resume/restart credit gate", () => {
   const app = new Hono();
