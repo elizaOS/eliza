@@ -23,9 +23,11 @@ const UpdateSlotSchema = z.object({
 async function loadOwnedSlot(c: AppContext) {
   const user = await requireUserOrApiKeyWithOrg(c);
   const slotId = c.req.param("slotId");
-  if (!slotId) return { error: c.json({ success: false, error: "Missing slot id" }, 400) };
+  if (!slotId)
+    return { error: c.json({ success: false, error: "Missing slot id" }, 400) };
   const slot = await adInventoryService.getSlot(slotId);
-  if (!slot) return { error: c.json({ success: false, error: "Slot not found" }, 404) };
+  if (!slot)
+    return { error: c.json({ success: false, error: "Slot not found" }, 404) };
   if (slot.organization_id !== user.organization_id) {
     return { error: c.json({ success: false, error: "Access denied" }, 403) };
   }
@@ -49,10 +51,16 @@ app.patch("/", async (c) => {
   try {
     const { slot, error } = await loadOwnedSlot(c);
     if (error) return error;
-    const parsed = UpdateSlotSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = UpdateSlotSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.flatten() },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.flatten(),
+        },
         400,
       );
     }

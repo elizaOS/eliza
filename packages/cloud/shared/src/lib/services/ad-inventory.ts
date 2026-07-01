@@ -8,8 +8,8 @@
  * pre-funded `ad_campaigns` credits, publisher payout is `redeemable_earnings`.
  */
 
-import { appsRepository } from "../../db/repositories/apps";
 import { adSlotsRepository } from "../../db/repositories/ad-slots";
+import { appsRepository } from "../../db/repositories/apps";
 import type { AdSlot, AdSlotFormat, AdSlotStatus } from "../../db/schemas/ad-slots";
 import { logger } from "../utils/logger";
 import { redeemableEarningsService } from "./redeemable-earnings";

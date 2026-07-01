@@ -14,27 +14,29 @@ import type {
   AppEarningsResponse,
   AppMonetizationResponse,
   AppResponse,
+  CreateAdSlotInput,
+  CreateAdSlotResponse,
   CreateAppInput,
   CreateAppResponse,
   DeleteAppResponse,
   DeployAppInput,
   DeployAppResponse,
+  ListAdSlotsResponse,
   ListAppsResponse,
   RegenerateAppApiKeyResponse,
   UpdateAppInput,
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
-  type CreateAdSlotInput,
-  type CreateAdSlotResponse,
-  type ListAdSlotsResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
 type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
-type CreateAdSlotFn = (input: CreateAdSlotInput) => Promise<CreateAdSlotResponse>;
+type CreateAdSlotFn = (
+  input: CreateAdSlotInput,
+) => Promise<CreateAdSlotResponse>;
 type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
 type DeployAppFn = (
   id: string,
@@ -99,7 +101,20 @@ function defaultState(): SdkState {
         startedAt: "2026-06-29T00:00:00.000Z",
       }),
     createAdSlot: () =>
-      Promise.resolve({ success: true, slot: { id: "slot_1", app_id: "app_1", name: "Slot", format: "banner", status: "active", floor_cpm: "1.0000", total_impressions: 0, total_clicks: 0, total_revenue: "0.000000" } }),
+      Promise.resolve({
+        success: true,
+        slot: {
+          id: "slot_1",
+          app_id: "app_1",
+          name: "Slot",
+          format: "banner",
+          status: "active",
+          floor_cpm: "1.0000",
+          total_impressions: 0,
+          total_clicks: 0,
+          total_revenue: "0.000000",
+        },
+      }),
     listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
     getAppDeployStatus: () =>
       Promise.resolve({

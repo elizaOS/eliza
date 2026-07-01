@@ -17,7 +17,8 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const slotId = c.req.param("slotId");
-    if (!slotId) return c.json({ success: false, error: "Missing slot id" }, 400);
+    if (!slotId)
+      return c.json({ success: false, error: "Missing slot id" }, 400);
     const slot = await adInventoryService.getSlot(slotId);
     if (!slot) return c.json({ success: false, error: "Slot not found" }, 404);
     if (slot.organization_id !== user.organization_id) {

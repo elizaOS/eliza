@@ -32,15 +32,23 @@ function readOpt(options: unknown): Record<string, unknown> | null {
   if (!options || typeof options !== "object") return null;
   const o = options as Record<string, unknown>;
   const nested = o.parameters;
-  return nested && typeof nested === "object" ? (nested as Record<string, unknown>) : o;
+  return nested && typeof nested === "object"
+    ? (nested as Record<string, unknown>)
+    : o;
 }
 
 export const createAdSlotAction: Action = {
   name: "CREATE_AD_SLOT",
-  similes: ["ADD_AD_SLOT", "MONETIZE_WITH_ADS", "SELL_AD_SPACE", "CREATE_AD_PLACEMENT"],
+  similes: [
+    "ADD_AD_SLOT",
+    "MONETIZE_WITH_ADS",
+    "SELL_AD_SPACE",
+    "CREATE_AD_PLACEMENT",
+  ],
   description:
     "Create an ad slot on one of the user's Eliza Cloud apps so it can earn from serving ads. Use when the user wants to monetize an app with ads / sell ad space.",
-  descriptionCompressed: "Create an ad slot on an app to earn from serving ads.",
+  descriptionCompressed:
+    "Create an ad slot on an app to earn from serving ads.",
   contexts: ["settings", "finance", "apps"],
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
@@ -58,7 +66,12 @@ export const createAdSlotAction: Action = {
     const client = getCloudClient(runtime);
     if (!client) {
       await callback?.({ text: NO_KEY_MESSAGE, actions: ["CREATE_AD_SLOT"] });
-      return { success: false, text: "No Cloud API key.", userFacingText: NO_KEY_MESSAGE, data: { reason: "no_key" } };
+      return {
+        success: false,
+        text: "No Cloud API key.",
+        userFacingText: NO_KEY_MESSAGE,
+        data: { reason: "no_key" },
+      };
     }
 
     const reference = extractAppReference(message, options);
@@ -71,17 +84,35 @@ export const createAdSlotAction: Action = {
           ? "You don't have any apps yet — create one first, then I can add an ad slot."
           : `Which app? Your apps are: ${available.join(", ")}.`;
       await callback?.({ text: msg, actions: ["CREATE_AD_SLOT"] });
-      return { success: false, text: "App not found.", userFacingText: msg, data: { reason: "not_found" } };
+      return {
+        success: false,
+        text: "App not found.",
+        userFacingText: msg,
+        data: { reason: "not_found" },
+      };
     }
 
     const rec = readOpt(options) ?? {};
     // Use `slotName` (not `name`, which the planner uses to reference the app).
-    const name = typeof rec.slotName === "string" && rec.slotName.trim() ? rec.slotName.trim() : "Ad slot";
-    const format = (FORMATS.includes(rec.format as AdSlotFormat) ? rec.format : "banner") as AdSlotFormat;
-    const floorCpm = typeof rec.floorCpm === "number" && rec.floorCpm > 0 ? rec.floorCpm : undefined;
+    const name =
+      typeof rec.slotName === "string" && rec.slotName.trim()
+        ? rec.slotName.trim()
+        : "Ad slot";
+    const format = (
+      FORMATS.includes(rec.format as AdSlotFormat) ? rec.format : "banner"
+    ) as AdSlotFormat;
+    const floorCpm =
+      typeof rec.floorCpm === "number" && rec.floorCpm > 0
+        ? rec.floorCpm
+        : undefined;
 
     try {
-      const { slot } = await client.createAdSlot({ appId: app.id, name, format, floorCpm });
+      const { slot } = await client.createAdSlot({
+        appId: app.id,
+        name,
+        format,
+        floorCpm,
+      });
       const reply = `Created ad slot "${slot.name}" (${slot.format}) on "${app.name}". It'll earn when ads are served into it.`;
       await callback?.({ text: reply, actions: ["CREATE_AD_SLOT"] });
       return {
@@ -89,19 +120,34 @@ export const createAdSlotAction: Action = {
         text: `Created ad slot for ${app.name}.`,
         userFacingText: reply,
         verifiedUserFacing: true,
-        data: { slot: { id: slot.id, name: slot.name, format: slot.format }, app: { id: app.id, name: app.name } },
+        data: {
+          slot: { id: slot.id, name: slot.name, format: slot.format },
+          app: { id: app.id, name: app.name },
+        },
       };
     } catch (err) {
-      logger.warn(`[CREATE_AD_SLOT] failed: ${err instanceof Error ? err.message : String(err)}`);
-      const msg = "I couldn't create that ad slot right now — the Cloud API returned an error.";
+      logger.warn(
+        `[CREATE_AD_SLOT] failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      const msg =
+        "I couldn't create that ad slot right now — the Cloud API returned an error.";
       await callback?.({ text: msg, actions: ["CREATE_AD_SLOT"] });
-      return { success: false, text: "Failed to create ad slot.", userFacingText: msg, error: err instanceof Error ? err : new Error(String(err)), data: { reason: "error" } };
+      return {
+        success: false,
+        text: "Failed to create ad slot.",
+        userFacingText: msg,
+        error: err instanceof Error ? err : new Error(String(err)),
+        data: { reason: "error" },
+      };
     }
   },
 
   examples: [
     [
-      { name: "{{user}}", content: { text: "monetize Acme Bot with a banner ad slot" } },
+      {
+        name: "{{user}}",
+        content: { text: "monetize Acme Bot with a banner ad slot" },
+      },
       {
         name: "{{agent}}",
         content: {
@@ -118,7 +164,8 @@ export const listAdSlotsAction: Action = {
   similes: ["SHOW_AD_SLOTS", "MY_AD_INVENTORY", "AD_REVENUE"],
   description:
     "List the user's Eliza Cloud ad slots with impressions, clicks, and revenue. Use when the user asks about their ad inventory or ad earnings.",
-  descriptionCompressed: "List the user's ad slots + their impressions/clicks/revenue.",
+  descriptionCompressed:
+    "List the user's ad slots + their impressions/clicks/revenue.",
   contexts: ["settings", "finance", "apps"],
   contextGate: { anyOf: ["settings", "finance", "apps"] },
   suppressPostActionContinuation: true,
@@ -136,7 +183,12 @@ export const listAdSlotsAction: Action = {
     const client = getCloudClient(runtime);
     if (!client) {
       await callback?.({ text: NO_KEY_MESSAGE, actions: ["LIST_AD_SLOTS"] });
-      return { success: false, text: "No Cloud API key.", userFacingText: NO_KEY_MESSAGE, data: { reason: "no_key" } };
+      return {
+        success: false,
+        text: "No Cloud API key.",
+        userFacingText: NO_KEY_MESSAGE,
+        data: { reason: "no_key" },
+      };
     }
     try {
       const { slots } = await client.listAdSlots();
@@ -158,17 +210,34 @@ export const listAdSlotsAction: Action = {
         data: { count: slots.length },
       };
     } catch (err) {
-      logger.warn(`[LIST_AD_SLOTS] failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn(
+        `[LIST_AD_SLOTS] failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       const msg = "I couldn't list your ad slots right now.";
       await callback?.({ text: msg, actions: ["LIST_AD_SLOTS"] });
-      return { success: false, text: "Failed to list ad slots.", userFacingText: msg, error: err instanceof Error ? err : new Error(String(err)), data: { reason: "error" } };
+      return {
+        success: false,
+        text: "Failed to list ad slots.",
+        userFacingText: msg,
+        error: err instanceof Error ? err : new Error(String(err)),
+        data: { reason: "error" },
+      };
     }
   },
 
   examples: [
     [
-      { name: "{{user}}", content: { text: "how much have my ad slots earned?" } },
-      { name: "{{agent}}", content: { text: "You have 1 ad slot(s):\n• Header (banner, active) — 1200 impressions, 34 clicks, $1.6800 earned", actions: ["LIST_AD_SLOTS"] } },
+      {
+        name: "{{user}}",
+        content: { text: "how much have my ad slots earned?" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "You have 1 ad slot(s):\n• Header (banner, active) — 1200 impressions, 34 clicks, $1.6800 earned",
+          actions: ["LIST_AD_SLOTS"],
+        },
+      },
     ],
   ],
 };

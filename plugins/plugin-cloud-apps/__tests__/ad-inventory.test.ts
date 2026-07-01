@@ -13,9 +13,13 @@ import {
   unkeyedRuntime,
 } from "./helpers";
 
-mock.module("@elizaos/cloud-sdk", () => ({ ElizaCloudClient: FakeElizaCloudClient }));
+mock.module("@elizaos/cloud-sdk", () => ({
+  ElizaCloudClient: FakeElizaCloudClient,
+}));
 
-const { createAdSlotAction, listAdSlotsAction } = await import("../src/actions/ad-inventory.ts");
+const { createAdSlotAction, listAdSlotsAction } = await import(
+  "../src/actions/ad-inventory.ts"
+);
 
 const APP = makeApp({ id: "app_1", name: "Acme Bot", slug: "acme-bot" });
 
@@ -27,22 +31,40 @@ describe("CREATE_AD_SLOT", () => {
   });
 
   it("validate: true with key, false without", async () => {
-    expect(await createAdSlotAction.validate(keyedRuntime(), makeMessage("x"))).toBe(true);
-    expect(await createAdSlotAction.validate(unkeyedRuntime(), makeMessage("x"))).toBe(false);
+    expect(
+      await createAdSlotAction.validate(keyedRuntime(), makeMessage("x")),
+    ).toBe(true);
+    expect(
+      await createAdSlotAction.validate(unkeyedRuntime(), makeMessage("x")),
+    ).toBe(false);
   });
 
   it("no key → no_key", async () => {
     const cb = captureCallback();
-    const res = await createAdSlotAction.handler(unkeyedRuntime(), makeMessage("monetize Acme Bot"), undefined, {}, cb.callback);
+    const res = await createAdSlotAction.handler(
+      unkeyedRuntime(),
+      makeMessage("monetize Acme Bot"),
+      undefined,
+      {},
+      cb.callback,
+    );
     expect(res.success).toBe(false);
     expect(res.data).toMatchObject({ reason: "no_key" });
   });
 
   it("unknown app → not_found", async () => {
     setListApps(() => Promise.resolve({ success: true, apps: [] }));
-    setGetApp(() => Promise.resolve({ success: true, app: undefined as never }));
+    setGetApp(() =>
+      Promise.resolve({ success: true, app: undefined as never }),
+    );
     const cb = captureCallback();
-    const res = await createAdSlotAction.handler(keyedRuntime(), makeMessage("monetize Nope"), undefined, {}, cb.callback);
+    const res = await createAdSlotAction.handler(
+      keyedRuntime(),
+      makeMessage("monetize Nope"),
+      undefined,
+      {},
+      cb.callback,
+    );
     expect(res.success).toBe(false);
     expect(res.data).toMatchObject({ reason: "not_found" });
   });
@@ -75,7 +97,12 @@ describe("CREATE_AD_SLOT", () => {
       cb.callback,
     );
     expect(res.success).toBe(true);
-    expect(captured).toMatchObject({ appId: "app_1", name: "Header", format: "native", floorCpm: 2 });
+    expect(captured).toMatchObject({
+      appId: "app_1",
+      name: "Header",
+      format: "native",
+      floorCpm: 2,
+    });
   });
 });
 
@@ -84,7 +111,13 @@ describe("LIST_AD_SLOTS", () => {
 
   it("reports empty inventory", async () => {
     const cb = captureCallback();
-    const res = await listAdSlotsAction.handler(keyedRuntime(), makeMessage("my ad slots"), undefined, undefined, cb.callback);
+    const res = await listAdSlotsAction.handler(
+      keyedRuntime(),
+      makeMessage("my ad slots"),
+      undefined,
+      undefined,
+      cb.callback,
+    );
     expect(res.success).toBe(true);
     expect(res.userFacingText).toContain("don't have any ad slots");
   });

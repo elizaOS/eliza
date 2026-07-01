@@ -37,16 +37,23 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = CreateSlotSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = CreateSlotSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.flatten() },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.flatten(),
+        },
         400,
       );
     }
 
     const foundApp = await appsService.getById(parsed.data.appId);
-    if (!foundApp) return c.json({ success: false, error: "App not found" }, 404);
+    if (!foundApp)
+      return c.json({ success: false, error: "App not found" }, 404);
     if (foundApp.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
@@ -58,7 +65,10 @@ app.post("/", async (c) => {
       format: parsed.data.format,
       floorCpm: parsed.data.floorCpm ?? 1,
     });
-    logger.info("[Ad Inventory API] created slot", { slotId: slot.id, appId: slot.app_id });
+    logger.info("[Ad Inventory API] created slot", {
+      slotId: slot.id,
+      appId: slot.app_id,
+    });
     return c.json({ success: true, slot }, 201);
   } catch (error) {
     logger.error("[Ad Inventory API] create failed:", error);
