@@ -135,6 +135,7 @@ import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
+import { bootstrapEmbedLaunch } from "./embed-launch";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -2647,6 +2648,22 @@ async function main(): Promise<void> {
   } catch (err) {
     console.error(
       `${APP_LOG_PREFIX} Failed to apply managed cloud launch session:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  try {
+    const embedBootstrap = await bootstrapEmbedLaunch();
+    if (embedBootstrap.status !== "skipped") {
+      console.info(`${APP_LOG_PREFIX} Embed launch bootstrap`, {
+        status: embedBootstrap.status,
+        platform: embedBootstrap.platform,
+        statusCode: embedBootstrap.statusCode,
+      });
+    }
+  } catch (err) {
+    console.error(
+      `${APP_LOG_PREFIX} Failed to bootstrap embedded launch session:`,
       err instanceof Error ? err.message : err,
     );
   }
