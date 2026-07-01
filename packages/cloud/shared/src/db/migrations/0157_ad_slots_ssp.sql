@@ -1,8 +1,12 @@
 -- Ad Inventory / SSP (#10687): miniapps as ad publishers.
 --
--- ad_slots       — a publisher-owned placement (app surface) with a floor CPM.
+-- ad_slots       — a publisher-owned placement (app surface) with a floor CPM
+--                  (default = the $10 minimum billable CPM: the advertiser
+--                  debit is whole cents, so lower floors can never fill).
 -- ad_slot_events — impression/click log; (impression_id, type) is unique, the
---                  exactly-once gate for revenue movement.
+--                  exactly-once gate for revenue movement. An impression row
+--                  with payout_settled_at NULL is a pending publisher payout,
+--                  settled idempotently after the serve commits.
 -- Additive: CREATE ... IF NOT EXISTS, inline FKs, no backfill.
 
 CREATE TABLE IF NOT EXISTS "ad_slots" (
@@ -12,7 +16,7 @@ CREATE TABLE IF NOT EXISTS "ad_slots" (
 	"name" text NOT NULL,
 	"format" text NOT NULL,
 	"status" text DEFAULT 'active' NOT NULL,
-	"floor_cpm" numeric(10, 4) DEFAULT '1.0000' NOT NULL,
+	"floor_cpm" numeric(10, 4) DEFAULT '10.0000' NOT NULL,
 	"total_impressions" integer DEFAULT 0 NOT NULL,
 	"total_clicks" integer DEFAULT 0 NOT NULL,
 	"total_revenue" numeric(12, 6) DEFAULT '0.000000' NOT NULL,
@@ -31,9 +35,11 @@ CREATE TABLE IF NOT EXISTS "ad_slot_events" (
 	"type" text NOT NULL,
 	"impression_id" text NOT NULL,
 	"revenue" numeric(12, 6) DEFAULT '0.000000' NOT NULL,
+	"payout_settled_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "ad_slot_events_slot_idx" ON "ad_slot_events" USING btree ("slot_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "ad_slot_events_campaign_idx" ON "ad_slot_events" USING btree ("campaign_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "ad_slot_events_impression_type_idx" ON "ad_slot_events" USING btree ("impression_id","type");
+CREATE UNIQUE INDEX IF NOT EXISTS "ad_slot_events_impression_type_idx" ON "ad_slot_events" USING btree ("impression_id","type");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "ad_slot_events_unsettled_payout_idx" ON "ad_slot_events" USING btree ("created_at") WHERE "payout_settled_at" IS NULL AND "type" = 'impression';

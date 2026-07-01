@@ -107,7 +107,7 @@ export const createAdSlotAction: Action = {
         : undefined;
 
     try {
-      const { slot } = await client.createAdSlot({
+      const { slot, adTagToken } = await client.createAdSlot({
         appId: app.id,
         name,
         format,
@@ -123,6 +123,9 @@ export const createAdSlotAction: Action = {
         data: {
           slot: { id: slot.id, name: slot.name, format: slot.format },
           app: { id: app.id, name: app.name },
+          // The ad tag needs this signed token to call the public serve
+          // endpoint (null when the deployment has no ad-tag secret).
+          adTagToken: adTagToken ?? null,
         },
       };
     } catch (err) {

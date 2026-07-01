@@ -109,11 +109,12 @@ function defaultState(): SdkState {
           name: "Slot",
           format: "banner",
           status: "active",
-          floor_cpm: "1.0000",
+          floor_cpm: "10.0000",
           total_impressions: 0,
           total_clicks: 0,
           total_revenue: "0.000000",
         },
+        adTagToken: "v1.9999999999.deadbeef",
       }),
     listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
     getAppDeployStatus: () =>

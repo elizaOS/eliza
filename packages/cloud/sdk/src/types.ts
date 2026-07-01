@@ -1166,6 +1166,11 @@ export interface CreateAdSlotInput {
 export interface CreateAdSlotResponse {
   success: boolean;
   slot: AdSlotDto;
+  /**
+   * Signed capability the public serve endpoint requires (`&token=` on the ad
+   * tag). Null when the deployment has no `ELIZA_AD_TAG_SECRET` configured.
+   */
+  adTagToken: string | null;
 }
 
 export interface ListAdSlotsResponse {

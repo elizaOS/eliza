@@ -3,12 +3,15 @@
  *
  * POST /api/v1/marketing/inventory/click  { slot, impression_id }
  *
- * Records a click against a prior impression (idempotent on the impression id).
- * Public + rate limited — consumed by the miniapp's ad tag.
+ * Records a click against a prior impression (idempotent on the impression id;
+ * the impression must belong to the supplied slot). Public — the unguessable
+ * impression id returned by serve is the capability — behind a STRICT IP-keyed
+ * rate limit (cf-connecting-ip; clicks are rare human actions).
  */
 
 import { Hono } from "hono";
 import {
+  getIpKey,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -18,7 +21,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.RELAXED));
+app.use("*", rateLimit({ ...RateLimitPresets.STRICT, keyGenerator: getIpKey }));
 
 app.post("/", async (c) => {
   try {
