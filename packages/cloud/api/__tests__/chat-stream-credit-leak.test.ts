@@ -10,10 +10,11 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const aiActual = require("ai") as Record<string, unknown>;
-const languageModelActual = await import("@/lib/providers/language-model");
 
 const ORG = "00000000-0000-4000-8000-0000000000cc";
 const USER = "00000000-0000-4000-8000-0000000000dd";
+
+class TestInsufficientCreditsError extends Error {}
 
 let streamTextImpl: ((config: Record<string, unknown>) => unknown) | null =
   null;
@@ -66,8 +67,12 @@ mock.module("@/lib/models", () => ({
   resolveModel: () => ({ modelId: "openai/gpt-oss-120b", provider: "openai" }),
 }));
 
+mock.module("@/lib/pricing", () => ({
+  estimateTokens: mock(() => 8),
+  getProviderFromModel: mock(() => "openai"),
+}));
+
 mock.module("@/lib/providers/language-model", () => ({
-  ...languageModelActual,
   getAiProviderConfigurationError: () => "AI services are not configured",
   getLanguageModel: () => ({}) as never,
   hasLanguageModelProviderConfigured: () => true,
@@ -80,6 +85,24 @@ mock.module("@/lib/services/content-moderation", () => ({
   },
 }));
 
+mock.module("@/lib/services/conversations", () => ({
+  conversationsService: {
+    addMessageWithSequence: mock(async () => undefined),
+  },
+}));
+
+mock.module("@/lib/services/generations", () => ({
+  generationsService: {
+    create: mock(async () => undefined),
+  },
+}));
+
+mock.module("@/lib/services/usage", () => ({
+  usageService: {
+    create: mock(async () => ({ id: "usage-1" })),
+  },
+}));
+
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     error: mock(),
@@ -88,7 +111,25 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-class TestInsufficientCreditsError extends Error {}
+const billUsage = mock(async () => ({
+  inputCost: 0.001,
+  outputCost: 0.002,
+  totalCost: 0.003,
+  baseInputCost: 0.001,
+  baseOutputCost: 0.002,
+  baseTotalCost: 0.003,
+  platformMarkup: 0,
+  inputTokens: 5,
+  outputTokens: 7,
+  totalTokens: 12,
+  markupApplied: true,
+}));
+
+mock.module("@/lib/services/ai-billing", () => ({
+  billUsage,
+  estimateTokens: mock(() => 8),
+  InsufficientCreditsError: TestInsufficientCreditsError,
+}));
 
 function makeLedgerReservation(startBalance: number, hold: number) {
   let balance = startBalance - hold;
@@ -129,12 +170,12 @@ const { default: chatRoute } = await import("../v1/chat/route");
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
-  mock.module("@/lib/providers/language-model", () => languageModelActual);
 });
 
 beforeEach(() => {
   ledger = makeLedgerReservation(100, 0.015);
   streamText.mockClear();
+  billUsage.mockClear();
   streamTextImpl = null;
   currentUserImpl = async () => ({ id: USER, organization_id: ORG });
   anonymousUserImpl = null;
@@ -245,5 +286,55 @@ describe("/v1/chat org-membership parity (#10557 part 2)", () => {
 
     expect(response.status).toBe(200);
     expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test("anonymous caller with affiliate code does not mint affiliate earnings", async () => {
+    currentUserImpl = async () => null;
+    anonymousUserImpl = async () => ({
+      user: { id: "anon-user", organization_id: undefined },
+      session: {
+        id: "anon-session",
+        session_token: "anon-token",
+        message_count: 0,
+      },
+    });
+
+    let onFinishPromise: Promise<unknown> | undefined;
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: {
+            text: string;
+            usage: { inputTokens: number; outputTokens: number };
+          }) => Promise<unknown>)
+        | undefined;
+      onFinishPromise = Promise.resolve(
+        onFinish?.({
+          text: "hello",
+          usage: { inputTokens: 5, outputTokens: 7 },
+        }),
+      );
+      return {
+        toUIMessageStreamResponse: () => new Response("stream-started"),
+      };
+    };
+
+    const response = await chatRoute.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-Affiliate-Code": "ATTACKER-CODE",
+      },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    await onFinishPromise;
+
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(billUsage.mock.calls[0][0]).toMatchObject({
+      organizationId: "anonymous",
+      userId: "anon-user",
+      affiliateCode: null,
+    });
   });
 });

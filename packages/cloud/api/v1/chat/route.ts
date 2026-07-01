@@ -294,7 +294,9 @@ app.post("/", async (c) => {
 
     let reservation: CreditReservation =
       creditsService.createAnonymousReservation();
-    const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const requestedAffiliateCode = c.req.header("X-Affiliate-Code") ?? null;
+    const affiliateCode =
+      !isAnonymous && user.organization_id ? requestedAffiliateCode : null;
 
     if (!isAnonymous && user.organization_id) {
       const messageText = messages
