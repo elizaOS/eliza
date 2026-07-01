@@ -238,7 +238,8 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     label: "Wallet",
     tabs: ["inventory", "hyperliquid", "polymarket"],
     icon: Wallet,
-    description: "Crypto wallets, token balances, perps, and prediction markets",
+    description:
+      "Crypto wallets, token balances, perps, and prediction markets",
   },
   {
     label: "Browser",
