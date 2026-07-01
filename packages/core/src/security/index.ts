@@ -26,7 +26,9 @@ export {
 	canonicalKind,
 	type EntitySpan,
 	GazetteerEntityRecognizer,
+	PII_ENTITY_RECOGNIZER_SERVICE,
 	type PiiEntityRecognizer,
+	type PiiEntityRecognizerService,
 	RegexEntityRecognizer,
 	type RegexEntityRecognizerOptions,
 } from "./entity-recognizer.js";
@@ -62,6 +64,10 @@ export {
 } from "./pii-detectors.js";
 export {
 	DEFAULT_PSEUDONYM_BLOCKLIST,
+	PII_SWAP_DISABLED_KINDS_SETTING,
+	PII_SWAP_ENABLED_SETTING,
+	PII_SWAP_EXEMPT_VALUES_SETTING,
+	parsePiiSwapList,
 	type PseudonymEntry,
 	type PseudonymKind,
 	PseudonymSession,

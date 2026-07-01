@@ -122,6 +122,22 @@ export const DEFAULT_PSEUDONYM_BLOCKLIST: readonly string[] = [
 	"system",
 ];
 
+/** Opt-in gate. When falsy, the runtime never mints a PseudonymSession. */
+export const PII_SWAP_ENABLED_SETTING = "ELIZA_PII_SWAP_ENABLED";
+/** Comma-separated values to never swap (false-positive opt-out by value). */
+export const PII_SWAP_EXEMPT_VALUES_SETTING = "ELIZA_PII_SWAP_EXEMPT_VALUES";
+/** Comma-separated entity kinds to skip (e.g. `location,address`). */
+export const PII_SWAP_DISABLED_KINDS_SETTING = "ELIZA_PII_SWAP_DISABLED_KINDS";
+
+/** Parse a comma-separated setting value into a trimmed, non-empty list. */
+export function parsePiiSwapList(value: unknown): string[] {
+	if (typeof value !== "string") return [];
+	return value
+		.split(",")
+		.map((part) => part.trim())
+		.filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Surrogate pools — realistic, fictional values by entity class.
 // ---------------------------------------------------------------------------

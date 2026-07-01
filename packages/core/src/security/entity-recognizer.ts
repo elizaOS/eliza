@@ -54,6 +54,21 @@ export interface PiiEntityRecognizer {
 }
 
 /**
+ * Service type a plugin registers to supply the local NER model recognizer to
+ * the runtime's PII swap layer. `@elizaos/core` never hard-depends on an ONNX
+ * runtime; it looks up this service when PII swap is enabled and composes the
+ * returned recognizer with its built-in regex recognizer. When absent, the layer
+ * runs regex-only (addresses; opt-in email/phone) — degraded but still safe.
+ */
+export const PII_ENTITY_RECOGNIZER_SERVICE = "pii_entity_recognizer";
+
+/** Shape a {@link PII_ENTITY_RECOGNIZER_SERVICE} service must expose. */
+export interface PiiEntityRecognizerService {
+	/** The recognizer, or `null` while the model is still loading / unavailable. */
+	getRecognizer(): PiiEntityRecognizer | null;
+}
+
+/**
  * Options for {@link RegexEntityRecognizer}. Emails and phones are OFF by default:
  * when the secret-swap layer is also enabled it already masks them (as opaque
  * placeholders), and double-owning them across both layers causes a surrogate to
