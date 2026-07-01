@@ -1344,6 +1344,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
   }, [flushQueuedChatSends]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
   const sendChatText = useCallback(
     async (
       rawInput: string,
