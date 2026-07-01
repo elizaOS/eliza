@@ -14,8 +14,17 @@
  * Serial on purpose: avoids any shared-resource contention (ports, temp dirs)
  * between concurrent bun processes. The unit suite is small; correctness first.
  *
+ * Discovers unit test files across the WHOLE package — both the `__tests__`
+ * tree AND colocated `route.test.ts` / `*.test.ts` living next to their source
+ * in the route tree and `src/`. Before #10718, this walked only `__tests__`, so
+ * ~19 colocated route/worker unit suites (auth, billing, credits, webhooks,
+ * cron, v1/agents, src/index) ran in NO lane — one had even silently drifted
+ * (its createAgent mock returned the wrong shape → 500) because nothing ran it.
+ * The `test/` dir (the e2e harness + coverage-audit scripts) is excluded — its
+ * server-gated `*.test.ts` run via `test:e2e`, not here.
+ *
  * Usage:
- *   node test/run-unit-isolated.mjs            # every test file under __tests__
+ *   node test/run-unit-isolated.mjs            # every colocated + __tests__ unit file
  *   node test/run-unit-isolated.mjs <substr>   # only files whose path matches
  */
 import { spawnSync } from "node:child_process";
@@ -25,20 +34,34 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
-const testsDir = path.join(pkgRoot, "__tests__");
+
+// Directories that never hold PR-lane unit tests: deps, build output, caches,
+// and the `test/` e2e harness (server-gated, owned by `test:e2e`).
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  ".turbo",
+  "coverage",
+  ".cache",
+  "test",
+]);
 
 function walk(dir) {
   const out = [];
   for (const entry of readdirSync(dir)) {
     const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else if (/\.(test|spec)\.tsx?$/.test(entry)) out.push(full);
+    if (statSync(full).isDirectory()) {
+      if (SKIP_DIRS.has(entry)) continue;
+      out.push(...walk(full));
+    } else if (/\.(test|spec)\.tsx?$/.test(entry)) {
+      out.push(full);
+    }
   }
   return out;
 }
 
 const filter = process.argv[2];
-let files = walk(testsDir).sort();
+let files = walk(pkgRoot).sort();
 if (filter) files = files.filter((f) => f.includes(filter));
 
 if (files.length === 0) {

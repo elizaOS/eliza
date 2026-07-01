@@ -41,9 +41,15 @@ const createCharacter = mock(async (input: Record<string, unknown>) => ({
   token_ticker: input.token_ticker,
 }));
 const deleteCharacter = mock(async () => undefined);
+// elizaSandboxService.createAgent resolves to `{ agent, idempotent }` and the
+// route destructures `({ agent } = await createAgent(...))`, reading `agent.id`.
+// This mock previously returned `{ id, input }` (no `agent` wrapper), so the
+// route destructured `agent` as undefined and threw on `agent.id` → 500. The
+// drift went unnoticed because this whole file was excluded from CI (#10718);
+// the shape below matches the real service.
 const createAgent = mock(async (input: Record<string, unknown>) => ({
-  id: "cloud-agent-1",
-  input,
+  agent: { id: "cloud-agent-1", input },
+  idempotent: false,
 }));
 const provisionAgent = mock(
   async (): Promise<{
