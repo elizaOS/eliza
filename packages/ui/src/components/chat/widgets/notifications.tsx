@@ -1,5 +1,6 @@
 import type { AgentNotification } from "@elizaos/core";
 import { Bell } from "lucide-react";
+import { categoryIcon } from "../../../state/notifications/category-icon";
 import { useNotifications } from "../../../state/notifications/notification-store";
 import { rankHomeNotifications } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -14,15 +15,26 @@ function NotificationRow({
   notification: AgentNotification;
 }) {
   return (
-    <li className="flex flex-col gap-0.5 px-1 py-1">
-      <span className="truncate text-xs font-medium text-txt">
-        {notification.title}
+    <li className="flex items-start gap-1.5 px-1 py-1">
+      {/* Per-category icon from the one shared map (#10697) — the same iconography
+          the popover NotificationCenter uses, so the two surfaces never drift. */}
+      <span
+        className="mt-0.5 shrink-0 text-muted [&_svg]:h-3.5 [&_svg]:w-3.5"
+        data-testid="notification-row-icon"
+        aria-hidden
+      >
+        {categoryIcon(notification.category)}
       </span>
-      {notification.body ? (
-        <span className="truncate text-2xs text-muted">
-          {notification.body}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate text-xs font-medium text-txt">
+          {notification.title}
         </span>
-      ) : null}
+        {notification.body ? (
+          <span className="truncate text-2xs text-muted">
+            {notification.body}
+          </span>
+        ) : null}
+      </span>
     </li>
   );
 }
@@ -57,7 +69,9 @@ export function NotificationsWidget(props: WidgetProps) {
     const urgent = top.priority === "urgent";
     return (
       <HomeWidgetCard
-        icon={<Bell />}
+        // The tile leads with the top notification's own category icon (#10697)
+        // so the home surface reads its kind at a glance, not a generic bell.
+        icon={categoryIcon(top.category)}
         label="Notifications"
         value={top.title}
         badge={unreadCount > 0 ? unreadCount : undefined}

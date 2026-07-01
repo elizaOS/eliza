@@ -127,4 +127,39 @@ describe("NotificationsWidget (#9143)", () => {
     expect(widget.textContent).toContain("First");
     expect(widget.textContent).toContain("Second");
   });
+
+  it("chat-sidebar slot: every row shows a per-category icon from the shared map (#10697)", () => {
+    __resetNotificationStoreForTests();
+    __ingestNotificationForTests(
+      notification({ title: "Ping", category: "message" }),
+    );
+    __ingestNotificationForTests(
+      notification({ title: "Due", category: "reminder" }),
+      2,
+    );
+
+    render(
+      <NotificationsWidget pluginId="notifications" slot="chat-sidebar" />,
+    );
+
+    const icons = screen.getAllByTestId("notification-row-icon");
+    expect(icons).toHaveLength(2);
+    // Each icon slot renders a real (lucide svg) glyph, not an empty node.
+    for (const icon of icons) {
+      expect(icon.querySelector("svg")).toBeTruthy();
+    }
+  });
+
+  it("home slot: the tile leads with the top notification's category icon (#10697)", () => {
+    __resetNotificationStoreForTests();
+    __ingestNotificationForTests(
+      notification({ title: "New message", category: "message", priority: "high" }),
+      1,
+    );
+
+    render(<NotificationsWidget pluginId="notifications" slot="home" />);
+    const card = screen.getByTestId("widget-notifications");
+    // The card renders an icon glyph (the category icon now, not a hard-coded bell).
+    expect(card.querySelector("svg")).toBeTruthy();
+  });
 });

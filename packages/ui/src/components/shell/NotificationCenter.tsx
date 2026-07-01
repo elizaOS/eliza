@@ -2,18 +2,9 @@ import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import {
   Bell,
   BellRing,
-  Bot,
-  Check,
   CheckCheck,
-  CircleAlert,
-  Clock,
-  FileWarning,
-  HeartPulse,
   Inbox,
-  MessageSquare,
-  Settings2,
   Trash2,
-  Workflow,
   X,
 } from "lucide-react";
 import {
@@ -25,6 +16,7 @@ import {
 } from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
+import { categoryIcon } from "../../state/notifications/category-icon";
 import { navigateDeepLink } from "../../state/notifications/navigate-deep-link";
 import {
   clearNotifications,
@@ -38,22 +30,6 @@ import {
 import { formatRelativeTime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-
-const CATEGORY_ICON: Record<NotificationCategory, ReactNode> = {
-  reminder: <Clock className="h-4 w-4" />,
-  task: <Check className="h-4 w-4" />,
-  workflow: <Workflow className="h-4 w-4" />,
-  agent: <Bot className="h-4 w-4" />,
-  approval: <FileWarning className="h-4 w-4" />,
-  message: <MessageSquare className="h-4 w-4" />,
-  health: <HeartPulse className="h-4 w-4" />,
-  system: <Settings2 className="h-4 w-4" />,
-  general: <CircleAlert className="h-4 w-4" />,
-};
-
-function categoryIcon(category: NotificationCategory): ReactNode {
-  return CATEGORY_ICON[category] ?? CATEGORY_ICON.general;
-}
 
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
