@@ -1,6 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
+import {
+  createSensitiveRequestDispatchRegistry,
+  type SensitiveRequestDeliveryAdapter,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+  createCredentialTunnelService,
+  createSubAgentCredentialBridgeAdapter,
+} from "../../../../packages/app-core/src/services/credential-tunnel-service.ts";
 import {
   type BridgeCredentialAdapter,
   handleBridgeRoutes,
@@ -13,6 +21,7 @@ function fakeRequest(opts: {
   url: string;
   body?: unknown;
   remoteAddress?: string;
+  headers?: Record<string, string>;
 }): IncomingMessage {
   // Back the request with a real paused Readable: it buffers the body until a
   // consumer attaches its "data"/"end" listeners, so it is immune to however
@@ -27,6 +36,10 @@ function fakeRequest(opts: {
   (req as { socket: { remoteAddress: string } }).socket = {
     remoteAddress: opts.remoteAddress ?? "127.0.0.1",
   };
+  (req as { headers: Record<string, string> }).headers = {
+    host: "localhost:2138",
+    ...(opts.headers ?? {}),
+  };
   return req;
 }
 
@@ -39,13 +52,22 @@ function fakeResponse(): {
   const writes: Buffer[] = [];
   let statusCode = 0;
   const res = {
+    statusCode,
+    headersSent: false,
+    setHeader() {
+      return res;
+    },
     writeHead(code: number, _headers?: Record<string, string>) {
       statusCode = code;
+      res.statusCode = code;
+      res.headersSent = true;
     },
     end(chunk?: Buffer | string) {
       if (chunk) {
         writes.push(Buffer.from(typeof chunk === "string" ? chunk : chunk));
       }
+      if (statusCode === 0) statusCode = res.statusCode;
+      res.headersSent = true;
       (res as { writableEnded: boolean }).writableEnded = true;
     },
     writableEnded: false,
@@ -53,7 +75,7 @@ function fakeResponse(): {
   return {
     res,
     writes,
-    status: () => statusCode,
+    status: () => statusCode || res.statusCode,
     body: () => {
       const merged = Buffer.concat(writes).toString("utf8");
       if (!merged) return null;
@@ -87,11 +109,18 @@ function makeCtx(
   // Default to an active session so the existing happy-path tests pass; pass
   // `null`/a terminal status to exercise the rejection paths.
   sessionStatus: string | null = "running",
+  metadata?: Record<string, unknown>,
 ): RouteContext {
   const acpService =
     sessionStatus === null
       ? { getSession: () => null }
-      : { getSession: (id: string) => ({ id, status: sessionStatus }) };
+      : {
+          getSession: (id: string) => ({
+            id,
+            status: sessionStatus,
+            metadata,
+          }),
+        };
   return {
     runtime: {
       getService: (name: string) =>
@@ -150,6 +179,152 @@ describe("bridge-routes — credential bridge", () => {
     expect(adapter.requestCredentials).toHaveBeenCalledWith({
       childSessionId: "pty-1-abc",
       credentialKeys: ["OPENAI_API_KEY"],
+      origin: undefined,
+    });
+  });
+
+  it("POST passes session metadata as origin for owner-app credential delivery", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/pty-1-abc/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const { res, status } = fakeResponse();
+
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/request",
+      makeCtx(adapter, "running", {
+        roomId: "room-owner",
+        channelId: "channel-owner",
+        source: "owner_app",
+        userId: "owner-entity",
+      }),
+    );
+
+    expect(status()).toBe(200);
+    expect(adapter.requestCredentials).toHaveBeenCalledWith({
+      childSessionId: "pty-1-abc",
+      credentialKeys: ["OPENAI_API_KEY"],
+      origin: {
+        roomId: "room-owner",
+        channelId: "channel-owner",
+        source: "owner_app",
+        ownerEntityId: "owner-entity",
+      },
+    });
+  });
+
+  it("routes request and child retrieval through the real app-core adapter", async () => {
+    const tunnel = createCredentialTunnelService();
+    const dispatch = createSensitiveRequestDispatchRegistry();
+    const deliver = vi.fn(
+      async (
+        _args: Parameters<SensitiveRequestDeliveryAdapter["deliver"]>[0],
+      ) => ({
+        delivered: true,
+        target: "owner_app_inline" as const,
+        formRendered: true,
+      }),
+    );
+    dispatch.register({
+      target: "owner_app_inline",
+      deliver,
+    });
+    const adapter = createSubAgentCredentialBridgeAdapter({
+      tunnel,
+      dispatch,
+      runtime: { agentId: "parent-agent" } as never,
+    });
+
+    const postReq = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/pty-1-abc/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY", "STRIPE_KEY"] },
+    });
+    const postRes = fakeResponse();
+
+    await handleBridgeRoutes(
+      postReq,
+      postRes.res,
+      "/api/coding-agents/pty-1-abc/credentials/request",
+      makeCtx(adapter),
+    );
+
+    expect(postRes.status()).toBe(200);
+    const scope = postRes.body() as {
+      credentialScopeId: string;
+      scopedToken: string;
+      sensitiveRequestIds: string[];
+    };
+    expect(scope.credentialScopeId).toMatch(/^cred_scope_/);
+    expect(scope.scopedToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(scope.sensitiveRequestIds).toHaveLength(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    const dispatchedRequest = deliver.mock.calls[0][0].request as unknown as {
+      delivery?: {
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+    };
+    expect(dispatchedRequest.delivery?.tunnel).toEqual({
+      credentialScopeId: scope.credentialScopeId,
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    });
+    expect(JSON.stringify(dispatchedRequest)).not.toContain(scope.scopedToken);
+
+    await adapter.tunnelCredential({
+      childSessionId: "pty-1-abc",
+      credentialScopeId: scope.credentialScopeId,
+      key: "OPENAI_API_KEY",
+      value: "sk-real-route-test",
+    });
+
+    const getReq = fakeRequest({
+      method: "GET",
+      url: `/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=${scope.scopedToken}`,
+    });
+    const getRes = fakeResponse();
+
+    await handleBridgeRoutes(
+      getReq,
+      getRes.res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter),
+    );
+
+    expect(getRes.status()).toBe(200);
+    expect(getRes.body()).toMatchObject({
+      key: "OPENAI_API_KEY",
+      value: "sk-real-route-test",
+    });
+    expect(
+      tunnel.hasCiphertext(scope.credentialScopeId, "OPENAI_API_KEY"),
+    ).toBe(false);
+
+    const replayReq = fakeRequest({
+      method: "GET",
+      url: `/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=${scope.scopedToken}`,
+    });
+    const replayRes = fakeResponse();
+
+    await handleBridgeRoutes(
+      replayReq,
+      replayRes.res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter),
+    );
+
+    expect(replayRes.status()).toBe(403);
+    expect(replayRes.body()).toEqual({
+      error: "already_redeemed",
+      code: "already_redeemed",
     });
   });
 
@@ -250,6 +425,61 @@ describe("bridge-routes — credential bridge", () => {
     );
     expect(status()).toBe(410);
     expect((body() as { code: string }).code).toBe("scope_expired");
+  });
+
+  it("GET preserves the adapter rejection reason as the response code", async () => {
+    const adapter = makeAdapter({
+      tryRetrieveCredential: vi
+        .fn()
+        .mockResolvedValue({ status: "rejected", reason: "already_redeemed" }),
+    });
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter),
+    );
+
+    expect(status()).toBe(403);
+    expect(body()).toEqual({
+      error: "already_redeemed",
+      code: "already_redeemed",
+    });
+  });
+
+  it("GET collapses a raw (non-enum) rejection reason to a stable code", async () => {
+    const adapter = makeAdapter({
+      tryRetrieveCredential: vi.fn().mockResolvedValue({
+        status: "rejected",
+        reason: "Cannot read properties of undefined (reading 'x')",
+      }),
+    });
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY?token=deadbeef",
+    });
+    const { res, status, body } = fakeResponse();
+
+    await handleBridgeRoutes(
+      req,
+      res,
+      "/api/coding-agents/pty-1-abc/credentials/OPENAI_API_KEY",
+      makeCtx(adapter),
+    );
+
+    expect(status()).toBe(403);
+    // Raw error text stays human-readable in `error` but must not leak into the
+    // machine-readable `code`.
+    expect(body()).toEqual({
+      error: "Cannot read properties of undefined (reading 'x')",
+      code: "rejected",
+    });
   });
 
   it("GET requires the token query parameter", async () => {
@@ -489,6 +719,7 @@ describe("coding-agent dispatcher — credential bridge", () => {
     expect(adapter.requestCredentials).toHaveBeenCalledWith({
       childSessionId: "session-1",
       credentialKeys: ["OPENAI_API_KEY"],
+      origin: undefined,
     });
   });
 });

@@ -53,7 +53,12 @@ describeLive("SubAgentRouter (live, gated by RUN_LIVE_ACPX=1)", () => {
         warn: (...args: unknown[]) => console.warn("[router]", ...args),
         error: (...args: unknown[]) => console.error("[router]", ...args),
       },
-      getSetting: (key: string) => process.env[key],
+      getSetting: (key: string) => {
+        if (key === "ELIZA_ACP_TRANSPORT") {
+          return process.env.ELIZA_ACP_TRANSPORT ?? "cli";
+        }
+        return process.env[key];
+      },
       getService: (name: string) =>
         name === "ACP_SUBPROCESS_SERVICE" ? acp : null,
       createMemory: async () => undefined,

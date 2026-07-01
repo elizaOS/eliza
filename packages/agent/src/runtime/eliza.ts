@@ -100,6 +100,7 @@ import {
   type Plugin,
   type Provider,
   stringToUuid,
+  subAgentCredentialsPlugin,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
@@ -250,6 +251,7 @@ import {
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
+import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
 import {
   installDatabaseTrajectoryLogger,
   shouldEnableTrajectoryLoggingByDefault,
@@ -4287,6 +4289,9 @@ export async function startEliza(
   // Deduplicate actions across all plugins to avoid "Action already registered"
   // warnings from elizaOS core. basic-capabilities is registered first by the
   // runtime, so include it in deduplication so its actions take precedence.
+  const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
+    ? [subAgentCredentialsPlugin]
+    : [];
   const settings = character.settings ?? {};
   const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin({
     disableBasic:
@@ -4303,6 +4308,7 @@ export async function startEliza(
   });
   deduplicatePluginActions([
     basicCapabilitiesPlugin,
+    ...subAgentCredentialPlugins,
     elizaPlugin,
     ...pluginsForRuntime,
   ]);
@@ -4312,7 +4318,7 @@ export async function startEliza(
     // advancedCapabilities: true,
     actionPlanning: true,
     // advancedMemory is enabled via character.advancedMemory
-    plugins: [elizaPlugin, ...pluginsForRuntime],
+    plugins: [...subAgentCredentialPlugins, elizaPlugin, ...pluginsForRuntime],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
     // Sandbox options — only active when mode != "off"
     ...(isSandboxActive
@@ -5072,6 +5078,7 @@ export async function startEliza(
 
     deduplicatePluginActions([
       basicCapabilitiesPlugin,
+      ...subAgentCredentialPlugins,
       elizaPlugin,
       ...(runtime.plugins ?? []),
       ...deferredPluginsForRuntime,
@@ -5524,9 +5531,18 @@ export async function startEliza(
               }
             }
           }
+          deduplicatePluginActions([
+            ...subAgentCredentialPlugins,
+            freshElizaPlugin,
+            ...freshPluginsForRuntime,
+          ]);
           const newRuntime = new AgentRuntime({
             character: freshCharacter,
-            plugins: [freshElizaPlugin, ...freshPluginsForRuntime],
+            plugins: [
+              ...subAgentCredentialPlugins,
+              freshElizaPlugin,
+              ...freshPluginsForRuntime,
+            ],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             settings: {
               ...(freshPreferredProviderId

@@ -25,11 +25,13 @@ export type {
 	SubAgentChildDecisionBus,
 	SubAgentChildResultsClient,
 	SubAgentCredentialBridge,
+	SubAgentCredentialRequestOrigin,
 	SubAgentCredentialScope,
 } from "./types.ts";
 
 export {
 	SUB_AGENT_CHILD_DECISION_BUS_SERVICE,
 	SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE,
+	SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
 	SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
 } from "./types.ts";

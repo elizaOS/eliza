@@ -1,4 +1,6 @@
-import { z } from "zod";
+import * as zod from "zod";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 const MessageExampleContentSchema = z
   .object({

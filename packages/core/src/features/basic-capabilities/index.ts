@@ -20,6 +20,7 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
 	bridgeActionCompletedToStreams,
 	bridgeActionStartedToStreams,
@@ -1360,6 +1361,7 @@ export const basicServices: ServiceClass[] = [
 	// Per-channel topic LRU. Records Stage-1-extracted topics per room and
 	// surfaces them back into routing via the CHANNEL_TOPICS provider.
 	ChannelTopicsService,
+	SensitiveRequestDispatchRegistryService,
 ];
 
 /**
@@ -1496,6 +1498,9 @@ export function createBasicCapabilitiesPlugin(
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
 			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
+			await runtime
+				.getService(SensitiveRequestDispatchRegistryService.serviceType)
+				?.stop();
 			if (config.enableAutonomy) {
 				await runtime.getService(AutonomyService.serviceType)?.stop();
 			}

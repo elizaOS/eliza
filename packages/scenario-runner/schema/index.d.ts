@@ -95,6 +95,7 @@ export type CapturedArtifact = {
 
 export type ScenarioContext = {
   runtime?: unknown;
+  apiBaseUrl?: string;
   now?: string;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
@@ -182,6 +183,16 @@ export type ScenarioTurn = {
   method?: string;
   path?: string;
   body?: unknown;
+  /**
+   * For API turns, capture response-body fields for later templates.
+   * Example: `{ scopedToken: "scopedToken" }` then `{{capture:scopedToken}}`.
+   */
+  captures?: Record<string, string>;
+  /**
+   * Field names or dot-paths to redact from persisted reports/viewers. The
+   * in-memory responseBody passed to assertions and captures remains raw.
+   */
+  redactResponseFields?: string[];
   expectedStatus?: number;
   durationMs?: number;
   worker?: string;

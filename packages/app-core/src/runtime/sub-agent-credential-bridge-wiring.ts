@@ -21,13 +21,14 @@
 
 import {
   type AgentRuntime,
+  createSensitiveRequestDispatchRegistry,
   type IAgentRuntime,
   logger,
+  type SensitiveRequestDispatchRegistry,
   Service,
   subAgentCredentialsPlugin,
 } from "@elizaos/core";
 import {
-  type CredentialBridgeDispatch,
   createCredentialTunnelService,
   createSubAgentCredentialBridgeAdapter,
 } from "../services/credential-tunnel-service.js";
@@ -36,6 +37,19 @@ import {
 const ACP_SUBPROCESS_SERVICE = "ACP_SUBPROCESS_SERVICE";
 const BRIDGE_ADAPTER_SERVICE = "SubAgentCredentialBridgeAdapter";
 const BRIDGE_SERVICE = "SubAgentCredentialBridge";
+const BRIDGE_ACTIONS_MARKER_SERVICE = "SubAgentCredentialBridgeActions";
+const DISPATCH_REGISTRY_SERVICE = "SensitiveRequestDispatchRegistry";
+
+function isDispatchRegistry(
+  value: unknown,
+): value is SensitiveRequestDispatchRegistry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { get?: unknown }).get === "function" &&
+    typeof (value as { list?: unknown }).list === "function"
+  );
+}
 
 /**
  * Register a ready singleton object as a runtime service under `serviceTypeName`
@@ -74,44 +88,48 @@ export async function registerSubAgentCredentialBridge(
 ): Promise<void> {
   // Parent gate: only runtimes that can host coding sub-agents.
   if (!runtime.hasService(ACP_SUBPROCESS_SERVICE)) return;
-  // Idempotent: a hot-restart must not double-register the adapter or the
-  // plugin's actions.
-  if (runtime.hasService(BRIDGE_ADAPTER_SERVICE)) return;
 
-  const tunnel = createCredentialTunnelService();
-  const dispatch: CredentialBridgeDispatch = {
-    async dispatch(input) {
-      // The owner-facing inline render is posted to the origin task thread by
-      // the orchestrator route layer (emitCredentialPrompt), which holds the
-      // per-request origin metadata (roomId/source). Here we only correlate the
-      // opened request with its one-shot scope. Identifiers only — never the
-      // scoped token or a value.
-      return { sensitiveRequestIds: [`cred_${input.credentialScopeId}`] };
-    },
-  };
-  const adapter = createSubAgentCredentialBridgeAdapter({
-    tunnel,
-    dispatch,
-    runtime,
-  });
+  // Idempotent for service registration. In the normal app-core boot tail,
+  // registerSubAgentCredentialBridgeAdapter runs first and installs these
+  // services from the sensitive-request registry. This wiring step still owns
+  // action-plugin registration below, so do not return early here.
+  if (!runtime.hasService(BRIDGE_ADAPTER_SERVICE)) {
+    const maybeDispatch = runtime.getService(DISPATCH_REGISTRY_SERVICE);
+    const dispatch = isDispatchRegistry(maybeDispatch)
+      ? maybeDispatch
+      : createSensitiveRequestDispatchRegistry();
+    const adapter = createSubAgentCredentialBridgeAdapter({
+      tunnel: createCredentialTunnelService(),
+      dispatch,
+      runtime,
+    });
 
-  await registerSingletonRuntimeService(
-    runtime,
-    BRIDGE_ADAPTER_SERVICE,
-    adapter,
-    "Sub-agent credential bridge adapter: scoped one-shot credential tunneling for coding sub-agents.",
-  );
-  await registerSingletonRuntimeService(
-    runtime,
-    BRIDGE_SERVICE,
-    adapter,
-    "Sub-agent credential bridge: declare a one-shot scope and tunnel a credential to a child session.",
-  );
+    await registerSingletonRuntimeService(
+      runtime,
+      BRIDGE_ADAPTER_SERVICE,
+      adapter,
+      "Sub-agent credential bridge adapter: scoped one-shot credential tunneling for coding sub-agents.",
+    );
+    await registerSingletonRuntimeService(
+      runtime,
+      BRIDGE_SERVICE,
+      adapter,
+      "Sub-agent credential bridge: declare a one-shot scope and tunnel a credential to a child session.",
+    );
+  }
 
   // DECLARE/TUNNEL/AWAIT/RETRIEVE actions — parent runtime only. (AWAIT/RETRIEVE
   // resolve the decision-bus / results-client services, which are not wired
   // here and degrade cleanly to "service unavailable".)
-  await runtime.registerPlugin(subAgentCredentialsPlugin);
+  if (!runtime.hasService(BRIDGE_ACTIONS_MARKER_SERVICE)) {
+    await runtime.registerPlugin(subAgentCredentialsPlugin);
+    await registerSingletonRuntimeService(
+      runtime,
+      BRIDGE_ACTIONS_MARKER_SERVICE,
+      {},
+      "Sub-agent credential bridge action registration marker.",
+    );
+  }
 
   logger.info(
     "[sub-agent-credentials] credential bridge + actions registered on parent runtime",

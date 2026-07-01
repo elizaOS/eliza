@@ -14,7 +14,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
-const { clientMock, updateSecretsMock, tunnelCredentialMock } = vi.hoisted(
+const { clientMock, tunnelCredentialMock, updateSecretsMock } = vi.hoisted(
   () => ({
     clientMock: {
       getPermission: vi.fn(),
@@ -23,8 +23,8 @@ const { clientMock, updateSecretsMock, tunnelCredentialMock } = vi.hoisted(
       updateSecrets: vi.fn(),
       tunnelCredential: vi.fn(),
     },
-    updateSecretsMock: vi.fn(),
     tunnelCredentialMock: vi.fn(),
+    updateSecretsMock: vi.fn(),
   }),
 );
 
@@ -131,17 +131,18 @@ function pendingOwnerInlineSecretRequest(): ConversationMessage["secretRequest"]
 
 function pendingTunnelSecretRequest(): ConversationMessage["secretRequest"] {
   return {
-    key: "OPENAI_API_KEY",
-    reason: "Sub-agent needs this credential to continue",
+    key: "SUB_AGENT_CREDENTIALS",
+    reason: "A child coding agent needs credentials to continue.",
     status: "pending",
     delivery: {
       mode: "inline_owner_app",
-      instruction: "Provide it securely below.",
+      instruction: "Enter it in this owner-only app form.",
       privateRouteRequired: true,
       canCollectValueInCurrentChannel: true,
       tunnel: {
-        credentialScopeId: "cred_scope_0011223344556677",
         childSessionId: "pty-1-abc",
+        credentialScopeId: "cred_scope_test",
+        keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
       },
     },
     form: {
@@ -155,8 +156,14 @@ function pendingTunnelSecretRequest(): ConversationMessage["secretRequest"] {
           input: "secret",
           required: true,
         },
+        {
+          name: "STRIPE_KEY",
+          label: "STRIPE_KEY",
+          input: "secret",
+          required: true,
+        },
       ],
-      submitLabel: "Provide credential",
+      submitLabel: "Send to sub-agent",
       statusOnly: true,
     },
   };
@@ -313,19 +320,29 @@ describe("MessageContent sensitive requests", () => {
     expect(tunnelCredentialMock).not.toHaveBeenCalled();
   });
 
-  it("routes a tunnel-delivery request through client.tunnelCredential, never updateSecrets (#10317)", async () => {
-    tunnelCredentialMock.mockResolvedValueOnce({ ok: true });
-    const rawSecret = ["tunnel", "secret", String(Date.now())].join("-");
+  it("submits tunneled sub-agent credentials through the tunnel endpoint instead of saving global secrets", async () => {
+    tunnelCredentialMock.mockResolvedValue({
+      ok: true,
+      childSessionId: "pty-1-abc",
+      credentialScopeId: "cred_scope_test",
+      key: "OPENAI_API_KEY",
+    });
     const { container } = render(
       <MessageContent
         message={baseMessage({ secretRequest: pendingTunnelSecretRequest() })}
       />,
     );
+    expect(screen.getByText("Sub-agent credentials")).toBeTruthy();
 
+    const openAiValue = ["sk", "openai", String(Date.now())].join("-");
+    const stripeValue = ["sk", "stripe", String(Date.now())].join("-");
     fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), {
-      target: { value: rawSecret },
+      target: { value: openAiValue },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Provide credential" }));
+    fireEvent.change(screen.getByLabelText("STRIPE_KEY"), {
+      target: { value: stripeValue },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send to sub-agent" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
@@ -333,17 +350,24 @@ describe("MessageContent sensitive requests", () => {
       );
     });
 
-    expect(tunnelCredentialMock).toHaveBeenCalledTimes(1);
-    expect(tunnelCredentialMock.mock.calls[0]?.[0]).toEqual({
-      credentialScopeId: "cred_scope_0011223344556677",
-      childSessionId: "pty-1-abc",
-      key: "OPENAI_API_KEY",
-      value: rawSecret,
-    });
-    // MUTUALLY EXCLUSIVE: the value never reaches the agent secret store.
     expect(updateSecretsMock).not.toHaveBeenCalled();
-    // The value is never rendered back into chat text.
-    expect(container.textContent?.includes(rawSecret)).toBe(false);
+    expect(tunnelCredentialMock).toHaveBeenCalledTimes(2);
+    expect(tunnelCredentialMock).toHaveBeenNthCalledWith(1, {
+      childSessionId: "pty-1-abc",
+      credentialScopeId: "cred_scope_test",
+      key: "OPENAI_API_KEY",
+      value: openAiValue,
+    });
+    expect(tunnelCredentialMock).toHaveBeenNthCalledWith(2, {
+      childSessionId: "pty-1-abc",
+      credentialScopeId: "cred_scope_test",
+      key: "STRIPE_KEY",
+      value: stripeValue,
+    });
+    expect(container.textContent?.includes(openAiValue)).toBe(false);
+    expect(container.textContent?.includes(stripeValue)).toBe(false);
+    expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
+    expect(screen.queryByLabelText("STRIPE_KEY")).toBeNull();
   });
 
   it("renders an image field as a file input and delivers it via updateSecrets (#8910)", async () => {

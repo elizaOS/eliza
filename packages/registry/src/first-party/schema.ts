@@ -13,7 +13,9 @@
 // validationErrors) lives in RegistryRuntimeOverlay and is merged at API read
 // time — never in the registry files themselves.
 
-import { z } from "zod";
+import * as zod from "zod";
+
+const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
 // ---------------------------------------------------------------------------
 // Config field schema — replaces PluginParamDef + ConfigUiHint.
@@ -41,7 +43,7 @@ const configFieldOption = z.object({
   disabled: z.boolean().optional(),
 });
 
-const visibilityCondition: z.ZodType<{
+const visibilityCondition: zod.ZodType<{
   key: string;
   equals?: unknown;
   in?: unknown[];
@@ -86,7 +88,7 @@ export const configFieldSchema = z.object({
   autoEnableProvider: z.boolean().optional(),
 });
 
-export type ConfigField = z.infer<typeof configFieldSchema>;
+export type ConfigField = zod.infer<typeof configFieldSchema>;
 
 // ---------------------------------------------------------------------------
 // Render hints — replaces VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS /
@@ -139,8 +141,8 @@ export const renderSchema = z.object({
   actions: z.array(renderActionSchema).default([]),
 });
 
-export type RenderHints = z.infer<typeof renderSchema>;
-export type SecondarySurface = z.infer<typeof secondarySurfaceSchema>;
+export type RenderHints = zod.infer<typeof renderSchema>;
+export type SecondarySurface = zod.infer<typeof secondarySurfaceSchema>;
 
 // ---------------------------------------------------------------------------
 // External resources (already in plugins.json today).
@@ -152,7 +154,7 @@ export const resourcesSchema = z.object({
   setupGuideUrl: z.string().url().optional(),
 });
 
-export type Resources = z.infer<typeof resourcesSchema>;
+export type Resources = zod.infer<typeof resourcesSchema>;
 
 // ---------------------------------------------------------------------------
 // App-only: launch + viewer + session (mirrors RegistryAppInfo).
@@ -223,7 +225,7 @@ export const appLaunchSchema = z.object({
   mainTab: z.boolean().optional(),
 });
 
-export type AppLaunch = z.infer<typeof appLaunchSchema>;
+export type AppLaunch = zod.infer<typeof appLaunchSchema>;
 
 // ---------------------------------------------------------------------------
 // Common fields shared by every entry.
@@ -329,8 +331,8 @@ export const accountConfigSchema = z.object({
   notes: z.string().optional(),
 });
 
-export type AccountConfig = z.infer<typeof accountConfigSchema>;
-export type AccountAuthKind = z.infer<typeof accountAuthKind>;
+export type AccountConfig = zod.infer<typeof accountConfigSchema>;
+export type AccountAuthKind = zod.infer<typeof accountAuthKind>;
 
 export const connectorEntrySchema = z.object({
   ...commonFields,
@@ -367,10 +369,10 @@ export const registryEntrySchema = z.discriminatedUnion("kind", [
   appEntrySchema,
 ]);
 
-export type PluginEntry = z.infer<typeof pluginEntrySchema>;
-export type ConnectorEntry = z.infer<typeof connectorEntrySchema>;
-export type AppEntry = z.infer<typeof appEntrySchema>;
-export type RegistryEntry = z.infer<typeof registryEntrySchema>;
+export type PluginEntry = zod.infer<typeof pluginEntrySchema>;
+export type ConnectorEntry = zod.infer<typeof connectorEntrySchema>;
+export type AppEntry = zod.infer<typeof appEntrySchema>;
+export type RegistryEntry = zod.infer<typeof registryEntrySchema>;
 export type RegistryKind = RegistryEntry["kind"];
 
 // ---------------------------------------------------------------------------
@@ -393,7 +395,7 @@ export const registryRuntimeOverlaySchema = z.object({
   latestVersion: z.string().nullable().optional(),
 });
 
-export type RegistryRuntimeOverlay = z.infer<
+export type RegistryRuntimeOverlay = zod.infer<
   typeof registryRuntimeOverlaySchema
 >;
 

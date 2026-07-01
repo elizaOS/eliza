@@ -170,6 +170,75 @@ describe("ownerAppInlineSensitiveRequestAdapter", () => {
     ]);
   });
 
+  it("preserves sub-agent tunnel metadata and renders one field per requested key", async () => {
+    const { runtime, calls } = makeRuntime();
+    const request = makeOwnerAppPrivateRequest() as DispatchSensitiveRequest & {
+      delivery: {
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+      target: { kind: "secret"; key: string };
+    };
+    request.target.key = "SUB_AGENT_CREDENTIALS";
+    request.delivery.tunnel = {
+      credentialScopeId: "cred_scope_test",
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    };
+
+    const result = await ownerAppInlineSensitiveRequestAdapter.deliver({
+      request,
+      channelId: "ch_owner_app",
+      runtime,
+    });
+
+    expect(result.delivered).toBe(true);
+    const envelope = calls[0]?.content.secretRequest as {
+      key: string;
+      label: string;
+      delivery: {
+        tunnel?: {
+          credentialScopeId: string;
+          childSessionId: string;
+          keys?: readonly string[];
+        };
+      };
+      form: {
+        fields: Array<{
+          name: string;
+          label?: string;
+          input: string;
+          required: boolean;
+        }>;
+      };
+    };
+    expect(envelope.key).toBe("SUB_AGENT_CREDENTIALS");
+    expect(envelope.label).toBe("Sub-agent credentials");
+    expect(envelope.delivery.tunnel).toEqual({
+      credentialScopeId: "cred_scope_test",
+      childSessionId: "pty-1-abc",
+      keys: ["OPENAI_API_KEY", "STRIPE_KEY"],
+    });
+    expect(envelope.form.fields).toEqual([
+      {
+        name: "OPENAI_API_KEY",
+        label: "OPENAI_API_KEY",
+        input: "secret",
+        required: true,
+      },
+      {
+        name: "STRIPE_KEY",
+        label: "STRIPE_KEY",
+        input: "secret",
+        required: true,
+      },
+    ]);
+    expect(JSON.stringify(envelope)).not.toContain("scopedToken");
+  });
+
   it("rejects delivery when the channel is not owner-app-private", async () => {
     const { runtime, calls } = makeRuntime();
     const request = makePublicRequest();

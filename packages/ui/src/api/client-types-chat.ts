@@ -209,6 +209,7 @@ export interface SensitiveRequestDelivery {
   tunnel?: {
     credentialScopeId: string;
     childSessionId: string;
+    keys?: readonly string[];
   };
 }
 

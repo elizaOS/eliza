@@ -582,6 +582,36 @@ export function buildInlinePluginConfigModel(
 
 // ── SensitiveRequestBlock helpers ───────────────────────────────────
 
+const SENSITIVE_REQUEST_LABEL_OVERRIDES = new Map<string, string>([
+  ["API", "API"],
+  ["ID", "ID"],
+  ["OAUTH", "OAuth"],
+  ["OPENAI", "OpenAI"],
+  ["TOTP", "TOTP"],
+  ["URI", "URI"],
+  ["URL", "URL"],
+]);
+
+export function sensitiveRequestTitleLabel(key: string): string {
+  const parts = key
+    .trim()
+    .split(/[_\s-]+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "Sensitive request";
+
+  const words = parts.map((part, index) => {
+    const upper = part.toUpperCase();
+    const override = SENSITIVE_REQUEST_LABEL_OVERRIDES.get(upper);
+    if (override) return override;
+    if (upper === "KEY" && index === parts.length - 1) return "key";
+    const lower = part.toLowerCase();
+    if (index > 0) return lower;
+    return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+  });
+
+  return words.join(" ").replace(/^Sub agent\b/i, "Sub-agent");
+}
+
 export function sensitiveRequestStatusLabel(
   status: NonNullable<ConversationMessage["secretRequest"]>["status"],
 ): string {
