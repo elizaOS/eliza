@@ -197,6 +197,7 @@ export * from "./contracts/awareness.ts";
 export * from "./diagnostics/integration-observability.ts";
 export * from "./hooks/index.ts";
 export * from "./providers/workspace.ts";
+export * from "./services/agent-backup.ts";
 export * from "./runtime/advanced-capabilities-config.ts";
 export * from "./runtime/agent-event-service.ts";
 export * from "./runtime/core-plugins.ts";
