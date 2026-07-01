@@ -10,6 +10,7 @@
  * `LIFEOPS_GOOGLE_CAPABILITIES` from `@elizaos/shared`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { formatError } from "@elizaos/core";
 import { INTERNAL_URL } from "../access.js";
 import { LifeOpsService } from "../service.js";
 import {
@@ -78,7 +79,7 @@ export function createGoogleConnectorContribution(
       } catch (error) {
         return {
           state: "disconnected",
-          message: error instanceof Error ? error.message : String(error),
+          message: formatError(error),
           observedAt: new Date().toISOString(),
         };
       }

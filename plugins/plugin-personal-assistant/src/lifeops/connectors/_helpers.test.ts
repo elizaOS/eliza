@@ -16,6 +16,7 @@ import {
   legacyStatusToConnectorStatus,
   rejectInvalidPayload,
 } from "./_helpers.js";
+import type { DispatchResult } from "./contract.js";
 
 describe("errorToDispatchResult", () => {
   it("maps 401/410 to auth_expired (user-actionable)", () => {
@@ -114,6 +115,78 @@ describe("errorToDispatchResult", () => {
       message: "kaboom",
     });
   });
+
+  // Regression for the crash found by the #11003 payload fuzzer: a connector
+  // that rejects with a value whose primitive conversion throws would take down
+  // the whole dispatch path (`TypeError: Cannot convert object to primitive
+  // value`) instead of producing a failure result. The helper must always
+  // return a `DispatchResult`, never rethrow.
+  describe("adversarial: unstringifiable rejection values (crash-safety)", () => {
+    it("survives a null-prototype object (no toString on the chain)", () => {
+      const poisoned = Object.create(null) as unknown;
+      let result: DispatchResult | undefined;
+      expect(() => {
+        result = errorToDispatchResult(poisoned);
+      }).not.toThrow();
+      expect(result).toEqual({
+        ok: false,
+        reason: "transport_error",
+        userActionable: false,
+        message: "[object Object]",
+      });
+    });
+
+    it("survives an object whose toString throws", () => {
+      const poisoned = {
+        toString() {
+          throw new Error("poisoned toString");
+        },
+      };
+      let result: DispatchResult | undefined;
+      expect(() => {
+        result = errorToDispatchResult(poisoned);
+      }).not.toThrow();
+      expect(result).toEqual({
+        ok: false,
+        reason: "transport_error",
+        userActionable: false,
+        message: "[object Object]",
+      });
+    });
+
+    it("survives an object whose Symbol.toPrimitive throws", () => {
+      const poisoned = {
+        [Symbol.toPrimitive]() {
+          throw new Error("poisoned Symbol.toPrimitive");
+        },
+      };
+      let result: DispatchResult | undefined;
+      expect(() => {
+        result = errorToDispatchResult(poisoned);
+      }).not.toThrow();
+      expect(result).toEqual({
+        ok: false,
+        reason: "transport_error",
+        userActionable: false,
+        message: "[object Object]",
+      });
+    });
+
+    it("stringifies a Symbol without throwing", () => {
+      const result = errorToDispatchResult(Symbol("boom"));
+      expect(result).toEqual({
+        ok: false,
+        reason: "transport_error",
+        userActionable: false,
+        message: "Symbol(boom)",
+      });
+    });
+
+    it("still prefers a real Error's message over any fallback", () => {
+      const result = errorToDispatchResult(new Error("socket hang up"));
+      expect(result.message).toBe("socket hang up");
+    });
+  });
 });
 
 describe("legacyStatusToConnectorStatus", () => {
@@ -128,7 +201,12 @@ describe("legacyStatusToConnectorStatus", () => {
     const status = legacyStatusToConnectorStatus({
       connected: true,
       degradations: [
-        { axis: "media", code: "no_media", message: "media unavailable", retryable: true },
+        {
+          axis: "media",
+          code: "no_media",
+          message: "media unavailable",
+          retryable: true,
+        },
         { axis: "reach", code: "slow", message: "slow reach", retryable: true },
       ],
     });
