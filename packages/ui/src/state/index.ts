@@ -28,3 +28,4 @@ export * from "./useDeveloperMode";
 export * from "./usePreviewMode";
 export * from "./useViewKinds";
 export * from "./useWalletState";
+export * from "./view-chat-binding";

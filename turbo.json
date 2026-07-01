@@ -370,6 +370,10 @@
       "dependsOn": ["@elizaos/plugin-sql#build", "^build"],
       "outputs": []
     },
+    "@elizaos/plugin-hyperliquid#typecheck": {
+      "dependsOn": ["@elizaos/app-core#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-tailscale#typecheck": {
       "dependsOn": ["@elizaos/plugin-tunnel#build"],
       "outputs": []

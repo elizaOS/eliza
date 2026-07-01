@@ -3,7 +3,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Z_FIRST_RUN_CHOOSER } from "../lib/floating-layers";
-import { FirstRunRuntimeChooserSurface } from "./FirstRunRuntimeChooser";
+import {
+  FirstRunRuntimeChooserSurface,
+  hasPendingFirstRunBackupRestoreChoice,
+} from "./FirstRunRuntimeChooser";
 
 afterEach(() => {
   cleanup();
@@ -87,5 +90,66 @@ describe("FirstRunRuntimeChooserSurface", () => {
 
     fireEvent.click(screen.getByText("Back"));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("hasPendingFirstRunBackupRestoreChoice", () => {
+  it("keeps the chooser hidden while backup restore choices are pending", () => {
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore",
+          text: "[CHOICE:first-run id=backup-restore]",
+        },
+      ]),
+    ).toBe(true);
+
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore-error:1",
+          text: "Retry [CHOICE:first-run id=backup-restore]",
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it("does not hide the chooser for later first-run choices", () => {
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore",
+          text: "[CHOICE:first-run id=backup-restore]",
+        },
+        {
+          id: "first-run:greeting",
+          text: "Let's get you set up",
+        },
+      ]),
+    ).toBe(false);
+
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:tutorial",
+          text: "[CHOICE:first-run id=tutorial]",
+        },
+        {
+          id: "first-run:cloud-agent",
+          text: "[CHOICE:first-run id=cloud-agent]",
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it("also recognizes legacy content bodies without requiring them", () => {
+    expect(
+      hasPendingFirstRunBackupRestoreChoice([
+        {
+          id: "first-run:backup-restore",
+          content: "[CHOICE:first-run id=backup-restore]",
+        },
+      ]),
+    ).toBe(true);
   });
 });

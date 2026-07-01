@@ -125,7 +125,8 @@ export function listCharacterSecretKeys(character: Character): string[] {
 	const secrets = character.settings?.secrets as
 		| Record<string, string>
 		| undefined;
-	return Object.keys(secrets ?? {});
+	if (!secrets) return [];
+	return Object.keys(secrets);
 }
 
 /**
