@@ -185,7 +185,7 @@ workloads:
         sha256: 4309d2b3ef1d5237fde826ec4da23d26f7e274bb84e13a9f01a75e0647cee654
         role: gptq_calibrator
       - path: compiler/quantization/tests/test_awq_int4_mlp_e2e.py
-        sha256: 3a70d4cf8b50632b6e8f50d47b44446c2b1c0bfa321253859d7de215e707ee5f
+        sha256: b84f28765587d7769ae3238b441a4578d5bbda15d5bb819d826c4e6957fe00e2
         role: e2e_test
     input_shape:
       input: local_mlp_calibration_fixture
