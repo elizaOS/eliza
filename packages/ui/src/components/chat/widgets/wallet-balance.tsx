@@ -110,7 +110,7 @@ export function WalletBalanceWidget(
       <div
         data-testid="chat-widget-wallet-balance-loading"
         aria-busy="true"
-        className={`${spanClassName} h-12 animate-pulse rounded-xl bg-white/8`}
+        className={`${spanClassName} h-12 animate-pulse`}
       />
     );
   }

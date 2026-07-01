@@ -31,15 +31,16 @@ function SeededHomeWidgetData({ children }: { children: React.ReactNode }) {
 /**
  * Decorator for individual home-widget stories: provides the mock app context
  * (plugin snapshot the WidgetHost resolves from) + the seeded fetch/notification
- * data, and frames the widget on the translucent-glass surface it sits on at
- * home (the orange wallpaper, approximated by an accent tint).
+ * data, and frames the widget on the flat wallpaper surface it sits on at home
+ * (approximated by a plain accent-tinted background — no card chrome, since
+ * widgets are chromeless per #10708).
  */
 export const withSeededHomeWidget: Decorator = (Story) => (
   <MockAppProvider
     value={{ plugins: HOME_WIDGET_MOCK_PLUGINS, conversations: [] }}
   >
     <SeededHomeWidgetData>
-      <div className="w-[360px] rounded-2xl bg-accent/20 p-3">
+      <div className="w-[360px] bg-accent/20 p-3">
         <Story />
       </div>
     </SeededHomeWidgetData>

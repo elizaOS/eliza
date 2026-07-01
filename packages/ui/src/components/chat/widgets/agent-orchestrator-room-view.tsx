@@ -212,7 +212,7 @@ function RoomCard({
 
   return (
     <div
-      className="space-y-1.5 rounded-sm border border-border/50 bg-bg-accent/30 p-2"
+      className="space-y-1.5 p-2"
       data-testid="orchestrator-room-card"
     >
       {onSelectRoom ? (
