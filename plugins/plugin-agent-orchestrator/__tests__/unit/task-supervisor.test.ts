@@ -4,6 +4,7 @@ import {
   runSupervisorTick,
   type SupervisorTaskView,
   statusEmoji,
+  TaskSupervisorService,
 } from "../../src/services/task-supervisor-service.js";
 
 const ROOM_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -137,5 +138,55 @@ describe("runSupervisorTick (#8900)", () => {
     expect(seen.has(ROOM_A)).toBe(false);
     const second = await runSupervisorTick(views, send, seen);
     expect(second.posted).toEqual([ROOM_A]); // retried successfully
+  });
+});
+
+describe("TaskSupervisorService.runOnce resilience", () => {
+  function runtimeWith(taskSvc: unknown) {
+    return {
+      getService: (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE" ? taskSvc : undefined,
+      sendMessageToTarget: async () => undefined,
+      // Supervisor disabled → start() does not arm the interval timer.
+      getSetting: (k: string) =>
+        k === "ELIZA_ORCHESTRATOR_SUPERVISOR" ? "0" : undefined,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as never;
+  }
+
+  it("swallows a throwing task service instead of rejecting (no unhandled rejection per tick)", async () => {
+    const svc = await TaskSupervisorService.start(
+      runtimeWith({
+        listTasks: async () => {
+          throw new Error("db exploded");
+        },
+        getTaskOriginTarget: async () => null,
+      }),
+    );
+    await expect(svc.runOnce()).resolves.toEqual({ posted: [], skipped: [] });
+    await svc.stop();
+  });
+
+  it("still posts a digest on a healthy tick", async () => {
+    const svc = await TaskSupervisorService.start(
+      runtimeWith({
+        listTasks: async () => [
+          {
+            id: "t1",
+            title: "Alpha",
+            status: "active",
+            activeSessionCount: 1,
+            latestSessionLabel: "codex",
+          },
+        ],
+        getTaskOriginTarget: async () => ({
+          roomId: ROOM_A,
+          source: "telegram",
+        }),
+      }),
+    );
+    const result = await svc.runOnce();
+    expect(result.posted).toEqual([ROOM_A]);
+    await svc.stop();
   });
 });
