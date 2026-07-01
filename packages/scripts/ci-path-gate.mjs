@@ -87,11 +87,33 @@ const CONFIGS = {
         reason: "security or vault package",
       },
       {
+        lanes: ["server"],
+        patterns: ["packages/elizaos/**", "packages/skills/**"],
+        reason:
+          "elizaos CLI or runtime skills — test:server runs these suites (previously unmapped: a CLI/skills-only PR skipped every test lane)",
+      },
+      {
         lanes: ["plugins", "zero_key"],
         patterns: ["plugins/**"],
         reason: "plugin surface",
       },
     ],
+    // Fail-safe: a PR that changes real code/test surface (packages/** or
+    // plugins/**) but matches no rule above must NOT skip every lane and pass
+    // green. Any such orphan path runs the `server` lane as a minimal safe net
+    // (it builds core + runs the core/agent/shared suite). Pure docs/marketing
+    // surfaces are exempted so they can still skip cleanly.
+    failSafe: {
+      lanes: ["server"],
+      codeRoots: ["packages/**", "plugins/**"],
+      ignore: [
+        "packages/docs/**",
+        "packages/homepage/**",
+        "packages/cloud/docs-redirect/**",
+      ],
+      reason:
+        "unmapped code path — no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
+    },
   },
   "scenario-pr": {
     title: "Scenario PR E2E path gate",
@@ -379,6 +401,39 @@ function addLane(matchesByLane, lane, source) {
   matchesByLane.get(lane).push(source);
 }
 
+function anyMatch(patterns, path) {
+  return patterns.some((pattern) => matches(pattern, path));
+}
+
+// Guarantees a PR that changes real code/test surface cannot skip every test
+// lane and pass green. Any changed file under a `codeRoot` that matched no rule
+// (and is not an explicitly-exempt docs/marketing path) enables the fail-safe
+// lanes. Configs without a `failSafe` block are unaffected.
+function applyFailSafe(config, changedFiles, matchedPaths, matchesByLane) {
+  const failSafe = config.failSafe;
+  if (!failSafe) {
+    return;
+  }
+  for (const path of changedFiles) {
+    if (matchedPaths.has(path)) {
+      continue;
+    }
+    if (!anyMatch(failSafe.codeRoots, path)) {
+      continue;
+    }
+    if (failSafe.ignore && anyMatch(failSafe.ignore, path)) {
+      continue;
+    }
+    for (const lane of failSafe.lanes) {
+      addLane(matchesByLane, lane, {
+        kind: "failsafe",
+        path,
+        reason: failSafe.reason,
+      });
+    }
+  }
+}
+
 function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
   const matchesByLane = new Map(config.outputs.map((output) => [output, []]));
   let changedFiles = [];
@@ -419,6 +474,7 @@ function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
     }
   }
 
+  const matchedPaths = new Set();
   for (const path of changedFiles) {
     for (const rule of config.rules) {
       const pattern = rule.patterns.find((candidate) =>
@@ -427,6 +483,7 @@ function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
       if (!pattern) {
         continue;
       }
+      matchedPaths.add(path);
       for (const lane of rule.lanes) {
         addLane(matchesByLane, lane, {
           kind: "path",
@@ -437,6 +494,8 @@ function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
       }
     }
   }
+
+  applyFailSafe(config, changedFiles, matchedPaths, matchesByLane);
 
   return { changedFiles, matchesByLane };
 }
@@ -460,6 +519,9 @@ function markdown(config, { changedFiles, matchesByLane, labels, eventName }) {
           .map((source) => {
             if (source.kind === "path") {
               return `\`${source.path}\` matched \`${source.pattern}\` (${source.reason})`;
+            }
+            if (source.kind === "failsafe") {
+              return `\`${source.path}\` unmapped → fail-safe (${source.reason})`;
             }
             if (source.kind === "label") {
               return source.reason;

@@ -118,4 +118,94 @@ assertGate(
   },
 );
 
+// The elizaos CLI suite runs under `test:server`; a CLI-only PR must trigger the
+// server lane (it previously matched no rule and skipped every test lane).
+assertGate(
+  "elizaos CLI changes",
+  runGate({ config: "test", files: ["packages/elizaos/src/scaffold.ts"] }),
+  {
+    server: "true",
+    client: "false",
+    plugins: "false",
+    desktop: "false",
+    zero_key: "false",
+    cloud: "false",
+  },
+);
+
+// Runtime skills also run under `test:server`.
+assertGate(
+  "runtime skills changes",
+  runGate({ config: "test", files: ["packages/skills/src/index.ts"] }),
+  {
+    server: "true",
+    client: "false",
+  },
+);
+
+// Fail-safe: a novel/unmapped code package must never skip every lane. It routes
+// to the server lane rather than passing green with zero tests.
+assertGate(
+  "unmapped code path fail-safe",
+  runGate({ config: "test", files: ["packages/inference/src/router.ts"] }),
+  {
+    server: "true",
+    client: "false",
+    plugins: "false",
+    desktop: "false",
+    zero_key: "false",
+    cloud: "false",
+  },
+);
+
+// A second unmapped package proves the fail-safe branch, not a one-off pattern.
+assertGate(
+  "unmapped registry package fail-safe",
+  runGate({ config: "test", files: ["packages/registry/src/index.ts"] }),
+  {
+    server: "true",
+  },
+);
+
+// Pure docs/marketing surfaces are exempt and still skip cleanly (no fail-safe).
+assertGate(
+  "docs-only changes skip cleanly",
+  runGate({ config: "test", files: ["packages/docs/pages/intro.mdx"] }),
+  {
+    server: "false",
+    client: "false",
+    plugins: "false",
+    desktop: "false",
+    zero_key: "false",
+    cloud: "false",
+  },
+);
+
+// Non-code changes (top-level files) are outside the code roots — no fail-safe.
+assertGate(
+  "top-level non-code changes skip cleanly",
+  runGate({ config: "test", files: ["README.md"] }),
+  {
+    server: "false",
+    client: "false",
+    plugins: "false",
+    desktop: "false",
+    zero_key: "false",
+    cloud: "false",
+  },
+);
+
+// An ignored docs path alongside a real orphan code path still trips the
+// fail-safe — the orphan is what matters.
+assertGate(
+  "mixed docs + orphan code trips fail-safe",
+  runGate({
+    config: "test",
+    files: ["packages/docs/pages/x.mdx", "packages/inference/src/y.ts"],
+  }),
+  {
+    server: "true",
+  },
+);
+
 console.log("ci-path-gate self-test passed");
