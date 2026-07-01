@@ -236,6 +236,23 @@ jobs:
             ELIZA_ANDROID_REQUIRE_AGENT=1 \
               bun run --cwd packages/app test:e2e:android:native-plugin-view || true
 
+            # Real OS-level touch swipe on the chat-sheet grabber (#9943): proves
+            # the home→launcher pager gesture fires with real Android touch input
+            # (pointerMouseCount===0), not desktop mouse emulation. Signal-only on
+            # the PR lane for the same reason as above — flip to a hard gate once
+            # emulator-green evidence is attached.
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+            ELIZA_ANDROID_CLEAR_APP_DATA=1 \
+              bun run --cwd packages/app test:e2e:android:touch-gesture || true
+
+            # View-runtime telemetry soak (#10196): activates every registered
+            # view through the real eliza:navigate:view channel and asserts
+            # bounded render/heap/cache behavior. Signal-only on the PR lane.
+            ELIZA_ANDROID_BACKEND=host \
+            ELIZA_ANDROID_REQUIRE_AGENT=1 \
+              bun run --cwd packages/app test:e2e:android:view-runtime-soak || true
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
