@@ -9,9 +9,9 @@ import {
  * Interaction-level coverage for the iOS-like view catalog (Launcher, #8796).
  *
  * Unlike builtin-views-visual.spec (which only asserts each view boots without
- * crashing), this drives the catalog's actual controls — long-press edit mode,
- * the favorite/pin badge, page navigation, and tap-to-launch — against a live
- * app boot. Run with E2E_RECORD=1 to capture a video walkthrough.
+ * crashing), this drives the catalog's actual controls — first-page tiles,
+ * swipe-only page navigation, and tap-to-launch — against a live app boot. Run
+ * with E2E_RECORD=1 to capture a video walkthrough.
  */
 test.describe("launcher catalog interactions", () => {
   test.beforeEach(async ({ page }) => {
@@ -30,7 +30,7 @@ test.describe("launcher catalog interactions", () => {
     await page.mouse.up();
   }
 
-  test("renders the launcher with visual tiles and a chat composer", async ({
+  test("renders the launcher with normal chat/settings tiles and chat composer", async ({
     page,
   }) => {
     const pageErrors: string[] = [];
@@ -44,6 +44,15 @@ test.describe("launcher catalog interactions", () => {
     await expect(
       page.locator('[data-testid^="launcher-tile-"]').first(),
     ).toBeVisible();
+    await expect(page.getByTestId("launcher-dock")).toHaveCount(0);
+    await expect(
+      page.getByTestId("launcher-page-0").getByTestId("launcher-tile-chat"),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId("launcher-page-0")
+        .getByTestId("launcher-tile-settings"),
+    ).toBeVisible();
     // The floating chat composer sits at the bottom (the single chat surface).
     await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
@@ -51,7 +60,7 @@ test.describe("launcher catalog interactions", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("long-press edit mode reveals favorite badges; favoriting fills the dock", async ({
+  test("curated launcher stays read-only without a default dock", async ({
     page,
   }) => {
     await openAppPath(page, "/views");
@@ -59,19 +68,17 @@ test.describe("launcher catalog interactions", () => {
       timeout: 60_000,
     });
 
-    const firstTile = page.locator('[data-testid^="launcher-tile-"]').first();
+    await expect(page.getByTestId("launcher-dock")).toHaveCount(0);
+
+    const firstTile = page.getByTestId("launcher-tile-wallet");
     await expect(firstTile).toBeVisible();
     const tileId = await firstTile.getAttribute("data-testid");
     const viewId = (tileId ?? "").replace("launcher-tile-", "");
 
-    // Enter edit mode → the per-tile favorite badge appears.
+    // Curated launcher pages are fixed: long-press does not expose pin badges.
     await longPressTile(page, firstTile);
     const favBadge = page.getByTestId(`launcher-fav-${viewId}`);
-    await expect(favBadge).toBeVisible();
-
-    // Favorite the view → it surfaces in the dock.
-    await favBadge.click();
-    await expect(page.getByTestId("launcher-dock")).toBeVisible();
+    await expect(favBadge).toHaveCount(0);
   });
 
   test("paging dots switch the visible page when present", async ({ page }) => {

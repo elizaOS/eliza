@@ -37,9 +37,10 @@ export interface LauncherProps {
   /**
    * Explicit, curated pages as ordered id lists (page 1 = apps, page 2 =
    * developer). When supplied the launcher renders these fixed pages read-only
-   * (no reorder / favorites / edit mode) instead of the persisted free-form
-   * layout; a group longer than one page paginates but never merges into the
-   * next group. Omit for the standalone/free-form launcher (stories, tests).
+   * (no reorder / favorite editing / edit mode) instead of the persisted
+   * free-form layout; a group longer than one page paginates but never merges
+   * into the next group. Omit for the standalone/free-form launcher (stories,
+   * tests).
    */
   pageGroups?: string[][];
   loading?: boolean;
@@ -416,16 +417,10 @@ export function Launcher({
     [curatedPages, layout.pages],
   );
 
-  // Report the page count up so an outer surface (the rail) can size the single
-  // unified page indicator. Fires only on an actual count change.
-  useEffect(() => {
-    onPageCountChange?.(pages.length);
-  }, [pages.length, onPageCountChange]);
-  const clampedPage = Math.min(activePage, pages.length - 1);
   // Cap the rendered dock at LAUNCHER_DOCK_LIMIT in BOTH modes. The
   // uncontrolled path already enforces it via toggleFavorite; controlled
-  // (desktop-tab) favorites are capped at the pinning source too, but clamp
-  // here as defense so the dock can never overflow regardless of caller.
+  // (desktop-tab) favorites are capped at their source too, but clamp here as
+  // defense so the dock can never overflow regardless of caller.
   const favoriteIdList = useMemo(
     () =>
       grouped
@@ -442,6 +437,13 @@ export function Launcher({
   );
   // O(1) dock-membership check inside the tile map instead of Array.includes.
   const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
+
+  // Report the page count up so an outer surface (the rail) can size the single
+  // unified page indicator. Fires only on an actual count change.
+  useEffect(() => {
+    onPageCountChange?.(pages.length);
+  }, [pages.length, onPageCountChange]);
+  const clampedPage = Math.min(activePage, pages.length - 1);
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -512,7 +514,7 @@ export function Launcher({
       {favoriteEntries.length > 0 ? (
         <div
           data-testid="launcher-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
+          className="mx-auto mt-2 mb-3 flex w-fit max-w-[calc(100%-1.5rem)] items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-4 py-3 sm:gap-4 sm:px-6"
         >
           {favoriteEntries.map((entry) => (
             <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>

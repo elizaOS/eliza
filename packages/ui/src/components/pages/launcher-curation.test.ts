@@ -41,12 +41,12 @@ describe("curateLauncherPages", () => {
     );
 
     expect(ids(pages)).toEqual([
-      ["wallet", "browser", "settings"],
+      ["settings", "wallet", "browser"],
       ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
     ]);
   });
 
-  it("drops removed apps and non-launcher shell surfaces", () => {
+  it("keeps chat while dropping removed apps and launcher self-links", () => {
     const pages = curateLauncherPages(
       [
         entry("wallet"),
@@ -64,7 +64,7 @@ describe("curateLauncherPages", () => {
       { isAosp: false, enabledKinds: ENABLED },
     );
 
-    expect(ids(pages)).toEqual([["wallet"]]);
+    expect(ids(pages)).toEqual([["chat", "wallet"]]);
   });
 
   it("keeps hyperliquid/polymarket out of the launcher (wallet sub-views)", () => {
@@ -209,6 +209,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       ),
     ).toEqual([
       [
+        "chat",
+        "settings",
         "wallet",
         "automations",
         "browser",
@@ -219,7 +221,6 @@ describe("curateLauncherPages — full realistic view set", () => {
         "memories",
         "feed",
         "stream",
-        "settings",
       ],
       ["trajectories", "database", "runtime", "logs", "skills", "plugins"],
     ]);

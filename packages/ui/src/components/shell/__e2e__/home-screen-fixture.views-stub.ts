@@ -67,7 +67,8 @@ function heroDataUri(hue: number): string {
 export function useRoutableViews() {
   return {
     views: [
-      // Shell surfaces + removed apps — kept so the e2e asserts their ABSENCE.
+      // Shell self-links + removed apps. Chat remains a normal launcher tile;
+      // the rest stay absent from the launcher.
       builtinView("chat", "Chat", "/chat"),
       builtinView("views", "Views", "/views"),
       builtinView("shopify", "Shopify", "/shopify", "ShoppingBag", true),

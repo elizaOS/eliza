@@ -429,8 +429,13 @@ try {
     "mobile coarse-pointer: no rail or launcher edge buttons on launcher",
   );
 
-  // ── Curated apps page — the everyday apps render as tiles, in curated order.
-  for (const id of ["wallet", "automations", "browser", "settings"]) {
+  assert(
+    (await mobile.getByTestId("launcher-dock").count()) === 0,
+    "no default favorites dock renders",
+  );
+
+  // ── Curated apps page — everyday apps render as tiles, in curated order.
+  for (const id of ["chat", "settings", "wallet", "automations", "browser"]) {
     assert(
       await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
       `curated app "${id}" renders on the launcher apps page`,
@@ -438,7 +443,7 @@ try {
   }
   // ── Removed / hidden surfaces never tile: shell self-links, removed apps,
   // wallet sub-views, and the deduped duplicate registrations.
-  for (const id of ["chat", "views", "shopify", "hyperliquid", "inventory", "triggers"]) {
+  for (const id of ["views", "shopify", "hyperliquid", "inventory", "triggers"]) {
     assert(
       (await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0,
       `"${id}" is absent from the launcher (removed/hidden/deduped)`,
@@ -514,7 +519,7 @@ try {
   );
 
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
-  // (fixed placement, no reorder/pin/favorites dock). #3
+  // (fixed placement, no reorder/pin affordances). #3
   await longPressHold(mobile, "launcher-tile-wallet");
   await mobile.waitForTimeout(150);
   assert(

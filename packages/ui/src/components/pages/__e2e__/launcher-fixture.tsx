@@ -33,9 +33,10 @@ function tileImage(a: string, b: string): string {
   )}`;
 }
 
-// Stable id list (25) — two are "manageable" dynamic-developer views so the
+// Stable id list (27) — two are "manageable" dynamic-developer views so the
 // per-tile edit/delete affordances render in edit mode; the rest are plain
-// views, two of which carry a hero image. Every tile is uniform (no dock).
+// views, two of which carry a hero image. The full set still exercises a
+// second page without needing a default favorites row.
 const SPECS: Array<{ id: string; label: string; icon?: string; image?: boolean }> =
   [
     { id: "chat", label: "Chat", icon: "MessageSquare" },
@@ -63,6 +64,8 @@ const SPECS: Array<{ id: string; label: string; icon?: string; image?: boolean }
     { id: "screenshare", label: "Screen Share", icon: "Monitor" },
     { id: "keys", label: "Keys", icon: "KeyRound" },
     { id: "network", label: "Network", icon: "Network" },
+    { id: "files", label: "Files", icon: "Folder" },
+    { id: "database", label: "Database", icon: "Database" },
   ];
 
 function makeEntry(spec: (typeof SPECS)[number]): ViewEntry {

@@ -2007,7 +2007,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   it("reveals Copy + Play on an assistant message and no top-menu copy button", () => {
     const speak = vi.fn();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "the answer", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "the answer", createdAt: 1 },
+      ],
       speak,
       speaking: false,
     });
@@ -2028,7 +2030,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   it("Play speaks the assistant message via the controller", () => {
     const speak = vi.fn();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "read me aloud", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "read me aloud", createdAt: 1 },
+      ],
       speak,
       speaking: false,
     });
@@ -2041,7 +2045,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     const speak = vi.fn();
     const stopSpeaking = vi.fn();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "now playing", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "now playing", createdAt: 1 },
+      ],
       speak,
       stopSpeaking,
       speaking: true,
@@ -2058,7 +2064,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   it("row Copy writes the message text to the clipboard", () => {
     vi.mocked(copyTextToClipboard).mockClear();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "copy this text", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "copy this text", createdAt: 1 },
+      ],
       speak: vi.fn(),
     });
     fireEvent.click(bubbleFor("copy this text"));
@@ -2079,7 +2087,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(screen.queryByTestId("thread-line-speak")).toBeNull();
 
     fireEvent.click(screen.getByTestId("thread-line-edit"));
-    const input = screen.getByTestId("thread-line-edit-input") as HTMLTextAreaElement;
+    const input = screen.getByTestId(
+      "thread-line-edit-input",
+    ) as HTMLTextAreaElement;
     expect(input.value).toBe("helo wrld");
     fireEvent.change(input, { target: { value: "hello world" } });
     fireEvent.click(screen.getByTestId("thread-line-edit-save"));
@@ -2088,7 +2098,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
 
   it("does not offer Edit on an optimistic temp- user turn", () => {
     openThreadWith({
-      messages: [{ id: "temp-123", role: "user", content: "pending turn", createdAt: 1 }],
+      messages: [
+        { id: "temp-123", role: "user", content: "pending turn", createdAt: 1 },
+      ],
       send: vi.fn(),
     });
     fireEvent.click(bubbleFor("pending turn"));
@@ -2098,7 +2110,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
 
   it("dismisses the row on an outside tap", () => {
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "tap away", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "tap away", createdAt: 1 },
+      ],
       speak: vi.fn(),
     });
     fireEvent.click(bubbleFor("tap away"));

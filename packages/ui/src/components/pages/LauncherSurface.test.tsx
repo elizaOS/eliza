@@ -84,14 +84,21 @@ afterEach(() => {
 });
 
 describe("LauncherSurface", () => {
-  it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
+  it("shows chat/settings as normal curated apps and hides removed/sub-view surfaces", () => {
     render(<LauncherSurface />);
 
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+
+    const appsPage = screen.getByTestId("launcher-page-0");
+    expect(
+      appsPage.querySelector('[data-testid="launcher-tile-chat"]'),
+    ).toBeTruthy();
+    expect(
+      appsPage.querySelector('[data-testid="launcher-tile-settings"]'),
+    ).toBeTruthy();
     expect(screen.getByTestId("launcher-tile-wallet")).toBeTruthy();
     expect(screen.getByTestId("launcher-tile-browser")).toBeTruthy();
-    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
 
-    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
@@ -128,5 +135,11 @@ describe("LauncherSurface", () => {
     render(<LauncherSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
     expect(window.location.pathname).toBe("/browser");
+  });
+
+  it("launches Chat from the normal launcher grid", () => {
+    render(<LauncherSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    expect(window.location.pathname).toBe("/chat");
   });
 });

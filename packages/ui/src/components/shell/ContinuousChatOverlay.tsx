@@ -789,7 +789,7 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
 }
 
 function isNestedInteractiveTarget(
-  currentTarget: HTMLElement,
+  currentTarget: Element,
   target: EventTarget | null,
 ): boolean {
   if (!(target instanceof Element)) return false;

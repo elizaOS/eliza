@@ -63,6 +63,22 @@ afterEach(() => {
 });
 
 describe("Launcher", () => {
+  it("renders chat and settings as normal first-page tiles on first mount", () => {
+    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    const firstPage = screen.getByTestId("launcher-page-0");
+    expect(within(firstPage).getByText("Chat")).toBeTruthy();
+    expect(within(firstPage).getByText("Settings")).toBeTruthy();
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+  });
+
+  it("launches Chat from the normal grid", () => {
+    const onLaunch = vi.fn();
+    render(<Launcher entries={FEW} onLaunch={onLaunch} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+    expect(onLaunch).toHaveBeenCalledTimes(1);
+    expect(onLaunch.mock.calls[0][0].id).toBe("chat");
+  });
+
   it("renders every view as a names-only icon tile", () => {
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
     expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
@@ -129,8 +145,6 @@ describe("Launcher", () => {
   });
 
   it("favorites a view into the dock and persists the layout", () => {
-    // `notes` is not in DEFAULT_LAUNCHER_FAVORITES (#9144), so favoriting it
-    // genuinely adds it to the dock rather than toggling off a pre-seeded id.
     const entries = [entry("notes", "Notes"), entry("settings", "Settings")];
     render(<Launcher entries={entries} onLaunch={() => {}} />);
     longPressToEdit("Notes");
@@ -418,18 +432,31 @@ describe("Launcher controlled favorites (desktop tabs)", () => {
       .querySelectorAll('[data-testid^="launcher-tile-"]');
     expect(dockTiles).toHaveLength(LAUNCHER_DOCK_LIMIT);
   });
+  it("renders curated page groups without a dock or edit controls", () => {
+    render(
+      <Launcher
+        entries={[...FEW, entry("wallet", "Wallet")]}
+        pageGroups={[["chat", "settings", "wallet"]]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("launcher-dock")).toBeNull();
+    const firstPage = screen.getByTestId("launcher-page-0");
+    expect(within(firstPage).getByText("Chat")).toBeTruthy();
+    expect(within(firstPage).getByText("Settings")).toBeTruthy();
+
+    longPressToEdit("Wallet");
+    expect(screen.queryByTestId("launcher-fav-wallet")).toBeNull();
+  });
 });
 
 describe("Launcher dock favorites (local, uncontrolled)", () => {
-  // None of these ids are in DEFAULT_LAUNCHER_FAVORITES, so the seeded dock
-  // reconciles to empty and each favorite is a genuine add.
   const MANY = ["a", "b", "c", "d", "e"].map((id) =>
     entry(id, id.toUpperCase()),
   );
 
   it("unpins a favorited view from the dock", () => {
-    // `notes` and `archive` are not default-dock ids (#9144), so the seeded dock
-    // reconciles to empty and the dock only exists once we pin `notes`.
     render(
       <Launcher
         entries={[entry("notes", "Notes"), entry("archive", "Archive")]}

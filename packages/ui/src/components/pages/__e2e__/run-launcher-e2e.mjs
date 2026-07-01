@@ -3,7 +3,7 @@
  * no app server. Bundles launcher-fixture.tsx with esbuild, loads it in
  * headless chromium via Playwright, and:
  *
- *   - asserts the launcher + tiles render (≥1 tile, ≥1 image tile),
+ *   - asserts the launcher + normal first-page tiles render (≥1 tile, ≥1 image tile),
  *   - captures REST + EDIT screenshots at desktop (1180×900) and mobile
  *     (402×874),
  *   - records a .webm walkthrough driving REAL interactions: tap-launch a tile,
@@ -198,6 +198,16 @@ async function captureViewport(name, viewport, deviceScaleFactor) {
 
   const tiles = await page.locator('[data-testid^="launcher-tile-"]').count();
   assert(tiles >= 1, `${name}: ≥1 tile renders (${tiles})`);
+  assert(
+    (await page.getByTestId("launcher-dock").count()) === 0,
+    `${name}: no default favorites dock renders`,
+  );
+  for (const id of ["chat", "settings"]) {
+    assert(
+      await page.getByTestId(`launcher-tile-${id}`).first().isVisible(),
+      `${name}: ${id} renders as a normal tile`,
+    );
+  }
   const images = await page
     .locator('[data-testid^="launcher-image-"]')
     .count();

@@ -187,10 +187,10 @@ describe("launcher-layout persistence", () => {
   });
 });
 
-describe("launcher-layout default dock (#9144)", () => {
+describe("launcher-layout first-run rows (#9144)", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("seeds an empty layout on first run — the favorites dock was removed", () => {
+  it("seeds an empty layout on first run", () => {
     expect(readLauncherLayout()).toEqual(defaultLayout());
     expect(readLauncherLayout().favorites).toEqual([]);
     expect(readLauncherLayout().pages).toEqual([]);
@@ -200,10 +200,9 @@ describe("launcher-layout default dock (#9144)", () => {
     expect(defaultLayout().favorites).toEqual([]);
   });
 
-  it("flows every available view onto pages (no favorites reserved by default)", () => {
-    // With no default favorites, every available id lands on a page tile — none
-    // are held back in a dock.
+  it("flows chat and settings onto normal pages", () => {
     const out = reconcileLayout(defaultLayout(), [
+      "chat",
       "settings",
       "activity",
       "files",
@@ -211,10 +210,22 @@ describe("launcher-layout default dock (#9144)", () => {
     ]);
     expect(out.favorites).toEqual([]);
     expect(out.pages.flat()).toEqual([
+      "chat",
       "settings",
       "activity",
       "files",
       "notes",
     ]);
+  });
+
+  it("respects an explicitly cleared stored dock", () => {
+    writeLauncherLayout({ favorites: [], pages: [] });
+    const out = reconcileLayout(readLauncherLayout(), [
+      "chat",
+      "settings",
+      "activity",
+    ]);
+    expect(out.favorites).toEqual([]);
+    expect(out.pages.flat()).toEqual(["chat", "settings", "activity"]);
   });
 });
