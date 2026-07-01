@@ -67,6 +67,44 @@ def _parse_detection_entry(raw: dict[str, object]) -> dict[str, bool | float]:
     return {"detected": detected, "confidence": confidence}
 
 
+def _iter_balanced_json_objects(text: str) -> list[str]:
+    """Return every top-level brace-balanced ``{...}`` substring in ``text``.
+
+    String literals are respected so braces inside quoted strings don't
+    unbalance the scan. Reasoning models (e.g. gpt-oss) emit prose — often
+    containing stray braces — before the final JSON answer, which defeats a
+    greedy ``{.*}`` match (it spans from the first stray ``{`` to the last
+    ``}`` and fails to parse). Scanning for balanced objects lets the caller
+    recover the real answer.
+    """
+    objects: list[str] = []
+    depth = 0
+    start = -1
+    in_str = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                objects.append(text[start : i + 1])
+                start = -1
+    return objects
+
+
 def _parse_analysis_json(raw: str) -> dict[str, dict[str, bool | float]]:
     """Parse a JSON object mapping category -> {detected, confidence}.
 
@@ -85,22 +123,39 @@ def _parse_analysis_json(raw: str) -> dict[str, dict[str, bool | float]]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        # Try to find the first balanced JSON object
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                parsed = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                logger.debug("Failed to parse trust analysis JSON: %.200s", text)
-                return {}
-        else:
-            return {}
+        parsed = None
 
     if not isinstance(parsed, dict):
-        return {}
+        # The whole payload isn't clean JSON (reasoning-model prose around the
+        # answer, stray braces, etc.). Prefer the LAST brace-balanced object
+        # that parses to a mapping — the model's final answer follows its
+        # reasoning. A greedy ``{.*}`` would instead span the first stray brace
+        # to the last one and silently fail, scoring a false negative.
+        parsed = None
+        for candidate in reversed(_iter_balanced_json_objects(text)):
+            try:
+                obj = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                parsed = obj
+                break
+        if parsed is None:
+            logger.debug("Failed to parse trust analysis JSON: %.200s", text)
+            return {}
 
+    return _detection_map_from_obj(parsed)
+
+
+def _detection_map_from_obj(obj: object) -> dict[str, dict[str, bool | float]]:
+    """Coerce a ``{category: {detected, confidence}}`` mapping (or
+    ``{category: bool}``) into the normalized detection map. Non-dict input
+    yields an empty map.
+    """
+    if not isinstance(obj, dict):
+        return {}
     out: dict[str, dict[str, bool | float]] = {}
-    for category, entry in parsed.items():
+    for category, entry in obj.items():
         if not isinstance(category, str):
             continue
         if isinstance(entry, dict):
@@ -108,6 +163,25 @@ def _parse_analysis_json(raw: str) -> dict[str, dict[str, bool | float]]:
         elif isinstance(entry, bool):
             out[category] = {"detected": entry, "confidence": 1.0 if entry else 0.0}
     return out
+
+
+def _detection_map_from_action(params: dict[str, object]) -> dict[str, dict[str, bool | float]]:
+    """Extract the detection map from a captured benchmark tool call.
+
+    The agent-driven bench server surfaces the planner's structured action under
+    ``params["BENCHMARK_ACTION"]["arguments"]``. The conversational
+    ``response.text`` is often just a generic acknowledgement — or an error
+    fallback ("Sorry, something went wrong…") — and does NOT carry the JSON, so
+    the structured action is the authoritative source. ``arguments`` may be a
+    dict or a JSON string.
+    """
+    action = params.get("BENCHMARK_ACTION")
+    if not isinstance(action, dict):
+        return {}
+    arguments = action.get("arguments")
+    if isinstance(arguments, str):
+        return _parse_analysis_json(arguments)
+    return _detection_map_from_obj(arguments)
 
 
 class ElizaBridgeTrustHandler:
@@ -231,16 +305,20 @@ class ElizaBridgeTrustHandler:
             self._cache[key] = {}
             return {}
 
-        # Look at action params first (may contain a structured `analysis`),
-        # then fall back to parsing the response text.
-        results: dict[str, dict[str, bool | float]] = {}
-        analysis_field = response.params.get("analysis")
-        if isinstance(analysis_field, str):
-            results = _parse_analysis_json(analysis_field)
-        elif isinstance(analysis_field, dict):
-            for category, entry in analysis_field.items():
-                if isinstance(category, str) and isinstance(entry, dict):
-                    results[category] = _parse_detection_entry(entry)
+        # Extraction precedence:
+        #   1. the captured structured action (`BENCHMARK_ACTION.arguments`) —
+        #      the authoritative agent output; `response.text` is frequently a
+        #      generic ack or an error fallback that omits the JSON,
+        #   2. a legacy `analysis` param,
+        #   3. parsing the response text.
+        results = _detection_map_from_action(response.params)
+
+        if not results:
+            analysis_field = response.params.get("analysis")
+            if isinstance(analysis_field, str):
+                results = _parse_analysis_json(analysis_field)
+            elif isinstance(analysis_field, dict):
+                results = _detection_map_from_obj(analysis_field)
 
         if not results and response.text:
             results = _parse_analysis_json(response.text)
