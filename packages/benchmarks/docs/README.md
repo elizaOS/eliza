@@ -9,7 +9,7 @@ harness coverage, costs, and integration status.
 | File | Contents |
 |---|---|
 | `BENCHMARK_PARITY_ASSESSMENT.md` | Audit of which benchmarks each harness (eliza / hermes / openclaw / smithers) supports, and where the asymmetry lies. Run via `orchestrator.discover_adapters`. |
-| `RESULTS_MATRIX.md` | Full 53-benchmark × 4-harness score table; cells are posted scores, `gated` (infra/credentials absent), or `—` (compatible but not yet run). |
+| `RESULTS_MATRIX.md` | Benchmark × 4-harness score table, reconciled against the registry (44 registered + 9 adapter-only). Cells are real posted scores (from `benchmark_results/latest/`), `gated` (infra/credentials absent), or `not-run` (no committed graded run). |
 | `COST_REPORT.md` | Per-benchmark token costs at calibration sample sizes for `gpt-oss-120b` (Cerebras) and `claude-opus-4-8` (Anthropic); includes projected smithers rows. |
 | `CERTIFICATION.md` | 4-harness certification pass record (2026-05-28): what was upgraded, what was posted, and what remains partial with blockers noted. |
 | `BLOCKER_RESOLUTION.md` | Root-cause analysis and fixes for the three systemic infrastructure gaps (Docker daemon, missing Python deps, Node version) that previously blocked benchmark runs. |
