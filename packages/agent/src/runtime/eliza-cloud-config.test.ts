@@ -363,6 +363,88 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
+  it("marks inference explicitly OFF while loading the plugin for media (#10819)", () => {
+    // Capability-only topology: an external provider owns the text brain,
+    // media is cloud-routed. The plugin must load with the credential intact
+    // and an EXPLICIT inference denial, so image generation works without the
+    // cloud stealing the chat-brain slots.
+    const config: ElizaConfig = {
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      serviceRouting: {
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const topology = resolveElizaCloudTopology(
+      config as Record<string, unknown>,
+    );
+    expect(topology.services.inference).toBe(false);
+    expect(topology.services.media).toBe(true);
+    expect(topology.shouldLoadPlugin).toBe(true);
+
+    applyCloudConfigToEnv(config);
+
+    // Tri-state contract with plugin-elizacloud's registerTextInferenceModels:
+    // explicit "false" (not unset) → skip chat-brain handlers, keep IMAGE/TTS.
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_MEDIA).toBe("true");
+    // The credential survives for the selected capabilities…
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("cloud-test");
+    // …without flipping the inference-coupled ENABLED flag.
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
+  });
+
+  it("keeps an env-provided key when config carries none but cloud services are selected (#10819)", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "env-key";
+    const config: ElizaConfig = {
+      cloud: { enabled: true, agentId: "agent-test" },
+      serviceRouting: {
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("env-key");
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+  });
+
+  it("still scrubs a leaked [REDACTED] placeholder from the env (#10819)", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "[REDACTED]";
+    const config: ElizaConfig = {
+      cloud: { enabled: true, agentId: "agent-test" },
+      serviceRouting: {
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+  });
+
+  it("still clears a stale env key when cloud is disabled with no service selected", () => {
+    // BYOK / disconnected hygiene must survive the capability-only change:
+    // cloud present-but-disabled and nothing routed → full env cleanse, so a
+    // leftover key can never zombie-load cloud behavior.
+    process.env.ELIZAOS_CLOUD_API_KEY = "stale-key";
+    const config: ElizaConfig = {
+      cloud: { enabled: false, apiKey: "stale-key" },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBeUndefined();
+  });
+
   it("keeps managed cloud containers on the full runtime, not the thin client", () => {
     const config: ElizaConfig = {
       deploymentTarget: {
