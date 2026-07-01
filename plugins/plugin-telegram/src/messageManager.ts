@@ -256,26 +256,31 @@ const EMBED_LAUNCH_BUTTON_TEXT = "Open Eliza App";
 function resolveEmbedLaunchUrl(runtime: IAgentRuntime): string | undefined {
   const direct = runtime.getSetting("ELIZA_EMBED_URL");
   if (typeof direct === "string" && direct.trim().length > 0) {
-    return toHttpsUrl(direct.trim());
+    return toHttpsUrl(direct.trim(), "telegram");
   }
   const base =
     runtime.getSetting("ELIZA_APP_URL") ||
     runtime.getSetting("ELIZA_CLOUD_URL");
   if (typeof base === "string" && base.trim().length > 0) {
-    return toHttpsUrl(`${base.trim().replace(/\/+$/, "")}/embed`);
+    return toHttpsUrl(`${base.trim().replace(/\/+$/, "")}/embed`, "telegram");
   }
   return undefined;
 }
 
 /** Return the URL only when it parses as absolute `https`, else `undefined`. */
-function toHttpsUrl(url: string): string | undefined {
+function toHttpsUrl(url: string, platform: "telegram"): string | undefined {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return undefined;
   }
-  return parsed.protocol === "https:" ? parsed.toString() : undefined;
+  if (parsed.protocol !== "https:") return undefined;
+  if (parsed.pathname === "/" || parsed.pathname === "") {
+    parsed.pathname = "/embed";
+  }
+  parsed.searchParams.set("platform", platform);
+  return parsed.toString();
 }
 
 /** Build the Telegram `web_app` inline-keyboard button for the `/embed` route. */
