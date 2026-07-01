@@ -25,12 +25,17 @@ import type {
   UpdateAppMonetizationInput,
   WithdrawAppEarningsRequest,
   WithdrawAppEarningsResponse,
+  type CreateAdSlotInput,
+  type CreateAdSlotResponse,
+  type ListAdSlotsResponse,
 } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
 type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
+type CreateAdSlotFn = (input: CreateAdSlotInput) => Promise<CreateAdSlotResponse>;
+type ListAdSlotsFn = () => Promise<ListAdSlotsResponse>;
 type DeployAppFn = (
   id: string,
   input?: DeployAppInput,
@@ -64,6 +69,8 @@ interface SdkState {
   getApp: GetAppFn;
   createApp: CreateAppFn;
   deployApp: DeployAppFn;
+  createAdSlot: CreateAdSlotFn;
+  listAdSlots: ListAdSlotsFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -91,6 +98,9 @@ function defaultState(): SdkState {
         status: "BUILDING",
         startedAt: "2026-06-29T00:00:00.000Z",
       }),
+    createAdSlot: () =>
+      Promise.resolve({ success: true, slot: { id: "slot_1", app_id: "app_1", name: "Slot", format: "banner", status: "active", floor_cpm: "1.0000", total_impressions: 0, total_clicks: 0, total_revenue: "0.000000" } }),
+    listAdSlots: () => Promise.resolve({ success: true, slots: [] }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -127,6 +137,12 @@ export function setCreateApp(fn: CreateAppFn): void {
 }
 export function setDeployApp(fn: DeployAppFn): void {
   state.deployApp = fn;
+}
+export function setCreateAdSlot(fn: CreateAdSlotFn): void {
+  state.createAdSlot = fn;
+}
+export function setListAdSlots(fn: ListAdSlotsFn): void {
+  state.listAdSlots = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -168,6 +184,12 @@ export class FakeElizaCloudClient {
   }
   deployApp(id: string, input?: DeployAppInput): Promise<DeployAppResponse> {
     return state.deployApp(id, input);
+  }
+  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
+    return state.createAdSlot(input);
+  }
+  listAdSlots(): Promise<ListAdSlotsResponse> {
+    return state.listAdSlots();
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);
