@@ -23,11 +23,16 @@ const SOURCE_EXTENSIONS = new Set([
 
 const IGNORED_DIRS = new Set([
   ".git",
+  ".next",
   ".turbo",
+  ".vercel",
+  "build",
   "coverage",
   "dist",
   "node_modules",
+  "playwright-report",
   "storybook-static",
+  "test-results",
 ]);
 
 function parseArgs(argv) {
