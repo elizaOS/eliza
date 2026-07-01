@@ -78,6 +78,16 @@ const LIVE_CONSOLE_ERROR_ALLOWLIST: readonly string[] = [
   "THREE.WebGLRenderer",
 ];
 
+/** Optional resources whose non-2xx probe is expected and handled gracefully by
+ * the app, so a browser "Failed to load resource" console line for them is not a
+ * defect. Matched against the console message *location* (URL), in both lanes —
+ * kept narrow (a specific endpoint), never a message-text catch-all. */
+const OPTIONAL_RESOURCE_ALLOWLIST: readonly string[] = [
+  // The character VRM avatar is HEAD-probed on most views; with no configured
+  // avatar the app falls back to the default and the probe's 404 is expected.
+  "/api/avatar/vrm",
+];
+
 // ---------------------------------------------------------------------------
 // Diagnostics + capture recorder
 // ---------------------------------------------------------------------------
@@ -199,7 +209,8 @@ export class WalkthroughRecorder {
     return this.console.filter(
       (c) =>
         (c.type === "console.error" || c.type === "pageerror") &&
-        !allow.some((a) => c.text.includes(a)),
+        !allow.some((a) => c.text.includes(a)) &&
+        !OPTIONAL_RESOURCE_ALLOWLIST.some((url) => c.location.includes(url)),
     );
   }
 
@@ -533,6 +544,18 @@ export async function installJourneyRoutes(
   await page.route("**/api/voice/playback-frames", async (route) => {
     if (route.request().method() === "POST") {
       await fulfillJson(route, 200, { ok: true, accepted: 0 });
+      return;
+    }
+    await route.fallback();
+  });
+  // The renderer HEAD-probes the OPTIONAL character VRM avatar on most views; the
+  // keyless stub stack 501s it, which the app treats as "no custom avatar" and
+  // falls back gracefully — but the raw 5xx trips the diagnostics gate on nearly
+  // every step. Answer the probe with a 404 ("no VRM") so the gate fails only on
+  // real errors, without changing the fallback behaviour the UI already relies on.
+  await page.route("**/api/avatar/vrm", async (route) => {
+    if (route.request().method() === "HEAD") {
+      await route.fulfill({ status: 404 });
       return;
     }
     await route.fallback();
