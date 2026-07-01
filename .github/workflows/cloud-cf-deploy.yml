@@ -332,7 +332,14 @@ jobs:
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
-        run: timeout 120s rm -rf "$CHECKOUT_DIR" || echo "::warning::Timed out cleaning $CHECKOUT_DIR"
+        run: |
+          set -uo pipefail
+          if [ -e "$CHECKOUT_DIR" ]; then
+            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
+            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            echo "Scheduled best-effort cleanup for ${stale_dir}."
+          fi
 
   # ---------------------------------------------------------------------------
   # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.
@@ -624,7 +631,14 @@ jobs:
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
-        run: timeout 120s rm -rf "$CHECKOUT_DIR" || echo "::warning::Timed out cleaning $CHECKOUT_DIR"
+        run: |
+          set -uo pipefail
+          if [ -e "$CHECKOUT_DIR" ]; then
+            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
+            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            echo "Scheduled best-effort cleanup for ${stale_dir}."
+          fi
 
   # ---------------------------------------------------------------------------
   # App frontend (Cloudflare Pages) — packages/app (the Eliza agent app) at
@@ -868,4 +882,11 @@ jobs:
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
-        run: timeout 120s rm -rf "$CHECKOUT_DIR" || echo "::warning::Timed out cleaning $CHECKOUT_DIR"
+        run: |
+          set -uo pipefail
+          if [ -e "$CHECKOUT_DIR" ]; then
+            stale_dir="${CHECKOUT_DIR}.stale-${GITHUB_JOB:-job}-$(date +%s)"
+            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
+            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
+            echo "Scheduled best-effort cleanup for ${stale_dir}."
+          fi
