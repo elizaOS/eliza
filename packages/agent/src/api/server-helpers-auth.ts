@@ -196,7 +196,7 @@ export function applyCors(
     res.setHeader("Vary", "Origin");
     res.setHeader(
       "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS",
+      "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     );
     res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
     res.setHeader("Access-Control-Allow-Credentials", "true");
