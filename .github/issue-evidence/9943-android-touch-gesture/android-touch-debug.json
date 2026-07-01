@@ -1,0 +1,119 @@
+{
+  "issue": 9943,
+  "serial": "emulator-5554",
+  "url": "https://localhost/",
+  "eventCount": 16,
+  "eventTypes": {
+    "pointerdown": 1,
+    "touchstart": 1,
+    "pointermove": 6,
+    "touchmove": 6,
+    "pointerup": 1,
+    "touchend": 1
+  },
+  "pointerTypes": {
+    "touch": 8,
+    "none": 8
+  },
+  "targetTestIds": {
+    "chat-sheet-grabber": 16
+  },
+  "firstEvents": [
+    {
+      "type": "pointerdown",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 206,
+      "clientY": 842
+    },
+    {
+      "type": "touchstart",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    },
+    {
+      "type": "pointermove",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 192,
+      "clientY": 841
+    },
+    {
+      "type": "touchmove",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    },
+    {
+      "type": "pointermove",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 171,
+      "clientY": 840
+    },
+    {
+      "type": "touchmove",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    },
+    {
+      "type": "pointermove",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 152,
+      "clientY": 840
+    },
+    {
+      "type": "touchmove",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    },
+    {
+      "type": "pointermove",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 126,
+      "clientY": 839
+    },
+    {
+      "type": "touchmove",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    },
+    {
+      "type": "pointermove",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 102,
+      "clientY": 838
+    },
+    {
+      "type": "touchmove",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    }
+  ]
+}

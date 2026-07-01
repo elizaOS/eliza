@@ -1,0 +1,20 @@
+{
+  "selector": "[data-testid=\"chat-sheet-grabber\"]",
+  "box": {
+    "x": 110.0952377319336,
+    "y": 829.047607421875,
+    "width": 192.00000762939453,
+    "height": 26
+  },
+  "metrics": {
+    "dpr": 2.625,
+    "offsetLeft": 0,
+    "offsetTop": 0
+  },
+  "startX": 541,
+  "startY": 2210,
+  "endX": 147,
+  "endY": 2194,
+  "dx": -150,
+  "dy": -6
+}

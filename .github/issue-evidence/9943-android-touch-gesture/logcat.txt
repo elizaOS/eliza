@@ -1,0 +1,917 @@
+--------- beginning of main
+06-30 17:46:28.333 31359 31397 D Capacitor: Handling local request: https://localhost/assets/TasksPageView-CqiNrWw0.js
+06-30 17:46:28.337 31359 31397 D Capacitor: Handling local request: https://localhost/assets/TrajectoriesView-BCGChWpp.js
+06-30 17:46:28.341 31359 31396 D Capacitor: Handling local request: https://localhost/assets/trajectory-format-D0hgw1gv.js
+06-30 17:46:28.346 31359 31398 D Capacitor: Handling local request: https://localhost/assets/trajectory-sidebar-item-BuJ0khF6.js
+06-30 17:46:28.358 31359 31396 D Capacitor: Handling local request: https://localhost/assets/TrajectoryDetailView-CHxsMlM6.js
+06-30 17:46:28.392 31359 31359 I Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 196 - Msg: [renderer-build] 25556d71cefa built 2026-07-01T00:28:47.854Z (variant=direct, target=android)
+06-30 17:46:28.398 31359 31399 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.ico
+06-30 17:46:28.398 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-16x16.png
+06-30 17:46:28.399 31359 31398 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-32x32.png
+06-30 17:46:28.402 31359 31397 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.svg
+06-30 17:46:28.417 31359 31359 I Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [shell] window shell mode: main (search="")
+06-30 17:46:28.418 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.422 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827096, pluginId: Preferences, methodName: get
+06-30 17:46:28.423 31359 31359 V Capacitor: callback: 43827096, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:28.449   893   893 D StatusBarIconController: ignoring old pipeline callback because the new wifi icon is enabled
+06-30 17:46:28.465 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.466 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.466 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827097, pluginId: Preferences, methodName: get
+06-30 17:46:28.467 31359 31359 V Capacitor: callback: 43827097, pluginId: Preferences, methodName: get, methodData: {"key":"eliza.control.settings.v1"}
+06-30 17:46:28.467 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.467 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827098, pluginId: Preferences, methodName: get
+06-30 17:46:28.467 31359 31359 V Capacitor: callback: 43827098, pluginId: Preferences, methodName: get, methodData: {"key":"eliza.device.identity"}
+06-30 17:46:28.468 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.468 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827099, pluginId: Preferences, methodName: get
+06-30 17:46:28.468 31359 31359 V Capacitor: callback: 43827099, pluginId: Preferences, methodName: get, methodData: {"key":"eliza.device.auth"}
+06-30 17:46:28.469 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.469 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827100, pluginId: Preferences, methodName: get
+06-30 17:46:28.469 31359 31359 V Capacitor: callback: 43827100, pluginId: Preferences, methodName: get, methodData: {"key":"elizaos:active-server"}
+06-30 17:46:28.470 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.470 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827101, pluginId: Preferences, methodName: get
+06-30 17:46:28.470 31359 31359 V Capacitor: callback: 43827101, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:28.470 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.471 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827102, pluginId: Preferences, methodName: get
+06-30 17:46:28.471 31359 31359 V Capacitor: callback: 43827102, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:setup:step"}
+06-30 17:46:28.471 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.471 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827103, pluginId: Preferences, methodName: get
+06-30 17:46:28.472 31359 31359 V Capacitor: callback: 43827103, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:mobile-runtime-mode"}
+06-30 17:46:28.472 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.472 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827104, pluginId: Preferences, methodName: get
+06-30 17:46:28.472 31359 31359 V Capacitor: callback: 43827104, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:chat:activeConversationId"}
+06-30 17:46:28.473 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.473 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827105, pluginId: Preferences, methodName: get
+06-30 17:46:28.473 31359 31359 V Capacitor: callback: 43827105, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:conversations:v1"}
+06-30 17:46:28.473 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.474 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827106, pluginId: Preferences, methodName: get
+06-30 17:46:28.474 31359 31359 V Capacitor: callback: 43827106, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:active-model:v1"}
+06-30 17:46:28.475 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.476 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827107, pluginId: Preferences, methodName: get
+06-30 17:46:28.476 31359 31359 V Capacitor: callback: 43827107, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:assignments:v1"}
+06-30 17:46:28.476 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.477 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827108, pluginId: Preferences, methodName: get
+06-30 17:46:28.477 31359 31359 V Capacitor: callback: 43827108, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:browser-workspace:v1"}
+06-30 17:46:28.478 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.478 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827109, pluginId: Preferences, methodName: get
+06-30 17:46:28.479 31359 31359 V Capacitor: callback: 43827109, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:wallet-market-overview:v1"}
+06-30 17:46:28.479 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.480 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827110, pluginId: Preferences, methodName: get
+06-30 17:46:28.480 31359 31359 V Capacitor: callback: 43827110, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:eliza-1-bundles:v1"}
+06-30 17:46:28.480 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.481 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827111, pluginId: Preferences, methodName: get
+06-30 17:46:28.481 31359 31359 V Capacitor: callback: 43827111, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-full-bun-smoke:request"}
+06-30 17:46:28.481 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.482 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827112, pluginId: Preferences, methodName: get
+06-30 17:46:28.482 31359 31359 V Capacitor: callback: 43827112, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-full-bun-smoke:result"}
+06-30 17:46:28.482 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.483 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827113, pluginId: Preferences, methodName: get
+06-30 17:46:28.483 31359 31359 V Capacitor: callback: 43827113, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-onboarding-smoke:request"}
+06-30 17:46:28.484 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.484 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827114, pluginId: Preferences, methodName: get
+06-30 17:46:28.484 31359 31359 V Capacitor: callback: 43827114, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-onboarding-smoke:result"}
+--------- beginning of system
+06-30 17:46:28.567   549  1291 D CompatibilityChangeReporter: Compat change id reported: 161252188; UID 10234; state: DISABLED
+06-30 17:46:28.567   549  1291 W ActivityTaskManager: callingPackage for (uid=2000, pid=31478) has no WPC
+06-30 17:46:28.570   549  1291 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=ai.elizaos.app/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+06-30 17:46:28.571   893   935 V WindowManagerShell: Transition requested: android.os.BinderProxy@6955248 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=81 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=ai.elizaos.app/.MainActivity } baseActivity=ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity} topActivity=ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity} origActivity=null realActivity=ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity} numActivities=1 lastActiveTime=63679570 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@85628e1} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 128 - 0, 0) topActivityInfo=ActivityInfo{c2a2606 ai.elizaos.app.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=true isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+06-30 17:46:28.572   893   935 D WindowManagerShell: onActivityRestartAttempt: ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity}
+06-30 17:46:28.573   893   935 V WindowManagerShell: onTransitionReady android.os.BinderProxy@6955248: {id=288 t=OPEN f=0x0 trk=0 r=[] c=[]}
+06-30 17:46:28.573   893   935 V WindowManagerShell: No transition roots in (#288)android.os.BinderProxy@6955248@0 so abort
+06-30 17:46:28.573   549   568 V WindowManager: Sent Transition #288 createdAt=06-30 17:46:28.569 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=81 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=ai.elizaos.app/.MainActivity } baseActivity=ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity} topActivity=ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity} origActivity=null realActivity=ComponentInfo{ai.elizaos.app/ai.elizaos.app.MainActivity} numActivities=1 lastActiveTime=63679570 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{88bdff Task{b63f9c #81 type=standard A=10234:ai.elizaos.app}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 128 - 0, 0) topActivityInfo=ActivityInfo{656c7cc ai.elizaos.app.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=true isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+06-30 17:46:28.573   549   568 V WindowManager:     startWCT=WindowContainerTransaction { changes = {} hops = [] errorCallbackToken=null taskFragmentOrganizer=null }
+06-30 17:46:28.573   893   935 V WindowManagerShell: Transition animation finished (aborted=true), notifying core (#288)android.os.BinderProxy@6955248@0
+06-30 17:46:28.573   549   568 V WindowManager:     info={id=288 t=OPEN f=0x0 trk=0 r=[] c=[]}
+06-30 17:46:28.574   549   568 V WindowManager: Finish Transition #288: created at 06-30 17:46:28.569 collect-started=0.045ms request-sent=1.425ms started=2.913ms ready=2.894ms sent=3.884ms finished=5.391ms
+06-30 17:46:28.575   893   935 V WindowManagerShell: Track 0 became idle
+06-30 17:46:28.575   893   935 V WindowManagerShell: All active transition animations finished
+06-30 17:46:28.621 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.621 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.621 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.621 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.622 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.622 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.622 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.622 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.622 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.623 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.623 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.623 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.623 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.623 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.623 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.624 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.644 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-MSPkt2mZ.js
+06-30 17:46:28.727   549  3389 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+06-30 17:46:28.730 31359 31396 D Capacitor: Handling local request: https://localhost/api/first-run/status
+06-30 17:46:28.755 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.755 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.756 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.757 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827115, pluginId: Preferences, methodName: get
+06-30 17:46:28.757 31359 31359 V Capacitor: callback: 43827115, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-full-bun-smoke:request"}
+06-30 17:46:28.762 31359 31359 V Capacitor/AppPlugin: Notifying listeners for event pause
+06-30 17:46:28.762 31359 31359 D Capacitor/AppPlugin: No listeners found for event pause
+06-30 17:46:28.770 31359 31359 D Capacitor: App paused
+06-30 17:46:28.771 31359 31359 D Capacitor/AppPlugin: Firing change: true
+06-30 17:46:28.772 31359 31359 V Capacitor/AppPlugin: Notifying listeners for event appStateChange
+06-30 17:46:28.772 31359 31359 D Capacitor/AppPlugin: No listeners found for event appStateChange
+06-30 17:46:28.772 31359 31359 V Capacitor/AppPlugin: Notifying listeners for event resume
+06-30 17:46:28.772 31359 31359 D Capacitor/AppPlugin: No listeners found for event resume
+06-30 17:46:28.773   549  1291 D ConnectivityService: requestNetwork for uid/pid:10234/31359 activeRequest: null callbackRequest: 2125 [NetworkRequest [ REQUEST id=2126, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10234 RequestorUid: 10234 RequestorPkg: ai.elizaos.app UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+06-30 17:46:28.775   549   818 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=2126, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10234 RequestorUid: 10234 RequestorPkg: ai.elizaos.app UnderlyingNetworks: Null] ]
+06-30 17:46:28.775   549   818 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=2126, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10234 RequestorUid: 10234 RequestorPkg: ai.elizaos.app UnderlyingNetworks: Null] ]
+06-30 17:46:28.775   549   818 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=2126, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10234 RequestorUid: 10234 RequestorPkg: ai.elizaos.app UnderlyingNetworks: Null] ]
+06-30 17:46:28.775   549   818 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=2126, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10234 RequestorUid: 10234 RequestorPkg: ai.elizaos.app UnderlyingNetworks: Null] ]
+06-30 17:46:28.775   549   825 D ConnectivityService: NetReassign [2126 : null → 107] [c 0] [a 1] [i 1]
+06-30 17:46:28.776 31359 31379 D EGL_emulation: app_time_stats: avg=104.24ms min=19.72ms max=576.69ms count=15
+06-30 17:46:28.779 31359 31451 V Capacitor/NetworkPlugin: Notifying listeners for event networkStatusChange
+06-30 17:46:28.781 31359 31451 D Capacitor/NetworkPlugin: No listeners found for event networkStatusChange
+06-30 17:46:28.784 31359 31359 D Capacitor: App resumed
+06-30 17:46:28.787 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:28.788 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.788 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827116, pluginId: StatusBar, methodName: setStyle
+06-30 17:46:28.789 31359 31359 V Capacitor: callback: 43827116, pluginId: StatusBar, methodName: setStyle, methodData: {"style":"DARK"}
+06-30 17:46:28.800 31359 31397 D Capacitor: Handling local request: https://localhost/assets/poppins-latin-500-normal-C8OXljZJ.woff2
+06-30 17:46:28.800 31359 31398 D Capacitor: Handling local request: https://localhost/assets/poppins-latin-400-normal-cpxAROuN.woff2
+06-30 17:46:28.818 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:28.819 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827117, pluginId: Preferences, methodName: remove
+06-30 17:46:28.819 31359 31359 V Capacitor: callback: 43827117, pluginId: Preferences, methodName: remove, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:28.823   893   977 D EGL_emulation: app_time_stats: avg=107.85ms min=5.00ms max=935.83ms count=12
+06-30 17:46:28.958 31359 31396 D Capacitor: Handling local request: https://localhost/assets/poppins-latin-600-normal-zEkxB9Mr.woff2
+06-30 17:46:29.038 31359 31397 D Capacitor: Handling local request: https://localhost/api/suggestions
+06-30 17:46:29.040 31359 31397 D Capacitor: Handling local request: https://localhost/api/local-inference/hub
+06-30 17:46:29.042 31359 31396 D Capacitor: Handling local request: https://localhost/api/runtime/mode
+06-30 17:46:29.045 31359 31397 D Capacitor: Handling local request: https://localhost/api/approvals
+06-30 17:46:29.045 31359 31398 D Capacitor: Handling local request: https://localhost/api/apps/feed/agent/activity?limit=5
+06-30 17:46:29.047 31359 31399 D Capacitor: Handling local request: https://localhost/api/catalog/apps
+06-30 17:46:29.048 31359 31398 D Capacitor: Handling local request: https://localhost/api/apps/runs
+06-30 17:46:29.049 31359 31399 D Capacitor: Handling local request: https://localhost/api/relationships/candidates
+06-30 17:46:29.049 31359 31397 D Capacitor: Handling local request: https://localhost/api/connectors/google/accounts
+06-30 17:46:29.050 31359 31402 D Capacitor: Handling local request: https://localhost/api/workbench/todos
+06-30 17:46:29.050 31359 31396 D Capacitor: Handling local request: https://localhost/api/apps
+06-30 17:46:29.051 31359 31402 D Capacitor: Handling local request: https://localhost/api/commands?surface=gui
+06-30 17:46:29.051 31359 31398 D Capacitor: Handling local request: https://localhost/api/apps
+06-30 17:46:29.052 31359 31418 D Capacitor: Handling local request: https://localhost/api/relationships/people
+06-30 17:46:29.053 31359 31399 D Capacitor: Handling local request: https://localhost/api/apps/installed
+06-30 17:46:29.054 31359 31402 D Capacitor: Handling local request: https://localhost/api/backups
+06-30 17:46:29.055 31359 31418 D Capacitor: Handling local request: https://localhost/api/notifications?limit=100
+06-30 17:46:29.063 31359 31396 D Capacitor: Handling local request: https://localhost/api/conversations
+06-30 17:46:29.063 31359 31397 D Capacitor: Handling local request: https://localhost/api/config
+06-30 17:46:29.095 31359 31396 D Capacitor: Handling local request: https://localhost/api/local-inference/downloads/stream
+06-30 17:46:29.096 31359 31397 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals/stream
+06-30 17:46:29.392 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:29.396 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827118, pluginId: TalkMode, methodName: checkPermissions
+06-30 17:46:29.396 31359 31359 V Capacitor: callback: 43827118, pluginId: TalkMode, methodName: checkPermissions, methodData: {}
+06-30 17:46:29.397 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:29.399 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827119, pluginId: Swabble, methodName: addListener
+06-30 17:46:29.400 31359 31359 V Capacitor: callback: 43827119, pluginId: Swabble, methodName: addListener, methodData: {"eventName":"wakeWord"}
+06-30 17:46:29.406 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:29.420 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827120, pluginId: Keyboard, methodName: addListener
+06-30 17:46:29.420 31359 31359 V Capacitor: callback: 43827120, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillShow"}
+06-30 17:46:29.424 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:29.424 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827121, pluginId: Keyboard, methodName: addListener
+06-30 17:46:29.425 31359 31359 V Capacitor: callback: 43827121, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillHide"}
+06-30 17:46:29.425 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:29.426 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:29.426 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827122, pluginId: StatusBar, methodName: setOverlaysWebView
+06-30 17:46:29.426 31359 31359 V Capacitor: callback: 43827122, pluginId: StatusBar, methodName: setOverlaysWebView, methodData: {"overlay":true}
+06-30 17:46:29.427 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:29.439 31359 31359 I Choreographer: Skipped 35 frames!  The application may be doing too much work on its main thread.
+06-30 17:46:29.440   363 31491 I resolv  : GetAddrInfoHandler::run: {107 107 107 983147 10234 0}
+06-30 17:46:29.441   363 31492 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+06-30 17:46:29.445   363 31493 I resolv  : res_nmkquery: (QUERY, IN, A)
+06-30 17:46:29.450 31359 31398 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-16x16.png
+06-30 17:46:29.451 31359 31494 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.ico
+06-30 17:46:29.452 31359 31402 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-32x32.png
+06-30 17:46:29.453 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.svg
+06-30 17:46:29.455 31359 31359 V Capacitor/StatusBarPlugin: Notifying listeners for event statusBarOverlayChanged
+06-30 17:46:29.455 31359 31359 D Capacitor/StatusBarPlugin: No listeners found for event statusBarOverlayChanged
+06-30 17:46:29.481   363 31493 I resolv  : res_nsend: used send_dg 113 terrno: 0
+06-30 17:46:29.481   363 31493 I resolv  : doQuery: rcode=0, ancount=4, return value=113
+06-30 17:46:29.498 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:29.513 31359 31396 D Capacitor: Handling local request: https://localhost/api/catalog/apps
+06-30 17:46:29.513 31359 31398 D Capacitor: Handling local request: https://localhost/api/custom-actions
+06-30 17:46:29.549 31359 31396 D Capacitor: Handling local request: https://localhost/api/local-inference/hub
+06-30 17:46:29.578 31359 31396 D Capacitor: Handling local request: https://localhost/api/local-inference/downloads/stream
+06-30 17:46:29.721   363 31492 I resolv  : res_nsend: used send_dg 161 terrno: 0
+06-30 17:46:29.721   363 31492 I resolv  : doQuery: rcode=0, ancount=4, return value=161
+06-30 17:46:30.132 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:30.999 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:31.451   893   893 D StatusBarIconController: ignoring old pipeline callback because the new wifi icon is enabled
+06-30 17:46:31.631 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:32.067 31359 31396 D Capacitor: Handling local request: https://localhost/assets/ui-BnV-XPe4.js
+06-30 17:46:32.072 31359 31396 D Capacitor: Handling local request: https://localhost/assets/ui-sln8eHWU.js
+06-30 17:46:32.076 31359 31396 D Capacitor: Handling local request: https://localhost/assets/ui-Bhct4ewm.js
+06-30 17:46:32.080 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-DvScaYE3.js
+06-30 17:46:32.498 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:33.131 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:33.339 31359 31379 D EGL_emulation: app_time_stats: avg=910.05ms min=24.22ms max=3900.73ms count=5
+06-30 17:46:33.342 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"microphone":"granted","speechRecognition":"granted"}
+06-30 17:46:33.344 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.344 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.345 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827123, pluginId: StatusBar, methodName: setBackgroundColor
+06-30 17:46:33.345 31359 31359 V Capacitor: callback: 43827123, pluginId: StatusBar, methodName: setBackgroundColor, methodData: {"color":"#00000000"}
+06-30 17:46:33.346 31359 31359 E Capacitor/Console: File: https://localhost/ - Line 0 - Msg: EventSource's response has a MIME type ("text/html") that is not "text/event-stream". Aborting the connection.
+06-30 17:46:33.347 31359 31359 E Capacitor/Console: File: https://localhost/ - Line 0 - Msg: EventSource's response has a MIME type ("text/html") that is not "text/event-stream". Aborting the connection.
+06-30 17:46:33.358 31359 31359 I Choreographer: Skipped 233 frames!  The application may be doing too much work on its main thread.
+06-30 17:46:33.364 31359 31373 I OpenGLRenderer: Davey! duration=4490ms; Flags=0, FrameTimelineVsyncId=588395, IntendedVsync=63683051823383, Vsync=63683635156693, InputEventId=0, HandleInputStart=63683642516752, AnimationStart=63683642521989, PerformTraversalsStart=63683644381590, DrawStart=63683644605758, FrameDeadline=63683651823359, FrameInterval=63683641720334, FrameStartTime=16666666, SyncQueued=63683645231333, SyncStart=63683645288495, IssueDrawCommandsStart=63683645358397, SwapBuffers=63687538957651, FrameCompleted=63687542767866, DequeueBufferDuration=7761, QueueBufferDuration=344760, GpuCompleted=63687542544065, SwapBuffersCompleted=63687542767866, DisplayPresentTime=0, CommandSubmissionCompleted=63687538957651, 
+06-30 17:46:33.398 31359 31523 D ProfileInstaller: Installing profile for ai.elizaos.app
+06-30 17:46:33.423 31359 31359 E Capacitor/Console: File: https://localhost/ - Line 0 - Msg: EventSource's response has a MIME type ("text/html") that is not "text/event-stream". Aborting the connection.
+06-30 17:46:33.424 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.425 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.426 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827124, pluginId: Keyboard, methodName: addListener
+06-30 17:46:33.426 31359 31359 V Capacitor: callback: 43827124, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillShow"}
+06-30 17:46:33.426 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.427 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827125, pluginId: Keyboard, methodName: addListener
+06-30 17:46:33.427 31359 31359 V Capacitor: callback: 43827125, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillHide"}
+06-30 17:46:33.432 31359 31398 D Capacitor: Handling local request: https://localhost/assets/register-CMQghqGH.js
+06-30 17:46:33.436 31359 31398 D Capacitor: Handling local request: https://localhost/assets/index-GmBM3NES.js
+06-30 17:46:33.437 31359 31399 D Capacitor: Handling local request: https://localhost/assets/index-8Y2yTJ6H.js
+06-30 17:46:33.444 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-DkBI2bY5.js
+06-30 17:46:33.847 31359 31373 I OpenGLRenderer: Davey! duration=3947ms; Flags=0, FrameTimelineVsyncId=588467, IntendedVsync=63683668490025, Vsync=63687551823203, InputEventId=0, HandleInputStart=63687562318920, AnimationStart=63687562323897, PerformTraversalsStart=63687564276792, DrawStart=63687564525359, FrameDeadline=63687601823201, FrameInterval=63687561574608, FrameStartTime=16666666, SyncQueued=63687565017470, SyncStart=63687583937308, IssueDrawCommandsStart=63687584020809, SwapBuffers=63687612678696, FrameCompleted=63687635349853, DequeueBufferDuration=7309, QueueBufferDuration=319528, GpuCompleted=63687635349853, SwapBuffersCompleted=63687624622053, DisplayPresentTime=0, CommandSubmissionCompleted=63687612678696, 
+06-30 17:46:33.853 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.854 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827126, pluginId: App, methodName: addListener
+06-30 17:46:33.854 31359 31359 V Capacitor: callback: 43827126, pluginId: App, methodName: addListener, methodData: {"eventName":"appStateChange"}
+06-30 17:46:33.855 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.856 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827127, pluginId: App, methodName: addListener
+06-30 17:46:33.856 31359 31359 V Capacitor: callback: 43827127, pluginId: App, methodName: addListener, methodData: {"eventName":"backButton"}
+06-30 17:46:33.857 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.857 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827128, pluginId: App, methodName: addListener
+06-30 17:46:33.858 31359 31359 V Capacitor: callback: 43827128, pluginId: App, methodName: addListener, methodData: {"eventName":"appUrlOpen"}
+06-30 17:46:33.858 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.859 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827129, pluginId: App, methodName: getLaunchUrl
+06-30 17:46:33.859 31359 31359 V Capacitor: callback: 43827129, pluginId: App, methodName: getLaunchUrl, methodData: {}
+06-30 17:46:33.860 31359 31359 W Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [Eliza] Agent not available: "Agent" plugin is not implemented on android
+06-30 17:46:33.861 31359 31359 W Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [Eliza] Background runner unavailable: "CapacitorBackgroundRunner" plugin is not implemented on android
+06-30 17:46:33.862 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.863 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827130, pluginId: Preferences, methodName: set
+06-30 17:46:33.863 31359 31359 V Capacitor: callback: 43827130, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:first-run-complete","value":"1"}
+06-30 17:46:33.865 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.872 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827131, pluginId: Preferences, methodName: set
+06-30 17:46:33.873 31359 31359 V Capacitor: callback: 43827131, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:onboarding-complete","value":"1"}
+06-30 17:46:33.874 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.874 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827132, pluginId: Preferences, methodName: set
+06-30 17:46:33.875 31359 31359 V Capacitor: callback: 43827132, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:ui-shell-mode","value":"native"}
+06-30 17:46:33.875 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.876 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827133, pluginId: Preferences, methodName: set
+06-30 17:46:33.876 31359 31359 V Capacitor: callback: 43827133, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:mobile-runtime-mode","value":"remote"}
+06-30 17:46:33.877 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.878 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827134, pluginId: Preferences, methodName: set
+06-30 17:46:33.878 31359 31359 V Capacitor: callback: 43827134, pluginId: Preferences, methodName: set, methodData: {"key":"elizaos:active-server","value":"{\"id\":\"remote:host\",\"kind\":\"remote\",\"label\":\"Host agent\",\"apiBase\":\"http:\/\/127.0.0.1:31337\"}"}
+06-30 17:46:33.879 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.880 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827135, pluginId: Preferences, methodName: set
+06-30 17:46:33.880 31359 31359 V Capacitor: callback: 43827135, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:first-run-complete","value":"1"}
+06-30 17:46:33.881 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.882 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827136, pluginId: Preferences, methodName: set
+06-30 17:46:33.882 31359 31359 V Capacitor: callback: 43827136, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:mobile-runtime-mode","value":"remote"}
+06-30 17:46:33.882 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.883 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827137, pluginId: Preferences, methodName: set
+06-30 17:46:33.884 31359 31359 V Capacitor: callback: 43827137, pluginId: Preferences, methodName: set, methodData: {"key":"elizaos:active-server","value":"{\"id\":\"remote:host\",\"kind\":\"remote\",\"label\":\"Host agent\",\"apiBase\":\"http:\/\/127.0.0.1:31337\"}"}
+06-30 17:46:33.884 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:33.885 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 43827138, pluginId: Network, methodName: addListener
+06-30 17:46:33.885 31359 31359 V Capacitor: callback: 43827138, pluginId: Network, methodName: addListener, methodData: {"eventName":"networkStatusChange"}
+06-30 17:46:33.887 31359 31359 W Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [Eliza] Blocker backends plugin not available: e.registerNativeWebsiteBlockerBackend is not a function
+06-30 17:46:33.921 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.921 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.921 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.922 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.922 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.922 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.922 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.923 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.923 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:33.933 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-Br2Yot8a.js
+06-30 17:46:33.958 31359 31397 D Capacitor: Handling local request: https://localhost/assets/ui-0WB7YQU9.js
+06-30 17:46:33.967 31359 31396 D Capacitor: Handling local request: https://localhost/assets/PhoneCompanionApp-CNAZ9psK.js
+06-30 17:46:33.969 31359 31398 D Capacitor: Handling local request: https://localhost/assets/PhoneSpatialView-B2_PXKhX.js
+06-30 17:46:33.971 31359 31399 D Capacitor: Handling local request: https://localhost/assets/register-Bty1AjUI.js
+06-30 17:46:33.972 31359 31397 D Capacitor: Handling local request: https://localhost/assets/index-C5vQHyWo.js
+06-30 17:46:33.974 31359 31402 D Capacitor: Handling local request: https://localhost/assets/register-BUg1hMc-.js
+06-30 17:46:33.984 31359 31397 D Capacitor: Handling local request: https://localhost/api/apps/runs
+06-30 17:46:34.014 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:34.028 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-DYWWYr1R.js
+06-30 17:46:34.029 31359 31398 D Capacitor: Handling local request: https://localhost/assets/input-group-CrA15zH6.js
+06-30 17:46:34.030 31359 31397 D Capacitor: Handling local request: https://localhost/assets/FilesView-2JT_wgxV.js
+06-30 17:46:34.222 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-Cu5pCLzs.js
+06-30 17:46:34.224 31359 31397 D Capacitor: Handling local request: https://localhost/assets/register-BUKjZzDC.js
+06-30 17:46:34.339 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-BlGnrvE8.js
+06-30 17:46:34.342 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-DeVsUTTx.js
+06-30 17:46:34.372 31359 31379 D EGL_emulation: app_time_stats: avg=68.78ms min=36.57ms max=429.76ms count=15
+06-30 17:46:34.460 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-CiREtpVr.js
+06-30 17:46:34.464 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-CQoXE2xk.js
+06-30 17:46:34.649 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:34.674 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-wOCkWgcT.js
+06-30 17:46:34.677 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-Dj7AJ2Yl.js
+06-30 17:46:34.799   363   403 I netd    : setProcSysNet(4, 2, wlan0, retrans_time_ms, 750) <0.17ms>
+06-30 17:46:34.804   363   403 I netd    : setProcSysNet(4, 2, wlan0, ucast_solicit, 10) <0.09ms>
+06-30 17:46:34.805   363   403 I netd    : setProcSysNet(6, 2, wlan0, retrans_time_ms, 750) <0.09ms>
+06-30 17:46:34.805   363   403 I netd    : setProcSysNet(6, 2, wlan0, ucast_solicit, 10) <0.03ms>
+06-30 17:46:34.839 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-DkqrAIKi.js
+06-30 17:46:34.865   549   636 D ActivityManager: freezing 16027 com.google.android.documentsui
+06-30 17:46:34.884 31359 31396 D Capacitor: Handling local request: https://localhost/
+06-30 17:46:34.904   549   636 D ActivityManager: freezing 15717 com.google.android.permissioncontroller
+--------- beginning of kernel
+06-30 17:46:35.023     0     0 I logd    : start watching /data/system/packages.list ...
+06-30 17:46:35.027     0     0 I logd    : ReadPackageList, total packages: 203
+06-30 17:46:34.990 31359 31397 D Capacitor: Handling local request: https://localhost/assets/vendor-react-Dh8venqn.js
+06-30 17:46:34.996 31359 31398 D Capacitor: Handling local request: https://localhost/assets/index-C4faXH1d.js
+06-30 17:46:34.998 31359 31399 D Capacitor: Handling local request: https://localhost/assets/vendor-lucide-BPakN3Wh.js
+06-30 17:46:34.998 31359 31402 D Capacitor: Handling local request: https://localhost/assets/vendor-crypto-SdLLF6R8.js
+06-30 17:46:34.999 31359 31418 D Capacitor: Handling local request: https://localhost/assets/index-DNh-YHq9.css
+06-30 17:46:35.233   893   893 D StatusBarIconController: ignoring old pipeline callbacks, because the new mobile icons are enabled
+06-30 17:46:35.330   181 31297 I keystore2: system/security/keystore2/src/watchdog.rs:319 - Watchdog thread idle -> terminating. Have a great day.
+06-30 17:46:35.401 31359 31379 D EGL_emulation: app_time_stats: avg=40.95ms min=32.42ms max=48.58ms count=25
+06-30 17:46:35.422 31359 31396 D Capacitor: Handling local request: https://localhost/eliza-renderer-build.json
+06-30 17:46:35.430 31359 31396 D Capacitor: Handling local request: https://localhost/assets/browser-BfdiAxBe.js
+06-30 17:46:35.430 31359 31398 D Capacitor: Handling local request: https://localhost/assets/eliza-cloud-model-route-DDEJ0LV1.js
+06-30 17:46:35.431 31359 31396 D Capacitor: Handling local request: https://localhost/assets/EmbeddedAppViewer-YrvJ0G1g.js
+06-30 17:46:35.432 31359 31398 D Capacitor: Handling local request: https://localhost/assets/task-widget-BAi_OFAw.js
+06-30 17:46:35.432 31359 31397 D Capacitor: Handling local request: https://localhost/assets/index-CqFaJBgY.js
+06-30 17:46:35.433 31359 31396 D Capacitor: Handling local request: https://localhost/assets/DiffReviewPanel-CLR_ytJU.js
+06-30 17:46:35.434 31359 31399 D Capacitor: Handling local request: https://localhost/assets/useChatSidebarVisibility-Cwa_crkv.js
+06-30 17:46:35.436 31359 31418 D Capacitor: Handling local request: https://localhost/assets/DatabasePageView-DzQKtjFo.js
+06-30 17:46:35.437 31359 31418 D Capacitor: Handling local request: https://localhost/assets/DatabaseView-CRfHkz_s.js
+06-30 17:46:35.438 31359 31396 D Capacitor: Handling local request: https://localhost/assets/RelationshipsView-CjBNKf9u.js
+06-30 17:46:35.439 31359 31397 D Capacitor: Handling local request: https://localhost/assets/tooltip-extended-BON4B-Mc.js
+06-30 17:46:35.439 31359 31399 D Capacitor: Handling local request: https://localhost/assets/RuntimeView-CX58fh_w.js
+06-30 17:46:35.439 31359 31398 D Capacitor: Handling local request: https://localhost/assets/TerminalPluginView-DFnwnqrA.js
+06-30 17:46:35.439 31359 31402 D Capacitor: Handling local request: https://localhost/assets/index-DteK30cG.js
+06-30 17:46:35.442 31359 31418 D Capacitor: Handling local request: https://localhost/assets/TasksPageView-CqiNrWw0.js
+06-30 17:46:35.446 31359 31397 D Capacitor: Handling local request: https://localhost/assets/TrajectoriesView-BCGChWpp.js
+06-30 17:46:35.451 31359 31402 D Capacitor: Handling local request: https://localhost/assets/trajectory-format-D0hgw1gv.js
+06-30 17:46:35.452 31359 31399 D Capacitor: Handling local request: https://localhost/assets/trajectory-sidebar-item-BuJ0khF6.js
+06-30 17:46:35.453 31359 31418 D Capacitor: Handling local request: https://localhost/assets/TrajectoryDetailView-CHxsMlM6.js
+06-30 17:46:35.500 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-16x16.png
+06-30 17:46:35.504 31359 31397 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-32x32.png
+06-30 17:46:35.506 31359 31397 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.ico
+06-30 17:46:35.507 31359 31397 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.svg
+06-30 17:46:35.520 31359 31359 I Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 196 - Msg: [renderer-build] 25556d71cefa built 2026-07-01T00:28:47.854Z (variant=direct, target=android)
+06-30 17:46:35.521 31359 31359 I Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [shell] window shell mode: main (search="")
+06-30 17:46:35.522 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.523 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972866, pluginId: Preferences, methodName: get
+06-30 17:46:35.523 31359 31359 V Capacitor: callback: 90972866, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:35.600 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":"1"}
+06-30 17:46:35.600 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.601 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972867, pluginId: Preferences, methodName: get
+06-30 17:46:35.601 31359 31359 V Capacitor: callback: 90972867, pluginId: Preferences, methodName: get, methodData: {"key":"eliza.control.settings.v1"}
+06-30 17:46:35.602 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.602 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972868, pluginId: Preferences, methodName: get
+06-30 17:46:35.602 31359 31359 V Capacitor: callback: 90972868, pluginId: Preferences, methodName: get, methodData: {"key":"eliza.device.identity"}
+06-30 17:46:35.603 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.603 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972869, pluginId: Preferences, methodName: get
+06-30 17:46:35.603 31359 31359 V Capacitor: callback: 90972869, pluginId: Preferences, methodName: get, methodData: {"key":"eliza.device.auth"}
+06-30 17:46:35.603 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.607 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972870, pluginId: Preferences, methodName: get
+06-30 17:46:35.608 31359 31359 V Capacitor: callback: 90972870, pluginId: Preferences, methodName: get, methodData: {"key":"elizaos:active-server"}
+06-30 17:46:35.609 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.609 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972871, pluginId: Preferences, methodName: get
+06-30 17:46:35.609 31359 31359 V Capacitor: callback: 90972871, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:35.609 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.610 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972872, pluginId: Preferences, methodName: get
+06-30 17:46:35.610 31359 31359 V Capacitor: callback: 90972872, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:setup:step"}
+06-30 17:46:35.610 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.611 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972873, pluginId: Preferences, methodName: get
+06-30 17:46:35.613 31359 31359 V Capacitor: callback: 90972873, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:mobile-runtime-mode"}
+06-30 17:46:35.613 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.614 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972874, pluginId: Preferences, methodName: get
+06-30 17:46:35.614 31359 31359 V Capacitor: callback: 90972874, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:chat:activeConversationId"}
+06-30 17:46:35.614 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.615 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972875, pluginId: Preferences, methodName: get
+06-30 17:46:35.615 31359 31359 V Capacitor: callback: 90972875, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:conversations:v1"}
+06-30 17:46:35.615 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.616 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972876, pluginId: Preferences, methodName: get
+06-30 17:46:35.616 31359 31359 V Capacitor: callback: 90972876, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:active-model:v1"}
+06-30 17:46:35.616 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.616 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972877, pluginId: Preferences, methodName: get
+06-30 17:46:35.616 31359 31359 V Capacitor: callback: 90972877, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:assignments:v1"}
+06-30 17:46:35.617 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.617 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972878, pluginId: Preferences, methodName: get
+06-30 17:46:35.617 31359 31359 V Capacitor: callback: 90972878, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:browser-workspace:v1"}
+06-30 17:46:35.618 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.619 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972879, pluginId: Preferences, methodName: get
+06-30 17:46:35.619 31359 31359 V Capacitor: callback: 90972879, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:wallet-market-overview:v1"}
+06-30 17:46:35.619 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.620 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972880, pluginId: Preferences, methodName: get
+06-30 17:46:35.620 31359 31359 V Capacitor: callback: 90972880, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-local-agent:eliza-1-bundles:v1"}
+06-30 17:46:35.621 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.622 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972881, pluginId: Preferences, methodName: get
+06-30 17:46:35.622 31359 31359 V Capacitor: callback: 90972881, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-full-bun-smoke:request"}
+06-30 17:46:35.623 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.623 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972882, pluginId: Preferences, methodName: get
+06-30 17:46:35.623 31359 31359 V Capacitor: callback: 90972882, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-full-bun-smoke:result"}
+06-30 17:46:35.624 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.625 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972883, pluginId: Preferences, methodName: get
+06-30 17:46:35.625 31359 31359 V Capacitor: callback: 90972883, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-onboarding-smoke:request"}
+06-30 17:46:35.626 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.627 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972884, pluginId: Preferences, methodName: get
+06-30 17:46:35.627 31359 31359 V Capacitor: callback: 90972884, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-onboarding-smoke:result"}
+06-30 17:46:35.637 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.638 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.638 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.639 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":"{\"id\":\"remote:host\",\"kind\":\"remote\",\"label\":\"Host agent\",\"apiBase\":\"http://127.0.0.1:31337\"}"}
+06-30 17:46:35.639 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":"1"}
+06-30 17:46:35.640 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.640 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":"remote"}
+06-30 17:46:35.640 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.641 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.641 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.642 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.642 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.658 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-MSPkt2mZ.js
+06-30 17:46:35.660 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.661 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.661 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.662 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.662 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.663 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.663 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.664 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972885, pluginId: Preferences, methodName: get
+06-30 17:46:35.665 31359 31359 V Capacitor: callback: 90972885, pluginId: Preferences, methodName: get, methodData: {"key":"eliza:ios-full-bun-smoke:request"}
+06-30 17:46:35.680 31359 31396 D Capacitor: Handling local request: https://localhost/api/apps/favorites
+06-30 17:46:35.681 31359 31398 D Capacitor: Handling local request: https://localhost/api/status
+06-30 17:46:35.681 31359 31397 D Capacitor: Handling local request: https://localhost/api/config
+06-30 17:46:35.688 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.689 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972886, pluginId: Preferences, methodName: remove
+06-30 17:46:35.689 31359 31359 V Capacitor: callback: 90972886, pluginId: Preferences, methodName: remove, methodData: {"key":"elizaos:active-server"}
+06-30 17:46:35.690 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.691 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972887, pluginId: Preferences, methodName: remove
+06-30 17:46:35.691 31359 31359 V Capacitor: callback: 90972887, pluginId: Preferences, methodName: remove, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:35.692 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.693 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972888, pluginId: Preferences, methodName: remove
+06-30 17:46:35.693 31359 31359 V Capacitor: callback: 90972888, pluginId: Preferences, methodName: remove, methodData: {"key":"eliza:first-run-complete"}
+06-30 17:46:35.738 31359 31396 D Capacitor: Handling local request: https://localhost/assets/poppins-latin-500-normal-C8OXljZJ.woff2
+06-30 17:46:35.738 31359 31397 D Capacitor: Handling local request: https://localhost/assets/poppins-latin-400-normal-cpxAROuN.woff2
+06-30 17:46:35.791 31359 31396 D Capacitor: Handling local request: https://localhost/assets/poppins-latin-600-normal-zEkxB9Mr.woff2
+06-30 17:46:35.828 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.829 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972889, pluginId: TalkMode, methodName: checkPermissions
+06-30 17:46:35.830 31359 31359 V Capacitor: callback: 90972889, pluginId: TalkMode, methodName: checkPermissions, methodData: {}
+06-30 17:46:35.831 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.850 31359 31397 D Capacitor: Handling local request: https://localhost/api/runtime/mode
+06-30 17:46:35.850 31359 31398 D Capacitor: Handling local request: https://localhost/api/suggestions
+06-30 17:46:35.851 31359 31396 D Capacitor: Handling local request: https://localhost/api/local-inference/hub
+06-30 17:46:35.853 31359 31396 D Capacitor: Handling local request: https://localhost/api/approvals
+06-30 17:46:35.854 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972890, pluginId: Swabble, methodName: addListener
+06-30 17:46:35.854 31359 31359 V Capacitor: callback: 90972890, pluginId: Swabble, methodName: addListener, methodData: {"eventName":"wakeWord"}
+06-30 17:46:35.855 31359 31397 D Capacitor: Handling local request: https://localhost/api/apps/feed/agent/activity?limit=5
+06-30 17:46:35.859 31359 31397 D Capacitor: Handling local request: https://localhost/api/catalog/apps
+06-30 17:46:35.862 31359 31397 D Capacitor: Handling local request: https://localhost/api/apps
+06-30 17:46:35.868 31359 31399 D Capacitor: Handling local request: https://localhost/api/workbench/todos
+06-30 17:46:35.869 31359 31398 D Capacitor: Handling local request: https://localhost/api/relationships/people
+06-30 17:46:35.870 31359 31397 D Capacitor: Handling local request: https://localhost/api/apps/runs
+06-30 17:46:35.886 31359 31396 D Capacitor: Handling local request: https://localhost/api/relationships/candidates
+06-30 17:46:35.888 31359 31396 D Capacitor: Handling local request: https://localhost/api/connectors/google/accounts
+06-30 17:46:35.888 31359 31397 D Capacitor: Handling local request: https://localhost/api/apps
+06-30 17:46:35.890 31359 31397 D Capacitor: Handling local request: https://localhost/api/apps/installed
+06-30 17:46:35.891 31359 31396 D Capacitor: Handling local request: https://localhost/api/commands?surface=gui
+06-30 17:46:35.892 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.893 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972891, pluginId: Keyboard, methodName: addListener
+06-30 17:46:35.893 31359 31359 V Capacitor: callback: 90972891, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillShow"}
+06-30 17:46:35.893 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:35.894 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972892, pluginId: Keyboard, methodName: addListener
+06-30 17:46:35.894 31359 31359 V Capacitor: callback: 90972892, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillHide"}
+06-30 17:46:35.895 31359 31418 D Capacitor: Handling local request: https://localhost/api/notifications?limit=100
+06-30 17:46:35.895 31359 31402 D Capacitor: Handling local request: https://localhost/api/conversations
+06-30 17:46:35.895 31359 31418 D Capacitor: Handling local request: https://localhost/api/config
+06-30 17:46:35.899 31359 31396 D Capacitor: Handling local request: https://localhost/api/backups
+06-30 17:46:35.923 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"value":null}
+06-30 17:46:35.923 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:35.950 31359 31397 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals/stream
+06-30 17:46:35.952 31359 31396 D Capacitor: Handling local request: https://localhost/api/local-inference/downloads/stream
+06-30 17:46:36.023 31359 31396 D Capacitor: Handling local request: https://localhost/api/catalog/apps
+06-30 17:46:36.025 31359 31396 D Capacitor: Handling local request: https://localhost/api/custom-actions
+06-30 17:46:36.070 31359 31396 D Capacitor: Handling local request: https://localhost/api/local-inference/hub
+06-30 17:46:36.110 31359 31397 D Capacitor: Handling local request: https://localhost/api/local-inference/downloads/stream
+06-30 17:46:36.136 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:36.137 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:36.138 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: {"microphone":"granted","speechRecognition":"granted"}
+06-30 17:46:36.138 31359 31359 W Capacitor/Console: File: https://localhost/assets/vendor-crypto-SdLLF6R8.js - Line 5 - Msg: %c Warn font-size: 12px; color: #ffaa00; [persistence] failed to fetch server favorite apps: Unexpected token '<', "<!doctype "... is not valid JSON
+06-30 17:46:36.144 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:36.146 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972893, pluginId: StatusBar, methodName: setStyle
+06-30 17:46:36.146 31359 31359 V Capacitor: callback: 90972893, pluginId: StatusBar, methodName: setStyle, methodData: {"style":"DARK"}
+06-30 17:46:36.182 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:36.185 31359 31359 E Capacitor/Console: File: https://localhost/ - Line 0 - Msg: EventSource's response has a MIME type ("text/html") that is not "text/event-stream". Aborting the connection.
+06-30 17:46:36.235 31359 31359 E Capacitor/Console: File: https://localhost/ - Line 0 - Msg: EventSource's response has a MIME type ("text/html") that is not "text/event-stream". Aborting the connection.
+06-30 17:46:36.236 31359 31359 E Capacitor/Console: File: https://localhost/ - Line 0 - Msg: EventSource's response has a MIME type ("text/html") that is not "text/event-stream". Aborting the connection.
+06-30 17:46:36.237 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:36.237 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:36.239 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972894, pluginId: StatusBar, methodName: setOverlaysWebView
+06-30 17:46:36.239 31359 31359 V Capacitor: callback: 90972894, pluginId: StatusBar, methodName: setOverlaysWebView, methodData: {"overlay":true}
+06-30 17:46:36.323  1812  2270 W MediaProvider: isAppCloneUserPair for user 0: false
+06-30 17:46:36.328 31547 31547 D MediaCodecList: codecHandlesFormat: no format, so no extra checks
+06-30 17:46:36.333 31547 31552 D CCodec  : allocate(c2.android.avc.encoder)
+06-30 17:46:36.335 31547 31552 I Codec2Client: Available Codec2 services: "default" "software"
+06-30 17:46:36.336 31547 31552 I CCodec  : setting up 'default' as default (vendor) store
+06-30 17:46:36.340   482   943 I mediaswcodec: missing struct descriptor #Param::CoreIndex(--004) for field values of struct #Param::CoreIndex(F-12004)
+06-30 17:46:36.340   482   943 I mediaswcodec: missing struct descriptor #Param::CoreIndex(--1812) for field values of struct #Param::CoreIndex(F-11812)
+06-30 17:46:36.341   482   943 I mediaswcodec: missing struct descriptor #Param::CoreIndex(--004) for field values of struct #Param::CoreIndex(F-12004)
+06-30 17:46:36.341   482   943 I mediaswcodec: missing struct descriptor #Param::CoreIndex(--1812) for field values of struct #Param::CoreIndex(F-11812)
+06-30 17:46:36.343 31547 31552 I CCodec  : Created component [c2.android.avc.encoder]
+06-30 17:46:36.343 31547 31552 D CCodecConfig: read media type: video/avc
+06-30 17:46:36.345 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: algo.buffers.max-count.values
+06-30 17:46:36.345 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: output.subscribed-indices.values
+06-30 17:46:36.345 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: input.buffers.allocator-ids.values
+06-30 17:46:36.345 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: output.buffers.allocator-ids.values
+06-30 17:46:36.346 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: algo.buffers.allocator-ids.values
+06-30 17:46:36.346 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: output.buffers.pool-ids.values
+06-30 17:46:36.346 31547 31552 D ReflectedParamUpdater: extent() != 1 for single value type: algo.buffers.pool-ids.values
+06-30 17:46:36.347 31547 31552 D ReflectedParamUpdater: ignored struct field coding.gop.values
+06-30 17:46:36.347 31547 31552 D ReflectedParamUpdater: ignored struct field coding.qp.values
+06-30 17:46:36.348 31547 31552 D CCodecConfig: ignoring local param raw.color (0xc2001809) as it is already supported
+06-30 17:46:36.350 31547 31552 I CCodecConfig: query failed after returning 12 values (BAD_INDEX)
+06-30 17:46:36.350 31547 31552 D CCodecConfig: c2 config diff is Dict {
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::i32 coded.average-qp.value = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.bitrate.value = 64000
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::float coded.frame-rate.value = 1
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.picture-type.value = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.pl.level = 20492
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.pl.profile = 20481
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.vui.color.matrix = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.vui.color.primaries = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.vui.color.range = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coded.vui.color.transfer = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coding.intra-refresh.mode = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::float coding.intra-refresh.period = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 coding.request-sync-frame.value = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::i64 coding.sync-frame-interval.value = 1000000
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 input.delay.value = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   string input.media-type.value = "video/raw"
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   string output.media-type.value = "video/avc"
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 raw.color.matrix = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 raw.color.primaries = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 raw.color.range = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 raw.color.transfer = 0
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 raw.size.height = 16
+06-30 17:46:36.350 31547 31552 D CCodecConfig:   c2::u32 raw.size.width = 16
+06-30 17:46:36.350 31547 31552 D CCodecConfig: }
+06-30 17:46:36.350 31547 31552 W ColorUtils: expected specified color aspects (0:0:0:0)
+06-30 17:46:36.356 31547 31547 D CodecSeeding: Seed: codec c2.android.avc.encoder, mediatype video/avc, overrideable 1
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-bpp,0)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-bpp-1080p,1.90)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-bpp-720p,2.25)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-bpp-540p,2.65)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-bpp-480p,3.00)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-bpp-320x240,0)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-qpmax,-1)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-qpmax-1080p,45)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-qpmax-720p,43)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-qpmax-540p,42)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-target-qpmax-480p,38)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-bitrate-phaseout,1.75)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setTuningValue(vq-boost-missing-qp,0.20)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setFeatureValue(intra-refresh,0)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setFeatureValue(qp-bounds,0)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setFeatureValue(_vq_eligible.device,1)
+06-30 17:46:36.357 31547 31547 D CodecProperties: setFeatureValue(_quality.target,1)
+06-30 17:46:36.358 31547 31547 D CodecSeeding: Seed: codec c2.android.avc.encoder, mediatype video/avc, overrideable 0
+06-30 17:46:36.358 31547 31547 D VQApply : minquality: 1080x2400 outside of shaping range
+06-30 17:46:36.358 31547 31547 D MediaCodec: shapeMediaFormat: deltas(1): AMessage(what = 0x00000000) = {
+06-30 17:46:36.358 31547 31547 D MediaCodec:     int32_t android._encoding-quality-level = 0
+06-30 17:46:36.358 31547 31547 D MediaCodec:   }
+06-30 17:46:36.358 31547 31550 D MediaCodec: flushMediametrics
+06-30 17:46:36.358 31547 31552 D CCodec  : [c2.android.avc.encoder] buffers are bound to CCodec for this session
+06-30 17:46:36.358 31547 31552 D CCodecConfig: no c2 equivalents for color-format
+06-30 17:46:36.359 31547 31552 D CCodecConfig: no c2 equivalents for max-bframes
+06-30 17:46:36.359 31547 31552 D CCodecConfig: no c2 equivalents for flags
+06-30 17:46:36.359 31547 31552 D CCodecConfig: no c2 equivalents for encoder
+06-30 17:46:36.359 31547 31552 D CCodecConfig: c2 config diff is   c2::u32 coded.bitrate.value = 4000000
+06-30 17:46:36.359 31547 31552 D CCodecConfig:   c2::float coded.frame-rate.value = 60
+06-30 17:46:36.359 31547 31552 D CCodecConfig:   c2::i64 coding.sync-frame-interval.value = 10000000
+06-30 17:46:36.359 31547 31552 D CCodecConfig:   c2::u32 raw.size.height = 2400
+06-30 17:46:36.359 31547 31552 D CCodecConfig:   c2::u32 raw.size.width = 1080
+06-30 17:46:36.359 31547 31552 W ColorUtils: expected specified color aspects (0:0:0:0)
+06-30 17:46:36.360 31547 31552 D CCodec  : encoding statistics level = 0
+06-30 17:46:36.360 31547 31552 D CCodec  : setup formats input: AMessage(what = 0x00000000) = {
+06-30 17:46:36.360 31547 31552 D CCodec  :   Rect crop(0, 0, 1079, 2399)
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-standard = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-range = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-transfer = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t frame-rate = 60
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t height = 2400
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t intra-refresh-period = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   string mime = "video/raw"
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t video-qp-average = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t width = 1080
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t android._dataspace = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t using-sw-read-often = 1
+06-30 17:46:36.360 31547 31552 D CCodec  :   int64_t android._C2MemoryUsage = 1
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-format = 2130708361
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t android._color-format = 2130708361
+06-30 17:46:36.360 31547 31552 D CCodec  : }
+06-30 17:46:36.360 31547 31552 D CCodec  : setup formats output: AMessage(what = 0x00000000) = {
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t bitrate = 4000000
+06-30 17:46:36.360 31547 31552 D CCodec  :   Rect crop(0, 0, 1079, 2399)
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-standard = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-range = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t color-transfer = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t frame-rate = 60
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t height = 2400
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t intra-refresh-period = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t level = 4096
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t max-bitrate = 4000000
+06-30 17:46:36.360 31547 31552 D CCodec  :   string mime = "video/avc"
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t profile = 65536
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t video-qp-average = 0
+06-30 17:46:36.360 31547 31552 D CCodec  :   int32_t width = 1080
+06-30 17:46:36.360 31547 31552 D CCodec  : }
+06-30 17:46:36.360 31547 31552 I CCodecConfig: query failed after returning 13 values (BAD_INDEX)
+06-30 17:46:36.360 31547 31552 D CCodecConfig: c2 config diff is   c2::u32 coded.pl.level = 20494
+06-30 17:46:36.360 31547 31552 W ColorUtils: expected specified color aspects (0:0:0:0)
+06-30 17:46:36.361 31547 31552 D CCodec  : input format changed to AMessage(what = 0x00000000) = {
+06-30 17:46:36.361 31547 31552 D CCodec  :   Rect crop(0, 0, 1079, 2399)
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t color-standard = 1
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t color-range = 2
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t color-transfer = 3
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t frame-rate = 60
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t height = 2400
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t intra-refresh-period = 0
+06-30 17:46:36.361 31547 31552 D CCodec  :   string mime = "video/raw"
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t video-qp-average = 0
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t width = 1080
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t android._dataspace = 260
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t using-sw-read-often = 1
+06-30 17:46:36.361 31547 31552 D CCodec  :   int64_t android._C2MemoryUsage = 1
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t color-format = 2130708361
+06-30 17:46:36.361 31547 31552 D CCodec  :   int32_t android._color-format = 2130708361
+06-30 17:46:36.361 31547 31552 D CCodec  : }
+06-30 17:46:36.361 31547 31552 D GraphicBufferSource: setting dataspace: 0x104, acquired=0
+06-30 17:46:36.361 31547 31552 D CCodec  : ISConfig not changed
+06-30 17:46:36.362 31547 31552 W Codec2Client: query -- param skipped: index = 1342179345.
+06-30 17:46:36.362 31547 31552 W Codec2Client: query -- param skipped: index = 2415921170.
+06-30 17:46:36.362 31547 31552 D CCodecBufferChannel: [c2.android.avc.encoder#112] Using basic input block pool with poolID 1 => got 1 - OK (0)
+06-30 17:46:36.362 31547 31552 D C2Store : Using DMABUF Heaps
+06-30 17:46:36.363 31547 31552 I CCodecBufferChannel: [c2.android.avc.encoder#112] Created output block pool with allocatorID 16 => poolID 57 - OK
+06-30 17:46:36.363 31547 31552 D CCodecBufferChannel: [c2.android.avc.encoder#112] Configured output block pool ids 57 => OK
+06-30 17:46:36.364   476  3062 W ResourceManagerService: Ignoring request to add new resource entry with value <= 0
+06-30 17:46:36.382   420   420 W SurfaceFlinger: Invalid layer stack -1
+06-30 17:46:36.386  1812 22085 I MediaProvider: Deleted 0 0 0 1 0 0 0 items on external_primary due to com.android.shell
+06-30 17:46:36.477     0     0 I servicemanager: Could not find android.hardware.graphics.allocator.IAllocator/default in the VINTF manifest.
+06-30 17:46:36.401   157   157 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+06-30 17:46:36.403  1812 25562 W MediaProvider: isAppCloneUserPair for user 0: false
+06-30 17:46:36.405 31547 31549 I Gralloc4: mapper 4.x is not supported
+06-30 17:46:36.405 31547 31547 D MPEG4Writer: PreAllocation enabled
+06-30 17:46:36.437   549  2308 D CompatibilityChangeReporter: Compat change id reported: 261072174; UID 10234; state: ENABLED
+06-30 17:46:36.450   549  2308 W ProcessStats: Tracking association SourceState{5427f4c ai.elizaos.app/10234 BTop #90478} whose proc state 2 is better than process ProcessState{84d1750 com.google.android.gms.persistent/10128 pkg=com.google.android.gms} proc state 4 (66 skipped)
+06-30 17:46:36.458 31547 31563 D GraphicBufferSource: got buffer with new dataSpace #104
+06-30 17:46:36.458 31547 31563 D C2OMXNode: dataspace changed to 0x104 pixel format: 0x1
+06-30 17:46:36.459   157   157 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+06-30 17:46:36.462   482 31557 D SimpleC2Component: Using output block pool with poolID 57 => got 57 - 0
+06-30 17:46:36.462   482 31557 D SimpleC2Component: applied 2 configUpdates => BAD_INDEX (6)
+06-30 17:46:36.462   482 31557 D C2SoftAvcEnc: Params width 1080 height 2400 level 50 colorFormat 0 bframes 0
+06-30 17:46:36.468 13946 31276 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.ipa.base.IpaGcmTaskService started execution. cause:9 exec_start_elapsed_seconds: 63690 [CONTEXT service_id=218 ]
+06-30 17:46:36.506 13946 31276 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.ipa.base.IpaGcmTaskService finished executing. cause:9 result: 1 elapsed_millis: 74 uptime_millis: 74 exec_start_elapsed_seconds: 63690 [CONTEXT service_id=218 ]
+06-30 17:46:36.533   482 31557 E C2SoftAvcEnc: Unable to set air params = 0x1ad
+06-30 17:46:36.537 13946 31275 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.security.snet.SnetNormalTaskService started execution. cause:5 exec_start_elapsed_seconds: 63690 [CONTEXT service_id=218 ]
+06-30 17:46:36.547 13946 31276 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.auth.account.be.legacy.AuthCronService started execution. cause:5 exec_start_elapsed_seconds: 63690 [CONTEXT service_id=218 ]
+06-30 17:46:36.572 13946 31275 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.security.snet.SnetNormalTaskService finished executing. cause:5 result: 1 elapsed_millis: 44 uptime_millis: 44 exec_start_elapsed_seconds: 63690 [CONTEXT service_id=218 ]
+06-30 17:46:36.586   549  2363 D ActivityManager: sync unfroze 15921 com.google.android.gms.unstable for 6
+06-30 17:46:36.602 31359 31379 D EGL_emulation: app_time_stats: avg=61.69ms min=23.44ms max=369.17ms count=19
+06-30 17:46:36.609   549  2363 D CompatibilityChangeReporter: Compat change id reported: 197654537; UID 10234; state: ENABLED
+06-30 17:46:36.615 31359 31359 V Capacitor/StatusBarPlugin: Notifying listeners for event statusBarOverlayChanged
+06-30 17:46:36.615 31359 31359 D Capacitor/StatusBarPlugin: No listeners found for event statusBarOverlayChanged
+06-30 17:46:36.739 31547 31552 D CCodecConfig: c2 config diff is   Buffer coded.init-data.value = {
+06-30 17:46:36.739 31547 31552 D CCodecConfig:     00000000:  00 00 00 01 67 42 c0 32  8d 68 04 40 12 de 5e 42  ....gB.2.h.@..^B
+06-30 17:46:36.739 31547 31552 D CCodecConfig:     00000010:  02 02 02 0f 08 84 6a 00  00 00 01 68 ce 01 a8 35  ......j....h...5
+06-30 17:46:36.739 31547 31552 D CCodecConfig:     00000020:  c8                                                .
+06-30 17:46:36.739 31547 31552 D CCodecConfig:   }
+06-30 17:46:36.742 31547 31547 D MPEG4Writer: fpathconf _PC_FILESIZEBITS:64
+06-30 17:46:36.742 31547 31547 D MPEG4Writer: File size limit set to 4503599627370495 bytes implicitly
+06-30 17:46:36.742 31547 31547 D MPEG4Writer: MP4WtrCtrlHlpLooper Started
+06-30 17:46:36.742 31547 31547 I MPEG4Writer: limits: 4503599627370495/0 bytes/us, bit rate: -1 bps and the estimated moov size 3192 bytes
+06-30 17:46:36.752 31547 31576 I MPEG4Writer: setStartTimestampUs: 63690661043
+06-30 17:46:36.752 31547 31576 I MPEG4Writer: Earliest track starting time: 63690661043
+06-30 17:46:36.799 15921 15921 W binder:15921_7: type=1400 audit(0.0:4539): avc:  denied  { read } for  name="u:object_r:system_adbd_prop:s0" dev="tmpfs" ino=292 scontext=u:r:gmscore_app:s0:c512,c768 tcontext=u:object_r:system_adbd_prop:s0 tclass=file permissive=0 app=com.google.android.gms
+06-30 17:46:36.810 15921 28831 W libc    : Access denied finding property "persist.adb.tls_server.enable"
+06-30 17:46:36.807 15921 15921 W binder:15921_7: type=1400 audit(0.0:4540): avc:  denied  { read } for  name="u:object_r:adbd_prop:s0" dev="tmpfs" ino=60 scontext=u:r:gmscore_app:s0:c512,c768 tcontext=u:object_r:adbd_prop:s0 tclass=file permissive=0 app=com.google.android.gms
+06-30 17:46:36.817 15921 28831 W libc    : Access denied finding property "service.adb.tls.port"
+06-30 17:46:36.825   363 31585 I resolv  : GetAddrInfoHandler::run: {107 786539 107 983147 10128 0}
+06-30 17:46:36.827 15921 28831 D TrafficStats: tagSocket(86) with statsTag=0x1809, statsUid=-1
+06-30 17:46:36.861 13946 14201 W GmsUrlRequestImpl: Content-Type header is overwritten.
+06-30 17:46:36.865   363 31586 I resolv  : GetAddrInfoHandler::run: {107 786539 107 983147 10128 0}
+06-30 17:46:36.867   363 31587 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+06-30 17:46:36.867   363 31588 I resolv  : res_nmkquery: (QUERY, IN, A)
+06-30 17:46:36.900   363 31587 I resolv  : res_nsend: used send_dg 152 terrno: 0
+06-30 17:46:36.901   363 31588 I resolv  : res_nsend: used send_dg 104 terrno: 0
+06-30 17:46:36.901   363 31588 I resolv  : doQuery: rcode=0, ancount=4, return value=104
+06-30 17:46:36.901   363 31587 I resolv  : doQuery: rcode=0, ancount=4, return value=152
+06-30 17:46:36.904 13946 14770 D TrafficStats: tagSocket(164) with statsTag=0x401, statsUid=10128
+06-30 17:46:36.918 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:36.920 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:36.923 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972895, pluginId: StatusBar, methodName: setBackgroundColor
+06-30 17:46:36.924 31359 31359 V Capacitor: callback: 90972895, pluginId: StatusBar, methodName: setBackgroundColor, methodData: {"color":"#00000000"}
+06-30 17:46:37.035 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.038 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.039 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972896, pluginId: Keyboard, methodName: addListener
+06-30 17:46:37.039 31359 31359 V Capacitor: callback: 90972896, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillShow"}
+06-30 17:46:37.040 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.040 13946 14201 W GLSUser : [AppCertManager] Exception while requesting key: 
+06-30 17:46:37.040 13946 14201 W GLSUser : java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dlnv.s(:com.google.android.gms@231818047@23.18.18 (190800-535401451):3)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dlnv.get(:com.google.android.gms@231818047@23.18.18 (190800-535401451):7)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at oub.b(:com.google.android.gms@231818047@23.18.18 (190800-535401451):78)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at otz.b(:com.google.android.gms@231818047@23.18.18 (190800-535401451):4)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at otu.a(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at otx.a(:com.google.android.gms@231818047@23.18.18 (190800-535401451):6)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at lzq.call(:com.google.android.gms@231818047@23.18.18 (190800-535401451):14)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at java.util.concurrent.FutureTask.run(FutureTask.java:264)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at aced.c(:com.google.android.gms@231818047@23.18.18 (190800-535401451):6)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at aced.run(:com.google.android.gms@231818047@23.18.18 (190800-535401451):7)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at acjn.run(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at java.lang.Thread.run(Thread.java:1012)
+06-30 17:46:37.040 13946 14201 W GLSUser : Caused by: avvw: Parse Proto Exception.
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at avwn.f(:com.google.android.gms@231818047@23.18.18 (190800-535401451):5)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at avxk.onSucceeded(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at jf.onSucceeded(:com.google.android.gms.dynamite_cronetdynamite@231818047@23.18.18 (190800-0):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at ie.run(:com.google.android.gms.dynamite_cronetdynamite@231818047@23.18.18 (190800-0):4)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	... 6 more
+06-30 17:46:37.040 13946 14201 W GLSUser : Caused by: dzfz: Protocol message contained an invalid tag (zero).
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzdb.k(:com.google.android.gms@231818047@23.18.18 (190800-535401451):13)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzha.c(:com.google.android.gms@231818047@23.18.18 (190800-535401451):47)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzha.h(:com.google.android.gms@231818047@23.18.18 (190800-535401451):45)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzfd.A(:com.google.android.gms@231818047@23.18.18 (190800-535401451):2)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzex.f(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzcx.d(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzcx.c(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at dzcx.n(:com.google.android.gms@231818047@23.18.18 (190800-535401451):0)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at avwn.h(:com.google.android.gms@231818047@23.18.18 (190800-535401451):7)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	at avwn.f(:com.google.android.gms@231818047@23.18.18 (190800-535401451):1)
+06-30 17:46:37.040 13946 14201 W GLSUser : 	... 9 more
+06-30 17:46:37.042 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972897, pluginId: Keyboard, methodName: addListener
+06-30 17:46:37.042 31359 31359 V Capacitor: callback: 90972897, pluginId: Keyboard, methodName: addListener, methodData: {"eventName":"keyboardWillHide"}
+06-30 17:46:37.056 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-DkBI2bY5.js
+06-30 17:46:37.058 13946 31565 I NetworkScheduler.Stats: Task com.google.android.gms/com.google.android.gms.auth.account.be.legacy.AuthCronService finished executing. cause:5 result: 3 elapsed_millis: 516 uptime_millis: 516 exec_start_elapsed_seconds: 63690 [CONTEXT service_id=218 ]
+06-30 17:46:37.059 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-8Y2yTJ6H.js
+06-30 17:46:37.060 31359 31398 D Capacitor: Handling local request: https://localhost/assets/index-GmBM3NES.js
+06-30 17:46:37.060 31359 31397 D Capacitor: Handling local request: https://localhost/assets/register-CMQghqGH.js
+06-30 17:46:37.074 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.075 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972898, pluginId: App, methodName: addListener
+06-30 17:46:37.075 31359 31359 V Capacitor: callback: 90972898, pluginId: App, methodName: addListener, methodData: {"eventName":"appStateChange"}
+06-30 17:46:37.076 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.076 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972899, pluginId: App, methodName: addListener
+06-30 17:46:37.077 31359 31359 V Capacitor: callback: 90972899, pluginId: App, methodName: addListener, methodData: {"eventName":"backButton"}
+06-30 17:46:37.077 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.078 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972900, pluginId: App, methodName: addListener
+06-30 17:46:37.079 31359 31359 V Capacitor: callback: 90972900, pluginId: App, methodName: addListener, methodData: {"eventName":"appUrlOpen"}
+06-30 17:46:37.079 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.080 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972901, pluginId: App, methodName: getLaunchUrl
+06-30 17:46:37.080 31359 31359 V Capacitor: callback: 90972901, pluginId: App, methodName: getLaunchUrl, methodData: {}
+06-30 17:46:37.080 31359 31359 W Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [Eliza] Agent not available: "Agent" plugin is not implemented on android
+06-30 17:46:37.081 31359 31359 W Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [Eliza] Background runner unavailable: "CapacitorBackgroundRunner" plugin is not implemented on android
+06-30 17:46:37.126 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.127 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.128 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972902, pluginId: Network, methodName: addListener
+06-30 17:46:37.128 31359 31359 V Capacitor: callback: 90972902, pluginId: Network, methodName: addListener, methodData: {"eventName":"networkStatusChange"}
+06-30 17:46:37.129 31359 31359 W Capacitor/Console: File: https://localhost/assets/index-C4faXH1d.js - Line 455 - Msg: [Eliza] Blocker backends plugin not available: e.registerNativeWebsiteBlockerBackend is not a function
+06-30 17:46:37.149 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-16x16.png
+06-30 17:46:37.150 31359 31397 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-32x32.png
+06-30 17:46:37.152 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.ico
+06-30 17:46:37.153 31359 31397 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.svg
+06-30 17:46:37.156 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:37.174 31359 31396 D Capacitor: Handling local request: https://localhost/assets/ui-BnV-XPe4.js
+06-30 17:46:37.180 31359 31396 D Capacitor: Handling local request: https://localhost/assets/ui-sln8eHWU.js
+06-30 17:46:37.263 31359 31396 D Capacitor: Handling local request: https://localhost/assets/ui-Bhct4ewm.js
+06-30 17:46:37.269 31359 31397 D Capacitor: Handling local request: https://localhost/assets/register-DvScaYE3.js
+06-30 17:46:37.291 31359 31398 D Capacitor: Handling local request: https://localhost/assets/register-Br2Yot8a.js
+06-30 17:46:37.291 31359 31418 D Capacitor: Handling local request: https://localhost/assets/ui-0WB7YQU9.js
+06-30 17:46:37.296 31359 31397 D Capacitor: Handling local request: https://localhost/assets/PhoneCompanionApp-CNAZ9psK.js
+06-30 17:46:37.297 31359 31396 D Capacitor: Handling local request: https://localhost/assets/index-C5vQHyWo.js
+06-30 17:46:37.302 31359 31397 D Capacitor: Handling local request: https://localhost/assets/PhoneSpatialView-B2_PXKhX.js
+06-30 17:46:37.541 31359 31398 D Capacitor: Handling local request: https://localhost/assets/register-BUg1hMc-.js
+06-30 17:46:37.543 31359 31399 D Capacitor: Handling local request: https://localhost/assets/register-Bty1AjUI.js
+06-30 17:46:37.562 31359 31402 D Capacitor: Handling local request: https://localhost/assets/index-DYWWYr1R.js
+06-30 17:46:37.565 31359 31418 D Capacitor: Handling local request: https://localhost/assets/FilesView-2JT_wgxV.js
+06-30 17:46:37.571 31359 31397 D Capacitor: Handling local request: https://localhost/assets/input-group-CrA15zH6.js
+06-30 17:46:37.618 31359 31379 D EGL_emulation: app_time_stats: avg=55.81ms min=32.02ms max=266.90ms count=18
+06-30 17:46:37.694 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.695 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972903, pluginId: Preferences, methodName: set
+06-30 17:46:37.695 31359 31359 V Capacitor: callback: 90972903, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:first-run-complete","value":"1"}
+06-30 17:46:37.695 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.696 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972904, pluginId: Preferences, methodName: set
+06-30 17:46:37.696 31359 31359 V Capacitor: callback: 90972904, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:onboarding-complete","value":"1"}
+06-30 17:46:37.696 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.697 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972905, pluginId: Preferences, methodName: set
+06-30 17:46:37.697 31359 31359 V Capacitor: callback: 90972905, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:mobile-runtime-mode","value":"remote"}
+06-30 17:46:37.698 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.698 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972906, pluginId: Preferences, methodName: set
+06-30 17:46:37.698 31359 31359 V Capacitor: callback: 90972906, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:native-runtime-mode","value":"remote"}
+06-30 17:46:37.698 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.715 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972907, pluginId: Preferences, methodName: set
+06-30 17:46:37.716 31359 31359 V Capacitor: callback: 90972907, pluginId: Preferences, methodName: set, methodData: {"key":"elizaos:active-server","value":"{\"id\":\"remote:host\",\"kind\":\"remote\",\"label\":\"Host agent\",\"apiBase\":\"http:\/\/127.0.0.1:31337\"}"}
+06-30 17:46:37.780 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:37.805   549   636 D ActivityManager: freezing 16164 com.google.android.webview:webview_service
+06-30 17:46:37.822 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.822 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972908, pluginId: Preferences, methodName: set
+06-30 17:46:37.823 31359 31359 V Capacitor: callback: 90972908, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:first-run-complete","value":"1"}
+06-30 17:46:37.823 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.824 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972909, pluginId: Preferences, methodName: set
+06-30 17:46:37.824 31359 31359 V Capacitor: callback: 90972909, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:mobile-runtime-mode","value":"remote"}
+06-30 17:46:37.824 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.825 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972910, pluginId: Preferences, methodName: set
+06-30 17:46:37.825 31359 31359 V Capacitor: callback: 90972910, pluginId: Preferences, methodName: set, methodData: {"key":"elizaos:active-server","value":"{\"id\":\"remote:host\",\"kind\":\"remote\",\"label\":\"Host agent\",\"apiBase\":\"http:\/\/127.0.0.1:31337\"}"}
+06-30 17:46:37.825 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.825 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.825 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.826 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.826 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.867 31359 31359 I Capacitor/Console: File:  - Line 349 - Msg: [object Object]
+06-30 17:46:37.888 31359 31396 D Capacitor: Handling local request: https://localhost/api/apps/favorites
+06-30 17:46:37.903 31359 31396 D Capacitor: Handling local request: https://localhost/api/config
+06-30 17:46:37.904 31359 31397 D Capacitor: Handling local request: https://localhost/api/status
+06-30 17:46:37.904 31359 31359 V Capacitor/Plugin: To native (Capacitor plugin): callbackId: 90972911, pluginId: Preferences, methodName: set
+06-30 17:46:37.905 31359 31359 V Capacitor: callback: 90972911, pluginId: Preferences, methodName: set, methodData: {"key":"eliza:first-run-complete","value":"1"}
+06-30 17:46:37.905 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.906 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.906 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:37.963 31359 31359 W Capacitor/Console: File: https://localhost/assets/vendor-crypto-SdLLF6R8.js - Line 5 - Msg: %c Warn font-size: 12px; color: #ffaa00; [persistence] failed to fetch server favorite apps: Unexpected token '<', "<!doctype "... is not valid JSON
+06-30 17:46:38.007 31359 31359 I Capacitor/Console: File:  - Line 333 - Msg: undefined
+06-30 17:46:38.179 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-Cu5pCLzs.js
+06-30 17:46:38.180 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-BUKjZzDC.js
+06-30 17:46:38.221 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-16x16.png
+06-30 17:46:38.226 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon-32x32.png
+06-30 17:46:38.231 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.ico
+06-30 17:46:38.236 31359 31396 D Capacitor: Handling local request: https://localhost/brand/favicons/favicon.svg
+06-30 17:46:38.434 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-BlGnrvE8.js
+06-30 17:46:38.483 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-DeVsUTTx.js
+06-30 17:46:38.484 31359 31397 D Capacitor: Handling local request: https://localhost/assets/register-CiREtpVr.js
+06-30 17:46:38.652 31359 31379 D EGL_emulation: app_time_stats: avg=43.02ms min=36.58ms max=57.44ms count=24
+06-30 17:46:38.738 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:39.008 31394 31419 I chromium: [INFO:audio_latency.cc(179)] audioHardwareBufferSize = 4360
+06-30 17:46:39.100 31359 31416 I AAudio  : AAudioStreamBuilder_openStream() called ----------------------------------------
+06-30 17:46:39.101 31359 31416 I AudioStreamBuilder: rate   =  48000, channels  = 2, channelMask = 0x80000003, format   = 5, sharing = SH, dir = OUTPUT
+06-30 17:46:39.101 31359 31416 I AudioStreamBuilder: device =      0, sessionId = -1, perfMode = 12, callback: ON with frames = 4360
+06-30 17:46:39.101 31359 31416 I AudioStreamBuilder: usage  =      1, contentType = 0, inputPreset = 0, allowedCapturePolicy = 0
+06-30 17:46:39.101 31359 31416 I AudioStreamBuilder: privacy sensitive = false, opPackageName = (null), attributionTag = (null)
+06-30 17:46:39.105 31359 31416 D ai.elizaos.app: PlayerBase::PlayerBase()
+06-30 17:46:39.111 31359 31416 D AudioStreamTrack: open(), request notificationFrames = -8, frameCount = 0
+06-30 17:46:39.114   414   414 W AudioFlinger: createTrack_l(): mismatch between requested flags (00000104) and output flags (00000002)
+06-30 17:46:39.114   414   414 D AudioFlinger: Client defaulted notificationFrames to 960 for frameCount 4360
+06-30 17:46:39.115   414   414 D AF::TrackHandle: OpPlayAudio: track:65 usage:1 not muted
+06-30 17:46:39.133 31359 31416 D AudioStreamTrack: open() flags changed from 0x00000104 to 0x00000000
+06-30 17:46:39.138 31359 31416 D AudioStreamTrack: open() perfMode changed from 12 to 10
+06-30 17:46:39.139 31359 31416 D AAudioStream: setState(s#1) from 0 to 2
+06-30 17:46:39.148 31359 31416 I AAudio  : AAudioStreamBuilder_openStream() returns 0 = AAUDIO_OK for s#1 ----------------
+06-30 17:46:39.161 31359 31416 D AAudio  : AAudioStream_requestStart(s#1) called --------------
+06-30 17:46:39.161 31359 31416 D AAudioStream: setState(s#1) from 2 to 3
+06-30 17:46:39.164   414  2745 D audioserver: FGS Logger Transaction failed
+06-30 17:46:39.164   414  2745 D audioserver: -129
+06-30 17:46:39.170 31359 31374 D AudioStreamLegacy: onAudioDeviceUpdate(deviceId = 2)
+06-30 17:46:39.171 31359 31416 D AAudio  : AAudioStream_requestStart(s#1) returned 0 ---------
+06-30 17:46:39.189 31359 31708 D AAudioStream: setState(s#1) from 3 to 4
+06-30 17:46:39.196 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:39.226   414   521 D AudioFlinger: mixer(0x74d86f8b2930) throttle end: throttle time(11)
+06-30 17:46:39.288   414   521 D AudioFlinger: mixer(0x74d86f8b2930) throttle end: throttle time(22)
+06-30 17:46:39.324 31359 31397 D Capacitor: Handling local request: https://localhost/assets/register-CQoXE2xk.js
+06-30 17:46:39.324 31359 31398 D Capacitor: Handling local request: https://localhost/assets/register-wOCkWgcT.js
+06-30 17:46:39.328   414   521 D AudioFlinger: mixer(0x74d86f8b2930) throttle end: throttle time(16)
+06-30 17:46:39.447 31359 31396 D Capacitor: Handling local request: https://localhost/api/status
+06-30 17:46:39.675 31359 31397 D Capacitor: Handling local request: https://localhost/assets/register-Dj7AJ2Yl.js
+06-30 17:46:39.677 31359 31379 D EGL_emulation: app_time_stats: avg=53.88ms min=37.01ms max=158.87ms count=19
+06-30 17:46:39.698 31359 31396 D Capacitor: Handling local request: https://localhost/assets/register-DkqrAIKi.js
+06-30 17:46:40.159 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:40.480   893   893 D StatusBarIconController: ignoring old pipeline callback because the new wifi icon is enabled
+06-30 17:46:40.595 15195 15195 D TaplEvents: TIS / TouchInteractionService.onInputEvent: MotionEvent { action=ACTION_DOWN, actionButton=0, id[0]=0, x[0]=541.0, y[0]=2210.0, toolType[0]=TOOL_TYPE_FINGER, buttonState=0, classification=NONE, metaState=0, flags=0x0, edgeFlags=0x0, pointerCount=1, historySize=0, eventTime=63694795, downTime=63694795, deviceId=-1, source=0x1002, displayId=0, eventId=-325937919 }
+06-30 17:46:40.608 31359 31359 W ai.elizaos.app: Accessing hidden method Landroid/view/MotionEvent;->getEventTimeNano()J (unsupported, reflection, allowed)
+06-30 17:46:40.685 31359 31379 D EGL_emulation: app_time_stats: avg=36.07ms min=24.70ms max=51.89ms count=27
+06-30 17:46:40.698 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:40.833 31359 31396 D Capacitor: Handling local request: https://localhost/api/apps/runs
+06-30 17:46:40.886 15195 15195 D TaplEvents: TIS / TouchInteractionService.onInputEvent: MotionEvent { action=ACTION_UP, actionButton=0, id[0]=0, x[0]=147.0, y[0]=2194.0, toolType[0]=TOOL_TYPE_FINGER, buttonState=0, classification=NONE, metaState=0, flags=0x0, edgeFlags=0x0, pointerCount=1, historySize=0, eventTime=63695083, downTime=63694795, deviceId=-1, source=0x1002, displayId=0, eventId=-796172707 }
+06-30 17:46:40.892 31359 31396 D Capacitor: Handling local request: https://localhost/api/status
+06-30 17:46:41.374   482 31557 D BufferPoolAccessor2.0: bufferpool2 0x79361541b288 : 2(7776000 size) total buffers - 1(3888000 size) used buffers - 69/71 (recycle/alloc) - 2/71 (fetch/transfer)
+06-30 17:46:41.454  1812  2053 D PickerSyncController: syncAllMedia
+06-30 17:46:41.454  1812  2053 D PickerSyncController: syncAllMediaFromProvider() LOCAL, auth=com.android.providers.media.photopicker, retry=true
+06-30 17:46:41.454  1812  2053 D PickerSyncController: getSyncRequestParams() LOCAL, auth=com.android.providers.media.photopicker
+06-30 17:46:41.465  1812  2053 D PickerSyncController:    Latest ID/Gen=1407:719061d4-9d3a-4953-8d7f-bd77db1516ee:external_primary/487
+06-30 17:46:41.465  1812  2053 D PickerSyncController:    Cached ID/Gen=1407:719061d4-9d3a-4953-8d7f-bd77db1516ee:external_primary/477
+06-30 17:46:41.466  1812  2053 D PickerSyncController:    RESULT=SyncRequestParams{type=MEDIA_INCREMENTAL, gen=477, latest=Bundle[{last_media_sync_generation=487, media_collection_id=1407:719061d4-9d3a-4953-8d7f-bd77db1516ee:external_primary}]}
+06-30 17:46:41.466  1812  2053 I PickerSyncController: Executing SyncAdd. isLocal: true. authority: com.android.providers.media.photopicker
+06-30 17:46:41.468  1812  2053 I PickerSyncController: Paged sync successful. QueryArgs: Bundle[{android.provider.extra.SYNC_GENERATION=477}]. Result count: 0. Cursor count: 0
+06-30 17:46:41.468  1812  2053 I PickerSyncController: Executing SyncRemove. isLocal: true. authority: com.android.providers.media.photopicker
+06-30 17:46:41.469  1812  2053 W PickerDbFacade: Unable to promote cloud media with localId: 1000000028
+06-30 17:46:41.469  1812  2053 I PickerSyncController: Paged sync successful. QueryArgs: Bundle[{android.provider.extra.SYNC_GENERATION=477}]. Result count: 0. Cursor count: 1
+06-30 17:46:41.470  1812  2053 D PickerSyncController: syncAllMediaFromProvider() CLOUD, auth=null, retry=true
+06-30 17:46:41.470  1812  2053 D PickerSyncController: getSyncRequestParams() CLOUD, auth=null
+06-30 17:46:41.470  1812  2053 D PickerSyncController:    RESULT=SyncRequestParams{type=MEDIA_RESET, gen=0, latest=null}
+06-30 17:46:41.471  1812  2053 I PickerSyncController: Executing SyncReset. isLocal: false. authority: null
+06-30 17:46:41.471  1812  2053 I PickerSyncController: SyncReset. isLocal:false. authority: null. result count: 0
+06-30 17:46:41.471  1812  2053 D PickerSyncController: Ignoring cache media info for null authority with bundle: null
+06-30 17:46:41.471  1812  2053 I PickerSyncController: Executing SyncAlbumReset. isLocal: true. authority: com.android.providers.media.photopicker. albumId: null
+06-30 17:46:41.472  1812  2053 I PickerSyncController: Successfully executed SyncResetAlbum. authority: com.android.providers.media.photopicker. albumId: null. Result count: 0
+06-30 17:46:41.472  1812  2053 I PickerSyncController: Executing SyncAlbumReset. isLocal: false. authority: null. albumId: null
+06-30 17:46:41.472  1812  2053 I PickerSyncController: Successfully executed SyncResetAlbum. authority: null. albumId: null. Result count: 0
+06-30 17:46:41.650 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:42.180 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:42.383 31359 31396 D Capacitor: Handling local request: https://localhost/api/status
+06-30 17:46:43.149 31359 31396 D Capacitor: Handling local request: https://localhost/api/vision/capture-requests
+06-30 17:46:43.270 31359 31379 D EGL_emulation: app_time_stats: avg=135.17ms min=30.04ms max=1813.40ms count=19
+06-30 17:46:43.273 31359 31359 I Choreographer: Skipped 108 frames!  The application may be doing too much work on its main thread.
+06-30 17:46:43.305 31359 31540 I OpenGLRenderer: Davey! duration=1838ms; Flags=0, FrameTimelineVsyncId=589940, IntendedVsync=63695601822881, Vsync=63695618489547, InputEventId=0, HandleInputStart=63695624795421, AnimationStart=63695624798131, PerformTraversalsStart=63695626397529, DrawStart=63695626607541, FrameDeadline=63695685156211, FrameInterval=63695624754850, FrameStartTime=16666666, SyncQueued=63695627087984, SyncStart=63695660204048, IssueDrawCommandsStart=63695660282255, SwapBuffers=63697465977347, FrameCompleted=63697473893082, DequeueBufferDuration=10338, QueueBufferDuration=1018965, GpuCompleted=63697473268061, SwapBuffersCompleted=63697473893082, DisplayPresentTime=0, CommandSubmissionCompleted=63697465977347, 
+06-30 17:46:43.312 15634 15634 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.safetynet.service.START pkg=com.google.android.gms }
+06-30 17:46:43.525 31911 31911 W BpBinder: Linking to death on android.gui.ISurfaceComposer but there are no threads (yet?) listening to incoming transactions. See ProcessState::startThreadPool and ProcessState::setThreadPoolMaxThreadCount. Generally you should setup the binder threadpool before other initialization steps.
+06-30 17:46:43.531 31911 31911 W ProcessState: Extra binder thread started, but 0 threads requested. Do not use *startThreadPool when zero threads are requested.
+06-30 17:46:43.547   157   157 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@4.0::IMapper/default in either framework or device VINTF manifest.
+06-30 17:46:43.548 31911 31924 I Gralloc4: mapper 4.x is not supported
+06-30 17:46:43.627     0     0 I servicemanager: Could not find android.hardware.graphics.allocator.IAllocator/default in the VINTF manifest.
+06-30 17:46:43.694 31359 31396 D Capacitor: Handling local request: https://localhost/api/computer-use/approvals
+06-30 17:46:43.890 31359 31396 D Capacitor: Handling local request: https://localhost/api/status
+06-30 17:46:44.298 31359 31379 D EGL_emulation: app_time_stats: avg=39.91ms min=27.25ms max=65.05ms count=25
+06-30 17:46:44.315   414   521 D AudioFlinger: mixer(0x74d86f8b2930) throttle end: throttle time(1)

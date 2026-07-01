@@ -1,0 +1,18 @@
+{
+  "issue": 9943,
+  "serial": "emulator-5554",
+  "route": "https://localhost/",
+  "beforePage": "home",
+  "afterPage": "launcher",
+  "touchEventCount": 8,
+  "pointerTouchCount": 8,
+  "pointerMouseCount": 0,
+  "eventTypes": {
+    "pointerdown": 1,
+    "touchstart": 1,
+    "pointermove": 6,
+    "touchmove": 6,
+    "pointerup": 1,
+    "touchend": 1
+  }
+}
