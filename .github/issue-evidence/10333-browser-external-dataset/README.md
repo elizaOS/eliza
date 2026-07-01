@@ -31,23 +31,33 @@ bun run test
 Result: 25 test files passed, 132 tests passed in `plugins/plugin-browser`.
 
 ```bash
-bun run bench:external -- --out ../../.github/issue-evidence/10333-browser-external-dataset/external-dataset-oracle-run.json
+bun run --cwd plugins/plugin-browser bench:external --policy oracle
+bun run --cwd plugins/plugin-browser bench:external --policy noop
+bun run --cwd plugins/plugin-browser bench:external --policy wrong
 ```
 
-Result: oracle solved 3/3 external dataset fixture episodes on `jsdom-web`.
+Result: oracle solved 3/3 external dataset fixture episodes on `jsdom-web`;
+noop and wrong baselines solved 0/3.
 
 ```bash
 bun run --cwd plugins/plugin-browser test:real:external
-bun run --cwd plugins/plugin-browser bench:external:chromium
+bun run --cwd plugins/plugin-browser bench:external:chromium --policy oracle
+bun run --cwd plugins/plugin-browser bench:external:chromium --policy noop
+bun run --cwd plugins/plugin-browser bench:external:chromium --policy wrong
 ```
 
 Result: oracle solved 3/3 external dataset fixture episodes on real Chromium
-(`engine: "chromium"`), including the SELECT step.
+(`engine: "chromium"`), including the SELECT step; noop and wrong baselines
+solved 0/3.
 
 Primary artifacts:
 
 - `external-dataset-oracle-run.json`
+- `external-dataset-noop-run.json`
+- `external-dataset-wrong-run.json`
 - `external-dataset-chromium-oracle-run.json`
+- `external-dataset-chromium-noop-run.json`
+- `external-dataset-chromium-wrong-run.json`
 
 ## Scope note
 
