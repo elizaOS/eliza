@@ -14,6 +14,7 @@
  *    both are set.
  */
 
+import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type {
@@ -308,6 +309,61 @@ function setEscalationCursor(
   };
 }
 
+/**
+ * Retry attempts allowed on one dispatch step before the policy's `retry`
+ * decision is escalated to `advance` (or `fail` on the last step). Guards
+ * against a connector that reports `rate_limited` forever pinning the task
+ * in an infinite retry loop.
+ */
+const MAX_DISPATCH_RETRIES_PER_STEP = 3;
+
+/**
+ * Continuation marker for a dispatch that failed with a typed
+ * `DispatchResult { ok: false }`. `stepIndex` is the escalation-ladder step
+ * the NEXT fire attempt must dispatch through (`-1` = the initial/default
+ * channel), `attempt` counts retries already burned on that step.
+ * Persisted in `metadata.pendingDispatch`; cleared on successful dispatch
+ * and on snooze (ladder reset).
+ */
+interface PendingDispatch {
+  stepIndex: number;
+  attempt: number;
+}
+
+function readPendingDispatch(task: ScheduledTask): PendingDispatch | null {
+  const raw = task.metadata?.pendingDispatch;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const stepIndex = (raw as Record<string, unknown>).stepIndex;
+  const attempt = (raw as Record<string, unknown>).attempt;
+  if (typeof stepIndex !== "number" || !Number.isInteger(stepIndex)) {
+    return null;
+  }
+  return {
+    stepIndex,
+    attempt:
+      typeof attempt === "number" && Number.isInteger(attempt) && attempt >= 0
+        ? attempt
+        : 0,
+  };
+}
+
+function setPendingDispatch(task: ScheduledTask, pending: PendingDispatch) {
+  task.metadata = {
+    ...(task.metadata ?? {}),
+    pendingDispatch: { ...pending },
+  };
+}
+
+function clearPendingDispatch(task: ScheduledTask): void {
+  if (task.metadata && "pendingDispatch" in task.metadata) {
+    const next = { ...task.metadata };
+    delete (next as Record<string, unknown>).pendingDispatch;
+    task.metadata = next;
+  }
+}
+
 function clearEscalationCursor(task: ScheduledTask): void {
   if (task.metadata && "escalationCursor" in task.metadata) {
     const next = { ...task.metadata };
@@ -362,7 +418,14 @@ export interface EscalationCursorView {
  * - `skipped` — the task was skipped without dispatch: global-pause active,
  *   a gate denied, or the task was already terminal and not eligible for
  *   recurrence refire.
- * - `dispatch_failed` — the atomic claim succeeded but the dispatcher threw.
+ * - `dispatch_deferred` — the dispatcher returned a typed
+ *   `DispatchResult { ok: false }` and the dispatch policy chose to retry the
+ *   same step after a backoff or advance to the next escalation-ladder step.
+ *   The task is back in `"scheduled"` with `state.firedAt` set to the next
+ *   attempt time (the scheduled-override the tick honors). Nothing reached
+ *   the user yet.
+ * - `dispatch_failed` — the atomic claim succeeded but the dispatcher threw,
+ *   OR it returned `{ ok: false }` with no retry/escalation step remaining.
  *   The runner persists the row as `"failed"` and writes a failed state-log
  *   entry so history does not strand the task as successfully fired.
  */
@@ -370,6 +433,12 @@ export type ScheduledTaskFireResult =
   | { kind: "fired"; task: ScheduledTask }
   | { kind: "raced"; taskId: string }
   | { kind: "skipped"; task: ScheduledTask; reason: string }
+  | {
+      kind: "dispatch_deferred";
+      task: ScheduledTask;
+      reason: string;
+      nextAttemptAtIso: string;
+    }
   | { kind: "dispatch_failed"; task: ScheduledTask; error: Error };
 
 export interface ScheduledTaskRunnerExtras {
@@ -652,6 +721,9 @@ export function createScheduledTaskRunner(
     task.state.firedAt = newFireAtIso;
     task.state.lastDecisionLog = `snoozed until ${newFireAtIso} (ladder reset)`;
     setEscalationCursor(task, resetLadderForSnooze(newFireAtIso));
+    // Snooze resets the ladder — any pending dispatch retry/advance
+    // continuation resets with it.
+    clearPendingDispatch(task);
     await persist(task);
     await logger.log(task.taskId, "snoozed", {
       reason: `until ${newFireAtIso}`,
@@ -926,6 +998,7 @@ export function createScheduledTaskRunner(
     switch (result.kind) {
       case "fired":
       case "skipped":
+      case "dispatch_deferred":
       case "dispatch_failed":
         return result.task;
       case "raced": {
@@ -968,6 +1041,7 @@ export function createScheduledTaskRunner(
       delete task.state.completedAt;
       task.state.lastDecisionLog = "recurrence refire";
       clearEscalationCursor(task);
+      clearPendingDispatch(task);
       // Flip the row back to `scheduled` so the atomic claim below has
       // something to match. The claim writes `firedAt` itself.
       await persist(task);
@@ -1049,8 +1123,17 @@ export function createScheduledTaskRunner(
     }
     const claimed = claim.task;
     claimed.state.lastDecisionLog = "fired";
+    // A pending continuation (retry / ladder advance from a previous typed
+    // dispatch failure) routes this attempt through its recorded ladder
+    // step; a fresh fire starts at the initial channel (cursor -1).
+    const pending = readPendingDispatch(claimed);
+    const ladder = resolveEffectiveLadder(claimed, deps.ladders);
+    const pendingStep =
+      pending && pending.stepIndex >= 0
+        ? (ladder.steps[pending.stepIndex] ?? null)
+        : null;
     setEscalationCursor(claimed, {
-      stepIndex: -1,
+      stepIndex: pending?.stepIndex ?? -1,
       lastDispatchedAt: fireAtIso,
     });
     // Persist the post-claim metadata (escalationCursor, lastDecisionLog).
@@ -1067,7 +1150,9 @@ export function createScheduledTaskRunner(
     const taskProfile =
       claimed.executionProfile ?? DEFAULT_TASK_EXECUTION_PROFILE;
     const substituted = !hostCaps.has(taskProfile);
-    const dispatchChannelKey = substituted ? "in_app" : pickChannelKey(claimed);
+    const dispatchChannelKey = substituted
+      ? "in_app"
+      : (pendingStep?.channelKey ?? pickChannelKey(claimed));
     if (substituted) {
       await logger.log(claimed.taskId, "substituted", {
         reason: "host_incapable",
@@ -1085,7 +1170,7 @@ export function createScheduledTaskRunner(
         taskId: claimed.taskId,
         firedAtIso: fireAtIso,
         channelKey: dispatchChannelKey,
-        intensity: pickIntensity(claimed),
+        intensity: pendingStep?.intensity ?? pickIntensity(claimed),
         promptInstructions: claimed.promptInstructions,
         contextRequest: claimed.contextRequest,
         output: claimed.output,
@@ -1096,6 +1181,7 @@ export function createScheduledTaskRunner(
       const reason = `dispatch_failed: ${wrapped.message}`;
       claimed.state.status = "failed";
       claimed.state.lastDecisionLog = reason;
+      clearPendingDispatch(claimed);
       claimed.metadata = {
         ...(claimed.metadata ?? {}),
         lastDispatchError: {
@@ -1119,9 +1205,179 @@ export function createScheduledTaskRunner(
         ...(claimed.metadata ?? {}),
         lastDispatchResult: dispatchResult,
       };
+      if (dispatchResult.ok === false) {
+        return applyDispatchPolicy({
+          task: claimed,
+          failure: dispatchResult,
+          pending,
+          ladder,
+          fireAtIso,
+        });
+      }
+      clearPendingDispatch(claimed);
+      await persist(claimed);
+    } else if (pending) {
+      // Void dispatchers (e.g. notify-only event emitters) report no typed
+      // result; a completed call is success, so drop the continuation.
+      clearPendingDispatch(claimed);
       await persist(claimed);
     }
     return { kind: "fired", task: claimed };
+  }
+
+  /**
+   * Enforce {@link decideDispatchPolicy} on a typed dispatch failure.
+   *
+   * Before this, an `{ ok: false }` DispatchResult was stashed in metadata
+   * and the fire still reported `"fired"` — the user silently never received
+   * the message and the documented retry/backoff/escalation policy was dead
+   * code (#10721 H2).
+   *
+   * - `retry` → same step, bounded by {@link MAX_DISPATCH_RETRIES_PER_STEP};
+   *   over budget it degrades to `advance` (or `fail` on the last step).
+   * - `advance` / `surface_degraded` → next ladder step at its `delayMinutes`
+   *   offset; `surface_degraded` additionally records
+   *   `metadata.connectorDegradation` for the degradation provider.
+   * - `fail` → terminal `"failed"`, `pipeline.onFail` fires.
+   *
+   * Retry/advance park the task back in `"scheduled"` with `state.firedAt` =
+   * next attempt time — the scheduled-override the tick's due evaluation and
+   * the `next_fire_at` index both honor.
+   */
+  async function applyDispatchPolicy(args: {
+    task: ScheduledTask;
+    failure: Extract<DispatchResult, { ok: false }>;
+    pending: PendingDispatch | null;
+    ladder: ReturnType<typeof resolveEffectiveLadder>;
+    fireAtIso: string;
+  }): Promise<ScheduledTaskFireResult> {
+    const { task, failure, pending, ladder, fireAtIso } = args;
+    // Policy step space: index 0 = the initial/default-channel attempt,
+    // 1..n = ladder steps. `pending.stepIndex` is in ladder space (-1 =
+    // initial attempt), hence the +1 shift.
+    const ladderIndex = pending?.stepIndex ?? -1;
+    const attempt = pending?.attempt ?? 0;
+    const totalSteps = ladder.steps.length + 1;
+    let decision = decideDispatchPolicy(failure, {
+      currentStepIndex: ladderIndex + 1,
+      totalSteps,
+    });
+    if (decision.kind === "retry" && attempt >= MAX_DISPATCH_RETRIES_PER_STEP) {
+      // Retry budget for this step is exhausted — force the ladder forward.
+      const isLastStep = ladderIndex + 1 >= totalSteps - 1;
+      decision = isLastStep
+        ? { kind: "fail", reason: failure.reason, message: failure.message }
+        : { kind: "advance", reason: failure.reason, message: failure.message };
+    }
+
+    switch (decision.kind) {
+      case "complete":
+        // decideDispatchPolicy only returns `complete` for ok:true input.
+        clearPendingDispatch(task);
+        await persist(task);
+        return { kind: "fired", task };
+      case "retry": {
+        const nextAttemptAtIso = new Date(
+          Date.parse(fireAtIso) + decision.retryAfterMinutes * 60_000,
+        ).toISOString();
+        task.state.status = "scheduled";
+        task.state.firedAt = nextAttemptAtIso;
+        task.state.lastDecisionLog = `dispatch retry ${attempt + 1}/${MAX_DISPATCH_RETRIES_PER_STEP} in ${decision.retryAfterMinutes}m (${decision.reason})`;
+        setPendingDispatch(task, {
+          stepIndex: ladderIndex,
+          attempt: attempt + 1,
+        });
+        await persist(task);
+        await logger.log(task.taskId, "dispatch_retried", {
+          reason: decision.reason,
+          detail: {
+            attempt: attempt + 1,
+            maxAttempts: MAX_DISPATCH_RETRIES_PER_STEP,
+            retryAfterMinutes: decision.retryAfterMinutes,
+            nextAttemptAtIso,
+          },
+        });
+        return {
+          kind: "dispatch_deferred",
+          task,
+          reason: `retry:${decision.reason}`,
+          nextAttemptAtIso,
+        };
+      }
+      case "advance":
+      case "surface_degraded": {
+        const nextLadderIndex = ladderIndex + 1;
+        const nextStep = ladder.steps[nextLadderIndex];
+        if (!nextStep) {
+          return failTerminal(task, decision.reason, decision.message);
+        }
+        const nextAttemptAtIso = new Date(
+          Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000,
+        ).toISOString();
+        task.state.status = "scheduled";
+        task.state.firedAt = nextAttemptAtIso;
+        task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;
+        setPendingDispatch(task, { stepIndex: nextLadderIndex, attempt: 0 });
+        if (decision.kind === "surface_degraded") {
+          task.metadata = {
+            ...(task.metadata ?? {}),
+            connectorDegradation: {
+              reason: decision.reason,
+              message: decision.message,
+              atIso: fireAtIso,
+            },
+          };
+        }
+        await persist(task);
+        await logger.log(task.taskId, "escalated", {
+          reason: `dispatch_failed:${decision.reason}`,
+          detail: {
+            nextStepIndex: nextLadderIndex,
+            nextChannelKey: nextStep.channelKey,
+            nextAttemptAtIso,
+            degraded: decision.kind === "surface_degraded",
+          },
+        });
+        return {
+          kind: "dispatch_deferred",
+          task,
+          reason: `${decision.kind}:${decision.reason}`,
+          nextAttemptAtIso,
+        };
+      }
+      case "fail":
+        return failTerminal(task, decision.reason, decision.message);
+      default: {
+        const _exhaustive: never = decision;
+        throw new Error("applyDispatchPolicy: unreachable");
+      }
+    }
+  }
+
+  async function failTerminal(
+    task: ScheduledTask,
+    reason: string,
+    message?: string,
+  ): Promise<ScheduledTaskFireResult> {
+    const detailMessage = message ?? reason;
+    task.state.status = "failed";
+    task.state.lastDecisionLog = `dispatch_failed: ${detailMessage}`;
+    clearPendingDispatch(task);
+    task.metadata = {
+      ...(task.metadata ?? {}),
+      lastDispatchError: { name: "DispatchResultError", message: detailMessage },
+    };
+    await persist(task);
+    await logger.log(task.taskId, "failed", {
+      reason: `dispatch_failed:${reason}`,
+      detail: { message: detailMessage },
+    });
+    await runPipeline(task, "failed");
+    return {
+      kind: "dispatch_failed",
+      task,
+      error: new Error(`dispatch failed (${reason}): ${detailMessage}`),
+    };
   }
 
   function pickChannelKey(task: ScheduledTask): string {

@@ -232,6 +232,19 @@ async function handleFireResult(args: {
       });
       return true;
     }
+    case "dispatch_deferred": {
+      // Typed connector failure; the runner parked the task back in
+      // `scheduled` with a retry/escalation continuation. Recorded as a
+      // visited fire so observers see the attempt + the policy decision,
+      // without claiming anything reached the user.
+      result.fires.push({
+        taskId: fireResult.task.taskId,
+        status: fireResult.task.state.status,
+        reason: fireResult.reason,
+        occurrenceAtIso: fireResult.nextAttemptAtIso,
+      });
+      return true;
+    }
     case "dispatch_failed": {
       result.errors.push({
         taskId: fireResult.task.taskId,
