@@ -90,6 +90,22 @@ export function deriveTenantIdent(appId: string): TenantDbIdent {
 }
 
 /**
+ * Cluster maintenance-DB hardening. Tenant credentials are scoped to their own
+ * database, but Postgres defaults leave PUBLIC able to CONNECT to shared
+ * maintenance databases. Re-applying these statements on each provision is
+ * idempotent and closes metadata-leak footholds from tenant roles.
+ */
+export function buildMaintenanceDbHardeningDdl(): string[] {
+  return [
+    `GRANT CONNECT ON DATABASE ${quoteIdent("postgres")} TO CURRENT_USER`,
+    `GRANT CONNECT ON DATABASE ${quoteIdent("template1")} TO CURRENT_USER`,
+    `REVOKE CONNECT ON DATABASE ${quoteIdent("postgres")} FROM PUBLIC`,
+    `REVOKE CONNECT ON DATABASE ${quoteIdent("template1")} FROM PUBLIC`,
+    "REVOKE ALL ON SCHEMA public FROM PUBLIC",
+  ];
+}
+
+/**
  * Admin-connection DDL: create the role, create its database, and lock down
  * connect privileges so ONLY this role can open the database. Statement order
  * is load-bearing — the role must exist before the database can be owned by it.
@@ -121,6 +137,7 @@ export function buildIdempotentAdminDdl(
   const role = quoteIdent(ident.roleName);
   const db = quoteIdent(ident.dbName);
   const statements: string[] = [
+    ...buildMaintenanceDbHardeningDdl(),
     // CREATE ROLE has no IF NOT EXISTS; the DO block swallows the duplicate so a
     // retry is a no-op for an already-created role. Password is set by ALTER ROLE.
     `DO $$ BEGIN CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
