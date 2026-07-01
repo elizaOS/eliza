@@ -19,6 +19,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import type { DispatchResult } from "../dispatch-types.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
@@ -1018,6 +1019,193 @@ describe("ScheduledTaskRunner — dispatcher", () => {
       errorName: "Error",
       message: "transport exploded",
     });
+  });
+});
+
+describe("ScheduledTaskRunner — dispatch result routing (#10721 H2)", () => {
+  const NOW_ISO = "2026-05-09T12:00:00.000Z";
+
+  function makeDispatchRunner(dispatch: () => Promise<DispatchResult | undefined>) {
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const ladders = createEscalationLadderRegistry();
+    registerDefaultEscalationLadders(ladders);
+    const store = createInMemoryScheduledTaskStore();
+    const logStore = createInMemoryScheduledTaskLogStore();
+    const runner = createScheduledTaskRunner({
+      agentId: "t",
+      store,
+      logStore,
+      gates,
+      completionChecks,
+      ladders,
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch: vi.fn(dispatch) },
+      newTaskId: () => "task_route",
+      now: () => new Date(NOW_ISO),
+    });
+    return { runner, store, logStore };
+  }
+
+  it("routes a non-retriable { ok: false } to dispatch_failed, not fired", async () => {
+    const failure: DispatchResult = {
+      ok: false,
+      reason: "transport_error",
+      userActionable: false,
+      message: "boom",
+    };
+    const { runner, store, logStore } = makeDispatchRunner(async () => failure);
+    const task = await runner.schedule(baseInput());
+    const result = await runner.fireWithResult(task.taskId);
+
+    // The send did NOT reach the user: it must not count as delivered.
+    expect(result.kind).toBe("dispatch_failed");
+    if (result.kind !== "dispatch_failed") {
+      throw new Error(`unexpected fire result: ${result.kind}`);
+    }
+    expect(result.task.state.status).toBe("failed");
+    expect(result.task.state.status).not.toBe("fired");
+    expect(result.error.message).toBe("transport_error: boom");
+    expect(result.task.state.lastDecisionLog).toBe(
+      "dispatch_failed: transport_error: boom",
+    );
+    // The typed result is retained for the connector-degradation surface.
+    expect(result.task.metadata?.lastDispatchResult).toEqual(failure);
+
+    const persisted = await store.get(task.taskId);
+    expect(persisted?.state.status).toBe("failed");
+
+    const log = await logStore.list({ agentId: "t", taskId: task.taskId });
+    expect(log.map((row) => row.transition)).toEqual([
+      "scheduled",
+      "fire_attempt",
+      "fired",
+      "failed",
+    ]);
+  });
+
+  it("routes a disconnected { ok: false } (no backoff) to dispatch_failed", async () => {
+    const failure: DispatchResult = {
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+    };
+    const { runner } = makeDispatchRunner(async () => failure);
+    const task = await runner.schedule(baseInput());
+    const result = await runner.fireWithResult(task.taskId);
+
+    expect(result.kind).toBe("dispatch_failed");
+    if (result.kind !== "dispatch_failed") {
+      throw new Error(`unexpected fire result: ${result.kind}`);
+    }
+    expect(result.task.state.status).toBe("failed");
+    expect(result.task.metadata?.lastDispatchResult).toEqual(failure);
+  });
+
+  it("fires pipeline.onFail when a { ok: false } send permanently fails", async () => {
+    const failure: DispatchResult = {
+      ok: false,
+      reason: "unknown_recipient",
+      userActionable: false,
+    };
+    const { runner, store } = makeDispatchRunner(async () => failure);
+    const parent = await runner.schedule(
+      baseInput({
+        pipeline: {
+          onFail: [
+            {
+              ...baseInput({ promptInstructions: "escalate: send failed" }),
+              taskId: "irrelevant",
+              state: { status: "scheduled", followupCount: 0 },
+            } as never,
+          ],
+        },
+      }),
+    );
+    await runner.fireWithResult(parent.taskId);
+
+    const all = await store.list();
+    const child = all.find(
+      (t) => t.promptInstructions === "escalate: send failed",
+    );
+    expect(child).toBeDefined();
+    expect(child?.state.pipelineParentId).toBe(parent.taskId);
+  });
+
+  it("reschedules the SAME step (ladder not advanced) on a retriable { ok: false }", async () => {
+    const failure: DispatchResult = {
+      ok: false,
+      reason: "rate_limited",
+      retryAfterMinutes: 5,
+      userActionable: false,
+    };
+    const { runner, store, logStore } = makeDispatchRunner(async () => failure);
+    const task = await runner.schedule(baseInput({ priority: "high" }));
+    const result = await runner.fireWithResult(task.taskId);
+
+    // Not delivered, not failed — held for retry.
+    expect(result.kind).toBe("skipped");
+    if (result.kind !== "skipped") {
+      throw new Error(`unexpected fire result: ${result.kind}`);
+    }
+    expect(result.reason).toBe("dispatch-retry:rate_limited");
+    expect(result.task.state.status).toBe("scheduled");
+    // firedAt moved forward by retryAfterMinutes → re-fires via override.
+    expect(result.task.state.firedAt).toBe("2026-05-09T12:05:00.000Z");
+    expect(result.task.metadata?.lastDispatchResult).toEqual(failure);
+
+    // Ladder NOT advanced: the escalation cursor stays at the just-fired
+    // position (-1 = fired, no ladder step dispatched).
+    const cursor = await runner.getEscalationCursor(task.taskId);
+    expect(cursor?.stepIndex).toBe(-1);
+
+    const persisted = await store.get(task.taskId);
+    expect(persisted?.state.status).toBe("scheduled");
+    expect(persisted?.state.firedAt).toBe("2026-05-09T12:05:00.000Z");
+
+    const log = await logStore.list({ agentId: "t", taskId: task.taskId });
+    const snoozed = log.find((row) => row.transition === "snoozed");
+    expect(snoozed?.reason).toBe("dispatch-retry: rate_limited");
+    expect(snoozed?.detail).toMatchObject({ retryAfterMinutes: 5 });
+    // Never recorded as failed on a transient retry.
+    expect(log.map((row) => row.transition)).not.toContain("failed");
+  });
+
+  it("keeps { ok: true } exactly as fired (regression guard)", async () => {
+    const success: DispatchResult = { ok: true, messageId: "msg_ok" };
+    const { runner, store } = makeDispatchRunner(async () => success);
+    const task = await runner.schedule(baseInput());
+    const result = await runner.fireWithResult(task.taskId);
+
+    expect(result.kind).toBe("fired");
+    if (result.kind !== "fired") {
+      throw new Error(`unexpected fire result: ${result.kind}`);
+    }
+    expect(result.task.state.status).toBe("fired");
+    expect(result.task.metadata?.lastDispatchResult).toEqual(success);
+
+    const persisted = await store.get(task.taskId);
+    expect(persisted?.state.status).toBe("fired");
+  });
+
+  it("keeps an undefined dispatch result as fired (no-op dispatcher regression)", async () => {
+    const { runner } = makeDispatchRunner(async () => undefined);
+    const task = await runner.schedule(baseInput());
+    const result = await runner.fireWithResult(task.taskId);
+
+    expect(result.kind).toBe("fired");
+    if (result.kind !== "fired") {
+      throw new Error(`unexpected fire result: ${result.kind}`);
+    }
+    expect(result.task.state.status).toBe("fired");
+    expect(result.task.metadata?.lastDispatchResult).toBeUndefined();
   });
 });
 
