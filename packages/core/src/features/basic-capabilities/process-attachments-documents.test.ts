@@ -71,7 +71,9 @@ function stubFetch(byUrl: Record<string, FetchResult>): void {
 		return {
 			ok: true,
 			statusText: "OK",
-			headers: { get: (h: string) => (/content-type/i.test(h) ? hit.contentType : null) },
+			headers: {
+				get: (h: string) => (/content-type/i.test(h) ? hit.contentType : null),
+			},
 			text: async () => hit.text ?? "",
 			arrayBuffer: async () => {
 				const b = hit.bytes ?? Buffer.from(hit.text ?? "", "utf-8");
@@ -90,7 +92,10 @@ describe("processAttachments — document types (#10714)", () => {
 	it("reads a text/plain document onto attachment.text", async () => {
 		const url = "https://media.test/notes.txt";
 		stubFetch({
-			[url]: { contentType: "text/plain; charset=utf-8", text: "plain notes body" },
+			[url]: {
+				contentType: "text/plain; charset=utf-8",
+				text: "plain notes body",
+			},
 		});
 		const [out] = await processAttachments([doc(url)], makeRuntime());
 		expect(out.text).toBe("plain notes body");
@@ -108,7 +113,9 @@ describe("processAttachments — document types (#10714)", () => {
 	it("reads a text/markdown document (previously skipped) onto attachment.text", async () => {
 		const url = "https://media.test/readme.md";
 		const md = "# Title\n\n- one\n- two";
-		stubFetch({ [url]: { contentType: "text/markdown; charset=utf-8", text: md } });
+		stubFetch({
+			[url]: { contentType: "text/markdown; charset=utf-8", text: md },
+		});
 		const [out] = await processAttachments([doc(url)], makeRuntime());
 		expect(out.text).toBe(md);
 	});
