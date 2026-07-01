@@ -1033,7 +1033,7 @@ export async function executeGameTick(
 
   // Write DAG trace to disk if enabled
   if (dagTraceEnabled) {
-    tracer?.setGameTickResult(result as Record<string, unknown>);
+    tracer?.setGameTickResult(result as unknown as Record<string, unknown>);
     if (result.tokenStats) {
       tracer?.setTokenStats({
         totalCalls: result.tokenStats.totalCalls,

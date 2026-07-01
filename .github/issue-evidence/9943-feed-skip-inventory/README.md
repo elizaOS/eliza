@@ -6,6 +6,12 @@
 - Added `bun run --cwd packages/feed test:skip-inventory`.
 - The command emits a line-level inventory of Feed test skip markers in text or JSON form, grouped by reason bucket.
 - `--fail-on-undocumented-unconditional` exits nonzero if a bare unconditional skip lacks nearby rationale, making future Feed skip triage enforceable.
+- Fixed four Feed typecheck strictness blockers discovered while validating this
+  slice:
+  - `packages/feed/packages/db/src/db.ts` explicit proxy casts for Drizzle table repositories.
+  - `packages/feed/packages/engine/src/GameGenerator.ts` grouped-question spread cast.
+  - `packages/feed/packages/engine/src/actors-loader.ts` typed legacy `postExample` compatibility.
+  - `packages/feed/packages/engine/src/game-tick.ts` DAG trace result cast.
 
 ## Current inventory
 
@@ -38,8 +44,9 @@ Generated on the branch with `bun run --cwd packages/feed test:skip-inventory --
 - `git diff --check`
   - Passed.
 - `bun run --cwd packages/feed typecheck`
-  - Blocked by existing `packages/feed/packages/db/src/db.ts` errors at lines 737 and 923: Drizzle query casts from `Record<string, never>` to the generated schema query type fail with TS2352.
-  - The command fails in the `packages/db` package before reaching this branch's script/package changes.
+  - `packages/db`, `packages/core`, `packages/engine`, and `packages/sim` now typecheck after the strictness fixes above.
+  - Still blocked in `packages/agents` by existing Feed agent compatibility drift with current `@elizaos/core` types: handler return type mismatches, `ActionParameter[]` vs object-shaped parameter literals, and remaining unrelated TS2352 casts.
+  - Before rerunning this check, `bun run --cwd packages/core build` was needed in this worktree so Feed's `@elizaos/core` import resolves to generated declarations.
 
 ## Evidence notes
 

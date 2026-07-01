@@ -62,10 +62,11 @@ function initializeCache(): void {
     // Convert readonly arrays to mutable arrays and populate cache
     // The actors array contains readonly objects, so we need to create new objects
     dataCache.allActors = actors.map((actor) => {
+      const legacyActor = actor as typeof actor & { postExample?: string[] };
       // Create a mutable compatibility copy of the pack actor data.
       const actorData = {
         ...actor,
-        postExample: actor.postExample ?? actor.postExamples ?? [],
+        postExample: legacyActor.postExample ?? actor.postExamples ?? [],
         hasPool: actor.hasPool ?? false,
       } as ActorData;
       dataCache.actors.set(actorData.id, actorData);
