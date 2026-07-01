@@ -123,6 +123,11 @@ export interface ShellController {
   transcript: string;
   /** True while an assistant reply is being spoken aloud (voice output). */
   speaking: boolean;
+  /** Speak a specific message aloud on demand — backs the per-message
+   *  "Play audio" action row control (#10713). */
+  speak: (text: string) => void;
+  /** Stop any in-flight assistant speech — backs the Play control's toggle. */
+  stopSpeaking: () => void;
   /** True while assistant voice output is muted by the user. */
   agentVoiceMuted: boolean;
   /** Mute/unmute assistant voice output. Muting stops any in-flight speech. */
@@ -1261,6 +1266,8 @@ export function useShellController(): ShellController {
     setComposerHasDraft,
     transcript,
     speaking: voiceOutput.speaking,
+    speak: voiceOutput.speak,
+    stopSpeaking: voiceOutput.stopSpeaking,
     agentVoiceMuted: voiceOutput.agentVoiceMuted,
     toggleAgentVoiceMute: voiceOutput.toggleAgentVoiceMute,
     needsAudioUnlock: voiceOutput.needsAudioUnlock,

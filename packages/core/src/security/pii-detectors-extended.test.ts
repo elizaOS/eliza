@@ -61,9 +61,9 @@ describe("validators — mnemonic + WIF", () => {
 
 describe("detectPii — issue-named secret classes", () => {
 	it("BIP-39 seed phrase", () => {
-		expect(valueForKind(`recovery ${VALID_MNEMONIC} stored`, "seed-phrase")).toBe(
-			VALID_MNEMONIC,
-		);
+		expect(
+			valueForKind(`recovery ${VALID_MNEMONIC} stored`, "seed-phrase"),
+		).toBe(VALID_MNEMONIC);
 		expect(
 			kinds("the quick brown fox jumps over lazy dogs run now then here"),
 		).not.toContain("seed-phrase");
@@ -104,7 +104,10 @@ describe("detectPii — issue-named secret classes", () => {
 	});
 	it("Basic-auth header (base64 user:pass) + Google OAuth refresh token", () => {
 		expect(
-			valueForKind("Authorization: Basic dXNlcjpzM2NyZXRwYXNz", "basic-auth-header"),
+			valueForKind(
+				"Authorization: Basic dXNlcjpzM2NyZXRwYXNz",
+				"basic-auth-header",
+			),
 		).toBe("dXNlcjpzM2NyZXRwYXNz");
 		expect(kinds("Authorization: Basic YWJjZGVmZ2hpamts")).not.toContain(
 			"basic-auth-header",

@@ -39,7 +39,10 @@ import {
   computeBottomBarFrame,
   resolveDesktopShellWindowPresentation,
 } from "./desktop-bottom-bar-config";
-import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
+import {
+  classifyDeepLinkRoute,
+  readOpenUrlEventUrl,
+} from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
   shouldCreateDesktopTray,
@@ -2135,41 +2138,27 @@ async function setupUpdater(): Promise<void> {
  * care which scheme is used; it only routes by host + pathname.
  */
 async function handleDeepLink(url: string): Promise<void> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    await forwardDeepLinkToRenderer(url);
-    return;
-  }
-
-  // `<scheme>://apps/<slug>` → URL parses host="apps", pathname="/<slug>"
-  if (parsed.host === "apps") {
-    const slug = parsed.pathname
-      .replace(/^\/+/, "")
-      .replace(/[?#].*$/, "")
-      .split("/")[0];
-    if (slug) {
-      const entry = findAppMenuEntryBySlug(slug);
-      if (entry) {
-        // Mirror the menu/tray handler: apps with a details page get a config
-        // review screen instead of a direct window so deep links and clicks
-        // produce identical UX.
-        if (entry.hasDetailsPage) {
-          void restoreWindow();
-          sendToActiveRenderer("desktopAppDetailsRequested", {
-            slug: entry.slug,
-          });
-        } else {
-          void getDesktopManager().openAppWindow({
-            slug: entry.slug,
-            title: entry.displayName,
-            path: entry.windowPath,
-            alwaysOnTop: false,
-          });
-        }
-        return;
+  const route = classifyDeepLinkRoute(url);
+  if (route.kind === "app") {
+    const entry = findAppMenuEntryBySlug(route.slug);
+    if (entry) {
+      // Mirror the menu/tray handler: apps with a details page get a config
+      // review screen instead of a direct window so deep links and clicks
+      // produce identical UX.
+      if (entry.hasDetailsPage) {
+        void restoreWindow();
+        sendToActiveRenderer("desktopAppDetailsRequested", {
+          slug: entry.slug,
+        });
+      } else {
+        void getDesktopManager().openAppWindow({
+          slug: entry.slug,
+          title: entry.displayName,
+          path: entry.windowPath,
+          alwaysOnTop: false,
+        });
       }
+      return;
     }
   }
 

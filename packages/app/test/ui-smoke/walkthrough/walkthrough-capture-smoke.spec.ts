@@ -188,15 +188,19 @@ test.describe("walkthrough capture smoke", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const onboarding = page.getByTestId("continuous-chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
-    const chooser = page.getByTestId("first-run-runtime-chooser");
-    await expect(chooser).toBeVisible({ timeout: 20_000 });
     await expect(
-      chooser.getByText("Choose how Eliza should run", { exact: true }),
+      page.getByText("First, where should your agent run?", { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
-    await expect(chooser.getByTestId("first-run-chooser-cloud")).toBeVisible();
-    await expect(chooser.getByTestId("first-run-chooser-local")).toBeVisible();
-    await chooser.getByRole("button", { name: /Advanced setup/i }).click();
-    await expect(chooser.getByTestId("first-run-chooser-other")).toBeVisible();
+    await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:cloud"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:local"),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("choice-__first_run__:runtime:other"),
+    ).toBeVisible();
     await captureState(page, testInfo, "walkthrough-01-onboarding.png");
 
     firstRun.setComplete(true);

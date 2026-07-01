@@ -705,7 +705,12 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
     render(<ContinuousChatOverlay controller={makeController()} />);
     focusReal(); // auto-opens to half from the input peek
     expect(detentOf()).toBe("half");
-    fireEvent.pointerDown(backdrop());
+    fireEvent.pointerDown(backdrop(), {
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(backdrop(), { clientX: 20, clientY: 20, pointerId: 1 });
     fireEvent.click(backdrop());
     expect(detentOf()).toBe("collapsed");
     assertInvariants("bug-b-input-scrim");
@@ -715,7 +720,12 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
     render(<ContinuousChatOverlay controller={makeController()} />);
     gotoHalf(); // open, but not composer-focused (keyboard down)
     expect(document.activeElement).not.toBe(input());
-    fireEvent.pointerDown(backdrop());
+    fireEvent.pointerDown(backdrop(), {
+      clientX: 20,
+      clientY: 20,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(backdrop(), { clientX: 20, clientY: 20, pointerId: 1 });
     fireEvent.click(backdrop());
     expect(detentOf()).toBe("collapsed"); // backdrop closes when keyboard is down
     assertInvariants("bug-b-scrim-close");

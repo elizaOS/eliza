@@ -1,5 +1,7 @@
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  Check,
+  Copy,
   FileText,
   Film,
   LayoutGrid,
@@ -8,8 +10,11 @@ import {
   Mic,
   Minimize2,
   Music,
+  Pencil,
   RotateCcw,
   SendHorizontal,
+  Square,
+  Volume2,
 } from "lucide-react";
 import {
   AnimatePresence,
@@ -177,6 +182,7 @@ const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
+const OUTSIDE_SHEET_TAP_SLOP = 10;
 
 // Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
 // composer can be tested without it; flip to true to bring the strip back.
@@ -745,9 +751,7 @@ function TurnStatusIndicator({
           // neutral white glass. No blue anywhere.
           // #10698: no own scrim — the shared panel glass carries the contrast;
           // keep only the tone border (orange when speaking) + FLOAT_SHADOW.
-          speaking
-            ? "border-[rgba(255,180,120,0.45)]"
-            : "border-white/10",
+          speaking ? "border-[rgba(255,180,120,0.45)]" : "border-white/10",
         )}
       >
         <TurnStatusInner status={status} />
@@ -784,11 +788,130 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
   );
 }
 
+function isNestedInteractiveTarget(
+  currentTarget: HTMLElement,
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof Element)) return false;
+  const interactive = target.closest(
+    'button,a,input,textarea,select,[role="button"]',
+  );
+  return !!interactive && interactive !== currentTarget;
+}
+
+/**
+ * One icon-only control in a message's click-to-reveal action row (#10713).
+ * Overlay glass styling: no card fill, neutral resting → neutral-opacity hover;
+ * an active (e.g. playing) control tints with the orange accent. `stopPropagation`
+ * keeps a tap on the button from re-toggling the row or ending text selection.
+ */
+function ThreadLineActionButton({
+  label,
+  icon,
+  onClick,
+  active,
+  testId,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+  testId?: string;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+        active
+          ? "bg-[rgb(255,88,0)]/25 text-white"
+          : "bg-white/10 text-white/80 hover:bg-white/20",
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
+/**
+ * Inline editor for a user message (#10713). Prefilled with the message text;
+ * ⌘/Ctrl+Enter resends the edit, Escape cancels. The parent reveal handler
+ * ignores events while editing.
+ */
+function ThreadLineEditor({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}): React.JSX.Element {
+  const ref = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        ref={ref}
+        data-testid="thread-line-edit-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            onSave();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        rows={Math.min(6, Math.max(1, value.split("\n").length))}
+        className="w-full resize-none rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere] focus:border-white/40"
+      />
+      <div className="flex items-center justify-end gap-1.5">
+        <button
+          type="button"
+          data-testid="thread-line-edit-cancel"
+          onClick={onCancel}
+          className="rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-testid="thread-line-edit-save"
+          onClick={onSave}
+          className="rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const ThreadLine = React.memo(function ThreadLine({
   message,
   floating,
   reduce,
   onCopy,
+  onSpeak,
+  onEdit,
+  speaking,
   onOpenSettings,
   turnStatus,
   suppressReasoning,
@@ -796,8 +919,15 @@ const ThreadLine = React.memo(function ThreadLine({
   message: ShellMessage;
   floating?: boolean;
   reduce?: boolean;
-  /** Copy this message's text (assistant bubbles only). Stable identity. */
+  /** Copy this message's text. Used by both the press-and-hold shortcut
+   *  (assistant) and the reveal-row Copy control (both roles). Stable identity. */
   onCopy?: (text: string) => void;
+  /** Speak an assistant message aloud (reveal-row Play). Stable identity. */
+  onSpeak?: (text: string) => void;
+  /** Save an edited user message and resend it (reveal-row Edit). Stable id. */
+  onEdit?: (text: string) => void;
+  /** True while assistant voice output is playing — drives Play↔Stop. */
+  speaking?: boolean;
   /** Jump to Settings from the no_provider gate. Stable identity. */
   onOpenSettings?: () => void;
   /** Rich status for the in-flight (empty) assistant bubble (#8813). Only the
@@ -835,7 +965,8 @@ const ThreadLine = React.memo(function ThreadLine({
   const canCopy = isAssistant && !!onCopy && message.content.trim().length > 0;
   const copyHandlers = canCopy
     ? {
-        onPointerDown: (e: React.PointerEvent) => {
+        onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+          if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
           holdStart.current = { x: e.clientX, y: e.clientY };
           holdTimer.current = window.setTimeout(() => {
             onCopy?.(message.content);
@@ -850,7 +981,7 @@ const ThreadLine = React.memo(function ThreadLine({
             holdTimer.current = null;
           }, COPY_HOLD_MS);
         },
-        onPointerMove: (e: React.PointerEvent) => {
+        onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
           const s = holdStart.current;
           if (!s) return;
           if (
@@ -863,6 +994,99 @@ const ThreadLine = React.memo(function ThreadLine({
         onPointerCancel: clearHold,
       }
     : null;
+
+  // Click-to-reveal per-message action row (#10713): tapping a bubble reveals
+  // Copy + Play (assistant) or Copy + Edit (user) beneath it; an outside tap
+  // dismisses. This is the primary extraction affordance on pointer devices; the
+  // press-and-hold copy above stays as a secondary touch shortcut.
+  const trimmed = message.content.trim();
+  const lineRef = React.useRef<HTMLDivElement | null>(null);
+  const [revealed, setRevealed] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [editDraft, setEditDraft] = React.useState("");
+  const [rowCopied, setRowCopied] = React.useState(false);
+  const rowCopiedTimer = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (rowCopiedTimer.current !== null)
+        window.clearTimeout(rowCopiedTimer.current);
+    },
+    [],
+  );
+
+  const canRowCopy = !!onCopy && trimmed.length > 0;
+  const canSpeak = isAssistant && !!onSpeak && trimmed.length > 0;
+  // A user turn is editable unless it's an optimistic (temp-) turn not yet
+  // acknowledged by the server — mirrors the composite ChatMessage's canEdit.
+  const canEdit =
+    isUser && !!onEdit && trimmed.length > 0 && !message.id.startsWith("temp-");
+  const hasActions = canRowCopy || canSpeak || canEdit;
+
+  const toggleRevealed = React.useCallback(() => {
+    if (!hasActions || editing) return;
+    // Never hijack a text-selection drag: a click that finishes a highlight must
+    // not also toggle the row (the bubble text stays selectable to copy).
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (sel && sel.toString().trim().length > 0) return;
+    setRevealed((v) => !v);
+  }, [hasActions, editing]);
+  const handleBubbleClick = React.useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
+      toggleRevealed();
+    },
+    [toggleRevealed],
+  );
+  const handleBubbleKeyDown = React.useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!hasActions || editing) return;
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      toggleRevealed();
+    },
+    [hasActions, editing, toggleRevealed],
+  );
+
+  React.useEffect(() => {
+    if (!revealed) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (lineRef.current && !lineRef.current.contains(e.target as Node)) {
+        setRevealed(false);
+        setEditing(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, [revealed]);
+
+  const handleRowCopy = React.useCallback(() => {
+    onCopy?.(message.content);
+    setRowCopied(true);
+    if (rowCopiedTimer.current !== null)
+      window.clearTimeout(rowCopiedTimer.current);
+    rowCopiedTimer.current = window.setTimeout(() => setRowCopied(false), 1100);
+  }, [onCopy, message.content]);
+
+  const handleSpeak = React.useCallback(() => {
+    onSpeak?.(message.content);
+  }, [onSpeak, message.content]);
+
+  const openEditor = React.useCallback(() => {
+    setEditDraft(message.content);
+    setEditing(true);
+  }, [message.content]);
+
+  const saveEdit = React.useCallback(() => {
+    const next = editDraft.trim();
+    setEditing(false);
+    setRevealed(false);
+    if (next && next !== message.content.trim()) onEdit?.(next);
+  }, [editDraft, message.content, onEdit]);
+
+  const cancelEdit = React.useCallback(() => {
+    setEditing(false);
+    setRevealed(false);
+  }, []);
 
   // A failed turn the user can't recover from without wiring a provider: render
   // a structured gate (not the raw error text) with a one-tap jump to Settings.
@@ -911,6 +1135,7 @@ const ThreadLine = React.memo(function ThreadLine({
 
   return (
     <motion.div
+      ref={lineRef}
       data-testid="thread-line"
       data-role={message.role}
       // New turns rise+fade in. Transform/opacity only; reduced motion collapses
@@ -925,92 +1150,176 @@ const ThreadLine = React.memo(function ThreadLine({
         isUser ? "justify-end" : "justify-start",
       )}
     >
+      {/* Bubble + its click-to-reveal action row stack vertically, aligned to the
+          turn's side (#10713). */}
       <div
-        {...(copyHandlers ?? {})}
         className={cn(
-          // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
-          // hashes / paths so they can't blow out the bubble width on a phone.
-          "relative max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
-          // The chrome-free transcript renders floating: each bubble carries its
-          // own dark glass so it stays legible directly over whatever view is
-          // behind. The light tone is for any embedding that supplies its own
-          // surrounding scrim.
-          isUser ? "rounded-br-md" : "rounded-bl-md",
-          // Message text must remain selectable for normal highlight/copy.
-          // Assistant bubbles still keep the press-and-hold copy shortcut.
-          "select-text [-webkit-touch-callout:default]",
-          // #10698: no per-message fill — text floats transparently on the one
-          // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
-          // hairline edge remains to define the item boundary.
-          floating
-            ? cn("border border-white/15 text-white", FLOAT_SHADOW)
-            : isUser
-              ? "text-white"
-              : "text-white/90",
+          "flex max-w-[80%] flex-col gap-1",
+          isUser ? "items-end" : "items-start",
         )}
       >
-        <div data-chat-selectable="true">
-          {isAssistant &&
-          !message.content.trim() &&
-          !message.attachments?.length ? (
-            // The in-flight assistant turn (kept by visibleMessages only while
-            // responding): show dots INSIDE the bubble, anchored where the
-            // streamed text fills in — then the text replaces them. Labels stay
-            // in the standalone status row so the bubble never flashes
-            // "Running …" text in place of the answer.
-            <>
-              <TurnStatusInner status={turnStatus ?? null} showLabel={false} />
-              {message.attachments?.length ? (
-                <MessageAttachments attachments={message.attachments} />
-              ) : null}
-            </>
-          ) : isUser ? (
-            // User turns stay raw text (slash command bolded); user uploads render
-            // through the standalone attachment renderer.
-            <>
-              <ThreadLineText content={message.content} />
-              {message.attachments?.length ? (
-                <MessageAttachments attachments={message.attachments} />
-              ) : null}
-            </>
+        {/* biome-ignore lint/a11y/useSemanticElements: transcript bubbles contain selectable text plus nested inline widgets, so they cannot be real buttons. */}
+        <div
+          {...(copyHandlers ?? {})}
+          role="button"
+          tabIndex={0}
+          aria-expanded={revealed}
+          aria-label={
+            revealed ? "hide message actions" : "show message actions"
+          }
+          onClick={handleBubbleClick}
+          onKeyDown={handleBubbleKeyDown}
+          className={cn(
+            // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
+            // hashes / paths so they can't blow out the bubble width on a phone.
+            "relative w-fit max-w-full whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed [overflow-wrap:anywhere]",
+            // The chrome-free transcript renders floating: each bubble carries its
+            // own dark glass so it stays legible directly over whatever view is
+            // behind. The light tone is for any embedding that supplies its own
+            // surrounding scrim.
+            isUser ? "rounded-br-md" : "rounded-bl-md",
+            // Message text must remain selectable for normal highlight/copy.
+            // Assistant bubbles still keep the press-and-hold copy shortcut.
+            "select-text [-webkit-touch-callout:default]",
+            // Tapping a bubble with actions reveals its row (pointer affordance).
+            hasActions && !editing && "cursor-pointer",
+            // #10698: no per-message fill — text floats transparently on the one
+            // shared panel glass. FLOAT_SHADOW + light text keep it legible; a
+            // hairline edge remains to define the item boundary.
+            floating
+              ? cn("border border-white/15 text-white", FLOAT_SHADOW)
+              : isUser
+                ? "text-white"
+                : "text-white/90",
+          )}
+        >
+          {isUser && editing ? (
+            <ThreadLineEditor
+              value={editDraft}
+              onChange={setEditDraft}
+              onSave={saveEdit}
+              onCancel={cancelEdit}
+            />
           ) : (
-            // Settled assistant turn: render inline widgets (task/choice/form/
-            // followups) instead of leaking raw `[TASK:…]`/`[CHOICE]`/… markers as
-            // text (#8997); plain replies fall through the fast path unchanged.
-            // Attachments, the secret/OAuth request, and the reasoning block render
-            // alongside. The secret block is `pointer-events-auto` so it stays
-            // clickable inside the open thread's scroll surface.
             <>
-              <InlineWidgetText content={message.content} />
-              {message.attachments?.length ? (
-                <MessageAttachments attachments={message.attachments} />
-              ) : null}
-              {message.secretRequest ? (
-                <div className="pointer-events-auto">
-                  <SensitiveRequestBlock request={message.secretRequest} />
-                </div>
-              ) : null}
-              {!suppressReasoning && message.reasoning?.trim() ? (
-                <ThinkingBlock reasoning={message.reasoning} />
-              ) : null}
+              <div data-chat-selectable="true">
+                {isAssistant &&
+                !message.content.trim() &&
+                !message.attachments?.length ? (
+                  // The in-flight assistant turn (kept by visibleMessages only while
+                  // responding): show dots INSIDE the bubble, anchored where the
+                  // streamed text fills in — then the text replaces them. Labels stay
+                  // in the standalone status row so the bubble never flashes
+                  // "Running …" text in place of the answer.
+                  <>
+                    <TurnStatusInner
+                      status={turnStatus ?? null}
+                      showLabel={false}
+                    />
+                    {message.attachments?.length ? (
+                      <MessageAttachments attachments={message.attachments} />
+                    ) : null}
+                  </>
+                ) : isUser ? (
+                  // User turns stay raw text (slash command bolded); user uploads render
+                  // through the standalone attachment renderer.
+                  <>
+                    <ThreadLineText content={message.content} />
+                    {message.attachments?.length ? (
+                      <MessageAttachments attachments={message.attachments} />
+                    ) : null}
+                  </>
+                ) : (
+                  // Settled assistant turn: render inline widgets (task/choice/form/
+                  // followups) instead of leaking raw `[TASK:…]`/`[CHOICE]`/… markers as
+                  // text (#8997); plain replies fall through the fast path unchanged.
+                  // Attachments, the secret/OAuth request, and the reasoning block render
+                  // alongside. The secret block is `pointer-events-auto` so it stays
+                  // clickable inside the open thread's scroll surface.
+                  <>
+                    <InlineWidgetText content={message.content} />
+                    {message.attachments?.length ? (
+                      <MessageAttachments attachments={message.attachments} />
+                    ) : null}
+                    {message.secretRequest ? (
+                      <div className="pointer-events-auto">
+                        <SensitiveRequestBlock
+                          request={message.secretRequest}
+                        />
+                      </div>
+                    ) : null}
+                    {!suppressReasoning && message.reasoning?.trim() ? (
+                      <ThinkingBlock reasoning={message.reasoning} />
+                    ) : null}
+                  </>
+                )}
+              </div>
+              <AnimatePresence>
+                {copied ? (
+                  <motion.span
+                    key="copied"
+                    data-testid="thread-line-copied"
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: reduce ? 0 : 0.18 }}
+                    className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
+                  >
+                    Copied
+                  </motion.span>
+                ) : null}
+              </AnimatePresence>
             </>
           )}
         </div>
-        <AnimatePresence>
-          {copied ? (
-            <motion.span
-              key="copied"
-              data-testid="thread-line-copied"
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: reduce ? 0 : 0.18 }}
-              className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
-            >
-              Copied
-            </motion.span>
-          ) : null}
-        </AnimatePresence>
+        {revealed && !editing && hasActions ? (
+          <div
+            data-testid="thread-line-actions"
+            className={cn(
+              "flex items-center gap-1.5",
+              isUser ? "pr-1" : "pl-1",
+            )}
+          >
+            {canRowCopy ? (
+              <ThreadLineActionButton
+                label={rowCopied ? "Copied" : "Copy"}
+                testId="thread-line-copy"
+                icon={
+                  rowCopied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )
+                }
+                onClick={handleRowCopy}
+                active={rowCopied}
+              />
+            ) : null}
+            {canSpeak ? (
+              <ThreadLineActionButton
+                label={speaking ? "Stop" : "Play audio"}
+                testId="thread-line-speak"
+                icon={
+                  speaking ? (
+                    <Square className="h-3.5 w-3.5" />
+                  ) : (
+                    <Volume2 className="h-3.5 w-3.5" />
+                  )
+                }
+                onClick={handleSpeak}
+                active={speaking}
+              />
+            ) : null}
+            {canEdit ? (
+              <ThreadLineActionButton
+                label="Edit"
+                testId="thread-line-edit"
+                icon={<Pencil className="h-3.5 w-3.5" />}
+                onClick={openEditor}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );
@@ -1081,6 +1390,9 @@ export function ContinuousChatOverlay({
     clearConversation,
     stop,
     modelStatus,
+    speak,
+    stopSpeaking,
+    speaking,
   } = controller;
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
@@ -1122,11 +1434,33 @@ export function ContinuousChatOverlay({
     },
   });
 
-  // Copy an assistant answer (press-and-hold on its bubble). Stable identity so
-  // the memoized ThreadLine isn't re-rendered every parent tick.
+  // Copy a message (press-and-hold shortcut + reveal-row Copy). Stable identity
+  // so the memoized ThreadLine isn't re-rendered every parent tick.
   const handleCopyMessage = React.useCallback((text: string) => {
     void copyTextToClipboard(text);
   }, []);
+
+  // Play an assistant message aloud from its reveal row (#10713). Toggling: a tap
+  // while already speaking stops playback; otherwise it speaks this message.
+  const handleSpeakMessage = React.useCallback(
+    (text: string) => {
+      if (speaking) {
+        stopSpeaking?.();
+        return;
+      }
+      speak?.(text);
+    },
+    [speaking, speak, stopSpeaking],
+  );
+
+  // Save an edited user message and resend it as a new turn (#10713) — the same
+  // send path a typed turn uses, so the agent sees the corrected text.
+  const handleEditResend = React.useCallback(
+    (text: string) => {
+      send(text);
+    },
+    [send],
+  );
 
   const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
 
@@ -1158,6 +1492,9 @@ export function ContinuousChatOverlay({
   const [mode, setMode] = React.useState<ChatMode>(
     firstRunOpen ? "full" : "input",
   );
+  React.useEffect(() => {
+    if (firstRunOpen) setMode("full");
+  }, [firstRunOpen]);
   const pilled = mode === "pill";
   const sheetOpen = mode === "half" || mode === "full";
   const expanded = mode === "full";
@@ -1182,6 +1519,14 @@ export function ContinuousChatOverlay({
   // tell a FIRST tap (keyboard up → just dismiss + restore) from a SECOND tap
   // (keyboard already down → close the chat).
   const composerFocusedAtPressRef = React.useRef(false);
+  const outsideSheetPointerRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    composerFocusedAtPress: boolean;
+    dragged: boolean;
+  } | null>(null);
+  const suppressNextOutsideClickRef = React.useRef(false);
   // The live thread (history) height in px, as a MOTION VALUE — driven directly
   // by the pointer during a drag and spring-animated to a detent on release.
   // Keeping it off React state means a drag updates the DOM height every frame
@@ -1408,6 +1753,9 @@ export function ContinuousChatOverlay({
           floating
           reduce={reduce}
           onCopy={handleCopyMessage}
+          onSpeak={handleSpeakMessage}
+          onEdit={handleEditResend}
+          speaking={speaking}
           onOpenSettings={openSettings}
           turnStatus={isInFlight ? turnStatus : undefined}
           suppressReasoning={responding && isLastAssistant}
@@ -1418,6 +1766,9 @@ export function ContinuousChatOverlay({
       visibleMessages.length,
       reduce,
       handleCopyMessage,
+      handleSpeakMessage,
+      handleEditResend,
+      speaking,
       openSettings,
       responding,
       turnStatus,
@@ -2619,6 +2970,100 @@ export function ContinuousChatOverlay({
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [dismissKeyboardToPriorState]);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onClick = (event: MouseEvent) => {
+      if (!suppressNextOutsideClickRef.current) return;
+      suppressNextOutsideClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("click", onClick, true);
+    return () => window.removeEventListener("click", onClick, true);
+  }, []);
+
+  // The backdrop is visual-only while the sheet is open so launcher/home drags
+  // can hit the real HomeLauncherSurface underneath. This document-level tap
+  // detector preserves the old "tap outside to collapse" behavior without
+  // stealing horizontal swipes or vertical scroll from the background.
+  React.useEffect(() => {
+    if (typeof document === "undefined" || !sheetOpen) {
+      outsideSheetPointerRef.current = null;
+      suppressNextOutsideClickRef.current = false;
+      return undefined;
+    }
+
+    const isInsidePanel = (target: EventTarget | null): boolean =>
+      target instanceof Node && !!panelRef.current?.contains(target);
+    const isGrabber = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      !!target.closest('[data-testid="chat-sheet-grabber"]');
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 && event.pointerType === "mouse") return;
+      if (isInsidePanel(event.target) || isGrabber(event.target)) {
+        outsideSheetPointerRef.current = null;
+        return;
+      }
+      outsideSheetPointerRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        composerFocusedAtPress: composerFocusedAtPressRef.current,
+        dragged: false,
+      };
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const start = outsideSheetPointerRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      if (
+        Math.hypot(event.clientX - start.startX, event.clientY - start.startY) >
+        OUTSIDE_SHEET_TAP_SLOP
+      ) {
+        start.dragged = true;
+      }
+    };
+
+    const onPointerEnd = (event: PointerEvent) => {
+      const start = outsideSheetPointerRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      outsideSheetPointerRef.current = null;
+      if (start.dragged) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      suppressNextOutsideClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextOutsideClickRef.current = false;
+      }, 750);
+
+      if (start.composerFocusedAtPress) {
+        composerFocusedAtPressRef.current = false;
+        return;
+      }
+      collapse();
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      const start = outsideSheetPointerRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      outsideSheetPointerRef.current = null;
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+    document.addEventListener("pointerup", onPointerEnd, true);
+    document.addEventListener("pointercancel", onPointerCancel, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      document.removeEventListener("pointerup", onPointerEnd, true);
+      document.removeEventListener("pointercancel", onPointerCancel, true);
+    };
+  }, [sheetOpen, collapse]);
+
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
   // when one of them holds focus). Registered only while open.
@@ -2919,8 +3364,9 @@ export function ContinuousChatOverlay({
     },
   });
 
-  // NOTE: the chat has NO close-on-outside-pointerdown beyond the keyboard blur;
-  // it COLLAPSES on a pull-down, Escape, or a click on the dimming scrim.
+  // NOTE: outside pointerdown only drops the keyboard. Outside TAP collapse is
+  // handled by the document-level tap detector above so drag gestures can still
+  // pass through the visual backdrop to the launcher/home surface underneath.
 
   return (
     <div
@@ -2953,36 +3399,22 @@ export function ContinuousChatOverlay({
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
-      {/* Dimming scrim behind the open chat. It fades in WITH the reveal and
-          captures pointer events while open; clicking it COLLAPSES the chat back
-          to the input. Collapsed → pointer-events-none, so the view behind stays
-          fully live (the overlay is non-blocking by design). */}
+      {/* Visual dimming scrim behind the open chat. It fades in WITH the reveal
+          but never captures pointer events; outside taps are handled by the
+          document-level detector above, and outside drags pass through to the
+          launcher/home surface. */}
       <motion.div
         aria-hidden="true"
         data-testid="chat-sheet-backdrop"
         data-active={sheetOpen ? "true" : "false"}
-        onClick={
-          sheetOpen
-            ? () => {
-                // First tap with the keyboard up only dismisses it (the
-                // pointerdown handler already dropped the keyboard and restored
-                // the pre-focus detent) — don't ALSO collapse. A tap with the
-                // keyboard already down closes the chat back to the input.
-                if (composerFocusedAtPressRef.current) {
-                  composerFocusedAtPressRef.current = false;
-                  return;
-                }
-                collapse();
-              }
-            : undefined
-        }
         className="fixed inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.06)_0%,rgba(8,10,18,0.55)_46%,rgba(0,0,0,0.66)_100%)]"
         // Opacity follows the live history height (motion value) — no re-render
-        // during a drag. Capture clicks only once open.
+        // during a drag. Pointer events stay disabled so background gestures
+        // keep their original targets while chat is open.
         style={{
           opacity: revealed,
           visibility: scrimVisibility,
-          pointerEvents: sheetOpen ? "auto" : "none",
+          pointerEvents: "none",
         }}
       />
 

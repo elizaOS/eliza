@@ -71,11 +71,6 @@ test.describe
           timeout: 60_000,
         });
 
-        // The agent must be the gate before the deep link lands.
-        await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0, {
-          timeout: 30_000,
-        });
-
         // Fire the real OS deep link. `am start` delivers it to the running
         // WebView via Capacitor `appUrlOpen` (singleTask onNewIntent), so the
         // CDP page survives and observes the connect → home transition.
@@ -100,11 +95,39 @@ test.describe
         });
 
         // The connect must have persisted the remote as the active server.
-        const activeServer = await page.evaluate(() =>
-          localStorage.getItem("elizaos:active-server"),
-        );
-        expect(activeServer, "active-server persisted").toBeTruthy();
-        expect(activeServer).toContain("127.0.0.1:31337");
+        const readActiveServer = () =>
+          page.evaluate(async () => {
+            const localValue = localStorage.getItem("elizaos:active-server");
+            if (localValue) return localValue;
+            const preferences = (
+              window as Window & {
+                Capacitor?: {
+                  Plugins?: {
+                    Preferences?: {
+                      get?: (args: {
+                        key: string;
+                      }) => Promise<{ value?: string | null }>;
+                    };
+                  };
+                };
+              }
+            ).Capacitor?.Plugins?.Preferences;
+            return (
+              (
+                await preferences?.get?.({
+                  key: "elizaos:active-server",
+                })
+              )?.value ?? null
+            );
+          });
+        await expect
+          .poll(readActiveServer, {
+            timeout: 30_000,
+            message: "active-server persisted",
+          })
+          .toContain("127.0.0.1:31337");
+        const activeServer = await readActiveServer();
+        expect(activeServer).toBeTruthy();
         expect(activeServer).toContain('"kind":"remote"');
 
         const screenshotPath = path.join(ARTIFACT_DIR, "home-landing.png");

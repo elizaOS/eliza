@@ -195,8 +195,8 @@ const views: ViewSpec[] = [
     firstRunIncomplete: true,
     readyChecks: [
       { selector: '[data-testid="continuous-chat-overlay"]' },
-      { selector: '[data-testid="first-run-runtime-chooser"]' },
-      { selector: '[data-testid="first-run-chooser-cloud"]' },
+      { selector: '[data-testid="choice-__first_run__:runtime:cloud"]' },
+      { selector: '[data-testid="choice-__first_run__:runtime:local"]' },
     ],
   },
   {
@@ -706,11 +706,15 @@ async function applyState(page: Page, capture: CaptureSpec): Promise<void> {
     });
   }
   if (capture.stateId === "first-run-local") {
-    await page.locator('[data-testid="first-run-chooser-local"]').click();
-    await page.locator('[data-testid="first-run-provider-on-device"]').waitFor({
-      state: "visible",
-      timeout: 10_000,
-    });
+    await page
+      .locator('[data-testid="choice-__first_run__:runtime:local"]')
+      .click();
+    await page
+      .locator('[data-testid="choice-__first_run__:provider:on-device"]')
+      .waitFor({
+        state: "visible",
+        timeout: 10_000,
+      });
   }
 }
 

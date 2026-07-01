@@ -88,13 +88,13 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   // The reset actually fires against the server...
   await resetRequest;
 
-  // ...and the renderer returns to the pre-agent first-run chooser.
+  // ...and the renderer returns to pre-agent in-chat first-run.
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("first-run-runtime-chooser")).toBeVisible({
-    timeout: 20_000,
-  });
-  await expect(page.getByTestId("first-run-chooser-cloud")).toBeVisible({
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
+  await expect(
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+  ).toBeVisible({
     timeout: 15_000,
   });
 });

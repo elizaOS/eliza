@@ -197,6 +197,23 @@ async function drag(p, selector, dx, dy, { steps = 12, slow = false } = {}) {
   });
 }
 
+/** Browser-hit-tested drag by screen coordinates. Used for #10715: the pointer
+ * starts outside the chat panel, so a full-screen backdrop would swallow it. */
+async function screenDrag(
+  p,
+  { startX, startY, endX, endY, steps = 12, slow = false },
+) {
+  await p.mouse.move(startX, startY);
+  await p.mouse.down();
+  for (let i = 1; i <= steps; i += 1) {
+    const x = startX + ((endX - startX) * i) / steps;
+    const y = startY + ((endY - startY) * i) / steps;
+    await p.mouse.move(x, y);
+    if (slow) await p.waitForTimeout(20);
+  }
+  await p.mouse.up();
+}
+
 // LEFT swipe (clientX decreases) → next/older conversation (index + 1). The
 // per-step waits let the swipe-jank FrameBudgetSampler's rAF actually tick
 // across the drag (a back-to-back synthetic burst can commit before a single
@@ -225,10 +242,57 @@ page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on("pageerror", (e) => errors.push(String(e)));
 await page.goto(url);
 await page.waitForSelector('[data-testid="chat-sheet"]');
+await page.waitForSelector('[data-testid="home-launcher-surface"]');
 await page.waitForTimeout(600);
 
+// #10715: first open only to HALF so there is visible launcher/home background
+// above the chat panel. A horizontal drag that starts there must hit the REAL
+// HomeLauncherSurface underneath the visual scrim, not the chat backdrop.
+await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -120, { steps: 6 });
+await page.waitForTimeout(450);
+assert(
+  (await page.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+    "open",
+  "chat sheet opens before background pass-through test",
+);
+assert(
+  (await page
+    .getByTestId("home-launcher-surface")
+    .getAttribute("data-page")) === "home",
+  "background rail starts on Home",
+);
+await screenDrag(page, {
+  startX: 360,
+  startY: 128,
+  endX: 58,
+  endY: 128,
+  steps: 14,
+  slow: true,
+});
+await page.waitForFunction(
+  () =>
+    document
+      .querySelector('[data-testid="home-launcher-surface"]')
+      ?.getAttribute("data-page") === "launcher",
+);
+assert(
+  (await page.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+    "open",
+  "background swipe pages the launcher while chat remains open",
+);
+await snap(page, "00-background-swipe-passthrough");
+
+await page.mouse.click(210, 128);
+await page.waitForTimeout(450);
+assert(
+  (await page.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+    "closed",
+  "outside background tap collapses the chat",
+);
+await snap(page, "01-background-tap-collapse");
+
 // Open the sheet to FULL so the thread (the swipe surface) is mounted + bound.
-// Two pull-ups on the grabber step collapsed → half → full.
+// Two pull-ups from collapsed step collapsed → half → full.
 await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -120, { steps: 6 });
 await page.waitForTimeout(450);
 await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -180, { steps: 6 });

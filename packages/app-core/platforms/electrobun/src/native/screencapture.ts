@@ -39,6 +39,108 @@ function warnScreenCapture(
   logger.warn(`[ScreenCapture] ${message}`, context);
 }
 
+async function runCaptureCommand(
+  command: string[],
+  outputPath: string,
+): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(command, {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode === 0 && fs.existsSync(outputPath)) return true;
+    logger.debug("[ScreenCapture] capture command produced no output", {
+      command,
+      exitCode,
+      outputPath,
+      outputExists: fs.existsSync(outputPath),
+    });
+    return false;
+  } catch (err) {
+    logger.debug(`[ScreenCapture] ${command[0]} capture command failed`, {
+      command,
+      error: screenCaptureErrorMessage(err),
+      outputPath,
+    });
+    return false;
+  }
+}
+
+async function captureLinuxRootWindow(
+  tmpPath: string,
+  options: { quality?: number } = {},
+): Promise<boolean> {
+  const scrotCommand = options.quality
+    ? ["scrot", "--quality", String(options.quality), tmpPath]
+    : ["scrot", tmpPath];
+  if (await runCaptureCommand(scrotCommand, tmpPath)) return true;
+
+  if (
+    await runCaptureCommand(["import", "-window", "root", tmpPath], tmpPath)
+  ) {
+    return true;
+  }
+
+  const display = process.env.DISPLAY?.trim();
+  if (
+    display &&
+    (await runCaptureCommand(
+      [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "x11grab",
+        "-i",
+        display,
+        "-vframes",
+        "1",
+        tmpPath,
+      ],
+      tmpPath,
+    ))
+  ) {
+    return true;
+  }
+
+  const xwdPath = `${tmpPath}.xwd`;
+  try {
+    if (
+      !(await runCaptureCommand(
+        ["xwd", "-root", "-silent", "-out", xwdPath],
+        xwdPath,
+      ))
+    ) {
+      return false;
+    }
+    return runCaptureCommand(
+      [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        xwdPath,
+        tmpPath,
+      ],
+      tmpPath,
+    );
+  } finally {
+    try {
+      if (fs.existsSync(xwdPath)) fs.unlinkSync(xwdPath);
+    } catch (err) {
+      logger.debug("[ScreenCapture] xwd temp cleanup failed", {
+        path: xwdPath,
+        error: screenCaptureErrorMessage(err),
+      });
+    }
+  }
+}
+
 /**
  * Allow-list for game-capture URLs.
  * Only localhost, 127.0.0.1, and file:// origins are permitted.
@@ -112,7 +214,7 @@ export class ScreenCaptureManager {
       `elizaos-screenshot-${Date.now()}.png`,
     );
     try {
-      let proc: ReturnType<typeof Bun.spawn>;
+      let proc: ReturnType<typeof Bun.spawn> | null = null;
       if (process.platform === "darwin") {
         proc = Bun.spawn(["screencapture", "-x", "-t", "png", tmpPath], {
           stdout: "ignore",
@@ -134,34 +236,10 @@ $bmp.Dispose()`;
           stderr: "ignore",
         });
       } else {
-        try {
-          proc = Bun.spawn(["scrot", tmpPath], {
-            stdout: "ignore",
-            stderr: "ignore",
-          });
-          await proc.exited;
-          if (!fs.existsSync(tmpPath)) {
-            proc = Bun.spawn(["import", "-window", "root", tmpPath], {
-              stdout: "ignore",
-              stderr: "ignore",
-            });
-          }
-        } catch (err) {
-          logger.debug(
-            "[ScreenCapture] scrot screenshot failed; trying import",
-            {
-              error: screenCaptureErrorMessage(err),
-              tmpPath,
-            },
-          );
-          proc = Bun.spawn(["import", "-window", "root", tmpPath], {
-            stdout: "ignore",
-            stderr: "ignore",
-          });
-        }
+        await captureLinuxRootWindow(tmpPath);
       }
 
-      await proc.exited;
+      if (proc) await proc.exited;
 
       const actualPath = fs.existsSync(tmpPath)
         ? tmpPath
@@ -437,7 +515,7 @@ $bmp.Dispose()`;
       // All platforms: CLI screenshot → temp file → POST → delete
       const tmpPath = path.join(os.tmpdir(), `elizaos-frame-${Date.now()}.jpg`);
       try {
-        let proc: ReturnType<typeof Bun.spawn>;
+        let proc: ReturnType<typeof Bun.spawn> | null = null;
 
         if (platform === "darwin") {
           // -x = no shutter sound, no shadow  -t jpg = JPEG output
@@ -464,37 +542,10 @@ $bmp.Dispose()`;
             stderr: "ignore",
           });
         } else {
-          // Linux: try scrot first
-          try {
-            proc = Bun.spawn(["scrot", "--quality", String(quality), tmpPath], {
-              stdout: "ignore",
-              stderr: "ignore",
-            });
-            await proc.exited;
-
-            if (!fs.existsSync(tmpPath)) {
-              // scrot not available or failed — try ImageMagick import
-              proc = Bun.spawn(["import", "-window", "root", tmpPath], {
-                stdout: "ignore",
-                stderr: "ignore",
-              });
-            }
-          } catch (err) {
-            logger.debug(
-              "[ScreenCapture] scrot frame capture failed; trying import",
-              {
-                error: screenCaptureErrorMessage(err),
-                tmpPath,
-              },
-            );
-            proc = Bun.spawn(["import", "-window", "root", tmpPath], {
-              stdout: "ignore",
-              stderr: "ignore",
-            });
-          }
+          await captureLinuxRootWindow(tmpPath, { quality });
         }
 
-        await proc.exited;
+        if (proc) await proc.exited;
 
         // macOS screencapture may append .jpg if no extension was in the path
         const actualPath = fs.existsSync(tmpPath)

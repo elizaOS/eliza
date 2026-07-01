@@ -820,7 +820,6 @@ export function ChatView({
       </button>
     ) : null;
 
-
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
