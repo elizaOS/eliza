@@ -33,13 +33,15 @@ environment walls that need the operator's interactive machine:
   → Privacy → Screen Recording + a process restart). So the desktop app is
   proven to build + run with this code; the *pixels* need the operator to grant
   that permission once, then re-run the same command + capture.
-- **iOS simulator — RUNS (proven, real capture)**: the Eliza app (`ai.elizaos.app`)
-  is installed on the iPhone 16 Pro simulator; `xcrun simctl launch` + `xcrun
-  simctl io screenshot` captured it running (`ios-sim-launch.png` — home screen,
-  no Screen-Recording permission needed for simctl). Navigating the sim to the
-  accounts settings needs UI automation (simctl can't tap; no registered
-  deep-link scheme) or pointing the app at the seeded backend — the accounts
-  webview renders the identical bundle as the mobile-390 web capture above.
+- **iOS simulator — FULL accounts UI captured (real)**: iPhone 16 Pro sim, driven
+  with `idb ui tap`/`swipe` (device-point coords) + `xcrun simctl io screenshot`
+  (no Screen-Recording permission needed). Completed onboarding, opened
+  `Settings → Models & Providers → Claude Subscription` / `ChatGPT Subscription`
+  against the seeded backend, and captured **2 accounts per tier** (Personal #0 +
+  Work #1, both HEALTHY, usage 18%/63%, Priority strategy, priority order,
+  Enable/Test/Refresh, Add account) — `ios-claude-accounts.png`,
+  `ios-codex-accounts.png`, `ios-models.png`, `ios-settings-menu.png`,
+  `ios-sim-launch.png`. This is the #10696 acceptance rendered on iOS.
 - **Real iOS device**: two iPhones are paired and available
   (`xcrun devicectl list devices` → Shaw's iPhone 15 Pro, MoonCycles iPhone 16
   Pro Max); on-device install is the same Capacitor build + trust flow.
