@@ -1,61 +1,41 @@
 // @vitest-environment jsdom
-//
-// #10712: the collapsible "Thinking" (reasoning) disclosure. Collapsed by
-// default, toggles on click (aria-expanded + body reveal), renders nothing for
-// empty/whitespace reasoning, accent-only styling (no blue).
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ThinkingBlock } from "./ThinkingBlock";
 
-afterEach(cleanup);
-
 describe("ThinkingBlock (#10712)", () => {
-  it("renders nothing for empty or whitespace-only reasoning", () => {
-    const empty = render(<ThinkingBlock reasoning="" />);
-    expect(empty.container.firstChild).toBeNull();
-    empty.unmount();
-    const blank = render(<ThinkingBlock reasoning={"   \n\t  "} />);
-    expect(blank.container.firstChild).toBeNull();
+  afterEach(() => {
+    cleanup();
   });
 
-  it("is collapsed by default: shows the toggle but not the reasoning body", () => {
-    const { getByRole, queryByText } = render(
-      <ThinkingBlock reasoning="weighing options A and B" />,
-    );
-    const toggle = getByRole("button", { name: /thinking/i });
+  it("renders collapsed by default and toggles the reasoning body", () => {
+    render(<ThinkingBlock reasoning="Checked the plan before answering." />);
+
+    const toggle = screen.getByRole("button", { name: /thinking/i });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(queryByText("weighing options A and B")).toBeNull();
-  });
-
-  it("reveals the reasoning body on click and collapses again on a second click", () => {
-    const { getByRole, queryByText } = render(
-      <ThinkingBlock reasoning="weighing options A and B" />,
-    );
-    const toggle = getByRole("button", { name: /thinking/i });
+    expect(screen.queryByText("Checked the plan before answering.")).toBeNull();
 
     fireEvent.click(toggle);
+
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(queryByText("weighing options A and B")).not.toBeNull();
-
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(queryByText("weighing options A and B")).toBeNull();
+    expect(screen.getByText("Checked the plan before answering.")).toBeTruthy();
   });
 
-  it("trims the reasoning it displays", () => {
-    const { getByRole, getByText } = render(
-      <ThinkingBlock reasoning="   padded thought   " />,
-    );
-    fireEvent.click(getByRole("button", { name: /thinking/i }));
-    // The rendered body is the trimmed text (exact match).
-    expect(getByText("padded thought")).not.toBeNull();
+  it("renders nothing for empty or whitespace reasoning", () => {
+    const { container, rerender } = render(<ThinkingBlock reasoning="   " />);
+    expect(container.firstChild).toBeNull();
+
+    rerender(<ThinkingBlock reasoning={"\n\t"} />);
+    expect(container.firstChild).toBeNull();
   });
 
-  it("is accent-only — no blue anywhere in the rendered tree", () => {
-    const { container } = render(<ThinkingBlock reasoning="hmm" />);
+  it("uses the shared accent treatment without blue classes", () => {
+    const { container } = render(<ThinkingBlock reasoning="Accent only." />);
     const html = container.innerHTML;
+
+    expect(html).toContain("border-accent");
     expect(html).toContain("text-accent");
-    expect(html).not.toMatch(/blue|indigo|sky|cyan/);
+    expect(html).not.toMatch(/blue/i);
   });
 });

@@ -965,7 +965,7 @@ const ThreadLine = React.memo(function ThreadLine({
   const canCopy = isAssistant && !!onCopy && message.content.trim().length > 0;
   const copyHandlers = canCopy
     ? {
-        onPointerDown: (e: React.PointerEvent) => {
+        onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
           if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
           holdStart.current = { x: e.clientX, y: e.clientY };
           holdTimer.current = window.setTimeout(() => {
@@ -981,7 +981,7 @@ const ThreadLine = React.memo(function ThreadLine({
             holdTimer.current = null;
           }, COPY_HOLD_MS);
         },
-        onPointerMove: (e: React.PointerEvent) => {
+        onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
           const s = holdStart.current;
           if (!s) return;
           if (

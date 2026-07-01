@@ -29,7 +29,10 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
-import type { Conversation } from "../../api/client-types-chat";
+import type {
+  Conversation,
+  ConversationMessage,
+} from "../../api/client-types-chat";
 import { CHAT_PREFILL_EVENT } from "../../events";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -39,6 +42,10 @@ import {
   getShellSurface,
   resetShellSurfaceForTests,
 } from "../../state/shell-surface-store";
+import {
+  applyStreamingTextModification,
+  type StreamingTextSetter,
+} from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
@@ -1982,6 +1989,106 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
     fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
   });
+
+  it("paints reducer-streamed tokens incrementally and shows Thinking after completion", () => {
+    let conversationMessages: ConversationMessage[] = [
+      {
+        id: "u-stream",
+        role: "user",
+        text: "stream the answer",
+        timestamp: 1,
+      },
+      {
+        id: "a-stream",
+        role: "assistant",
+        text: "",
+        timestamp: 2,
+      },
+    ];
+    const setConversationMessages: StreamingTextSetter = (next) => {
+      conversationMessages =
+        typeof next === "function" ? next(conversationMessages) : next;
+    };
+    const toShellMessages = (): ShellMessage[] =>
+      conversationMessages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.text,
+        createdAt: message.timestamp,
+        ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+      }));
+
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          responding: true,
+          turnStatus: { kind: "thinking" },
+          messages: toShellMessages(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    applyStreamingTextModification(setConversationMessages, {
+      messageId: "a-stream",
+      mode: "replace",
+      fullText: "Token one",
+    });
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          responding: true,
+          turnStatus: { kind: "streaming" },
+          messages: toShellMessages(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByText("Token one")).toBeTruthy();
+    expect(screen.queryByText("Token one and two")).toBeNull();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+
+    applyStreamingTextModification(setConversationMessages, {
+      messageId: "a-stream",
+      mode: "replace",
+      fullText: "Token one and two",
+    });
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          responding: true,
+          turnStatus: { kind: "streaming" },
+          messages: toShellMessages(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByText("Token one and two")).toBeTruthy();
+
+    applyStreamingTextModification(setConversationMessages, {
+      messageId: "a-stream",
+      mode: "complete",
+      fullText: "Token one and two",
+      reasoning: "Waited for the done frame before showing reasoning.",
+    });
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: toShellMessages(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+
+    const thinking = screen.getByRole("button", { name: /thinking/i });
+    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByText("Waited for the done frame before showing reasoning."),
+    ).toBeNull();
+
+    fireEvent.click(thinking);
+    expect(
+      screen.getByText("Waited for the done frame before showing reasoning."),
+    ).toBeTruthy();
+  });
 });
 
 // Per-message click-to-reveal action row (#10713): assistant → Copy + Play,
@@ -2007,7 +2114,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   it("reveals Copy + Play on an assistant message and no top-menu copy button", () => {
     const speak = vi.fn();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "the answer", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "the answer", createdAt: 1 },
+      ],
       speak,
       speaking: false,
     });
@@ -2028,7 +2137,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   it("Play speaks the assistant message via the controller", () => {
     const speak = vi.fn();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "read me aloud", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "read me aloud", createdAt: 1 },
+      ],
       speak,
       speaking: false,
     });
@@ -2041,7 +2152,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     const speak = vi.fn();
     const stopSpeaking = vi.fn();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "now playing", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "now playing", createdAt: 1 },
+      ],
       speak,
       stopSpeaking,
       speaking: true,
@@ -2058,7 +2171,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   it("row Copy writes the message text to the clipboard", () => {
     vi.mocked(copyTextToClipboard).mockClear();
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "copy this text", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "copy this text", createdAt: 1 },
+      ],
       speak: vi.fn(),
     });
     fireEvent.click(bubbleFor("copy this text"));
@@ -2079,7 +2194,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(screen.queryByTestId("thread-line-speak")).toBeNull();
 
     fireEvent.click(screen.getByTestId("thread-line-edit"));
-    const input = screen.getByTestId("thread-line-edit-input") as HTMLTextAreaElement;
+    const input = screen.getByTestId(
+      "thread-line-edit-input",
+    ) as HTMLTextAreaElement;
     expect(input.value).toBe("helo wrld");
     fireEvent.change(input, { target: { value: "hello world" } });
     fireEvent.click(screen.getByTestId("thread-line-edit-save"));
@@ -2088,7 +2205,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
 
   it("does not offer Edit on an optimistic temp- user turn", () => {
     openThreadWith({
-      messages: [{ id: "temp-123", role: "user", content: "pending turn", createdAt: 1 }],
+      messages: [
+        { id: "temp-123", role: "user", content: "pending turn", createdAt: 1 },
+      ],
       send: vi.fn(),
     });
     fireEvent.click(bubbleFor("pending turn"));
@@ -2098,7 +2217,9 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
 
   it("dismisses the row on an outside tap", () => {
     openThreadWith({
-      messages: [{ id: "a", role: "assistant", content: "tap away", createdAt: 1 }],
+      messages: [
+        { id: "a", role: "assistant", content: "tap away", createdAt: 1 },
+      ],
       speak: vi.fn(),
     });
     fireEvent.click(bubbleFor("tap away"));
