@@ -74,7 +74,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
           // and its bare externals ("@elizaos/ui", "react") fail to resolve,
           // killing the whole lazy graph (e.g. the cockpit terminal's xterm
           // import).
-          inlineDynamicImports: true,
+          codeSplitting: false,
         },
       },
     },
