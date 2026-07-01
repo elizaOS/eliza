@@ -5,6 +5,7 @@ import {
 	withCanonicalProviderDocs,
 } from "./action-docs";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
+import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
@@ -1174,8 +1175,15 @@ export class AgentRuntime implements IAgentRuntime {
 						this.character.settings.secrets as Record<string, unknown>,
 					)
 				: undefined;
+		// Registry/config-derived catalog (#10469): seed every secret-bearing env
+		// value so a plugin's `FOO_API_KEY` is swapped even when it never appears
+		// in a recognised inline token shape. Character secrets win on conflict.
+		const envSecrets = deriveKnownSecrets(
+			process.env as Record<string, string | undefined>,
+		);
 		return new SecretSwapSession({
 			knownSecrets: {
+				...envSecrets,
 				...settingsSecrets,
 				...toSecretStrings(this.character.secrets),
 			},

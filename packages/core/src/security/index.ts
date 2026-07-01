@@ -8,6 +8,7 @@
  * @module security
  */
 
+export { mnemonicValid } from "./bip39-wordlist.js";
 export {
 	applyCapabilityManifest,
 	assertHostAllowed,
@@ -30,7 +31,6 @@ export {
 	wrapExternalContent,
 	wrapWebContent,
 } from "./external-content.js";
-
 export {
 	hardenIncomingUserMessage,
 	type IncomingMessageSecurityMetadata,
@@ -49,6 +49,7 @@ export {
 	type PiiDetector,
 	type PiiMatch,
 	ssnValid,
+	wifValid,
 } from "./pii-detectors.js";
 export {
 	createSecretsRedactor,

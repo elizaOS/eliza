@@ -20,10 +20,13 @@
  *   longer (more specific) span wins, so a credit card inside a longer digit run
  *   is not also half-matched as a phone number.
  *
- * The exported helpers (`luhnValid`, `ibanValid`, `ssnValid`, `ipv4Valid`) are
- * the validation primitives, exposed so the fuzz / red-team / unit suites can
- * exercise them directly.
+ * The exported helpers (`luhnValid`, `ibanValid`, `ssnValid`, `ipv4Valid`,
+ * `wifValid`) are the validation primitives, exposed so the fuzz / red-team /
+ * unit suites can exercise them directly.
  */
+
+import { createHash } from "../utils/crypto-compat";
+import { findAllMnemonicPhrases } from "./bip39-wordlist";
 
 /** A single PII / token class detector. */
 export interface PiiDetector {
@@ -46,6 +49,16 @@ export interface PiiDetector {
 	 * context (`password=...`) but swap only the value.
 	 */
 	readonly extract?: (match: RegExpMatchArray) => string;
+	/**
+	 * Custom span finder that fully replaces the regex loop for this detector.
+	 * Used when a single regex match can contain several independent secrets
+	 * (e.g. two adjacent BIP-39 mnemonics in one word run), so every one is
+	 * emitted rather than just the first. When present, `pattern`/`validate`/
+	 * `extract` are ignored for this detector.
+	 */
+	readonly findSpans?: (
+		text: string,
+	) => ReadonlyArray<{ value: string; start: number; end: number }>;
 }
 
 /** A detected span: the sensitive value, its class, and its position in the text. */
@@ -137,6 +150,69 @@ export function ibanValid(value: string): boolean {
 	return remainder === 1;
 }
 
+const BASE58_ALPHABET =
+	"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BASE58_INDEX = new Map(
+	[...BASE58_ALPHABET].map((c, i) => [c, BigInt(i)]),
+);
+
+/** Base58 decode → bytes, or null on an invalid character. */
+function base58Decode(input: string): Uint8Array | null {
+	let num = 0n;
+	for (const ch of input) {
+		const v = BASE58_INDEX.get(ch);
+		if (v === undefined) return null;
+		num = num * 58n + v;
+	}
+	const bytes: number[] = [];
+	while (num > 0n) {
+		bytes.unshift(Number(num & 0xffn));
+		num >>= 8n;
+	}
+	for (const ch of input) {
+		if (ch === "1") bytes.unshift(0);
+		else break;
+	}
+	return Uint8Array.from(bytes);
+}
+
+/**
+ * Bitcoin WIF private key: base58check with version byte 0x80 (mainnet) / 0xEF
+ * (testnet), a 32-byte payload (optionally + 0x01 compression flag), and a
+ * trailing 4-byte double-SHA256 checksum. The checksum makes the base58 shape
+ * unambiguous (an IPFS CID or other base58 blob is rejected).
+ */
+export function wifValid(value: string): boolean {
+	const decoded = base58Decode(value);
+	if (!decoded || (decoded.length !== 37 && decoded.length !== 38))
+		return false;
+	const version = decoded[0];
+	if (version !== 0x80 && version !== 0xef) return false;
+	if (decoded.length === 38 && decoded[decoded.length - 5] !== 0x01)
+		return false;
+	const body = decoded.subarray(0, decoded.length - 4);
+	const checksum = decoded.subarray(decoded.length - 4);
+	const h1 = createHash("sha256").update(body).digest() as Uint8Array;
+	const h2 = createHash("sha256").update(h1).digest() as Uint8Array;
+	for (let i = 0; i < 4; i += 1) {
+		if (h2[i] !== checksum[i]) return false;
+	}
+	return true;
+}
+
+/** Base64 string decodes to a `user:password` pair (basic-auth credentials). */
+function basicAuthValid(b64: string): boolean {
+	try {
+		const decoded =
+			typeof atob === "function"
+				? atob(b64)
+				: Buffer.from(b64, "base64").toString("latin1");
+		return decoded.includes(":") && decoded.length >= 3;
+	} catch {
+		return false;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Detector registry
 // ---------------------------------------------------------------------------
@@ -181,6 +257,68 @@ export const PII_DETECTORS: readonly PiiDetector[] = [
 		kind: "jwt",
 		pattern:
 			/\beyJ[A-Za-z0-9_-]{6,}\.eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b/g,
+	},
+	// BIP-39 mnemonic seed phrase — wordlist + checksum validated (near-zero FP;
+	// an ordinary 12-word English sentence is rejected by the checksum). Uses a
+	// custom span finder so every phrase in a word run is emitted (a single regex
+	// match over two adjacent mnemonics would otherwise leave the second unswapped).
+	{
+		kind: "seed-phrase",
+		pattern: /\b(?:[a-zA-Z]{3,8}[ \t]+){11,}[a-zA-Z]{3,8}\b/g,
+		findSpans: (text) => findAllMnemonicPhrases(text),
+	},
+	// Bitcoin WIF private key — base58check (version + 4-byte double-SHA256)
+	// validated, so an IPFS CID / other base58 blob is rejected.
+	{
+		kind: "wif-private-key",
+		pattern: /\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b/g,
+		validate: (match) => wifValid(match),
+	},
+	// URL / DB connection string with embedded user:password — swap the whole
+	// credential. Covers the issue-named "DB creds with passwords" + account
+	// passwords inside URLs, which no assignment/token pattern catches today.
+	{
+		kind: "url-credentials",
+		pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:[^\s@]+@[^\s"'<>]+/gi,
+		extract: (match) => match[0],
+	},
+	// Anthropic API key — registered BEFORE openai-key so its more specific
+	// prefix wins the same-span tie (otherwise mislabelled "openai-key").
+	{
+		kind: "anthropic-key",
+		pattern: /\bsk-ant-(?:api03|admin01)-[A-Za-z0-9_-]{16,}\b/g,
+	},
+	// Stripe webhook signing secret.
+	{ kind: "stripe-webhook-secret", pattern: /\bwhsec_[A-Za-z0-9]{20,}\b/g },
+	// Slack incoming-webhook URL — the trailing segment is the capability secret.
+	{
+		kind: "slack-webhook-url",
+		pattern:
+			/https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{6,}\/B[A-Z0-9]{6,}\/[A-Za-z0-9]{20,}/g,
+	},
+	// HTTP Basic auth header — base64(user:pass). redact.ts covers Bearer, not
+	// Basic, so base64-wrapped credentials are sent in the clear today.
+	{
+		kind: "basic-auth-header",
+		pattern: /\bAuthorization\s*:\s*Basic\s+([A-Za-z0-9+/]{12,}={0,2})/gi,
+		validate: (_match, groups) =>
+			typeof groups[0] === "string" && basicAuthValid(groups[0]),
+	},
+	// Google OAuth refresh token (1// prefix; left-guarded against URL paths).
+	{
+		kind: "google-oauth-refresh-token",
+		pattern: /(?<![\w/])1\/\/[0-9A-Za-z_-]{20,}\b/g,
+	},
+	// Telegram bot token (digits:AA…); tighter + labelled vs the loose redact form.
+	{
+		kind: "telegram-bot-token",
+		pattern: /\b\d{8,10}:AA[A-Za-z0-9_-]{30,}\b/g,
+	},
+	// PGP private key block (the PEM end-marker doesn't cover "KEY BLOCK").
+	{
+		kind: "pgp-private-key",
+		pattern:
+			/-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]+?-----END PGP PRIVATE KEY BLOCK-----/g,
 	},
 	// AWS access key id.
 	{
@@ -258,6 +396,19 @@ export function detectPii(
 	const candidates: PiiMatch[] = [];
 	for (const detector of PII_DETECTORS) {
 		if (disabled?.has(detector.kind)) continue;
+		if (detector.findSpans) {
+			for (const span of detector.findSpans(text)) {
+				if (span.value) {
+					candidates.push({
+						kind: detector.kind,
+						value: span.value,
+						start: span.start,
+						end: span.end,
+					});
+				}
+			}
+			continue;
+		}
 		detector.pattern.lastIndex = 0;
 		for (const match of text.matchAll(detector.pattern)) {
 			const whole = match[0];

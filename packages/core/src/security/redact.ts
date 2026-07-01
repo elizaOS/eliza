@@ -31,10 +31,10 @@ const MIN_SECRET_LENGTH = 8;
  * Matches common formats for API keys, tokens, passwords, etc.
  */
 const DEFAULT_REDACT_PATTERNS: string[] = [
-	// ENV-style assignments.
-	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
+	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
+	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
 	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken)"\s*:\s*"([^"]+)"`,
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
 	// CLI flags.
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)\s+(["']?)([^\s"']+)\1`,
 	// Authorization headers.
