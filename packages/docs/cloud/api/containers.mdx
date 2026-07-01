@@ -29,8 +29,8 @@ Get all containers for your organization.
       "status": "running",
       "image_tag": "ghcr.io/acme/my-app:latest",
       "load_balancer_url": "https://my-app.example.com",
-      "cpu": 256,
-      "memory": 512,
+      "cpu": 1792,
+      "memory": 1792,
       "port": 3000,
       "desired_count": 1,
       "billing_status": "active",
@@ -49,7 +49,7 @@ Get all containers for your organization.
   <span className="path">/api/v1/containers</span>
 </div>
 
-Deploy a new container. Returns a container record and polling instructions.
+Deploy a new container. Returns the created container record; poll `GET /api/v1/containers/{id}` for deploy status.
 
 ### Request
 
@@ -61,8 +61,8 @@ The request body is **camelCase** — the server validates with a strict schema 
   "projectName": "my-app",
   "image": "ghcr.io/elizaos/example-edad:showcase",
   "port": 3000,
-  "cpu": 256,
-  "memoryMb": 512,
+  "cpu": 1792,
+  "memoryMb": 1792,
   "healthCheckPath": "/health",
   "environmentVars": {
     "PORT": "3000",
@@ -79,13 +79,10 @@ The request body is **camelCase** — the server validates with a strict schema 
 | `projectName` | string | no | Stable project identifier. |
 | `image` | string | yes | Full image reference, for example `ghcr.io/owner/repo:tag`. |
 | `port` | integer | no | Container port. Default: 3000. |
-| `cpu` | integer | no | CPU units. Default: 256. |
-| `memoryMb` | integer | no | Memory in MB. Default: 512. |
+| `cpu` | integer | no | CPU units. Default: 1792. |
+| `memoryMb` | integer | no | Memory in MB. Default: 1792. |
 | `healthCheckPath` | string | no | Health check endpoint. Default: `/health`. |
 | `environmentVars` | object | no | String environment variables (this is where `ELIZA_APP_ID` belongs). |
-| `persistVolume` | boolean | no | Mount project-scoped persistent storage at `/data`. |
-| `useHetznerVolume` | boolean | no | Use a Hetzner Cloud volume when persistent volumes are enabled and configured. |
-| `volume_size_gb` | integer | no | Declared volume size in GiB. Default: 10. |
 
 ### Response
 
@@ -98,11 +95,6 @@ The request body is **camelCase** — the server validates with a strict schema 
     "project_name": "my-app",
     "status": "deploying",
     "load_balancer_url": "https://my-app.example.com"
-  },
-  "polling": {
-    "endpoint": "/api/v1/containers/550e8400-e29b-41d4-a716-446655440000",
-    "intervalMs": 5000,
-    "expectedDurationMs": 120000
   }
 }
 ```
@@ -142,11 +134,11 @@ Get container details and deployment status.
   <span className="path">/api/v1/containers/{"{id}"}</span>
 </div>
 
-Patch supports:
+The PATCH body is **action-discriminated** (camelCase — one action per request):
 
-- `environment_vars` to replace runtime environment variables.
-- `desired_count` to scale, currently only `1`.
-- `action: "restart"` to restart the container.
+- `{ "action": "restart" }` — restart the container.
+- `{ "action": "setEnv", "environmentVars": { "KEY": "value" } }` — replace runtime environment variables.
+- `{ "action": "scale", "desiredCount": 1 }` — scale (currently only `1`).
 
 ---
 

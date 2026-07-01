@@ -74,11 +74,11 @@ Create a new Cloud app. The response includes a one-time app API key for server-
     "allowed_origins": ["https://placeholder.invalid"],
     "created_at": "2026-05-05T10:30:00Z"
   },
-  "apiKey": {
-    "id": "key_abc123"
-  }
+  "apiKey": "eliza_<one-time-plaintext-secret>"
 }
 ```
+
+The `apiKey` is the **plaintext** app admin key, returned as a bare string and shown **only once** at creation — it is not stored and cannot be retrieved later.
 
 <Warning>
   Store the returned API key securely. Use user bearer tokens, not this admin key, for user-facing app-scoped chat.
