@@ -398,6 +398,10 @@ export class AppCreditsService {
       };
     }
 
+    // #10846: track whether the creator earnings were committed, so a failure in
+    // the *following* (non-co-transactional) apps-counter update can reverse them
+    // instead of leaving unbacked earnings minted when the consumer is refunded.
+    let creatorEarningsRecorded = false;
     try {
       // Track app user activity (creates/updates app_users record)
       await this.trackAppUserActivity(app, userId, totalCost.toFixed(4), metadata);
@@ -418,6 +422,9 @@ export class AppCreditsService {
           },
           app, // Pass app to avoid N+1 query
         );
+        // Earnings (app-earnings ledger + creator redeemable balance) are now
+        // committed; the apps aggregate counter below is a separate write.
+        creatorEarningsRecorded = true;
 
         await dbWrite
           .update(apps)
@@ -438,6 +445,42 @@ export class AppCreditsService {
         chargeTransactionId: orgDeduct.transaction?.id,
         error: postDebitError instanceof Error ? postDebitError.message : String(postDebitError),
       });
+      // #10846: if the creator earnings were already committed (recordCreatorEarnings
+      // succeeded, the apps-counter update then threw), reverse them BEFORE
+      // compensating the consumer — otherwise the consumer nets to zero while the
+      // creator keeps `creatorMarkup` of redeemable earnings nobody paid for. This
+      // mirrors the reconcileCredits refund branch, which already pairs the two.
+      // The apps aggregate counter was never incremented (its update is what threw),
+      // so it needs no adjustment here. Best-effort + logged: a reversal failure must
+      // not mask the original error or block the consumer refund.
+      if (creatorEarningsRecorded) {
+        try {
+          await this.reverseCreatorEarnings(appId, userId, creatorMarkup, {
+            type: "compensation_reversal",
+            baseCost,
+            markupPercentage,
+            totalCost,
+            description,
+            chargeTransactionId: orgDeduct.transaction?.id,
+            reason: "post_debit_accounting_failed",
+            ...metadata,
+          });
+        } catch (reversalError) {
+          logger.error(
+            "[AppCredits] Failed to reverse creator earnings during compensation — manual reconciliation may be needed",
+            {
+              appId,
+              userId,
+              creatorMarkup,
+              chargeTransactionId: orgDeduct.transaction?.id,
+              error:
+                reversalError instanceof Error
+                  ? reversalError.message
+                  : String(reversalError),
+            },
+          );
+        }
+      }
       await creditsService.addCredits({
         organizationId: user.organization_id,
         amount: totalCost,
