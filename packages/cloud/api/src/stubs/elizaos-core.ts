@@ -240,6 +240,7 @@ const workerLogger = {
 export const logger = workerLogger;
 export const elizaLogger = workerLogger;
 
+export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;

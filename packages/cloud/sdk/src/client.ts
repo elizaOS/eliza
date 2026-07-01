@@ -945,28 +945,6 @@ export class ElizaCloudClient {
     );
   }
 
-  /**
-   * `POST /api/v1/marketing/inventory` — create an ad slot so an app can earn
-   * from serving ads on its surface (SSP, #10687).
-   */
-  createAdSlot(input: CreateAdSlotInput): Promise<CreateAdSlotResponse> {
-    return this.request<CreateAdSlotResponse>(
-      "POST",
-      "/api/v1/marketing/inventory",
-      {
-        json: input,
-      },
-    );
-  }
-
-  /** `GET /api/v1/marketing/inventory` — list the org's ad slots. */
-  listAdSlots(): Promise<ListAdSlotsResponse> {
-    return this.request<ListAdSlotsResponse>(
-      "GET",
-      "/api/v1/marketing/inventory",
-    );
-  }
-
   /** `GET /api/v1/apps/:id/backup` — export a secret-free app config snapshot (#10204). */
   exportAppBackup(appId: string): Promise<ExportAppBackupResponse> {
     return this.request<ExportAppBackupResponse>(
