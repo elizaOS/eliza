@@ -154,7 +154,12 @@ describe("ElizaCloudClient typed app methods", () => {
   it("deployAppFrontend POSTs /api/v1/apps/:id/frontend with the bundle", async () => {
     const { client, requests } = createClientRecorder({
       success: true,
-      deployment: { id: "dep_fe_1", version: 1, status: "active", file_count: 2 },
+      deployment: {
+        id: "dep_fe_1",
+        version: 1,
+        status: "active",
+        file_count: 2,
+      },
     });
     const res = await client.deployAppFrontend("app_1", {
       files: [{ path: "index.html", content: "<html></html>" }],
@@ -164,7 +169,10 @@ describe("ElizaCloudClient typed app methods", () => {
     expect(requests[0]).toMatchObject({
       url: "https://cloud.test/api/v1/apps/app_1/frontend",
       method: "POST",
-      body: { files: [{ path: "index.html", content: "<html></html>" }], buildMeta: { source: "agent" } },
+      body: {
+        files: [{ path: "index.html", content: "<html></html>" }],
+        buildMeta: { source: "agent" },
+      },
     });
   });
 
