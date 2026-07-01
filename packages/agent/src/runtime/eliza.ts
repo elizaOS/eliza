@@ -330,6 +330,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-coding-tools") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
     }
+    if (packageName === "@elizaos/plugin-pty") {
+      return await import(/* @vite-ignore */ "@elizaos/plugin-pty");
+    }
     if (packageName === "@elizaos/plugin-ollama") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
     }
@@ -475,6 +478,15 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       phase: "deferred",
       required: false,
       load: () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
+    },
+    {
+      // Opt-in only: dormant unless a character lists @elizaos/plugin-pty (no
+      // autoEnable). Registers PTY_SERVICE so the web terminal can drive a real
+      // interactive CLI (eliza-code on Eliza Cloud/cerebras).
+      packageName: "@elizaos/plugin-pty",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-pty"),
     },
     {
       packageName: "@elizaos/plugin-commands",

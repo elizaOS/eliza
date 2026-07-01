@@ -1,0 +1,93 @@
+{
+  "name": "@elizaos/plugin-pty",
+  "version": "1.0.0",
+  "description": "Interactive PTY terminal service for elizaOS — registers PTY_SERVICE so the app's web terminal can drive a real interactive CLI (eliza-code on Eliza Cloud/cerebras)",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./index.ts",
+      "development": "./index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": ["dist"],
+  "keywords": ["eliza", "plugin", "pty", "terminal", "interactive", "cli", "cockpit"],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@lydell/node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.1",
+    "@types/node": "^25.0.3",
+    "bun-types": "^1.2.25",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check .",
+    "lint:check": "bun run lint",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "PTY_INTERACTIVE_ENABLED": {
+        "type": "boolean",
+        "description": "Enable interactive PTY session spawning (real CLI in the web terminal). Off on store builds.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "PTY_ALLOWED_DIRECTORY": {
+        "type": "string",
+        "description": "Directory interactive PTY sessions are restricted to (cwd + workspace root). Defaults to the process cwd.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZA_CODE_BIN": {
+        "type": "string",
+        "description": "Absolute path to the interactive eliza-code binary (dist/index.js). Auto-resolved from the workspace when unset.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": ["node"],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js) — requires a real PTY, not available on store builds"
+    }
+  }
+}

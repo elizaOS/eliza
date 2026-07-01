@@ -1108,6 +1108,22 @@ declare module "./client-base" {
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
     spawnShellSession(workdir?: string): Promise<{ sessionId: string }>;
+    /**
+     * Spawn an interactive PTY session (a real CLI in the web terminal) via
+     * `@elizaos/plugin-pty`'s `POST /api/pty/sessions`. Default `kind`
+     * (`"eliza-code"`) launches the interactive eliza-code CLI on Eliza
+     * Cloud/cerebras. Subscribe to its output with {@link subscribePtyOutput}
+     * and drive it with {@link sendPtyInput} / {@link resizePty}.
+     */
+    spawnPtySession(options?: {
+      kind?: "eliza-code";
+      cwd?: string;
+      tier?: "fast" | "smart";
+      apiKey?: string;
+      baseUrl?: string;
+      cols?: number;
+      rows?: number;
+    }): Promise<{ sessionId: string }>;
     subscribePtyOutput(sessionId: string): void;
     unsubscribePtyOutput(sessionId: string): void;
     sendPtyInput(sessionId: string, data: string): void;
@@ -4282,6 +4298,20 @@ ElizaClient.prototype.spawnShellSession = async function (
     },
   );
   return { sessionId: res.sessionId };
+};
+
+ElizaClient.prototype.spawnPtySession = async function (
+  this: ElizaClient,
+  options,
+) {
+  const res = await this.fetch<{ session: { sessionId: string } }>(
+    "/api/pty/sessions",
+    {
+      method: "POST",
+      body: JSON.stringify(options ?? {}),
+    },
+  );
+  return { sessionId: res.session.sessionId };
 };
 
 ElizaClient.prototype.subscribePtyOutput = function (
