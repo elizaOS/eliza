@@ -115,11 +115,14 @@ describe("plugin view LLM mock coverage", () => {
     for (const view of expectedCases) {
       const journey = journeyByKey.get(`${view.id}-${view.viewType}`);
 
+      // Only the existence check has teeth here. The former `.toContain(view.path
+      // / view.id / view.viewType)` assertions were tautological (#10718): the
+      // journeys are built in view-user-journeys.ts by interpolating those very
+      // fields into userMessage/expectedBehavior/verificationCriteria, so the
+      // substring checks only confirmed JS template interpolation, never any
+      // production routing. The count + lockstep + no-collision invariants above
+      // carry the real coverage; live routing lives in view-llm-eval.test.ts.
       expect(journey, `missing mock journey for ${caseKey(view)}`).toBeTruthy();
-      expect(journey?.userMessage).toContain(view.path);
-      expect(journey?.expectedBehavior).toContain(`"${view.id}"`);
-      expect(journey?.expectedBehavior).toContain(`"${view.viewType}"`);
-      expect(journey?.verificationCriteria.join("\n")).toContain(view.path);
     }
   });
 

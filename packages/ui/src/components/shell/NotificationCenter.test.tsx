@@ -186,8 +186,13 @@ describe("NotificationCenter", () => {
 
       const markAll = screen.getByRole("button", { name: "Mark all read" });
       await user.click(markAll);
-      await user.click(markAll); // QA: mashing it must not corrupt state
-      expect(mocks.markAllNotificationsRead).toHaveBeenCalled();
+      // The button unmounts once there's nothing unread (hasUnread gate), so the
+      // second click is a no-op — assert EXACTLY one write, so a regression that
+      // dropped that gate and double-wrote would fail (not just >= 1).
+      if (screen.queryByRole("button", { name: "Mark all read" })) {
+        await user.click(markAll); // QA: mashing it must not corrupt state
+      }
+      expect(mocks.markAllNotificationsRead).toHaveBeenCalledTimes(1);
       // Never routes a mark-all through the single-row endpoint.
       expect(mocks.markNotificationRead).not.toHaveBeenCalled();
     });

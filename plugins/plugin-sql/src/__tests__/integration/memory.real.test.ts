@@ -397,7 +397,7 @@ describe("Memory Integration Tests", () => {
       expect(count).toBe(2);
     });
 
-    it("should default adapter memory reads and counts to the messages table", async () => {
+    it("countMemories defaults to the messages table; reads return the written rows", async () => {
       await adapter.createMemory(createTestMemory({ text: "message one" }), "messages");
       await adapter.createMemory(createTestMemory({ text: "message two" }), "messages");
 

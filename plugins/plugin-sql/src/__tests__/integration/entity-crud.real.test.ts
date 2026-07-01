@@ -296,8 +296,11 @@ describe("Entity CRUD Operations", () => {
     it("should handle deletion of non-existent entity", async () => {
       const nonExistentId = uuidv4() as UUID;
 
-      // Should not throw - deleteEntity should handle non-existent entities gracefully
-      await adapter.deleteEntity(nonExistentId);
+      // Deleting a missing entity is an idempotent no-op — assert it resolves
+      // (does not throw) rather than relying on the test merely completing.
+      await expect(
+        adapter.deleteEntity(nonExistentId),
+      ).resolves.not.toThrow();
     });
 
     it("should handle entities with multiple names in search", async () => {

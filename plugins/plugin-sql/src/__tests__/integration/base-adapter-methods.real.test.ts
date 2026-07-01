@@ -756,11 +756,18 @@ describe("Base Adapter Methods Integration Tests", () => {
     });
 
     it("should handle removing non-existent items", async () => {
-      // These should not throw
-      await adapter.deleteEntity(uuidv4() as UUID);
-      await adapter.deleteMemory(uuidv4() as UUID);
-      await adapter.deleteComponent(uuidv4() as UUID);
-      await adapter.deleteRoom(uuidv4() as UUID);
+      // Deleting a missing id is an idempotent no-op — assert it resolves (does
+      // not throw) rather than relying on the test merely completing (#10718).
+      await expect(
+        adapter.deleteEntity(uuidv4() as UUID),
+      ).resolves.not.toThrow();
+      await expect(
+        adapter.deleteMemory(uuidv4() as UUID),
+      ).resolves.not.toThrow();
+      await expect(
+        adapter.deleteComponent(uuidv4() as UUID),
+      ).resolves.not.toThrow();
+      await expect(adapter.deleteRoom(uuidv4() as UUID)).resolves.not.toThrow();
     });
   });
 });

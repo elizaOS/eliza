@@ -44,7 +44,7 @@ describe("HomeWidgetCard", () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-  it("is keyboard-operable as a native button (Enter/Space activate)", () => {
+  it("renders as a native <button type=button> so the browser handles Enter/Space", () => {
     const onActivate = vi.fn();
     render(
       <HomeWidgetCard

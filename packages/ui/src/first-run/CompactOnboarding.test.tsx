@@ -261,17 +261,19 @@ describe("CompactOnboarding", () => {
     );
   });
 
-  it("keeps the orange background when a cloud error is shown", () => {
+  it("surfaces a cloud error in the onboarding toast", () => {
     controllerMock.current = controller({
       cloudError: "Eliza Cloud login timed out. Please try again.",
     });
 
     render(<CompactOnboarding />);
 
+    // The meaningful assertion: the controller's cloudError reaches the toast.
+    // (The former `.first-run-screen` root check was vacuous — that root renders
+    // unconditionally in every state, so no cloud-error logic could break it.)
     expect(screen.getByTestId("onboarding-toast").textContent).toContain(
       "Eliza Cloud login timed out. Please try again.",
     );
-    expect(document.querySelector(".first-run-screen")).toBeTruthy();
   });
 
   it("shows in-flight progress over a stale cloud error while submitting", () => {

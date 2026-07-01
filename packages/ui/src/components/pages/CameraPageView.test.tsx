@@ -141,7 +141,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
 describe("CameraPageView — controls, idempotency & recovery", () => {
   beforeEach(() => grantAndStream());
 
-  it("keeps controls at accessible tap targets (switch 44px / shutter 72px)", async () => {
+  it("pins the switch/shutter tap-target sizing class tokens (h-11 / h-[72px]) — guards token drift, not rendered px (jsdom has no layout)", async () => {
     render(<CameraPageView />);
     // Tailwind h-11/w-11 == 2.75rem == 44px — the platform minimum touch target.
     const switchBtn = await screen.findByTestId("camera-switch");
