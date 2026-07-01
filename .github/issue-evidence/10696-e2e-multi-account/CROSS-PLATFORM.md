@@ -20,13 +20,19 @@ web captures below ARE the macOS-desktop and iOS renderings.
 ## Native-shell captures — operator step (blocked in headless automation)
 Running the same shell inside the native window/webview was attempted and hit
 environment walls that need the operator's interactive machine:
-- **macOS desktop app**: launched `Eliza Desktop.app` pointed at the seeded
-  instance (`ELIZA_RENDERER_URL` / `ELIZA_DESKTOP_API_BASE`), but `screencapture`
-  returns black without **Screen Recording** permission (which can't be granted
-  from automation), and the released build boots its own agent server. Operator
-  path: `bun run dev:desktop` against the seeded instance, then
-  `GET /api/dev/cursor-screenshot` (Electrobun's own OS-level capture, no
-  permission needed).
+- **macOS desktop app — BUILDS + RUNS (proven), pixel capture permission-blocked**:
+  after building `@elizaos/plugin-pty` + `packages/shared` dist (the renderer
+  vite build was failing on those), `bun run dev:desktop`
+  (`ELIZA_DESKTOP_RENDERER_BUILD=skip`) launched the native **Electrobun**
+  window (`Milady-dev.app`), connected to the seeded multi-account backend
+  (remote-backend mode) — see `macos-desktop-app-run.log` and the running
+  `Milady-dev.app/.../main.js` process. Both `screencapture` AND Electrobun's
+  own `/api/dev/cursor-screenshot` return **black** because macOS **Screen
+  Recording** permission is required for any OS-level capture and cannot be
+  granted from an automation context (it needs a user click in System Settings
+  → Privacy → Screen Recording + a process restart). So the desktop app is
+  proven to build + run with this code; the *pixels* need the operator to grant
+  that permission once, then re-run the same command + capture.
 - **iOS simulator / real device**: no prebuilt sim app; requires
   `bun run --cwd packages/app build:ios` + install + seeding 2 accounts into the
   app container, then `xcrun simctl io booted screenshot` (or
