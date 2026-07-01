@@ -23,6 +23,7 @@ import type {
   EmulatorStats,
   Handedness,
   InputEventRecord,
+  InputSourceSnapshot,
   TelemetrySnapshot,
   Vec3,
   XRPose,
@@ -168,7 +169,7 @@ export class XREmulatorPage {
     );
   }
 
-  /** Set a hand's named pose ("default" / "pinch" / …). */
+  /** Set a hand's named pose ("default" / "pinch" / "point"); activates the hand. */
   async setHandPose(handedness: Handedness, poseId: string): Promise<void> {
     await this.page.evaluate(
       ({ h, p }) => window.__XREmulator.setHandPose(h, p),
@@ -184,6 +185,22 @@ export class XREmulatorPage {
     return this.page.evaluate(
       ({ h, s }) => window.__XREmulator.aimControllerAt(h, s),
       { h: handedness, s: selector },
+    );
+  }
+
+  /** Aim a hand-tracking input's target ray at an element. */
+  async aimHandAt(handedness: Handedness, selector: string): Promise<boolean> {
+    return this.page.evaluate(
+      ({ h, s }) => window.__XREmulator.aimHandAt(h, s),
+      { h: handedness, s: selector },
+    );
+  }
+
+  /** Aim the headset's gaze ray at an element. */
+  async aimHeadAt(selector: string): Promise<boolean> {
+    return this.page.evaluate(
+      (s) => window.__XREmulator.aimHeadAt(s),
+      selector,
     );
   }
 
@@ -203,6 +220,14 @@ export class XREmulatorPage {
     );
   }
 
+  /** Pinch-select with a hand-tracking input (real hand select events). */
+  async pressHandSelect(handedness: Handedness): Promise<void> {
+    await this.page.evaluate(
+      (h) => window.__XREmulator.pressHandSelect(h),
+      handedness,
+    );
+  }
+
   /** Snapshot poses + element rects + aiming rays + computed hits. */
   async getElementTelemetry(selector?: string): Promise<TelemetrySnapshot> {
     return this.page.evaluate(
@@ -217,6 +242,11 @@ export class XREmulatorPage {
 
   async getSqueezeLog(): Promise<InputEventRecord[]> {
     return this.page.evaluate(() => window.__XREmulator.getSqueezeLog());
+  }
+
+  /** The active session's live XRInputSource list. */
+  async getInputSources(): Promise<InputSourceSnapshot[]> {
+    return this.page.evaluate(() => window.__XREmulator.getInputSources());
   }
 
   // ── 3D scene (XRSpatialScene) read-back + manipulation ─────────────────────
