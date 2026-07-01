@@ -22,6 +22,15 @@ export {
 	withCapabilityGovernance,
 } from "./capability-manifest.js";
 export {
+	CompositeEntityRecognizer,
+	canonicalKind,
+	type EntitySpan,
+	GazetteerEntityRecognizer,
+	type PiiEntityRecognizer,
+	RegexEntityRecognizer,
+	type RegexEntityRecognizerOptions,
+} from "./entity-recognizer.js";
+export {
 	buildSafeExternalPrompt,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
@@ -51,6 +60,13 @@ export {
 	ssnValid,
 	wifValid,
 } from "./pii-detectors.js";
+export {
+	DEFAULT_PSEUDONYM_BLOCKLIST,
+	type PseudonymEntry,
+	type PseudonymKind,
+	PseudonymSession,
+	type PseudonymSessionOptions,
+} from "./pii-pseudonymizer.js";
 export {
 	createSecretsRedactor,
 	// Pattern-based redaction
