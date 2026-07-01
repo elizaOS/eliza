@@ -9,10 +9,10 @@ export {
   registerAppLifeOpsAnchors,
 } from "./anchors/anchor-registry.ts";
 export {
-  decideDispatchPolicy,
   type DispatchFailureReason,
   type DispatchPolicyContext,
   type DispatchPolicyDecision,
+  decideDispatchPolicy,
 } from "./dispatch-policy.ts";
 export type { DispatchResult } from "./dispatch-types.ts";
 export { schedulingPlugin } from "./plugin.ts";

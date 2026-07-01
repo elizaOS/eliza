@@ -30,6 +30,13 @@ function parseIsoMs(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
+const MAX_DATE_MS = 8_640_000_000_000_000;
+
+function isRepresentableMs(ms: number): boolean {
+  return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
+}
+
 function isTerminalStatus(status: ScheduledTaskStatus): boolean {
   return (
     status === "completed" ||
@@ -230,6 +237,15 @@ function cronDue(
     parseIsoMs(task.state.firedAt) ??
     metadataCreatedAtMs(task) ??
     nowMs - CRON_CATCHUP_WINDOW_MS;
+  // A base at/after `now` cannot yield a due occurrence (the next run is
+  // strictly after the base). Skipping the scan also avoids a pathological
+  // full-window scan inside computeNextCronRunAtMs when a garbage
+  // firedAt/createdAtIso parses near the max representable date: every
+  // candidate is an Invalid Date, so the scan burns ~30s of Intl work per
+  // tick before returning null.
+  if (baseMs > nowMs) {
+    return { due: false, reason: "cron_pending" };
+  }
   const nextMs = computeNextCronRunAtMs(trigger.expression, baseMs, trigger.tz);
   if (nextMs === null) return { due: false, reason: "cron_invalid" };
   return nextMs <= nowMs
@@ -304,6 +320,12 @@ async function relativeAnchorDue(
     return { due: false, reason: "anchor_unresolved" };
   }
   const occurrenceMs = anchorMs + trigger.offsetMinutes * MINUTE_MS;
+  // `offsetMinutes` is only schema-bounded to an integer; an extreme value
+  // pushes the ms product outside the representable Date range and
+  // `new Date(...).toISOString()` below would throw mid-tick.
+  if (!isRepresentableMs(occurrenceMs)) {
+    return { due: false, reason: "anchor_offset_out_of_range" };
+  }
   if (occurrenceMs > nowMs) {
     return { due: false, reason: "anchor_pending" };
   }
