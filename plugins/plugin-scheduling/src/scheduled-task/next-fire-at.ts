@@ -243,6 +243,18 @@ export async function computeNextFireAt(
   task: Pick<ScheduledTask, "trigger" | "state" | "metadata">,
   context: ComputeNextFireAtContext,
 ): Promise<string | null> {
+  // Scheduled-override first: a `scheduled` row with `state.firedAt` set fires
+  // AT that instant (snooze, gate-defer, dispatch-retry — see
+  // `scheduledOverrideDue` in due.ts). Recomputing from the trigger here would
+  // hide the override from the indexed tick query: a snoozed daily reminder
+  // would index at tomorrow's natural occurrence and only fire then, and a
+  // snoozed interval task would index at override+interval.
+  if (task.state.status === "scheduled") {
+    const overrideMs = parseIsoMs(task.state.firedAt);
+    if (overrideMs !== null) {
+      return new Date(overrideMs).toISOString();
+    }
+  }
   const trigger = task.trigger;
   switch (trigger.kind) {
     case "once": {
