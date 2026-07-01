@@ -12,8 +12,8 @@ Deploy custom Docker images on Eliza Cloud managed container infrastructure.
 Container deployment provides:
 
 - **Custom runtimes**: Run your own Docker image.
-- **Project identity**: Use `project_name` as the stable deployment identifier.
-- **Managed health checks**: Poll your `health_check_path` and update status.
+- **Project identity**: Use `projectName` as the stable deployment identifier in requests.
+- **Managed health checks**: Poll your `healthCheckPath` and update status.
 - **Logs and metrics**: Fetch logs and runtime metrics through the API.
 - **Earnings-first billing**: Daily hosting can be paid from redeemable earnings before org credits.
 
@@ -25,14 +25,13 @@ curl -X POST "https://www.elizacloud.ai/api/v1/containers" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "my-service",
-    "project_name": "my-service",
+    "projectName": "my-service",
     "image": "ghcr.io/acme/my-service:latest",
     "port": 3000,
-    "cpu": 256,
-    "memory": 512,
-    "desired_count": 1,
-    "health_check_path": "/health",
-    "environment_vars": {
+    "cpu": 1792,
+    "memoryMb": 1792,
+    "healthCheckPath": "/health",
+    "environmentVars": {
       "NODE_ENV": "production"
     }
   }'
@@ -49,7 +48,7 @@ Push to a registry that Cloud nodes can pull from, such as GHCR, Docker Hub, or 
 
 <Step title="Create the container">
 
-Send `image`, `project_name`, `port`, resources, and any `environment_vars`.
+Send `image`, `projectName`, `port`, resources, and any `environmentVars`.
 
 </Step>
 
@@ -71,14 +70,13 @@ For app projects, patch the Eliza Cloud app `app_url` and `allowed_origins` to t
 ```json
 {
   "name": "my-service",
-  "project_name": "my-service",
+  "projectName": "my-service",
   "image": "ghcr.io/acme/my-service:latest",
   "port": 3000,
-  "cpu": 256,
-  "memory": 512,
-  "desired_count": 1,
-  "health_check_path": "/health",
-  "environment_vars": {
+  "cpu": 1792,
+  "memoryMb": 1792,
+  "healthCheckPath": "/health",
+  "environmentVars": {
     "PORT": "3000",
     "ELIZA_APP_ID": "uuid-abc123"
   }
@@ -88,14 +86,13 @@ For app projects, patch the Eliza Cloud app `app_url` and `allowed_origins` to t
 | Field | Description |
 | ----- | ----------- |
 | `name` | Human-readable container name. |
-| `project_name` | Stable project identifier used for deployment records and project-scoped volumes. |
+| `projectName` | Stable project identifier used for deployment records and project-scoped volumes. |
 | `image` | Full image reference pulled directly by the container backend. |
 | `port` | Application port. Default: 3000. |
-| `cpu` | CPU units used for API compatibility and billing. Default: 256. |
-| `memory` | Memory in MB. Default: 512. |
-| `desired_count` | Currently must be 1. |
-| `health_check_path` | HTTP health path. Default: `/health`. |
-| `environment_vars` | String key/value environment variables. |
+| `cpu` | CPU units used for API compatibility and billing. Default: 1792. |
+| `memoryMb` | Memory in MB. Default: 1792. |
+| `healthCheckPath` | HTTP health path. Default: `/health`. |
+| `environmentVars` | String key/value environment variables. |
 
 <Info>
   The current public create-container payload uses `image`, not the older `ecr_image_uri` field. The backend pulls the image directly on the target Docker node.
@@ -110,9 +107,9 @@ When earnings-first billing is off, hosting bills come only from credits and ear
 ## Best Practices
 
 - Expose a fast `/health` route.
-- Keep `desired_count` at `1`.
+- Container scaling is currently fixed at one replica.
 - Keep secrets server-side and pass only required runtime env vars.
-- Use a stable `project_name`; project-scoped persistent data is keyed by organization and project name.
+- Use a stable `projectName`; project-scoped persistent data is keyed by organization and project name.
 - For monetized apps, pass `ELIZA_APP_ID` to your container and patch the Cloud app URL after deploy.
 
 ## Next Steps
