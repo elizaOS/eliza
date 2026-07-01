@@ -14,6 +14,7 @@ const aiActual = require("ai") as Record<string, unknown>;
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
+const APP_ID = "00000000-0000-4000-8000-0000000000dd";
 
 mock.module("@/lib/pricing", () => ({
   calculateCost: async () => ({
@@ -100,17 +101,22 @@ mock.module("@/lib/services/credits", () => ({
   },
 }));
 
+const deductCredits = mock();
+const reconcileCredits = mock();
 mock.module("@/lib/services/app-credits", () => ({
   appCreditsService: {
     calculateCostWithMarkup: async () => ({ totalCost: 0.002 }),
     checkBalance: async () => ({ sufficient: true }),
+    deductCredits,
+    reconcileCredits,
     recordUsage: async () => undefined,
   },
 }));
 
+const getAuthorizedMonetizedAppForUser = mock();
 mock.module("@/lib/services/apps", () => ({
   appsService: {
-    getAuthorizedMonetizedAppForUser: async () => null,
+    getAuthorizedMonetizedAppForUser,
     getById: async () => null,
   },
 }));
@@ -152,6 +158,9 @@ beforeEach(() => {
   moderateInBackground.mockReset();
   reserveCredits.mockReset();
   billUsage.mockReset();
+  deductCredits.mockReset();
+  reconcileCredits.mockReset();
+  getAuthorizedMonetizedAppForUser.mockReset();
   estimateInputTokens.mockReset();
   recordUsageAnalytics.mockReset();
   createCreditReservationSettler.mockReset();
@@ -169,9 +178,25 @@ beforeEach(() => {
   validateApiKey.mockResolvedValue({ id: API_KEY_ID });
   shouldBlockUser.mockResolvedValue(false);
   estimateInputTokens.mockReturnValue(8);
+  getAuthorizedMonetizedAppForUser.mockResolvedValue(null);
   reserveCredits.mockResolvedValue({
     reservedAmount: 0.01,
     reconcile: async () => null,
+  });
+  deductCredits.mockResolvedValue({
+    success: true,
+    baseCost: 0.003,
+    creatorMarkup: 0,
+    totalCost: 0.003,
+    creatorEarnings: 0,
+    newBalance: 1,
+  });
+  reconcileCredits.mockResolvedValue({
+    reconciled: true,
+    difference: -0.003,
+    action: "refund",
+    adjustedAmount: 0.003,
+    newBalance: 1,
   });
   createCreditReservationSettler.mockReturnValue(async () => null);
   generateText.mockImplementation(() => {
@@ -179,12 +204,13 @@ beforeEach(() => {
   });
 });
 
-function postMessages() {
+function postMessages(headers: Record<string, string> = {}) {
   return messagesRoute.request("/", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-api-key": "eliza_test_key",
+      ...headers,
     },
     body: JSON.stringify({
       model: "claude-3-5-sonnet-20241022",
@@ -233,5 +259,41 @@ describe("/v1/messages IAC fast path", () => {
     expect(shouldBlockUser).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
+  });
+
+  test("monetized app provider failure refunds the upfront app-credit hold", async () => {
+    getAuthorizedMonetizedAppForUser.mockResolvedValueOnce({
+      id: APP_ID,
+      monetization_enabled: true,
+      platform_offset_amount: "0",
+      purchase_share_percentage: "0",
+      inference_markup_percentage: "0",
+    });
+
+    const response = await postMessages({ "X-App-Id": APP_ID });
+
+    expect(response.status).toBe(500);
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(deductCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: APP_ID,
+        userId: USER,
+        baseCost: expect.closeTo(0.003, 10),
+      }),
+    );
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(reconcileCredits).toHaveBeenCalledTimes(1);
+    expect(reconcileCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: APP_ID,
+        userId: USER,
+        estimatedBaseCost: expect.closeTo(0.003, 10),
+        actualBaseCost: 0,
+        metadata: expect.objectContaining({
+          reason: "non_stream_error",
+          streaming: false,
+        }),
+      }),
+    );
   });
 });

@@ -149,6 +149,49 @@ type AppCreditsInfo = {
   estimatedBaseCost: number;
 };
 
+type RefundAppCreditHold = (
+  reason: string,
+  metadata?: Record<string, unknown>,
+) => Promise<void>;
+
+function createAppCreditHoldRefunder(args: {
+  appCreditsInfo: AppCreditsInfo | undefined;
+  userId: string;
+  model: string;
+  provider: string;
+  billingSource: PricingBillingSource;
+}): RefundAppCreditHold {
+  let refunded = false;
+  return async (reason, metadata = {}) => {
+    if (!args.appCreditsInfo || refunded) return;
+    refunded = true;
+    try {
+      await appCreditsService.reconcileCredits({
+        appId: args.appCreditsInfo.appId,
+        userId: args.userId,
+        estimatedBaseCost: args.appCreditsInfo.estimatedBaseCost,
+        actualBaseCost: 0,
+        description: `Messages API refund: ${args.model}`,
+        metadata: {
+          model: args.model,
+          provider: args.provider,
+          billingSource: args.billingSource,
+          reason,
+          ...metadata,
+        },
+      });
+    } catch (error) {
+      logger.error("[Messages API] Failed to refund app credit hold", {
+        appId: args.appCreditsInfo.appId,
+        userId: args.userId,
+        estimatedBaseCost: args.appCreditsInfo.estimatedBaseCost,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+}
+
 function normalizeModelId(model: string): string {
   const canonicalCerebrasModel = canonicalizeCerebrasModelId(model);
   if (canonicalCerebrasModel !== model) return canonicalCerebrasModel;
@@ -488,6 +531,8 @@ app.post("/", async (c) => {
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
+  let refundAppCreditHold: RefundAppCreditHold | null = null;
+  let appCreditsInfo: AppCreditsInfo | undefined;
 
   let user: { id: string; organization_id: string };
   let apiKey: { id: string } | null = null;
@@ -619,7 +664,6 @@ app.post("/", async (c) => {
     resolveAiProviderSource(model) ?? "bitrouter";
 
   let reservation: CreditReservation;
-  let appCreditsInfo: AppCreditsInfo | undefined;
 
   if (useAppCredits && appId && monetizedApp) {
     const { totalCost: estimatedBaseCost } = await calculateCost(
@@ -696,6 +740,13 @@ app.post("/", async (c) => {
     }
   }
 
+  refundAppCreditHold = createAppCreditHoldRefunder({
+    appCreditsInfo,
+    userId: user.id,
+    model,
+    provider,
+    billingSource,
+  });
   settleReservation = createCreditReservationSettler(reservation);
 
   const messages = anthropicMessagesToModelMessages(request.messages);
@@ -727,6 +778,7 @@ app.post("/", async (c) => {
         c.req.raw.signal,
         routeTimeoutMs,
         settleReservation,
+        refundAppCreditHold,
         billingSource,
       );
     }
@@ -747,9 +799,13 @@ app.post("/", async (c) => {
       c.req.raw.signal,
       routeTimeoutMs,
       settleReservation,
+      refundAppCreditHold,
       billingSource,
     );
   } catch (error) {
+    await refundAppCreditHold?.("route_error", {
+      streaming: request?.stream ?? false,
+    });
     await settleReservation?.(0);
     const message = error instanceof Error ? error.message : String(error);
     logger.error("[Messages API] Error", { error: message });
@@ -798,6 +854,7 @@ async function handleNonStream(
   settleReservation: (
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
+  refundAppCreditHold: RefundAppCreditHold,
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
@@ -854,7 +911,13 @@ async function handleNonStream(
         estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
         actualBaseCost: billing.totalCost,
         description: `Messages API: ${model}`,
-        metadata: { model, provider, billingSource, streaming: false, idempotencyKey: requestId },
+        metadata: {
+          model,
+          provider,
+          billingSource,
+          streaming: false,
+          idempotencyKey: requestId,
+        },
       });
     }
 
@@ -923,6 +986,7 @@ async function handleNonStream(
       },
     });
   } catch (error) {
+    await refundAppCreditHold("non_stream_error", { streaming: false });
     await settleReservation(0);
     throw error;
   }
@@ -952,6 +1016,7 @@ async function handleStream(
   settleReservation: (
     actualCost: number,
   ) => Promise<CreditReconciliationResult | null>,
+  refundAppCreditHold: RefundAppCreditHold,
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
@@ -1008,7 +1073,13 @@ async function handleStream(
             estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
             actualBaseCost: billing.totalCost,
             description: `Messages API stream: ${model}`,
-            metadata: { model, provider, billingSource, streaming: true, idempotencyKey: requestId },
+            metadata: {
+              model,
+              provider,
+              billingSource,
+              streaming: true,
+              idempotencyKey: requestId,
+            },
           });
         }
 
@@ -1038,6 +1109,10 @@ async function handleStream(
       }
     },
     onAbort: async () => {
+      await refundAppCreditHold("stream_aborted", {
+        streaming: true,
+        estimatedInputTokens,
+      });
       await settleReservation(0);
       logger.info("[Messages API] Stream aborted before completion", {
         model,
@@ -1050,6 +1125,10 @@ async function handleStream(
     // non-streaming error path's settleReservation(0); the settler is
     // idempotent (first-call-wins) so this cannot double-refund.
     onError: async ({ error }: { error: unknown }) => {
+      await refundAppCreditHold("stream_provider_error", {
+        streaming: true,
+        estimatedInputTokens,
+      });
       await settleReservation(0);
       logger.error(
         "[Messages API] Stream provider error — reservation refunded",
@@ -1293,6 +1372,10 @@ async function handleStream(
         // leaked (a permanent overcharge). The settler is first-call-wins
         // idempotent, so this cannot double-refund if onError already won the
         // race. Mirrors the /v1/chat/completions backstop.
+        await refundAppCreditHold("stream_error_backstop", {
+          streaming: true,
+          estimatedInputTokens,
+        });
         await settleReservation(0);
         const message = error instanceof Error ? error.message : String(error);
         logger.error("[Messages API] Stream error", { error: message });
