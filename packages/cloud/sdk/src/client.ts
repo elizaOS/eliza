@@ -11,6 +11,8 @@ import {
   type AppBackupSnapshot,
   type AppCreditsBalanceResponse,
   type AppDeployStatusResponse,
+  type AppDomainStatusInput,
+  type AppDomainStatusResponse,
   type AppEarningsHistoryResponse,
   type AppEarningsResponse,
   type AppMonetizationResponse,
@@ -20,6 +22,8 @@ import {
   type BuyAppDomainResponse,
   type ChatCompletionRequest,
   type ChatCompletionResponse,
+  type CheckAppDomainInput,
+  type CheckAppDomainResponse,
   type CliLoginPollResponse,
   type CliLoginStartOptions,
   type CliLoginStartResponse,
@@ -82,6 +86,7 @@ import {
   type LinkAffiliateResponse,
   type ListAdSlotsResponse,
   type ListAppChargesResponse,
+  type ListAppDomainsResponse,
   type ListAppsResponse,
   type ListInfluencersResponse,
   type ListRedemptionsResponse,
@@ -868,19 +873,54 @@ export class ElizaCloudClient {
   }
 
   /**
-   * `POST /api/v1/apps/:id/domains/buy` — buy + attach a custom domain.
-   *
-   * DEFERRED: domain purchase is the last slice of the apps launch. The method
-   * is typed and wired so the agent plugin can compile against it, but the
-   * server response envelope is not yet finalized ({@link BuyAppDomainResponse}
-   * captures only the stable fields) — treat as experimental until the domain
-   * branch lands.
+   * `POST /api/v1/apps/:id/domains/check` — availability + marked-up price
+   * quote (including the annual renewal price) for a domain. A dry run: never
+   * charges and never registers.
+   */
+  checkAppDomain(
+    appId: string,
+    input: CheckAppDomainInput,
+  ): Promise<CheckAppDomainResponse> {
+    return this.routes.postApiV1AppsByIdDomainsCheck<CheckAppDomainResponse>({
+      pathParams: { id: appId },
+      json: input,
+    });
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/domains/buy` — buy + attach a custom domain via the
+   * Cloudflare registrar. Charged from the org credit balance and fails closed
+   * (402) before any registration. Idempotency is server-side (per org+domain,
+   * 24h window): a retry replays the earlier success instead of re-charging,
+   * and an interrupted charged-but-unassigned purchase is recovered without a
+   * new charge — see the {@link BuyAppDomainResponse} branches.
    */
   buyAppDomain(
     appId: string,
     input: BuyAppDomainInput,
   ): Promise<BuyAppDomainResponse> {
     return this.routes.postApiV1AppsByIdDomainsBuy<BuyAppDomainResponse>({
+      pathParams: { id: appId },
+      json: input,
+    });
+  }
+
+  /** `GET /api/v1/apps/:id/domains` — list the app's attached domains. */
+  listAppDomains(appId: string): Promise<ListAppDomainsResponse> {
+    return this.routes.getApiV1AppsByIdDomains<ListAppDomainsResponse>({
+      pathParams: { id: appId },
+    });
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/domains/status` — verification + SSL status for one
+   * attached domain, with live registrar status for cloudflare-registered ones.
+   */
+  getAppDomainStatus(
+    appId: string,
+    input: AppDomainStatusInput,
+  ): Promise<AppDomainStatusResponse> {
+    return this.routes.postApiV1AppsByIdDomainsStatus<AppDomainStatusResponse>({
       pathParams: { id: appId },
       json: input,
     });

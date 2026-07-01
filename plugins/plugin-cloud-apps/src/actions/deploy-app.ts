@@ -27,7 +27,6 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { recordAppDeployFact } from "../app-facts.js";
-import { invalidateAppsCache } from "../providers/cloud-apps.js";
 import {
   extractAppReference,
   getCloudClient,
@@ -39,6 +38,7 @@ import {
   type DeployGateConfig,
   runDeployGate,
 } from "../deploy-gate.js";
+import { invalidateAppsCache } from "../providers/cloud-apps.js";
 import { probeReachable } from "../reachability.js";
 
 const NO_KEY_MESSAGE =

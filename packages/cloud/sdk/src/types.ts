@@ -1061,13 +1061,117 @@ export interface BuyAppDomainInput {
 }
 
 /**
- * `POST /api/v1/apps/:id/domains/buy` response. DEFERRED: the domain-purchase
- * flow is the last piece of the apps launch and its response envelope is not yet
- * finalized server-side, so this captures only the stable fields.
+ * `POST /api/v1/apps/:id/domains/buy` response. Covers all three success
+ * branches: a fresh purchase (carries `debited` + `expiresAt`), a server-side
+ * idempotent replay of an earlier success (`alreadyRegistered`), and the
+ * recovery of a purchase that charged + registered but failed to persist
+ * (`recoveredFromRegistrar` — assigned without a new charge).
  */
 export interface BuyAppDomainResponse {
   success: boolean;
   domain?: string;
+  /** The managed-domain attachment row id. */
+  appDomainId?: string;
+  /** Cloudflare zone id; null until the zone finishes provisioning. */
+  zoneId?: string | null;
+  status?: string;
+  verified?: boolean;
+  expiresAt?: string | null;
+  /**
+   * True when Cloudflare accepted the registration but the zone (and the
+   * automatic DNS record pointing the domain at the app) is not provisioned
+   * yet — poll `getAppDomainStatus` until it goes live.
+   */
+  pendingZoneProvisioning?: boolean;
+  /** Present only when this call actually debited the org credit balance. */
+  debited?: { totalUsdCents: number; currency: string };
+  /** True when the org already owned the domain — nothing was charged. */
+  alreadyRegistered?: boolean;
+  /**
+   * True when an earlier interrupted purchase (charged + registered, persist
+   * failed) was recovered and attached without a new charge.
+   */
+  recoveredFromRegistrar?: boolean;
+  error?: string;
+}
+
+/** `POST /api/v1/apps/:id/domains/check` request body. */
+export interface CheckAppDomainInput {
+  domain: string;
+}
+
+/** Marked-up price quote returned by the domain availability check. */
+export interface AppDomainPriceQuote {
+  wholesaleUsdCents: number;
+  marginUsdCents: number;
+  totalUsdCents: number;
+  marginBps: number;
+}
+
+/**
+ * `POST /api/v1/apps/:id/domains/check` response. A dry run — never charges,
+ * never registers. `price`/`renewal` are present only when `available`;
+ * `renewal.totalUsdCents` is the annual price the renewal cron will re-charge.
+ */
+export interface CheckAppDomainResponse {
+  success: boolean;
+  domain: string;
+  available: boolean;
+  currency?: string;
+  years?: number;
+  price?: AppDomainPriceQuote;
+  renewal?: { totalUsdCents: number };
+  error?: string;
+}
+
+/** One domain attachment row from `GET /api/v1/apps/:id/domains`. */
+export interface AppDomainDto {
+  id: string;
+  domain: string;
+  registrar: "external" | "cloudflare";
+  status: "pending" | "active" | "expired" | "suspended" | "transferring";
+  verified: boolean;
+  sslStatus: "pending" | "provisioning" | "active" | "error";
+  expiresAt: string | null;
+  cloudflareZoneId: string | null;
+  /**
+   * The TXT verification token — non-null only for unverified external
+   * domains (so the client can re-render the `_eliza-cloud-verify` record).
+   */
+  verificationToken: string | null;
+}
+
+/** `GET /api/v1/apps/:id/domains` response. */
+export interface ListAppDomainsResponse {
+  success: boolean;
+  domains: AppDomainDto[];
+  error?: string;
+}
+
+/** `POST /api/v1/apps/:id/domains/status` request body. */
+export interface AppDomainStatusInput {
+  domain: string;
+}
+
+/**
+ * `POST /api/v1/apps/:id/domains/status` response. `live` (real-time registrar
+ * registration status) is populated only for cloudflare-registered domains and
+ * is always null for external ones; the top-level `status` prefers the live
+ * value when present.
+ */
+export interface AppDomainStatusResponse {
+  success: boolean;
+  domain: string;
+  registrar?: "external" | "cloudflare";
+  status?: string;
+  verified?: boolean;
+  sslStatus?: string;
+  expiresAt?: string | null;
+  live?: {
+    status: string;
+    completedAt: string | null;
+    failureReason: string | null;
+  } | null;
   error?: string;
 }
 

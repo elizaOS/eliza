@@ -15,6 +15,10 @@ import type {
   AppEarningsResponse,
   AppMonetizationResponse,
   AppResponse,
+  BuyAppDomainInput,
+  BuyAppDomainResponse,
+  CheckAppDomainInput,
+  CheckAppDomainResponse,
   CreateAdSlotInput,
   CreateAdSlotResponse,
   CreateAppInput,
@@ -28,6 +32,7 @@ import type {
   DeployAppResponse,
   ExportAppBackupResponse,
   ListAdSlotsResponse,
+  ListAppDomainsResponse,
   ListAppsResponse,
   RegenerateAppApiKeyResponse,
   UpdateAppInput,
@@ -79,6 +84,15 @@ type WithdrawAppEarningsFn = (
 type RegenerateAppApiKeyFn = (
   id: string,
 ) => Promise<RegenerateAppApiKeyResponse>;
+type CheckAppDomainFn = (
+  id: string,
+  input: CheckAppDomainInput,
+) => Promise<CheckAppDomainResponse>;
+type BuyAppDomainFn = (
+  id: string,
+  input: BuyAppDomainInput,
+) => Promise<BuyAppDomainResponse>;
+type ListAppDomainsFn = (id: string) => Promise<ListAppDomainsResponse>;
 
 type CloudAppsTestRuntime = Pick<
   IAgentRuntime,
@@ -106,6 +120,9 @@ interface SdkState {
   getAppEarnings: GetAppEarningsFn;
   withdrawAppEarnings: WithdrawAppEarningsFn;
   regenerateAppApiKey: RegenerateAppApiKeyFn;
+  checkAppDomain: CheckAppDomainFn;
+  buyAppDomain: BuyAppDomainFn;
+  listAppDomains: ListAppDomainsFn;
 }
 
 function defaultState(): SdkState {
@@ -185,6 +202,34 @@ function defaultState(): SdkState {
       Promise.resolve({ success: true, message: "withdrawn", newBalance: 0 }),
     regenerateAppApiKey: () =>
       Promise.resolve({ success: true, apiKey: "eliza_app_rotated" }),
+    checkAppDomain: (_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        available: true,
+        currency: "USD",
+        years: 1,
+        price: {
+          wholesaleUsdCents: 1029,
+          marginUsdCents: 370,
+          totalUsdCents: 1399,
+          marginBps: 3600,
+        },
+        renewal: { totalUsdCents: 1399 },
+      }),
+    buyAppDomain: (_id, input) =>
+      Promise.resolve({
+        success: true,
+        domain: input.domain,
+        appDomainId: "ad_1",
+        zoneId: "zone_1",
+        status: "pending",
+        verified: false,
+        expiresAt: "2027-07-01T00:00:00.000Z",
+        pendingZoneProvisioning: false,
+        debited: { totalUsdCents: 1399, currency: "USD" },
+      }),
+    listAppDomains: () => Promise.resolve({ success: true, domains: [] }),
   };
 }
 
@@ -250,6 +295,15 @@ export function setWithdrawAppEarnings(fn: WithdrawAppEarningsFn): void {
 }
 export function setRegenerateAppApiKey(fn: RegenerateAppApiKeyFn): void {
   state.regenerateAppApiKey = fn;
+}
+export function setCheckAppDomain(fn: CheckAppDomainFn): void {
+  state.checkAppDomain = fn;
+}
+export function setBuyAppDomain(fn: BuyAppDomainFn): void {
+  state.buyAppDomain = fn;
+}
+export function setListAppDomains(fn: ListAppDomainsFn): void {
+  state.listAppDomains = fn;
 }
 
 /** Restore default (empty / no-op) behavior between tests. */
@@ -330,6 +384,21 @@ export class FakeElizaCloudClient {
   }
   regenerateAppApiKey(id: string): Promise<RegenerateAppApiKeyResponse> {
     return state.regenerateAppApiKey(id);
+  }
+  checkAppDomain(
+    id: string,
+    input: CheckAppDomainInput,
+  ): Promise<CheckAppDomainResponse> {
+    return state.checkAppDomain(id, input);
+  }
+  buyAppDomain(
+    id: string,
+    input: BuyAppDomainInput,
+  ): Promise<BuyAppDomainResponse> {
+    return state.buyAppDomain(id, input);
+  }
+  listAppDomains(id: string): Promise<ListAppDomainsResponse> {
+    return state.listAppDomains(id);
   }
 }
 

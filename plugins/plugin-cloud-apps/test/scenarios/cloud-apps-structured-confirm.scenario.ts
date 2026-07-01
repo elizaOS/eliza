@@ -213,6 +213,65 @@ async function handleCloudRequest(
     return;
   }
 
+  if (
+    method === "POST" &&
+    url.pathname === `/api/v1/apps/${APP_ID}/domains/check`
+  ) {
+    json(res, 200, {
+      success: true,
+      domain: isRecord(body) ? body.domain : "coolbrand.com",
+      available: true,
+      currency: "USD",
+      years: 1,
+      price: {
+        wholesaleUsdCents: 1029,
+        marginUsdCents: 370,
+        totalUsdCents: 1399,
+        marginBps: 3600,
+      },
+      renewal: { totalUsdCents: 1399 },
+    });
+    return;
+  }
+
+  if (
+    method === "POST" &&
+    url.pathname === `/api/v1/apps/${APP_ID}/domains/buy`
+  ) {
+    json(res, 200, {
+      success: true,
+      domain: isRecord(body) ? body.domain : "coolbrand.com",
+      appDomainId: "ad_scenario_1",
+      zoneId: "zone_scenario_1",
+      status: "pending",
+      verified: false,
+      expiresAt: "2027-07-01T00:00:00.000Z",
+      pendingZoneProvisioning: false,
+      debited: { totalUsdCents: 1399, currency: "USD" },
+    });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === `/api/v1/apps/${APP_ID}/domains`) {
+    json(res, 200, {
+      success: true,
+      domains: [
+        {
+          id: "ad_scenario_1",
+          domain: "coolbrand.com",
+          registrar: "cloudflare",
+          status: "active",
+          verified: true,
+          sslStatus: "active",
+          expiresAt: "2027-07-01T00:00:00.000Z",
+          cloudflareZoneId: "zone_scenario_1",
+          verificationToken: null,
+        },
+      ],
+    });
+    return;
+  }
+
   json(res, 404, { success: false, error: "not found" });
 }
 
@@ -250,10 +309,11 @@ function runtimeFromContext(ctx: ScenarioContext): CloudAppsScenarioRuntime {
 export default scenario({
   id: "cloud-apps-structured-confirm",
   lane: "pr-deterministic",
-  title: "Cloud Apps destructive actions require structured confirmation",
+  title:
+    "Cloud Apps destructive and paid actions require structured confirmation",
   domain: "cloud-apps",
   status: "active",
-  tags: ["cloud-apps", "safety", "structured-confirm"],
+  tags: ["cloud-apps", "safety", "structured-confirm", "domains"],
   requires: {
     plugins: ["@elizaos/plugin-cloud-apps"],
   },
@@ -337,6 +397,48 @@ export default scenario({
       responseIncludesAll: ["Requested a payout of $50.00", "Acme Bot"],
       assertTurn: expectDataFlag("withdrawn", true),
     },
+    {
+      kind: "action",
+      name: "domain check quotes the price without buying",
+      actionName: "CHECK_APP_DOMAIN",
+      text: "is coolbrand.com available?",
+      options: { domain: "coolbrand.com" },
+      responseIncludesAll: ["coolbrand.com is available", "$13.99"],
+    },
+    {
+      kind: "action",
+      name: "buy first ask quotes and stores confirmation",
+      actionName: "BUY_APP_DOMAIN",
+      text: "buy coolbrand.com for Acme Bot",
+      options: { appName: "Acme Bot", domain: "coolbrand.com" },
+      responseIncludesAll: ["coolbrand.com", "Acme Bot", "$13.99", "confirm"],
+      assertTurn: expectDataFlag("confirmationRequired", true),
+    },
+    {
+      kind: "action",
+      name: "plain yes does not buy",
+      actionName: "BUY_APP_DOMAIN",
+      text: "yes",
+      responseIncludesAll: ["waiting for confirmation"],
+      assertTurn: expectDataFlag("purchased", false),
+    },
+    {
+      kind: "action",
+      name: "structured buy confirmation purchases once",
+      actionName: "BUY_APP_DOMAIN",
+      text: "confirmo",
+      options: { confirm: true },
+      responseIncludesAll: ["Bought coolbrand.com", "$13.99"],
+      assertTurn: expectDataFlag("purchased", true),
+    },
+    {
+      kind: "action",
+      name: "list domains shows the purchase",
+      actionName: "LIST_APP_DOMAINS",
+      text: "what domains does Acme Bot have?",
+      options: { appName: "Acme Bot" },
+      responseIncludesAll: ["coolbrand.com", "SSL active"],
+    },
   ],
   finalChecks: [
     {
@@ -373,6 +475,20 @@ export default scenario({
         if (typeof withdrawBody.idempotency_key !== "string") {
           return "expected withdrawal idempotency_key";
         }
+        const buyCount = countCalls(
+          "POST",
+          `/api/v1/apps/${APP_ID}/domains/buy`,
+        );
+        if (buyCount !== 1) {
+          return `expected one domain buy call, saw ${buyCount}`;
+        }
+        const buyBody = requestBody(
+          "POST",
+          `/api/v1/apps/${APP_ID}/domains/buy`,
+        );
+        if (buyBody?.domain !== "coolbrand.com") {
+          return `expected buy of coolbrand.com, saw ${String(buyBody?.domain)}`;
+        }
         return undefined;
       },
     },
@@ -393,6 +509,24 @@ export default scenario({
       name: "withdraw action executed through scenario runner",
       actionName: "WITHDRAW_APP_EARNINGS",
       minCount: 2,
+    },
+    {
+      type: "actionCalled",
+      name: "domain check action executed through scenario runner",
+      actionName: "CHECK_APP_DOMAIN",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      name: "domain buy action executed through scenario runner",
+      actionName: "BUY_APP_DOMAIN",
+      minCount: 3,
+    },
+    {
+      type: "actionCalled",
+      name: "domain list action executed through scenario runner",
+      actionName: "LIST_APP_DOMAINS",
+      minCount: 1,
     },
   ],
   cleanup: [
