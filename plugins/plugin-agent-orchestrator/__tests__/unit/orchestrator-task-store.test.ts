@@ -599,6 +599,12 @@ describe("RuntimeDbTaskStore", () => {
     const store = new RuntimeDbTaskStore(capturing);
     await store.createTask(createInput({ title: "portable upsert" }));
 
+    // The DDL must use BIGINT for the ms-epoch column: Date.now() (~1.75e12)
+    // overflows postgres/pglite int4, and this SQL path is exactly the one
+    // that now engages on those backends.
+    const createTable = seenSql.find((s) => /CREATE TABLE/i.test(s));
+    expect(createTable).toMatch(/last_activity_at BIGINT/i);
+
     const upserts = seenSql.filter((s) => /INSERT\s+INTO/i.test(s));
     expect(upserts.length).toBeGreaterThan(0);
     for (const sql of upserts) {
