@@ -187,7 +187,11 @@ describe("DEPLOY_FRONTEND", () => {
 
       const cb = captureCallback();
       const res = await deployFrontendAction.handler(
-        keyedRuntime(),
+        // The build root must be the fixture dir, else `directory: "."` walks CWD.
+        makeRuntime({
+          ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
+          ELIZAOS_CLOUD_FRONTEND_BUILD_ROOT: tmp,
+        }),
         makeMessage("publish Acme Bot"),
         undefined,
         { directory: "." },

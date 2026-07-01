@@ -17,9 +17,11 @@ import type {
   CreateAppInput,
   CreateAppResponse,
   DeleteAppResponse,
+  ActivateAppFrontendResponse,
   DeployAppFrontendInput,
   DeployAppFrontendResponse,
   DeployAppInput,
+  ListAppFrontendDeploymentsResponse,
   DeployAppResponse,
   ListAppsResponse,
   RegenerateAppApiKeyResponse,
@@ -33,6 +35,8 @@ import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 type ListAppsFn = () => Promise<ListAppsResponse>;
 type GetAppFn = (id: string) => Promise<AppResponse>;
 type CreateAppFn = (input: CreateAppInput) => Promise<CreateAppResponse>;
+type ListFrontendDeploymentsFn = (appId: string) => Promise<ListAppFrontendDeploymentsResponse>;
+type ActivateFrontendFn = (appId: string, deploymentId: string) => Promise<ActivateAppFrontendResponse>;
 type DeployAppFrontendFn = (
   id: string,
   input: DeployAppFrontendInput,
@@ -71,6 +75,8 @@ interface SdkState {
   createApp: CreateAppFn;
   deployApp: DeployAppFn;
   deployAppFrontend: DeployAppFrontendFn;
+  listAppFrontendDeployments: ListFrontendDeploymentsFn;
+  activateAppFrontend: ActivateFrontendFn;
   getAppDeployStatus: GetAppDeployStatusFn;
   deleteApp: DeleteAppFn;
   updateApp: UpdateAppFn;
@@ -115,6 +121,8 @@ function defaultState(): SdkState {
           activated_at: "2026-06-29T00:00:00.000Z",
         },
       }),
+    listAppFrontendDeployments: () => Promise.resolve({ success: true, active_deployment_id: null, deployments: [] }),
+    activateAppFrontend: (_a, id) => Promise.resolve({ success: true, deployment: { id, app_id: "app_1", version: 1, status: "active", r2_prefix: "p", content_hash: null, file_count: 0, total_bytes: 0, error: null, created_at: "2020-01-01", activated_at: "2020-01-01" } }),
     getAppDeployStatus: () =>
       Promise.resolve({
         success: true,
@@ -154,6 +162,12 @@ export function setDeployApp(fn: DeployAppFn): void {
 }
 export function setDeployAppFrontend(fn: DeployAppFrontendFn): void {
   state.deployAppFrontend = fn;
+}
+export function setListAppFrontendDeployments(fn: ListFrontendDeploymentsFn): void {
+  state.listAppFrontendDeployments = fn;
+}
+export function setActivateAppFrontend(fn: ActivateFrontendFn): void {
+  state.activateAppFrontend = fn;
 }
 export function setGetAppDeployStatus(fn: GetAppDeployStatusFn): void {
   state.getAppDeployStatus = fn;
@@ -201,6 +215,12 @@ export class FakeElizaCloudClient {
     input: DeployAppFrontendInput,
   ): Promise<DeployAppFrontendResponse> {
     return state.deployAppFrontend(id, input);
+  }
+  listAppFrontendDeployments(appId: string): Promise<ListAppFrontendDeploymentsResponse> {
+    return state.listAppFrontendDeployments(appId);
+  }
+  activateAppFrontend(appId: string, deploymentId: string): Promise<ActivateAppFrontendResponse> {
+    return state.activateAppFrontend(appId, deploymentId);
   }
   getAppDeployStatus(id: string): Promise<AppDeployStatusResponse> {
     return state.getAppDeployStatus(id);
