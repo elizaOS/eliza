@@ -284,6 +284,39 @@ function connectorMessageIdFromMemory(
   );
 }
 
+/**
+ * The stable per-request root id used to key the per-origin spawn cap (#8875).
+ * On the FIRST spawn it is the connector message id (Discord/connectors) or,
+ * when none exists (dashboard/web), the user message id. SubAgentRouter stamps
+ * this id back onto every synthetic re-spawn inbound as `spawnRootMessageId`,
+ * so a request that re-spawns resolves the SAME id on EVERY transport — the
+ * connector-less dashboard/web path previously produced no key at all, so the
+ * cap silently never fired there. Kept as a pure exported fn so the record
+ * (SubAgentRouter) and enforce (this action) sides can be proven to agree.
+ */
+export function spawnRootIdFor(
+  message: Memory,
+  content: Record<string, unknown>,
+): string | undefined {
+  return (
+    connectorMessageIdFromMemory(message, content) ??
+    plainString(objectValue(content.metadata)?.spawnRootMessageId) ??
+    message.id
+  );
+}
+
+/** `spawnRootIdFor` scoped to an agent type — the exact per-origin cap key.
+ * `undefined` only when the inbound carries no id at all (the cap is skipped,
+ * exactly as before). */
+export function spawnOriginKeyFor(
+  message: Memory,
+  content: Record<string, unknown>,
+  agentType: string,
+): string | undefined {
+  const root = spawnRootIdFor(message, content);
+  return root ? `${root}\0${agentType}` : undefined;
+}
+
 function pickRoutingString(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -1046,9 +1079,12 @@ async function runSpawnAgent(
     const spawnCapRouter = isSpawnCapRouter(spawnCapRouterService)
       ? spawnCapRouterService
       : undefined;
-    const spawnOriginKey = originConnectorMessageId
-      ? `${originConnectorMessageId}\0${agentType}`
-      : undefined;
+    // The stable per-request root id + cap key (see spawnRootIdFor). Anchored to
+    // ONE user request across the whole re-spawn loop on EVERY transport,
+    // closing the dashboard/web no-op where `originConnectorMessageId` is absent
+    // and the cap silently never fired (#8875).
+    const spawnRootMessageId = spawnRootIdFor(message, content);
+    const spawnOriginKey = spawnOriginKeyFor(message, content, agentType);
     if (spawnCapRouter && spawnOriginKey) {
       const cap = maxSpawnsPerOrigin(runtime);
       if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
@@ -1084,6 +1120,11 @@ async function runSpawnAgent(
       metadata: {
         ...extraMetadata,
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
+        // Persist the stable root id so SubAgentRouter re-stamps it onto the
+        // next synthetic re-spawn inbound (keeping the per-origin spawn cap
+        // anchored to ONE user request across the whole loop, on every
+        // transport — including connector-less dashboard/web). (#8875)
+        ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
         roomId: swarmRoomMetadata.taskRoomId,
