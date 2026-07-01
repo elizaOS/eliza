@@ -98,7 +98,10 @@ import {
   registerDefaultPromptPack,
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
-import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
+import {
+  createOwnerSendPolicy,
+  registerOwnerSendApprovalWorker,
+} from "./lifeops/messaging/owner-send-policy.js";
 import {
   createOwnerFactStore,
   registerOwnerFactStore,
@@ -947,7 +950,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     );
 
     // Owner outbound-message approval policy: gmail drafts require explicit
-    // owner approval; everything else passes straight through.
+    // owner approval; everything else passes straight through. The stable
+    // OWNER_SEND_APPROVAL task worker executes the held send once the owner
+    // confirms via CHOOSE_OPTION (issue #10723).
+    registerOwnerSendApprovalWorker(runtime);
     registerSendPolicy(runtime, createOwnerSendPolicy());
     (
       runtime as IAgentRuntime & {
