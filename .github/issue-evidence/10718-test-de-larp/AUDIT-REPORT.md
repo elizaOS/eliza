@@ -493,14 +493,39 @@ component-level fuzz harness that renders the **real** `useShellController` +
 
 ## 7. Remediation plan (tracked)
 
-1. **[shipped]** CI gate (§5).
-2. Send/voice/new-chat real-queue fuzz harness + race fix (#10700, §6).
-3. De-larp the named interaction tests (#10722): upgrade synthetic-`PointerEvent`
+### Shipped this pass
+1. **[shipped]** CI de-larp gate — `test-larp-gate.mjs`, wired into `verify` (§5).
+2. **[shipped]** #10700 send/voice/new-chat real-queue fuzz harness + race fix (§6):
+   `useChatSend.send-newchat-race.fuzz.test.tsx` drives the real queue (2
+   deterministic repros + 5-seed walk), verified to fail without the fix.
+3. **[shipped]** Zero-`expect()` operator larp →
+   `operator/capabilities/redis-mock.test.ts` now asserts real state (0 → 16
+   `expect()`), + covers the previously-untested `removeAgentServer`.
+4. **[shipped]** Self-referential agent planner larp →
+   `plugin-view-llm-mock-coverage.test.ts` sub-test deleted (real routing is in
+   the live `view-llm-eval.test.ts` lane), replaced with a real corpus-collision
+   guard.
+5. **[shipped]** Cloud-api excluded-from-CI cluster → `run-unit-isolated.mjs` now
+   walks the whole package, so **19 colocated `*.test.ts`** (auth, billing,
+   credits, webhooks, cron, v1/agents, worker entry) run in the unit lane.
+   Running them surfaced + fixed a real hidden 500 drift (`v1/agents` stale
+   `createAgent` mock shape).
+6. **[shipped]** #10719 `HomeWidgetCard` real hover bug (`hover:bg-black/55` ==
+   resting) fixed + first behavioral test (hover-feedback regression guard).
+
+### Remaining (high-value, tracked)
+7. De-larp the named interaction tests (#10722): upgrade synthetic-`PointerEvent`
    runners to CDP touch; replace `view-capability-audit` grep with a render-based
    per-element gate; drive `emulator.setHandPose()`; land the real immersive-WebGL
    readback test or delete the "validated end-to-end" claim.
-4. `packages/feed` conditional-skip suites (§2a): run against an ephemeral
-   dep or delete.
-5. 116 PR-excluded real tests (§2b): split PR-safe/live or add a blocking
-   post-merge lane.
-6. Per-surface fixes from §4, high-confidence first.
+8. Scenarios (§4, largest surface): **885/922 are `lane:live-only`** — author
+   `pr-deterministic` fixture variants for the high-value flows so they run in
+   `test:corpus:pr`.
+9. `packages/feed` conditional-skip suites (§2a): run against an ephemeral dep or
+   delete (incl. the bare `test.skip()` dead test).
+10. 116 PR-excluded `*.real.test.ts` (§2b) + per-plugin `*.harness.test.ts` +
+    PA `test:background-real`: split PR-safe/live or add a blocking post-merge lane.
+11. QA-checklist GAPs (#10719): KioskViewCanvas + shell-mode router, NotificationCenter
+    mutations, RemotePluginHostSection, LogsView/RelationshipsView/RuntimeView,
+    CustomActionEditor, GameViewOverlay postMessage auth — each a zero-coverage
+    surface with a written checklist ready to drive tests.
