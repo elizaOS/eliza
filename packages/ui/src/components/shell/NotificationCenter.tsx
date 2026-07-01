@@ -28,8 +28,11 @@ import {
   useNotifications,
 } from "../../state/notifications/notification-store";
 import { formatRelativeTime } from "../../utils/format";
+import { rankHomeNotifications } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+
+type NotificationSortMode = "priority" | "time";
 
 const CATEGORY_LABEL: Record<NotificationCategory, string> = {
   reminder: "Reminders",
@@ -219,6 +222,9 @@ export function NotificationCenter({
   const { notifications, unreadCount } = useNotifications();
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
+  // Default to attention-first (unread → priority → recency); the user can flip
+  // to a plain most-recent-first timeline (#10706).
+  const [sortMode, setSortMode] = useState<NotificationSortMode>("priority");
 
   // Categories actually present in the inbox, in a stable display order. Drives
   // the filter chips — empty/single-category inboxes get no filter clutter.
@@ -234,13 +240,18 @@ export function NotificationCenter({
       ? "all"
       : activeCategory;
 
-  const visibleNotifications = useMemo(
-    () =>
+  const visibleNotifications = useMemo(() => {
+    const filtered =
       effectiveCategory === "all"
         ? notifications
-        : notifications.filter((n) => n.category === effectiveCategory),
-    [notifications, effectiveCategory],
-  );
+        : notifications.filter((n) => n.category === effectiveCategory);
+    // Priority: reuse the home ranker (unread → priority → recency) so the two
+    // surfaces agree. Time: a plain most-recent-first timeline. Both are pure +
+    // stable, so equal items never reshuffle between renders.
+    return sortMode === "priority"
+      ? rankHomeNotifications(filtered)
+      : [...filtered].sort((a, b) => b.createdAt - a.createdAt);
+  }, [notifications, effectiveCategory, sortMode]);
 
   // Boot the notification store (hydrate + subscribe to the live stream) and
   // route its interrupt toasts through the shell's ActionNotice. Idempotent —
@@ -329,6 +340,37 @@ export function NotificationCenter({
             active={effectiveCategory}
             onSelect={setActiveCategory}
           />
+        )}
+        {notifications.length > 1 && (
+          <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+            <span className="text-2xs font-medium uppercase tracking-wide text-muted">
+              Sort
+            </span>
+            <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
+              {(
+                [
+                  ["priority", "Priority"],
+                  ["time", "Recent"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  data-testid={`notif-sort-${mode}`}
+                  aria-pressed={sortMode === mode}
+                  onClick={() => setSortMode(mode)}
+                  className={cn(
+                    "rounded px-2 py-0.5 text-2xs font-medium transition-colors",
+                    sortMode === mode
+                      ? "bg-accent/15 text-accent"
+                      : "text-muted hover:text-txt",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {notifications.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
