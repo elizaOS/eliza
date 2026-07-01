@@ -733,6 +733,15 @@ async function augmentRequest(
     return request;
   }
   request.rawBody = rawBody;
+  // The stream is drained at this point. Route handlers that read the body
+  // through @elizaos/core's `readJsonBody`/`readRequestBody` helpers attach
+  // data/end listeners, which never fire on a consumed stream — the request
+  // would hang until the turn timeout (#10757). Populate core's global-
+  // registry body-cache symbol so those helpers resolve from cache instead
+  // of re-reading the socket.
+  (request as unknown as Record<symbol, Buffer>)[
+    Symbol.for("eliza.http.cachedRequestBody")
+  ] = Buffer.from(rawBody, "utf8");
   const contentType = request.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
