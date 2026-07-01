@@ -39,6 +39,23 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
     ? [
+        // The string alias below prefix-matches subpath imports, so
+        // "@elizaos/core/node" would otherwise rewrite to
+        // "<core entry file>/node" (ENOTDIR). Pin the /node subpath to the
+        // node entry first — same fix plugin-personal-assistant's own
+        // vitest.config.ts carries. Without it this lane cannot load the
+        // personal-assistant plugin graph (plugin-calendly's dist imports
+        // "@elizaos/core/node").
+        {
+          find: /^@elizaos\/core\/node$/,
+          replacement: path.join(
+            elizaWorkspaceRoot,
+            "packages",
+            "core",
+            "src",
+            "index.node.ts",
+          ),
+        },
         {
           find: "@elizaos/core",
           replacement: elizaCoreEntry,
@@ -135,6 +152,15 @@ export default defineConfig({
       // them now so the existing coverage runs.
       "eliza/plugins/plugin-personal-assistant/test/**/*.integration.test.ts",
       "eliza/plugins/*/test/**/*.integration.test.ts",
+      // Src-level plugin integration tests were dead the same way: the
+      // scheduler suite at plugin-personal-assistant/src/lifeops/
+      // scheduled-task/scheduler.integration.test.ts (10 real-DB tests of the
+      // production processDueScheduledTasks wiring) matched neither the
+      // plugin's unit lane (integration suffix excluded) nor the test/**
+      // globs above — vitest reported "No test files found" even when the
+      // file was passed explicitly. Include src/** so the suite runs.
+      "eliza/plugins/plugin-personal-assistant/src/**/*.integration.test.ts",
+      "eliza/plugins/*/src/**/*.integration.test.ts",
     ],
     setupFiles: ["eliza/packages/app-core/test/setup.ts"],
     exclude: [
