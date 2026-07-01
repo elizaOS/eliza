@@ -19,6 +19,11 @@ interface EmbedContextValue {
   agentId: string | null;
 }
 
+interface EmbedWindow extends Window {
+  __feedEmbedAgentId?: string;
+  __feedEmbedToken?: string;
+}
+
 const EmbedContext = createContext<EmbedContextValue>({
   isEmbedded: false,
   parentOrigin: null,
@@ -106,10 +111,11 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
       const secret =
         typeof data.authToken === "string" ? data.authToken.trim() : null;
       const id = typeof data.agentId === "string" ? data.agentId.trim() : null;
+      const embedWindow = window as EmbedWindow;
 
       if (id) {
         setAgentId(id);
-        (window as Record<string, unknown>).__feedEmbedAgentId = id;
+        embedWindow.__feedEmbedAgentId = id;
       }
       setParentOrigin(event.origin);
 
@@ -118,15 +124,13 @@ export function EmbedModeProvider({ children }: { children: ReactNode }) {
         void authenticateWithCredentials(id, secret).then((sessionToken) => {
           if (sessionToken) {
             setAgentSessionToken(sessionToken);
-            (window as Record<string, unknown>).__feedEmbedToken =
-              sessionToken;
+            embedWindow.__feedEmbedToken = sessionToken;
           }
         });
       } else if (secret) {
         // Fallback: use the token directly (pre-authenticated session token)
         setAgentSessionToken(secret);
-        (window as Record<string, unknown>).__feedEmbedToken =
-          secret;
+        embedWindow.__feedEmbedToken = secret;
       }
     }
 

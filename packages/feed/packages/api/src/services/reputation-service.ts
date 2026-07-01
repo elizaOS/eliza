@@ -1368,7 +1368,7 @@ export class ReputationService {
       LIMIT ${pageSize} OFFSET ${skip}
     `);
 
-    const rows = teamsResult as Array<{
+    const rows = teamsResult as unknown as Array<{
       id: string;
       username: string | null;
       displayName: string | null;
@@ -1548,7 +1548,7 @@ export class ReputationService {
       ) higher
     `);
 
-    const higherRows = higherResult as Array<{ count: number }>;
+    const higherRows = higherResult as unknown as Array<{ count: number }>;
     const rank = Number(higherRows[0]?.count ?? 0) + 1;
 
     const [agentCountResult] = await db

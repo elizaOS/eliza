@@ -335,7 +335,7 @@ async function runSingleBenchmark(
   const runtime = await agentRuntimeManager.getRuntime(agentId);
 
   // Type assertion for snapshot - cast to proper type
-  const typedSnapshot = snapshot as BenchmarkGameSnapshot;
+  const typedSnapshot = snapshot as unknown as BenchmarkGameSnapshot;
 
   // Create simulation engine
   const simConfig: SimulationConfig = {

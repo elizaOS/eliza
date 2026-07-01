@@ -67,6 +67,31 @@ interface InteractionLabel {
   wasRejected: boolean;
 }
 
+function isInteractionLabel(value: unknown): value is InteractionLabel {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const label = value as Partial<InteractionLabel>;
+  return (
+    typeof label.counterpartyId === "string" &&
+    (label.counterpartyTeam === "red" ||
+      label.counterpartyTeam === "blue" ||
+      label.counterpartyTeam === "gray") &&
+    (label.counterpartyAlignment === "good" ||
+      label.counterpartyAlignment === "neutral" ||
+      label.counterpartyAlignment === "evil") &&
+    typeof label.channel === "string" &&
+    typeof label.messageCount === "number" &&
+    typeof label.wasScam === "boolean" &&
+    typeof label.wasLegitimate === "boolean" &&
+    typeof label.wasRejected === "boolean"
+  );
+}
+
+function readInteractionLabels(value: unknown): InteractionLabel[] {
+  return Array.isArray(value) ? value.filter(isInteractionLabel) : [];
+}
+
 interface RuntimeTrajectoryRunContext {
   scenarioId?: string;
   episodeId?: string;
@@ -350,8 +375,9 @@ export class AutonomousCoordinator {
     if (recordTrajectories) {
       // Enrich NPC trajectories with world state context
       // Derive archetype from character sheet metadata
-      const feedMeta = (runtime.character as Record<string, unknown>)
-        ?.feed as Record<string, unknown> | undefined;
+      const feedMeta = (runtime.character as Record<string, unknown>)?.feed as
+        | Record<string, unknown>
+        | undefined;
       const archetype = feedMeta
         ? deriveArchetype(
             feedMeta.alignment as string,
@@ -470,9 +496,7 @@ export class AutonomousCoordinator {
       setTrajectoryContext(
         runtime,
         trajId,
-        trajectoryRecorder as Parameters<
-          typeof setTrajectoryContext
-        >[2],
+        trajectoryRecorder as Parameters<typeof setTrajectoryContext>[2],
         async () => this.captureEnvironmentState(agentUserId),
       );
       // Also set current trajectory ID on runtime for compatibility with
@@ -582,9 +606,9 @@ export class AutonomousCoordinator {
                     (trustOutcomes.interactedWithBlueTeam as boolean) ?? false,
                   redTeamNpcIds:
                     (trustOutcomes.redTeamNpcIds as string[]) ?? [],
-                  interactionLabels:
-                    (trustOutcomes.interactionLabels as InteractionLabel[]) ??
-                    [],
+                  interactionLabels: readInteractionLabels(
+                    trustOutcomes.interactionLabels,
+                  ),
                 },
               }
             : {}),

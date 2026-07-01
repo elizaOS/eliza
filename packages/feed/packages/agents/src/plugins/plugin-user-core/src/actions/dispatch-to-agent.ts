@@ -18,12 +18,12 @@
 import type {
   Action,
   ActionResult,
-  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { defineActionParameters } from "../../../shared/action-parameters";
 import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 export const dispatchToAgentAction: Action = {
@@ -31,7 +31,7 @@ export const dispatchToAgentAction: Action = {
   description:
     "Execute a command on the user's behalf by dispatching to a specific agent in their team. Use when the user wants to trade, post, comment, or take any agent action. Do NOT use for information queries — use CHECK_PERPS, CHECK_PREDICTIONS etc. for those.",
 
-  parameters: {
+  parameters: defineActionParameters({
     agentId: {
       type: "string",
       required: true,
@@ -44,7 +44,7 @@ export const dispatchToAgentAction: Action = {
       description:
         'The exact instruction to send to the agent (e.g., "open a 2x long on TSLAI for $100", "post about the current market")',
     },
-  },
+  }),
 
   examples: [
     [
@@ -123,7 +123,7 @@ export const dispatchToAgentAction: Action = {
         success: false,
         text: "Missing required parameters for agent dispatch.",
       };
-      _callback?.({ content: failResult });
+      _callback?.({ text: failResult.text });
       return failResult;
     }
 
@@ -145,7 +145,7 @@ export const dispatchToAgentAction: Action = {
         text: `Failed to dispatch to agent "${agentId}": ${result.error ?? "Unknown error"}. Check the Team Members list for the correct agent [id: ...] and retry.`,
         values: { agentId, command, error: result.error },
       };
-      _callback?.({ content: failResult });
+      _callback?.({ text: failResult.text, agentId, command });
       return failResult;
     }
 
@@ -160,7 +160,13 @@ export const dispatchToAgentAction: Action = {
         actionsExecuted: result.actionsExecuted,
       },
     };
-    _callback?.({ content: successResult });
+    _callback?.({
+      text: successResult.text,
+      agentId: result.agentId,
+      agentUsername: result.agentUsername,
+      dispatchedCommand: command,
+      actionsExecuted: result.actionsExecuted,
+    });
     return successResult;
   },
 };

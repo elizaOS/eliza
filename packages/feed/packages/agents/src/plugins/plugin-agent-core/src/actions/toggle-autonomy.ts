@@ -16,6 +16,7 @@ import type {
 import { agentLogs, db, eq, userAgentConfigs, users } from "@feed/db";
 import { logger } from "../../../../shared/logger";
 import { generateSnowflakeId } from "../../../../shared/snowflake";
+import { defineActionParameters } from "../../../shared/action-parameters";
 import type {
   AutonomyFeature,
   AutonomyStatus,
@@ -47,7 +48,7 @@ export const toggleAutonomyAction: Action = {
   description:
     "Enable or disable YOUR autonomous behaviors (trading, posting, commenting, DMs, group chats). When enabled, you act independently - trading on your own analysis, creating posts, responding to comments, and engaging in conversations without needing explicit commands.",
 
-  parameters: {
+  parameters: defineActionParameters({
     feature: {
       type: "string",
       description:
@@ -59,7 +60,7 @@ export const toggleAutonomyAction: Action = {
       description: "Whether to enable (true) or disable (false) the feature",
       required: true,
     },
-  },
+  }),
 
   examples: [
     [

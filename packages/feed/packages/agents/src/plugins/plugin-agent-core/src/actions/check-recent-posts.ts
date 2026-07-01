@@ -15,13 +15,14 @@ import type {
 import { db, desc, eq, posts, users } from "@feed/db";
 import { getTimeAgo } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 export const checkRecentPostsAction: Action = {
   name: "CHECK_RECENT_POSTS",
   description:
     "Check recent posts for yourself or another user. Use LOOKUP_USER first to get a userId by username.",
 
-  parameters: {
+  parameters: defineActionParameters({
     userId: {
       type: "string",
       description:
@@ -33,7 +34,7 @@ export const checkRecentPostsAction: Action = {
       description: "Number of posts to retrieve (default: 5, max: 20)",
       required: false,
     },
-  },
+  }),
 
   examples: [
     [

@@ -20,6 +20,7 @@ import {
 } from "@feed/engine";
 import { AgentPnLService } from "../../../../services/AgentPnLService";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 const agentPnLService = new AgentPnLService();
 
@@ -27,7 +28,7 @@ export const openPerpAction: Action = {
   name: "OPEN_PERP",
   description:
     "Open a leveraged perpetual position using YOUR funds. IMPORTANT: Call CHECK_PERPS first for tickers and prices, and CHECK_BALANCE to verify you have sufficient funds. Requires ticker, side (LONG/SHORT), amount in dollars, and optional leverage (1-10x).",
-  parameters: {
+  parameters: defineActionParameters({
     ticker: {
       type: "string",
       description: "Stock ticker symbol (e.g., AAPL, TSLA, NVDA)",
@@ -50,7 +51,7 @@ export const openPerpAction: Action = {
       description: "Leverage multiplier (1-10x). Default: 1",
       required: false,
     },
-  },
+  }),
   examples: [
     [
       {

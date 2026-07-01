@@ -16,6 +16,7 @@ import type {
 import type { MessageTag } from "@feed/shared";
 import { getTimeAgo } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -48,13 +49,13 @@ export const checkFeedPostsAction: Action = {
   description:
     "Check the latest posts from the global feed. Returns recent posts from all users on the platform.",
 
-  parameters: {
+  parameters: defineActionParameters({
     limit: {
       type: "number",
       description: "Number of posts to retrieve (default: 10, max: 50)",
       required: false,
     },
-  },
+  }),
 
   examples: [
     [

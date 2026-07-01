@@ -21,6 +21,7 @@ import {
 } from "@feed/engine";
 import { logger } from "../../../../shared/logger";
 import { generateSnowflakeId } from "../../../../shared/snowflake";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 export interface CreatePostParams {
   content: string;
@@ -35,13 +36,13 @@ export const createPostAction: Action = {
   name: "CREATE_POST",
   description: "Create a post on the Feed social feed",
 
-  parameters: {
+  parameters: defineActionParameters({
     content: {
       type: "string",
       description: "The content/text of the post to create",
       required: true,
     },
-  },
+  }),
 
   examples: [
     [

@@ -12,6 +12,7 @@
 
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -173,13 +174,13 @@ export const sendMessageAction: Action = {
     );
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
     const content = _message.content.text || "";
     const agentUserId = feedRuntime.a2aClient?.agentId;
@@ -190,7 +191,7 @@ export const sendMessageAction: Action = {
         text: "Could not parse message content. Please include the message you want to send.",
         action: "SEND_MESSAGE",
       });
-      return;
+      return undefined;
     }
 
     // Strategy 1: Explicit chat ID
@@ -215,7 +216,7 @@ export const sendMessageAction: Action = {
             : `Failed to send message: ${result.error}`,
           action: "SEND_MESSAGE",
         });
-        return;
+        return undefined;
       }
 
       // Fallback to A2A client if no agentUserId (should not happen in practice)
@@ -232,7 +233,7 @@ export const sendMessageAction: Action = {
               : `Message sent! ID: ${result.messageId || "unknown"}`,
           action: "SEND_MESSAGE",
         });
-        return;
+        return undefined;
       }
     }
 
@@ -263,7 +264,7 @@ export const sendMessageAction: Action = {
               : `Failed to send to "${groupName}": ${result.error}`,
             action: "SEND_MESSAGE",
           });
-          return;
+          return undefined;
         }
 
         // Group not found — report clearly
@@ -271,7 +272,7 @@ export const sendMessageAction: Action = {
           text: `Could not find a group chat named "${groupName}" that you are a member of.`,
           action: "SEND_MESSAGE",
         });
-        return;
+        return undefined;
       }
 
       // Strategy 3: Recipient @username
@@ -299,14 +300,14 @@ export const sendMessageAction: Action = {
               : `Failed to DM @${username}: ${result.error}`,
             action: "SEND_MESSAGE",
           });
-          return;
+          return undefined;
         }
 
         callback?.({
           text: `Could not find user @${username}.`,
           action: "SEND_MESSAGE",
         });
-        return;
+        return undefined;
       }
     }
 
@@ -315,7 +316,8 @@ export const sendMessageAction: Action = {
       text: "Could not determine where to send the message. Specify a chat ID (chat 12345: ...), group name (to 'My Group': ...), or recipient (@username: ...).",
       action: "SEND_MESSAGE",
     });
-  }),
+    return undefined;
+  },
 };
 
 // =============================================================================
@@ -350,13 +352,13 @@ export const createGroupAction: Action = {
     return content.includes("create") && content.includes("group");
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -364,7 +366,7 @@ export const createGroupAction: Action = {
         text: "A2A client not connected. Cannot create group.",
         action: "CREATE_GROUP",
       });
-      return;
+      return undefined;
     }
 
     const content = message.content.text || "";
@@ -378,7 +380,7 @@ export const createGroupAction: Action = {
         text: "Could not parse group name. Please specify a name for the group.",
         action: "CREATE_GROUP",
       });
-      return;
+      return undefined;
     }
 
     const groupName = nameMatch[1]?.trim() || "Unnamed Group";
@@ -409,5 +411,6 @@ export const createGroupAction: Action = {
         });
       }
     }
-  }),
+    return undefined;
+  },
 };

@@ -91,7 +91,7 @@ export class MCPRequestHandler {
     return {
       jsonrpc: "2.0",
       id: request.id,
-      result: result as JsonRpcResult,
+      result: result as unknown as JsonRpcResult,
     };
   }
 
@@ -120,7 +120,7 @@ export class MCPRequestHandler {
     return {
       jsonrpc: "2.0",
       id: request.id,
-      result: result as JsonRpcResult,
+      result: result as unknown as JsonRpcResult,
     };
   }
 
@@ -172,9 +172,7 @@ export class MCPRequestHandler {
       );
 
       // Convert tool result to MCP content format
-      const content = this.convertToolResultToContent(
-        toolResult as JsonValue,
-      );
+      const content = this.convertToolResultToContent(toolResult as JsonValue);
 
       const result: ToolCallResult = {
         content,
@@ -184,7 +182,7 @@ export class MCPRequestHandler {
       return {
         jsonrpc: "2.0",
         id: request.id,
-        result: result as JsonRpcResult,
+        result: result as unknown as JsonRpcResult,
       };
     } catch (error) {
       // Per MCP spec: Tool execution errors should be reported in tool results
@@ -205,7 +203,7 @@ export class MCPRequestHandler {
       return {
         jsonrpc: "2.0",
         id: request.id,
-        result: result as JsonRpcResult,
+        result: result as unknown as JsonRpcResult,
       };
     }
   }
