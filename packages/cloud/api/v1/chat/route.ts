@@ -367,6 +367,9 @@ app.post("/", async (c) => {
               model: selectedModel,
               provider,
               affiliateCode,
+              // Anonymous free-tier requests are charged $0; never mint
+              // affiliate earnings from them (#10853).
+              isAnonymous,
             },
             usage,
           );

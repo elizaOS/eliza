@@ -21,6 +21,7 @@ import {
   PLATFORM_MARKUP_MULTIPLIER,
 } from "../pricing";
 import { logger } from "../utils/logger";
+import { shouldCreditAffiliateEarnings } from "./affiliate-earnings-guard";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 import { generationsService } from "./generations";
@@ -59,6 +60,12 @@ export interface BillingContext {
   metadata?: Record<string, unknown>;
   description?: string;
   affiliateCode?: string | null;
+  /**
+   * True for anonymous free-tier requests, which are charged $0 (the reservation
+   * is a no-op). Gates affiliate earnings so a $0 request cannot mint cashable
+   * affiliate balance (#10853).
+   */
+  isAnonymous?: boolean;
 }
 
 export interface BillingResult {
@@ -248,7 +255,7 @@ export async function billUsage(
       _appliedAffiliateMarkup = true;
 
       // Credit the affiliate owner
-      if (affiliateEarnings > 0) {
+      if (affiliateEarnings > 0 && shouldCreditAffiliateEarnings(context)) {
         // Prevent double booking on identical reservations easily,
         // using the transaction ID or random ID if none present.
         const sourceId = `legacy_${crypto.randomUUID()}`;
@@ -328,7 +335,7 @@ export async function billFlatUsage(
       totalCost += affiliateEarnings;
       inputCost = totalCost;
 
-      if (affiliateEarnings > 0) {
+      if (affiliateEarnings > 0 && shouldCreditAffiliateEarnings(context)) {
         const sourceId = `legacy_${crypto.randomUUID()}`;
 
         await redeemableEarningsService
