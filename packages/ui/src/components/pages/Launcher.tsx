@@ -1,15 +1,15 @@
 /**
  * Launcher — iOS-like app/view launcher.
  *
- * Renders every available view as a names-only icon on swipeable pages plus a
- * pinned favorites dock. Tap launches; long-press enters edit mode where icons
- * can be reordered (drag), favorited into the dock, and — for manageable
- * (dynamic developer) views — edited or deleted. Page order is persisted via
- * the pure `launcher-layout` model. Favorites are
- * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
- * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
- * token-themed (light/dark + overrides) and renders no background of its own —
- * the shared root `AppBackground` shows through, matching the home screen.
+ * Renders every available view as a names-only icon on swipeable pages. Tap
+ * launches; long-press enters edit mode where icons can be reordered (drag),
+ * marked as favorites metadata, and — for manageable (dynamic developer) views
+ * — edited or deleted. Page order is persisted via the pure `launcher-layout`
+ * model. Favorites are controlled-optional for callers that use the metadata
+ * elsewhere, but the Launcher never renders a separate favorites row: every
+ * view remains in the same paged grid. Fully token-themed (light/dark +
+ * overrides) and renders no background of its own — the shared root
+ * `AppBackground` shows through, matching the home screen.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
@@ -19,7 +19,6 @@ import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
-  LAUNCHER_DOCK_LIMIT,
   LAUNCHER_PAGE_SIZE,
   type LauncherLayout,
   moveIcon,
@@ -37,9 +36,10 @@ export interface LauncherProps {
   /**
    * Explicit, curated pages as ordered id lists (page 1 = apps, page 2 =
    * developer). When supplied the launcher renders these fixed pages read-only
-   * (no reorder / favorites / edit mode) instead of the persisted free-form
-   * layout; a group longer than one page paginates but never merges into the
-   * next group. Omit for the standalone/free-form launcher (stories, tests).
+   * (no reorder / favorite toggles / edit mode) instead of the persisted
+   * free-form layout; a group longer than one page paginates but never merges
+   * into the next group. Omit for the standalone/free-form launcher (stories,
+   * tests).
    */
   pageGroups?: string[][];
   loading?: boolean;
@@ -422,25 +422,11 @@ export function Launcher({
     onPageCountChange?.(pages.length);
   }, [pages.length, onPageCountChange]);
   const clampedPage = Math.min(activePage, pages.length - 1);
-  // Cap the rendered dock at LAUNCHER_DOCK_LIMIT in BOTH modes. The
-  // uncontrolled path already enforces it via toggleFavorite; controlled
-  // (desktop-tab) favorites are capped at the pinning source too, but clamp
-  // here as defense so the dock can never overflow regardless of caller.
   const favoriteIdList = useMemo(
-    () =>
-      grouped
-        ? []
-        : (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
+    () => (grouped ? [] : (favorites ?? layout.favorites)),
     [grouped, favorites, layout.favorites],
   );
-  const favoriteEntries = useMemo(
-    () =>
-      favoriteIdList
-        .map((id) => byId.get(id))
-        .filter((e): e is ViewEntry => e != null),
-    [byId, favoriteIdList],
-  );
-  // O(1) dock-membership check inside the tile map instead of Array.includes.
+  // O(1) favorite-membership check inside the tile map instead of Array.includes.
   const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
 
   const handleReorder = useCallback(
@@ -506,20 +492,6 @@ export function Launcher({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="launcher"
     >
-      {/* Favorites bar — pinned to the TOP of the launcher (not an iOS-style
-          bottom dock). There is no Edit button: long-press any icon toggles
-          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
-      {favoriteEntries.length > 0 ? (
-        <div
-          data-testid="launcher-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
-        >
-          {favoriteEntries.map((entry) => (
-            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
-          ))}
-        </div>
-      ) : null}
-
       {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
           never fights the in-tile drag-to-reorder gesture. A real rail is
           rendered so adjacent pages move with the finger, instead of swapping

@@ -3696,8 +3696,8 @@ export function ContinuousChatOverlay({
               Left: Maximize (toggle edge-to-edge full-screen) + Clear (reset to
               a fresh greeted thread, RotateCcw — it resets, it doesn't delete).
               Right: one Launcher/Home launcher. Settings lives inside the
-              Launcher favorites dock, so the chat header stops acting like a
-              second app nav bar. */}
+              Launcher grid, so the chat header stops acting like a second app
+              nav bar. */}
             {threadPresented ? (
               <motion.div
                 // Mounted while the sheet is open, or while an upward drag is

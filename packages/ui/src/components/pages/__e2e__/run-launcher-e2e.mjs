@@ -237,7 +237,7 @@ await page.goto(url);
 await page.waitForSelector('[data-testid="launcher"]');
 await page.waitForTimeout(400);
 
-// 1. Tap-launch a tile (first page tile that is not docked).
+// 1. Tap-launch a tile from the uniform page grid.
 const launchTarget = "calendar";
 await page.getByTestId(`launcher-tile-${launchTarget}`).getByRole("button").first().click();
 await page.waitForTimeout(250);

@@ -279,7 +279,7 @@ describe("Launcher interaction telemetry", () => {
     expect(launch?.viewId).toBe("chat");
   });
 
-  it("emits favorite then unfavorite as the dock is toggled", () => {
+  it("emits favorite then unfavorite as metadata is toggled", () => {
     render(
       <Launcher entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
     );
