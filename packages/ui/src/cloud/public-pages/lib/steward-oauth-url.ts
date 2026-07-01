@@ -45,6 +45,10 @@ export function buildStewardOAuthRedirectUri(origin: string): string {
   return `${origin}/login`;
 }
 
+export function resolveStewardOAuthTenantId(tenantId?: string | null): string {
+  return tenantId?.trim() || DEFAULT_STEWARD_TENANT_ID;
+}
+
 export function buildStewardOAuthAuthorizeUrl(
   provider: StewardOAuthProvider,
   origin: string,
@@ -61,7 +65,7 @@ export function buildStewardOAuthAuthorizeUrl(
     buildStewardOAuthRedirectUri(origin),
     {
       stewardApiUrl,
-      stewardTenantId: options?.stewardTenantId ?? DEFAULT_STEWARD_TENANT_ID,
+      stewardTenantId: resolveStewardOAuthTenantId(options?.stewardTenantId),
       codeChallenge: options?.codeChallenge,
     },
   );

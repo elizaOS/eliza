@@ -1,8 +1,13 @@
 "use client";
 
-import { StewardLogin, useAuth } from "@stwd/react";
+import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
+import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+  buildStewardOAuthRedirectUri,
+  resolveStewardOAuthTenantId,
+} from "../../../cloud/public-pages/lib/steward-oauth-url";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
@@ -21,6 +26,34 @@ interface AppInfo {
 }
 
 type AuthorizeStatus = "validating" | "ready" | "authorizing" | "error";
+type AppAuthorizeOAuthProvider = "google" | "discord";
+type AppAuthorizeOAuthSignIn = (
+  provider: AppAuthorizeOAuthProvider,
+  config?: { redirectUri?: string; tenantId?: string },
+) => Promise<unknown>;
+
+const APP_AUTHORIZE_OAUTH_PROVIDERS = [
+  {
+    id: "google",
+    label: "Continue with Google",
+    buttonClassName: "stwd-login__btn--google",
+    spinnerClassName: "stwd-login__spinner--dark",
+    Icon: GoogleIcon,
+  },
+  {
+    id: "discord",
+    label: "Continue with Discord",
+    buttonClassName: "stwd-login__btn--discord",
+    spinnerClassName: "",
+    Icon: DiscordIcon,
+  },
+] satisfies Array<{
+  id: AppAuthorizeOAuthProvider;
+  label: string;
+  buttonClassName: string;
+  spinnerClassName: string;
+  Icon: typeof GoogleIcon;
+}>;
 
 export function AuthorizeContent() {
   const router = useRouter();
@@ -72,6 +105,8 @@ function AuthorizeAuthenticatedContent({
     signOut,
     providers,
     isProvidersLoading,
+    signInWithOAuth,
+    activeTenantId,
   } = useAuth();
   // Steward provider discovery (Google/Discord/etc) is fetched at app shell
   // mount, but on a cold load to /app-auth/authorize the round-trip can take a
@@ -270,8 +305,11 @@ function AuthorizeAuthenticatedContent({
         />
       ) : (
         <SignedOutActions
+          activeTenantId={activeTenantId}
           onCancel={handleCancel}
+          providers={providers}
           providersReady={providersReady}
+          signInWithOAuth={signInWithOAuth}
         />
       )}
     </Frame>
@@ -373,21 +411,101 @@ function SignedInActions({
 }
 
 function SignedOutActions({
+  activeTenantId,
   onCancel,
+  providers,
   providersReady,
+  signInWithOAuth,
 }: {
+  activeTenantId: string | null;
   onCancel: () => void;
+  providers: StewardProviders | null;
   providersReady: boolean;
+  signInWithOAuth: AppAuthorizeOAuthSignIn;
 }) {
+  const [oauthLoadingProvider, setOauthLoadingProvider] =
+    useState<AppAuthorizeOAuthProvider | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  const enabledOAuthProviders = APP_AUTHORIZE_OAUTH_PROVIDERS.filter(
+    ({ id }) => providers?.[id] ?? false,
+  );
+  const showPasskey = providers?.passkey ?? true;
+  const showEmail = providers?.email ?? true;
+
+  const handleOAuth = useCallback(
+    async (provider: AppAuthorizeOAuthProvider) => {
+      if (typeof window === "undefined") return;
+
+      setOauthLoadingProvider(provider);
+      setOauthError(null);
+
+      try {
+        const redirectUri = buildStewardOAuthRedirectUri(
+          window.location.origin,
+        );
+        await signInWithOAuth(provider, {
+          redirectUri,
+          tenantId: resolveStewardOAuthTenantId(activeTenantId),
+        });
+      } catch (err) {
+        setOauthError(
+          err instanceof Error ? err.message : "Unable to start OAuth sign-in.",
+        );
+      } finally {
+        setOauthLoadingProvider(null);
+      }
+    },
+    [activeTenantId, signInWithOAuth],
+  );
+
   return (
     <div className="flex w-full flex-col items-center gap-4">
       {providersReady ? (
-        <StewardLogin
-          variant="inline"
-          showPasskey
-          showEmail
-          title="Sign in to authorize"
-        />
+        <>
+          <StewardLogin
+            variant="inline"
+            showPasskey={showPasskey}
+            showEmail={showEmail}
+            showGoogle={false}
+            showDiscord={false}
+            title="Sign in to authorize"
+          />
+          {enabledOAuthProviders.length > 0 && (showPasskey || showEmail) && (
+            <div className="stwd-login__divider">
+              <span>or</span>
+            </div>
+          )}
+          {enabledOAuthProviders.length > 0 && (
+            <div className="stwd-login__oauth">
+              {enabledOAuthProviders.map(
+                ({ id, label, buttonClassName, spinnerClassName, Icon }) => (
+                  <button
+                    className={`stwd-login__btn ${buttonClassName}`}
+                    disabled={oauthLoadingProvider !== null}
+                    key={id}
+                    onClick={() => void handleOAuth(id)}
+                    type="button"
+                  >
+                    {oauthLoadingProvider === id ? (
+                      <span
+                        className={`stwd-login__spinner ${spinnerClassName}`.trim()}
+                      />
+                    ) : (
+                      <Icon size={18} />
+                    )}
+                    <span>{label}</span>
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+          {oauthError && (
+            <p className="stwd-login__error" role="alert">
+              {oauthError}
+            </p>
+          )}
+        </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-6">
           <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
