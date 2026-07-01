@@ -12,6 +12,7 @@ import {
   errorEnvelope,
   toCompatOpResult,
 } from "@/lib/api/compat-envelope";
+import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { logger } from "@/lib/utils/logger";
 import { requireCompatAuth } from "../../../_lib/auth";
@@ -35,6 +36,27 @@ async function __hono_POST(
     if (!agent) {
       return withCompatCors(
         Response.json(errorEnvelope("Agent not found"), { status: 404 }),
+        CORS_METHODS,
+      );
+    }
+
+    // Gate on org credit before snapshot + re-provision — matches the paid-check
+    // every v1 wake route enforces. Without it a credit-suspended dedicated agent
+    // could be restarted for free, repeatedly (elizaOS/eliza#10902).
+    const creditCheck = await checkAgentCreditGate(user.organization_id);
+    if (!creditCheck.allowed) {
+      logger.warn("[compat] Restart blocked: insufficient credits", {
+        agentId,
+        orgId: user.organization_id,
+        balance: creditCheck.balance,
+      });
+      return withCompatCors(
+        Response.json(
+          errorEnvelope(
+            creditCheck.error ?? "Insufficient credits to restart this agent",
+          ),
+          { status: 402 },
+        ),
         CORS_METHODS,
       );
     }
