@@ -67,6 +67,11 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const ROUTE_MAX_DURATION = 800;
 
+// Buffer the upfront monetized-app credit hold above the estimate to reduce
+// undercharge risk; reconciled to the actual cost after the response. Matches
+// the /apps/:id/chat route's COST_SAFETY_MULTIPLIER.
+const COST_SAFETY_MULTIPLIER = 1.5;
+
 type AnthropicTextBlock = { type: "text"; text: string };
 
 type AnthropicImageBlock = {
@@ -617,34 +622,51 @@ app.post("/", async (c) => {
   let appCreditsInfo: AppCreditsInfo | undefined;
 
   if (useAppCredits && appId && monetizedApp) {
-    const { totalCost } = await calculateCost(
+    const { totalCost: estimatedBaseCost } = await calculateCost(
       normalizedModel,
       provider,
       estimatedInputTokens,
       estimatedOutputTokens,
       billingSource,
     );
-    const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
-      appId,
-      totalCost,
-    );
-    const balanceCheck = await appCreditsService.checkBalance(
-      appId,
-      user.id,
-      costWithMarkup.totalCost,
-    );
 
-    if (!balanceCheck.sufficient) {
+    // Atomically HOLD the (buffered) estimate up front. deductCredits is a
+    // row-locked debit on the org balance, so N concurrent monetized-app
+    // requests serialize and the surplus ones get a clean 429 instead of all
+    // passing a read-only balance check and overspending the org balance while
+    // the platform absorbs the loss (#10857). The old checkBalance +
+    // estimatedBaseCost:0 path deferred the entire charge to the post-response
+    // reconcile with nothing held. Mirrors the /apps/:id/chat route; the hold is
+    // reconciled to the actual cost after the response (estimatedBaseCost below).
+    const reservedBaseCost = estimatedBaseCost * COST_SAFETY_MULTIPLIER;
+    const deductionResult = await appCreditsService.deductCredits({
+      appId,
+      userId: user.id,
+      baseCost: reservedBaseCost,
+      description: `Messages API: ${model}`,
+      metadata: {
+        model,
+        provider,
+        billingSource,
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        safetyMultiplier: COST_SAFETY_MULTIPLIER,
+      },
+      app: monetizedApp,
+    });
+
+    if (!deductionResult.success) {
       return anthropicError(
         "rate_limit_error",
-        `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
+        deductionResult.message ||
+          `Insufficient cloud credits. Required: $${deductionResult.totalCost.toFixed(4)}`,
         429,
       );
     }
 
     appCreditsInfo = {
       appId,
-      estimatedBaseCost: 0,
+      estimatedBaseCost: reservedBaseCost,
     };
     reservation = creditsService.createAnonymousReservation();
   } else {

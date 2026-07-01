@@ -249,6 +249,52 @@ describe("reserveAndDeductCredits — atomic debit", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "(concurrency #10857) N concurrent debits on a limited balance NEVER overspend — only affordable ones win, balance never goes negative",
+    async () => {
+      if (!pgliteReady) return;
+      // $1.00 balance, 8 concurrent $0.30 charges — only 3 can fit ($0.90).
+      // This is the exact race the monetized-app /v1/messages path hit with the
+      // old read-only checkBalance: all 8 passed the read → served → overspend,
+      // platform absorbing the loss (#10857). The atomic reserveAndDeductCredits
+      // it now uses must serialize on the row and reject the surplus.
+      await seedOrg("1.000000");
+      const AMOUNT = 0.3;
+      const N = 8;
+
+      const results = await Promise.all(
+        Array.from({ length: N }, (_, i) =>
+          creditsService.reserveAndDeductCredits({
+            organizationId: ORG_ID,
+            amount: AMOUNT,
+            description: `concurrent charge ${i}`,
+            metadata: { user_id: USER_ID },
+          }),
+        ),
+      );
+
+      const succeeded = results.filter((r) => r.success);
+      const failed = results.filter((r) => !r.success);
+
+      // Exactly floor(1.00 / 0.30) = 3 win; the surplus fail CLOSED.
+      expect(succeeded).toHaveLength(3);
+      expect(failed).toHaveLength(N - 3);
+      for (const f of failed) {
+        expect(f.reason).toBe("insufficient_balance");
+      }
+
+      // The load-bearing invariant: balance NEVER went negative, and it equals
+      // exactly the 3 affordable debits — no overspend, no platform-absorbed loss.
+      const finalBalance = await readBalance();
+      expect(finalBalance).toBeGreaterThanOrEqual(0);
+      expect(finalBalance).toBeCloseTo(1.0 - 3 * AMOUNT, 6);
+
+      // One debit row per successful charge — no phantom or duplicate debits.
+      expect(await listDebits()).toHaveLength(3);
+    },
+    PGLITE_TIMEOUT,
+  );
 });
 
 describe("reserve() — high-level reservation gate", () => {
