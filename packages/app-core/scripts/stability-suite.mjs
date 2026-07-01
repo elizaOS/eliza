@@ -69,15 +69,27 @@ function makeSupervisorWorkdir() {
   return dir;
 }
 
+function readSpawnCount(counterFile) {
+  try {
+    return Number(fs.readFileSync(counterFile, "utf8").trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 function runSupervisor(restartUntil, hrNow) {
   return new Promise((resolve, reject) => {
     const workDir = makeSupervisorWorkdir();
     const counterFile = path.join(workDir, "spawn-count.txt");
     const startedAt = hrNow();
+    const pathWithNode = [path.dirname(process.execPath), process.env.PATH]
+      .filter(Boolean)
+      .join(path.delimiter);
     const child = spawn(process.execPath, [RUN_NODE], {
       cwd: workDir,
       env: {
         ...process.env,
+        PATH: pathWithNode,
         ELIZA_RUNTIME: "node",
         ELIZA_ENTRY_FILE: "fake-child.mjs",
         ELIZA_FORCE_BUILD: "0",
@@ -96,9 +108,7 @@ function runSupervisor(restartUntil, hrNow) {
       reject(err);
     });
     child.on("exit", (code) => {
-      const spawnCount = Number(
-        fs.readFileSync(counterFile, "utf8").trim() || "0",
-      );
+      const spawnCount = readSpawnCount(counterFile);
       const latencyMs = Math.round(hrNow() - startedAt);
       fs.rmSync(workDir, { recursive: true, force: true });
       resolve({ code, spawnCount, latencyMs, stderr });
@@ -248,8 +258,8 @@ relaunch it depends on is proven by the supervisor-recovery lane above.
 | Surface | Mechanism | Evidence lane | Status |
 | --- | --- | --- | --- |
 | Android device | \`ElizaAgentService\` \`WatchdogThread\` (health poll + \`scheduleRestart\`) | \`packages/app/scripts/android-e2e.mjs\` (needs \`ANDROID_SERIAL\`) | code present; device-connected run gated on a phone |
-| iOS device | \`AgentWatchdog\` liveness poll + relaunch (parity with Android) | iOS device/sim capture | code present; device-connected run gated on a device |
-| Cloud pod | \`restart: unless-stopped\` + chainsaw kill/OOM | \`packages/cloud/infra/cloud/tests/\` chainsaw | gated on a k8s cluster |
+| iOS device | \`AgentWatchdog\` liveness poll + renderer restart request consumer | iOS device/sim capture | code present + unit-proven; device-connected run gated on a device |
+| Cloud pod | Container restart + replacement pod + recovered health/message | \`packages/cloud/infra/cloud/tests/10-agent-crash-recovery\` chainsaw | suite present; live run gated on a k8s cluster |
 `;
   fs.mkdirSync(path.dirname(scoreboardPath), { recursive: true });
   fs.writeFileSync(scoreboardPath, md);

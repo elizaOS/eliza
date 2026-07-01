@@ -114,4 +114,25 @@ describe("Chainsaw suite YAML", () => {
       }
     }
   });
+
+  test("agent crash-recovery suite injects container and pod death, then verifies recovered health", () => {
+    const file = join(
+      TESTS_DIR,
+      "10-agent-crash-recovery",
+      "chainsaw-test.yaml",
+    );
+    expect(existsSync(file)).toBe(true);
+    const raw = readFileSync(file, "utf-8");
+
+    expect(raw).toContain("kill -9 1");
+    expect(raw).toContain("RESTARTS_BEFORE");
+    expect(raw).toContain("RESTARTS_AFTER");
+    expect(raw).toContain("kubectl delete pod");
+    expect(raw).toContain("--wait=false");
+    expect(raw).toContain("UID_BEFORE");
+    expect(raw).toContain("UID_AFTER");
+    expect(raw).toContain('"alive":true');
+    expect(raw).toContain('"ready":true');
+    expect(raw).toContain("/agents/recovered-a1/message");
+  });
 });
