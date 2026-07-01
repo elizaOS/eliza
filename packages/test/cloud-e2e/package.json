@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "bun --conditions=eliza-source --bun playwright test",
-    "test:headed": "bun --conditions=eliza-source --bun playwright test --headed",
-    "test:ui": "bun --conditions=eliza-source --bun playwright test --ui",
+    "test": "bun --conditions=eliza-source playwright test",
+    "test:headed": "bun --conditions=eliza-source playwright test --headed",
+    "test:ui": "bun --conditions=eliza-source playwright test --ui",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
