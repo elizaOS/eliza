@@ -16,13 +16,16 @@
  *
  * Run under Node on Windows (Playwright's CDP pipe is dead under Bun there).
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 
 const UI = process.env.UI || "http://127.0.0.1:2138";
 const API = process.env.API || "http://127.0.0.1:31337";
 const ROUNDS = Number(process.env.ROUNDS || 6);
+const NAV_WAIT_MS = Number(process.env.NAV_WAIT_MS || 700);
+const VIDEO = process.env.VIDEO !== "0";
+const SETUP_FIRST_RUN = process.env.SETUP_FIRST_RUN !== "0";
 const OUT =
   process.env.OUT ||
   join(process.cwd(), ".github", "issue-evidence", "10196-views-state");
@@ -36,6 +39,234 @@ function assert(cond, msg) {
   if (!cond) fails += 1;
 }
 
+function writeJson(name, value) {
+  writeFileSync(join(OUT, name), `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function normalizePath(path) {
+  if (!path || typeof path !== "string") return "/";
+  const bare = path.split(/[?#]/, 1)[0] || "/";
+  const withSlash = bare.startsWith("/") ? bare : `/${bare}`;
+  return withSlash.length > 1 ? withSlash.replace(/\/+$/, "") : withSlash;
+}
+
+function viewKind(view) {
+  if (typeof view.viewKind === "string" && view.viewKind.length > 0) {
+    return view.viewKind;
+  }
+  return view.bundleUrl ? "plugin" : "unspecified";
+}
+
+function candidateRuntimeIds(view) {
+  const ids = new Set();
+  if (view.id) ids.add(String(view.id));
+  const path = normalizePath(view.path);
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length === 1) ids.add(parts[0]);
+  if ((parts[0] === "apps" || parts[0] === "views") && parts[1]) {
+    ids.add(`${parts[0]}:${parts[1]}`);
+    ids.add(parts[1]);
+  }
+  return [...ids];
+}
+
+function eventRouteMatchesView(event, view) {
+  return normalizePath(event?.route) === normalizePath(view.path);
+}
+
+function runtimeEventsForView(events, view) {
+  const ids = new Set(candidateRuntimeIds(view));
+  return events.filter(
+    (event) =>
+      ids.has(String(event.viewId)) || eventRouteMatchesView(event, view),
+  );
+}
+
+function renderEventsForView(events, view) {
+  const ids = new Set(candidateRuntimeIds(view));
+  return events.filter(
+    (event) =>
+      ids.has(String(event.name)) || eventRouteMatchesView(event, view),
+  );
+}
+
+function moduleEventsForView(events, view) {
+  const ids = candidateRuntimeIds(view);
+  const path = normalizePath(view.path);
+  const bundleUrl = typeof view.bundleUrl === "string" ? view.bundleUrl : null;
+  return events.filter((event) => {
+    if (eventRouteMatchesView(event, view)) return true;
+    const key = typeof event.key === "string" ? event.key : "";
+    if (bundleUrl && key.startsWith(bundleUrl)) return true;
+    if (key === path) return true;
+    return ids.some((id) => key === id || key.includes(id));
+  });
+}
+
+function maxNumber(values) {
+  return values.reduce(
+    (max, value) =>
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(max, value)
+        : max,
+    0,
+  );
+}
+
+function escapeCell(value) {
+  return String(value ?? "")
+    .replace(/\|/g, "\\|")
+    .replace(/\n/g, " ");
+}
+
+function buildScorecard({
+  views,
+  raw,
+  navRecords,
+  heapSamples,
+  videoArtifact,
+}) {
+  const rows = views.map((view) => {
+    const runtime = runtimeEventsForView(raw.viewRuntime, view);
+    const render = renderEventsForView(raw.render, view);
+    const module = moduleEventsForView(raw.module, view);
+    const nav = navRecords.get(view.id)?.activations ?? [];
+    const reached = nav.filter((entry) => entry.reached).length;
+    const firstRunBlocks = nav.filter(
+      (entry) => entry.firstRunChooserVisible,
+    ).length;
+    const renderErrors = render.filter((event) => event.severity === "error");
+    const renderInfos = render.filter((event) => event.severity === "info");
+    return {
+      id: view.id,
+      label: view.label ?? view.name ?? view.id,
+      kind: viewKind(view),
+      path: normalizePath(view.path),
+      runtimeIds: candidateRuntimeIds(view).join(", "),
+      activations: nav.length,
+      reached,
+      firstRunBlocks,
+      showEvents: runtime.filter((event) => event.reason === "show").length,
+      hideEvents: runtime.filter((event) => event.reason === "hide").length,
+      viewEvicts: runtime.filter((event) => event.reason === "evict").length,
+      maxRenderCount: maxNumber(runtime.map((event) => event.renderCount)),
+      renderInfoEvents: renderInfos.length,
+      renderErrorEvents: renderErrors.length,
+      moduleLoads: module.filter((event) => event.action === "load").length,
+      moduleEvicts: module.filter((event) => event.action === "evict").length,
+      moduleCleanups: module.filter((event) => event.action === "cleanup")
+        .length,
+    };
+  });
+
+  const summary = {
+    views: rows.length,
+    reached: rows.filter((row) => row.reached > 0).length,
+    firstRunBlocks: rows.reduce((sum, row) => sum + row.firstRunBlocks, 0),
+    renderErrors: rows.reduce((sum, row) => sum + row.renderErrorEvents, 0),
+    moduleEvicts: rows.reduce((sum, row) => sum + row.moduleEvicts, 0),
+    moduleCleanups: rows.reduce((sum, row) => sum + row.moduleCleanups, 0),
+  };
+
+  const heapWarm = heapSamples[1] ?? heapSamples[0] ?? 0;
+  const heapEnd = heapSamples.at(-1) ?? 0;
+  const heapRatio = heapEnd / Math.max(1, heapWarm);
+  const table = [
+    "| view | kind | path | reached | first-run | runtime ids | show | max renders | render guard | evict | cleanup |",
+    "|---|---:|---|---:|---:|---|---:|---:|---:|---:|---:|",
+    ...rows
+      .map((row) =>
+        [
+          row.label,
+          row.kind,
+          row.path,
+          `${row.reached}/${row.activations}`,
+          row.firstRunBlocks,
+          row.runtimeIds,
+          row.showEvents,
+          row.maxRenderCount,
+          row.renderErrorEvents > 0
+            ? `${row.renderErrorEvents} error`
+            : row.renderInfoEvents > 0
+              ? `${row.renderInfoEvents} info`
+              : "clean",
+          row.viewEvicts + row.moduleEvicts,
+          row.moduleCleanups,
+        ]
+          .map(escapeCell)
+          .join(" | "),
+      )
+      .map((line) => `| ${line} |`),
+  ].join("\n");
+
+  const markdown = `# #10196 audit:views scorecard
+
+Budget: every registered view path must be reached at least once; render guard
+severity must stay below \`error\`; worst per-view runtime render count must stay
+below 400; collected heap after churn must stay under 2.2x the warm baseline;
+module/view caches must emit at least one real eviction during churn or forced
+release.
+
+## Summary
+
+- Views reached: ${summary.reached}/${summary.views}
+- Visible first-run chooser blocks: ${summary.firstRunBlocks}
+- Render-guard errors: ${summary.renderErrors}
+- Module/view evictions attributed in scorecard: ${summary.moduleEvicts}
+- Module cleanups attributed in scorecard: ${summary.moduleCleanups}
+- Heap series: ${heapSamples.map((sample) => `${(sample / 1e6).toFixed(1)}MB`).join(" -> ")} (${heapRatio.toFixed(2)}x)
+- Raw artifacts: \`audit-views-render-telemetry.json\`, \`audit-views-runtime-telemetry.json\`, \`audit-views-module-cache-telemetry.json\`, \`audit-views-heap-series.json\`, \`audit-views-frontend-log.json\`, \`audit-views-network-log.json\`
+- Video: ${videoArtifact ? `\`${videoArtifact}\`` : "N/A (VIDEO=0)"}
+
+## Per-View Scorecard
+
+${table}
+`;
+
+  return { rows, summary, markdown };
+}
+
+async function isFirstRunChooserVisible(page) {
+  return page
+    .getByTestId("first-run-runtime-chooser")
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+}
+
+async function waitForFirstRunChooserHidden(page) {
+  await page
+    .getByTestId("first-run-runtime-chooser")
+    .waitFor({ state: "hidden", timeout: 45000 })
+    .catch(async () => {
+      await page
+        .getByTestId("first-run-runtime-chooser")
+        .waitFor({ state: "detached", timeout: 45000 });
+    });
+}
+
+async function completeFirstRunIfNeeded(page) {
+  const startedVisible = await isFirstRunChooserVisible(page);
+  const result = {
+    enabled: SETUP_FIRST_RUN,
+    required: startedVisible,
+    completed: !startedVisible,
+    method: startedVisible ? "local-other-provider" : "already-complete",
+  };
+  if (!startedVisible || !SETUP_FIRST_RUN) {
+    return result;
+  }
+
+  await page.getByTestId("first-run-chooser-local").click({ timeout: 30000 });
+  await page.getByTestId("first-run-provider-other").click({ timeout: 30000 });
+  await waitForFirstRunChooserHidden(page);
+  await page
+    .getByTestId("home-launcher-surface")
+    .waitFor({ state: "visible", timeout: 45000 })
+    .catch(() => {});
+  result.completed = !(await isFirstRunChooserVisible(page));
+  return result;
+}
+
 // 1) Enumerate the real registered views.
 const viewsRes = await fetch(`${API}/api/views`).then((r) => r.json());
 const views = (viewsRes.views || []).filter((v) => v.path);
@@ -44,7 +275,7 @@ assert(
   `enumerated ${views.length} registered views via /api/views`,
 );
 const byKind = {};
-for (const v of views) byKind[v.viewKind] = (byKind[v.viewKind] || 0) + 1;
+for (const v of views) byKind[viewKind(v)] = (byKind[viewKind(v)] || 0) + 1;
 console.log(`[soak] view kinds: ${JSON.stringify(byKind)}`);
 
 // `--enable-precise-memory-info` makes `performance.memory.usedJSHeapSize`
@@ -55,10 +286,18 @@ const browser = await chromium.launch({
   timeout: 300000,
   args: ["--enable-precise-memory-info", "--js-flags=--expose-gc"],
 });
-const ctx = await browser.newContext({
+const contextOptions = {
   viewport: { width: 1440, height: 900 },
-});
+};
+if (VIDEO) {
+  contextOptions.recordVideo = {
+    dir: OUT,
+    size: { width: 1440, height: 900 },
+  };
+}
+const ctx = await browser.newContext(contextOptions);
 const page = await ctx.newPage();
+const video = page.video();
 // Pre-create the telemetry rings BEFORE the app boots, so its real
 // ViewTelemetryProfiler / module caches push into them (cache-telemetry only
 // records when the ring array already exists).
@@ -71,10 +310,37 @@ await page.addInitScript(() => {
   window.__ELIZA_VIEW_RUNTIME_TELEMETRY__ = [];
 });
 const pageErrors = [];
+const consoleLog = [];
+const networkLog = [];
 page.on("pageerror", (e) => pageErrors.push(String(e.message)));
+page.on("console", (msg) => {
+  consoleLog.push({
+    type: msg.type(),
+    text: msg.text(),
+    location: msg.location(),
+  });
+});
+page.on("requestfailed", (request) => {
+  networkLog.push({
+    kind: "requestfailed",
+    method: request.method(),
+    url: request.url(),
+    failure: request.failure()?.errorText ?? null,
+  });
+});
+page.on("response", (response) => {
+  if (response.status() < 400) return;
+  networkLog.push({
+    kind: "response",
+    status: response.status(),
+    url: response.url(),
+  });
+});
 
 await page.goto(UI, { waitUntil: "domcontentloaded", timeout: 60000 });
-await page.waitForTimeout(9000);
+await page.waitForTimeout(3000);
+const firstRunSetup = await completeFirstRunIfNeeded(page);
+await page.waitForTimeout(3000);
 // Dismiss the first-time-user welcome overlay if present so it doesn't trap nav.
 await page
   .getByTestId("ftu-welcome-dismiss")
@@ -86,18 +352,28 @@ const heap = async () =>
   page.evaluate(() =>
     performance?.memory ? performance.memory.usedJSHeapSize : 0,
   );
-const drain = async () =>
+const snapshotTelemetry = async () =>
   page.evaluate(() => {
-    const vr = window.__ELIZA_VIEW_RUNTIME_TELEMETRY__ || [];
-    const mc = window.__ELIZA_MODULE_CACHE_TELEMETRY__ || [];
-    const maxRender = vr.reduce((m, e) => Math.max(m, e.renderCount || 0), 0);
+    const render = window.__ELIZA_RENDER_TELEMETRY__ || [];
+    const viewRuntime = window.__ELIZA_VIEW_RUNTIME_TELEMETRY__ || [];
+    const module = window.__ELIZA_MODULE_CACHE_TELEMETRY__ || [];
+    const maxRender = viewRuntime.reduce(
+      (m, e) => Math.max(m, e.renderCount || 0),
+      0,
+    );
     return {
-      viewRuntime: vr.length,
-      shows: vr.filter((e) => e.reason === "show").length,
-      viewEvicts: vr.filter((e) => e.reason === "evict").length,
-      maxRenderCount: maxRender,
-      module: mc.length,
-      moduleEvicts: mc.filter((e) => e.action === "evict").length,
+      raw: { render, viewRuntime, module },
+      summary: {
+        render: render.length,
+        renderErrors: render.filter((e) => e.severity === "error").length,
+        viewRuntime: viewRuntime.length,
+        shows: viewRuntime.filter((e) => e.reason === "show").length,
+        viewEvicts: viewRuntime.filter((e) => e.reason === "evict").length,
+        maxRenderCount: maxRender,
+        module: module.length,
+        moduleEvicts: module.filter((e) => e.action === "evict").length,
+        moduleCleanups: module.filter((e) => e.action === "cleanup").length,
+      },
     };
   });
 
@@ -106,6 +382,8 @@ const drain = async () =>
 // (App.tsx handleNavigateView). Switches builtin tabs via setTab and plugin/
 // remote views via DynamicViewLoader, driving the real ViewRouter mount/unmount.
 async function navTo(view) {
+  const targetPath = normalizePath(view.path);
+  const beforePath = await page.evaluate(() => window.location.pathname);
   await page.evaluate(
     (d) =>
       window.dispatchEvent(
@@ -115,23 +393,53 @@ async function navTo(view) {
       ),
     { id: view.id, path: view.path },
   );
-  await page.waitForTimeout(550);
+  await page
+    .waitForFunction(
+      (target) => {
+        const path = window.location.pathname;
+        const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
+        return normalized === target;
+      },
+      targetPath,
+      { timeout: Math.max(1000, NAV_WAIT_MS * 3) },
+    )
+    .catch(() => {});
+  await page.waitForTimeout(NAV_WAIT_MS);
+  const afterPath = await page.evaluate(() => window.location.pathname);
+  const firstRunChooserVisible = await isFirstRunChooserVisible(page);
+  return {
+    id: view.id,
+    label: view.label ?? view.name ?? view.id,
+    targetPath,
+    beforePath: normalizePath(beforePath),
+    afterPath: normalizePath(afterPath),
+    reached: normalizePath(afterPath) === targetPath,
+    firstRunChooserVisible,
+  };
 }
 
 const heapStart = await heap();
-const beforeChurn = await drain();
+const beforeSnapshot = await snapshotTelemetry();
+const beforeChurn = beforeSnapshot.summary;
 console.log(
   `[soak] start heap=${(heapStart / 1e6).toFixed(1)}MB telemetry=${JSON.stringify(beforeChurn)}`,
 );
 
 // 2) Churn: cycle every view, ROUNDS times, forcing real mount/unmount + eviction.
 const heapSamples = [heapStart];
+const navRecords = new Map(
+  views.map((view) => [view.id, { view, activations: [] }]),
+);
 let shots = 0;
 for (let r = 0; r < ROUNDS; r++) {
   for (const v of views) {
-    await navTo(v);
+    const navRecord = await navTo(v);
+    navRecords.get(v.id)?.activations.push({
+      round: r + 1,
+      ...navRecord,
+    });
     // capture a few representative views once for evidence
-    if (r === 0 && shots < 6 && ["system", "developer"].includes(v.viewKind)) {
+    if (r === 0 && shots < 6 && ["system", "developer"].includes(viewKind(v))) {
       await page
         .screenshot({
           path: join(
@@ -147,14 +455,48 @@ for (let r = 0; r < ROUNDS; r++) {
   heapSamples.push(await heap());
 }
 
-const afterChurn = await drain();
+const afterChurnSnapshot = await snapshotTelemetry();
+const afterChurn = afterChurnSnapshot.summary;
 const heapEnd = heapSamples[heapSamples.length - 1];
 const cycles = ROUNDS * views.length;
 console.log(
   `[soak] after ${cycles} view activations telemetry=${JSON.stringify(afterChurn)} heapEnd=${(heapEnd / 1e6).toFixed(1)}MB`,
 );
 
+await page.evaluate(() => {
+  window.history.pushState(null, "", "/chat");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+});
+await page.waitForTimeout(NAV_WAIT_MS);
+await page.evaluate(() => {
+  document.dispatchEvent(new CustomEvent("eliza:heap-pressure"));
+  document.dispatchEvent(new Event("eliza:app-pause"));
+  window.dispatchEvent(new Event("eliza:app-pause"));
+});
+await page.waitForTimeout(Math.max(1000, NAV_WAIT_MS));
+
+const afterReleaseSnapshot = await snapshotTelemetry();
+const afterRelease = afterReleaseSnapshot.summary;
+
 // 3) Assertions — the real view lifecycle behaved under churn.
+const reachedViews = [...navRecords.values()].filter((record) =>
+  record.activations.some((activation) => activation.reached),
+).length;
+const firstRunBlockedActivations = [...navRecords.values()].reduce(
+  (sum, record) =>
+    sum +
+    record.activations.filter((activation) => activation.firstRunChooserVisible)
+      .length,
+  0,
+);
+assert(
+  reachedViews === views.length,
+  `navigation reached every registered view path (${reachedViews}/${views.length})`,
+);
+assert(
+  firstRunSetup.completed && firstRunBlockedActivations === 0,
+  `first-run chooser did not block captured views (setup=${JSON.stringify(firstRunSetup)}, blocked activations=${firstRunBlockedActivations})`,
+);
 assert(
   afterChurn.shows > beforeChurn.shows,
   `view-runtime telemetry recorded real view mounts under churn (${beforeChurn.shows} -> ${afterChurn.shows} 'show' events)`,
@@ -168,8 +510,16 @@ assert(
 // Eviction happened: a backgrounded view's instance and/or its module is pruned
 // under churn — proves the bounded caches prune rather than grow unbounded.
 assert(
-  afterChurn.viewEvicts > 0 || afterChurn.moduleEvicts > 0,
-  `bounded caches evicted under churn (view-instance evicts=${afterChurn.viewEvicts}, module-cache evicts=${afterChurn.moduleEvicts}) — the LRU prunes`,
+  afterRelease.viewEvicts > 0 || afterRelease.moduleEvicts > 0,
+  `bounded caches evicted under churn/release (view-instance evicts=${afterRelease.viewEvicts}, module-cache evicts=${afterRelease.moduleEvicts}, cleanups=${afterRelease.moduleCleanups}) — the LRU prunes`,
+);
+assert(
+  afterRelease.moduleCleanups > 0 || afterRelease.moduleEvicts > 0,
+  `eviction telemetry includes release cleanup or evict events after APP_PAUSE/heap-pressure (${afterChurn.moduleEvicts}/${afterChurn.moduleCleanups} -> ${afterRelease.moduleEvicts}/${afterRelease.moduleCleanups})`,
+);
+assert(
+  afterRelease.renderErrors === 0,
+  `no render-loop guard errors during the soak (${afterRelease.renderErrors})`,
 );
 // heap must not grow unboundedly: end within 2.2x of the post-warm baseline.
 // With precise-memory-info + real GC (see launch args) this ratio is measured on
@@ -187,7 +537,45 @@ assert(
 );
 
 await page.screenshot({ path: join(OUT, "soak-final.png") }).catch(() => {});
+let videoArtifact = null;
+await page.close().catch(() => {});
+await ctx.close().catch(() => {});
+if (video) {
+  const source = await video.path().catch(() => null);
+  if (source) {
+    videoArtifact = "audit-views-soak.webm";
+    const target = join(OUT, videoArtifact);
+    rmSync(target, { force: true });
+    renameSync(source, target);
+  }
+}
 await browser.close();
+
+const finalRaw = afterReleaseSnapshot.raw;
+writeJson("audit-views-render-telemetry.json", finalRaw.render);
+writeJson("audit-views-runtime-telemetry.json", finalRaw.viewRuntime);
+writeJson("audit-views-module-cache-telemetry.json", finalRaw.module);
+writeJson("audit-views-heap-series.json", {
+  samples: heapSamples,
+  startBytes: heapStart,
+  endBytes: heapEnd,
+  boundedRatio: heapEnd / Math.max(1, heapSamples[1] || heapStart),
+});
+writeJson("audit-views-navigation.json", [...navRecords.values()]);
+writeJson("audit-views-frontend-log.json", {
+  console: consoleLog,
+  pageErrors,
+});
+writeJson("audit-views-network-log.json", networkLog);
+const scorecard = buildScorecard({
+  views,
+  raw: finalRaw,
+  navRecords,
+  heapSamples,
+  videoArtifact,
+});
+writeJson("audit-views-scorecard.json", scorecard.rows);
+writeFileSync(join(OUT, "audit-views-scorecard.md"), scorecard.markdown);
 
 const report = {
   benchmark: "audit:views real-app soak",
@@ -197,12 +585,29 @@ const report = {
   viewKinds: byKind,
   rounds: ROUNDS,
   activations: cycles,
-  telemetry: { before: beforeChurn, after: afterChurn },
+  firstRunSetup,
+  telemetry: {
+    before: beforeChurn,
+    afterChurn,
+    afterRelease,
+    scorecard: scorecard.summary,
+  },
   heap: {
     startBytes: heapStart,
     endBytes: heapEnd,
     samples: heapSamples,
     boundedRatio: heapEnd / Math.max(1, heapSamples[1] || heapStart),
+  },
+  artifacts: {
+    scorecard: join(OUT, "audit-views-scorecard.md"),
+    renderTelemetry: join(OUT, "audit-views-render-telemetry.json"),
+    runtimeTelemetry: join(OUT, "audit-views-runtime-telemetry.json"),
+    moduleCacheTelemetry: join(OUT, "audit-views-module-cache-telemetry.json"),
+    heapSeries: join(OUT, "audit-views-heap-series.json"),
+    navigation: join(OUT, "audit-views-navigation.json"),
+    frontendLog: join(OUT, "audit-views-frontend-log.json"),
+    networkLog: join(OUT, "audit-views-network-log.json"),
+    video: videoArtifact ? join(OUT, videoArtifact) : null,
   },
   checks,
   pass: fails === 0,
