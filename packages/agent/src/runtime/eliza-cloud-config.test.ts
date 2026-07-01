@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   applyCloudConfigToEnv,
+  cloudApiKeyFingerprint,
   ensureProvisionedCloudContainerConfig,
   shouldStartElizaCloudThinClient,
 } from "./eliza.ts";
@@ -462,5 +463,71 @@ describe("provisioned cloud container topology (#9887)", () => {
 
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     expect(shouldStartElizaCloudThinClient(config)).toBe(false);
+  });
+});
+
+describe("stale vault/config key clobber guard (#11038)", () => {
+  const cloudConfig = (apiKey: string): ElizaConfig =>
+    ({
+      cloud: {
+        enabled: true,
+        apiKey,
+        connection: { provider: "eliza-cloud" },
+      },
+    }) as unknown as ElizaConfig;
+
+  it("warns with fingerprints when the config key differs from a non-empty env key (config still wins)", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    process.env.ELIZAOS_CLOUD_API_KEY =
+      "eliza_real_key_0123456789012345678901234567890123456789012345678901234567890123";
+    const placeholder = "eliza_test_placeholder_0123456";
+
+    applyCloudConfigToEnv(cloudConfig(placeholder));
+
+    // The config/vault value wins (documented behavior)…
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe(placeholder);
+    // …but the override is loudly fingerprinted so 401s are diagnosable.
+    const msg = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(msg).toContain("differs from process.env.ELIZAOS_CLOUD_API_KEY");
+    // Fingerprints of both keys (first-6 + computed length), never the secret.
+    expect(msg).toContain(`eliza_…(len ${placeholder.length})`);
+    expect(msg).toContain("(len 79)");
+    expect(msg).toContain("#11038");
+    // Never the full secret.
+    expect(msg).not.toContain("0123456789012345678901234567890123456789");
+    warn.mockRestore();
+  });
+
+  it("does not warn when config and env agree", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_same_key_012345678901234567890123456789";
+    applyCloudConfigToEnv(
+      cloudConfig("eliza_same_key_012345678901234567890123456789"),
+    );
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("differs from")),
+    ).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("does not warn when there is no env key to clobber", () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    applyCloudConfigToEnv(cloudConfig("eliza_fresh_key_01234567890123456789"));
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe(
+      "eliza_fresh_key_01234567890123456789",
+    );
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("differs from")),
+    ).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("fingerprints keys without leaking them", () => {
+    expect(cloudApiKeyFingerprint(undefined)).toBe("(none)");
+    expect(cloudApiKeyFingerprint("  ")).toBe("(none)");
+    expect(cloudApiKeyFingerprint("eliza_abcdef123456")).toBe(
+      "eliza_…(len 18)",
+    );
   });
 });
