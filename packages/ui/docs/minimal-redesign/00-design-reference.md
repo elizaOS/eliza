@@ -154,10 +154,13 @@ inline-SVG icons → no badges/tags/dividers → opacity/translate motion → re
 > widgets render DIRECTLY on the wallpaper: no tile fill, no border, no corner radius.
 > Their whole affordance is the icon + graded-white text + whitespace/rank separation;
 > hover/press is opacity + transform, never a background fill. The `no-widget-chrome-gate`
-> test enforces this: any widget container (marked `data-widget-container`) that
-> reintroduces a border, a background fill, or a `rounded-*` fails the build. When a new
-> home widget needs a container, stamp it with the marker and keep it chromeless; borders,
-> fills, and radii stay for the glass surfaces, not widgets.
+> test enforces this by scanning the widget component files: any single container
+> className that reintroduces the full glass-card triad — a corner radius (`rounded-sm`…`3xl`)
+> AND an explicit colored border AND a translucent background fill together — fails the
+> build. Legitimate inner content is unaffected (icon tiles `rounded-lg bg-white/10`,
+> `rounded-full` status dots/pills, inner rows), since none combine all three. When a new
+> home widget needs a container, keep it chromeless; borders, fills, and radii stay for the
+> glass surfaces, not widgets.
 
 ---
 
