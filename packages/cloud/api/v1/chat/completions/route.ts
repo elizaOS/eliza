@@ -987,9 +987,6 @@ export async function handleChatCompletionsPOST(
 
     const tBeforeReserve = Date.now();
     let reservation: CreditReservation | null = null;
-    let appCreditsInfo:
-      | { appId: string; estimatedBaseCost: number; app: typeof monetizedApp }
-      | undefined;
     // #9899 Tier-2: set when the optimistic off-path billing branch is taken;
     // replaces the reservation settler with a deferred actual-cost debit.
     let optimisticSettler:
@@ -997,7 +994,6 @@ export async function handleChatCompletionsPOST(
       | null = null;
 
     if (useAppCredits && appId && monetizedApp) {
-      // App credits path
       const { totalCost } = await calculateCost(
         normalizedModel,
         provider,
@@ -1005,42 +1001,43 @@ export async function handleChatCompletionsPOST(
         estimatedOutputTokens,
         billingSource,
       );
-      const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
-        appId,
-        totalCost,
-      );
 
-      const balanceCheck = await appCreditsService.checkBalance(
-        appId,
-        user.id,
-        costWithMarkup.totalCost,
-      );
-      if (!balanceCheck.sufficient) {
-        return addCorsHeaders(
-          Response.json(
-            {
-              error: {
-                message: `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
-                type: "insufficient_quota",
-                code: "insufficient_credits",
+      try {
+        reservation = await appCreditsService.reserveInferenceCredits({
+          appId,
+          userId: user.id,
+          estimatedBaseCost: totalCost,
+          description: `Chat completion: ${model}`,
+          idempotencyKey,
+          metadata: {
+            model,
+            provider,
+            billingSource,
+            requestId,
+            route: "chat_completions",
+            streaming: request.stream === true,
+            estimatedInputTokens,
+            estimatedOutputTokens,
+          },
+          app: monetizedApp,
+        });
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          return addCorsHeaders(
+            Response.json(
+              {
+                error: {
+                  message: `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
+                  type: "insufficient_quota",
+                  code: "insufficient_credits",
+                },
               },
-            },
-            { status: 402 },
-          ),
-        );
+              { status: 402 },
+            ),
+          );
+        }
+        throw error;
       }
-
-      // No upfront debit happens for the app-credits flow: the anonymous
-      // reservation records no charge, and the actual debit lands on the org balance
-      // inside `appCreditsService.reconcileCredits` after the call resolves.
-      // Reporting estimatedBaseCost=0 makes reconcile charge the full actual
-      // cost as the diff, instead of treating the estimate as already paid.
-      appCreditsInfo = {
-        appId,
-        estimatedBaseCost: 0,
-        app: monetizedApp,
-      };
-      reservation = creditsService.createAnonymousReservation();
     } else {
       // Organization credits path. #9899 Tier-2: when optimistic billing is
       // enabled AND this org's balance comfortably clears SAFE_BALANCE_THRESHOLD,
@@ -1247,7 +1244,6 @@ export async function handleChatCompletionsPOST(
           request,
           user,
           apiKey ? { id: apiKey.id } : null,
-          appCreditsInfo,
           affiliateCode,
           idempotencyKey,
           requestId,
@@ -1268,7 +1264,6 @@ export async function handleChatCompletionsPOST(
           request,
           user,
           apiKey ? { id: apiKey.id } : null,
-          appCreditsInfo,
           affiliateCode,
           idempotencyKey,
           requestId,
@@ -1356,9 +1351,6 @@ async function handleStreamingRequest(
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo:
-    | { appId: string; estimatedBaseCost: number; app: unknown }
-    | undefined,
   affiliateCode: string | null,
   idempotencyKey: string,
   requestId: string,
@@ -1425,26 +1417,6 @@ async function handleStreamingRequest(
         };
         const billing = await billUsage(billingContext, usage);
         const reconciliation = await settleReservation(billing.totalCost);
-
-        // Handle app credits reconciliation
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Chat reconciliation: ${model}`,
-            // #10423: stable per-request key so a settlement retry doesn't
-            // double-credit the app creator's redeemable earnings.
-            metadata: {
-              model,
-              provider,
-              billingSource,
-              streaming: true,
-              idempotencyKey,
-            },
-          });
-        }
 
         const usageRecord = await recordUsageAnalytics(
           billingContext,
@@ -1750,9 +1722,6 @@ async function handleNonStreamingRequest(
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo:
-    | { appId: string; estimatedBaseCost: number; app: unknown }
-    | undefined,
   affiliateCode: string | null,
   idempotencyKey: string,
   requestId: string,
@@ -1852,26 +1821,6 @@ async function handleNonStreamingRequest(
         };
         const billing = await billUsage(billingContext, result.usage);
         const reconciliation = await settleReservation(billing.totalCost);
-
-        // Handle app credits
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Chat: ${model}`,
-            // #10423: stable per-request key so a non-streaming settlement retry
-            // doesn't double-credit the app creator's redeemable earnings.
-            metadata: {
-              model,
-              provider,
-              billingSource,
-              streaming: false,
-              idempotencyKey,
-            },
-          });
-        }
 
         const usageRecord = await recordUsageAnalytics(
           billingContext,

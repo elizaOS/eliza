@@ -116,6 +116,7 @@
 		"voice:endurance": "node native/verify/thirty_turn_endurance_harness.mjs",
 		"voice:mobile-rss": "node native/verify/mobile_peak_rss_harness.mjs",
 		"eliza1:gates": "node native/verify/eliza1_gates_collect.mjs",
+		"lifecycle:matrix": "bun scripts/local-model-lifecycle-matrix.ts",
 		"corpus:generate": "bun run scripts/generate-voice-corpus.ts",
 		"roundtrip:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/mixed-real-roundtrip.ts",
 		"robustness:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/real-robustness-asr.ts",

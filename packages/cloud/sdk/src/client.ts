@@ -1,6 +1,7 @@
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
+  type ActivateAppFrontendResponse,
   type AffiliateCodeResponse,
   type AgentLifecycleResponse,
   type AgentListResponse,
@@ -40,10 +41,14 @@ import {
   type CreateAppCreditsCheckoutResponse,
   type CreateAppInput,
   type CreateAppResponse,
+  type CreateBookingInput,
+  type CreateBookingResponse,
   type CreateContainerRequest,
   type CreateContainerResponse,
   type CreateCreditsCheckoutRequest,
   type CreateCreditsCheckoutResponse,
+  type CreateInfluencerProfileInput,
+  type CreateInfluencerProfileResponse,
   type CreateRedemptionRequest,
   type CreateRedemptionResponse,
   type CreateX402PaymentRequest,
@@ -54,6 +59,8 @@ import {
   DEFAULT_ELIZA_CLOUD_API_ORIGIN,
   DEFAULT_ELIZA_CLOUD_BASE_URL,
   type DeleteAppResponse,
+  type DeployAppFrontendInput,
+  type DeployAppFrontendResponse,
   type DeployAppInput,
   type DeployAppResponse,
   type ElizaCloudClientOptions,
@@ -72,7 +79,9 @@ import {
   type LinkAffiliateResponse,
   type ListAdSlotsResponse,
   type ListAppChargesResponse,
+  type ListAppFrontendDeploymentsResponse,
   type ListAppsResponse,
+  type ListInfluencersResponse,
   type ListRedemptionsResponse,
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
@@ -794,6 +803,47 @@ export class ElizaCloudClient {
     });
   }
 
+  /**
+   * `POST /api/v1/apps/:id/frontend` — publish a managed static-site bundle
+   * (create → content-address files to R2 → finalize manifest → activate) in
+   * one call. Returns the (by default active) deployment. The site is then
+   * served with SEO + page analytics at the app's frontend host / custom domain.
+   */
+  deployAppFrontend(
+    appId: string,
+    input: DeployAppFrontendInput,
+  ): Promise<DeployAppFrontendResponse> {
+    return this.request<DeployAppFrontendResponse>(
+      "POST",
+      `/api/v1/apps/${encodeURIComponent(appId)}/frontend`,
+      { json: input },
+    );
+  }
+
+  /** `GET /api/v1/apps/:id/frontend` — list frontend deployments + the active id. */
+  listAppFrontendDeployments(
+    appId: string,
+  ): Promise<ListAppFrontendDeploymentsResponse> {
+    return this.request<ListAppFrontendDeploymentsResponse>(
+      "GET",
+      `/api/v1/apps/${encodeURIComponent(appId)}/frontend`,
+    );
+  }
+
+  /**
+   * `POST /api/v1/apps/:id/frontend/:deploymentId/activate` — make a deployment
+   * the live one. Activating an older deployment is a rollback.
+   */
+  activateAppFrontend(
+    appId: string,
+    deploymentId: string,
+  ): Promise<ActivateAppFrontendResponse> {
+    return this.request<ActivateAppFrontendResponse>(
+      "POST",
+      `/api/v1/apps/${encodeURIComponent(appId)}/frontend/${encodeURIComponent(deploymentId)}/activate`,
+    );
+  }
+
   /** `DELETE /api/v1/apps/:id` — delete an app and clean up its resources. */
   deleteApp(appId: string): Promise<DeleteAppResponse> {
     return this.routes.deleteApiV1AppsById<DeleteAppResponse>({
@@ -856,6 +906,39 @@ export class ElizaCloudClient {
     return this.request<ListAdSlotsResponse>(
       "GET",
       "/api/v1/marketing/inventory",
+    );
+  }
+
+  /** `POST /api/v1/marketing/influencers` — publish an influencer profile to earn from bookings (#10687). */
+  createInfluencerProfile(
+    input: CreateInfluencerProfileInput,
+  ): Promise<CreateInfluencerProfileResponse> {
+    return this.request<CreateInfluencerProfileResponse>(
+      "POST",
+      "/api/v1/marketing/influencers",
+      {
+        json: input,
+      },
+    );
+  }
+
+  /** `GET /api/v1/marketing/influencers` — browse active influencer profiles. */
+  listInfluencers(niche?: string): Promise<ListInfluencersResponse> {
+    const q = niche ? `?niche=${encodeURIComponent(niche)}` : "";
+    return this.request<ListInfluencersResponse>(
+      "GET",
+      `/api/v1/marketing/influencers${q}`,
+    );
+  }
+
+  /** `POST /api/v1/marketing/influencers/bookings` — fund an escrowed influencer booking (#10687). */
+  createBooking(input: CreateBookingInput): Promise<CreateBookingResponse> {
+    return this.request<CreateBookingResponse>(
+      "POST",
+      "/api/v1/marketing/influencers/bookings",
+      {
+        json: input,
+      },
     );
   }
 

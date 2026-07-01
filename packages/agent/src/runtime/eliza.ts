@@ -94,6 +94,7 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
+  EmbeddingDimensionProbeError,
   type Entity,
   type LogEntry,
   logger,
@@ -909,10 +910,22 @@ export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
 ): Promise<void> {
-  const { detectEmbeddingPreset } = await import(
-    "@elizaos/plugin-local-inference/runtime/embedding-presets"
-  );
-  const detectedPreset = detectEmbeddingPreset();
+  const { detectEmbeddingPreset, selectEmbeddingPresetFromHardware } =
+    await import("@elizaos/plugin-local-inference/runtime/embedding-presets");
+  let detectedPreset = detectEmbeddingPreset();
+  let detectedGpuBackend: "cuda" | "metal" | "vulkan" | null = null;
+  try {
+    const { probeHardware } = await import(
+      "@elizaos/plugin-local-inference/services"
+    );
+    const hardware = await probeHardware();
+    detectedPreset = selectEmbeddingPresetFromHardware(hardware);
+    detectedGpuBackend = hardware.gpu?.backend ?? null;
+  } catch (err) {
+    logger.warn(
+      `[eliza] Local embedding hardware probe failed; using sync preset fallback: ${formatError(err)}`,
+    );
+  }
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
     384, 512, 768, 1024, 1536, 2048, 3072,
   ]);
@@ -1001,10 +1014,18 @@ export async function configureLocalEmbeddingPlugin(
   }
 
   // Performance tuning
-  // Disable mmap on Metal to prevent "different text" errors with some models
+  // Disable mmap on Metal to prevent "different text" errors with some models.
+  // CUDA/Vulkan keep mmap enabled; the model is tiny and the file-backed load is
+  // the safer default there.
+  const resolvedGpuLayers =
+    configuredGpuLayers ?? process.env.LOCAL_EMBEDDING_GPU_LAYERS;
+  const shouldDisableMmap =
+    resolvedGpuLayers === "auto" &&
+    (detectedGpuBackend === "metal" ||
+      (detectedGpuBackend === null && process.platform === "darwin"));
   setEnvIfMissing(
     "LOCAL_EMBEDDING_USE_MMAP",
-    detectedPreset.gpuLayers === "auto" ? "false" : "true",
+    shouldDisableMmap ? "false" : "true",
   );
 
   setEnvIfMissing("MODELS_DIR", path.join(resolveStateDir(), "models"));
@@ -4599,6 +4620,17 @@ export async function startEliza(
   const initializeCoreRuntime = async (): Promise<void> => {
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
+    // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
+    // failure (EmbeddingDimensionProbeError is caught in core, which flips the
+    // runtime into embedding-disabled mode instead of writing vectors the SQL
+    // adapter would silently drop). Surface the degraded state at the boot
+    // layer too — the deferred re-probe below re-enables embeddings if a
+    // provider recovers once late plugins register.
+    if (runtime.isEmbeddingGenerationDisabled()) {
+      logger.warn(
+        "[eliza] boot continuing with embedding generation disabled: every registered TEXT_EMBEDDING provider failed the dimension probe; memory writes persist without vectors until the deferred re-probe finds a working provider",
+      );
+    }
     await prepareRuntimeForTrajectoryCapture(
       runtime,
       "runtime.initialize()",
@@ -5228,11 +5260,22 @@ export async function startEliza(
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
-      logger.warn(
-        `[eliza] deferred embedding-dimension re-probe failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      if (err instanceof EmbeddingDimensionProbeError) {
+        // Non-fatal: core already disabled embedding generation for this
+        // runtime, so memory writes skip vectors instead of being silently
+        // dropped on dimension mismatch. Log the per-provider failures so the
+        // degraded state is diagnosable from boot logs.
+        logger.warn(
+          { attempts: err.attempts },
+          "[eliza] deferred embedding-dimension re-probe: every registered TEXT_EMBEDDING provider failed; embedding generation stays disabled (memory writes persist without vectors)",
+        );
+      } else {
+        logger.warn(
+          `[eliza] deferred embedding-dimension re-probe failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
     await seedBundledDocumentsIfEnabled();
     await installServerSideWebSearchIfAvailable();

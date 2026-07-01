@@ -56,7 +56,21 @@ const addCredits = mock();
 const reserveAndDeductCredits = mock();
 const refundCredits = mock();
 
+class MockInsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
 mock.module("../credits", () => ({
+  InsufficientCreditsError: MockInsufficientCreditsError,
   creditsService: {
     addCredits,
     reserveAndDeductCredits,
@@ -324,6 +338,85 @@ describe("deductCredits — debits the same org ledger", () => {
     expect(negativeAppEarnings.length).toBe(1);
     expect(negativeAppEarnings[0][1]).toBeCloseTo(-0.1, 10);
     expect(reduceEarnings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reserveInferenceCredits — holds app inference cost before model work", () => {
+  test("atomically debits the estimated marked-up cost up front", async () => {
+    const reservation = await freshService().reserveInferenceCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      description: "messages estimate",
+      idempotencyKey: "req-1",
+      metadata: { model: "anthropic/claude-sonnet-4" },
+    });
+
+    expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
+    const debit = reserveAndDeductCredits.mock.calls[0][0];
+    expect(debit.organizationId).toBe(ORG_ID);
+    expect(debit.amount).toBeCloseTo(1.1, 10);
+    expect(debit.metadata.idempotencyKey).toBe("req-1:estimate");
+    expect(reservation.reservedAmount).toBeCloseTo(1.1, 10);
+    expect(reservation.reservationTransactionId).toBe("tx-2");
+    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-1:estimate:inference_markup");
+  });
+
+  test("fails before model work when the upfront app hold cannot be collected", async () => {
+    reserveAndDeductCredits.mockResolvedValue({
+      success: false,
+      newBalance: 0.05,
+      transaction: null,
+    });
+
+    await expect(
+      freshService().reserveInferenceCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        estimatedBaseCost: 1,
+        description: "messages estimate",
+      }),
+    ).rejects.toThrow("Insufficient credits");
+
+    expect(trackAppUserActivity).not.toHaveBeenCalled();
+    expect(addInferenceEarnings).not.toHaveBeenCalled();
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  test("settling to zero refunds the upfront app hold and reverses creator earnings", async () => {
+    const reservation = await freshService().reserveInferenceCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      description: "messages estimate",
+      idempotencyKey: "req-2",
+    });
+
+    const result = await reservation.reconcile(0);
+
+    expect(result?.adjustmentType).toBe("refund");
+    expect(refundCredits).toHaveBeenCalledTimes(1);
+    expect(refundCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
+    expect(refundCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
+    expect(reduceEarnings).toHaveBeenCalledTimes(1);
+    expect(reduceEarnings.mock.calls[0][0].amount).toBeCloseTo(0.1, 10);
+  });
+
+  test("uses distinct stable creator-earning keys for estimate and overage", async () => {
+    const reservation = await freshService().reserveInferenceCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      description: "messages estimate",
+      idempotencyKey: "req-3",
+    });
+
+    const result = await reservation.reconcile(2);
+
+    expect(result?.adjustmentType).toBe("overage");
+    expect(addEarnings).toHaveBeenCalledTimes(2);
+    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-3:estimate:inference_markup");
+    expect(addEarnings.mock.calls[1][0].sourceId).toBe("req-3:reconcile:inference_markup");
   });
 });
 

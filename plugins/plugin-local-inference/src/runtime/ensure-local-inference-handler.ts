@@ -68,7 +68,10 @@ import {
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
-import { EMBEDDING_PRESETS } from "./embedding-presets";
+import {
+	EMBEDDING_PRESETS,
+	selectEmbeddingPresetFromHardware,
+} from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
 type GenerateTextHandler = (
@@ -608,8 +611,12 @@ interface DesktopEmbeddingConfig {
  * `LOCAL_EMBEDDING_*` env that `configureLocalEmbeddingPlugin` and the boot
  * warmup set, falling back to the compact gte-small preset.
  */
-function resolveDesktopEmbeddingConfig(): DesktopEmbeddingConfig {
-	const preset = EMBEDDING_PRESETS.performance;
+function resolveDesktopEmbeddingConfig(
+	hardware?: Awaited<ReturnType<typeof probeHardware>>,
+): DesktopEmbeddingConfig {
+	const preset = hardware
+		? selectEmbeddingPresetFromHardware(hardware)
+		: EMBEDDING_PRESETS.performance;
 	const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
 	const model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
 	const ctxEnv = Number(process.env.LOCAL_EMBEDDING_CONTEXT_SIZE);
@@ -624,7 +631,9 @@ function resolveDesktopEmbeddingConfig(): DesktopEmbeddingConfig {
 			? 999
 			: Number.isFinite(gpuLayersNum)
 				? gpuLayersNum
-				: 0;
+				: preset.gpuLayers === "auto"
+					? 999
+					: 0;
 	return { modelsDir, model, contextSize, gpuLayers };
 }
 
@@ -760,7 +769,8 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 function makeFusedEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
 		const text = extractEmbeddingText(params);
-		const cfg = resolveDesktopEmbeddingConfig();
+		const hardware = await probeHardware().catch(() => undefined);
+		const cfg = resolveDesktopEmbeddingConfig(hardware);
 		const fused = await getFusedEmbeddingHandle(cfg);
 		if (!fused) {
 			throw new LocalInferenceUnavailableError(

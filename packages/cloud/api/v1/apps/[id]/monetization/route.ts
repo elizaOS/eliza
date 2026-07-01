@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appCreditsService } from "@/lib/services/app-credits";
+import { isAppMonetizationApproved } from "@/lib/services/app-review";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -125,6 +126,23 @@ async function __hono_PUT(
           details: validationResult.error.format(),
         },
         { status: 400 },
+      );
+    }
+
+    // Compliance gate (#10732): monetization can only be *enabled* once the
+    // automated review has approved the app. Disabling is always allowed.
+    if (
+      validationResult.data.monetizationEnabled === true &&
+      !isAppMonetizationApproved(app)
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "App must pass compliance review before monetization can be enabled. Submit it for review and reach 'approved' status first.",
+          review_status: app.review_status,
+        },
+        { status: 403 },
       );
     }
 

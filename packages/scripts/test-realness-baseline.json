@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "description": "Reference snapshot for packages/scripts/test-realness-audit.mjs. Only the enforced categories (focusedOnly, todoTest, xSkippedTest) gate CI, and they are held at zero regardless of this file; the remaining counts are report-only deltas. Regenerate with --print-baseline.",
+  "thresholds": {
+    "focusedOnly": 0,
+    "skippedTest": 263,
+    "todoTest": 0,
+    "conditionalSkip": 147,
+    "xSkippedTest": 0,
+    "envEarlyReturn": 11,
+    "envConditionalSuite": 1,
+    "tautologicalAssertion": 81,
+    "mockCallOnlyAssertion": 664,
+    "untrackedSkips": 410
+  }
+}

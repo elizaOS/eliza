@@ -54,10 +54,9 @@ import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
-import {
-  type CreditReconciliationResult,
-  type CreditReservation,
-  creditsService,
+import type {
+  CreditReconciliationResult,
+  CreditReservation,
 } from "@/lib/services/credits";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
@@ -139,10 +138,6 @@ type AnthropicStopReason =
   | "tool_use";
 
 type ToolNameMap = Map<string, string>;
-type AppCreditsInfo = {
-  appId: string;
-  estimatedBaseCost: number;
-};
 
 function normalizeModelId(model: string): string {
   const canonicalCerebrasModel = canonicalizeCerebrasModelId(model);
@@ -614,7 +609,6 @@ app.post("/", async (c) => {
     resolveAiProviderSource(model) ?? "bitrouter";
 
   let reservation: CreditReservation;
-  let appCreditsInfo: AppCreditsInfo | undefined;
 
   if (useAppCredits && appId && monetizedApp) {
     const { totalCost } = await calculateCost(
@@ -624,29 +618,36 @@ app.post("/", async (c) => {
       estimatedOutputTokens,
       billingSource,
     );
-    const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
-      appId,
-      totalCost,
-    );
-    const balanceCheck = await appCreditsService.checkBalance(
-      appId,
-      user.id,
-      costWithMarkup.totalCost,
-    );
+    const idempotencyKey = crypto.randomUUID();
 
-    if (!balanceCheck.sufficient) {
-      return anthropicError(
-        "rate_limit_error",
-        `Insufficient cloud credits. Required: $${costWithMarkup.totalCost.toFixed(4)}`,
-        429,
-      );
+    try {
+      reservation = await appCreditsService.reserveInferenceCredits({
+        appId,
+        userId: user.id,
+        estimatedBaseCost: totalCost,
+        description: `Messages API: ${model}`,
+        idempotencyKey,
+        metadata: {
+          model,
+          provider,
+          billingSource,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          streaming: Boolean(request.stream),
+        },
+        app: monetizedApp,
+      });
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        return anthropicError(
+          "rate_limit_error",
+          `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
+          429,
+        );
+      }
+
+      throw error;
     }
-
-    appCreditsInfo = {
-      appId,
-      estimatedBaseCost: 0,
-    };
-    reservation = creditsService.createAnonymousReservation();
   } else {
     try {
       reservation = await reserveCredits(
@@ -695,7 +696,6 @@ app.post("/", async (c) => {
         request,
         user,
         apiKey,
-        appCreditsInfo,
         affiliateCode,
         startTime,
         estimatedInputTokens,
@@ -716,7 +716,6 @@ app.post("/", async (c) => {
       request,
       user,
       apiKey,
-      appCreditsInfo,
       affiliateCode,
       startTime,
       safeParams,
@@ -760,7 +759,6 @@ async function handleNonStream(
   request: AnthropicMessagesRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo: AppCreditsInfo | undefined,
   affiliateCode: string | null,
   startTime: number,
   safeParams: ReturnType<typeof getSafeModelParams>,
@@ -779,9 +777,6 @@ async function handleNonStream(
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
-  // #10423: stable per-request key so a settlement retry doesn't double-credit
-  // the app creator's redeemable earnings.
-  const requestId = crypto.randomUUID();
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -824,23 +819,6 @@ async function handleNonStream(
       result.usage,
     );
     await settleReservation(billing.totalCost);
-
-    if (appCreditsInfo) {
-      await appCreditsService.reconcileCredits({
-        appId: appCreditsInfo.appId,
-        userId: user.id,
-        estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-        actualBaseCost: billing.totalCost,
-        description: `Messages API: ${model}`,
-        metadata: {
-          model,
-          provider,
-          billingSource,
-          streaming: false,
-          idempotencyKey: requestId,
-        },
-      });
-    }
 
     await recordUsageAnalytics(
       {
@@ -919,7 +897,6 @@ async function handleStream(
   request: AnthropicMessagesRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo: AppCreditsInfo | undefined,
   affiliateCode: string | null,
   startTime: number,
   estimatedInputTokens: number,
@@ -940,9 +917,6 @@ async function handleStream(
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
-  // #10423: stable per-request key so a streaming settlement retry doesn't
-  // double-credit the app creator's redeemable earnings.
-  const requestId = crypto.randomUUID();
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -984,23 +958,6 @@ async function handleStream(
           totalUsage,
         );
         await settleReservation(billing.totalCost);
-
-        if (appCreditsInfo) {
-          await appCreditsService.reconcileCredits({
-            appId: appCreditsInfo.appId,
-            userId: user.id,
-            estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
-            actualBaseCost: billing.totalCost,
-            description: `Messages API stream: ${model}`,
-            metadata: {
-              model,
-              provider,
-              billingSource,
-              streaming: true,
-              idempotencyKey: requestId,
-            },
-          });
-        }
 
         await recordUsageAnalytics(
           {

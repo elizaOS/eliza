@@ -191,21 +191,33 @@ jobs:
         # sibling deploy job on the same run succeeded. Retry with a per-attempt
         # timeout so a stuck/killed install aborts and retries instead of failing
         # the deploy — the same resilience the checkout step already uses (#10310).
+        # The cap must exceed the box's real worst-case SLOW install, not just
+        # catch hangs: healthy installs here run ~190-300s+ (run 28532809562's
+        # first attempt already blew a 300s cap and only survived via retry),
+        # and on 2026-07-01 run 28545551059 failed 3/3 attempts at a 300s cap
+        # while making real progress — wedging prod for hours (#10839). 900s
+        # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
           install_cache="$PWD/.bun-install-cache"
+          install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
               echo "::error::bun install failed after ${attempt} attempts"
               exit 1
             fi
-            echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
-            rm -rf node_modules "$install_cache"
+            echo "::warning::bun install attempt ${attempt} timed out (>${install_timeout}s) or failed; retrying"
+            # Keep the download cache warm for the retry — the timeout bites in
+            # the link phase, not download, and a cold cache makes the retry
+            # SLOWER (more likely to time out again). Nuke it only before the
+            # final attempt so a corrupted cache entry can't fail all three.
+            rm -rf node_modules
+            if [ "$attempt" -eq 2 ]; then rm -rf "$install_cache"; fi
           done
           git diff --exit-code -- bun.lock
 
@@ -359,8 +371,10 @@ jobs:
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
+    # previews always use GitHub-hosted runners because the shared deploy robot
+    # can fail before any cleanup step while staging downloaded setup actions.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -463,21 +477,33 @@ jobs:
         # sibling deploy job on the same run succeeded. Retry with a per-attempt
         # timeout so a stuck/killed install aborts and retries instead of failing
         # the deploy — the same resilience the checkout step already uses (#10310).
+        # The cap must exceed the box's real worst-case SLOW install, not just
+        # catch hangs: healthy installs here run ~190-300s+ (run 28532809562's
+        # first attempt already blew a 300s cap and only survived via retry),
+        # and on 2026-07-01 run 28545551059 failed 3/3 attempts at a 300s cap
+        # while making real progress — wedging prod for hours (#10839). 900s
+        # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
           install_cache="$PWD/.bun-install-cache"
+          install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
               echo "::error::bun install failed after ${attempt} attempts"
               exit 1
             fi
-            echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
-            rm -rf node_modules "$install_cache"
+            echo "::warning::bun install attempt ${attempt} timed out (>${install_timeout}s) or failed; retrying"
+            # Keep the download cache warm for the retry — the timeout bites in
+            # the link phase, not download, and a cold cache makes the retry
+            # SLOWER (more likely to time out again). Nuke it only before the
+            # final attempt so a corrupted cache entry can't fail all three.
+            rm -rf node_modules
+            if [ "$attempt" -eq 2 ]; then rm -rf "$install_cache"; fi
           done
           git diff --exit-code -- bun.lock
 
@@ -662,8 +688,10 @@ jobs:
     # Keep the deploy fleet configurable while Cloud ops converges on the
     # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
     # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
+    # previews always use GitHub-hosted runners because the shared deploy robot
+    # can fail before any cleanup step while staging downloaded setup actions.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -766,21 +794,33 @@ jobs:
         # sibling deploy job on the same run succeeded. Retry with a per-attempt
         # timeout so a stuck/killed install aborts and retries instead of failing
         # the deploy — the same resilience the checkout step already uses (#10310).
+        # The cap must exceed the box's real worst-case SLOW install, not just
+        # catch hangs: healthy installs here run ~190-300s+ (run 28532809562's
+        # first attempt already blew a 300s cap and only survived via retry),
+        # and on 2026-07-01 run 28545551059 failed 3/3 attempts at a 300s cap
+        # while making real progress — wedging prod for hours (#10839). 900s
+        # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
         run: |
           set -euo pipefail
           install_cache="$PWD/.bun-install-cache"
+          install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-900}"
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout 300s bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
               echo "::error::bun install failed after ${attempt} attempts"
               exit 1
             fi
-            echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
-            rm -rf node_modules "$install_cache"
+            echo "::warning::bun install attempt ${attempt} timed out (>${install_timeout}s) or failed; retrying"
+            # Keep the download cache warm for the retry — the timeout bites in
+            # the link phase, not download, and a cold cache makes the retry
+            # SLOWER (more likely to time out again). Nuke it only before the
+            # final attempt so a corrupted cache entry can't fail all three.
+            rm -rf node_modules
+            if [ "$attempt" -eq 2 ]; then rm -rf "$install_cache"; fi
           done
           git diff --exit-code -- bun.lock
 
