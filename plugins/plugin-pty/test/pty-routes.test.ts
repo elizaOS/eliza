@@ -18,6 +18,7 @@ interface Harness {
   runtime: IAgentRuntime;
   svc: PtyService | null;
   calls: SpawnCall[];
+  fake: ReturnType<typeof makeFakeSpawn>;
 }
 
 function makeHarness(opts?: {
@@ -33,7 +34,7 @@ function makeHarness(opts?: {
     getSetting: (k: string) => settings[k],
     getService: (t: string) => (t === "PTY_SERVICE" ? svc : null),
   } as unknown as IAgentRuntime;
-  return { runtime, svc, calls: fake.calls };
+  return { runtime, svc, calls: fake.calls, fake };
 }
 
 function ctx(
@@ -151,6 +152,30 @@ describe("GET + DELETE /api/pty/sessions", () => {
     const res = await routeByName("pty-list-sessions")(ctx(h.runtime));
     expect(res.status).toBe(200);
     expect((res.body as { sessions: unknown[] }).sessions).toHaveLength(1);
+  });
+
+  it("returns buffered output for a live session", async () => {
+    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const spawn = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    const id = (spawn.body as { session: { sessionId: string } }).session
+      .sessionId;
+    h.fake.ptys[0].emitData("ready> ");
+
+    const res = await routeByName("pty-buffered-output")(
+      ctx(h.runtime, undefined, { id }),
+    );
+    expect(res.status).toBe(200);
+    expect((res.body as { output: string }).output).toBe("ready> ");
+  });
+
+  it("404s buffered output for an unknown session so clients can fall back", async () => {
+    const h = makeHarness({ settings: { OPENAI_API_KEY: "sk" } });
+    const res = await routeByName("pty-buffered-output")(
+      ctx(h.runtime, undefined, { id: "missing" }),
+    );
+    expect(res.status).toBe(404);
   });
 
   it("stops a session by id", async () => {

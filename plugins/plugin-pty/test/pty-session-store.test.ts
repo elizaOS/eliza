@@ -56,6 +56,23 @@ describe("PtySessionStore.start", () => {
     ]);
   });
 
+  it("buffers PTY output for clients that subscribe after spawn", async () => {
+    const { store, bridge, fake } = makeStore();
+    const info = await store.start(spec());
+    fake.ptys[0].emitData("prompt> ");
+    expect(store.getBufferedOutput(info.sessionId)).toBe("prompt> ");
+
+    const events: SessionOutputEvent[] = [];
+    bridge.on("session_output", (e) => events.push(e as SessionOutputEvent));
+    fake.ptys[0].emitData("after-subscribe");
+    expect(events).toEqual([
+      { sessionId: info.sessionId, data: "after-subscribe" },
+    ]);
+    expect(store.getBufferedOutput(info.sessionId)).toBe(
+      "prompt> after-subscribe",
+    );
+  });
+
   it("keeps sessions isolated — output carries the right sessionId", async () => {
     const { store, bridge, fake } = makeStore();
     const seen: SessionOutputEvent[] = [];

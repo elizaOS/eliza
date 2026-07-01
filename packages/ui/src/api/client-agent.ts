@@ -4368,6 +4368,14 @@ ElizaClient.prototype.getPtyBufferedOutput = async function (
 ) {
   try {
     const res = await this.fetch<{ output: string }>(
+      `/api/pty/sessions/${encodeURIComponent(sessionId)}/buffered-output`,
+    );
+    return res.output ?? "";
+  } catch {
+    // Older coding-agent PTY sessions keep their buffer behind the legacy route.
+  }
+  try {
+    const res = await this.fetch<{ output: string }>(
       `/api/coding-agents/${encodeURIComponent(sessionId)}/buffered-output`,
     );
     return res.output ?? "";

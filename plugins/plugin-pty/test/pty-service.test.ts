@@ -57,6 +57,7 @@ describe("PtyService", () => {
     svc.consoleBridge.writeRaw(info.sessionId, "/help\r");
     expect(chunks).toEqual(["$ "]);
     expect(fake.ptys[0].written).toEqual(["/help\r"]);
+    expect(svc.getBufferedOutput(info.sessionId)).toBe("$ ");
   });
 
   it("stopSession kills the process; stop() tears everything down", async () => {

@@ -80,6 +80,11 @@ export class PtyService extends Service {
     return this.store.has(sessionId);
   }
 
+  /** Captured terminal output for clients that subscribe after spawn. */
+  getBufferedOutput(sessionId: string): string | undefined {
+    return this.store.getBufferedOutput(sessionId);
+  }
+
   async stop(): Promise<void> {
     await this.store.stopAll();
     logger.info("[plugin-pty] PTY_SERVICE stopped; all sessions killed");

@@ -21,6 +21,8 @@ const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 30;
 /** Hard cap on concurrent live sessions — a runaway backstop, not a real limit. */
 const DEFAULT_MAX_SESSIONS = 24;
+/** Per-session scrollback retained for clients that subscribe after spawn. */
+const DEFAULT_OUTPUT_BUFFER_CHARS = 200_000;
 /** How long an exited session's record lingers for a final drain before removal. */
 const EXITED_SESSION_TTL_MS = 15_000;
 
@@ -32,6 +34,7 @@ interface LiveSession {
   info: PtySessionInfo;
   pty: PtyHandle;
   disposers: PtyDisposable[];
+  outputBuffer: string;
   reapTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -201,7 +204,10 @@ export class PtySessionStore {
     };
 
     const disposers: PtyDisposable[] = [];
+    this.sessions.set(sessionId, { info, pty, disposers, outputBuffer: "" });
+
     const onData = pty.onData((data) => {
+      this.appendBufferedOutput(sessionId, data);
       this.bridge.emitOutput(sessionId, data);
     });
     if (onData) disposers.push(onData);
@@ -210,7 +216,6 @@ export class PtySessionStore {
     });
     if (onExit) disposers.push(onExit);
 
-    this.sessions.set(sessionId, { info, pty, disposers });
     logger.info(
       `[plugin-pty] started session ${sessionId} (${spec.label ?? spec.command}) pid=${pty.pid ?? "?"} cwd=${cwd}`,
     );
@@ -288,6 +293,22 @@ export class PtySessionStore {
   /** Whether a session currently exists (live or draining). */
   has(sessionId: string): boolean {
     return this.sessions.has(sessionId);
+  }
+
+  /** Scrollback captured for late websocket subscribers, or undefined if absent. */
+  getBufferedOutput(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.outputBuffer;
+  }
+
+  private appendBufferedOutput(sessionId: string, data: string): void {
+    if (!data) return;
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const next = session.outputBuffer + data;
+    session.outputBuffer =
+      next.length > DEFAULT_OUTPUT_BUFFER_CHARS
+        ? next.slice(next.length - DEFAULT_OUTPUT_BUFFER_CHARS)
+        : next;
   }
 
   private handleExit(sessionId: string, exitCode: number | null): void {

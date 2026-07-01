@@ -145,6 +145,20 @@ async function listHandler(
   return json(200, { sessions: svc.listSessions() });
 }
 
+/** GET /api/pty/sessions/:id/buffered-output — initial scrollback for late subscribers. */
+async function bufferedOutputHandler(
+  ctx: RouteHandlerContext,
+): Promise<RouteHandlerResult> {
+  const svc = getService(ctx);
+  if (!svc) return json(503, { error: "PTY_SERVICE is not available." });
+  const id = ctx.params?.id;
+  if (!id) return json(400, { error: "Missing session id." });
+  const output = svc.getBufferedOutput(id);
+  if (output === undefined)
+    return json(404, { error: "PTY session not found." });
+  return json(200, { output });
+}
+
 /** DELETE /api/pty/sessions/:id — kill a session. */
 async function stopHandler(
   ctx: RouteHandlerContext,
@@ -175,6 +189,13 @@ export const ptyRoutes: Route[] = [
     rawPath: true,
     name: "pty-list-sessions",
     routeHandler: listHandler,
+  },
+  {
+    type: "GET",
+    path: "/api/pty/sessions/:id/buffered-output",
+    rawPath: true,
+    name: "pty-buffered-output",
+    routeHandler: bufferedOutputHandler,
   },
   {
     type: "DELETE",
