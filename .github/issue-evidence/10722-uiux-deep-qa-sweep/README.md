@@ -44,3 +44,12 @@ desktop-landscape, and ipad-portrait). Curated captures:
 |------|------|
 | `audit-chat-desktop.png` / `audit-chat-mobile.png` | chat view, desktop + mobile |
 | `audit-settings-desktop.png` / `audit-settings-mobile.png` | settings view (incl. new Background section entry) |
+
+## Platform proof (real binaries, this branch)
+
+| platform | artifact | proof |
+|----------|----------|-------|
+| Web (Chromium) | `audit-*.png` + runner webm | audit:app 349/349; 12 boot-free real-input runners |
+| macOS desktop (packaged Electrobun `Eliza-dev.app`) | `desktop-packaged-launch-render.png` | launch-render + bottom-bar specs PASSED on the rebuilt signed bundle; relaunch-persistence spec red in this env only (empty renderer post-relaunch; artifacts under `packages/app/test-results/`) |
+| Android emulator (Pixel 7 AVD, API 35, real WebView, smoke build w/o local-inference lib) | `android-emu-home.png`, `android-emu-swipe-walkthrough.mp4`, `android-emu.logcat.txt` | APK installed + cold-launched; 51 on-device route/view specs passed (5 red: 4 need the on-device agent the smoke build omits; 1 = the pre-existing real-touch flick-commit gap tracked in #10722, identical pre/post this branch) |
+| iOS simulator | — | **N/A on this host**: no Xcode (CommandLineTools only — no simctl, no Simulator.app) |
