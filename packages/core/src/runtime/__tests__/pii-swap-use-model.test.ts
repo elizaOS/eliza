@@ -169,6 +169,82 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 		expect(seenPrompt).not.toContain("Dana Whitfield");
 	});
 
+	it("swaps PII in an IMAGE generation prompt (not skipped like binary models)", async () => {
+		const runtime = makeRuntime(true);
+		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
+		let seenPrompt = "";
+		runtime.registerModel(
+			ModelType.IMAGE,
+			async (_rt, params: { prompt: string }) => {
+				seenPrompt = params.prompt;
+				return { url: "img://x" };
+			},
+			"test",
+		);
+
+		await runtime.useModel(ModelType.IMAGE, {
+			prompt: "A watercolor portrait of Dana Whitfield in a garden.",
+		});
+
+		expect(seenPrompt).not.toContain("Dana Whitfield");
+		expect(seenPrompt).toContain("A watercolor portrait of ");
+	});
+
+	it("does NOT swap TEXT_EMBEDDING input (embeds the real text for stable retrieval)", async () => {
+		const runtime = makeRuntime(true);
+		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
+		let seenText = "";
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async (_rt, params: { text: string }) => {
+				seenText = params.text;
+				return [0.1, 0.2];
+			},
+			"test",
+		);
+
+		await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+			text: "Dana Whitfield asked about the renewal.",
+		});
+
+		// Embeddings must stay stable turn-to-turn, so the real text is embedded.
+		expect(seenText).toContain("Dana Whitfield");
+	});
+
+	it("degrades to regex-only (never crashes the call) when the NER recognizer throws", async () => {
+		const runtime = makeRuntime(true);
+		// A recognizer service whose recognizer always throws.
+		vi.spyOn(runtime, "getService").mockImplementation((name: string) =>
+			name === PII_ENTITY_RECOGNIZER_SERVICE
+				? ({
+						getRecognizer: () => ({
+							name: "boom",
+							recognize: async () => {
+								throw new Error("model backend exploded");
+							},
+						}),
+					} as never)
+				: null,
+		);
+		let seenPrompt = "";
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_rt, params: { prompt: string }) => {
+				seenPrompt = params.prompt;
+				return "ok";
+			},
+			"test",
+		);
+
+		// The call must succeed; the built-in regex recognizer still swaps the
+		// address even though the NER recognizer blew up.
+		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+			prompt: "Mail it to 1600 Amphitheatre Parkway, Mountain View, CA.",
+		});
+		expect(result).toBe("ok");
+		expect(seenPrompt).not.toContain("1600 Amphitheatre Parkway");
+	});
+
 	it("is a pure no-op when disabled", async () => {
 		const runtime = makeRuntime(false);
 		let seenPrompt = "";

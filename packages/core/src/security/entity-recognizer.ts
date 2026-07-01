@@ -210,11 +210,18 @@ export class CompositeEntityRecognizer implements PiiEntityRecognizer {
 	async recognize(text: string): Promise<EntitySpan[]> {
 		if (!text) return [];
 		// Run recognizers concurrently — the ONNX model call overlaps the (cheap)
-		// regex/gazetteer passes rather than serializing behind them.
+		// regex/gazetteer passes rather than serializing behind them. A recognizer
+		// that throws (e.g. a model backend error) contributes zero spans instead of
+		// rejecting the whole batch, so one failing recognizer degrades coverage but
+		// never takes down the model call it is protecting.
 		const batches = await Promise.all(
 			this.recognizers.map(async (r, order) => {
-				const spans = await r.recognize(text);
-				return spans.map((s) => ({ span: s, order }));
+				try {
+					const spans = await r.recognize(text);
+					return spans.map((s) => ({ span: s, order }));
+				} catch {
+					return [] as { span: EntitySpan; order: number }[];
+				}
 			}),
 		);
 		const candidates = batches

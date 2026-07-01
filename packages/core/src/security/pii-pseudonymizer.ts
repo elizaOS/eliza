@@ -53,15 +53,6 @@ export interface PseudonymEntry {
 	readonly kind: string;
 }
 
-/** Entity classes this layer knows how to mint a realistic surrogate for. */
-export type PseudonymKind =
-	| "person"
-	| "org"
-	| "location"
-	| "address"
-	| "email"
-	| "phone";
-
 export interface PseudonymSessionOptions {
 	/**
 	 * Deterministic seed for surrogate selection. Omit for a cryptographically
@@ -471,8 +462,19 @@ export class PseudonymSession {
 
 	private readonly valueToEntry = new Map<string, PseudonymEntry>();
 	private readonly surrogateToEntry = new Map<string, PseudonymEntry>();
-	/** Lowercased surrogates + originals, for O(1) collision checks when minting. */
+	/** Lowercased surrogates in use, for O(1) collision checks when minting. */
 	private readonly usedSurrogatesLower = new Set<string>();
+	/**
+	 * Every swappable real value ever learned, lowercased. The value namespace and
+	 * the surrogate namespace are kept mutually exclusive: a surrogate is never
+	 * minted equal to a known value, and — because `learn()` is called once per
+	 * model call and a *later* call can introduce a real value equal to an
+	 * *earlier* call's surrogate — any existing entry whose surrogate collides with
+	 * a newly-learned value is re-minted. Without this, two distinct people could
+	 * collapse onto one surrogate, breaking the round-trip and misdelivering the
+	 * restored value at the execution boundary.
+	 */
+	private readonly knownValuesLower = new Set<string>();
 	/**
 	 * Everything the session has ever "seen" (learned text). A surrogate is
 	 * rejected if it already occurs here, so substitution never mints a token
@@ -531,11 +533,25 @@ export class PseudonymSession {
 	 */
 	learnSpans(sourceText: string, spans: readonly EntitySpan[]): void {
 		if (sourceText) this.corpusLower += `\n${sourceText.toLowerCase()}`;
+		// 1. Register every swappable incoming value into the value namespace first,
+		//    so both the re-mint check and any new mint below see the full set.
+		const incoming: { value: string; kind: string }[] = [];
 		for (const span of spans) {
 			const value = span.value.trim();
 			if (!this.isSwappable(value, span.kind)) continue;
-			this.entryForValue(value, span.kind);
+			this.knownValuesLower.add(value.toLowerCase());
+			if (!this.valueToEntry.has(value))
+				incoming.push({ value, kind: span.kind });
 		}
+		// 2. Re-mint any existing entry whose surrogate now equals a known value —
+		//    the cross-call collision. Snapshot first (remint mutates the maps).
+		for (const entry of [...this.valueToEntry.values()]) {
+			if (this.knownValuesLower.has(entry.surrogate.toLowerCase())) {
+				this.remintEntry(entry);
+			}
+		}
+		// 3. Mint entries for the new values.
+		for (const { value, kind } of incoming) this.entryForValue(value, kind);
 	}
 
 	/** True when a value/kind pair is eligible for swapping. */
@@ -619,6 +635,7 @@ export class PseudonymSession {
 	private entryForValue(value: string, kind: string): PseudonymEntry {
 		const existing = this.valueToEntry.get(value);
 		if (existing) return existing;
+		this.knownValuesLower.add(value.toLowerCase());
 		const surrogate = this.mintUniqueSurrogate(value, kind);
 		const entry: PseudonymEntry = { value, surrogate, kind };
 		this.valueToEntry.set(value, entry);
@@ -628,12 +645,29 @@ export class PseudonymSession {
 		return entry;
 	}
 
+	/** Replace an entry's surrogate with a fresh one (cross-call collision fix). */
+	private remintEntry(entry: PseudonymEntry): void {
+		const fresh = this.mintUniqueSurrogate(entry.value, entry.kind);
+		if (fresh.toLowerCase() === entry.surrogate.toLowerCase()) return;
+		this.surrogateToEntry.delete(entry.surrogate);
+		this.usedSurrogatesLower.delete(entry.surrogate.toLowerCase());
+		const next: PseudonymEntry = {
+			value: entry.value,
+			surrogate: fresh,
+			kind: entry.kind,
+		};
+		this.valueToEntry.set(entry.value, next);
+		this.surrogateToEntry.set(fresh, next);
+		this.usedSurrogatesLower.add(fresh.toLowerCase());
+		this.replacersDirty = true;
+	}
+
 	/**
 	 * Mint a surrogate that is unique within the session and absent from the
 	 * learned corpus, probing deterministically on collision. A surrogate is
 	 * rejected when it (case-insensitively) equals an already-minted surrogate,
-	 * equals a known original, or already occurs in the corpus text — any of which
-	 * would make restore ambiguous.
+	 * equals any known real value, or already occurs in the corpus text — any of
+	 * which would make restore ambiguous or collapse two entities onto one token.
 	 */
 	private mintUniqueSurrogate(value: string, kind: string): string {
 		const valueLower = value.toLowerCase();
@@ -642,6 +676,7 @@ export class PseudonymSession {
 			const candidateLower = candidate.toLowerCase();
 			if (candidateLower === valueLower) continue;
 			if (this.usedSurrogatesLower.has(candidateLower)) continue;
+			if (this.knownValuesLower.has(candidateLower)) continue;
 			if (this.valueToEntry.has(candidate)) continue;
 			if (this.corpusLower.includes(candidateLower)) continue;
 			return candidate;
