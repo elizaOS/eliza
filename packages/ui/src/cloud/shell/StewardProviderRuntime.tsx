@@ -126,6 +126,11 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
           // token is actually expired, so a stale staging proxy can't loop us.
           const current = readStoredToken();
           if (current && !tokenIsExpired(current)) {
+            // Reset the dedupe marker so the next sync trigger (visibility,
+            // storage, re-render) retries the cookie POST for this same token
+            // once the endpoint recovers — otherwise the session would ride
+            // out its lifetime with no HttpOnly cookie ever established.
+            lastSyncedToken.current = null;
             console.warn(
               "[steward] Session-sync 401 but stored token still valid — keeping it (likely a stale control-plane proxy)",
             );

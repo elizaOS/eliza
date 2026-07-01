@@ -36,8 +36,14 @@ function getBrowserHostname(): string | undefined {
  * proxies `/steward/*` to the Workers API. We bypass the proxy and call the
  * matching API worker directly so login keeps working even when the Pages
  * Functions bundle is missing or broken.
+ *
+ * Single source of truth for the browser host → API worker map. Every host
+ * must map to its OWN env's worker (staging → api-staging, never prod). The
+ * Steward auth endpoints (StewardProviderShared, steward-session) resolve off
+ * this same map — a host missing here silently downgrades its auth calls to
+ * the co-hosted proxy.
  */
-const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
+export const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
   "elizacloud.ai": "https://api.elizacloud.ai",
   "www.elizacloud.ai": "https://api.elizacloud.ai",
   "dev.elizacloud.ai": "https://api.elizacloud.ai",

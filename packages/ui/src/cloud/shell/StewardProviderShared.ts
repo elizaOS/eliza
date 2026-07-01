@@ -8,6 +8,7 @@ import { createContext } from "react";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { decodeJwtPayload } from "../lib/jwt";
+import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
 
 export function isPlaceholderValue(value: string | undefined): boolean {
   if (!value) return true;
@@ -25,21 +26,9 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-// Hosts where the SPA is co-hosted with a Cloudflare Pages/Worker deployment
-// that proxies the Steward auth endpoints to the API worker. We bypass that
-// proxy and hit the matching API worker directly so session-sync + refresh keep
-// working even when the Pages Functions bundle / FRONTEND_ALIAS proxy is stale.
-// Per-host base — staging MUST resolve to api-staging, NOT prod api. When it
-// fell through to the same-origin relative path (staging absent here), a stale
-// worker proxy 401'd a valid session and clearStaleStewardSession wiped it →
-// the sign-in loop. Mirrors steward-url.ts's ELIZA_CLOUD_DIRECT_API_BY_HOST.
-const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
-  "elizacloud.ai": "https://api.elizacloud.ai",
-  "www.elizacloud.ai": "https://api.elizacloud.ai",
-  "dev.elizacloud.ai": "https://api.elizacloud.ai",
-  "staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
-};
-
+// On co-hosted elizacloud.ai surfaces, session-sync + refresh bypass the
+// Pages/Worker proxy and call each host's OWN API worker directly (the shared
+// host → worker map in steward-url.ts). Everywhere else they stay same-origin.
 function directCloudApiBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   return ELIZA_CLOUD_DIRECT_API_BY_HOST[window.location.hostname.toLowerCase()];
@@ -152,7 +141,11 @@ export function readStoredToken(): string | null {
 export function tokenIsExpired(token: string): boolean {
   const payload = decodeJwtPayload(token);
   if (!payload) return true;
-  if (!payload.exp) return false;
+  // No exp claim ⇒ treat as expired. Steward always mints exp; an exp-less
+  // token is foreign/malformed, and since the 401 handlers keep any
+  // NON-expired token, an exp-less one would otherwise be uncloseable — no
+  // 401 could ever clear it and it never ages out on its own.
+  if (!payload.exp) return true;
   return payload.exp * 1000 < Date.now();
 }
 
