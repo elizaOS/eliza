@@ -779,9 +779,6 @@ async function handleNonStream(
   billingSource: PricingBillingSource,
 ) {
   const provider = getProviderFromModel(model);
-  // #10423: stable per-request key so a settlement retry doesn't double-credit
-  // the app creator's redeemable earnings.
-  const requestId = crypto.randomUUID();
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
@@ -940,9 +937,6 @@ async function handleStream(
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
-  // #10423: stable per-request key so a streaming settlement retry doesn't
-  // double-credit the app creator's redeemable earnings.
-  const requestId = crypto.randomUUID();
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =

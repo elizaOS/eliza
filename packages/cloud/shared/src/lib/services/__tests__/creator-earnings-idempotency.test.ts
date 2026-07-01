@@ -114,6 +114,10 @@ afterAll(async () => {
 });
 
 describe("creator earnings idempotency (#10423)", () => {
+  test("pglite applied (loud, never a silent no-op pass)", () => {
+    expect(pgliteReady).toBe(true);
+  });
+
   let userId: string;
   beforeEach(async () => {
     if (!pgliteReady) return;
