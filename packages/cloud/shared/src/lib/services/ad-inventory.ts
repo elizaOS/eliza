@@ -3,13 +3,15 @@
  *
  * Turns a miniapp into an ad publisher: manage ad slots, serve an eligible ad
  * into a slot, and earn from it. Serving is exactly-once (the impression event
- * gates the advertiser debit) and the publisher credit is idempotent on the
- * impression id. Reuses existing rails only — advertiser budget is the
- * pre-funded `ad_campaigns` credits, publisher payout is `redeemable_earnings`.
+ * gates the advertiser debit, atomically bounded by the campaign's remaining
+ * budget), the debit is floored to whole cents with sub-cent prices refused
+ * (advertiser debit >= publisher payout, always), and the publisher credit is
+ * settled from the pending impression row, idempotent on the impression id.
+ * Reuses existing rails only — advertiser budget is the pre-funded
+ * `ad_campaigns` credits, publisher payout is `redeemable_earnings`.
  */
 
 import { adSlotsRepository } from "../../db/repositories/ad-slots";
-import { appsRepository } from "../../db/repositories/apps";
 import type { AdSlot, AdSlotFormat, AdSlotStatus } from "../../db/schemas/ad-slots";
 import { logger } from "../utils/logger";
 import { redeemableEarningsService } from "./redeemable-earnings";
@@ -69,10 +71,12 @@ export class AdInventoryService {
   }
 
   /**
-   * Fill a slot with an eligible ad. Returns null when the slot is paused or no
-   * eligible campaign exists. On success the advertiser is debited (exactly
-   * once, gated by the impression event) and the publisher's redeemable
-   * earnings are credited (idempotent on the impression id).
+   * Fill a slot with an eligible ad. Returns null when the slot is paused, no
+   * eligible campaign exists, or the slot's per-impression price is below the
+   * minimum billable unit. On success the advertiser is debited (exactly once,
+   * gated by the impression event, atomically bounded by the campaign's
+   * remaining budget) and the publisher's payout is settled from the pending
+   * impression row (idempotent on the impression id).
    */
   async serveAd(slot: AdSlot): Promise<ServedAd | null> {
     if (slot.status !== "active") return null;
@@ -82,14 +86,23 @@ export class AdInventoryService {
     });
     if (!eligible) return null;
 
-    // CPM → per-impression price; publisher keeps its share.
-    // NOTE: `ad_campaigns.credits_spent` is numeric(12,2) (cents), so a per-
-    // impression debit below $0.01 rounds down — at CPMs under ~$10 the
-    // advertiser is under-charged. Precise per-impression accounting (a scale-6
-    // spend accumulator or batch aggregation) is a tracked follow-up; publisher
-    // earnings are already scale-6 precise.
-    const price = Number(slot.floor_cpm) / 1000;
-    const revenue = Number((price * publisherShare()).toFixed(6));
+    // CPM → per-impression price, debited at the credits ledger's scale-2
+    // (whole cents, rounded down). A price under one cent is REFUSED — debiting
+    // $0.00 while paying the publisher a scale-6 share would mint money. A slot
+    // is only billable at a floor CPM of at least $10.
+    const priceCents = Math.floor(Math.round(Number(slot.floor_cpm) * 100) / 1000);
+    if (priceCents < 1) {
+      logger.warn("[AdInventory] floor CPM below minimum billable price; refusing serve", {
+        slotId: slot.id,
+        floorCpm: slot.floor_cpm,
+      });
+      return null;
+    }
+    const price = priceCents / 100;
+    // Publisher share of the DEBITED amount (never of the raw price), clamped
+    // to the debit at micro-USD, so advertiser debit >= publisher payout always.
+    const revenue =
+      Math.min(Math.round(priceCents * 10_000 * publisherShare()), priceCents * 10_000) / 1_000_000;
     const impressionId = crypto.randomUUID();
 
     const event = await adSlotsRepository.recordServe({
@@ -100,38 +113,11 @@ export class AdInventoryService {
       price,
       publisherRevenue: revenue,
     });
-    if (!event) return null; // impression_id collision (astronomically unlikely)
+    if (!event) return null; // budget exhausted, or impression_id replay
 
-    // Credit the publisher (the app's creator). Idempotent on the impression id;
-    // best-effort — the impression + advertiser debit are already committed, so
-    // a failure here is recoverable drift, never lost advertiser money.
-    if (revenue > 0) {
-      try {
-        const app = await appsRepository.findById(slot.app_id);
-        if (app?.created_by_user_id) {
-          await redeemableEarningsService.addEarnings({
-            userId: app.created_by_user_id,
-            amount: revenue,
-            source: "miniapp",
-            sourceId: impressionId,
-            dedupeBySourceId: true,
-            description: `Ad revenue from slot ${slot.name}`,
-            metadata: {
-              kind: "ad_revenue",
-              slotId: slot.id,
-              appId: slot.app_id,
-              campaignId: eligible.campaignId,
-            },
-          });
-        }
-      } catch (error) {
-        logger.error("[AdInventory] failed to credit publisher ad revenue", {
-          slotId: slot.id,
-          impressionId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    // The impression row (committed with the advertiser debit) is the durable
+    // pending-payout record; settle it — and any prior unsettled drift — now.
+    await this.settlePendingPayouts();
 
     return {
       impressionId,
@@ -150,6 +136,67 @@ export class AdInventoryService {
   async recordClick(slotId: string, impressionId: string): Promise<boolean> {
     const event = await adSlotsRepository.recordClick({ slotId, impressionId });
     return event !== null;
+  }
+
+  /**
+   * Settle publisher payouts for impressions whose earnings credit has not
+   * landed yet. Each unsettled impression row was written in the same
+   * transaction as its advertiser debit, so it is the durable pending-payout
+   * record: credit the publisher idempotently (deduped on the impression id by
+   * the earnings ledger) and mark the row settled. Runs inline after every
+   * serve, so a transient earnings failure is retried on the next serve — the
+   * drift stays visible in the DB until it heals, never silent.
+   */
+  async settlePendingPayouts(limit = 25): Promise<{ settled: number; pending: number }> {
+    const unsettled = await adSlotsRepository.findUnsettledPayouts(limit);
+    let settled = 0;
+    for (const payout of unsettled) {
+      try {
+        if (!payout.creatorUserId) {
+          // Nobody to pay (app has no creator on record) — settle so the row
+          // cannot strand the queue; the platform keeps the publisher share.
+          logger.warn("[AdInventory] impression has no payable app creator; settling unpaid", {
+            impressionId: payout.impressionId,
+            slotId: payout.slotId,
+            appId: payout.appId,
+          });
+          await adSlotsRepository.markPayoutSettled(payout.eventId);
+          settled += 1;
+          continue;
+        }
+        const result = await redeemableEarningsService.addEarnings({
+          userId: payout.creatorUserId,
+          amount: Number(payout.revenue),
+          source: "miniapp",
+          sourceId: payout.impressionId,
+          dedupeBySourceId: true,
+          description: `Ad revenue from slot ${payout.slotName}`,
+          metadata: {
+            kind: "ad_revenue",
+            slotId: payout.slotId,
+            appId: payout.appId,
+            campaignId: payout.campaignId,
+          },
+        });
+        if (!result.success) {
+          logger.error("[AdInventory] publisher payout refused; will retry on next serve", {
+            impressionId: payout.impressionId,
+            slotId: payout.slotId,
+            error: result.error,
+          });
+          continue;
+        }
+        await adSlotsRepository.markPayoutSettled(payout.eventId);
+        settled += 1;
+      } catch (error) {
+        logger.error("[AdInventory] publisher payout failed; will retry on next serve", {
+          impressionId: payout.impressionId,
+          slotId: payout.slotId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { settled, pending: unsettled.length - settled };
   }
 }
 

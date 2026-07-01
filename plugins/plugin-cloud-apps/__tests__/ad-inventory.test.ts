@@ -81,11 +81,12 @@ describe("CREATE_AD_SLOT", () => {
           name: input.name,
           format: input.format,
           status: "active",
-          floor_cpm: "2.0000",
+          floor_cpm: "20.0000",
           total_impressions: 0,
           total_clicks: 0,
           total_revenue: "0.000000",
         },
+        adTagToken: "v1.9999999999.cafebabe",
       });
     });
     const cb = captureCallback();
@@ -93,7 +94,7 @@ describe("CREATE_AD_SLOT", () => {
       keyedRuntime(),
       makeMessage("monetize an app"),
       undefined,
-      { app: "Acme Bot", slotName: "Header", format: "native", floorCpm: 2 },
+      { app: "Acme Bot", slotName: "Header", format: "native", floorCpm: 20 },
       cb.callback,
     );
     expect(res.success).toBe(true);
@@ -101,8 +102,10 @@ describe("CREATE_AD_SLOT", () => {
       appId: "app_1",
       name: "Header",
       format: "native",
-      floorCpm: 2,
+      floorCpm: 20,
     });
+    // The signed serve capability is surfaced to the caller.
+    expect(res.data).toMatchObject({ adTagToken: "v1.9999999999.cafebabe" });
   });
 });
 

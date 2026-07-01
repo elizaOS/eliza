@@ -11,6 +11,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { adInventoryService } from "@/lib/services/ad-inventory";
+import { mintAdTagToken } from "@/lib/services/ad-tag-token";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -40,7 +41,13 @@ app.get("/", async (c) => {
   try {
     const { slot, error } = await loadOwnedSlot(c);
     if (error) return error;
-    return c.json({ success: true, slot });
+    // The signed capability the public serve endpoint requires. Null when
+    // ELIZA_AD_TAG_SECRET is unconfigured (serving is then disabled).
+    const adTagToken = await mintAdTagToken({
+      slotId: slot.id,
+      appId: slot.app_id,
+    });
+    return c.json({ success: true, slot, adTagToken });
   } catch (error) {
     logger.error("[Ad Inventory API] get failed:", error);
     return failureResponse(c, error);

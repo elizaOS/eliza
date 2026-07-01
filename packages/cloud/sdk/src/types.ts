@@ -1207,6 +1207,44 @@ export interface ApiKeyListResponse {
   keys: ApiKeySummary[];
 }
 
+// ---- Ad inventory / SSP (#10687) ----
+
+export type AdSlotFormat = "banner" | "native" | "interstitial" | "feed";
+
+export interface AdSlotDto {
+  id: string;
+  app_id: string;
+  name: string;
+  format: AdSlotFormat;
+  status: "active" | "paused";
+  floor_cpm: string;
+  total_impressions: number;
+  total_clicks: number;
+  total_revenue: string;
+}
+
+export interface CreateAdSlotInput {
+  appId: string;
+  name: string;
+  format: AdSlotFormat;
+  floorCpm?: number;
+}
+
+export interface CreateAdSlotResponse {
+  success: boolean;
+  slot: AdSlotDto;
+  /**
+   * Signed capability the public serve endpoint requires (`&token=` on the ad
+   * tag). Null when the deployment has no `ELIZA_AD_TAG_SECRET` configured.
+   */
+  adTagToken: string | null;
+}
+
+export interface ListAdSlotsResponse {
+  success: boolean;
+  slots: AdSlotDto[];
+}
+
 // ---- Influencer marketplace (#10687) ----
 
 export interface InfluencerProfileDto {
@@ -1264,39 +1302,6 @@ export interface CreateBookingResponse {
   success: boolean;
   booking?: InfluencerBookingDto;
   error?: string;
-}
-
-// ---- Ad inventory / SSP (#10687) ----
-
-export type AdSlotFormat = "banner" | "native" | "interstitial" | "feed";
-
-export interface AdSlotDto {
-  id: string;
-  app_id: string;
-  name: string;
-  format: AdSlotFormat;
-  status: "active" | "paused";
-  floor_cpm: string;
-  total_impressions: number;
-  total_clicks: number;
-  total_revenue: string;
-}
-
-export interface CreateAdSlotInput {
-  appId: string;
-  name: string;
-  format: AdSlotFormat;
-  floorCpm?: number;
-}
-
-export interface CreateAdSlotResponse {
-  success: boolean;
-  slot: AdSlotDto;
-}
-
-export interface ListAdSlotsResponse {
-  success: boolean;
-  slots: AdSlotDto[];
 }
 
 // ---- App config backup / restore (#10204) ----

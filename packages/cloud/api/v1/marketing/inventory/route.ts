@@ -10,6 +10,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { adInventoryService } from "@/lib/services/ad-inventory";
+import { mintAdTagToken } from "@/lib/services/ad-tag-token";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -63,13 +64,21 @@ app.post("/", async (c) => {
       organizationId: user.organization_id,
       name: parsed.data.name,
       format: parsed.data.format,
-      floorCpm: parsed.data.floorCpm ?? 1,
+      // Default = the minimum billable floor (the advertiser debit is whole
+      // cents, so a slot only fills at a CPM of at least $10).
+      floorCpm: parsed.data.floorCpm ?? 10,
     });
     logger.info("[Ad Inventory API] created slot", {
       slotId: slot.id,
       appId: slot.app_id,
     });
-    return c.json({ success: true, slot }, 201);
+    // The signed capability the public serve endpoint requires. Null when
+    // ELIZA_AD_TAG_SECRET is unconfigured (serving is then disabled).
+    const adTagToken = await mintAdTagToken({
+      slotId: slot.id,
+      appId: slot.app_id,
+    });
+    return c.json({ success: true, slot, adTagToken }, 201);
   } catch (error) {
     logger.error("[Ad Inventory API] create failed:", error);
     return failureResponse(c, error);
