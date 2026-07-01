@@ -16,6 +16,7 @@ export type ApiErrorCode =
   | "access_denied"
   | "resource_not_found"
   | "rate_limit_exceeded"
+  | "agent_quota_exceeded"
   | "validation_error"
   | "insufficient_credits"
   | "session_not_ready"
