@@ -180,6 +180,10 @@ export class TaskSupervisorService extends Service {
     "Proactively posts a per-room status digest of all in-flight orchestrator tasks (the multi-task juggler).";
 
   private timer: ReturnType<typeof setInterval> | undefined;
+  /** Guards against overlapping ticks: a slow `runOnce` (N network sends) must
+   *  not have the next interval fire a concurrent one — two ticks would race the
+   *  `seen` dedup map and double-post. */
+  private ticking = false;
   /** roomId → last-posted digest, for change-driven dedup. */
   private readonly seen = new Map<string, string>();
   private readonly digestSinks = new Map<
@@ -207,7 +211,14 @@ export class TaskSupervisorService extends Service {
 
   private startTimer(): void {
     this.timer = setInterval(() => {
-      void this.runOnce();
+      // Skip this tick if the previous one is still in flight — never run two
+      // concurrently. `runOnce` swallows its own errors, so the `finally`
+      // always clears the flag.
+      if (this.ticking) return;
+      this.ticking = true;
+      void this.runOnce().finally(() => {
+        this.ticking = false;
+      });
     }, this.intervalMs());
     // The digest loop must never, by itself, keep the process alive.
     (this.timer as { unref?: () => void }).unref?.();
@@ -264,29 +275,41 @@ export class TaskSupervisorService extends Service {
     ) {
       return { posted: [], skipped: [] };
     }
-    const tasks = await taskSvc.listTasks({ includeArchived: false });
-    const live = tasks.filter((t) => LIVE_STATUSES.has(t.status));
-    const views: SupervisorTaskView[] = await Promise.all(
-      live.map(async (t) => ({
-        id: t.id,
-        label: t.title,
-        status: t.status,
-        activeSessions: t.activeSessionCount,
-        sessionLabel: t.latestSessionLabel,
-        origin: await taskSvc.getTaskOriginTarget(t.id),
-      })),
-    );
-    const result = await runSupervisorTick(
-      views,
-      (target, content) => this.sendDigest(target, content, send),
-      this.seen,
-    );
-    if (result.posted.length > 0) {
-      logger.info(
-        `[TaskSupervisorService] digest posted to ${result.posted.length} room(s)`,
+    // Guard the whole tick: a rejected `listTasks` / origin lookup / send would
+    // otherwise surface as an unhandled rejection on every interval (the timer
+    // calls this fire-and-forget) — noisy, and fatal under strict handling.
+    try {
+      const tasks = await taskSvc.listTasks({ includeArchived: false });
+      const live = tasks.filter((t) => LIVE_STATUSES.has(t.status));
+      const views: SupervisorTaskView[] = await Promise.all(
+        live.map(async (t) => ({
+          id: t.id,
+          label: t.title,
+          status: t.status,
+          activeSessions: t.activeSessionCount,
+          sessionLabel: t.latestSessionLabel,
+          origin: await taskSvc.getTaskOriginTarget(t.id),
+        })),
       );
+      const result = await runSupervisorTick(
+        views,
+        (target, content) => this.sendDigest(target, content, send),
+        this.seen,
+      );
+      if (result.posted.length > 0) {
+        logger.info(
+          `[TaskSupervisorService] digest posted to ${result.posted.length} room(s)`,
+        );
+      }
+      return result;
+    } catch (error) {
+      logger.warn(
+        `[TaskSupervisorService] tick failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { posted: [], skipped: [] };
     }
-    return result;
   }
 
   async stop(): Promise<void> {
