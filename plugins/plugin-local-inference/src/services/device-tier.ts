@@ -27,6 +27,14 @@
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
 
+import { isMobilePlatform } from "@elizaos/shared";
+import {
+	type Eliza1Fit,
+	// Aliased to a distinct name (no shared `selectBestEliza1Fit*` prefix with the
+	// local `selectBestEliza1FitForDevice`) — the mobile Bun.build minifier was
+	// observed to mangle the same-prefix pair into a dangling `…Fit2` reference.
+	selectBestEliza1Fit as resolveBestEliza1FitForRam,
+} from "@elizaos/shared/local-inference";
 import type { HardwareProbe } from "./types";
 
 /** The four device tiers used by the runtime + UI. */
@@ -67,7 +75,11 @@ export const DEVICE_TIER_THRESHOLDS = {
 		effectiveModelMemoryGb: 6,
 		freeRamGbAtSession: 3,
 		minTotalRamGb: 16,
-		mobileMinTotalRamGb: 12,
+		// A phone can run eliza-1 2B (≈2.5 GB resident) locally — 6 GB+ total /
+		// ≈3 GB effective is enough — so an 8 GB Pixel is OKAY (local-capable),
+		// not POOR/cloud-only. The desktop floors stay higher.
+		mobileMinTotalRamGb: 6,
+		mobileEffectiveModelMemoryGb: 3,
 	},
 } as const;
 
@@ -87,6 +99,12 @@ export interface DeviceTierAssessment {
 	canRunLocalVoice: boolean;
 	/** Default backend mode for the user. */
 	recommendedMode: RecommendedMode;
+	/**
+	 * The biggest eliza-1 tier (+ 128k-targeted QJL context) that fits this device,
+	 * or `null` when nothing local fits and the modality should route to Cloud.
+	 * This is the single forced-model decision the consumer UI renders read-only.
+	 */
+	recommendedFit: Eliza1Fit | null;
 	/** Numeric snapshot to drive UI badges and first-run copy. */
 	numericContext: {
 		totalRamGb: number;
@@ -115,6 +133,72 @@ export function effectiveModelMemoryGb(probe: HardwareProbe): number {
 }
 
 /**
+ * Mobile OS background-task model makes large local tiers unsafe regardless of how
+ * much RAM the phone reports, so cap mobile fit at the 4B floor. A strong phone may
+ * run 4B; a typical one lands on 2B; both still flow through `selectBestEliza1Fit`.
+ */
+const MOBILE_FIT_CEILING_GB = 6;
+
+/**
+ * Largest context window we advertise on a phone. A full 128k QJL KV cache does
+ * not fit alongside the weights in a handset's real free RAM (the resident agent +
+ * WebView + OS leave well under `totalRam × 0.5`), so we clamp mobile windows here
+ * even when the coarse RAM math would allow more.
+ */
+const MOBILE_CONTEXT_CEILING = 65536; // 64k
+
+/**
+ * True when this host should be treated as a phone for fit purposes. The on-device
+ * bun agent's hardware probe often reports `platform: "linux"` with no `mobile`
+ * field (it sees the bionic/musl env as linux), so the probe alone under-detects
+ * Android/iOS — fall back to the runtime `ELIZA_PLATFORM` signal so the mobile cap
+ * still applies. Without this, a high-RAM phone would be handed a 9B+ tier.
+ */
+function isMobileHost(probe: HardwareProbe): boolean {
+	return isMobile(probe) || isMobilePlatform();
+}
+
+/**
+ * The canonical "biggest eliza-1 that fits this device" decision: normalize the
+ * hardware probe to usable model memory, then pick the largest tier at a 128k QJL
+ * window (or a downscaled 2B window, or `null` → route to Cloud). This is the one
+ * function callers should use to answer "what local model runs here" — it always
+ * applies TurboQuant weights + the QJL KV cache and targets a 128k window. On
+ * mobile it caps the tier at 4B and the context at 64k (a phone cannot hold a 128k
+ * cache).
+ */
+export function selectBestEliza1FitForDevice(
+	probe: HardwareProbe,
+): Eliza1Fit | null {
+	const mobile = isMobileHost(probe);
+	let memGb = effectiveModelMemoryGb(probe);
+	if (mobile) memGb = Math.min(memGb, MOBILE_FIT_CEILING_GB);
+	let fit: Eliza1Fit | null;
+	try {
+		fit = resolveBestEliza1FitForRam(memGb);
+	} catch (err) {
+		// `recommendedFit` is an advisory hint, never a routing gate — but
+		// `classifyDeviceTier` (which embeds it) IS called on the routing hot path.
+		// A mobile-bundle minifier artifact has been observed to leave a dangling
+		// reference at this cross-module call, so guard it: degrade to no
+		// recommendation rather than letting an undefined-symbol error crash the
+		// whole device-tier assessment (and with it the AUTO router) on-device.
+		console.warn(
+			`[device-tier] recommendedFit unavailable: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return null;
+	}
+	if (fit && mobile && fit.contextLength > MOBILE_CONTEXT_CEILING) {
+		return {
+			...fit,
+			contextLength: MOBILE_CONTEXT_CEILING,
+			contextDownscaled: true,
+		};
+	}
+	return fit;
+}
+
+/**
  * Treat the host as a mobile device. Mobile clamps to OKAY at best
  * regardless of RAM because the OS background-task model breaks
  * long-running local inference.
@@ -127,19 +211,22 @@ function isMobile(probe: HardwareProbe): boolean {
 
 /**
  * Compute the CPU SIMD baseline. The hardware probe has no direct AVX2 field
- * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies. ARM must expose
- * NEON/Advanced SIMD in the probe; when ARM feature data is absent, do not
- * claim the CPU route.
+ * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies.
+ *
+ * **arm64 / ARMv8-A architecturally MANDATES NEON (Advanced SIMD)** — every arm64
+ * phone has it — so we trust the architecture rather than the probe's
+ * `cpuFeatures.neon` (the on-device os-fallback probe omits it, which used to
+ * misclassify every Pixel as POOR → cloud-only even though it runs local 2B fine).
+ * We do not support 32-bit ARM (ARMv7), so it (and any other non-x64 arch) is
+ * treated as unsupported.
  *
  * This is a coarse heuristic; the precise check belongs in the FFI layer
  * (it can `cpuid` the actual flags). The tier classifier just refuses POOR
  * when the probe is clearly under-equipped.
  */
 function hasAvx2Baseline(probe: HardwareProbe): boolean {
-	if (probe.arch === "arm64" || probe.arch === "arm") {
-		return probe.cpuFeatures?.neon === true && probe.cpuCores >= 4;
-	}
-	if (probe.arch !== "x64") return false;
+	if (probe.arch === "arm64") return probe.cpuCores >= 4;
+	if (probe.arch !== "x64") return false; // 32-bit ARM + others: unsupported
 	return probe.cpuCores >= 4;
 }
 
@@ -167,7 +254,9 @@ function isAppleSilicon8gb(probe: HardwareProbe): boolean {
 export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 	const reasons: string[] = [];
 	const effective = effectiveModelMemoryGb(probe);
-	const mobile = isMobile(probe);
+	// isMobileHost (not isMobile) so a phone whose bun-agent probe reports
+	// platform:"linux" with no mobile field still gets mobile thresholds + clamp.
+	const mobile = isMobileHost(probe);
 	const avx2 = hasAvx2Baseline(probe);
 	const vramGb = probe.gpu?.totalVramGb ?? null;
 	const cpuCores = probe.cpuCores;
@@ -230,6 +319,7 @@ export function classifyDeviceTier(probe: HardwareProbe): DeviceTierAssessment {
 		canRunLocalLm,
 		canRunLocalVoice,
 		recommendedMode,
+		recommendedFit: selectBestEliza1FitForDevice(probe),
 		numericContext: {
 			totalRamGb,
 			freeRamGb,
@@ -319,8 +409,10 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		return "GOOD";
 	}
 
-	// OKAY gate.
-	const meetsOkayEffective = effective >= okay.effectiveModelMemoryGb;
+	// OKAY gate. Mobile uses lower effective/total floors — a phone runs 2B fine.
+	const meetsOkayEffective =
+		effective >=
+		(mobile ? okay.mobileEffectiveModelMemoryGb : okay.effectiveModelMemoryGb);
 	const meetsOkayFree = freeRamGb >= okay.freeRamGbAtSession;
 	const meetsOkayTotal =
 		totalRamGb >= (mobile ? okay.mobileMinTotalRamGb : okay.minTotalRamGb);

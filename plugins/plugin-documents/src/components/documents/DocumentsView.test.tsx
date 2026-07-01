@@ -1,17 +1,40 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+/**
+ * Drives the unified DocumentsView (the single GUI/XR data wrapper) through the
+ * rendered spatial DOM: the same component the bundle exports for both the "gui"
+ * and "xr" modalities. It is a read-only document browser over the read-only
+ * endpoints this plugin serves:
+ *   GET {base}/api/documents          -> { documents, total, ... }
+ *   GET {base}/api/documents/stats    -> { documentCount, fragmentCount }
+ *   GET {base}/api/documents/search   -> { results, count, ... }
+ *
+ * The default fetchers hit those URLs via `client.getBaseUrl()`; every test here
+ * injects the `fetchers` seam so the suite stays offline. We assert the rendered
+ * spatial DOM across the four load states (loading / error / empty / populated)
+ * plus the search round-trip and the open-document affordance.
+ */
+
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; DocumentsView only touches
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test).
-// `@elizaos/ui/agent-surface` is mocked to an inert hook so the instrumented
-// refresh button + search input render outside a provider.
+// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
+// `client.sendChatMessage()` (open-document affordance). The spatial primitives
+// come from the separate `@elizaos/ui/spatial` subpath, which is not mocked.
+const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
-  client: { getBaseUrl: () => "http://test.local" },
-}));
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+  client: {
+    getBaseUrl: () => "http://test.local",
+    sendChatMessage,
+  },
 }));
 
 import { type DocumentsFetchers, DocumentsView } from "./DocumentsView.js";
@@ -49,8 +72,8 @@ function documentsList(documents = [presentedDocument()]) {
   };
 }
 
-function documentsStats() {
-  return { documentCount: 1, fragmentCount: 7, agentId: "agent-1" };
+function documentsStats(documentCount = 1, fragmentCount = 7) {
+  return { documentCount, fragmentCount, agentId: "agent-1" };
 }
 
 function searchResponse(query: string) {
@@ -82,65 +105,66 @@ function makeFetchers(
   };
 }
 
+function agent(agentId: string): HTMLElement {
+  const el = document.querySelector(`[data-agent-id="${agentId}"]`);
+  if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
+  return el as HTMLElement;
+}
+
 afterEach(() => {
   cleanup();
+  sendChatMessage.mockClear();
 });
 
-describe("DocumentsView", () => {
+describe("DocumentsView — states", () => {
   it("shows the loading state while the first fetch is in flight", () => {
     const never = new Promise<never>(() => {});
     render(
-      <DocumentsView
-        fetchers={makeFetchers({ fetchDocuments: () => never })}
-      />,
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments: () => never }),
+      }),
     );
-    expect(screen.getByTestId("documents-loading")).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
-  it("renders the populated list with title, type, size, fragments and stats", async () => {
-    render(<DocumentsView fetchers={makeFetchers()} />);
-    expect(await screen.findByTestId("documents-populated")).toBeTruthy();
-    expect(screen.getByTestId("documents-list")).toBeTruthy();
-    expect(screen.getByTestId("documents-stats")).toBeTruthy();
-    expect(screen.getByText("Quarterly Plan.md")).toBeTruthy();
-    // Stats line reflects /stats counts (scoped to the stats element since the
-    // row metadata also prints a "7 fragments" label).
-    const stats = screen.getByTestId("documents-stats");
-    expect(stats.textContent).toMatch(/1 document/);
-    expect(stats.textContent).toMatch(/7 fragments/);
-    // Row metadata renders the real presented fields (short content type + size).
+  it("renders the populated list with titles and the stats line", async () => {
+    render(React.createElement(DocumentsView, { fetchers: makeFetchers() }));
+    await screen.findByText("Quarterly Plan.md");
+    expect(screen.getByText("Documents (1)")).toBeTruthy();
+    // Stats line reflects the /stats counts.
+    expect(screen.getByText("1 document · 7 fragments")).toBeTruthy();
+    // Row meta renders the real presented fields (short content type + size).
     expect(screen.getByText(/markdown/)).toBeTruthy();
   });
 
   it("shows the empty state (no fabricated rows) when zero documents are stored", async () => {
     render(
-      <DocumentsView
-        fetchers={makeFetchers({
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({
           fetchDocuments: async () => documentsList([]),
-          fetchStats: async () => ({
-            documentCount: 0,
-            fragmentCount: 0,
-            agentId: "agent-1",
-          }),
-        })}
-      />,
+          fetchStats: async () => documentsStats(0, 0),
+        }),
+      }),
     );
-    expect(await screen.findByTestId("documents-empty")).toBeTruthy();
-    expect(screen.getByText(/No documents yet/i)).toBeTruthy();
-    expect(screen.queryByTestId("documents-list")).toBeNull();
+    await screen.findByText("None");
+    expect(screen.queryByText("Quarterly Plan.md")).toBeNull();
   });
 
-  it("shows the error state with a Retry that refetches into the populated state", async () => {
+  it("shows the error state with a Retry that refetches into populated", async () => {
     let attempt = 0;
     const fetchDocuments = async () => {
       attempt += 1;
       if (attempt === 1) throw new Error("boom");
       return documentsList();
     };
-    render(<DocumentsView fetchers={makeFetchers({ fetchDocuments })} />);
-    expect(await screen.findByTestId("documents-error")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByTestId("documents-populated")).toBeTruthy();
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments }),
+      }),
+    );
+    await screen.findByText("boom");
+    fireEvent.click(agent("retry"));
+    await screen.findByText("Quarterly Plan.md");
   });
 
   it("refetches on the background poll (no manual Refresh button)", async () => {
@@ -151,12 +175,15 @@ describe("DocumentsView", () => {
         calls += 1;
         return documentsList();
       };
-      render(<DocumentsView fetchers={makeFetchers({ fetchDocuments })} />);
-      // Flush the initial mount load's microtasks without firing the poll timer.
+      render(
+        React.createElement(DocumentsView, {
+          fetchers: makeFetchers({ fetchDocuments }),
+        }),
+      );
+      // Flush the initial mount load without firing the poll timer.
       await vi.advanceTimersByTimeAsync(0);
       expect(calls).toBe(1);
-      // There is no user-facing Refresh control in the chat-forward redesign.
-      expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+      expect(document.querySelector('[data-agent-id="refresh"]')).toBeNull();
       // Advancing past the poll interval triggers a quiet refetch.
       await vi.advanceTimersByTimeAsync(20_000);
       expect(calls).toBe(2);
@@ -164,40 +191,71 @@ describe("DocumentsView", () => {
       vi.useRealTimers();
     }
   });
+});
 
-  it("runs a search and renders the results from /api/documents/search", async () => {
+describe("DocumentsView — search", () => {
+  it("runs a search on input and renders results from /api/documents/search", async () => {
     let searched: string | null = null;
     const fetchSearch = async (query: string) => {
       searched = query;
       return searchResponse(query);
     };
-    render(<DocumentsView fetchers={makeFetchers({ fetchSearch })} />);
-    await screen.findByTestId("documents-populated");
-
-    const input = screen.getByRole("searchbox", { name: /search documents/i });
-    fireEvent.change(input, { target: { value: "quarterly" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: /^search documents$/i }),
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchSearch }),
+      }),
     );
+    await screen.findByText("Quarterly Plan.md");
 
-    expect(await screen.findByTestId("documents-search-results")).toBeTruthy();
+    // Typing in the agent-addressable search field runs the search (no button).
+    const input = agent("documents-search") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "quarterly" } });
+
+    await screen.findByText(/quarterly plan covers hiring/i);
     expect(searched).toBe("quarterly");
-    expect(screen.getByText(/quarterly plan covers hiring/i)).toBeTruthy();
+    expect(screen.getByText("Results (1)")).toBeTruthy();
   });
 
   it("surfaces a search failure without dropping the document list", async () => {
     const fetchSearch = async () => {
       throw new Error("search exploded");
     };
-    render(<DocumentsView fetchers={makeFetchers({ fetchSearch })} />);
-    await screen.findByTestId("documents-populated");
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchSearch }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
 
-    const input = screen.getByRole("searchbox", { name: /search documents/i });
+    const input = agent("documents-search") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "anything" } });
-    fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(await screen.findByTestId("documents-search-error")).toBeTruthy();
+    await screen.findByText("Search failed");
     // The document list is still present underneath the failed search.
-    expect(screen.getByTestId("documents-list")).toBeTruthy();
+    expect(screen.getByText("Documents (1)")).toBeTruthy();
+  });
+
+  it("clears an active search back to the full list", async () => {
+    render(React.createElement(DocumentsView, { fetchers: makeFetchers() }));
+    await screen.findByText("Quarterly Plan.md");
+
+    const input = agent("documents-search") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "quarterly" } });
+    await screen.findByText("Results (1)");
+
+    fireEvent.click(agent("clear-search"));
+    await waitFor(() => {
+      expect(screen.queryByText("Results (1)")).toBeNull();
+    });
+    expect(screen.getByText("Documents (1)")).toBeTruthy();
+  });
+});
+
+describe("DocumentsView — open affordance", () => {
+  it("routes open-document through the assistant chat (no fabricated nav)", async () => {
+    render(React.createElement(DocumentsView, { fetchers: makeFetchers() }));
+    await screen.findByText("Quarterly Plan.md");
+    fireEvent.click(agent("open:doc-1"));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 });

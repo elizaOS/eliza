@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrl,
 	DEFAULT_ELIGIBLE_MODEL_IDS,
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -99,7 +100,6 @@ describe("local inference catalog", () => {
 
 	it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
 		const expected: Record<string, number> = {
-			"eliza-1-0_8b": 131072,
 			"eliza-1-2b": 131072,
 			"eliza-1-4b": 131072,
 			"eliza-1-9b": 131072,
@@ -125,16 +125,30 @@ describe("local inference catalog", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("declares native MTP on every Eliza-1 tier", () => {
+	it("does not declare native MTP until Gemma drafter GGUFs are hosted", () => {
+		const hostedMtpTiers: ReadonlySet<string> = new Set(
+			ELIZA_1_HOSTED_MTP_TIER_IDS,
+		);
+		expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
+		expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual([]);
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);
-			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
+		}
+		for (const id of ELIZA_1_TIER_IDS.filter(
+			(tier) => !hostedMtpTiers.has(tier),
+		)) {
+			const model = findCatalogModel(id);
+			expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
 		}
 	});
 
 	it("declares the mandatory local runtime contract for every default tier", () => {
-		const baseKernels = ["turbo3", "turbo4", "qjl_full", "polarquant"];
+		const baseKernels = ["turbo3", "turbo4"];
+		const hostedMtpTiers: ReadonlySet<string> = new Set(
+			ELIZA_1_HOSTED_MTP_TIER_IDS,
+		);
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
@@ -146,8 +160,12 @@ describe("local inference catalog", () => {
 					`${id} kernel ${kernel}`,
 				).toContain(kernel);
 			}
-			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
+			if (hostedMtpTiers.has(id)) {
+				expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			} else {
+				expect(model?.runtime?.mtp, `${id} mtp`).toBeUndefined();
+			}
 			if ((model?.contextLength ?? 0) >= 65536) {
 				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
 					"turbo3_tcq",
@@ -168,20 +186,21 @@ describe("local inference catalog", () => {
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
-			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
-				"q3_k_m",
-				"q4_k_m",
-				"q5_k_m",
-				"q6_k",
-				"q8_0",
-			]);
+			const variantIds = model?.quantization?.variants.map((v) => v.id);
+			const expected = ["q3_k_m", "q4_0", "q4_k_m", "q5_k_m", "q6_k", "q8_0"];
+			if (id === "eliza-1-2b" || id === "eliza-1-4b") {
+				expected.push("wna8o8");
+			}
+			expect(variantIds).toEqual(expected);
+			expect(
+				model?.quantization?.variants.find((v) => v.id === "q4_0")?.status,
+			).toBe("planned");
 		}
 
-		// Mobile-class tiers (0_8b/2b/4b) ship Kokoro only — it is smaller +
+		// Mobile-class tiers (2b/4b) ship Kokoro only — it is smaller +
 		// faster and is the exclusive mobile TTS. 9B keeps OmniVoice first with
 		// Kokoro bundled; large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
-		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([

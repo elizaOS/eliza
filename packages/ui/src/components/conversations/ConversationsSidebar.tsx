@@ -1,17 +1,28 @@
-import { MessagesSquare, Plus, Terminal as TerminalIcon } from "lucide-react";
+import {
+  MessagesSquare,
+  Plus,
+  Search,
+  Terminal as TerminalIcon,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
-import type { Conversation } from "../../api/client-types-chat";
+import type {
+  Conversation,
+  ConversationMessageSearchResult,
+} from "../../api/client-types-chat";
 import {
   PULSE_STATUSES,
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
+import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { errorMessage } from "../../utils/errors";
+import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
+import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { getChatSourceMeta } from "../composites/chat/chat-source.helpers";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
@@ -123,6 +134,7 @@ export function ConversationsSidebar({
     unreadConversations,
     handleNewConversation,
     handleSelectConversation,
+    loadConversationMessagesAround,
     handleDeleteConversation,
     ensurePluginsLoaded = async () => {},
     setActionNotice,
@@ -130,7 +142,23 @@ export function ConversationsSidebar({
     setState,
     tab,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    conversations: s.conversations,
+    activeConversationId: s.activeConversationId,
+    activeInboxChat: s.activeInboxChat,
+    activeTerminalSessionId: s.activeTerminalSessionId,
+    unreadConversations: s.unreadConversations,
+    handleNewConversation: s.handleNewConversation,
+    handleSelectConversation: s.handleSelectConversation,
+    loadConversationMessagesAround: s.loadConversationMessagesAround,
+    handleDeleteConversation: s.handleDeleteConversation,
+    ensurePluginsLoaded: s.ensurePluginsLoaded,
+    setActionNotice: s.setActionNotice,
+    setTab: s.setTab,
+    setState: s.setState,
+    tab: s.tab,
+    t: s.t,
+  }));
   const { ptySessions } = usePtySessions();
 
   const [inboxChats, setInboxChats] = useState<InboxChatRow[]>([]);
@@ -384,6 +412,104 @@ export function ConversationsSidebar({
       return next;
     });
   }, [activeTerminalSessionId]);
+
+  // ── Keyword message search (#9955) ───────────────────────────────────────
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+
+  // A chat-side affordance (or shortcut) can request the search panel.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const open = () => setMessageSearchOpen(true);
+    window.addEventListener(CHAT_MESSAGE_SEARCH_EVENT, open);
+    return () => window.removeEventListener(CHAT_MESSAGE_SEARCH_EVENT, open);
+  }, []);
+
+  const searchMessages = useCallback(
+    async (query: string, signal: AbortSignal) => {
+      const { results } = await client.searchConversationMessages(query, {
+        signal,
+      });
+      return results;
+    },
+    [],
+  );
+
+  // Scroll a now-mounted message into view and flash it (brand accent).
+  // Self-contained — no external CSS rule needed.
+  const scrollAndFlashAnchor = useCallback((el: HTMLElement) => {
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.style.transition = "outline-color 0.5s ease-out";
+    el.style.outline = "2px solid var(--primary)";
+    el.style.outlineOffset = "2px";
+    el.style.borderRadius = "8px";
+    window.setTimeout(() => {
+      el.style.outline = "2px solid transparent";
+    }, 1200);
+    window.setTimeout(() => {
+      el.style.removeProperty("outline");
+      el.style.removeProperty("outline-offset");
+      el.style.removeProperty("transition");
+    }, 1800);
+  }, []);
+
+  // Poll a bounded number of animation frames for the anchor to mount (the
+  // thread re-renders asynchronously after a selection / window reload).
+  // Resolves the element once present, or null once the frame budget is spent.
+  const waitForAnchor = useCallback(
+    (anchorId: string, maxFrames: number): Promise<HTMLElement | null> =>
+      new Promise((resolve) => {
+        let frames = 0;
+        const step = () => {
+          const el = document.getElementById(anchorId);
+          if (el) {
+            resolve(el);
+            return;
+          }
+          if (frames++ < maxFrames) {
+            requestAnimationFrame(step);
+            return;
+          }
+          resolve(null);
+        };
+        requestAnimationFrame(step);
+      }),
+    [],
+  );
+
+  const jumpToMessage = useCallback(
+    (result: ConversationMessageSearchResult) => {
+      const anchorId = getChatMessageAnchorId(result.messageId);
+      void (async () => {
+        // Select the conversation and let its recent window load first, so the
+        // in-window case (the common one) scrolls without a second fetch.
+        await handleSelectConversation(result.conversationId);
+        let el = await waitForAnchor(anchorId, 20);
+        if (!el) {
+          // The hit is older than the loaded recent window (#9955): load the
+          // window CENTERED on it, let the thread re-render, then scroll.
+          const loaded = await loadConversationMessagesAround(
+            result.conversationId,
+            result.messageId,
+          );
+          if (loaded) {
+            el = await waitForAnchor(anchorId, 20);
+          }
+        }
+        if (el) {
+          scrollAndFlashAnchor(el);
+        }
+      })();
+      if (mobile) onClose?.();
+    },
+    [
+      handleSelectConversation,
+      loadConversationMessagesAround,
+      waitForAnchor,
+      scrollAndFlashAnchor,
+      mobile,
+      onClose,
+    ],
+  );
 
   const handleRowSelect = (row: ConversationsSidebarRow) => {
     setConfirmDeleteId(null);
@@ -641,7 +767,7 @@ export function ConversationsSidebar({
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="conv-menu-delete"
-              className="text-danger focus:text-danger"
+              className="text-danger "
               onClick={() => {
                 if (!menuConversation) return;
                 setRenameTarget(null);
@@ -738,6 +864,27 @@ export function ConversationsSidebar({
             }
           >
             <div className="mt-0.5 space-y-2">
+              {messageSearchOpen ? (
+                <div className="rounded-lg border border-border/60 bg-muted/30 p-2">
+                  <MessageSearchPanel
+                    search={searchMessages}
+                    onJump={jumpToMessage}
+                    onClose={() => setMessageSearchOpen(false)}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="conversations-search-messages"
+                  onClick={() => setMessageSearchOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  {t("conversations.searchMessages", {
+                    defaultValue: "Search messages",
+                  })}
+                </button>
+              )}
               <CollapsibleChannelSection
                 sectionKey={messagesSection.key}
                 label={messagesSection.label}

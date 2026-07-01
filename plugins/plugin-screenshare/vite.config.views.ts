@@ -5,6 +5,6 @@ export default createViewBundleConfig({
   viewId: "screenshare",
   entry: "./src/ui/screenshare-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "ScreenshareOperatorSurface",
+  componentExport: "ScreenshareView",
   additionalExternals: ["@elizaos/app-core"],
 });

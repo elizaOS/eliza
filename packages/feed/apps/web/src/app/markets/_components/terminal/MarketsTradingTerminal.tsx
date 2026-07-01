@@ -21,7 +21,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Panel,
+  Group as PanelGroup,
+  Separator as PanelResizeHandle,
+} from "react-resizable-panels";
 import { toast } from "sonner";
 import { AssetTradesFeed } from "@/components/markets/AssetTradesFeed";
 import { PerpPositionsList } from "@/components/markets/PerpPositionsList";
@@ -997,7 +1001,7 @@ export function MarketsTradingTerminal({
   // Removed: auto-open dropdown — keep it closed by default
 
   const selectedPerp = useMemo(() => {
-    if (!selected || selected.kind !== "perp") return null;
+    if (selected?.kind !== "perp") return null;
     return (
       perpMarkets.find(
         (m) => m.ticker.toUpperCase() === selected.id.toUpperCase(),
@@ -1631,8 +1635,17 @@ export function MarketsTradingTerminal({
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {(perpLoading || predictionLoading) && rows.length === 0 ? (
           <div className="divide-y divide-white/5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-2">
+            {[
+              "market-skeleton-1",
+              "market-skeleton-2",
+              "market-skeleton-3",
+              "market-skeleton-4",
+              "market-skeleton-5",
+            ].map((skeletonKey) => (
+              <div
+                key={skeletonKey}
+                className="flex items-center gap-2 px-3 py-2"
+              >
                 <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
                 <div className="min-w-0 flex-1 space-y-1">
                   <Skeleton className="h-3.5 w-3/4" />
@@ -2108,7 +2121,10 @@ export function MarketsTradingTerminal({
             {predictionTradeMode === "buy" ? (
               <div className={cn("mt-4", !canSellPrediction && "mt-3")}>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="font-medium text-muted-foreground text-xs">
+                  <label
+                    htmlFor="prediction-buy-amount"
+                    className="font-medium text-muted-foreground text-xs"
+                  >
                     Amount
                   </label>
                   <span className="text-muted-foreground text-xs">
@@ -2116,6 +2132,7 @@ export function MarketsTradingTerminal({
                   </span>
                 </div>
                 <input
+                  id="prediction-buy-amount"
                   type="number"
                   value={predictionAmount}
                   onChange={(e) => setPredictionAmount(e.target.value)}
@@ -2128,7 +2145,10 @@ export function MarketsTradingTerminal({
             ) : (
               <div className={cn("mt-4", !canSellPrediction && "mt-3")}>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="font-medium text-muted-foreground text-xs">
+                  <label
+                    htmlFor="prediction-sell-shares"
+                    className="font-medium text-muted-foreground text-xs"
+                  >
                     Shares
                   </label>
                   <div className="flex items-center gap-2 text-muted-foreground text-xs">
@@ -2148,6 +2168,7 @@ export function MarketsTradingTerminal({
                   </div>
                 </div>
                 <input
+                  id="prediction-sell-shares"
                   type="number"
                   value={predictionSellShares}
                   onChange={(e) => setPredictionSellShares(e.target.value)}
@@ -2331,7 +2352,7 @@ export function MarketsTradingTerminal({
                   </TabButton>
                 ))}
               </div>
-              <PanelGroup direction="horizontal" className="min-h-0 flex-1">
+              <PanelGroup orientation="horizontal" className="min-h-0 flex-1">
                 <Panel defaultSize={70} minSize={30} className="min-h-0">
                   {contentTab === "chart" ? (
                     centerPanel

@@ -16,6 +16,7 @@ import {
 } from "@elizaos/core";
 import {
 	buildHuggingFaceResolveUrl,
+	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
 } from "@elizaos/shared";
@@ -24,12 +25,33 @@ import {
 	LOCAL_INFERENCE_PROVIDER_ID,
 	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 } from "./provider.js";
-import {
-	assertManifestEvalsPassed,
-	CandidateModelActivationError,
-} from "./services/active-model.js";
-import { localInferenceService } from "./services/service.js";
-import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
+import { classifyDeviceTier } from "./services/device-tier.js";
+
+// Lazy service handle. Importing `./services/service.js` eagerly evaluates the
+// full engine/voice/catalog/downloader graph (~800ms) — far too heavy for the
+// boot-blocking plugin import, which re-exports this module but only needs the
+// plugin object (provider.ts), never the service. Load it on first route use
+// instead, off the boot critical path (issue #9565). The singleton constructor
+// is lightweight (no model load), so this only defers the import/eval cost.
+let _serviceModule: typeof import("./services/service.js") | null = null;
+async function localInferenceServiceLazy() {
+	if (!_serviceModule) {
+		_serviceModule = await import("./services/service.js");
+	}
+	return _serviceModule.localInferenceService;
+}
+// Synchronous accessor for the one sync call site: returns null until the
+// service has been loaded by a prior async route. Behaviour-equivalent for
+// "active model id" — before any model loads, getActive() is idle either way.
+function localInferenceServiceIfLoaded() {
+	return _serviceModule?.localInferenceService ?? null;
+}
+async function prewarmLocalVoiceStackLazy(modelId: string): Promise<void> {
+	const { prewarmLocalVoiceStackForModel } = await import(
+		"./services/voice-prewarm.js"
+	);
+	await prewarmLocalVoiceStackForModel(modelId);
+}
 
 type ModelRole = "chat" | "embedding";
 type DownloadState =
@@ -73,7 +95,7 @@ let aospLocalInferenceApiPromise: Promise<AospLocalInferenceApi> | null = null;
 
 function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 	mobileDeviceBridgeApiPromise ??= import(
-		"@elizaos/plugin-capacitor-bridge"
+		"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
 	) as Promise<MobileDeviceBridgeApi>;
 	return mobileDeviceBridgeApiPromise;
 }
@@ -113,6 +135,14 @@ export type LocalInferenceCommandIntent =
 interface CatalogModel extends SharedCatalogModel {
 	role: ModelRole;
 }
+
+const ASSIGNMENT_SLOTS = new Set<keyof Assignments>([
+	"TEXT_SMALL",
+	"TEXT_LARGE",
+	"TEXT_EMBEDDING",
+	"TEXT_TO_SPEECH",
+	"TRANSCRIPTION",
+]);
 
 interface InstalledModel {
 	id: string;
@@ -193,8 +223,8 @@ let activeModelState: {
 } = { modelId: null, loadedAt: null, status: "idle" };
 
 export function getLocalInferenceActiveModelId(): string | undefined {
-	const serviceActive = localInferenceService.getActive();
-	if (serviceActive.status === "ready" && serviceActive.modelId?.trim()) {
+	const serviceActive = localInferenceServiceIfLoaded()?.getActive();
+	if (serviceActive?.status === "ready" && serviceActive.modelId?.trim()) {
 		return serviceActive.modelId.trim();
 	}
 	return activeModelState.status === "ready" && activeModelState.modelId?.trim()
@@ -211,6 +241,27 @@ const CATALOG: CatalogModel[] = SHARED_MODEL_CATALOG.map((model) => ({
 	...model,
 	role: catalogRole(model),
 }));
+
+function isCuratedCatalogModelId(modelId: string): boolean {
+	return CATALOG.some(
+		(model) =>
+			model.id === modelId &&
+			!model.hiddenFromCatalog &&
+			model.runtimeRole !== "mtp-drafter",
+	);
+}
+
+function sanitizeAssignments(assignments: Assignments): Assignments {
+	const next: Assignments = {};
+	for (const [slot, modelId] of Object.entries(assignments) as Array<
+		[keyof Assignments, string | undefined]
+	>) {
+		if (!modelId || !ASSIGNMENT_SLOTS.has(slot)) continue;
+		if (!isCuratedCatalogModelId(modelId)) continue;
+		next[slot] = modelId;
+	}
+	return next;
+}
 
 const activeDownloads = new Map<
 	string,
@@ -297,6 +348,25 @@ const mobileLookup: http.RequestOptions["lookup"] = (
 	});
 };
 
+/**
+ * Recompute request headers when following a redirect. The HuggingFace bearer
+ * token must never leak past a cross-host redirect: HF `/resolve/` URLs 302 to
+ * cdn-lfs*.hf.co / *.amazonaws.com / *.cloudfront.net, none of which are HF
+ * hosts. Strip Authorization, then re-add it only if the redirect target is
+ * itself a HuggingFace host — mirroring the cross-origin auth stripping WHATWG
+ * fetch performs for the sibling `Downloader` path.
+ */
+export function reauthorizeRedirectHeaders(
+	headers: Record<string, string>,
+	nextUrl: string,
+): Record<string, string> {
+	const next: Record<string, string> = { ...headers };
+	delete next.authorization;
+	delete next.Authorization;
+	Object.assign(next, resolveHubAuthHeaders(nextUrl));
+	return next;
+}
+
 async function openDownloadResponse(
 	url: string,
 	headers: Record<string, string>,
@@ -322,10 +392,11 @@ async function openDownloadResponse(
 				const location = response.headers.location;
 				if (location && [301, 302, 303, 307, 308].includes(statusCode)) {
 					response.resume();
+					const nextUrl = new URL(location, parsed).toString();
 					resolve(
 						openDownloadResponse(
-							new URL(location, parsed).toString(),
-							headers,
+							nextUrl,
+							reauthorizeRedirectHeaders(headers, nextUrl),
 							signal,
 							redirectCount + 1,
 						),
@@ -446,7 +517,7 @@ async function readAssignments(): Promise<Assignments> {
 			assignments: {},
 		},
 	);
-	return file.assignments ?? {};
+	return sanitizeAssignments(file.assignments ?? {});
 }
 
 async function writeAssignments(
@@ -514,12 +585,14 @@ async function downloadModel(
 	record.updatedAt = new Date().toISOString();
 
 	try {
+		const downloadUrl = huggingFaceResolveUrl(model);
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-MobileLocalInference/1.0",
+			...resolveHubAuthHeaders(downloadUrl),
 		};
 		if (existingPartial > 0) headers.range = `bytes=${existingPartial}-`;
 		const response = await openDownloadResponse(
-			huggingFaceResolveUrl(model),
+			downloadUrl,
 			headers,
 			abortController.signal,
 		);
@@ -652,7 +725,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	loadedCacheTypeV?: string | null;
 	loadedGpuLayers?: number | null;
 }> {
-	const serviceActive = localInferenceService.getActive();
+	const serviceActive = (await localInferenceServiceLazy()).getActive();
 	if (serviceActive.status === "ready" && serviceActive.modelId) {
 		return serviceActive;
 	}
@@ -1004,7 +1077,7 @@ export async function getLocalInferenceChatStatus(
 
 	if (active.status === "ready" && active.modelId) {
 		const provider =
-			localInferenceService.getActive().status === "ready"
+			(await localInferenceServiceLazy()).getActive().status === "ready"
 				? LOCAL_INFERENCE_PROVIDER_ID
 				: "capacitor-llama";
 		return buildLocalInferenceChatResult({
@@ -1178,6 +1251,12 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleVoiceFirstRunRoutes(req, res)) return true;
 	}
+	if (pathname === "/api/voice/native-pcm-turn") {
+		const { handleNativePcmTurnRoute } = await import(
+			"./routes/native-pcm-turn-route.js"
+		);
+		if (await handleNativePcmTurnRoute(req, res)) return true;
+	}
 	// Family-member capture route lives under /v1/voice/first-run/family-member.
 	if (pathname === "/v1/voice/first-run/family-member") {
 		const { handleFamilyMemberRoute } = await import(
@@ -1236,6 +1315,18 @@ export async function handleLocalInferenceRoutes(
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hardware") {
 		sendJson(res, (await hubSnapshot()).hardware);
+		return true;
+	}
+	// The authoritative device-tier assessment (tier + recommendedMode +
+	// recommendedFit) — the same one the router's AUTO policy consumes. Mirrors
+	// the app-core compat route so mobile (which mounts this upstream variant)
+	// also gets the authoritative assessment instead of the coarse client estimate.
+	if (method === "GET" && pathname === "/api/local-inference/device-tier") {
+		sendJson(res, {
+			tier: classifyDeviceTier(
+				await (await localInferenceServiceLazy()).getHardware(),
+			),
+		});
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/catalog") {
@@ -1307,13 +1398,22 @@ export async function handleLocalInferenceRoutes(
 		const body = await readJsonBody<Record<string, unknown>>(req, res);
 		if (!body) return true;
 		const slot = typeof body.slot === "string" ? body.slot : null;
-		if (!slot) {
+		if (!slot || !ASSIGNMENT_SLOTS.has(slot as keyof Assignments)) {
 			sendJsonError(res, "slot is required");
 			return true;
 		}
 		const assignments = await readAssignments();
 		if (typeof body.modelId === "string" && body.modelId.trim()) {
-			assignments[slot as keyof Assignments] = body.modelId.trim();
+			const modelId = body.modelId.trim();
+			if (!isCuratedCatalogModelId(modelId)) {
+				sendJsonError(
+					res,
+					"Local inference assignments are limited to curated Eliza-1 tiers.",
+					400,
+				);
+				return true;
+			}
+			assignments[slot as keyof Assignments] = modelId;
 		} else {
 			delete assignments[slot as keyof Assignments];
 		}
@@ -1421,6 +1521,11 @@ export async function handleLocalInferenceRoutes(
 		// `eliza-1.manifest.json` is reachable next to the installed bundle
 		// (see `defaultManifestLoader`); external-scan / non-bundle installs
 		// are passed through.
+		// Lazy: active-model.js pulls the engine (~545ms). Load it here, on the
+		// model-activation path (the engine is needed to activate anyway), so it
+		// stays off the boot-blocking plugin import (issue #9565).
+		const { assertManifestEvalsPassed, CandidateModelActivationError } =
+			await import("./services/active-model.js");
 		try {
 			assertManifestEvalsPassed(installed);
 		} catch (err) {
@@ -1456,7 +1561,7 @@ export async function handleLocalInferenceRoutes(
 					loadArgs: buildAospLoadModelArgs("chat", installed.path),
 				});
 				sendJson(res, activeModelState);
-				void prewarmLocalVoiceStackForModel(installed.id);
+				void prewarmLocalVoiceStackLazy(installed.id);
 				return true;
 			}
 			const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
@@ -1467,7 +1572,7 @@ export async function handleLocalInferenceRoutes(
 				status: "ready",
 			};
 			sendJson(res, activeModelState);
-			void prewarmLocalVoiceStackForModel(installed.id);
+			void prewarmLocalVoiceStackLazy(installed.id);
 		} catch (error) {
 			activeModelState = {
 				modelId: installed.id,
@@ -1535,7 +1640,11 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hf-search") {
-		sendJson(res, { models: [] });
+		sendJson(res, {
+			models: [],
+			disabled: true,
+			reason: "custom-model-search-disabled",
+		});
 		return true;
 	}
 

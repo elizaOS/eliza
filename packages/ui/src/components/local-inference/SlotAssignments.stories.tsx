@@ -10,41 +10,45 @@ const now = new Date().toISOString();
 
 const installed: InstalledModel[] = [
   {
-    id: "eliza-1-0_8b",
-    displayName: "Eliza-1 0.8B",
-    path: "/models/eliza-1-0_8b.gguf",
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B",
+    path: "/models/eliza-1-2b.gguf",
     sizeBytes: 820_000_000,
     installedAt: now,
     lastUsedAt: now,
     source: "eliza-download",
+    bundleVerifiedAt: now,
   },
   {
-    id: "eliza-1-3b",
-    displayName: "Eliza-1 3B",
-    path: "/models/eliza-1-3b.gguf",
-    sizeBytes: 3_100_000_000,
+    id: "eliza-1-4b",
+    displayName: "Eliza-1 4B",
+    path: "/models/eliza-1-4b.gguf",
+    sizeBytes: 2_400_000_000,
     installedAt: now,
     lastUsedAt: null,
     source: "eliza-download",
+    bundleVerifiedAt: now,
   },
+];
+
+const unverifiedInstalled: InstalledModel[] = [
   {
-    id: "llama-3.1-8b-q4",
-    displayName: "Llama 3.1 8B (Q4)",
-    path: "/Users/me/.lmstudio/models/llama-3.1-8b-q4.gguf",
-    sizeBytes: 4_700_000_000,
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B",
+    path: "/models/eliza-1-2b.gguf",
+    sizeBytes: 820_000_000,
     installedAt: now,
     lastUsedAt: null,
-    source: "external-scan",
-    externalOrigin: "lm-studio",
+    source: "eliza-download",
   },
 ];
 
 const autoAssignments: ModelAssignments = {};
 
 const customAssignments: ModelAssignments = {
-  TEXT_SMALL: "eliza-1-0_8b",
-  TEXT_LARGE: "eliza-1-3b",
-  TEXT_TO_SPEECH: "llama-3.1-8b-q4",
+  TEXT_SMALL: "eliza-1-2b",
+  TEXT_LARGE: "eliza-1-4b",
+  TEXT_TO_SPEECH: "eliza-1-2b",
 };
 
 const meta = {
@@ -79,19 +83,19 @@ export const CustomAssignments: Story = {
   args: { assignments: customAssignments },
 };
 
-/** Only the Eliza-1 0.8B model is installed — every slot can pick just it or auto. */
+/** Only the Eliza-1 2B model is installed — every slot can pick just it or auto. */
 export const SingleModelInstalled: Story = {
   args: {
     installed: [installed[0]],
-    assignments: { TEXT_LARGE: "eliza-1-0_8b" },
+    assignments: { TEXT_LARGE: "eliza-1-2b" },
   },
 };
 
-/** Includes a model discovered via external scan (LM Studio) to show the origin suffix. */
-export const WithExternalScan: Story = {
+/** Registered but unverified bundles stay hidden until native verification passes. */
+export const UnverifiedBundle: Story = {
   args: {
-    installed,
-    assignments: { TEXT_LARGE: "llama-3.1-8b-q4" },
+    installed: unverifiedInstalled,
+    assignments: {},
   },
 };
 

@@ -1,41 +1,23 @@
 import {
-  Activity,
-  Bell,
-  CalendarCheck,
   Camera,
-  CheckCircle2,
   Contact,
-  GraduationCap,
-  Hand,
-  LayoutGrid,
-  LifeBuoy,
-  Loader2,
   type LucideIcon,
-  MessageCircle,
   MessageSquare,
-  OctagonAlert,
   Phone,
-  Plus,
-  Settings,
-  Square,
-  TriangleAlert,
-  Workflow,
-  XCircle,
 } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { client } from "../../api";
-import {
-  type ActivityEvent,
-  useActivityEvents,
-} from "../../hooks/useActivityEvents";
-import { useAvailableViews } from "../../hooks/useAvailableViews";
-import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { useActivityEvents } from "../../hooks/useActivityEvents";
+import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
+import { WidgetHost } from "../../widgets/WidgetHost";
+import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
-// animation-delay (set inline) so the clock leads and the tiles follow.
+// animation-delay (set inline) so the cards/tiles cascade in.
 const HOME_ENTER_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
@@ -46,6 +28,54 @@ const HOME_ENTER_CSS = `
   .home-enter { animation: none; }
 }
 `;
+
+/**
+ * The entrance fade-up must play exactly ONCE, on first mount — not on every
+ * re-render or resize (which would re-apply the `opacity 0→1` animation and
+ * flash the cards). This hook returns the `home-enter` class only for the first
+ * commit, then permanently empty: after the initial paint the cards keep their
+ * settled (fully opaque) state and a parent re-render / resize can never replay
+ * the fade. Pure CSS `forwards` doesn't protect against the class being
+ * re-evaluated, so we drop it from the tree once it has run (#9304).
+ */
+function useEnterOnceClass(): string {
+  // `played` is set in a layout effect after the first commit so the very first
+  // render still carries `home-enter` (the animation runs), and every render
+  // after that omits it.
+  const [played, setPlayed] = useState(false);
+  const ranRef = useRef(false);
+  useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    // Defer one frame so the entrance animation is committed before we strip the
+    // class; stripping immediately could cancel it mid-flight on slow paints.
+    const id = window.setTimeout(() => setPlayed(true), 700);
+    return () => window.clearTimeout(id);
+  }, []);
+  return played ? "" : "home-enter";
+}
+
+/**
+ * Dev/test-only home layout-shift observer. Installs the shared
+ * `layout-shift` PerformanceObserver (the same contract the e2e + KPI specs
+ * read via `window.__ELIZA_LAYOUT_SHIFTS__`) so a CLS regression on the home —
+ * a card popping in and jumping the page — is observable in the real app.
+ * Gated behind `isRenderTelemetryEnabled()` exactly like the render telemetry,
+ * so production builds install nothing.
+ */
+function useHomeLayoutShiftObserver(): void {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isRenderTelemetryEnabled()) return;
+    try {
+      // The init body is idempotent (no-ops if already installed), so mounting
+      // multiple home surfaces is safe.
+      new Function(LAYOUT_SHIFT_OBSERVER_INIT)();
+    } catch {
+      // layout-shift unsupported in this engine — the observer init swallows it.
+    }
+  }, []);
+}
 
 // Where a home tile sends you. Builtin tabs go through setTab; plugin / remote
 // views go through the eliza:navigate:view event. The mount injects the handler.
@@ -60,45 +90,15 @@ interface HomeTile {
   target: HomeTileTarget;
   /** AOSP/native-OS only (phone, contacts, messages) — hidden on stock installs. */
   nativeOs?: boolean;
-  /**
-   * Only render when this view path is actually registered (from /api/views).
-   * Keeps the tile from dead-ending into the apps catalog on builds where the
-   * backing plugin/view isn't loaded.
-   */
-  requiresViewPath?: string;
 }
 
-// The four default tiles, pinned on every platform: the interactive tour, the
-// searchable help, settings, and the views catalog. The AOSP ElizaOS fork adds
-// four native-OS tiles (messages, phone, contacts, camera) for a total of eight;
-// they are `nativeOs` so they stay hidden everywhere else.
+// The home screen carries NO general quick-access tiles: Launcher is the
+// adjacent launcher page, with Settings in its dock, so pinning those actions
+// here too would be redundant clutter. The only tiles left are the AOSP ElizaOS
+// fork's native-OS surfaces (messages, phone, contacts, camera) — real OS apps,
+// `nativeOs` so they stay hidden on every non-AOSP build (where the tile grid
+// renders nothing at all).
 const HOME_TILES: HomeTile[] = [
-  {
-    // Pinned first: the interactive tour that teaches the whole UI. Opens a
-    // launcher view that kicks off the global tutorial overlay.
-    id: "tutorial",
-    label: "Tutorial",
-    icon: GraduationCap,
-    target: { kind: "tab", tab: "tutorial" },
-  },
-  {
-    id: "help",
-    label: "Help",
-    icon: LifeBuoy,
-    target: { kind: "tab", tab: "help" },
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-    target: { kind: "tab", tab: "settings" },
-  },
-  {
-    id: "views",
-    label: "Views",
-    icon: LayoutGrid,
-    target: { kind: "tab", tab: "views" },
-  },
   {
     // The only "messages" surface is the AOSP SMS view (MessagesPageView), which
     // falls back to the apps catalog off-Android — so gate it like phone/contacts.
@@ -131,309 +131,129 @@ const HOME_TILES: HomeTile[] = [
   },
 ];
 
-// Map an activity eventType to an icon + accent. Defaults to a generic pulse.
-const ACTIVITY_ICONS: Record<string, { icon: LucideIcon; tone: string }> = {
-  // Status palette only: green = ok, orange = busy/attention, red = error,
-  // white/gray = neutral. No off-brand sky/cyan or amber accents.
-  task_registered: { icon: Plus, tone: "text-white/70" },
-  task_complete: { icon: CheckCircle2, tone: "text-emerald-300/90" },
-  stopped: { icon: Square, tone: "text-white/60" },
-  tool_running: { icon: Loader2, tone: "text-orange-300/90" },
-  blocked: { icon: OctagonAlert, tone: "text-orange-300/90" },
-  blocked_auto_resolved: { icon: CheckCircle2, tone: "text-emerald-300/90" },
-  escalation: { icon: TriangleAlert, tone: "text-red-300/90" },
-  error: { icon: XCircle, tone: "text-red-300/90" },
-  "proactive-message": { icon: MessageCircle, tone: "text-white/80" },
-  reminder: { icon: Bell, tone: "text-white/80" },
-  workflow: { icon: Workflow, tone: "text-white/80" },
-  "check-in": { icon: CalendarCheck, tone: "text-white/80" },
-  nudge: { icon: Hand, tone: "text-white/80" },
-};
-
-function activityIcon(eventType: string): { icon: LucideIcon; tone: string } {
-  return ACTIVITY_ICONS[eventType] ?? { icon: Activity, tone: "text-white/70" };
-}
-
-function relativeTime(ts: number): string {
-  const delta = Math.max(0, Date.now() - ts);
-  const s = Math.floor(delta / 1000);
-  if (s < 10) return "now";
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
-
-/** A blocked, glassy home widget card — the iOS-style building block. Only
- *  rendered when it has content (the home stays clean when nothing's happening). */
-function HomeCard({
-  title,
-  icon: Icon,
-  children,
-  testId,
-}: {
-  title: string;
-  icon: LucideIcon;
-  children: React.ReactNode;
-  testId?: string;
-}): React.JSX.Element {
-  return (
-    <section
-      data-testid={testId}
-      className={cn(
-        // Liquid glass — same language as the chat panel + tiles.
-        "relative rounded-3xl border border-white/[0.14] bg-black/30 p-4 backdrop-blur-2xl backdrop-saturate-150",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_50px_-26px_rgba(0,0,0,0.7)]",
-      )}
-    >
-      <header className="mb-2.5 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-white/70" aria-hidden />
-        <h2 className="text-[13px] font-semibold text-white/70">{title}</h2>
-      </header>
-      {children}
-    </section>
-  );
-}
-
-function ClockBlock(): React.JSX.Element {
-  const [now, setNow] = React.useState(() => new Date());
-  // Tick every second, paused when the app is backgrounded (battery).
-  useIntervalWhenDocumentVisible(() => setNow(new Date()), 1000);
-  const time = now.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const date = now.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-  return (
-    <div data-testid="home-clock" className="px-1 pt-1">
-      <div className="text-5xl font-semibold leading-none tracking-tight text-white tabular-nums [text-shadow:0_2px_12px_rgba(0,0,0,0.4)]">
-        {time}
-      </div>
-      <div className="mt-1.5 text-sm font-medium text-white/75">{date}</div>
-    </div>
-  );
-}
-
-function ActivityRows({
-  events,
-}: {
-  events: readonly ActivityEvent[];
-}): React.JSX.Element {
-  return (
-    <ul data-testid="home-activity" className="flex flex-col gap-2.5">
-      {events.map((ev) => {
-        const { icon: Icon, tone } = activityIcon(ev.eventType);
-        return (
-          <li key={ev.id} className="flex items-start gap-2.5">
-            <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-[13px] leading-snug text-white/85">
-              {ev.summary}
-            </span>
-            <span className="shrink-0 text-[11px] tabular-nums text-white/45">
-              {relativeTime(ev.timestamp)}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-type InboxChat = Awaited<
-  ReturnType<typeof client.getInboxChats>
->["chats"][number];
-
-/** Poll recent inbox chats; returns [] until/unless there are any. */
-function useRecentChats(): InboxChat[] {
-  const [chats, setChats] = React.useState<InboxChat[]>([]);
-  const load = React.useCallback(() => {
-    void client
-      .getInboxChats({})
-      .then((res) => setChats(res.chats.slice(0, 4)))
-      .catch(() => {
-        /* offline / no inbox — leave empty */
-      });
-  }, []);
-  React.useEffect(() => {
-    load();
-  }, [load]);
-  useIntervalWhenDocumentVisible(load, 20_000);
-  return chats;
-}
-
-function MessagesRows({
-  chats,
-}: {
-  chats: readonly InboxChat[];
-}): React.JSX.Element {
-  return (
-    <div data-testid="home-messages">
-      {
-        <ul className="flex flex-col gap-2.5">
-          {chats.map((c) => (
-            <li key={c.id} className="flex items-center gap-2.5">
-              {c.avatarUrl ? (
-                <img
-                  src={c.avatarUrl}
-                  alt=""
-                  className="h-7 w-7 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/15 text-[11px] font-semibold text-white/80">
-                  {c.title.slice(0, 1).toUpperCase()}
-                </span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-white/90">
-                  {c.title}
-                </span>
-                <span className="block truncate text-[12px] text-white/55">
-                  {c.lastMessageText}
-                </span>
-              </span>
-              <span className="shrink-0 text-[11px] tabular-nums text-white/45">
-                {relativeTime(c.lastMessageAt)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      }
-    </div>
-  );
-}
-
 export interface HomeScreenProps {
   /** Open a pinned view/tab. Injected by the mount (setTab vs navigate event). */
   onOpenTile: (target: HomeTileTarget) => void;
   /** Render the AOSP-only phone/contacts tiles (native OS surfaces). */
   showNativeOsTiles?: boolean;
   /**
-   * Optional content rendered to the right of the clock (e.g. a brand wallet
-   * widget). Whitelabel seam: a host can inject a brand-specific accessory via
-   * the `homeScreen` boot-config slot without forking the whole home screen.
+   * Optional host-provided header content rendered at the top of the home
+   * screen (e.g. a brand wallet widget). The framework intentionally ships no
+   * default clock to keep the home minimal; this host-override slot stays so a
+   * host app (e.g. milady's MoonCycles wallet) can opt back into a header
+   * without the framework providing one.
    */
   clockAccessory?: React.ReactNode;
 }
 
 /**
- * The /chat home: an iOS-style professional dashboard that sits behind the
- * always-present floating chat. A clock, the agent's recent activity, recent
- * messages, a customizable widget area, and a grid of pinned view tiles. The
- * chat overlay floats over the bottom; this scrolls with clearance for it.
+ * The /chat home: a deliberately minimal dashboard that sits behind the
+ * always-present floating chat. It surfaces the prioritized home widgets — the
+ * unified `home`-slot WidgetHost (#9143): notifications, recent messages,
+ * orchestrator activity, and the per-plugin attention cards
+ * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
+ * empty and dynamically ranked so whatever needs attention floats to the top.
+ * The home stays clean (just the ambient field + clock) when nothing's active.
+ * The AOSP native-OS tiles render below on Android. The chat overlay floats
+ * over the bottom; this scrolls with clearance for it.
  */
 export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
   clockAccessory,
 }: HomeScreenProps): React.JSX.Element {
-  // Gate tiles on what actually resolves: native-OS tiles need an AOSP build,
-  // and view tiles need their path registered (from /api/views) so a tap never
-  // dead-ends into the apps catalog.
-  const { views } = useAvailableViews();
-  const registeredPaths = React.useMemo(
-    () => new Set(views.map((v) => v.path).filter((p): p is string => !!p)),
-    [views],
-  );
-  const tiles = HOME_TILES.filter(
-    (t) =>
-      (!t.nativeOs || showNativeOsTiles) &&
-      (!t.requiresViewPath || registeredPaths.has(t.requiresViewPath)),
-  );
-  // Recent activity + messages render ONLY when there's something to show — the
-  // home stays clean (clock + tiles) otherwise.
-  const { events } = useActivityEvents();
-  const recentActivity = events.slice(0, 5);
-  const recentChats = useRecentChats();
+  // Only the AOSP native-OS tiles remain, and they need an AOSP build. On every
+  // other platform `tiles` is empty and the grid renders nothing.
+  const tiles = HOME_TILES.filter((t) => !t.nativeOs || showNativeOsTiles);
+  // The live activity stream feeds the home ranker's attention signals.
+  const { events, clearEvents } = useActivityEvents();
+  // The entrance fade plays once, on first mount only — never re-triggered by a
+  // re-render or resize (#9304).
+  const enterClass = useEnterOnceClass();
+  // Dev/test-only: observe home layout shifts on the shared telemetry channel.
+  useHomeLayoutShiftObserver();
 
   return (
     <div
       data-testid="home-screen"
       className={cn(
         "eliza-continuous-chat-scroll absolute inset-0 z-[1] overflow-y-auto",
-        // Sit right under the status bar — no empty band above the clock.
-        "px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]",
+        // The shell root already reserves the status-bar safe area (its
+        // paddingTop: var(--safe-area-top)); adding it again here double-padded
+        // the content and left a large empty band above the dashboard. Just a
+        // small gutter — the notch is already cleared by the root.
+        "px-4",
         // Clear the floating chat composer at the bottom.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
       )}
     >
       <style>{HOME_ENTER_CSS}</style>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-        <div className="home-enter flex items-start justify-between gap-3">
-          <ClockBlock />
-          {clockAccessory ? (
-            <div className="shrink-0">{clockAccessory}</div>
-          ) : null}
+        {clockAccessory ? (
+          <div className={cn(enterClass, "flex justify-end")}>
+            {clockAccessory}
+          </div>
+        ) : null}
+
+        {/* The always-on base: a naked sized grid with the time + weather as
+            2×2 neighbours and the week strip — no card, white text on the
+            ambient field. */}
+        <div className={enterClass} style={{ animationDelay: "70ms" }}>
+          <DefaultHomeWidgets />
         </div>
 
-        {recentActivity.length > 0 ? (
-          <div className="home-enter" style={{ animationDelay: "70ms" }}>
-            <HomeCard
-              title="Recent activity"
-              icon={Activity}
-              testId="home-widget-activity"
-            >
-              <ActivityRows events={recentActivity} />
-            </HomeCard>
-          </div>
-        ) : null}
+        {/* The prioritized data widgets (#9143) flow in below the base. Each
+            self-hides when empty, so the host renders nothing until a widget has
+            something to show — the base above keeps the dashboard from ever
+            being just the floating chat. */}
+        <div className={enterClass} style={{ animationDelay: "110ms" }}>
+          <WidgetHost
+            slot="home"
+            layout="grid"
+            events={events}
+            clearEvents={clearEvents}
+          />
+        </div>
 
-        {recentChats.length > 0 ? (
-          <div className="home-enter" style={{ animationDelay: "110ms" }}>
-            <HomeCard
-              title="Recent messages"
-              icon={MessageSquare}
-              testId="home-widget-messages"
-            >
-              <MessagesRows chats={recentChats} />
-            </HomeCard>
-          </div>
+        {tiles.length > 0 ? (
+          <nav
+            aria-label="Apps"
+            data-testid="home-tiles"
+            className={cn(enterClass, "mt-2")}
+            style={{ animationDelay: "150ms" }}
+          >
+            <div className="grid grid-cols-4 gap-3">
+              {tiles.map((tile) => {
+                const Icon = tile.icon;
+                return (
+                  <button
+                    key={tile.id}
+                    type="button"
+                    data-testid={`home-tile-${tile.id}`}
+                    onClick={() => onOpenTile(tile.target)}
+                    className={cn(
+                      // Naked tile: icon + label sit directly on the ambient
+                      // orange field — no fill, no border.
+                      "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                      // Tactile press: a quick scale-down on tap (stilled for
+                      // reduce-motion users), plus a faint white wash on hover.
+                      "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                      "hover:bg-white/8",
+                    )}
+                  >
+                    <Icon
+                      className="h-[22px] w-[22px] text-white"
+                      aria-hidden
+                    />
+                    <span className="max-w-full truncate text-[11px] font-medium text-white">
+                      {tile.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
         ) : null}
-
-        <nav
-          aria-label="Pinned views"
-          data-testid="home-tiles"
-          className="home-enter mt-2"
-          style={{ animationDelay: "150ms" }}
-        >
-          <div className="grid grid-cols-4 gap-3">
-            {tiles.map((tile) => {
-              const Icon = tile.icon;
-              return (
-                <button
-                  key={tile.id}
-                  type="button"
-                  data-testid={`home-tile-${tile.id}`}
-                  onClick={() => onOpenTile(tile.target)}
-                  className={cn(
-                    // Liquid glass, matching the chat panel: translucent dark
-                    // pane, strong blur + saturation, a bright top specular edge.
-                    "flex flex-col items-center gap-1.5 rounded-2xl border border-white/[0.14] bg-black/25 px-1 py-3.5 backdrop-blur-2xl backdrop-saturate-150",
-                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]",
-                    // Tactile press: a quick scale-down on tap (stilled for
-                    // reduce-motion users), plus the glass brightening on hover.
-                    "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                    "hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
-                  )}
-                >
-                  {/* No chip behind the icon — it sits directly on the glass tile. */}
-                  <Icon
-                    className="h-[22px] w-[22px] text-white/90"
-                    aria-hidden
-                  />
-                  <span className="max-w-full truncate text-[11px] font-medium text-white/80">
-                    {tile.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </nav>
       </div>
     </div>
   );

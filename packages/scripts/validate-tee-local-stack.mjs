@@ -79,7 +79,10 @@ const checks = [
   {
     id: "os-release-tests",
     command: "node",
-    args: ["--test", "packages/os/scripts/__tests__/os-release-scripts.test.mjs"],
+    args: [
+      "--test",
+      "packages/os/scripts/__tests__/os-release-scripts.test.mjs",
+    ],
   },
   {
     id: "os-tee-measurements-validator",
@@ -97,31 +100,33 @@ const checks = [
   {
     id: "chip-confidential-domain-contract",
     command: "python3",
-    args: ["packages/chip/scripts/check_tee_confidential_domain_contract.py"],
+    args: [
+      "packages/research/chip/scripts/check_tee_confidential_domain_contract.py",
+    ],
     env: { PYTHONDONTWRITEBYTECODE: "1" },
   },
   {
     id: "chip-iopmp-policy",
     command: "python3",
-    args: ["packages/chip/scripts/check_tee_iopmp_policy.py"],
+    args: ["packages/research/chip/scripts/check_tee_iopmp_policy.py"],
     env: { PYTHONDONTWRITEBYTECODE: "1" },
   },
   {
     id: "chip-page-state-policy",
     command: "python3",
-    args: ["packages/chip/scripts/check_tee_page_state_policy.py"],
+    args: ["packages/research/chip/scripts/check_tee_page_state_policy.py"],
     env: { PYTHONDONTWRITEBYTECODE: "1" },
   },
   {
     id: "chip-attestation-evidence",
     command: "python3",
-    args: ["packages/chip/scripts/check_tee_attestation_evidence.py"],
+    args: ["packages/research/chip/scripts/check_tee_attestation_evidence.py"],
     env: { PYTHONDONTWRITEBYTECODE: "1" },
   },
   {
     id: "chip-side-channel-claims",
     command: "python3",
-    args: ["packages/chip/scripts/check_tee_side_channel_claims.py"],
+    args: ["packages/research/chip/scripts/check_tee_side_channel_claims.py"],
     env: { PYTHONDONTWRITEBYTECODE: "1" },
   },
   {

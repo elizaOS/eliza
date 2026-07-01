@@ -6,6 +6,7 @@ import {
 import { seedXReadFixtures } from "../_helpers/x-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "x.feed-summary.top-interesting",
   title: "Summarize top 5 tweets in feed today",
   domain: "social.x",

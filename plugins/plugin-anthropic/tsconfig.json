@@ -8,7 +8,7 @@
     ],
     "moduleResolution": "bundler",
     "outDir": "../dist",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -49,6 +49,7 @@
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.e2e.test.ts",
-    "build.ts"
+    "build.ts",
+    "vitest.harness.config.ts"
   ]
 }

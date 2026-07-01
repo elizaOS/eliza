@@ -44,6 +44,10 @@ import Electrobun, {
 } from "electrobun/bun";
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
+import {
+  createElectrobunBrowserWindow,
+  type ElectrobunBrowserWindowOptions,
+} from "../electrobun-window-options";
 import { logger } from "../logger";
 import type {
   ClipboardReadResult,
@@ -113,6 +117,25 @@ interface SetOpacityOptions {
 
 interface OpenExternalOptions {
   url: string;
+}
+
+type TrayPopoverBrowserWindowOptions = ElectrobunBrowserWindowOptions;
+
+/**
+ * The Electrobun RPC handle the BrowserWindow constructor accepts. Derived from
+ * the constructor type so the tray popover passes exactly what the main window
+ * does, with no `unknown` cast that would erase `setTransport`.
+ */
+type TrayPopoverRpc = NonNullable<TrayPopoverBrowserWindowOptions["rpc"]>;
+
+interface TrayPopoverConfig {
+  url: string;
+  preload: string;
+  partition?: string | null;
+  rpc?: TrayPopoverRpc;
+  injectApiBase?: (window: BrowserWindow) => void;
+  wireRpc?: (window: BrowserWindow) => void;
+  onWindowFocused?: (window: BrowserWindow) => void;
 }
 
 interface ShowItemInFolderOptions {
@@ -286,6 +309,10 @@ export class DesktopManager {
   private tray: Tray | null = null;
   private releaseNotesWindow: BrowserWindow | null = null;
   private releaseNotesView: BrowserView | null = null;
+  // Tray popover (#9953 Phase 4): a frameless, transparent, always-on-top
+  // app renderer window anchored at the tray that renders the widget surface.
+  private trayPopoverWindow: BrowserWindow | null = null;
+  private trayPopoverConfig: TrayPopoverConfig | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
   private notificationCounter = 0;
   private sendToWebview: SendToWebview | null = null;
@@ -677,11 +704,21 @@ export class DesktopManager {
 
     // Electrobun tray click is simpler — no bounds/modifiers
     this.trayClickHandler = () => {
-      void this.showWindow().catch((err: unknown) => {
-        logger.warn(
-          `[Desktop] Failed to show window from tray click: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      // When a tray popover is configured (#9953 Phase 4), a click toggles the
+      // widget popover instead of restoring the full window.
+      if (this.trayPopoverConfig) {
+        void this.toggleTrayPopover().catch((err: unknown) => {
+          logger.warn(
+            `[Desktop] Failed to toggle tray popover: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      } else {
+        void this.showWindow().catch((err: unknown) => {
+          logger.warn(
+            `[Desktop] Failed to show window from tray click: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      }
       this.send("desktopTrayClick", {
         x: 0,
         y: 0,
@@ -730,7 +767,11 @@ export class DesktopManager {
       } else if (action === "restart-agent" || action === "tray-restart") {
         triggerAgentRestart();
       } else if (action === "quit") {
-        Utils.quit();
+        void this.quit().catch((err: unknown) => {
+          logger.warn(
+            `[Desktop] Failed to quit from tray menu: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       } else if (action === "open-settings") {
         this.openSettingsCallback?.();
       }
@@ -1858,6 +1899,111 @@ X-GNOME-Autostart-enabled=true
     };
   }
 
+  // MARK: - Tray popover (#9953 Phase 4)
+
+  /**
+   * Enable the tray popover. The URL must already carry
+   * `?shellMode=tray-popover` (the caller builds it). Once configured, a tray
+   * click toggles the popover instead of restoring the full window.
+   *
+   * This is an app renderer surface, not external content: it needs the app
+   * preload/RPC/API-base boot path and app partition so auth, settings, and
+   * runtime updates match the main window.
+   */
+  configureTrayPopover(config: TrayPopoverConfig): void {
+    this.trayPopoverConfig = config;
+  }
+
+  /** Invoke `fn` for the open tray-popover window, if any. */
+  forEachTrayPopoverWindow(fn: (window: BrowserWindow) => void): void {
+    if (this.trayPopoverWindow) {
+      fn(this.trayPopoverWindow);
+    }
+  }
+
+  /** Whether the tray popover window is currently open. */
+  isTrayPopoverOpen(): boolean {
+    return this.trayPopoverWindow !== null;
+  }
+
+  /**
+   * Toggle the tray popover: close it if open, otherwise open a frameless,
+   * transparent, always-on-top app renderer window anchored at the top-right of
+   * the primary display's work area (under the macOS menu-bar tray).
+   */
+  async toggleTrayPopover(): Promise<void> {
+    const config = this.trayPopoverConfig;
+    if (!config) return;
+
+    if (this.trayPopoverWindow) {
+      this.closeTrayPopover();
+      return;
+    }
+
+    const POPOVER_WIDTH = 360;
+    const POPOVER_HEIGHT = 480;
+    const MARGIN = 8;
+    let anchor = { x: 1920, y: 0, width: 1920, height: 1080 };
+    try {
+      const display = Screen.getPrimaryDisplay();
+      if (display?.workArea) anchor = display.workArea;
+    } catch (err) {
+      logger.warn(
+        `[Desktop] tray popover Screen.getPrimaryDisplay() failed; using default anchor: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const x = anchor.x + anchor.width - POPOVER_WIDTH - MARGIN;
+    const y = anchor.y + MARGIN;
+
+    const buildConfig = await BuildConfig.get();
+    const renderer = this.resolvePreferredBrowserRenderer(buildConfig);
+    const options: TrayPopoverBrowserWindowOptions = {
+      title: `${getBrandConfig().appName}`,
+      url: config.url,
+      preload: config.preload,
+      frame: { x, y, width: POPOVER_WIDTH, height: POPOVER_HEIGHT },
+      renderer,
+      transparent: true,
+      titleBarStyle: "hidden",
+      ...(config.partition ? { partition: config.partition } : {}),
+      ...(config.rpc ? { rpc: config.rpc } : {}),
+    };
+    const win = createElectrobunBrowserWindow(options);
+    config.wireRpc?.(win);
+    win.webview.on("dom-ready", () => {
+      config.injectApiBase?.(win);
+    });
+
+    try {
+      (
+        win as BrowserWindow & { setAlwaysOnTop?: (flag: boolean) => void }
+      ).setAlwaysOnTop?.(true);
+    } catch {
+      // Non-fatal: popover still opens, just not pinned above other windows.
+    }
+
+    win.on("close", () => {
+      this.trayPopoverWindow = null;
+    });
+
+    this.trayPopoverWindow = win;
+    config.onWindowFocused?.(win);
+    win.focus();
+  }
+
+  /** Close the tray popover window if open. */
+  closeTrayPopover(): void {
+    if (!this.trayPopoverWindow) return;
+    try {
+      this.trayPopoverWindow.close();
+    } catch (err) {
+      logger.warn(
+        `[Desktop] Failed to close tray popover: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    this.trayPopoverWindow = null;
+  }
+
   // MARK: - Clipboard
 
   async writeToClipboard(options: ClipboardWriteOptions): Promise<void> {
@@ -2248,7 +2394,7 @@ X-GNOME-Autostart-enabled=true
       error instanceof Error ? error.message : error ? String(error) : null;
 
     try {
-      const localInfo = await Updater.getLocallocalInfo();
+      const localInfo = await Updater.getLocalInfo();
       currentVersion = localInfo.version;
       currentHash = localInfo.hash;
       channel = localInfo.channel;
@@ -2326,7 +2472,7 @@ X-GNOME-Autostart-enabled=true
   /**
    * Clean up all resources.
    */
-  dispose(): void {
+  async dispose(): Promise<void> {
     if (this._focusPoller) {
       clearInterval(this._focusPoller);
       this._focusPoller = null;
@@ -2336,8 +2482,8 @@ X-GNOME-Autostart-enabled=true
     this.releaseNotesView?.remove();
     this.releaseNotesView = null;
     this.releaseNotesWindow = null;
-    this.unregisterAllShortcuts();
-    void this.destroyTray();
+    await this.unregisterAllShortcuts();
+    await this.destroyTray();
     this.trayMenuItems.clear();
     this.sendToWebview = null;
   }

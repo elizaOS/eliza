@@ -96,6 +96,7 @@ function checkBriefSurfacesUrgentItems(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "morning-brief.urgent-mid-brief",
   title:
     "Morning brief surfaces urgent items that landed in the triage table at brief time",

@@ -298,7 +298,7 @@ ultralytics.YOLO("yolov8n.pt")  → state_dict
   script is run end-to-end on a build host.
 - `bun run --cwd plugins/plugin-vision build` must succeed at every commit.
   Typecheck is disabled in this plugin's `package.json` ("Typecheck skipped
-  for release"), so we rely on the build step (tsdown) catching type errors.
+  for release"), so we rely on the build step (build.ts) catching type errors.
 - Grep `plugins/plugin-vision/` for `onnxruntime`, `@tensorflow`, `face-api`,
   `tesseract` — each remaining hit must be in a deleted-but-not-yet-pruned
   path, the alt face-detector marked for Phase 3 removal, or this doc.

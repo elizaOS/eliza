@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -47,6 +48,8 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 import type { VaultEntryCategory, VaultEntryMeta } from "./vault-tabs/types";
 
 const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {
@@ -213,18 +216,11 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   return (
     <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">
-            {t("vaultinventory.storedSecrets", {
-              defaultValue: "Stored secrets",
-            })}
-          </p>
-          <p className="text-2xs text-muted">
-            {t("vaultinventory.storedSecrets.description", {
-              defaultValue: "Stored locally, grouped by category.",
-            })}
-          </p>
-        </div>
+        <p className="min-w-0 text-sm font-medium text-txt">
+          {t("vaultinventory.storedSecrets", {
+            defaultValue: "Stored secrets",
+          })}
+        </p>
         <Button
           ref={addSecretRef}
           {...addSecretAgentProps}
@@ -266,12 +262,12 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
         </div>
       ) : entries.length === 0 ? (
-        <div
+        <p
           data-testid="vault-inventory-empty"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="px-3 py-3 text-center text-xs text-muted"
         >
           No secrets yet. Add an API key.
-        </div>
+        </p>
       ) : (
         <div className="space-y-3">
           {CATEGORY_ORDER.map((cat) => {
@@ -298,7 +294,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
 
 // ── Category group ─────────────────────────────────────────────────
 
-function CategoryGroup({
+const CategoryGroup = memo(function CategoryGroup({
   category,
   entries,
   onChanged,
@@ -317,10 +313,10 @@ function CategoryGroup({
 }) {
   return (
     <div data-testid={`vault-category-${category}`} className="space-y-1">
-      <p className="text-2xs font-semibold text-muted">
+      <p className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
         {CATEGORY_LABEL[category]}
       </p>
-      <ul className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1">
+      <ul className="space-y-1">
         {entries.map((entry) => (
           <li key={entry.key}>
             <EntryRow
@@ -336,11 +332,11 @@ function CategoryGroup({
       </ul>
     </div>
   );
-}
+});
 
 // ── Single entry row ───────────────────────────────────────────────
 
-function EntryRow({
+const EntryRow = memo(function EntryRow({
   entry,
   onChanged,
   onJumpToRouting,
@@ -567,7 +563,7 @@ function EntryRow({
       )}
     </div>
   );
-}
+});
 
 // ── Profiles management ────────────────────────────────────────────
 
@@ -736,7 +732,7 @@ function ProfilesPanel({
   return (
     <div
       data-testid={`profiles-panel-${entry.key}`}
-      className="mt-2 space-y-2 rounded-sm border border-border/40 bg-bg/30 p-2"
+      className="mt-2 space-y-2 border-l-2 border-border/40 pl-3"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-2xs font-semibold text-muted">
@@ -832,7 +828,7 @@ function ProfilesPanel({
         <form
           onSubmit={onAdd}
           data-testid={`add-profile-form-${entry.key}`}
-          className="space-y-1.5 rounded-sm border border-border/40 bg-card/40 p-2"
+          className="space-y-1.5 border-l-2 border-border/40 pl-3"
         >
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             <div>
@@ -930,15 +926,7 @@ function ProfilesPanel({
 
 // ── Single profile row ─────────────────────────────────────────────
 
-function ProfileRow({
-  entryKey,
-  profileId,
-  profileLabel,
-  active,
-  highlight,
-  onActivate,
-  onDelete,
-}: {
+interface ProfileRowProps {
   entryKey: string;
   profileId: string;
   profileLabel: string;
@@ -946,72 +934,92 @@ function ProfileRow({
   highlight: boolean;
   onActivate: () => void;
   onDelete: () => void;
-}) {
-  const { t } = useTranslation();
-  const { ref: activateRef, agentProps: activateAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: `vault-profile-activate-${entryKey}-${profileId}`,
-      role: "toggle",
-      label: `Make ${profileLabel} the active profile`,
-      group: "vault-profiles",
-      status: active ? "active" : "inactive",
-      onActivate,
-    });
-  const { ref: deleteRef, agentProps: deleteAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `vault-profile-delete-${entryKey}-${profileId}`,
-      role: "button",
-      label: `Delete profile ${profileLabel}`,
-      group: "vault-profiles",
-      onActivate: onDelete,
-    });
-  return (
-    <li
-      className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
-    >
-      <input
-        ref={activateRef}
-        {...activateAgentProps}
-        type="radio"
-        name={`active-${entryKey}`}
-        checked={active}
-        onChange={onActivate}
-        className="h-3 w-3 cursor-pointer accent-accent"
-        aria-current={active ? "true" : undefined}
-        aria-label={t("vaultinventory.profiles.makeActive", {
-          label: profileLabel,
-          defaultValue: "Make {{label}} active",
-        })}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-txt">{profileLabel}</p>
-        <p className="truncate font-mono text-2xs text-muted">{profileId}</p>
-      </div>
-      {active && (
-        <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-          <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
-          {t("vaultinventory.profiles.active", {
-            defaultValue: "Active",
-          })}
-        </span>
-      )}
-      <Button
-        ref={deleteRef}
-        {...deleteAgentProps}
-        variant="ghost"
-        size="sm"
-        className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-        aria-label={t("vaultinventory.profiles.deleteProfile", {
-          label: profileLabel,
-          defaultValue: "Delete profile {{label}}",
-        })}
-        onClick={onDelete}
-      >
-        <Trash2 className="h-3 w-3" aria-hidden />
-      </Button>
-    </li>
-  );
 }
+
+const ProfileRow = memo(
+  function ProfileRow({
+    entryKey,
+    profileId,
+    profileLabel,
+    active,
+    highlight,
+    onActivate,
+    onDelete,
+  }: ProfileRowProps) {
+    const { t } = useTranslation();
+    const { ref: activateRef, agentProps: activateAgentProps } =
+      useAgentElement<HTMLInputElement>({
+        id: `vault-profile-activate-${entryKey}-${profileId}`,
+        role: "toggle",
+        label: `Make ${profileLabel} the active profile`,
+        group: "vault-profiles",
+        status: active ? "active" : "inactive",
+        onActivate,
+      });
+    const { ref: deleteRef, agentProps: deleteAgentProps } =
+      useAgentElement<HTMLButtonElement>({
+        id: `vault-profile-delete-${entryKey}-${profileId}`,
+        role: "button",
+        label: `Delete profile ${profileLabel}`,
+        group: "vault-profiles",
+        onActivate: onDelete,
+      });
+    return (
+      <li
+        className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}
+      >
+        <input
+          ref={activateRef}
+          {...activateAgentProps}
+          type="radio"
+          name={`active-${entryKey}`}
+          checked={active}
+          onChange={onActivate}
+          className="h-3 w-3 cursor-pointer accent-accent"
+          aria-current={active ? "true" : undefined}
+          aria-label={t("vaultinventory.profiles.makeActive", {
+            label: profileLabel,
+            defaultValue: "Make {{label}} active",
+          })}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-txt">{profileLabel}</p>
+          <p className="truncate font-mono text-2xs text-muted">{profileId}</p>
+        </div>
+        {active && (
+          <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+            <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
+            {t("vaultinventory.profiles.active", {
+              defaultValue: "Active",
+            })}
+          </span>
+        )}
+        <Button
+          ref={deleteRef}
+          {...deleteAgentProps}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+          aria-label={t("vaultinventory.profiles.deleteProfile", {
+            label: profileLabel,
+            defaultValue: "Delete profile {{label}}",
+          })}
+          onClick={onDelete}
+        >
+          <Trash2 className="h-3 w-3" aria-hidden />
+        </Button>
+      </li>
+    );
+  },
+  // onActivate/onDelete are allocated inline per row but always act on this
+  // row's profileId, so compare only the render-affecting primitive props.
+  (prev, next) =>
+    prev.entryKey === next.entryKey &&
+    prev.profileId === next.profileId &&
+    prev.profileLabel === next.profileLabel &&
+    prev.active === next.active &&
+    prev.highlight === next.highlight,
+);
 
 // ── Add-secret form ────────────────────────────────────────────────
 
@@ -1061,7 +1069,7 @@ function AddSecretForm({
       onFill: (v) => setValue(v),
     });
   const { ref: categoryRef, agentProps: categoryAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "vault-add-category",
       role: "select",
       label: "Secret category",
@@ -1129,13 +1137,8 @@ function AddSecretForm({
     <form
       onSubmit={onSubmit}
       data-testid="vault-add-secret-form"
-      className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
+      className="space-y-2 border-l-2 border-border/50 pl-3"
     >
-      <p className="text-2xs text-muted">
-        {t("vaultinventory.addForm.help", {
-          defaultValue: "Stored locally and encrypted at rest.",
-        })}
-      </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <Label className="text-2xs text-muted">
@@ -1191,19 +1194,27 @@ function AddSecretForm({
               defaultValue: "Category",
             })}
           </Label>
-          <select
-            ref={categoryRef}
-            {...categoryAgentProps}
+          <Select
             value={category}
-            onChange={(e) => setCategory(e.target.value as VaultEntryCategory)}
-            className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
+            onValueChange={(value) => setCategory(value as VaultEntryCategory)}
           >
-            {CATEGORY_INPUT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={categoryRef}
+              variant="soft"
+              className="block w-full"
+              aria-label="Secret category"
+              {...categoryAgentProps}
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {CATEGORY_INPUT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Label className="text-2xs text-muted">

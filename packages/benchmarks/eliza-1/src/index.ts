@@ -24,7 +24,6 @@ import { runBench, type TaskSelection } from "./runner.ts";
 import type { ModeAdapter, ModeName } from "./types.ts";
 
 const VALID_TIERS: ReadonlySet<Eliza1TierId> = new Set<Eliza1TierId>([
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -57,8 +56,8 @@ Flags:
       Override the Cerebras reference model. Default: llama3.1-8b
       (use gpt-oss-120b when benching the eliza-1 27B tier on an H200).
   --tier <id>
-      Eliza-1 tier to load. Default: eliza-1-0_8b. Valid:
-      eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b,
+      Eliza-1 tier to load. Default: eliza-1-2b. Valid:
+      eliza-1-2b, eliza-1-4b, eliza-1-9b,
       eliza-1-27b, eliza-1-27b-256k.
       The GGUF must be on disk (downloaded via the eliza-1 manifest flow).
   --allow-skip-local
@@ -167,7 +166,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     `eliza-1 bench — tasks=${args.tasks.join(",")} modes=${
       args.modes === "all" ? "all" : args.modes.join(",")
-    } n=${args.n} tier=${args.tier ?? "eliza-1-0_8b (default)"}\n`,
+    } n=${args.n} tier=${args.tier ?? "eliza-1-2b (default)"}\n`,
   );
   const report = await runBench({
     tasks: args.tasks,

@@ -24,6 +24,13 @@ import {
 } from "./orb-kit.ts";
 import "./stories.css";
 
+declare global {
+  interface Window {
+    /** Reused React root so HMR re-evaluation never mounts a second tree. */
+    __glassRoot?: ReturnType<typeof createRoot>;
+  }
+}
+
 // Home accent so every variant is judged under the real surface accent.
 document.documentElement.style.setProperty("--accent-rgb", "255, 88, 0");
 
@@ -869,9 +876,6 @@ if (!container) {
 }
 // Reuse one root across HMR re-evaluations so a hot update never mounts a second
 // React tree that spins up a colliding WebGPURenderer on the same canvas.
-const rootHost = window as unknown as {
-  __glassRoot?: ReturnType<typeof createRoot>;
-};
-const root = rootHost.__glassRoot ?? createRoot(container);
-rootHost.__glassRoot = root;
+const root = window.__glassRoot ?? createRoot(container);
+window.__glassRoot = root;
 root.render(<ComparisonStage />);

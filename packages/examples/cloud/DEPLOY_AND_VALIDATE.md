@@ -52,7 +52,7 @@ Live status at the time of writing (read-only probes):
   Reproduced the fal provider call directly with the prod `FAL_KEY`: it returns
   `403 "User is locked. Reason: Exhausted balance. Top up at fal.ai/dashboard/billing"`.
   The adapter threw a raw Error → `failureResponse` mapped it to a blanket 500.
-  **Fixed in `packages/cloud-api/v1/generate-image/route.ts`**: provider failures
+  **Fixed in `packages/cloud/api/v1/generate-image/route.ts`**: provider failures
   now log the real detail and return a retryable **503** (no provider detail
   leaked). **Operational fix to unblock live image charging: top up the
   fal / bitrouter / atlascloud provider balances.**
@@ -76,7 +76,7 @@ Live status at the time of writing (read-only probes):
   `https://elizacloud.ai`) created a **real live Stripe checkout session**
   (`https://checkout.stripe.com/c/pay/cs_live_…`); and the credit-grant webhook
   (`checkout.session.completed` → record + enqueue org credit) is unit-tested
-  green (`packages/cloud-api/__tests__/stripe-webhook-route.test.ts`, 4/4).
+  green (`packages/cloud/api/__tests__/stripe-webhook-route.test.ts`, 4/4).
   Driving a card through the middle needs either a real card (live) or a
   `sk_test` key + Stripe CLI (test mode) — neither is in this env (only `sk_live`,
   no Stripe CLI). **"local dev test mode" requires provisioning Stripe test keys
@@ -202,7 +202,7 @@ Smoke each deploy: `GET /health` → `ok`, `GET /api/config` → expected app id
   credits and records the creator's inference markup (`recordCreatorEarnings`).
 - **PayPerPixel:** each settled x402 payment credits the creator's earnings via
   `recordAppScopedPaymentEarnings` (verified by
-  `cloud-shared/.../__tests__/x402-app-earnings.test.ts`).
+  `cloud/shared/.../__tests__/x402-app-earnings.test.ts`).
 - Confirm `Dashboard → Apps → <app> → Earnings` (and `Dashboard → Earnings`)
   shows lifetime / withdrawable / by-source totals climbing after step 3.
 

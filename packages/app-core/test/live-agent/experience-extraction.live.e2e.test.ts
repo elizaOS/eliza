@@ -9,14 +9,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import { experiencePatternEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experience-items.ts";
 import { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service.ts";
 import {
   ExperienceType,
   OutcomeType,
 } from "../../../core/src/features/advanced-capabilities/experience/types.ts";
+import { itIf } from "../../../test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 

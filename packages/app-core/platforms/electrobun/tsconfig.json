@@ -45,8 +45,12 @@
       "@elizaos/agent/*": ["../../../agent/src/*"],
       "@elizaos/core": ["../../../core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../core/src/*"],
+      "@elizaos/logger": ["../../../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../../logger/src/*"],
       "@elizaos/shared": ["../../../shared/src/index.ts"],
       "@elizaos/shared/*": ["../../../shared/src/*"],
+      "@elizaos/security": ["../../../security/src/index.ts"],
+      "@elizaos/security/*": ["../../../security/src/*"],
       "@elizaos/ui": ["../../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../../ui/src/*"],
       "@elizaos/plugin-elizacloud": [
@@ -55,13 +59,19 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../../plugins/plugin-elizacloud/src/*"
       ],
-      "@elizaos/cloud-sdk": ["../../../cloud-sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["../../../cloud-sdk/src/*"],
+      "@elizaos/cloud-sdk": ["../../../cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../../cloud/sdk/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../../../plugins/plugin-coding-tools/src/index.ts"
       ],
       "@elizaos/plugin-coding-tools/*": [
         "../../../../plugins/plugin-coding-tools/src/*"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../../../plugins/plugin-capacitor-bridge/src/*"
       ],
       "@elizaos/plugin-local-inference": [
         "../../../../plugins/plugin-local-inference/src/index.ts"
@@ -122,7 +132,13 @@
       "@elizaos/plugin-sql": [
         "../../../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"]
+      "@elizaos/plugin-sql/*": ["../../../../plugins/plugin-sql/src/*"],
+      "@elizaos/plugin-streaming": [
+        "../../../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": [
+        "../../../../plugins/plugin-streaming/src/*"
+      ]
     }
   },
   "include": [

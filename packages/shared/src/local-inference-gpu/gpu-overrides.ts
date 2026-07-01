@@ -82,14 +82,13 @@ export function getGpuOverrides(input: GpuOverridesInput): GpuOverridesResult {
     kind: "applied",
     bundleId,
     gpuId: profile.gpu_id,
-    overrides: bundleToOverrides(rec, profile, bundleId),
+    overrides: bundleToOverrides(rec, profile),
   };
 }
 
 function bundleToOverrides(
   rec: BundleRecommendation,
   profile: GpuYamlProfile,
-  bundleId: Eliza1TierId,
 ): MtpServerOverrides {
   const out: MtpServerOverrides = {
     contextSize: rec.ctx_size,
@@ -102,7 +101,7 @@ function bundleToOverrides(
     cacheTypeV: rec.kv_cache_v,
   };
   if (rec.mlock !== undefined) out.mlock = rec.mlock;
-  if (profile.mtp.enabled && bundleId !== "eliza-1-0_8b") {
+  if (profile.mtp.enabled) {
     out.draftMin = profile.mtp.draft_min;
     out.draftMax = profile.mtp.draft_max;
     out.draftGpuLayers = profile.mtp.draft_gpu_layers;

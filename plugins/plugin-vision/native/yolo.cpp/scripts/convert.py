@@ -80,6 +80,12 @@ def main() -> int:
         help="Path to the .pt checkpoint. Defaults to '<variant>.pt' "
         "(ultralytics auto-downloads it if absent).",
     )
+    parser.add_argument(
+        "--trust-checkpoint",
+        action="store_true",
+        help="Allow the torch.load(weights_only=False) fallback when the "
+        "Ultralytics YOLO import fails. Only use with trusted checkpoints.",
+    )
     args = parser.parse_args()
 
     try:
@@ -88,11 +94,6 @@ def main() -> int:
         import torch.nn as nn
     except ImportError as exc:
         print(f"missing dependency: {exc}. pip install torch numpy", file=sys.stderr)
-        return 2
-    try:
-        from ultralytics import YOLO
-    except ImportError:
-        print("ultralytics not installed. pip install ultralytics", file=sys.stderr)
         return 2
     try:
         import gguf
@@ -110,7 +111,61 @@ def main() -> int:
 
     weights = args.weights or f"{args.variant}.pt"
     print(f"[convert] loading {weights}", file=sys.stderr)
-    model = YOLO(weights).model  # DetectionModel (nn.Module)
+    # Prefer ultralytics; fall back to loading the DetectionModel straight from
+    # the checkpoint only when the operator explicitly trusts the file. PyTorch
+    # full-checkpoint unpickling can execute code.
+    try:
+        from ultralytics import YOLO
+    except Exception as exc:  # noqa: BLE001 - torchvision registration can fail here
+        if isinstance(exc, ModuleNotFoundError) and exc.name == "ultralytics":
+            print("ultralytics not installed. pip install ultralytics", file=sys.stderr)
+            return 2
+        trust_checkpoint = args.trust_checkpoint or os.environ.get(
+            "ELIZA_YOLO_TRUST_CHECKPOINT"
+        ) in {"1", "true", "yes"}
+        if not trust_checkpoint:
+            print(
+                f"[convert] ultralytics import failed ({exc}). Direct "
+                "torch.load fallback requires --trust-checkpoint or "
+                "ELIZA_YOLO_TRUST_CHECKPOINT=1 because PyTorch checkpoint "
+                "unpickling can execute code.",
+                file=sys.stderr,
+            )
+            return 2
+        print(
+            f"[convert] ultralytics unavailable ({exc}); "
+            "loading trusted DetectionModel directly from checkpoint",
+            file=sys.stderr,
+        )
+        try:
+            checkpoint = torch.load(weights, map_location="cpu", weights_only=False)
+        except FileNotFoundError:
+            print(
+                f"checkpoint not found: {weights}. Install ultralytics to auto-download "
+                "default weights, or pass --weights with a local .pt file.",
+                file=sys.stderr,
+            )
+            return 2
+        except Exception as load_exc:
+            print(f"torch.load failed for {weights}: {load_exc}", file=sys.stderr)
+            return 2
+        if isinstance(checkpoint, dict):
+            model = checkpoint.get("ema")
+            if model is None:
+                model = checkpoint.get("model")
+        elif isinstance(checkpoint, nn.Module):
+            model = checkpoint
+        else:
+            model = None
+        if not isinstance(model, nn.Module):
+            print(
+                f"checkpoint {weights} does not contain a recoverable nn.Module "
+                "in 'ema' or 'model'",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        model = YOLO(weights).model  # DetectionModel (nn.Module)
     model.eval().float()
 
     out_dir = os.path.dirname(os.path.abspath(args.out))

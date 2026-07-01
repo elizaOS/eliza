@@ -207,7 +207,7 @@ export function selectImageGenBackends(
 
 /**
  * Tier → default image-gen model id. Mirrors
- * `eliza/packages/chip/ELIZA_1_BUNDLE_EXTRAS.json` and the WS10 golden test's
+ * `eliza/packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json` and the WS10 golden test's
  * `PER_TIER_DEFAULT` map. Used by the WS3 capability registration to
  * resolve the catalog's bare tier id into a concrete diffusion file.
  */
@@ -223,10 +223,6 @@ export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
 		}
 	>
 > = {
-	"eliza-1-0_8b": {
-		modelId: "imagegen-sd-1_5-q5_0",
-		file: "imagegen/sd-1.5-Q5_0.gguf",
-	},
 	"eliza-1-2b": {
 		modelId: "imagegen-sd-1_5-q5_0",
 		file: "imagegen/sd-1.5-Q5_0.gguf",
@@ -236,25 +232,16 @@ export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
 		file: "imagegen/sd-1.5-Q5_0.gguf",
 	},
 	"eliza-1-9b": {
-		modelId: "imagegen-z-image-turbo-q4_k_m",
-		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
-		splitDiffusionModel: true,
-		vae: "imagegen/vae/ae.safetensors",
-		llm: "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+		modelId: "imagegen-sd-1_5-q5_0",
+		file: "imagegen/sd-1.5-Q5_0.gguf",
 	},
 	"eliza-1-27b": {
-		modelId: "imagegen-z-image-turbo-q4_k_m",
-		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
-		splitDiffusionModel: true,
-		vae: "imagegen/vae/ae.safetensors",
-		llm: "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+		modelId: "imagegen-sd-1_5-q5_0",
+		file: "imagegen/sd-1.5-Q5_0.gguf",
 	},
 	"eliza-1-27b-256k": {
-		modelId: "imagegen-z-image-turbo-q4_k_m",
-		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
-		splitDiffusionModel: true,
-		vae: "imagegen/vae/ae.safetensors",
-		llm: "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+		modelId: "imagegen-sd-1_5-q5_0",
+		file: "imagegen/sd-1.5-Q5_0.gguf",
 	},
 };
 

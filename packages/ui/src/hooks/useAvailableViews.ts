@@ -1,16 +1,19 @@
 /**
  * Fetches available views from GET /api/views.
  *
- * This hook is the primary data source for the ViewCatalog. When the
+ * This hook is the primary data source for Launcher. When the
  * /api/views endpoint is live, it will return the full ViewRegistryEntry list.
- * Until then it returns an empty list so the ViewCatalog renders gracefully.
+ * Until then it returns an empty list so Launcher renders gracefully.
  *
  * Polling interval: 30s. The endpoint is expected to be cheap (in-memory list).
  * Polling can be replaced with a WebSocket subscription when
  * plugins are installed or uninstalled at runtime.
  */
 
+import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   type AppShellPageRegistration,
@@ -18,7 +21,16 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "../app-shell-registry";
+import {
+  type BuiltinTab,
+  isAospShellEnabled,
+  TAB_PATHS,
+  titleForTab,
+} from "../navigation";
 import { getFrontendPlatform } from "../platform/platform-guards";
+import { useAppSelector } from "../state/app-store";
+import type { StartupPhaseValue } from "../state/startup-coordinator";
+import { isShellPaintable } from "../state/startup-coordinator";
 import { startPolling } from "./resource-cache";
 import { useCachedResource } from "./useCachedResource";
 
@@ -52,12 +64,25 @@ export interface ViewRegistryEntry {
   hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
+  /** Screen background policy for this view. Defaults to `"opaque"`. */
+  backgroundPolicy?: AppShellBackgroundPolicy;
   /** The plugin that provides this view. */
   pluginName: string;
   /** Freeform tags used for search and filtering. */
   tags?: string[];
-  /** When true, the view only appears when Developer Mode is enabled. */
+  /** Sort priority for launcher/nav surfaces (lower = earlier). */
+  order?: number;
+  /**
+   * When true, the view only appears when Developer Mode is enabled.
+   * Equivalent to `viewKind: "developer"`.
+   */
   developerOnly?: boolean;
+  /**
+   * Four-tier visibility category. Supersedes `developerOnly` when set:
+   * `system`/`release` always show; `developer`/`preview` follow Settings
+   * toggles. See `ViewKind` in `@elizaos/core`.
+   */
+  viewKind?: ViewKind;
   /** When false, the view is hidden from the manager grid (internal views). */
   visibleInManager?: boolean;
   /** Named capabilities the view exposes (informational). */
@@ -79,7 +104,27 @@ interface UseAvailableViewsResult {
   refresh: () => void;
 }
 
+interface UseAvailableViewsOptions {
+  /**
+   * Network calls to /api/views are only useful once a backend-backed shell is
+   * paintable. Local builtin/registered views remain available while disabled.
+   */
+  networkEnabled?: boolean;
+}
+
 const POLL_INTERVAL_MS = 30_000;
+
+/**
+ * Native device-OS surfaces that only exist on the AOSP ElizaOS fork. They are
+ * stripped from the routable view set on every other build (web, desktop, iOS,
+ * stock Play-Store Android).
+ */
+const NATIVE_OS_VIEW_IDS: ReadonlySet<string> = new Set([
+  "phone",
+  "messages",
+  "contacts",
+  "camera",
+]);
 
 async function fetchViewList(
   viewType?: "gui" | "tui" | "xr",
@@ -145,6 +190,94 @@ const VIEWS_CACHE_KEY = "views:available";
 
 const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
+// Per-tab Lucide glyph names for the builtin shell views, so each launcher
+// tile renders a DISTINCT icon instead of collapsing onto the generic
+// LayoutGrid fallback (every builtin entry previously shipped no `icon`, so
+// Settings/Files/Tasks all rendered the same 4-square placeholder). Names must
+// exist in ViewIcon's ICONS map; an id with no entry here falls through to the
+// keyword guesser, then LayoutGrid.
+const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
+  chat: "MessageSquare",
+  phone: "Phone",
+  messages: "MessageSquare",
+  contacts: "UsersRound",
+  camera: "AppWindow",
+  tasks: "ListTodo",
+  browser: "Globe",
+  stream: "Radio",
+  apps: "LayoutGrid",
+  views: "LayoutGrid",
+  character: "Bot",
+  "character-select": "Users",
+  automations: "Zap",
+  triggers: "Zap",
+  inventory: "Wallet",
+  documents: "FileText",
+  files: "FolderClosed",
+  plugins: "Plug",
+  skills: "Sparkles",
+  advanced: "BrainCircuit",
+  "fine-tuning": "BrainCircuit",
+  trajectories: "Activity",
+  transcripts: "FileText",
+  relationships: "Network",
+  memories: "BrainCircuit",
+  rolodex: "UsersRound",
+  runtime: "Terminal",
+  database: "Database",
+  desktop: "Monitor",
+  settings: "Settings",
+  tutorial: "Sparkles",
+  help: "Inbox",
+  logs: "ScrollText",
+  background: "ImageIcon",
+};
+
+const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
+  Object.fromEntries(
+    [
+      "settings",
+      "phone",
+      "messages",
+      "contacts",
+      "tasks",
+      "files",
+      "documents",
+      "browser",
+      "inventory",
+      "transcripts",
+      "memories",
+      "relationships",
+      "automations",
+      "triggers",
+      "plugins",
+      "skills",
+      "trajectories",
+      "runtime",
+      "database",
+      "logs",
+      "stream",
+      "desktop",
+    ].map((id, index) => [id, index * 10]),
+  );
+
+const BUILTIN_SHELL_VIEW_ENTRIES: ViewRegistryEntry[] = Object.entries(
+  TAB_PATHS,
+).map(([id, path]) => ({
+  id,
+  label: titleForTab(id as BuiltinTab),
+  viewType: "gui",
+  icon: TAB_ICON_NAMES[id as BuiltinTab],
+  path,
+  available: true,
+  pluginName: "@elizaos/builtin",
+  tags: [id],
+  order: BUILTIN_TAB_ORDER[id as BuiltinTab],
+  builtin: true,
+  visibleInManager: false,
+  desktopTabEnabled: true,
+}));
+
 /**
  * Map an in-process app-shell page (registered by a plugin via
  * `registerAppShellPage`) to a view-registry entry. On iOS/Android the agent's
@@ -166,6 +299,9 @@ function appShellPageToViewEntry(
     available: true,
     pluginName: page.pluginId,
     developerOnly: page.developerOnly,
+    viewKind: page.viewKind,
+    order: page.order,
+    backgroundPolicy: page.backgroundPolicy,
     visibleInManager: true,
     builtin: false,
   };
@@ -198,30 +334,62 @@ function getAppShellViewEntriesSnapshot(): ViewRegistryEntry[] {
  * — app-shell pages only fill ids the network didn't return, which on mobile is
  * every dynamically-bundled plugin view the route filtered out.
  */
-function mergeWithAppShellViews(
-  networkViews: ViewRegistryEntry[],
-  appShellViews: ViewRegistryEntry[],
+function mergeViewRegistryEntries(
+  primaryViews: ViewRegistryEntry[],
+  fallbackGroups: ViewRegistryEntry[][],
 ): ViewRegistryEntry[] {
-  if (appShellViews.length === 0) return networkViews;
+  if (fallbackGroups.every((group) => group.length === 0)) {
+    return primaryViews;
+  }
   const byKey = new Map<string, ViewRegistryEntry>();
-  for (const view of networkViews) {
+  for (const view of primaryViews) {
     byKey.set(`${view.viewType ?? "gui"}:${view.id}`, view);
   }
-  for (const entry of appShellViews) {
-    const key = `${entry.viewType ?? "gui"}:${entry.id}`;
-    if (!byKey.has(key)) byKey.set(key, entry);
+  for (const group of fallbackGroups) {
+    for (const entry of group) {
+      const key = `${entry.viewType ?? "gui"}:${entry.id}`;
+      if (!byKey.has(key)) byKey.set(key, entry);
+    }
   }
   return [...byKey.values()];
 }
 
-export function useAvailableViews(): UseAvailableViewsResult {
+function mergeWithAppShellViews(
+  networkViews: ViewRegistryEntry[],
+  appShellViews: ViewRegistryEntry[],
+): ViewRegistryEntry[] {
+  return mergeViewRegistryEntries(networkViews, [appShellViews]);
+}
+
+export function withBuiltinShellViews(
+  views: ViewRegistryEntry[],
+): ViewRegistryEntry[] {
+  return mergeViewRegistryEntries(views, [BUILTIN_SHELL_VIEW_ENTRIES]);
+}
+
+function useDefaultViewsNetworkEnabled(): boolean {
+  const phase = useAppSelector((s) => s.startupCoordinator?.phase);
+  if (!supportsFullAppShellRoutes(client.getBaseUrl())) return false;
+  if (typeof phase !== "string") return true;
+  // first-run-required is now shell-paintable (onboarding runs in the live
+  // chat), but the agent does not exist yet — don't fetch network view
+  // registries until onboarding completes and the runtime is booting.
+  if (phase === "first-run-required") return false;
+  return isShellPaintable(phase as StartupPhaseValue);
+}
+
+export function useAvailableViews(
+  options: UseAvailableViewsOptions = {},
+): UseAvailableViewsResult {
+  const defaultNetworkEnabled = useDefaultViewsNetworkEnabled();
+  const networkEnabled = options.networkEnabled ?? defaultNetworkEnabled;
   // All mounts share one cache slot, so the router and the desktop-tab consumer
   // (which both mount this hook) issue a single request and paint instantly on
   // revisit instead of each re-fetching cold.
   const resource = useCachedResource<ViewRegistryEntry[]>(
     VIEWS_CACHE_KEY,
     () => fetchViews(),
-    { staleTime: POLL_INTERVAL_MS },
+    { staleTime: POLL_INTERVAL_MS, enabled: networkEnabled },
   );
 
   // Runtime plugin install/uninstall changes the registry; keep a background
@@ -230,8 +398,9 @@ export function useAvailableViews(): UseAvailableViewsResult {
   // both mount this hook) share a single timer instead of each running one.
   const { refetch } = resource;
   useEffect(() => {
+    if (!networkEnabled) return;
     return startPolling(VIEWS_CACHE_KEY, fetchViews, POLL_INTERVAL_MS);
-  }, []);
+  }, [networkEnabled]);
 
   // In-process plugin views (registered via registerAppShellPage) are merged in
   // so they appear in the manager even when the agent route filtered them out
@@ -244,15 +413,37 @@ export function useAvailableViews(): UseAvailableViewsResult {
   );
   const networkViews =
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
-  const views = useMemo(
-    () => mergeWithAppShellViews(networkViews, appShellViews),
-    [networkViews, appShellViews],
-  );
+  const views = useMemo(() => {
+    const merged = mergeWithAppShellViews(networkViews, appShellViews);
+    // Phone, messages, contacts, and camera are AOSP-ElizaOS-fork-only surfaces
+    // (native device apps). Strip them from the view manager + router everywhere
+    // else — web, desktop, iOS, and stock Play-Store Android — matching the
+    // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
+    if (isAospShellEnabled()) return merged;
+    return merged.filter((view) => !NATIVE_OS_VIEW_IDS.has(view.id));
+  }, [networkViews, appShellViews]);
 
   return {
     views,
-    loading: resource.status === "loading",
+    loading: networkEnabled && resource.status === "loading",
     error: resource.status === "error" ? resource.error : null,
-    refresh: refetch,
+    refresh: networkEnabled ? refetch : () => {},
   };
+}
+
+export function useRoutableViews(
+  options: UseAvailableViewsOptions = {},
+): UseAvailableViewsResult {
+  const { views, loading, error, refresh } = useAvailableViews(options);
+  const routableViews = useMemo(() => withBuiltinShellViews(views), [views]);
+
+  return useMemo(
+    () => ({
+      views: routableViews,
+      loading,
+      error,
+      refresh,
+    }),
+    [routableViews, loading, error, refresh],
+  );
 }

@@ -36,6 +36,13 @@ export async function seedModelPricing(opts: {
     source_kind: "manual" as const,
     source_url: "test://seed-pricing",
     is_active: true,
+    // The lookup gates rows on `effective_from <= now()`. The column is a
+    // `timestamp` (no tz), and PGlite's `defaultNow()` writes the session-local
+    // wall clock, which drizzle reads back as UTC — so in a non-UTC test box the
+    // default `effective_from` lands a few hours in the FUTURE and the row is
+    // silently filtered out (no pricing → 500 / degraded billing). Stamp it a day
+    // in the past so the seeded row is active regardless of the runner's zone.
+    effective_from: new Date(Date.now() - 86_400_000),
   };
 
   await aiPricingRepository.createMany([

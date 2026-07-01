@@ -15,11 +15,17 @@
     "outDir": "./dist",
     "rootDir": "../../../../",
     "paths": {
+      "@elizaos/plugin-google-genai": [
+        "./../../../../plugins/plugin-google-genai/dist/browser/index.d.ts"
+      ],
       "@elizaos/plugin-inmemorydb": [
         "./../../../../plugins/plugin-inmemorydb/dist/browser/index.d.ts"
       ],
       "@elizaos/plugin-localdb": [
         "./../../../../plugins/plugin-localdb/index.browser.ts"
+      ],
+      "@elizaos/plugin-openrouter": [
+        "./../../../../plugins/plugin-openrouter/dist/browser/index.d.ts"
       ]
     },
     "types": ["chrome", "node"]

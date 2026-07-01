@@ -15,7 +15,9 @@ export {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   defaultVoiceQuantForTier,
   ELIZA_1_HF_REPO,
+  ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
+  ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_PLACEHOLDER_IDS,
   ELIZA_1_RELEASE_TIER_IDS,
   ELIZA_1_TIER_IDS,
@@ -26,10 +28,18 @@ export {
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
   isDefaultEligibleId,
+  isOnDeviceTier,
   MODEL_CATALOG,
   type OmniVoiceQuantLevel,
   voiceQuantLadderForTier,
 } from "./catalog.js";
+export {
+  ELIZA_1_CONTEXT_TARGET,
+  ELIZA_1_KV_QUANT,
+  ELIZA_1_MIN_LOCAL_CONTEXT,
+  type Eliza1Fit,
+  selectBestEliza1Fit,
+} from "./device-fit.js";
 export {
   GPU_PROFILE_IDS,
   GPU_PROFILES,
@@ -39,6 +49,16 @@ export {
   matchGpuProfile,
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
+export {
+  type HfDownloadBase,
+  resolveHfDownloadBase,
+} from "./hf-proxy.js";
+export {
+  hasHuggingFaceToken,
+  isHuggingFaceHost,
+  resolveHubAuthHeaders,
+  resolveHuggingFaceToken,
+} from "./hub-auth.js";
 export {
   type Ed25519PublicKey,
   ManifestSignatureError,
@@ -68,6 +88,23 @@ export type {
   RoutingPolicy,
   RoutingPreferences,
 } from "./routing-preferences.js";
+export {
+  DEFAULT_ROUTING_POLICY,
+  isRoutingPolicy,
+  ROUTING_POLICIES,
+} from "./routing-preferences.js";
+export {
+  classifyCatalogModelRuntimeClass,
+  classifyInstalledModelRuntimeClass,
+  type RuntimeClass,
+  withRuntimeClass,
+} from "./runtime-class.js";
+export {
+  computeGenerationThroughput,
+  type GenerationCounters,
+  type GenerationThroughput,
+  isGenerationCounters,
+} from "./throughput.js";
 export {
   type ActiveModelState,
   AGENT_MODEL_SLOTS,

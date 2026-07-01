@@ -2,6 +2,7 @@ import {
   Archive,
   Bot,
   Brain,
+  Cloud,
   KeyRound,
   LayoutGrid,
   Lock,
@@ -19,6 +20,12 @@ import {
   Webhook,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import { registerCloudConnectorsSettingsSection } from "../../cloud/connectors";
+import {
+  CLOUD_SETTINGS_GROUP_ID,
+  registerSettingsGroup,
+} from "../../cloud/settings/cloud-settings-group";
+import { MyRuntimesContainer } from "../cockpit/MyRuntimesContainer";
 import { ReleaseCenterView } from "../pages/ReleaseCenterView";
 import { AdvancedSection } from "./AdvancedSection";
 import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
@@ -26,6 +33,7 @@ import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 import { CloudAgentsSection } from "./CloudAgentsSection";
+import { CloudOverviewSection } from "./CloudOverviewSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
@@ -76,10 +84,10 @@ export const SECTION_TONE_ICON_CLASS: Record<SettingsSectionTone, string> = {
  * accent + neutrals) so light and dark themes both work, and there is no blue.
  */
 export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
-  accent: "bg-accent/12 text-accent ring-1 ring-accent/20",
-  amber: "bg-warn/12 text-warn ring-1 ring-warn/20",
-  rose: "bg-[color-mix(in_oklab,var(--accent)_14%,var(--surface))] text-accent ring-1 ring-accent/15",
-  slate: "bg-surface text-txt-strong ring-1 ring-border",
+  accent: "bg-accent/12 text-accent  ",
+  amber: "bg-warn/12 text-warn  ",
+  rose: "bg-[color-mix(in_oklab,var(--accent)_14%,var(--surface))] text-accent  ",
+  slate: "bg-surface text-txt-strong  ",
 };
 
 /** Per-section visuals + component, keyed by the id declared in the meta list. */
@@ -92,6 +100,10 @@ interface SectionVisual {
   /** i18n key for the section header, when it differs from the label. */
   titleKey?: string;
   bodyClassName?: string;
+  /** Hide unless Developer Mode is on. */
+  developerOnly?: boolean;
+  /** Hide on the cloud mobile build (no host machine). */
+  hideOnCloud?: boolean;
   Component: ComponentType;
 }
 
@@ -158,6 +170,7 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     tone: "accent",
     hue: "rose",
     labelKey: "settings.sections.remote-plugins.label",
+    developerOnly: true,
     Component: RemotePluginHostSection,
   },
   "wallet-rpc": {
@@ -209,6 +222,10 @@ const SECTION_VISUALS: Record<string, SectionVisual> = {
     tone: "warn",
     hue: "amber",
     labelKey: "settings.sections.security.label",
+    // Host/self-host concept ("set a remote password so other machines can log
+    // into your host"). Meaningless for a cloud mobile user — the cloud
+    // "Sessions & Privacy" section covers real account security on cloud.
+    hideOnCloud: true,
     Component: SecuritySettingsSection,
   },
 };
@@ -231,6 +248,8 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] =
       titleKey: visual.titleKey ?? visual.labelKey,
       defaultTitle: meta.defaultLabel,
       bodyClassName: visual.bodyClassName,
+      developerOnly: visual.developerOnly,
+      hideOnCloud: visual.hideOnCloud,
       order: index,
       Component: visual.Component,
     };
@@ -238,10 +257,32 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] =
 
 for (const section of SETTINGS_SECTIONS) registerSettingsSection(section);
 
+registerSettingsGroup({
+  id: CLOUD_SETTINGS_GROUP_ID,
+  label: "Cloud",
+  order: 1.5,
+});
+
+registerSettingsSection({
+  id: "cloud-overview",
+  label: "settings.sections.cloudOverview.label",
+  defaultLabel: "Overview",
+  icon: Cloud,
+  tone: "accent",
+  hue: "accent",
+  group: CLOUD_SETTINGS_GROUP_ID,
+  titleKey: "settings.sections.cloudOverview.title",
+  defaultTitle: "Eliza Cloud",
+  order: 1.45,
+  Component: CloudOverviewSection,
+});
+
 // Eliza Cloud agent manager — contributed through the pluggable registry rather
 // than the canonical META list, so it surfaces in Settings (list / switch /
 // create+name / delete agents) without changing the built-in section count that
-// the dev-route-catalog test pins. Ordered right after the AI Model section.
+// the dev-route-catalog test pins. It lives under the local Cloud group with the
+// upsell overview, while full Cloud-only account/billing/API surfaces remain
+// opt-in through registerCloudSettingsSections().
 registerSettingsSection({
   id: "cloud-agents",
   label: "settings.sections.cloudAgents.label",
@@ -249,12 +290,32 @@ registerSettingsSection({
   icon: Bot,
   tone: "accent",
   hue: "accent",
-  group: "agent",
+  group: CLOUD_SETTINGS_GROUP_ID,
   titleKey: "settings.sections.cloudAgents.title",
   defaultTitle: "Eliza Cloud Agents",
-  order: 1.5,
+  order: 1.55,
   Component: CloudAgentsSection,
 });
+
+// "My Runtimes" — manage + switch between local / cloud-dedicated / VPS-remote
+// runtimes (the cockpit's runtime registry). Contributed through the registry
+// (not the pinned META list) so it doesn't change the built-in section count the
+// dev-route-catalog test pins.
+registerSettingsSection({
+  id: "my-runtimes",
+  label: "settings.sections.myRuntimes.label",
+  defaultLabel: "My Runtimes",
+  icon: Server,
+  tone: "neutral",
+  hue: "slate",
+  group: "system",
+  titleKey: "settings.sections.myRuntimes.title",
+  defaultTitle: "My Runtimes",
+  order: 3.5,
+  Component: MyRuntimesContainer,
+});
+
+registerCloudConnectorsSettingsSection();
 
 /** Every section the Settings view should render — built-ins plus any added by
  *  a host app / plugin through {@link registerSettingsSection}. */

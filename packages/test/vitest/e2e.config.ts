@@ -2,9 +2,7 @@ import { defineConfig } from "vitest/config";
 import baseConfig from "./real.config";
 
 export const heavyOnlyE2EPaths = [
-  "eliza/plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts",
   "eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
-  "eliza/packages/app-core/test/app/first-run-companion.live.e2e.test.ts",
   "eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
   "eliza/packages/app-core/src/services/local-inference/engine.e2e.test.ts",
   "eliza/packages/ui/src/services/local-inference/engine.e2e.test.ts",
@@ -44,7 +42,6 @@ export const specializedLiveE2EPaths = [
 export const credentialDependentE2EPaths = [
   // Optional connector / wallet coverage needs real third-party credentials.
   // Keep these out of the baseline lane so it does not silently pass with skips.
-  "eliza/plugins/plugin-steward-app/test/wallet-live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/connector-health.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/farcaster-connector.live.e2e.test.ts",
   "eliza/packages/app-core/test/live-agent/feishu-connector.live.e2e.test.ts",

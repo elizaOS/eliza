@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+	buildInteractionUrlResolver,
 	ChannelType,
 	type Content,
 	ContentType,
@@ -22,7 +23,7 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import {
-	AttachmentBuilder,
+	type AttachmentBuilder,
 	type Channel,
 	type Client,
 	ChannelType as DiscordChannelType,
@@ -65,9 +66,9 @@ import {
 } from "./types";
 import { createTypingController } from "./typing";
 import {
+	buildOutboundDiscordAttachment,
 	canSendMessage,
 	extractUrls,
-	getAttachmentFileName,
 	getMessageService,
 	getMessagingAPI,
 	normalizeDiscordMessageText,
@@ -79,15 +80,36 @@ const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 export function resolveGenerationTimeoutMs(
 	timeoutSetting: unknown,
 	fallbackSetting: unknown,
+	mediaGenerationTimeoutSetting?: unknown,
 ): number | null {
+	const hasExplicitDiscordTimeout =
+		timeoutSetting !== undefined &&
+		timeoutSetting !== null &&
+		String(timeoutSetting).trim() !== "";
+
 	const parsed = Number.parseInt(
 		String(timeoutSetting ?? fallbackSetting ?? "120000"),
 		10,
 	);
+	let base: number | null;
 	if (!Number.isFinite(parsed)) {
-		return 120_000;
+		base = 120_000;
+	} else {
+		base = parsed > 0 ? Math.max(30_000, parsed) : null;
 	}
-	return parsed > 0 ? Math.max(30_000, parsed) : null;
+
+	if (hasExplicitDiscordTimeout || base === null) {
+		return base;
+	}
+
+	const mediaParsed = Number.parseInt(
+		String(mediaGenerationTimeoutSetting ?? ""),
+		10,
+	);
+	if (!Number.isFinite(mediaParsed) || mediaParsed <= 0) {
+		return base;
+	}
+	return Math.max(base, Math.max(30_000, mediaParsed));
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
@@ -551,7 +573,14 @@ export class MessageManager {
 		let messageServerId: string | undefined;
 
 		if (message.guild) {
-			const guild = await message.guild.fetch();
+			// Use the gateway-cached guild directly. The old `await message.guild.fetch()`
+			// issued a REST GET /guilds/{id} on EVERY message; in a large, busy guild
+			// (thousands of members) that per-message fetch storm saturates discord.js's
+			// REST queue and starves message handling — the bot goes silent in big
+			// servers while staying fine in small ones (rate-limits are queued, not
+			// thrown, so nothing shows in the logs). `guild.id` (all that's used below)
+			// is already on the cached object.
+			const guild = message.guild;
 			type = await this.getChannelType(message.channel as Channel);
 			if (type === null) {
 				// usually a forum type post
@@ -802,6 +831,8 @@ export class MessageManager {
 					process.env.DISCORD_GENERATION_TIMEOUT_MS,
 				this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
 					process.env.MESSAGE_TIMEOUT_MS,
+				this.runtime.getSetting("ZEROLLAMA_VIDEO_TIMEOUT_MS") ??
+					process.env.ZEROLLAMA_VIDEO_TIMEOUT_MS,
 			);
 
 			const finalizePendingDraft = async () => {
@@ -871,7 +902,12 @@ export class MessageManager {
 
 			const callback: HandlerCallback = async (content: Content) => {
 				try {
-					if (generationTimedOut) {
+					const pendingAttachmentCount = Array.isArray(content.attachments)
+						? content.attachments.filter((media) => Boolean(media?.url)).length
+						: 0;
+					// Long-running media (e.g. Wan video ~10 min) can outlive the Discord
+					// generation timeout. Still deliver attachments when the job finishes.
+					if (generationTimedOut && pendingAttachmentCount === 0) {
 						return [];
 					}
 					// target is set but not addressed to us handling
@@ -922,16 +958,47 @@ export class MessageManager {
 
 					// Project embedded interaction blocks (choices, task cards, …) onto
 					// native Discord components, and strip their markers from the prose.
-					const rendered = renderDiscordInteractions(content);
+					const rawAppUrl =
+						this.runtime.getSetting("ELIZA_APP_URL") ||
+						this.runtime.getSetting("ELIZA_CLOUD_URL");
+					const appBaseUrl =
+						typeof rawAppUrl === "string" ? rawAppUrl : undefined;
+					const rendered = renderDiscordInteractions(
+						content,
+						buildInteractionUrlResolver(appBaseUrl),
+					);
 					const hasComponents = rendered.components.length > 0;
 					let textContent = normalizeDiscordMessageText(rendered.text);
 					if (textContent.trim().length === 0 && hasComponents) {
 						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
 					}
 					const hasText = textContent.trim().length > 0;
-					const attachmentCount = Array.isArray(content.attachments)
+					let attachmentCount = Array.isArray(content.attachments)
 						? content.attachments.filter((media) => Boolean(media?.url)).length
 						: 0;
+
+					// Skip attachment URLs already delivered by an action callback this turn.
+					if (attachmentCount > 0 && content.inReplyTo) {
+						const callbackDedup = message as DiscordMessage & {
+							_elizaSentReplyKeys?: Set<string>;
+							_elizaSentAttachmentUrls?: Set<string>;
+						};
+						callbackDedup._elizaSentAttachmentUrls ??= new Set();
+						const sentAttachmentUrls = callbackDedup._elizaSentAttachmentUrls;
+						const pendingAttachments = (content.attachments ?? []).filter(
+							(media) =>
+								Boolean(media?.url) && !sentAttachmentUrls.has(media.url),
+						);
+						if (pendingAttachments.length === 0) {
+							content = { ...content, attachments: undefined };
+							attachmentCount = 0;
+						} else if (
+							pendingAttachments.length !== (content.attachments ?? []).length
+						) {
+							content = { ...content, attachments: pendingAttachments };
+							attachmentCount = pendingAttachments.length;
+						}
+					}
 
 					if (!hasText && attachmentCount === 0) {
 						return [];
@@ -973,11 +1040,21 @@ export class MessageManager {
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
 							if (media.url) {
-								const fileName = getAttachmentFileName(media);
 								files.push(
-									new AttachmentBuilder(media.url, { name: fileName }),
+									await buildOutboundDiscordAttachment(media, this.runtime),
 								);
 							}
+						}
+						if (files.length > 0) {
+							this.runtime.logger.info(
+								{
+									src: "plugin:discord",
+									agentId: this.runtime.agentId,
+									messageId: message.id,
+									attachmentCount: files.length,
+								},
+								"Sending Discord message attachments",
+							);
 						}
 					}
 
@@ -1108,6 +1185,21 @@ export class MessageManager {
 
 					if (memories.length > 0) {
 						responseEmitted = true;
+					}
+					if (
+						messages.length > 0 &&
+						content.attachments?.length &&
+						content.inReplyTo
+					) {
+						const callbackDedup = message as DiscordMessage & {
+							_elizaSentAttachmentUrls?: Set<string>;
+						};
+						callbackDedup._elizaSentAttachmentUrls ??= new Set();
+						for (const media of content.attachments) {
+							if (media.url) {
+								callbackDedup._elizaSentAttachmentUrls.add(media.url);
+							}
+						}
 					}
 					typingController.stop();
 					statusReactions?.setDone();

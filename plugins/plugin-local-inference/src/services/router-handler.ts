@@ -54,8 +54,8 @@
  *   6. **Edge-TTS (`edge-tts`)** — free Microsoft Edge endpoint, no key.
  *
  * Same precedence applies to `TRANSCRIPTION`, with the local side using
- * Qwen3-ASR via the fused libelizainference (no whisper.cpp; see
- * `plugin-local-inference/native/AGENTS.md` §1).
+ * the fused Gemma ASR path when the active bundle stages eligible ASR
+ * artifacts (no whisper.cpp fallback).
  *
  * Users can override this per slot via the routing-preferences settings
  * panel (`prefer-local` ↔ `manual` + explicit `preferredProvider`).
@@ -68,12 +68,16 @@ import {
 	NoModelProviderConfiguredError,
 } from "@elizaos/core";
 import { readEffectiveAssignments } from "./assignments";
+import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
 import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
+import { probeHardware } from "./hardware";
+import { type LiveDeviceSignals, readLiveDeviceSignals } from "./live-signals";
 import { policyEngine } from "./routing-policy";
 import {
 	DEFAULT_ROUTING_POLICY,
+	type RoutingPolicy,
 	readRoutingPreferences,
 } from "./routing-preferences";
 import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
@@ -85,6 +89,29 @@ export const ROUTER_PROVIDER = "eliza-router";
  * they can register with Infinity — unlikely in practice.
  */
 const ROUTER_PRIORITY = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The device-tier assessment drives the `auto` policy (and softly hints
+ * `prefer-local`). Probing hardware is cheap but not free, so cache the
+ * assessment for a short window — long enough to avoid re-probing on every
+ * model call, short enough that the live free-RAM demotion stays roughly
+ * current. The live thermal / throughput signals are read fresh per call (they
+ * change fast and are cheap to read), not cached.
+ */
+const DEVICE_TIER_TTL_MS = 30_000;
+let cachedDeviceTier: { at: number; assessment: DeviceTierAssessment } | null =
+	null;
+
+async function resolveDeviceTier(): Promise<DeviceTierAssessment | null> {
+	const now = Date.now();
+	if (cachedDeviceTier && now - cachedDeviceTier.at < DEVICE_TIER_TTL_MS) {
+		return cachedDeviceTier.assessment;
+	}
+	const probe = await probeHardware();
+	const assessment = classifyDeviceTier(probe);
+	cachedDeviceTier = { at: now, assessment };
+	return assessment;
+}
 
 function readBooleanEnv(name: string): boolean {
 	const value =
@@ -131,6 +158,10 @@ function shouldForceLocalInference(
 	policy: string,
 	preferredProvider: string | null,
 ): boolean {
+	// Keep the local-inference candidate even when no text model is assigned/loaded
+	// when the policy guarantees on-device routing: an explicit manual pin, or the
+	// `local-only` policy (which must never fall back to cloud).
+	if (policy === "local-only") return true;
 	return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 
@@ -187,12 +218,18 @@ export async function filterUnavailableLocalInference(
 	preferredProvider: string | null,
 	candidates: HandlerRegistration[],
 ): Promise<HandlerRegistration[]> {
-	// Voice slots (TTS / STT) are self-sufficient — their handlers call
-	// ensureActiveBundleVoiceReady() internally which loads the voice model
-	// on-demand. Don't gate them behind text model availability; the text
-	// model assignment check only makes sense for text generation slots.
-	if (slot === "TEXT_TO_SPEECH" || slot === "TRANSCRIPTION") {
+	// TTS is self-sufficient: its handler calls ensureActiveBundleVoiceReady()
+	// internally and can use the Kokoro-only bridge on demand.
+	if (slot === "TEXT_TO_SPEECH") {
 		return candidates;
+	}
+
+	if (slot === "TRANSCRIPTION") {
+		return filterUnavailableLocalInferenceCandidates(
+			candidates,
+			await localInferenceEngine.canTranscribeLocally(),
+			shouldForceLocalInference(policy, preferredProvider),
+		);
 	}
 
 	const hasLocalInference = candidates.some(
@@ -217,18 +254,16 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 			throw new Error(`[router] Unknown agent slot: ${slot}`);
 		}
 
-		// Global local-only override: ELIZA_LOCAL_ONLY=1 pins every slot to
-		// manual + eliza-local-inference, disabling cloud fallback entirely.
-		const globalLocalOnly = readBooleanEnv("ELIZA_LOCAL_ONLY");
-
-		// Read the user's policy for this slot. Absent = local-first fallback.
+		// Read the user's policy for this slot. The per-slot policy is canonical;
+		// when absent it falls back to the local-first default. ELIZA_LOCAL_ONLY
+		// is retained for back-compat only: it sets the *global default* to
+		// `local-only`, but an explicit per-slot policy always wins.
 		const prefs = await readRoutingPreferences();
-		const policy = globalLocalOnly
-			? "manual"
-			: (prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY);
-		const preferred = globalLocalOnly
-			? "eliza-local-inference"
-			: (prefs.preferredProvider[slot] ?? null);
+		const globalDefault: RoutingPolicy = readBooleanEnv("ELIZA_LOCAL_ONLY")
+			? "local-only"
+			: DEFAULT_ROUTING_POLICY;
+		const policy: RoutingPolicy = prefs.policy[slot] ?? globalDefault;
+		const preferred = prefs.preferredProvider[slot] ?? null;
 
 		// Ask the policy engine which handler to dispatch to. For automatic
 		// policies, honor the documented fallback behaviour: if the selected
@@ -246,6 +281,18 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				? registeredCandidates
 				: getRuntimeModelCandidates(runtime, modelType),
 		);
+
+		// Only the capability-aware policies need the hardware assessment + live
+		// signals. The tier is cached; the live signals are read fresh.
+		let deviceTier: DeviceTierAssessment | null = null;
+		let liveSignals: LiveDeviceSignals | null = null;
+		if (policy === "auto" || policy === "prefer-local") {
+			deviceTier = await resolveDeviceTier();
+		}
+		if (policy === "auto") {
+			liveSignals = readLiveDeviceSignals();
+		}
+
 		const failedProviders = new Set<string>();
 		let lastError: unknown = null;
 
@@ -259,6 +306,9 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				preferredProvider: preferred,
 				candidates: remaining,
 				selfProvider: ROUTER_PROVIDER,
+				slot,
+				deviceTier,
+				liveSignals,
 			});
 
 			if (!pick) {

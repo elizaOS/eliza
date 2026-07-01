@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import {
   ExternalLink,
   FolderOpen,
+  Globe,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -22,12 +23,13 @@ import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-m
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -39,10 +41,7 @@ import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import {
-  AppWorkspaceChrome,
-  type AppWorkspaceChromeProps,
-} from "../workspace/AppWorkspaceChrome.js";
+import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
 import {
   decodeBase64ForPreview,
   decodeSignableMessage,
@@ -58,7 +57,6 @@ import {
   parseBrowserWorkspaceEvmChainId,
   resolveBrowserWorkspaceSignMessage,
 } from "./browser-workspace-wallet";
-import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
@@ -548,10 +546,8 @@ function BrowserTabRow({
           type="button"
           aria-label={`${closeTabLabel} ${label}`}
           title={`${closeTabLabel}: ${label}`}
-          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
-            active
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger  ${
+            active ? "opacity-100" : "opacity-0 group-hover:opacity-100 "
           }`}
           onClick={(event) => {
             event.preventDefault();
@@ -577,7 +573,16 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     uiTheme,
     walletAddresses,
     walletConfig,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    getStewardPending: s.getStewardPending,
+    getStewardStatus: s.getStewardStatus,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+    plugins: s.plugins,
+    uiTheme: s.uiTheme,
+    walletAddresses: s.walletAddresses,
+    walletConfig: s.walletConfig,
+  }));
   const [workspace, setWorkspace] = useState<BrowserWorkspaceSnapshot>({
     mode: "web",
     tabs: [],
@@ -1694,10 +1699,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     };
     const observer = new ResizeObserver(() => pokeAll());
     observer.observe(surface);
-    window.addEventListener("resize", pokeAll);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", pokeAll);
     };
   }, []);
 
@@ -1832,6 +1835,24 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     },
     [loadWorkspace, selectedTabId],
   );
+
+  const closeAllBrowserWorkspaceTabs = useCallback(async () => {
+    const closableTabs = workspace.tabs.filter(
+      (tab) => !isInternalBrowserWorkspaceTab(tab),
+    );
+    for (const tab of closableTabs) {
+      await client.closeBrowserWorkspaceTab(tab.id);
+    }
+    const snapshot = await client.getBrowserWorkspace();
+    const nextId = snapshot.tabs[0]?.id ?? null;
+    if (nextId) {
+      await client.showBrowserWorkspaceTab(nextId);
+    }
+    setSelectedTabId(nextId);
+    setLocationInput(snapshot.tabs.find((tab) => tab.id === nextId)?.url ?? "");
+    setLocationDirty(false);
+    await loadWorkspace({ preferTabId: nextId, silent: true });
+  }, [loadWorkspace, workspace.tabs]);
 
   useEffect(() => {
     void loadWorkspace();
@@ -2105,83 +2126,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
   }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
 
-  const browserPageScopeCopy = useMemo(
-    () =>
-      getBrowserPageScopeCopy({
-        browserBridgeConnected,
-        browserBridgeInstallAvailable: browserBridgeSupported,
-        browserLabel: primaryBrowserBridgeCompanion?.browser,
-        profileLabel: primaryBrowserBridgeCompanion?.profileLabel,
-      }),
-    [
-      browserBridgeConnected,
-      browserBridgeSupported,
-      primaryBrowserBridgeCompanion?.browser,
-      primaryBrowserBridgeCompanion?.profileLabel,
-    ],
-  );
-
-  const browserChatActions =
-    !browserBridgeSupported ||
-    browserBridgeUnsupportedInNativeLocalMode ||
-    browserBridgeConnected ? null : (
-      <>
-        <Button
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={() => void installBrowserBridgeExtension()}
-        >
-          {t("browserworkspace.InstallBrowserBridge", {
-            defaultValue: "Install Agent Browser Bridge",
-          })}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={
-            busyAction !== null || !browserBridgePackageStatus?.chromeBuildPath
-          }
-          onClick={() => void revealBrowserBridgeFolder()}
-        >
-          <FolderOpen className="h-4 w-4" />
-          {t("browserworkspace.OpenBrowserBridgeFolder", {
-            defaultValue: "Open extension folder",
-          })}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={() => void openBrowserBridgeChromeExtensions()}
-        >
-          {t("browserworkspace.OpenChromeExtensions", {
-            defaultValue: "Open Chrome extensions",
-          })}
-        </Button>
-      </>
-    );
-
-  const browserPageScopedChatPaneProps = useMemo<
-    NonNullable<AppWorkspaceChromeProps["pageScopedChatPaneProps"]>
-  >(
-    () => ({
-      introOverride: {
-        title: browserPageScopeCopy.title,
-        body: browserPageScopeCopy.body,
-        actions: browserChatActions,
-      },
-      systemAddendumOverride: browserPageScopeCopy.systemAddendum,
-      placeholderOverride: browserBridgeConnected
-        ? t("browserworkspace.ChatPlaceholderConnected", {
-            defaultValue: "Message",
-          })
-        : t("browserworkspace.ChatPlaceholderInstallBridge", {
-            defaultValue: "Message",
-          }),
-    }),
-    [browserBridgeConnected, browserChatActions, browserPageScopeCopy, t],
-  );
-
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
   });
@@ -2316,7 +2260,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               }
               addLabel={newTabLabel}
               emptyLabel={t("browserworkspace.NoUserTabs", {
-                defaultValue: "No user tabs yet.",
+                defaultValue: "Open a tab with +",
               })}
               emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
               bodyClassName="space-y-0.5 pl-3"
@@ -2342,7 +2286,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               collapsed={collapsedSections.has("agent")}
               onToggleCollapsed={toggleSidebarSectionCollapsed}
               emptyLabel={t("browserworkspace.NoAgentTabs", {
-                defaultValue: "No agent tabs yet.",
+                defaultValue: "Ask Eliza to open a page here",
               })}
               emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
               bodyClassName="space-y-0.5 pl-3"
@@ -2368,7 +2312,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               collapsed={collapsedSections.has("app")}
               onToggleCollapsed={toggleSidebarSectionCollapsed}
               emptyLabel={t("browserworkspace.NoAppTabs", {
-                defaultValue: "No app tabs yet.",
+                defaultValue: "App tabs open here automatically",
               })}
               emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
               bodyClassName="space-y-0.5 pl-3"
@@ -2394,7 +2338,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
 
   const navNode = (
-    <div className="flex items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2">
+    <div className="flex items-center gap-2 bg-card/20 px-3 py-2">
       {/* Toggle tabs sidebar. Lives in the URL bar so it's accessible
           even when the sidebar is fully collapsed — the rail's own
           expand button can sit behind the native OOPIF and become
@@ -2486,6 +2430,37 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
       >
         <RefreshCw className="h-4 w-4" />
+      </BrowserNavButton>
+      <BrowserNavButton
+        agentId="close-all-tabs"
+        agentLabel={t("browserworkspace.CloseAllTabs", {
+          defaultValue: "Close all tabs",
+        })}
+        agentDescription="Close every user browser tab"
+        group="browser-nav"
+        onActivate={() =>
+          void runBrowserWorkspaceAction("close:all", async () => {
+            await closeAllBrowserWorkspaceTabs();
+          })
+        }
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={t("browserworkspace.CloseAllTabs", {
+          defaultValue: "Close all tabs",
+        })}
+        disabled={
+          busyAction !== null ||
+          !workspace.tabs.some((tab) => !isInternalBrowserWorkspaceTab(tab))
+        }
+        onClick={() =>
+          void runBrowserWorkspaceAction("close:all", async () => {
+            await closeAllBrowserWorkspaceTabs();
+          })
+        }
+        data-testid="browser-workspace-close-all-tabs"
+      >
+        <X className="h-4 w-4" />
       </BrowserNavButton>
       <BrowserAddressInput
         agentLabel={t("browserworkspace.AddressPlaceholder", {
@@ -2594,7 +2569,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       {watchBannerLabel ? (
         <div
-          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted backdrop-blur-sm"
+          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm bg-card/95 px-3 py-1.5 text-xs text-muted"
           role="status"
           aria-live="polite"
           data-testid="browser-workspace-watch-banner"
@@ -2616,135 +2591,131 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       ) : null}
 
       {workspace.tabs.length === 0 ? (
-        <div className="flex h-full items-center justify-center">
-          <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-            <div className="text-sm font-semibold text-txt">
-              {loading
-                ? t("browserworkspace.Loading", {
-                    defaultValue: "Loading browser workspace",
-                  })
-                : t("browserworkspace.EmptyTitle", {
-                    defaultValue: "No browser tabs yet",
-                  })}
+        loading ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-sm text-muted">
+              {t("browserworkspace.Loading", {
+                defaultValue: "Loading browser workspace",
+              })}
             </div>
-            <div className="text-xs leading-5 text-muted">
-              {isBrowserWorkspaceSessionMode(workspace.mode)
-                ? t("browserworkspace.EmptySessionDescription", {
-                    defaultValue:
-                      "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
-                  })
-                : t("browserworkspace.EmptyDescription", {
-                    defaultValue:
-                      "Open a tab and watch the agent drive the page. Wallet and signing route through your local Steward — no extension required.",
-                  })}
-            </div>
-            {!loading ? (
-              <Button
-                size="sm"
-                className="mt-1"
-                disabled={busyAction !== null}
-                onClick={() =>
+          </div>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+2rem)]">
+            <ChatEmptyStateWithRecommendations
+              icon={Globe}
+              recommendations={[
+                {
+                  label: t("browserworkspace.RecOpenDocs", {
+                    defaultValue: "Open docs.elizaos.ai",
+                  }),
+                  prompt: "Open docs.elizaos.ai in the browser",
+                },
+                {
+                  label: t("browserworkspace.RecSearch", {
+                    defaultValue: "Search the web",
+                  }),
+                  prompt:
+                    "Search Google for the latest elizaOS release notes and open the top result",
+                },
+                {
+                  label: t("browserworkspace.RecSummarize", {
+                    defaultValue: "Summarize a page",
+                  }),
+                  prompt:
+                    "Open a website and summarize what's on the page for me",
+                },
+              ]}
+              primaryAction={{
+                label: t("browserworkspace.OpenWebsite", {
+                  defaultValue: "Open a website",
+                }),
+                icon: Plus,
+                onClick: () =>
                   void runBrowserWorkspaceAction("open:home", async () => {
                     await openNewBrowserWorkspaceTab(
                       BROWSER_WORKSPACE_DEFAULT_HOME_URL,
                       "user",
                     );
-                  })
-                }
-                data-testid="browser-workspace-open-home"
-              >
-                {t("browserworkspace.OpenNewTab", {
-                  defaultValue: "Open new tab",
-                })}
-              </Button>
-            ) : null}
-            {!loading &&
-            workspace.mode === "web" &&
+                  }),
+              }}
+            />
+            {workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="mt-3 flex w-full flex-col gap-3 rounded-sm border border-border/40 bg-card/35 p-3 text-left">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-txt">
-                      {t("browserworkspace.BrowserBridgeTitle", {
-                        defaultValue: "Agent Browser Bridge",
-                      })}
-                    </div>
-                    <div className="mt-1 text-xs leading-5 text-muted">
-                      {t("browserworkspace.BrowserBridgeDescription", {
-                        defaultValue:
-                          "The agent can drive your real Chrome tabs with the Agent Browser Bridge extension.",
-                      })}
-                    </div>
-                    <div className="mt-1 truncate text-[11px] text-muted">
-                      {browserBridgeConnected
-                        ? t("browserworkspace.BrowserBridgeConnected", {
-                            defaultValue: "Connected",
-                          })
-                        : browserBridgeAvailable
-                          ? t("browserworkspace.BrowserBridgeAvailable", {
-                              defaultValue: "Extension available",
-                            })
-                          : t("browserworkspace.BrowserBridgeNotConnected", {
-                              defaultValue: "Not connected",
-                            })}
-                      {browserBridgePackageStatus?.chromeBuildPath
-                        ? ` - ${browserBridgePackageStatus.chromeBuildPath}`
-                        : ""}
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    aria-label={t("browserworkspace.RefreshBrowserBridge", {
-                      defaultValue: "Refresh Agent Browser Bridge",
-                    })}
-                    disabled={browserBridgeLoading || busyAction !== null}
-                    onClick={() => void refreshBrowserBridgeConnection()}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
+              <div className="-mt-4 grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
+                <div className="text-center text-[11px] text-muted/70 sm:col-span-3">
+                  {browserBridgeConnected
+                    ? t("browserworkspace.BrowserBridgeConnected", {
+                        defaultValue: "Browser Bridge connected",
+                      })
+                    : browserBridgeAvailable
+                      ? t("browserworkspace.BrowserBridgeAvailable", {
+                          defaultValue: "Browser Bridge available",
+                        })
+                      : t("browserworkspace.BrowserBridgeNotConnected", {
+                          defaultValue:
+                            "Let the agent drive your real Chrome tabs",
+                        })}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    disabled={busyAction !== null}
-                    onClick={() => void installBrowserBridgeExtension()}
-                  >
-                    {t("browserworkspace.InstallBrowserBridge", {
-                      defaultValue: "Install Agent Browser Bridge",
-                    })}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      busyAction !== null ||
-                      !browserBridgePackageStatus?.chromeBuildPath
-                    }
-                    onClick={() => void revealBrowserBridgeFolder()}
-                  >
-                    <FolderOpen className="h-4 w-4" />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busyAction !== null}
+                  onClick={() => void installBrowserBridgeExtension()}
+                  className="sm:col-span-3"
+                >
+                  {t("browserworkspace.InstallBrowserBridge", {
+                    defaultValue: "Install Agent Browser Bridge",
+                  })}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={
+                    busyAction !== null ||
+                    !browserBridgePackageStatus?.chromeBuildPath
+                  }
+                  onClick={() => void revealBrowserBridgeFolder()}
+                  className="min-w-0"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  <span className="truncate">
                     {t("browserworkspace.OpenBrowserBridgeFolder", {
                       defaultValue: "Open extension folder",
                     })}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busyAction !== null}
-                    onClick={() => void openBrowserBridgeChromeExtensions()}
-                  >
+                  </span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busyAction !== null}
+                  onClick={() => void openBrowserBridgeChromeExtensions()}
+                  className="min-w-0"
+                >
+                  <span className="truncate">
                     {t("browserworkspace.OpenChromeExtensions", {
                       defaultValue: "Open Chrome extensions",
                     })}
-                  </Button>
-                </div>
+                  </span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={browserBridgeLoading || busyAction !== null}
+                  onClick={() => void refreshBrowserBridgeConnection()}
+                  className="min-w-0"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span className="truncate">
+                    {t("browserworkspace.RefreshBrowserBridge", {
+                      defaultValue: "Refresh connection",
+                    })}
+                  </span>
+                </Button>
               </div>
             ) : null}
           </div>
-        </div>
+        )
       ) : workspace.mode === "desktop" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
@@ -2797,8 +2768,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   </div>
                   <div className="text-xs leading-5 text-muted">
                     {t("browserworkspace.FrameBlockedDescription", {
-                      defaultValue:
-                        "Discord blocks embedded browser frames. Use Eliza Desktop Browser or a connected browser profile so LifeOps can inspect the page after login.",
+                      defaultValue: "This site blocks embedded frames.",
                     })}
                   </div>
                   <Button
@@ -2851,8 +2821,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })
       ) : (
         <div className="flex h-full flex-1 flex-col bg-bg">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
-            <span className="rounded-full border border-border/40 bg-card/60 px-2 py-1 font-medium text-txt">
+          <div className="flex flex-wrap items-center gap-2 bg-card/20 px-3 py-2 text-xs text-muted">
+            <span className="font-medium text-txt">
               {t("browserworkspace.CloudSession", {
                 defaultValue: "Cloud browser session",
               })}
@@ -2876,7 +2846,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {selectedTabLiveViewUrl ? (
               <button
                 type="button"
-                className="rounded-sm border border-border/40 px-2 py-1 text-txt hover:bg-card/60"
+                className="rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",
@@ -2933,7 +2903,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           </div>
 
           {selectedTab ? (
-            <div className="border-t border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+            <div className="bg-card/20 px-3 py-2 text-xs text-muted">
               <div className="truncate font-medium text-txt">
                 {getBrowserWorkspaceTabLabel(selectedTab, t)}
               </div>
@@ -2974,15 +2944,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   return (
     <ShellViewAgentSurface viewId="browser">
-      <AppWorkspaceChrome
-        testId="browser-workspace-view"
-        main={mainNode}
-        chatScope="page-browser"
-        pageScopedChatPaneProps={browserPageScopedChatPaneProps}
-        chatCollapsed
-        chatDisabled
-        hideCollapseButton
-      />
+      <AppWorkspaceChrome testId="browser-workspace-view" main={mainNode} />
       <ConfirmDialog {...vaultAutofillModalProps} />
       <ConfirmDialog {...walletActionModalProps} />
     </ShellViewAgentSurface>

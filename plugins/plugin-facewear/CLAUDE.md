@@ -6,6 +6,8 @@ Unified facewear plugin for elizaOS — adds XR headset streaming and BLE smartg
 
 Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects Eliza agents to Meta Quest 3, XReal, Apple Vision Pro (WebXR over WebSocket), and Even Realities G1/G2 smartglasses (BLE via Noble, Web Bluetooth, or a native bridge). Provides bidirectional voice + camera streaming for XR headsets, a full G1 display/control protocol for smartglasses, and in-app view panels for device management.
 
+**This is the single home for VR/AR/smartglasses + their setup** — device pairing, native app SDKs (`scripts/setup-sdks.mjs`), and the desktop **OpenXR runtime** detector/installer (`src/runtime/`) all live here. `@elizaos/plugin-xr` is superseded by this plugin. The immersive renderer itself (WebXR session + DOM→texture panels) lives in `@elizaos/ui/spatial` (`enterImmersiveScene` / `enterImmersiveFromSpecs`); facewear owns the device + runtime **setup** that makes it reachable.
+
 ## Plugin surface
 
 ### Services
@@ -30,6 +32,7 @@ Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects
 | `XR_LIST_VIEWS` (`facewearListViewsAction`) | `actions/view-actions.ts` | Enumerate + optionally send view catalog to headset |
 | `XR_RESIZE_VIEW` (`facewearResizeViewAction`) | `actions/view-actions.ts` | Scale / reposition a view panel |
 | `XR_QUERY_VISION` (`facewearQueryVisionAction`) | `actions/vision-query.ts` | Describe current XR camera frame |
+| `SETUP_XR_RUNTIME` (`facewearSetupRuntimeAction`) | `actions/xr-runtime-setup.ts` | Detect the desktop OpenXR runtime (Monado/SteamVR/WMR) + show install steps |
 
 ### Providers
 | Name | File | What it injects |
@@ -45,14 +48,22 @@ Registered as `@elizaos/plugin-facewear` (opt-in, category `hardware`). Connects
 | `GET /api/facewear/devices` | `routes/device-config.ts` | JSON list of all device profiles |
 | `GET /api/facewear/devices/:id` | `routes/device-config.ts` | Single device profile |
 | `GET /api/facewear/status` | `routes/device-config.ts` | Connected device list from `FacewearService` |
+| `GET /api/facewear/xr-runtime` | `routes/xr-runtime.ts` | Desktop OpenXR runtime status + install plan (drives the FacewearView "vr/ar runtime" row) |
 | simulator route | `routes/simulator-route.ts` | Simulator UI host |
 | view-host route | `routes/view-host.ts` | Serve in-headset view bundles |
 | views route | `routes/views.ts` | View catalog endpoint |
 
 ### Views
-Two registered view surfaces (`gui`/`tui`/`xr` variants):
-- `facewear` — `/apps/facewear` — main facewear manager (`FacewearView`)
-- `smartglasses` — `/apps/smartglasses` — Even Realities pairing + diagnostics (`SmartglassesView`)
+The **GUI config lives in Settings → Wearables**, not the top-level launcher.
+`register.ts` registers one combined `wearables` settings section
+(`WearablesSettingsSection`, group `system`) with two internal tabs:
+`FacewearView` (XR headset manager) and `SmartglassesView` (Even Realities
+pairing + diagnostics). The `facewear`/`smartglasses` view declarations in
+`index.ts` remain (`visibleInManager:false`, `desktopTabEnabled:false`,
+modalities `xr`/`tui`) only so the agent keeps serving the in-headset XR view
+host and terminal (TUI) surfaces, and `FACEWEAR_*`/`SMARTGLASSES_*`/`XR_*`
+actions still resolve. Do **not** re-add a `gui` modality or `app.navTabs` for
+these — wearable hardware is configuration.
 
 ## Layout
 
@@ -61,7 +72,6 @@ src/
   index.ts                    Plugin object + all exports
   register.ts                 Secondary entry for view-only imports
   register-terminal-view.tsx  Terminal (TUI) view registration
-  ui-shims.ts                 UI compatibility shims
   status-format.ts            Shared status formatting utilities
   actions/
     facewear-connect.ts       FACEWEAR_CONNECT
@@ -121,6 +131,8 @@ bun run --cwd plugins/plugin-facewear lint           # Biome check src/
 bun run --cwd plugins/plugin-facewear test           # vitest (builds views + emulator first)
 bun run --cwd plugins/plugin-facewear emulator:build # build emulator only
 bun run --cwd plugins/plugin-facewear emulator:cli   # run emulator CLI
+bun run --cwd plugins/plugin-facewear setup:sdks     # check native app SDKs + OpenXR runtime
+bun run --cwd plugins/plugin-facewear setup:openxr   # install a desktop OpenXR runtime (no-root SteamVR where possible)
 bun run --cwd plugins/plugin-facewear verify:app     # registry + plugin-registration integration tests
 ```
 
@@ -172,8 +184,50 @@ Legacy aliases `SMARTGLASSES_TRANSPORT`, `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTG
 - **`@abandonware/noble` is an optional dep.** It is unavailable in browser contexts and on some CI runners. The native module is never imported at module load — `getNobleG1Transport()` (called from `SmartglassesService` transport selection) loads it lazily via a dynamic import and returns `null` when it is missing.
 - **Transport auto-selection order:** `even-bridge` → `web-bluetooth` → `noble`. Set `FACEWEAR_SMARTGLASSES_TRANSPORT` to force one.
 - **View bundles** (`build:views`) must be built before `test` — the test script runs `build:views && emulator:build` before vitest.
-- **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it.
-- **`app-xr/`** is the WebXR browser client deployed to headsets. It is built separately and served via the view-host route.
+- **`emulator/`** is a separate Bun workspace. `emulator:build` runs `bun install --force` inside it. Its **XR browser-harness** files (`emulator.ts`, `types.ts`, `playwright-fixture.ts`, `mock-agent.ts`) are now thin **re-exports of the canonical `@elizaos/plugin-xr` simulator** (#9941 — exactly one XR harness); do not fork them. `device-emulator.ts` + `cli.ts` (the facewear BLE/device emulator) stay local.
+- **`app-xr/`** is the WebXR browser client deployed to headsets. It is built separately and served via the view-host route. Its e2e (`app-xr/e2e/`) drives the **real `view-host.ts` route** via `route-server.ts` (bun) — the deleted `view-server.mjs` mock no longer exists — and the **real IWER emulator** (`window.__XREmulator`) for `camera-pose.spec.ts`.
 - **Backward-compat aliases**: `smartglassesPlugin`, `smartglassesControlAction`, `smartglassesStatusAction`, `displaySmartglassesTextAction`, `smartglassesMicrophoneAction` are all re-exported from `src/index.ts` pointing at the same objects.
 - **`XR_WS_PORT_DEFAULT = 31338`** is exported from `xr-session-service.ts` and must stay in sync with the `FACEWEAR_WS_PORT` default in `agentConfig`.
 - See `docs/smartglasses.md` for the full Even Realities G1 protocol reference and hardware proof workflow.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — native / on-device bridge:**
+- The capability run on a **real device or simulator** — not desktop Chromium against a mocked bridge (see #9967/#9580): device logs + the captured output (photo, OCR text, detection boxes, transcript, sensor reading).
+- Parity vs the reference implementation where one exists (e.g. the Python/Ultralytics reference), with the numeric tolerances actually met.
+- Permission-denied, no-hardware, and background/foreground lifecycle paths.
+- A short recording of the on-device run; confirm the build under test is yours (versionName / a known on-screen change), not a stale install.
+<!-- END: evidence-and-e2e-mandate -->

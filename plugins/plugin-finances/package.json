@@ -1,18 +1,18 @@
 {
   "name": "@elizaos/plugin-finances",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Owner finances overlay app: finance dashboard, transactions, recurring charges. Hooks into other finance providers later.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "bunx tsc --noCheck -p tsconfig.build.json"
+    "build:types": "bunx tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -80,7 +80,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

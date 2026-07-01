@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.renewals-keep-cancel",
   title: "Renewals review surfaces keep/cancel decisions",
   domain: "lifeops.executive-assistant",

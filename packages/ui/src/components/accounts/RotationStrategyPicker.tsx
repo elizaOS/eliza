@@ -6,7 +6,7 @@
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type { AccountStrategy } from "../../api/client-agent";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   Select,
   SelectContent,
@@ -67,7 +67,7 @@ export function RotationStrategyPicker({
   onChange,
   disabled,
 }: RotationStrategyPickerProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const resolved: AccountStrategy = value ?? "priority";
 
   return (

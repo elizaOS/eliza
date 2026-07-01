@@ -1,9 +1,10 @@
-export { blockAction } from "./actions/block.ts";
+import "./register.ts";
+
 export {
-  type FocusActiveSession,
-  type FocusScheduleEntry,
-  FocusView,
-} from "./components/focus/FocusView.tsx";
+  type FocusSnapshot,
+  FocusSpatialView,
+} from "./components/focus/FocusSpatialView.tsx";
+export { FocusView } from "./components/focus/FocusView.tsx";
 export {
   type ActiveSessionInsert,
   type ActiveSessionRow,

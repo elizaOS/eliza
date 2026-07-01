@@ -103,8 +103,49 @@ export default defineConfig({
         replacement: path.join(agentSrc, "$1"),
       },
       {
+        find: /^react-syntax-highlighter\/dist\/esm\/languages\/prism\/.+$/,
+        replacement: path.join(
+          here,
+          "test",
+          "syntax-highlighter-language.stub.ts",
+        ),
+      },
+      {
+        find: /^react-syntax-highlighter\/dist\/esm\/prism-light$/,
+        replacement: path.join(
+          here,
+          "test",
+          "syntax-highlighter-prism-light.stub.tsx",
+        ),
+      },
+      {
+        find: /^react-syntax-highlighter\/dist\/esm\/styles\/prism\/.+$/,
+        replacement: path.join(
+          here,
+          "test",
+          "syntax-highlighter-style.stub.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/ui$/,
         replacement: path.join(repoRoot, "packages/ui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/ui/src/$1"),
+      },
+      // Resolve @elizaos/shared to its TS source like @elizaos/ui above: the
+      // built dist emits extensionless relative imports (e.g. device-fit.js →
+      // "./catalog") that vitest's ESM resolver cannot follow, so any test that
+      // transitively pulls a shared subpath fails to load. Source resolution
+      // sidesteps the dist entirely.
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/shared/src/$1"),
       },
       {
         find: /^react$/,
@@ -128,10 +169,14 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     environment: "node",
-    include: ["test/**/*.test.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "test/**/*.test.ts",
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "scripts/**/*.test.ts",
+    ],
     exclude: unitExcludes,
     globals: false,
-    passWithNoTests: true,
     testTimeout: 30000,
   },
 });

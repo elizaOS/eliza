@@ -85,7 +85,7 @@ KNOWN_DATASETS: list[dict] = [
         "normalizer": "hermes_omniforge",
         "est_records": 80_000,
         "license": "unknown",
-        "notes": "OmniForge Qwen3.6-27B generated; diverse tool-calling",
+        "notes": "OmniForge gemma-4-31B generated; diverse tool-calling",
     },
     {
         "repo_id": "CyberAGI/openclaw-operator-data",

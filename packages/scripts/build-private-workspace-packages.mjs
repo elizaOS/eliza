@@ -53,9 +53,10 @@ const PACKAGES = [
   },
   {
     // `@elizaos/agent/src/services/remote-plugin-bridge.ts` imports
-    // `@elizaos/plugin-worker-runtime/error`. The subpath export resolves
-    // to `./dist/error.js`, so the package must be built before any
-    // consumer (vite build, tsc, the runtime itself) can load it.
+    // Compatibility package for worker authors that still import
+    // `@elizaos/plugin-worker-runtime`. The wrapper resolves through
+    // `@elizaos/plugin-remote-manifest/worker-runtime`, so keep its dist
+    // built for dev/runtime consumers that use the historical package name.
     dir: "packages/plugin-worker-runtime",
     freshnessSentinel: "dist/error.js",
   },

@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-suno",
-    "version": "2.0.3-beta.14",
+    "version": "2.0.3-beta.7",
     "description": "Suno AI Music Generation Plugin for Eliza",
     "main": "dist/index.js",
     "type": "module",
@@ -53,7 +53,7 @@
         "typecheck": "tsgo --noEmit -p tsconfig.json"
     },
     "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",

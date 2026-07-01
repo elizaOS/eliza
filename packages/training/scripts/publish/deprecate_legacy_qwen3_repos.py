@@ -1,11 +1,8 @@
-"""Mark the legacy Qwen3 Eliza-1 HuggingFace repos as DEPRECATED.
+"""Mark the legacy pre-Gemma Eliza-1 HuggingFace repos as DEPRECATED.
 
 Per the 2026-05-12 operator directive, the Eliza-1 fused-model line is
-Qwen3.5/Qwen3.6-only — the Qwen3 dense base models (Qwen/Qwen3-0.6B /
-Qwen/Qwen3-1.7B / Qwen/Qwen3-4B) do not work with the eliza-1 mtp
-spec-decode path. The
-corresponding HF tier repos under ``elizaos/`` stay public (existing
-downloads keep working) but their model cards are updated to mark them as
+Gemma 4 only. The pre-Gemma standalone tier repos stay public (existing
+downloads keep working), but their model cards are updated to mark them as
 deprecated and point at the active Eliza-1 replacement bundles.
 
 This script only updates the README.md on each repo; it does NOT delete or
@@ -19,19 +16,19 @@ The repos updated are:
 
   Bundle repos (the device-side tier bundles — manifest + GGUFs):
     elizaos/eliza-1-0_6b
+    elizaos/eliza-1-0_8b
     elizaos/eliza-1-1_7b
-    elizaos/eliza-1-4b
 
   Companion model repos (per-tier optimized GGUF / SFT weights / drafter):
-    elizaos/eliza-1-{0_6b,1_7b,4b}-optimized
-    elizaos/eliza-1-{0_6b,1_7b,4b}-drafter
-    elizaos/eliza-1-{0_6b,1_7b,4b}-sft
+    elizaos/eliza-1-{0_6b,0_8b,1_7b}-optimized
+    elizaos/eliza-1-{0_6b,0_8b,1_7b}-drafter
+    elizaos/eliza-1-{0_6b,0_8b,1_7b}-sft
     elizaos/eliza-1-0_6b-sft-weights   (the published test-SFT candidate)
 
   Dataset repos:
-    elizaos/eliza-1-0_6b-sft  (model-agnostic — kept usable for Qwen3.5)
+    elizaos/eliza-1-0_6b-sft  (model-agnostic — kept usable for Gemma 4)
 
-The dataset card says the dataset itself is reusable on the Qwen3.5 line
+The dataset card says the dataset itself is reusable on the Gemma 4 line
 (it is just JSONL — no model-family dependency), but the dataset name's
 ``0_6b`` tier infix is legacy.
 """
@@ -50,7 +47,7 @@ log = logging.getLogger("deprecate_legacy_qwen3_repos")
 
 ORG: Final[str] = "elizaos"
 
-DEPRECATED_BUNDLE_TIERS: Final[tuple[str, ...]] = ("0_6b", "1_7b", "4b")
+DEPRECATED_BUNDLE_TIERS: Final[tuple[str, ...]] = ("0_6b", "0_8b", "1_7b")
 DEPRECATED_COMPANION_SUFFIXES: Final[tuple[str, ...]] = ("optimized", "drafter", "sft")
 
 # Cards for the model-bundle repos (manifest + GGUF parent repo for the tier).
@@ -66,17 +63,15 @@ tags:
 # {repo_id} — DEPRECATED (2026-05-12)
 
 **This tier is deprecated.** It shipped against the Qwen3 base model
-(`Qwen/Qwen3-{legacy_size}`), which does not work with the eliza-1 mtp
-spec-decode path — the mtp kernels are validated against the Qwen3.5
-architecture and 248320 tokenizer; a Qwen3 base has the wrong vocab
-(151936) and the wrong attention shape for the fused QJL / PolarQuant /
-TurboQuant paths.
+(`{legacy_source}`), which does not work with the current eliza-1 Gemma 4
+bundle line and official MTP drafter path.
 
 Superseded by the active Eliza-1 line:
 
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/0_8b/` (Qwen3.5-0.8B-Base — new smallest tier)
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/2b/` (Qwen3.5-2B-Base — new mid local tier)
-- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/4b/` (Qwen3.5-4B-Base — local/workstation tier; same tier id, new backbone)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/2b/` (google/gemma-4-E2B — entry/local tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/4b/` (google/gemma-4-E4B — local/workstation tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/9b/` (google/gemma-4-12B — workstation tier)
+- [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) `bundles/27b/` (google/gemma-4-31B — cloud tier)
 
 Existing downloads still work; no new releases will land here.
 
@@ -99,12 +94,12 @@ tags:
 
 **This companion artifact is deprecated.** It pairs with the deprecated
 `elizaos/eliza-1-{legacy_tier}` parent tier, which shipped against the
-Qwen3 base model (`Qwen/Qwen3-{legacy_size}`) that does not work with
-the eliza-1 mtp spec-decode path.
+legacy pre-Gemma base model (`{legacy_source}`) that does not work with
+the current eliza-1 Gemma 4 bundle line.
 
 Superseded by the active Eliza-1 line — see the current bundle companions under
 [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
-(`bundles/0_8b/`, `bundles/2b/`, and `bundles/4b/`).
+(`bundles/2b/`, `bundles/4b/`, `bundles/9b/`, and `bundles/27b/`).
 
 Existing downloads still work; no new releases will land here.
 
@@ -124,27 +119,27 @@ tags:
 
 # elizaos/eliza-1-0_6b-sft — DEPRECATED NAME (2026-05-12)
 
-The dataset itself is **reusable** on the Qwen3.5 Eliza-1 line — it is just
+The dataset itself is **reusable** on the Gemma 4 Eliza-1 line — it is just
 JSONL with no model-family dependency (privacy-filtered Cerebras-augmented
 SFT corpus covering `structured_decode`, `voice_emotion`, `tool_use`,
 `action_selection`, `personality` tasks). The name's `0_6b` tier infix is
-**legacy** — it predates the 2026-05-12 Qwen3.5-only directive.
+**legacy** — it predates the Gemma 4 cutover.
 
 Going forward, the canonical SFT-corpus repo for the Eliza-1 line is
 [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training)
-(the broader privacy-filtered SFT corpus that the H200 0_8b / 2b runs train
-against). The new Qwen3.5 tier SFTs land in
+(the broader privacy-filtered SFT corpus that Gemma 4 tier runs train
+against). The new Gemma 4 tier SFTs land in
 [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
 under the matching `bundles/<tier>/` path.
 
 Existing downloads still work.
 """
 
-# Legacy size lookup for the bundle/companion cards' rationale paragraph.
-_LEGACY_SIZE: Final[dict[str, str]] = {
-    "0_6b": "0.6B",
-    "1_7b": "1.7B",
-    "4b": "4B",
+# Legacy source lookup for the bundle/companion cards' rationale paragraph.
+_LEGACY_SOURCE: Final[dict[str, str]] = {
+    "0_6b": "Qwen/Qwen3-0.6B",
+    "0_8b": "Qwen/Qwen3.5-0.8B-Base",
+    "1_7b": "Qwen/Qwen3-1.7B",
 }
 
 
@@ -164,17 +159,17 @@ def build_updates() -> list[CardUpdate]:
     # 1. Bundle repos (parent tier repos).
     for tier in DEPRECATED_BUNDLE_TIERS:
         repo = f"{ORG}/eliza-1-{tier}"
-        body = MODEL_DEPRECATION_CARD.format(repo_id=repo, legacy_size=_LEGACY_SIZE[tier])
+        body = MODEL_DEPRECATION_CARD.format(repo_id=repo, legacy_source=_LEGACY_SOURCE[tier])
         out.append(CardUpdate(repo_id=repo, repo_type="model", body=body))
     # 2. Companion model repos.
     for tier in DEPRECATED_BUNDLE_TIERS:
         for suffix in DEPRECATED_COMPANION_SUFFIXES:
             repo = f"{ORG}/eliza-1-{tier}-{suffix}"
-            body = COMPANION_DEPRECATION_CARD.format(repo_id=repo, legacy_tier=tier, legacy_size=_LEGACY_SIZE[tier])
+            body = COMPANION_DEPRECATION_CARD.format(repo_id=repo, legacy_tier=tier, legacy_source=_LEGACY_SOURCE[tier])
             out.append(CardUpdate(repo_id=repo, repo_type="model", body=body))
     # 3. The published Qwen3-0.6B test-SFT weights repo (special — the artifact itself is Qwen3-based).
     repo = f"{ORG}/eliza-1-0_6b-sft-weights"
-    body = COMPANION_DEPRECATION_CARD.format(repo_id=repo, legacy_tier="0_6b", legacy_size="0.6B")
+    body = COMPANION_DEPRECATION_CARD.format(repo_id=repo, legacy_tier="0_6b", legacy_source=_LEGACY_SOURCE["0_6b"])
     out.append(CardUpdate(repo_id=repo, repo_type="model", body=body))
     # 4. The 0_6b-sft dataset (reusable, just deprecated name).
     out.append(CardUpdate(
@@ -192,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     updates = build_updates()
-    print(f"=== Eliza-1 legacy Qwen3 deprecation plan ({len(updates)} repos) ===")
+    print(f"=== Eliza-1 legacy pre-Gemma deprecation plan ({len(updates)} repos) ===")
     for upd in updates:
         kind = "dataset" if upd.repo_type == "dataset" else "model"
         print(f"  {kind:7s}  https://huggingface.co/{('datasets/' if kind == 'dataset' else '')}{upd.repo_id}")
@@ -219,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
                 path_in_repo="README.md",
                 repo_id=upd.repo_id,
                 repo_type=upd.repo_type,
-                commit_message="Deprecate: Qwen3 backbone superseded by Qwen3.5 line (2026-05-12)",
+                commit_message="Deprecate: pre-Gemma backbone superseded by Gemma 4 line",
             )
             log.info(f"  + {upd.repo_id} ({upd.repo_type}) — README.md updated")
             success += 1

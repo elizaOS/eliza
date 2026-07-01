@@ -27,6 +27,22 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+function npmInvocation(args) {
+  if (process.platform === "win32") {
+    const npmCliPath = join(
+      dirname(process.execPath),
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    );
+    if (existsSync(npmCliPath)) {
+      return { command: process.execPath, args: [npmCliPath, ...args] };
+    }
+  }
+  return { command: "npm", args };
+}
+
 function parseArgs() {
   const argv = process.argv.slice(2);
   const flags = {
@@ -109,7 +125,8 @@ function main() {
 
     try {
       console.log(`  ${pkg.name}@${pkg.version}: ${args.join(" ")}`);
-      execFileSync("npm", args, { cwd: distDir, stdio: "inherit" });
+      const npm = npmInvocation(args);
+      execFileSync(npm.command, npm.args, { cwd: distDir, stdio: "inherit" });
       succeeded++;
     } catch (err) {
       failed++;

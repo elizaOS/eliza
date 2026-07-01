@@ -14,6 +14,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.archive-thread",
   title: "Archive a Gmail thread (all messages)",
   domain: "lifeops.gmail",
@@ -56,7 +57,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "MESSAGE",
+        removeLabelIds: "INBOX",
       },
     },
     {

@@ -29,6 +29,7 @@ export {
 export * from "./local-inference-asr-route.js";
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
+export { handleNativePcmTurnRoute } from "./native-pcm-turn-route.js";
 export {
 	__resetVoiceFirstRunSessions,
 	type EncoderFactory as VoiceFirstRunEncoderFactory,

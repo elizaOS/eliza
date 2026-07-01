@@ -213,6 +213,36 @@ export async function handleDevCompatRoutes(
     return true;
   }
 
+  // ── GET /api/dev/device-resource-metrics ────────────────────────────
+  // Recent on-device generation metrics (prefill/decode tok/s, TTFT) the
+  // device bridge differenced from `generateResult`, plus the bridge status.
+  // The Mobile Resource Workbench (issue #8800) reads this to harvest
+  // throughput without driving the device WebView. Loopback only, same
+  // convention as the other dev observability routes. `?limit=N` caps the
+  // generations returned (default 50).
+  if (method === "GET" && url.pathname === "/api/dev/device-resource-metrics") {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const { buildDeviceResourceMetricsDevPayload } = await import(
+      "@elizaos/plugin-local-inference/services"
+    );
+    const payload = buildDeviceResourceMetricsDevPayload(
+      undefined,
+      Number.isFinite(limit) && (limit as number) > 0
+        ? (limit as number)
+        : undefined,
+    );
+    sendJsonResponse(res, 200, payload);
+    return true;
+  }
+
   // ── GET /api/dev/inference-timing ───────────────────────────────────
   // Recent per-turn text/cloud inference latency breakdowns + per-span
   // p50/p90/p99 histograms (composeState, model round-trips, cloud HTTP +

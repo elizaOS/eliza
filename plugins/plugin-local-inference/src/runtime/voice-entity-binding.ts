@@ -24,6 +24,10 @@ import {
 	resolveStateDir,
 	type VoiceEntityBoundPayload,
 } from "@elizaos/core";
+import {
+	AGENT_SELF_VOICE_THRESHOLD,
+	ECHO_WINDOW_MS,
+} from "@elizaos/shared/voice/respond-gate";
 import type {
 	VoiceNextSpeaker,
 	VoiceTurnSignal,
@@ -127,6 +131,26 @@ export interface HandleLiveVoiceAttributionOptions {
 	endOfTurnProbability?: number;
 	/** True when a wake word fired within the recent listen window. */
 	wakeWordActive?: boolean;
+	/**
+	 * The ASR transcript for this turn, joined from the streaming-ASR path. When
+	 * provided it rides on `VOICE_TURN_OBSERVED` (and the turn signal) so the
+	 * merge engine's name/partner extraction (`VoiceObserver.ingestTurn`) runs
+	 * from LIVE audio — previously this was hardcoded `""`, so live recognition
+	 * could identify *who* spoke but never *what* they said (#8786). Diarization-
+	 * only callers (audio-frame path) leave it unset; the in-process voice engine
+	 * (which has both ASR + diarization) passes the real transcript.
+	 */
+	transcript?: string;
+	/**
+	 * Cosine similarity (0..1) between this turn's live WeSpeaker embedding and
+	 * the agent's own TTS-voice centroid. High means the open mic is hearing the
+	 * agent's playback, not a human user.
+	 */
+	selfVoiceSimilarity?: number | null;
+	/** True while the agent is currently playing TTS. */
+	agentSpeaking?: boolean;
+	/** Age of the most recent agent-spoken reply in ms. */
+	replyAgeMs?: number;
 }
 
 /**
@@ -187,6 +211,15 @@ function foldSpeakerIntoSignal(
 	// Wake word overrides bystander doubt — the user deliberately summoned us.
 	if (opts.wakeWordActive === true) agentShouldSpeak = true;
 
+	const replyRecent =
+		opts.agentSpeaking === true ||
+		(opts.replyAgeMs ?? Number.POSITIVE_INFINITY) <= ECHO_WINDOW_MS;
+	const isSelfVoice =
+		typeof opts.selfVoiceSimilarity === "number" &&
+		opts.selfVoiceSimilarity >= AGENT_SELF_VOICE_THRESHOLD &&
+		replyRecent;
+	if (isSelfVoice) agentShouldSpeak = false;
+
 	const eot = base.endOfTurnProbability;
 	const nextSpeaker: VoiceNextSpeaker = !agentShouldSpeak
 		? "user"
@@ -194,9 +227,11 @@ function foldSpeakerIntoSignal(
 			? "user"
 			: "agent";
 
-	const source = opts.wakeWordActive
-		? "voice-bridge+wakeword"
-		: "voice-bridge+diarization";
+	const source = isSelfVoice
+		? "voice-bridge+self-voice"
+		: opts.wakeWordActive
+			? "voice-bridge+wakeword"
+			: "voice-bridge+diarization";
 
 	return {
 		endOfTurnProbability: eot,
@@ -208,8 +243,15 @@ function foldSpeakerIntoSignal(
 		...(base.latencyMs !== undefined ? { latencyMs: base.latencyMs } : {}),
 		// Stash the human-readable provenance so traces show the fold source even
 		// though the typed `source` enum stays "custom".
-		metadata: { provenance: source },
-	} as VoiceTurnSignal & { metadata: { provenance: string } };
+		metadata: {
+			provenance: source,
+			...(typeof opts.selfVoiceSimilarity === "number"
+				? { selfVoiceSimilarity: opts.selfVoiceSimilarity }
+				: {}),
+		},
+	} as VoiceTurnSignal & {
+		metadata: { provenance: string; selfVoiceSimilarity?: number };
+	};
 }
 
 /**
@@ -234,13 +276,16 @@ export async function handleLiveVoiceAttribution(
 	opts: HandleLiveVoiceAttributionOptions = {},
 ): Promise<VoiceTurnSignal> {
 	const standing = resolveSpeakerStanding(output, opts);
+	// Carry the real ASR transcript when the caller joined it (in-process engine);
+	// fall back to a base-signal transcript, else "" for diarization-only callers.
+	const transcript = opts.transcript ?? opts.baseSignal?.transcript ?? "";
 
 	if (output.observation) {
 		const obs = output.observation;
 		try {
 			await emitVoiceTurnObserved(runtime, {
 				turnId: output.turnId,
-				text: "",
+				text: transcript,
 				imprintClusterId: obs.imprintClusterId,
 				matchConfidence: obs.confidence,
 				matchedEntityId: obs.entityId,
@@ -263,13 +308,21 @@ export async function handleLiveVoiceAttribution(
 		nextSpeaker: "unknown",
 		agentShouldSpeak: null,
 		source: "custom",
-		transcript: "",
+		transcript,
 	};
 
 	const signal = foldSpeakerIntoSignal(base, standing, opts);
 
 	const turn = output.turn;
-	turn.metadata = { ...(turn.metadata ?? {}), voiceTurnSignal: signal };
+	// Stamp the resolved speaker entity onto the turn (#8786): the imprint →
+	// entityId match rides with the transcript so the server/providers/extraction
+	// attribute the turn to the right person (not just the EOT gate). Omitted when
+	// the speaker is unbound (`entityId == null`) — never write a null speaker.
+	turn.metadata = {
+		...(turn.metadata ?? {}),
+		voiceTurnSignal: signal,
+		...(standing.entityId ? { speakerEntityId: standing.entityId } : {}),
+	};
 
 	return signal;
 }

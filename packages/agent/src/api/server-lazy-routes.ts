@@ -246,6 +246,17 @@ export async function handleSuggestionsRoutes(
   );
 }
 
+type InteractionsRoutesModule = typeof import("./interactions-routes.ts");
+export async function handleInteractionsRoutes(
+  ...args: Parameters<InteractionsRoutesModule["handleInteractionsRoutes"]>
+): ReturnType<InteractionsRoutesModule["handleInteractionsRoutes"]> {
+  const ctx = routeContext(args);
+  if (ctx?.pathname !== "/api/interactions/shortcut") return false;
+  return (await import("./interactions-routes.ts")).handleInteractionsRoutes(
+    ...args,
+  );
+}
+
 type CommandsRoutesModule = typeof import("./commands-routes.ts");
 export async function handleCommandsRoutes(
   ...args: Parameters<CommandsRoutesModule["handleCommandsRoutes"]>
@@ -400,8 +411,6 @@ export async function handleMiscRoutes(
     !(
       ctx.pathname === "/api/restart" ||
       ctx.pathname === "/api/ingest/share" ||
-      ctx.pathname === "/api/emotes" ||
-      ctx.pathname === "/api/emote" ||
       ctx.pathname === "/api/agent/event" ||
       /^\/api\/agents\/[^/]+\/event$/.test(ctx.pathname) ||
       ctx.pathname === "/api/terminal/run" ||
@@ -462,6 +471,20 @@ export async function tryHandleMusicPlayerStatusFallbackLazy(
   return (
     await import("./music-player-route-fallback.ts")
   ).tryHandleMusicPlayerStatusFallback(...args);
+}
+
+type LifeOpsInboxFallbackModule =
+  typeof import("./lifeops-inbox-fallback-routes.ts");
+export async function tryHandleLifeOpsInboxFallbackLazy(
+  ...args: Parameters<
+    LifeOpsInboxFallbackModule["tryHandleLifeOpsInboxFallback"]
+  >
+): Promise<boolean> {
+  const options = args[0] as { pathname?: string } | undefined;
+  if (options?.pathname !== "/api/lifeops/inbox") return false;
+  return (
+    await import("./lifeops-inbox-fallback-routes.ts")
+  ).tryHandleLifeOpsInboxFallback(...args);
 }
 
 type PermissionsRoutesModule = typeof import("./permissions-routes.ts");
@@ -544,6 +567,7 @@ export async function handleInboxAndCloudRelayRouteGroup(
     !(
       ctx.pathname.startsWith("/api/notifications") ||
       ctx.pathname.startsWith("/api/inbox") ||
+      ctx.pathname === "/api/approvals" ||
       ctx.pathname === "/api/cloud/relay-status"
     )
   ) {

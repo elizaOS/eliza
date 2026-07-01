@@ -19,18 +19,6 @@ fp4_supported: true                # hardware-capable; KV FP4 requires matching 
 nvlink: false
 
 bundle_recommendations:
-  eliza-1-0_8b:
-    n_gpu_layers: -1
-    ctx_size: 32768
-    parallel: 32
-    batch_size: 4096
-    ubatch_size: 1024
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 720
-    estimated_prefill_tps: 38000
-    notes: "Smallest active Qwen3.5 local tier; smoke/default fallback."
   eliza-1-2b:
     n_gpu_layers: -1
     ctx_size: 32768
@@ -42,7 +30,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 460
     estimated_prefill_tps: 18000
-    notes: "First-run active Qwen3.5 tier."
+    notes: "Smallest/entry active Gemma 4 local tier; smoke/default fallback."
   eliza-1-4b:
     n_gpu_layers: -1
     ctx_size: 65536
@@ -54,7 +42,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 260
     estimated_prefill_tps: 12000
-    notes: "Balanced Qwen3.5 tier for high-throughput local serving."
+    notes: "Balanced Gemma 4 tier for high-throughput local serving."
   eliza-1-9b:
     n_gpu_layers: -1
     ctx_size: 65536
@@ -66,7 +54,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 180
     estimated_prefill_tps: 7600
-    notes: "High-quality Qwen3.5 tier with Blackwell headroom."
+    notes: "High-quality Gemma 4 tier with Blackwell headroom."
   eliza-1-27b:
     n_gpu_layers: -1
     ctx_size: 131072
@@ -78,7 +66,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 95
     estimated_prefill_tps: 3900
-    notes: "High-quality Qwen3.5 27B tier for RTX 5090."
+    notes: "High-quality Gemma 4 27B tier for RTX 5090."
   eliza-1-27b-256k:
     n_gpu_layers: -1
     ctx_size: 262144

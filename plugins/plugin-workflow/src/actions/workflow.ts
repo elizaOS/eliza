@@ -2,13 +2,20 @@
  * WORKFLOW — single umbrella action for workflow lifecycle ops.
  *
  * Action-based dispatch (provide `action` parameter):
+ *   list          — list deployed workflows for the current user
+ *   get           — fetch one deployed workflow definition by id
  *   create        — generate + deploy a new workflow from a seed prompt
  *   modify        — load a deployed workflow into the draft editor by id
  *   activate      — activate a workflow by id
  *   deactivate    — deactivate a workflow by id
  *   toggle_active — explicit active=true|false (preferred when scripting)
  *   delete        — permanently delete a workflow by id
+ *   run           — run a workflow immediately
  *   executions    — fetch recent executions for a workflow id
+ *   revisions     — fetch restorable workflow versions
+ *   restore       — restore a workflow by version id
+ *   diagnose      — inspect a failed/recent workflow execution
+ *   eval_samples  — generate JSONL evaluation samples from recent executions
  *
  * All actions talk to the in-process `WorkflowService` via
  * `runtime.getService(WORKFLOW_SERVICE_TYPE)`. There is no HTTP boundary.
@@ -34,22 +41,41 @@ import type {
   WorkflowCreationResult,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
+  WorkflowExecution,
 } from '../types/index';
+import {
+  buildWorkflowExecutionDiagnostics,
+  getWorkflowExecutionError,
+  summarizeWorkflowExecution,
+} from '../utils/execution-diagnostics';
 
 const WORKFLOW_ACTION = 'WORKFLOW';
 
 const WORKFLOW_OPS = [
+  'list',
+  'search',
+  'get',
   'create',
   'modify',
   'activate',
   'deactivate',
   'toggle_active',
   'delete',
+  'run',
   'executions',
+  'revisions',
+  'restore',
+  'diagnose',
+  'eval_samples',
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
 
-const WORKFLOW_CONTEXTS = ['automation', 'tasks', 'agent_internal'] as const;
+// `general` (the active context a plain chat/Telegram turn actually seeds) is
+// included so a message like "find my Slack workflow" routes to WORKFLOW search,
+// not just automation/agent-internal turns (#8913). The gate matches active
+// contexts literally; `chat` is only an alias of the `general` *definition* and is
+// NOT expanded by normalizeContextList, so listing `chat` here would be inert.
+const WORKFLOW_CONTEXTS = ['general', 'automation', 'tasks', 'agent_internal'] as const;
 
 interface WorkflowActionParameters {
   action?: unknown;
@@ -58,8 +84,12 @@ interface WorkflowActionParameters {
   name?: unknown;
   workflowId?: unknown;
   workflowName?: unknown;
+  executionId?: unknown;
   active?: unknown;
   limit?: unknown;
+  versionId?: unknown;
+  query?: unknown;
+  q?: unknown;
 }
 
 function readString(value: unknown): string | undefined {
@@ -106,12 +136,133 @@ function summarizeWorkflow(
   id: string;
   name: string;
   active: boolean;
+  nodeCount?: number;
 } {
+  const nodes = (workflow as { nodes?: unknown[]; nodeCount?: number }).nodes;
+  const nodeCount =
+    typeof (workflow as { nodeCount?: unknown }).nodeCount === 'number'
+      ? (workflow as { nodeCount: number }).nodeCount
+      : Array.isArray(nodes)
+        ? nodes.length
+        : undefined;
   return {
     id: String((workflow as { id?: string }).id ?? ''),
     name: String(workflow.name),
     active: Boolean((workflow as { active?: boolean }).active),
+    ...(typeof nodeCount === 'number' ? { nodeCount } : {}),
   };
+}
+
+async function handleListWorkflows(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  message: Memory,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
+  try {
+    const workflows = await service.listWorkflows(String(message.entityId));
+    const summaries = workflows.slice(0, limit).map(summarizeWorkflow);
+    const text =
+      summaries.length === 0
+        ? 'No workflows found.'
+        : `Found ${summaries.length} workflow${summaries.length === 1 ? '' : 's'}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { count: summaries.length },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { count: summaries.length },
+      data: { workflows: summaries, total: workflows.length },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:list' }, message);
+    return { success: false, text: message };
+  }
+}
+
+async function handleSearchWorkflows(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  message: Memory,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const query = readString(params.query) ?? readString(params.q);
+  if (!query) {
+    return {
+      success: false,
+      text: 'A search `query` is required (free text to match workflow name / node type / description).',
+    };
+  }
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 20), 50);
+  try {
+    const matches = await service.searchWorkflows(query, String(message.entityId));
+    const summaries = matches.slice(0, limit).map(summarizeWorkflow);
+    const text =
+      summaries.length === 0
+        ? `No workflows match "${query}".`
+        : `Found ${summaries.length} workflow${summaries.length === 1 ? '' : 's'} matching "${query}".`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { count: summaries.length, query },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { count: summaries.length },
+      data: { workflows: summaries, total: matches.length, query },
+    };
+  } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:search' }, errMessage);
+    return { success: false, text: errMessage };
+  }
+}
+
+async function handleGetWorkflow(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to review a workflow.' };
+  }
+  try {
+    const workflow = await service.getWorkflow(workflowId);
+    const text = `Fetched workflow "${workflow.name}" for review.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, workflowName: workflow.name },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: {
+        workflowId,
+        workflowName: workflow.name,
+        active: Boolean(workflow.active),
+        nodeCount: workflow.nodes.length,
+      },
+      data: { workflow },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:get' }, message);
+    return { success: false, text: message };
+  }
 }
 
 async function handleCreate(
@@ -322,14 +473,262 @@ async function handleExecutions(
   }
 }
 
+async function handleRunWorkflow(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to run a workflow.' };
+  }
+  try {
+    const execution = await service.runWorkflow(workflowId, { throwOnError: false });
+    const text = `Ran workflow ${workflowId}: ${execution.status}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, executionId: execution.id, status: execution.status },
+      });
+    }
+    return {
+      success: execution.status !== 'error' && execution.status !== 'crashed',
+      text,
+      values: { workflowId, executionId: execution.id, status: execution.status },
+      data: { execution },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:run' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
+async function handleRevisions(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to fetch workflow revisions.' };
+  }
+  const limit = readNumber(params.limit) ?? 10;
+  try {
+    const revisions = await service.listWorkflowRevisions(workflowId, limit);
+    const text =
+      revisions.length === 0
+        ? `No revisions found for workflow ${workflowId}.`
+        : `Fetched ${revisions.length} revisions for workflow ${workflowId}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, count: revisions.length },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { workflowId, count: revisions.length },
+      data: { revisions },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:revisions' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
+async function handleRestoreRevision(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  const versionId = readString(params.versionId);
+  if (!workflowId) {
+    return { success: false, text: 'workflowId is required to restore a workflow revision.' };
+  }
+  if (!versionId) {
+    return { success: false, text: 'versionId is required to restore a workflow revision.' };
+  }
+  try {
+    const workflow = await service.restoreWorkflowRevision(workflowId, versionId);
+    const text = `Restored workflow "${workflow.name}".`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: { workflowId, versionId, workflowName: workflow.name },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: { workflowId, workflowName: workflow.name, versionId },
+      data: { workflow: summarizeWorkflow(workflow) },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:restore' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
+function isProblemExecution(execution: WorkflowExecution): boolean {
+  return (
+    execution.status === 'error' ||
+    execution.status === 'crashed' ||
+    execution.status === 'canceled' ||
+    Boolean(getWorkflowExecutionError(execution))
+  );
+}
+
+async function handleDiagnoseExecution(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  const executionId = readString(params.executionId);
+  const limit = Math.min(Math.max(1, readNumber(params.limit) ?? 10), 50);
+  if (!executionId && !workflowId) {
+    return {
+      success: false,
+      text: 'workflowId or executionId is required to diagnose a workflow run.',
+    };
+  }
+
+  try {
+    let execution: WorkflowExecution | undefined;
+    if (executionId) {
+      execution = await service.getExecutionDetail(executionId);
+      if (workflowId && execution.workflowId !== workflowId) {
+        return {
+          success: false,
+          text: `Execution ${executionId} belongs to workflow ${execution.workflowId}, not ${workflowId}.`,
+        };
+      }
+    } else if (workflowId) {
+      const response = await service.listExecutions({ workflowId, limit });
+      execution = response.data.find(isProblemExecution) ?? response.data[0];
+      if (!execution) {
+        return {
+          success: false,
+          text: `No executions found for workflow ${workflowId}. Run it before diagnosing.`,
+        };
+      }
+    }
+
+    if (!execution) {
+      return { success: false, text: 'No workflow execution was available to diagnose.' };
+    }
+
+    const summary = summarizeWorkflowExecution(execution);
+    const diagnostics = buildWorkflowExecutionDiagnostics(execution);
+    const text = summary.error
+      ? `Diagnosed workflow ${execution.workflowId} execution ${execution.id}: ${summary.statusLabel} - ${summary.error}`
+      : `Diagnosed workflow ${execution.workflowId} execution ${execution.id}: ${summary.statusLabel}.`;
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: {
+          workflowId: execution.workflowId,
+          executionId: execution.id,
+          status: execution.status,
+          ...(summary.error ? { error: summary.error } : {}),
+        },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: {
+        workflowId: execution.workflowId,
+        executionId: execution.id,
+        status: execution.status,
+        ...(summary.error ? { error: summary.error } : {}),
+      },
+      data: { execution, summary, diagnostics },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:diagnose' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
+async function handleEvaluationSamples(
+  service: WorkflowService,
+  params: WorkflowActionParameters,
+  callback: HandlerCallback | undefined
+): Promise<ActionResult> {
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return {
+      success: false,
+      text: 'workflowId is required to generate workflow evaluation samples.',
+    };
+  }
+  const limit = readNumber(params.limit) ?? 10;
+  try {
+    const suite = await service.getWorkflowEvaluationSuite(workflowId, limit);
+    const text =
+      suite.sampleCount === 0
+        ? `No executions found for workflow ${workflowId}; run it before generating eval samples.`
+        : [
+            `Generated ${suite.sampleCount} workflow eval sample${suite.sampleCount === 1 ? '' : 's'} for ${workflowId}.`,
+            `Save cases to ${suite.optimizer.caseFile}.`,
+            `Eval: ${suite.optimizer.recommendedEvalCommand}`,
+            `Optimize: ${suite.optimizer.recommendedOptimizeCommand}`,
+          ].join('\n');
+    if (callback) {
+      await callback({
+        text,
+        action: WORKFLOW_ACTION,
+        metadata: {
+          workflowId,
+          count: suite.sampleCount,
+          caseFile: suite.optimizer.caseFile,
+          suiteName: suite.optimizer.suiteName,
+        },
+      });
+    }
+    return {
+      success: true,
+      text,
+      values: {
+        workflowId,
+        count: suite.sampleCount,
+        caseFile: suite.optimizer.caseFile,
+        suiteName: suite.optimizer.suiteName,
+      },
+      data: { suite },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ src: 'plugin:workflow:action:eval_samples' }, msg);
+    return { success: false, text: msg };
+  }
+}
+
 export const workflowAction: Action = {
   name: WORKFLOW_ACTION,
   contexts: [...WORKFLOW_CONTEXTS],
   contextGate: { anyOf: [...WORKFLOW_CONTEXTS] },
   roleGate: { minRole: 'OWNER' },
   similes: [
+    'LIST_WORKFLOWS',
+    'SHOW_WORKFLOWS',
+    'GET_WORKFLOW',
+    'REVIEW_WORKFLOW',
     'CREATE_WORKFLOW',
     'DELETE_WORKFLOW',
+    'RUN_WORKFLOW',
+    'RUN_WORKFLOW_NOW',
     'TOGGLE_WORKFLOW_ACTIVE',
     'ACTIVATE_WORKFLOW',
     'DEACTIVATE_WORKFLOW',
@@ -350,24 +749,50 @@ export const workflowAction: Action = {
     'EXECUTION_HISTORY',
     'WORKFLOW_RUNS',
     'WORKFLOW_EXECUTIONS',
+    'WORKFLOW_REVISIONS',
+    'RESTORE_WORKFLOW',
+    'ROLL_BACK_WORKFLOW',
+    'ROLLBACK_WORKFLOW',
+    'DIAGNOSE_WORKFLOW',
+    'TROUBLESHOOT_WORKFLOW',
+    'EXPLAIN_WORKFLOW_FAILURE',
+    'GET_WORKFLOW_DIAGNOSTICS',
+    'WORKFLOW_RUN_DIAGNOSTICS',
+    'WORKFLOW_EVAL_SAMPLES',
+    'GENERATE_WORKFLOW_TRAINING_SAMPLES',
+    'GENERATE_WORKFLOW_EVAL_CASES',
+    'GEPA_WORKFLOW_SAMPLES',
+    'OPTIMIZE_WORKFLOW_SAMPLES',
   ],
   description:
     'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
-    '  create, modify, activate, deactivate, toggle_active, delete, executions.\n' +
+    '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow create|modify|activate|deactivate|toggle_active|delete|executions',
+    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples',
   parameters: [
     {
       name: 'action',
       description:
-        'Operation: create, modify, activate, deactivate, toggle_active, delete, executions.',
+        'Operation: list, get, search, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.',
       required: true,
       schema: { type: 'string' as const, enum: [...WORKFLOW_OPS] },
     },
     {
+      name: 'query',
+      description: 'Free text to match a workflow by name / node type for action=search.',
+      required: false,
+      schema: { type: 'string' as const },
+    },
+    {
       name: 'workflowId',
       description: 'Workflow id.',
+      required: false,
+      schema: { type: 'string' as const },
+    },
+    {
+      name: 'executionId',
+      description: 'Workflow execution id for action=diagnose.',
       required: false,
       schema: { type: 'string' as const },
     },
@@ -397,9 +822,15 @@ export const workflowAction: Action = {
     },
     {
       name: 'limit',
-      description: 'Max executions to return for action=executions (default 10).',
+      description: 'Max executions/revisions/evaluation samples to return (default 10).',
       required: false,
       schema: { type: 'number' as const },
+    },
+    {
+      name: 'versionId',
+      description: 'Workflow version id for action=restore.',
+      required: false,
+      schema: { type: 'string' as const },
     },
   ],
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
@@ -425,6 +856,12 @@ export const workflowAction: Action = {
       return { success: false, text: 'Workflow service is not registered.' };
     }
     switch (op) {
+      case 'list':
+        return handleListWorkflows(service, params, message, callback);
+      case 'search':
+        return handleSearchWorkflows(service, params, message, callback);
+      case 'get':
+        return handleGetWorkflow(service, params, callback);
       case 'create':
         return handleCreate(runtime, service, params, message, callback);
       case 'modify':
@@ -437,11 +874,49 @@ export const workflowAction: Action = {
         return handleToggleActive(service, params, undefined, callback);
       case 'delete':
         return handleDeleteWorkflow(service, params, callback);
+      case 'run':
+        return handleRunWorkflow(service, params, callback);
       case 'executions':
         return handleExecutions(service, params, callback);
+      case 'revisions':
+        return handleRevisions(service, params, callback);
+      case 'restore':
+        return handleRestoreRevision(service, params, callback);
+      case 'diagnose':
+        return handleDiagnoseExecution(service, params, callback);
+      case 'eval_samples':
+        return handleEvaluationSamples(service, params, callback);
     }
   },
   examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Show my workflows.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Fetching workflows.',
+          actions: ['WORKFLOW'],
+          thought: 'Workflow inventory maps to WORKFLOW op=list.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Review workflow wf-123.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Fetching the workflow definition.',
+          actions: ['WORKFLOW'],
+          thought: 'Workflow review maps to WORKFLOW op=get with workflowId=wf-123.',
+        },
+      },
+    ],
     [
       {
         name: '{{name1}}',
@@ -487,6 +962,39 @@ export const workflowAction: Action = {
           actions: ['WORKFLOW'],
           thought:
             'Execution history maps to WORKFLOW op=executions with workflowId=wf-123 and limit=5.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Roll back workflow wf-123 to version v-old.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Restoring the workflow version.',
+          actions: ['WORKFLOW'],
+          thought:
+            'Rollback maps to WORKFLOW op=restore with workflowId=wf-123 and versionId=v-old.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'Create eval samples from the last 10 runs of workflow wf-123.',
+          source: 'chat',
+        },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Generating workflow eval samples.',
+          actions: ['WORKFLOW'],
+          thought:
+            'Eval sample generation maps to WORKFLOW op=eval_samples with workflowId=wf-123 and limit=10.',
         },
       },
     ],

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.cross-device.global-alarm",
   title: "Setting an alarm is confirmation-gated before saving",
   domain: "todos",
@@ -36,6 +37,14 @@ export default scenario({
       actionName: "LIFE",
       status: "success",
       minCount: 2,
+    },
+    {
+      type: "definitionCountDelta",
+      title: "Wake up alarm",
+      titleAliases: ["Wake-up alarm", "Morning alarm", "Wake up"],
+      delta: 1,
+      cadenceKind: "once",
+      requireReminderPlan: true,
     },
   ],
 });

@@ -9,6 +9,7 @@ const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
+const tuiSrc = resolve(monorepoRoot, "packages/tui/src");
 const bunRuntimeSrc = resolve(
   monorepoRoot,
   "plugins/plugin-native-bun-runtime/src/index.ts",
@@ -83,6 +84,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/logger$/,
         replacement: resolve(loggerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui$/,
+        replacement: resolve(tuiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: resolve(tuiSrc, "$1"),
       },
       {
         find: /^@elizaos\/core$/,
@@ -190,14 +199,14 @@ export default defineConfig({
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
         replacement: resolve(
           monorepoRoot,
-          "packages/cloud-sdk/src/cloud-setup-session/index.ts",
+          "packages/cloud/sdk/src/cloud-setup-session/index.ts",
         ),
       },
       {
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session\/(.+)$/,
         replacement: resolve(
           monorepoRoot,
-          "packages/cloud-sdk/src/cloud-setup-session/$1",
+          "packages/cloud/sdk/src/cloud-setup-session/$1",
         ),
       },
     ],

@@ -1,8 +1,21 @@
+import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
-
-import type { ImageAttachment } from "../../api/client-types-chat";
+import type {
+  ChatTurnStatus,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import {
+  VOICE_CONTROL_EVENT,
+  type VoiceControlEventDetail,
+} from "../../events";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
-import { useApp } from "../../state";
+import {
+  useChatComposer,
+  useChatTurnStatus,
+  useConversationMessages,
+} from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
+import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
@@ -11,6 +24,13 @@ import {
 import { deriveAgentReady } from "../../state/types";
 import { TurnAggregator } from "../../voice/end-of-turn";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
+import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
+import {
+  isTranscriptionExitPhrase,
+  isTranscriptionStartPhrase,
+  stripExitPhrase,
+} from "../../voice/transcription-exit";
+import { useWakeListenWindow } from "../../voice/useWakeListenWindow";
 import {
   createVoiceCapture,
   type VoiceCaptureBackend,
@@ -18,12 +38,37 @@ import {
   type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
+import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
+import {
+  buildConversationNav,
+  type ConversationNav,
+  type ConversationNavDirection,
+  resolveAdjacentConversationId,
+} from "./conversation-nav";
+import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
-/** How a voice capture turn is consumed when it produces a final transcript. */
-export type CaptureIntent = "converse" | "dictate";
+export type {
+  ConversationNav,
+  ConversationNavDirection,
+} from "./conversation-nav";
+export {
+  buildConversationNav,
+  resolveAdjacentConversationId,
+} from "./conversation-nav";
+
+/** Upper bound (ms) the conversation-switch / clear loading spinner may show
+ *  before it is force-cleared — see `runWithConversationLoading`. */
+const CONVERSATION_LOADING_MAX_MS = 12_000;
+
+/** How a voice capture turn is consumed when it produces a final transcript.
+ *  `"transcription"` records long-form: finals accumulate into ONE recording
+ *  session (not per-utterance chat bubbles) and the agent stays quiet until an
+ *  exit phrase, at which point the session becomes a Transcript record + a chat
+ *  link-widget. */
+export type CaptureIntent = "converse" | "dictate" | "transcription";
 
 export interface ShellController {
   phase: ShellPhase;
@@ -32,6 +77,12 @@ export interface ShellController {
    *  phase to "listening"), so the composer reads one honest busy signal: send
    *  stays enabled (queue another turn) while voice input is gated. */
   responding: boolean;
+  /** The rich, phase-aware status of the in-flight turn (#8813) — what the agent
+   *  is *doing* right now (thinking / streaming / running an action / waking /
+   *  speaking), or null when idle. Prefers the live server-reported phase, then
+   *  falls back to client-derived signals. Use this for the status indicator;
+   *  `responding` remains the coarse busy boolean for gating. */
+  turnStatus: ChatTurnStatus | null;
   messages: readonly ShellMessage[];
   canSend: boolean;
   /** Local text-model readiness for the home surface. Gates send while not ready. */
@@ -54,6 +105,12 @@ export interface ShellController {
       metadata?: Record<string, unknown>;
     },
   ) => void;
+  /** Show the agent the screen: sends a vision-intent turn so the agent runs its
+   *  plugin-vision screen-capture action. Backs the bottom-bar VISION button. */
+  captureVision: () => void;
+  /** True from a VISION tap until the resulting turn is in flight (pulses the
+   *  VISION button). */
+  visionCapturing: boolean;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
   /** Begin capture unconditionally. Used by push-to-talk press. `"dictate"`
@@ -79,27 +136,56 @@ export interface ShellController {
   handsFree: boolean;
   /** Toggle the hands-free conversation loop (mic ↔ spoken reply ↔ mic). */
   toggleHandsFree: () => void;
+  /** True while transcription mode is active — the mic records continuously into
+   *  one recording session (the agent does not reply) until the user says an exit
+   *  phrase ("exit transcription mode"), then the session becomes a Transcript. */
+  transcriptionMode: boolean;
+  /** Toggle transcription mode on/off. Enabling opens a long-running capture
+   *  that suppresses replies; disabling stops it and RESUMES the hands-free mic
+   *  loop it paused (transcript off leaves the mic on — they are linked). */
+  toggleTranscriptionMode: () => void | Promise<void>;
+  /** End transcription AND turn the mic fully off (the mic button's action while
+   *  transcribing — turning off the mic turns off transcript). */
+  stopTranscriptionAndMic: () => void | Promise<void>;
   /** Register where push-to-talk dictation drops its final transcript (the
    *  overlay wires this to its composer draft). Pass null to clear. */
   setDictationSink: (sink: ((text: string) => void) | null) => void;
+  /** Register where a completed transcription SESSION is delivered (its segments,
+   *  the absolute session-start ms, and the concatenated session WAV when audio
+   *  was retained). The overlay wires this to create the Transcript record (+
+   *  audio) + drop a chat link-widget. Pass null to clear. */
+  setTranscriptSessionSink: (
+    sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAtMs: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null,
+  ) => void;
   /** Tell the controller whether the composer holds a pending typed/dictated
    *  draft. While a draft exists the hands-free ("always-on") loop is paused so
    *  the mic isn't listening over the keyboard; clearing the draft (on send)
    *  resumes it — restoring the prior voice state without a re-tap. */
   setComposerHasDraft: (hasDraft: boolean) => void;
-  /** DEV-only: clear the conversation and start a fresh, greeted one. */
+  /** Clear the conversation and start a fresh, greeted one. */
   clearConversation: () => void;
   /** Jump to Settings (where ProviderSwitcher lives) — used by the chat's
    *  `no_provider` failure gate to let the user wire a provider in one tap. */
   openSettings: () => void;
-  /** Return to the home dashboard (the /chat route). Drives the chat header's
-   *  Home button, which is hidden while already on the home screen. */
+  /** Return to the combined Home/Launcher surface and select Home. */
   navigateHome?: () => void;
-  /** The active app tab. Lets the chat header hide the Home button on the home
-   *  screen ("chat") and the Settings button on the settings screen. */
+  /** Open the combined Home/Launcher surface and select Launcher. */
+  navigateToViews?: () => void;
+  /** The active app tab. */
   currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
   stop: () => void;
+  /** Horizontal-swipe navigation between conversations (sheet-open only). */
+  conversationNav: ConversationNav;
+  /** True while a conversation switch or clear is fetching messages. The overlay
+   *  only renders the spinner when the visible thread is empty. */
+  conversationLoading?: boolean;
 }
 
 /**
@@ -112,36 +198,188 @@ export interface ShellController {
  * standalone-surface path). A final transcript is submitted through the same
  * `send` handler. The phase drives the pill glow and waveform mode.
  */
+/** Shallow equality for two optional string lists (topic-change detection). */
+function sameStringList(a?: string[], b?: string[]): boolean {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+// Granular shallow selection instead of useApp() so the shell controller only
+// re-renders when one of the exact fields it reads changes — not on every one of
+// the ~300 AppContext fields. typecheck enforces completeness: any `s.x` used
+// below but not selected here is a compile error, so this stays value-equivalent.
+const selectShellController = (s: AppContextValue) => ({
+  tab: s.tab,
+  chatFirstTokenReceived: s.chatFirstTokenReceived,
+  sendChatText: s.sendChatText,
+  agentStatus: s.agentStatus,
+  characterData: s.characterData,
+  uiLanguage: s.uiLanguage,
+  elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+  handleNewConversation: s.handleNewConversation,
+  handleSelectConversation: s.handleSelectConversation,
+  activeConversationId: s.activeConversationId,
+  conversations: s.conversations,
+  setTab: s.setTab,
+  handleChatStop: s.handleChatStop,
+});
+
 export function useShellController(): ShellController {
-  const app = useApp();
   const {
-    conversationMessages,
-    chatSending,
+    tab,
+    chatFirstTokenReceived,
     sendChatText,
     agentStatus,
+    characterData,
     uiLanguage,
     elizaCloudVoiceProxyAvailable,
     handleNewConversation,
+    handleSelectConversation,
+    activeConversationId,
+    conversations,
     setTab,
     handleChatStop,
-  } = app;
+  } = useAppSelectorShallow(selectShellController);
+  // The wake phrase for transcript-mode inline replies follows the character
+  // name (issue #9880); falls back to the running agent name, then "eliza".
+  const wakeCharacterName =
+    characterData?.name?.trim() || agentStatus?.agentName?.trim() || "eliza";
+  const wakeCharacterNameRef = React.useRef(wakeCharacterName);
+  wakeCharacterNameRef.current = wakeCharacterName;
+  // Read per-token streaming messages from the isolated context so token updates
+  // don't depend on the giant AppContext value identity.
+  const { conversationMessages } = useConversationMessages();
+  // chatSending lives in ChatComposerContext; the AppContext copy is intentionally
+  // stale so send/typing churn does not fan out through the whole app.
+  const { chatSending } = useChatComposer();
+  // Live server-reported phase of the in-flight turn (from the chat-send SSE),
+  // read from its dedicated context so status events re-render only chat surfaces.
+  const { serverTurnStatus } = useChatTurnStatus();
+  const conversationsRef = React.useRef(conversations);
+  const activeConversationIdRef = React.useRef(activeConversationId);
+  conversationsRef.current = conversations;
+  activeConversationIdRef.current = activeConversationId;
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the home dashboard (the /chat route) from the chat header's Home
-  // button. Stable identity.
-  const navigateHome = React.useCallback(() => setTab("chat"), [setTab]);
+  // Return to the combined Home/Launcher route and reset its internal page.
+  // If the route is not mounted yet, the next mount starts on Home; if it is
+  // already mounted on Launcher, this event flips it without a remount.
+  const navigateHome = React.useCallback(() => {
+    setTab("chat");
+    dispatchHomeLauncherNavigation("home");
+  }, [setTab]);
+  const navigateToViews = React.useCallback(() => {
+    setTab("chat");
+    dispatchHomeLauncherNavigation("launcher");
+  }, [setTab]);
 
-  // DEV-only debug affordance: drop the current conversation and start a fresh,
-  // greeted one (handleNewConversation resets draft state + creates a new
-  // conversation with a bootstrap greeting).
+  // True while a clear or conversation switch is fetching the next thread, so
+  // the overlay can show an in-thread spinner instead of an empty sheet. Cache
+  // hits paint synchronously inside handleSelectConversation; the overlay only
+  // renders the spinner when the visible thread is still empty.
+  const [conversationLoading, setConversationLoading] = React.useState(false);
+  const conversationLoadingSeqRef = React.useRef(0);
+  const conversationTransitionBusyRef = React.useRef(false);
+
+  const runWithConversationLoading = React.useCallback(
+    (task: () => Promise<unknown>) => {
+      const seq = conversationLoadingSeqRef.current + 1;
+      conversationLoadingSeqRef.current = seq;
+      conversationTransitionBusyRef.current = true;
+      setConversationLoading(true);
+      const clearLoadingForSeq = () => {
+        if (conversationLoadingSeqRef.current === seq) {
+          conversationTransitionBusyRef.current = false;
+          setConversationLoading(false);
+        }
+      };
+      // Watchdog: never let the empty-thread spinner outlive a stuck switch or
+      // create. A cache-hit switch resolves in the same tick and a network load
+      // in a few seconds, but the on-device agent can be model-bound (a warming
+      // or loading 1.4 GB model, an in-flight generation), and a spinner that
+      // hangs there reads as a permanently frozen new chat. Force-clear after a
+      // bound so the (already-activated) conversation is usable while a slow
+      // greeting backfills. Seq-guarded so a newer switch owns the flag.
+      const watchdog = setTimeout(
+        clearLoadingForSeq,
+        CONVERSATION_LOADING_MAX_MS,
+      );
+      void Promise.resolve()
+        .then(task)
+        .finally(() => {
+          clearTimeout(watchdog);
+          clearLoadingForSeq();
+        });
+    },
+    [],
+  );
+
+  // Clear the chat: drop the current conversation and start a fresh, greeted one
+  // (handleNewConversation resets draft state + creates a new conversation with a
+  // bootstrap greeting; an empty draft we just left is pruned, a non-empty
+  // conversation is kept and remains swipe-reachable).
   const clearConversation = React.useCallback(() => {
     // A fresh conversation's bootstrap greeting is NOT a reply to a voice turn —
     // clear the voice flag so the greeting isn't spoken aloud after a prior
     // voice session.
     setLastTurnVoice(false);
-    void handleNewConversation();
-  }, [handleNewConversation]);
+    runWithConversationLoading(handleNewConversation);
+  }, [handleNewConversation, runWithConversationLoading]);
+
+  // Switch conversations behind a loading flag so an uncached swipe shows the
+  // spinner; a cached one resolves within the same tick (thread already painted).
+  const selectConversation = React.useCallback(
+    (id: string) => {
+      runWithConversationLoading(() => handleSelectConversation(id));
+    },
+    [handleSelectConversation, runWithConversationLoading],
+  );
+
+  const selectAdjacentConversation = React.useCallback(
+    (direction: ConversationNavDirection) => {
+      if (conversationTransitionBusyRef.current) {
+        return;
+      }
+      const targetId = resolveAdjacentConversationId(
+        conversationsRef.current,
+        activeConversationIdRef.current,
+        direction,
+      );
+      if (targetId) {
+        selectConversation(targetId);
+      }
+    },
+    [selectConversation],
+  );
+
+  // Horizontal-swipe navigation between conversations (#8929). Computed by the
+  // pure `buildConversationNav` helper (unit-tested) so the index-walk and
+  // boundary logic stay verifiable independent of this AppContext-bound hook.
+  // The callbacks re-resolve through refs at gesture time so a stale overlay
+  // closure cannot navigate against an old active index after the list rerenders.
+  const conversationNav = React.useMemo<ConversationNav>(() => {
+    const nav = buildConversationNav(
+      conversations,
+      activeConversationId,
+      selectConversation,
+    );
+    return {
+      ...nav,
+      goPrev: () => selectAdjacentConversation("prev"),
+      goNext: () => selectAdjacentConversation("next"),
+    };
+  }, [
+    conversations,
+    activeConversationId,
+    selectConversation,
+    selectAdjacentConversation,
+  ]);
 
   // "Ready" here means the agent's FIRST-TURN CAPABILITY is online (it can
   // answer) — NOT that the startup coordinator finished hydrating. The shell now
@@ -177,6 +415,27 @@ export function useShellController(): ShellController {
   const [handsFree, setHandsFree] = React.useState(false);
   const handsFreeRef = React.useRef(false);
   handsFreeRef.current = handsFree;
+  // Transcription mode (long-form record-only): the mic stays open and every
+  // utterance is sent silently (metadata.transcriptionMode) until an exit
+  // phrase. A ref mirrors the state for the re-listen timer + capture closures.
+  const [transcriptionMode, setTranscriptionMode] = React.useState(false);
+  const transcriptionModeRef = React.useRef(false);
+  transcriptionModeRef.current = transcriptionMode;
+  // Whether the hands-free mic loop was running when transcription was entered.
+  // The mic and transcript are LINKED but not identical: the transcript button
+  // (and a spoken/server "stop") pauses the hands-free reply loop on enter and
+  // RESUMES it on exit, so turning transcript off leaves the mic on. Only the
+  // mic button turns the mic (and thus transcript) fully off.
+  const resumeHandsFreeAfterTranscriptRef = React.useRef(false);
+  // Set when a wake-triggered inline reply is sent during transcription, so the
+  // assistant's answer is folded into the transcript once it arrives (#9880).
+  const recordReplyIntoTranscriptRef = React.useRef(false);
+  // Forward handle to `toggleTranscriptionMode` (defined far below) so the
+  // converse capture loop can flip INTO transcription on a spoken "start
+  // transcription" without a definition-order/closure problem.
+  const toggleTranscriptionModeRef = React.useRef<() => void | Promise<void>>(
+    () => {},
+  );
   // The continuous-chat-mode persisted before hands-free engaged, restored when
   // the user taps the mic off so a deliberate ChatView "vad-gated" choice isn't
   // clobbered to "off". Defaults to "off" — tapping the mic off means voice off.
@@ -206,6 +465,53 @@ export function useShellController(): ShellController {
     [],
   );
 
+  // Transcription mode accumulates utterances into ONE recording session (not N
+  // chat bubbles); on exit the segments become a Transcript record + a chat
+  // link-widget, delivered through this sink.
+  const transcriptSessionRef =
+    React.useRef<TranscriptSessionAccumulator | null>(null);
+  const transcriptSessionStartRef = React.useRef(0);
+  const onTranscriptSessionRef = React.useRef<
+    | ((
+        segments: TranscriptSegment[],
+        startedAtMs: number,
+        audioWav: Uint8Array | null,
+      ) => void)
+    | null
+  >(null);
+  const setTranscriptSessionSink = React.useCallback(
+    (
+      sink:
+        | ((
+            segments: TranscriptSegment[],
+            startedAtMs: number,
+            audioWav: Uint8Array | null,
+          ) => void)
+        | null,
+    ) => {
+      onTranscriptSessionRef.current = sink;
+    },
+    [],
+  );
+  /** Begin a fresh recording session (every transcription-start path calls this). */
+  const beginTranscriptSession = React.useCallback(() => {
+    transcriptSessionStartRef.current = Date.now();
+    transcriptSessionRef.current = new TranscriptSessionAccumulator(
+      transcriptSessionStartRef.current,
+    );
+  }, []);
+  /** Close the session and hand its segments to the sink (no-op if empty). */
+  const finalizeTranscriptSession = React.useCallback(() => {
+    const session = transcriptSessionRef.current;
+    transcriptSessionRef.current = null;
+    if (!session || session.count === 0) return;
+    onTranscriptSessionRef.current?.(
+      session.build(),
+      transcriptSessionStartRef.current,
+      session.buildAudioWav(),
+    );
+  }, []);
+
   // Identity-preserving projection: reuse the previously-mapped ShellMessage for
   // any turn whose content/failureKind/reasoning is unchanged, so the React.memo
   // on each ThreadLine short-circuits. Without this, every streamed token (which
@@ -232,7 +538,9 @@ export function useShellController(): ShellController {
         cached &&
         cached.content === message.text &&
         cached.failureKind === message.failureKind &&
-        (cached.reasoning || undefined) === (message.reasoning || undefined)
+        (cached.reasoning || undefined) === (message.reasoning || undefined) &&
+        cached.secretRequest === message.secretRequest &&
+        sameStringList(cached.topics, message.topics)
       ) {
         next.set(message.id, cached);
         return cached;
@@ -247,6 +555,10 @@ export function useShellController(): ShellController {
         ...(message.attachments?.length
           ? { attachments: message.attachments }
           : {}),
+        ...(message.secretRequest
+          ? { secretRequest: message.secretRequest }
+          : {}),
+        ...(message.topics?.length ? { topics: message.topics } : {}),
       };
       next.set(message.id, mapped);
       return mapped;
@@ -269,6 +581,21 @@ export function useShellController(): ShellController {
   }, [messages]);
   const latestAgentReplyRef = React.useRef(latestAgentReply);
   latestAgentReplyRef.current = latestAgentReply;
+
+  // When a wake-triggered inline reply was sent during transcription, fold the
+  // agent's answer into the transcript record (speaker-labeled) so the parallel
+  // chat is captured, then clear the one-shot flag (#9880).
+  React.useEffect(() => {
+    if (!recordReplyIntoTranscriptRef.current) return;
+    if (!transcriptionModeRef.current) return;
+    if (chatSending) return; // wait for the reply to finish streaming
+    const reply = latestAgentReply.text.trim();
+    if (!reply) return;
+    recordReplyIntoTranscriptRef.current = false;
+    transcriptSessionRef.current?.addFinal(reply, Date.now(), {
+      speakerLabel: wakeCharacterNameRef.current,
+    });
+  }, [latestAgentReply, chatSending]);
 
   const send = React.useCallback(
     (
@@ -299,7 +626,7 @@ export function useShellController(): ShellController {
     [sendChatText],
   );
 
-  const stopCapture = React.useCallback(() => {
+  const stopCaptureAndDrain = React.useCallback(async () => {
     const handle = captureRef.current;
     captureRef.current = null;
     // Mark this as a user-initiated stop so the clean-auto-stop carryover does
@@ -309,13 +636,22 @@ export function useShellController(): ShellController {
     turnCarryoverRef.current = "";
     turnAggregatorRef.current?.reset();
     if (handle) {
-      void handle.stop().catch(() => {});
-      handle.dispose();
+      try {
+        await handle.stop();
+      } catch {
+        /* stop is best-effort from UI controls */
+      } finally {
+        handle.dispose();
+      }
     }
     setAnalyser(null);
     setRecording(false);
     setTranscript("");
   }, []);
+
+  const stopCapture = React.useCallback(() => {
+    void stopCaptureAndDrain();
+  }, [stopCaptureAndDrain]);
 
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
@@ -332,8 +668,11 @@ export function useShellController(): ShellController {
       // only sends once it reads as complete. Dictation (push-to-talk) bypasses
       // it — the press-release is the turn boundary.
       let lastBackend: VoiceCaptureBackend = "talkmode";
+      // Transcription mode wants a VERBATIM long-form transcript, so (like
+      // dictation) it bypasses the echo/disfluency end-of-turn aggregator —
+      // every final is sent as-is (after exit-phrase detection).
       const aggregator =
-        intent === "dictate"
+        intent === "dictate" || intent === "transcription"
           ? null
           : new TurnAggregator({
               onCommit: (turn) => {
@@ -400,12 +739,92 @@ export function useShellController(): ShellController {
             setTranscript("");
             return;
           }
-          if (intent === "dictate") {
+          if (intent === "transcription") {
+            // Long-form record-only. Run exit detection on every final.
+            if (isTranscriptionExitPhrase(text)) {
+              // Fold any preceding non-exit content into the session, then close
+              // it (→ Transcript record + chat link-widget) and leave the mode so
+              // the NEXT turn is evaluated normally.
+              const preceding = stripExitPhrase(text);
+              if (preceding) {
+                transcriptSessionRef.current?.addFinal(preceding, Date.now());
+              }
+              setTranscript("");
+              setTranscriptionMode(false);
+              transcriptionModeRef.current = false;
+              finalizeTranscriptSession();
+              stopCapture();
+              // A spoken "stop transcription" turns transcript OFF but leaves
+              // the mic ON — resume the hands-free loop it paused on enter.
+              if (resumeHandsFreeAfterTranscriptRef.current) {
+                resumeHandsFreeAfterTranscriptRef.current = false;
+                setHandsFree(true);
+                handsFreeRef.current = true;
+              }
+              return;
+            }
+            // Wake word DURING transcription → one inline reply, parallel-chat
+            // style: the agent answers (and speaks) while recording keeps
+            // running (issue #9880). The user's wake utterance is still folded
+            // into the transcript so the exchange is captured; the turn is sent
+            // WITHOUT the transcriptionMode metadata so the server reply gate
+            // does not suppress it, and we do NOT leave transcription mode.
+            const wake = matchWakeName(text, wakeCharacterNameRef.current);
+            if (wake.matched) {
+              setTranscript("");
+              transcriptSessionRef.current?.addFinal(text, Date.now(), {
+                audioWav: segment.audioWav,
+                words: segment.words,
+              });
+              const command = wake.command.trim() || text;
+              const respondContext = {
+                recentAgentReply: latestAgentReplyRef.current.text,
+                replyAgeMs: latestAgentReplyRef.current.at
+                  ? Math.max(0, Date.now() - latestAgentReplyRef.current.at)
+                  : Number.POSITIVE_INFINITY,
+                agentSpeaking: speakingRef.current,
+              };
+              // Capture the assistant's spoken reply into the transcript too, so
+              // the parallel chat is part of the record.
+              recordReplyIntoTranscriptRef.current = true;
+              send(command, {
+                channelType: "VOICE_DM",
+                metadata: {
+                  voiceSource: lastBackend,
+                  voiceTurnSignal: buildVoiceTurnSignal(
+                    command,
+                    respondContext,
+                  ),
+                },
+              });
+              return;
+            }
+            // Accumulate this utterance into the recording session — it does NOT
+            // post as its own chat bubble; the whole session becomes one record.
+            // Carry the utterance WAV + per-word timings (fused ASR v12) so the
+            // transcript retains audio + word-synced highlight.
+            setTranscript("");
+            transcriptSessionRef.current?.addFinal(text, Date.now(), {
+              audioWav: segment.audioWav,
+              words: segment.words,
+            });
+          } else if (intent === "dictate") {
             // Push-to-talk dictation: hand the text to the composer draft —
             // don't send, and leave lastTurnVoice false so no reply is spoken.
             setTranscript("");
             onDictatedTextRef.current?.(text);
           } else if (aggregator) {
+            // A spoken "start transcription" flips INTO long-form record-only
+            // mode instead of being sent as a normal turn. (Exit is handled
+            // above once already in transcription mode.)
+            if (
+              !transcriptionModeRef.current &&
+              isTranscriptionStartPhrase(text)
+            ) {
+              setTranscript("");
+              toggleTranscriptionModeRef.current();
+              return;
+            }
             lastBackend = segment.backend;
             const committed = aggregator.addFinal(text);
             // Keep the held turn visible while we wait for the speaker to
@@ -451,7 +870,7 @@ export function useShellController(): ShellController {
           setRecording(false);
         });
     },
-    [send],
+    [send, stopCapture, finalizeTranscriptSession],
   );
 
   const toggleRecording = React.useCallback(() => {
@@ -459,7 +878,7 @@ export function useShellController(): ShellController {
     else startCapture();
   }, [recording, startCapture, stopCapture]);
 
-  React.useEffect(() => stopCapture, [stopCapture]);
+  React.useEffect(() => () => stopCapture(), [stopCapture]);
 
   // Restore a persisted "always-on" continuous-chat mode on boot: engage the
   // hands-free re-listen LOOP (not a one-shot capture) so always-on survives a
@@ -515,6 +934,32 @@ export function useShellController(): ShellController {
   // after the mic opens (which flips phase to "listening"), so the composer-send
   // and voice-gating logic both read one honest "a reply is in flight" signal.
   const responding = chatSending || voiceOutput.speaking;
+
+  // The rich status (#8813): what the agent is *doing*, distinct from the coarse
+  // `responding` boolean. Voice playback wins (the server can't see local TTS).
+  // Otherwise prefer the live server phase while a text turn is in flight; if no
+  // server status has arrived yet, fall back to thinking (sent, no first token)
+  // → streaming (first token seen). The server's `waking` status (cloud 202) is
+  // surfaced even before chatSending settles, so it shows while the agent boots.
+  const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
+    if (voiceOutput.speaking) return { kind: "speaking" };
+    if (
+      serverTurnStatus &&
+      (chatSending || serverTurnStatus.kind === "waking")
+    ) {
+      return serverTurnStatus;
+    }
+    if (chatSending) {
+      return { kind: chatFirstTokenReceived ? "streaming" : "thinking" };
+    }
+    return null;
+  }, [
+    voiceOutput.speaking,
+    serverTurnStatus,
+    chatSending,
+    chatFirstTokenReceived,
+  ]);
+
   const phase: ShellPhase = !ready
     ? "booting"
     : recording
@@ -565,6 +1010,152 @@ export function useShellController(): ShellController {
       if (!responding) startCapture("converse");
     }
   }, [responding, startCapture, stopCapture, voiceOutput]);
+
+  // "Hey eliza" wake word: a native detection arms a bounded listening window
+  // that opens the mic and closes once the agent has responded (or after an idle
+  // timeout if nothing is said). Implemented as a temporary hands-free engage —
+  // it never persists "always-on", and it stays inert when the user already
+  // chose always-on (wake is only an entry ramp, never an exit). See
+  // ../../voice/VOICE_UX.md.
+  const wakeAlreadyAlwaysOn =
+    handsFree && loadContinuousChatMode() === "always-on";
+  useWakeListenWindow({
+    enabled: true,
+    alwaysOn: wakeAlreadyAlwaysOn,
+    agentBusy: responding,
+    characterName: wakeCharacterName,
+    onOpen: React.useCallback(() => {
+      setIsOpen(true);
+      setHandsFree(true);
+      handsFreeRef.current = true;
+      voiceOutput.unlockAudio();
+      if (!responding && !captureRef.current) startCapture("converse");
+    }, [responding, startCapture, voiceOutput]),
+    onClose: React.useCallback(() => {
+      // Close the temporary window without disturbing a persisted mode.
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      if (captureRef.current) stopCapture();
+    }, [stopCapture]),
+  });
+
+  // Toggle transcription mode (long-form, record-only — the agent never replies
+  // to a transcribed turn). It is an ADDITIVE voice layer: the mic stays on and
+  // the composer keeps working; enabling it just pauses the hands-free REPLY
+  // loop and opens a long-running capture that accumulates every utterance
+  // silently. Turning it off (this toggle, the mic button, or a spoken exit
+  // phrase) finalizes the session, which drops the transcript into the composer
+  // as an attachment the user sends with their next message.
+  const toggleTranscriptionMode = React.useCallback(async () => {
+    if (transcriptionModeRef.current) {
+      setTranscriptionMode(false);
+      transcriptionModeRef.current = false;
+      if (captureRef.current) await stopCaptureAndDrain();
+      // Close the recording session → Transcript record + chat link-widget.
+      finalizeTranscriptSession();
+      // Turning transcript OFF must leave the mic ON: resume the hands-free
+      // listen loop the transcription layer paused on enter. (Only the mic
+      // button — handleMicClick → stopTranscriptionAndMic — turns the mic off.)
+      if (resumeHandsFreeAfterTranscriptRef.current) {
+        resumeHandsFreeAfterTranscriptRef.current = false;
+        setHandsFree(true);
+        handsFreeRef.current = true;
+      }
+    } else {
+      // Remember the mic state so we can restore it on exit, then pause the
+      // hands-free REPLY loop while transcription records silently. The mic
+      // itself stays on (transcription capture) — pressing transcript never
+      // disables the mic.
+      resumeHandsFreeAfterTranscriptRef.current = handsFreeRef.current;
+      if (handsFreeRef.current) {
+        setHandsFree(false);
+        handsFreeRef.current = false;
+      }
+      setTranscriptionMode(true);
+      transcriptionModeRef.current = true;
+      setIsOpen(true);
+      voiceOutput.unlockAudio();
+      beginTranscriptSession();
+      if (captureRef.current) stopCapture();
+      startCapture("transcription");
+    }
+  }, [
+    startCapture,
+    stopCapture,
+    stopCaptureAndDrain,
+    voiceOutput,
+    beginTranscriptSession,
+    finalizeTranscriptSession,
+  ]);
+
+  // The mic button while transcribing: turn the mic (and thus transcript) fully
+  // OFF. Distinct from `toggleTranscriptionMode`'s off-path, which leaves the
+  // mic listening — "turning off the mic turns off transcript" (mic = parent).
+  const stopTranscriptionAndMic = React.useCallback(async () => {
+    setTranscriptionMode(false);
+    transcriptionModeRef.current = false;
+    if (captureRef.current) await stopCaptureAndDrain();
+    finalizeTranscriptSession();
+    resumeHandsFreeAfterTranscriptRef.current = false;
+    // Turn the mic fully off like a hands-free tap-off: persist the prior
+    // non-always-on mode so the auto-engage loop does NOT re-open the mic.
+    saveContinuousChatMode(priorContinuousModeRef.current);
+    setHandsFree(false);
+    handsFreeRef.current = false;
+  }, [stopCaptureAndDrain, finalizeTranscriptSession]);
+  // Keep the forward ref current so the converse capture loop (defined above)
+  // can flip into transcription on a spoken start phrase.
+  toggleTranscriptionModeRef.current = toggleTranscriptionMode;
+
+  // A server-side agent action (START/STOP_TRANSCRIPTION) reaches the shell as a
+  // window `voice-control` event (the agent-event bus → client bridge); flip
+  // transcription to match. Idempotent — "start" while already transcribing (or
+  // "stop" while idle) is a no-op.
+  React.useEffect(() => {
+    const onVoiceControl = (e: Event) => {
+      const detail = (e as CustomEvent<VoiceControlEventDetail>).detail;
+      if (!detail) return;
+      if (detail.command === "start" && !transcriptionModeRef.current) {
+        toggleTranscriptionModeRef.current();
+      } else if (detail.command === "stop" && transcriptionModeRef.current) {
+        toggleTranscriptionModeRef.current();
+      }
+    };
+    window.addEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
+    return () =>
+      window.removeEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
+  }, []);
+
+  // Transcription re-listen loop: a one-shot capture backend (local-inference
+  // auto-stop on silence) ends after each utterance — re-open it so long-form
+  // recording continues. Mirrors the hands-free loop but re-opens in
+  // "transcription" intent and needs no spoken-reply gate (mode never replies).
+  React.useEffect(() => {
+    if (!transcriptionMode || !ready) return;
+    if (recording || captureRef.current) return;
+    if (chatSending || voiceOutput.speaking) return;
+    if (composerHasDraft) return;
+    const timer = window.setTimeout(() => {
+      if (
+        transcriptionModeRef.current &&
+        !captureRef.current &&
+        !chatSending &&
+        !voiceOutput.speaking &&
+        !composerHasDraftRef.current
+      ) {
+        startCapture("transcription");
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    transcriptionMode,
+    ready,
+    recording,
+    chatSending,
+    voiceOutput.speaking,
+    composerHasDraft,
+    startCapture,
+  ]);
 
   // Typing pauses always-on: when a draft appears while the hands-free mic is
   // live, stop the capture so it doesn't transcribe the room over the keyboard.
@@ -625,9 +1216,26 @@ export function useShellController(): ShellController {
   // failureKind gate ("Connect a provider") that the transcript renders.
   const canSend = agentStatus?.state !== "stopped";
 
+  // VISION button: a tap sends a screen-vision turn so the agent runs its
+  // plugin-vision screen-capture action (server-side capture + analysis). The
+  // transient `visionCapturing` flag pulses the button until the turn is in
+  // flight (responding rises), then clears.
+  const [visionCapturing, setVisionCapturing] = React.useState(false);
+  const captureVision = React.useCallback(() => {
+    if (!canSend) return;
+    setVisionCapturing(true);
+    send("Take a look at my screen and tell me what you see.", {
+      metadata: { vision: { surface: "screen" } },
+    });
+  }, [canSend, send]);
+  React.useEffect(() => {
+    if (visionCapturing && responding) setVisionCapturing(false);
+  }, [visionCapturing, responding]);
+
   return {
     phase,
     responding,
+    turnStatus,
     messages,
     canSend,
     modelStatus,
@@ -638,12 +1246,18 @@ export function useShellController(): ShellController {
     close,
     isOpen,
     send,
+    captureVision,
+    visionCapturing,
     toggleRecording,
     startRecording: startCapture,
     stopRecording: stopCapture,
     handsFree,
     toggleHandsFree,
+    transcriptionMode,
+    toggleTranscriptionMode,
+    stopTranscriptionAndMic,
     setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft,
     transcript,
     speaking: voiceOutput.speaking,
@@ -654,7 +1268,18 @@ export function useShellController(): ShellController {
     clearConversation,
     openSettings,
     navigateHome,
-    currentTab: app.tab,
+    navigateToViews,
+    currentTab: tab,
     stop: stopTurn,
+    conversationNav,
+    // Revealability is driven by the EXPLICIT, sequence-guarded loading flag
+    // (set by runWithConversationLoading on clear/select/new and cleared in its
+    // finally) — never by `messages.length === 0`. A bare message-count heuristic
+    // is a STEADY-STATE condition, not a transient one: it latches true forever
+    // for a genuinely-empty active conversation (greeting generation failed
+    // silently, or an existing zero-message conversation was selected), which
+    // pinned a perpetual loading spinner and let the grabber/pill open the sheet
+    // into a never-resolving loader.
+    conversationLoading,
   };
 }

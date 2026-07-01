@@ -25,6 +25,7 @@ const MEMORY_DIR = "memory";
 const RESTART_DIR = "restart";
 const LATEST_FILE = "latest.json";
 const RESTART_EVENTS_FILE = "events.json";
+const STARTUP_TRACE_ID_ENV = "ELIZA_STARTUP_TRACE_ID";
 /** Keep at most this many of the most recent RSS samples on disk. */
 const MAX_SAMPLES = 240;
 /** Keep at most this many recent boot/(re)start events on disk. */
@@ -41,6 +42,8 @@ interface MemoryUsageSnapshot {
 
 /** Boot summary enriched with the process state at record time. */
 interface BootTelemetryRecord extends BootSummary {
+  /** Host/renderer correlation id when the native shell provided one. */
+  traceId?: string;
   /** ISO-8601 timestamp the record was written. */
   recordedAt: string;
   /** `process.uptime()` in seconds at record time. */
@@ -94,6 +97,13 @@ function telemetryDir(...segments: string[]): string {
   return path.join(resolveStateDir(), "telemetry", ...segments);
 }
 
+function readStartupTraceId(): string | undefined {
+  const value = process.env[STARTUP_TRACE_ID_ENV];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 /**
  * Write `data` as pretty JSON to `<stateDir>/telemetry/<dir>/<file>`, creating
  * the directory tree first. Only the filesystem work is guarded; a failure logs
@@ -131,8 +141,10 @@ export async function recordBootTelemetry(summary: BootSummary): Promise<void> {
   }
 
   const recordedAt = new Date().toISOString();
+  const startupTraceId = readStartupTraceId();
   const record: BootTelemetryRecord = {
     ...summary,
+    ...(startupTraceId ? { traceId: startupTraceId } : {}),
     recordedAt,
     processUptimeSec: process.uptime(),
     memory: captureMemory(),
@@ -147,6 +159,8 @@ export async function recordBootTelemetry(summary: BootSummary): Promise<void> {
 
 /** A single boot/(re)start event — one is appended at the start of each boot. */
 interface BootEvent {
+  /** Host/renderer correlation id when the native shell provided one. */
+  traceId?: string;
   /** Epoch milliseconds when the boot began. */
   at: number;
   /** OS pid of the booting process. */
@@ -175,7 +189,9 @@ export async function recordBootEvent(label: string): Promise<void> {
   }
 
   const spawnedAtMs = Number(process.env.ELIZA_API_PROCESS_SPAWNED_AT_MS);
+  const startupTraceId = readStartupTraceId();
   const event: BootEvent = {
+    ...(startupTraceId ? { traceId: startupTraceId } : {}),
     at: Date.now(),
     pid: process.pid,
     spawnedAtMs:

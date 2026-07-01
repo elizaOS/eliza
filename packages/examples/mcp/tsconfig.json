@@ -10,7 +10,13 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "@elizaos/core": ["./../../core/dist/index.d.ts"]
+      "@elizaos/core": ["./../../core/dist/index.d.ts"],
+      "@elizaos/plugin-openai": [
+        "../../../plugins/plugin-openai/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../../plugins/plugin-sql/src/dist/index.node.d.ts"
+      ]
     },
     "types": ["node"]
   },

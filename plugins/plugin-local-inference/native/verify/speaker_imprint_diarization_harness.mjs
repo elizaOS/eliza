@@ -25,7 +25,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-0_8b.bundle",
+  "eliza-1-2b.bundle",
 );
 const DEFAULT_WAV = "/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav";
 const DEFAULT_REPORT = path.join(
@@ -76,8 +76,8 @@ function parseArgs(argv) {
 }
 
 function typescriptRunner() {
-  // The generated-voice VAD path dlopens libsilero_vad through bun:ffi, so
-  // prefer Bun even when a Node+tsx runner is available.
+  // The fused libelizainference VAD runs under bun:ffi, so prefer Bun even when
+  // a Node+tsx runner is available.
   for (const cmd of [
     "bun",
     path.join(os.homedir(), ".bun", "bin", "bun"),
@@ -136,7 +136,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { resolveSileroVadCppGgufPath, resolveVadProvider, VadDetector } from ${JSON.stringify(vadUrl)};
+import { resolveVadProvider, VadDetector } from ${JSON.stringify(vadUrl)};
 import { attributeVoiceImprintObservations } from ${JSON.stringify(imprintUrl)};
 import { makeSpeechWithSilenceFixture } from ${JSON.stringify(fixtureUrl)};
 
@@ -277,22 +277,15 @@ async function runVad() {
       wavPath,
     };
   }
-  const modelPath = resolveSileroVadCppGgufPath({ bundleRoot });
-  if (!modelPath) {
-    return {
-      available: false,
-      reason: "no VAD model found",
-      bundleRoot,
-      wavPath,
-    };
-  }
   const wav = readWavPcm16Mono(input.path);
   const pcm16k = resampleLinear(wav.pcm, wav.sampleRateHz, SR);
   let provider;
   try {
+    // The sole VAD runtime is the fused libelizainference engine
+    // (eliza_inference_vad_*); it needs an ffi + ctx that this harness does not
+    // boot, so resolution fails fast (VadUnavailableError) and is reported as
+    // unavailable. Wiring an EngineVoiceBridge here is a follow-up.
     provider = await resolveVadProvider({
-      sileroCppGgufPath: modelPath,
-      sileroCppLibraryPath: libraryPath || undefined,
       bundleRoot,
       config: {
         sampleRate: SR,
@@ -306,7 +299,6 @@ async function runVad() {
     return {
       available: false,
       reason: "VAD provider unavailable",
-      vadModelPath: modelPath,
       libraryPath,
       wavPath: input.path,
       fixtureKind: input.fixtureKind,
@@ -355,7 +347,6 @@ async function runVad() {
   return {
     available: true,
     provider: provider.id,
-    vadModelPath: modelPath,
     wavPath: input.path,
     fixtureKind: input.fixtureKind,
     expectedSpeechStartMs: input.speechStartMs ?? null,

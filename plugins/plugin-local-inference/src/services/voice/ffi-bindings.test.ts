@@ -48,8 +48,65 @@ import {
 	ELIZA_INFERENCE_ABI_VERSION,
 	ELIZA_OK,
 	loadElizaInferenceFfi,
+	recoverAsrWords,
 } from "./ffi-bindings";
 import { VoiceLifecycleError } from "./lifecycle";
+
+describe("recoverAsrWords (v12 timed-ASR word recovery)", () => {
+	it("zips ASCII-split word texts against the native timing arrays", () => {
+		const words = recoverAsrWords(
+			"turn on the lights",
+			4,
+			new Int32Array([0, 250, 380, 520]),
+			new Int32Array([250, 380, 520, 1000]),
+		);
+		expect(words).toEqual([
+			{ text: "turn", startMs: 0, endMs: 250 },
+			{ text: "on", startMs: 250, endMs: 380 },
+			{ text: "the", startMs: 380, endMs: 520 },
+			{ text: "lights", startMs: 520, endMs: 1000 },
+		]);
+	});
+
+	it("mirrors the native ASCII split so NBSP does NOT collapse a word boundary", () => {
+		// Native sizes the timing arrays with an ASCII-whitespace split, so a
+		// non-ASCII space (NBSP, U+00A0) stays INSIDE one word -> count=2. The old
+		// Unicode \s split produced 3 tokens and mis-zipped them onto 2 timings
+		// (a dropped word + text shifted off its timing). The ASCII-mirrored split
+		// yields exactly the native 2 words, correctly aligned.
+		const words = recoverAsrWords(
+			"a b\u00A0c",
+			2,
+			new Int32Array([0, 100]),
+			new Int32Array([100, 300]),
+		);
+		expect(words).toEqual([
+			{ text: "a", startMs: 0, endMs: 100 },
+			{ text: "b\u00A0c", startMs: 100, endMs: 300 },
+		]);
+	});
+
+	it("drops trailing untimed words when the native word cap truncated count", () => {
+		// Native capped at 2 words (count=2) though the transcript has 4; only the
+		// first two carry timings, the rest are dropped — never mis-zipped.
+		const words = recoverAsrWords(
+			"one two three four",
+			2,
+			new Int32Array([0, 300]),
+			new Int32Array([300, 600]),
+		);
+		expect(words).toEqual([
+			{ text: "one", startMs: 0, endMs: 300 },
+			{ text: "two", startMs: 300, endMs: 600 },
+		]);
+	});
+
+	it("returns no words for an empty transcript", () => {
+		expect(
+			recoverAsrWords("", 0, new Int32Array(0), new Int32Array(0)),
+		).toEqual([]);
+	});
+});
 
 /**
  * The complete ABI v3 C symbol set declared in
@@ -130,9 +187,16 @@ const FFI_STUB_DIR = path.resolve(
 );
 const STUB_DYLIB = path.join(
 	FFI_STUB_DIR,
+	// Per-OS shared-library naming. Windows must load a PE `.dll` — attempting to
+	// `dlopen` the committed Linux `.so` fails with error 193 (ERROR_BAD_EXE_FORMAT)
+	// rather than skipping. No Windows stub is built/committed, so the `existsSync`
+	// guards below skip these integration tests on Windows (same as Linux before
+	// `make -C scripts/ffi-stub`), instead of hard-failing on a format mismatch.
 	process.platform === "darwin"
 		? "libelizainference_stub.dylib"
-		: "libelizainference_stub.so",
+		: process.platform === "win32"
+			? "libelizainference_stub.dll"
+			: "libelizainference_stub.so",
 );
 
 function bunOnPath(): string | null {
@@ -158,8 +222,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 11 (in-process end-of-turn scoring)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(11);
+	it("ELIZA_INFERENCE_ABI_VERSION is 13 (streaming vision describe)", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(13);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {

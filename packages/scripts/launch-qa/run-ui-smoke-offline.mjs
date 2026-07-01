@@ -32,7 +32,6 @@ const defaultTestGreps = [
   "desktop app tool logs",
   "desktop app tool companion",
   "desktop app tool shopify",
-  "desktop app tool vincent",
   "mobile chat",
   "mobile apps catalog",
   "mobile automations",

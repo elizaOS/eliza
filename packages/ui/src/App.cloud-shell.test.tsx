@@ -61,7 +61,12 @@ describe("App standalone chat-overlay wiring", () => {
     // (the always-present chat overlay). The Header component has been removed
     // from the library entirely (pill-only nav), so nothing can mount it.
     expect(APP_TSX).toContain("function ChatRouteShellContent");
-    expect(APP_TSX).toContain("ChatAmbientBackground");
+    // The unified app background channel is mounted once at the shell root
+    // (not per route); only routes that opt into the Home/Launcher
+    // background render the visual wallpaper layer.
+    expect(APP_TSX).toContain(
+      "<AppBackground visible={renderSharedAppBackground} />",
+    );
     expect(APP_TSX).not.toContain("<Header");
     expect(APP_TSX).not.toContain('from "./components/shell/Header"');
     expect(APP_TSX).not.toContain("function FullChatWorkspaceShellContent");
@@ -70,9 +75,10 @@ describe("App standalone chat-overlay wiring", () => {
   it("renders the ambient chat route as a header-less, wordless backdrop home", () => {
     expect(APP_TSX).toContain("function ChatRouteShellContent");
     expect(APP_TSX).toContain('<div key="chat-shell"');
-    // The home is a wordless ambient orange backdrop (no greeting text) under
-    // the always-present chat overlay; the shell mounts no Header.
-    expect(APP_TSX).toContain("<ChatAmbientBackground />");
+    // The home is a wordless backdrop (no greeting text) under the always-present
+    // chat overlay; its shell is transparent so the unified app background shows
+    // through, and it mounts no Header.
+    expect(APP_TSX).toContain("APP_SHELL_CLASS_TRANSPARENT");
     expect(APP_TSX).not.toContain("minimalHomeGreeting");
     expect(APP_TSX).not.toContain("<Header />");
   });
@@ -148,7 +154,7 @@ describe("window-shell route classification (behavioral)", () => {
       mode: "surface",
       tab: "browser",
     });
-    // ?shell=pill is gone (the separate voice pill was removed) → main.
+    // ?shell=pill is gone; old links should resolve to the main window.
     expect(parseWindowShellRoute("?shell=pill")).toEqual({ mode: "main" });
     // Unknown surface tab is not a valid detached target → main.
     expect(parseWindowShellRoute("?shell=surface&tab=bogus")).toEqual({

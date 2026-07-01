@@ -172,8 +172,9 @@ export async function ensureAgentInfrastructure(
 
 /**
  * Set embedding dimension on the adapter from config (no LLM call).
- * Uses EMBEDDING_DIMENSION setting if set; otherwise skips.
- * WHY no LLM: Avoids a model call at boot; set EMBEDDING_DIMENSION in character
+ * Reads EMBEDDING_DIMENSIONS (plural, what the runtime embedder uses) or
+ * EMBEDDING_DIMENSION (singular); plural wins on conflict. Skips if neither set.
+ * WHY no LLM: Avoids a model call at boot; set the dimension in character
  * settings when using this path. If unset, embedding search may fail until dimension is set.
  */
 export async function ensureEmbeddingDimension(
@@ -191,17 +192,41 @@ export async function ensureEmbeddingDimension(
 		return;
 	}
 
-	const raw = runtime.getSetting("EMBEDDING_DIMENSION");
-	const dimension =
-		typeof raw === "number"
-			? raw
-			: typeof raw === "string"
-				? parseInt(raw, 10)
+	// The DB vector-column dimension MUST match the runtime embedder's output
+	// dimension. `EMBEDDING_DIMENSION` (singular) is the historical provisioning
+	// setting; `EMBEDDING_DIMENSIONS` (plural) is what the runtime embedder
+	// (@elizaos/plugin-embeddings, src/utils/config.ts) actually reads to size its
+	// output vectors. They are easily confused, and when they silently diverge the
+	// embedder writes N-dim vectors into an M-dim column — storage/search breaks
+	// and "no facts available" results. Accept both spellings. On conflict, PLURAL
+	// wins: the DB column must match the embedder's real output dimension, and the
+	// embedder reads the plural key — so it is the source of truth. Warn loudly.
+	const parseDim = (value: unknown): number =>
+		typeof value === "number"
+			? value
+			: typeof value === "string"
+				? parseInt(value, 10)
 				: NaN;
+	const singular = parseDim(runtime.getSetting("EMBEDDING_DIMENSION"));
+	const plural = parseDim(runtime.getSetting("EMBEDDING_DIMENSIONS"));
+	const singularValid = Number.isFinite(singular) && singular > 0;
+	const pluralValid = Number.isFinite(plural) && plural > 0;
+	if (singularValid && pluralValid && singular !== plural) {
+		logger.warn(
+			{ src: "provisioning", agentId: runtime.agentId, singular, plural },
+			`EMBEDDING_DIMENSION (${singular}) and EMBEDDING_DIMENSIONS (${plural}) conflict — ` +
+				`the DB vector column and the runtime embedder must agree, or memory storage/search will break. ` +
+				`Using EMBEDDING_DIMENSIONS=${plural} (the runtime embedder reads the plural key); ` +
+				`set both to the same value (e.g. 1536 for OpenAI text-embedding-3-small, 384 for gte-small).`,
+		);
+	}
+	// Plural wins on conflict (embedder's actual output dimension); otherwise use
+	// whichever single key is valid.
+	const dimension = pluralValid ? plural : singular;
 	if (!Number.isFinite(dimension) || dimension <= 0) {
 		logger.debug(
 			{ src: "provisioning", agentId: runtime.agentId },
-			"EMBEDDING_DIMENSION not set or invalid, skipping (set it in character settings to avoid LLM detection)",
+			"EMBEDDING_DIMENSION / EMBEDDING_DIMENSIONS not set or invalid, skipping (set it in character settings to avoid LLM detection)",
 		);
 		return;
 	}

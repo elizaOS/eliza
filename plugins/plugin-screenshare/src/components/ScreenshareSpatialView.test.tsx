@@ -49,11 +49,12 @@ describe("ScreenshareSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Screen Share");
-      expect(flat).toContain("active");
+      expect(flat).toContain("Session: active");
       expect(flat).toContain("This machine");
+      expect(flat).toContain("Frames: 42");
+      expect(flat).toContain("Capabilities");
       expect(flat).toContain("headfulGui");
-      expect(flat).toContain("Rotate");
+      expect(flat).toContain("Rotate host session");
     }
   });
 

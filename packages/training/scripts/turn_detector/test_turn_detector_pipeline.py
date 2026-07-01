@@ -33,14 +33,14 @@ from scripts.turn_detector import finetune_turn_detector as fld
 @pytest.mark.parametrize(
     ("tier", "expected"),
     [
-        ("0_8b", "v1.2.2-en"),
         ("2b", "v1.2.2-en"),
-        ("eliza-1-0_8b", "v1.2.2-en"),
         ("eliza-1-2b", "v1.2.2-en"),
         ("4b", "v0.4.1-intl"),
         ("9b", "v0.4.1-intl"),
         ("27b", "v0.4.1-intl"),
+        ("27b-256k", "v0.4.1-intl"),
         ("eliza-1-4b", "v0.4.1-intl"),
+        ("eliza-1-27b-256k", "v0.4.1-intl"),
     ],
 )
 def test_default_revision_for_tier(tier: str, expected: str) -> None:
@@ -95,6 +95,68 @@ def test_load_config_rejects_missing_keys(tmp_path: Path) -> None:
     config_path.write_text(json.dumps({"tier": "4b"}), encoding="utf-8")
     with pytest.raises(ValueError, match="config missing keys"):
         fld.load_config(config_path)
+
+
+# ---------------------------------------------------------------------------
+# Gemma EOT token/template contract
+# ---------------------------------------------------------------------------
+
+
+class _FakeGemmaTokenizer:
+    def __init__(self) -> None:
+        self.token_requests: list[str] = []
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        add_generation_prompt: bool,
+        tokenize: bool,
+        add_special_tokens: bool,
+    ) -> str:
+        assert messages == [{"role": "user", "content": "hello there"}]
+        assert add_generation_prompt is False
+        assert tokenize is False
+        assert add_special_tokens is False
+        return "<start_of_turn>user\nhello there<end_of_turn>\n"
+
+    def __call__(self, text: str, *, add_special_tokens: bool) -> dict[str, list[int]]:
+        self.token_requests.append(text)
+        assert add_special_tokens is False
+        return {"input_ids": [42] if text == "<end_of_turn>" else [13]}
+
+
+def test_turn_detector_formats_gemma_prompt_without_end_token() -> None:
+    tokenizer = _FakeGemmaTokenizer()
+    prompt = fld._format_livekit_prompt(tokenizer, "hello there")
+    assert prompt == "<start_of_turn>user\nhello there"
+    assert "<end_of_turn>" not in prompt
+    assert "<|im_" not in prompt
+
+
+def test_turn_detector_resolves_gemma_end_of_turn_token() -> None:
+    tokenizer = _FakeGemmaTokenizer()
+    assert fld.end_of_turn_token_id(tokenizer) == 42
+    assert tokenizer.token_requests == ["<end_of_turn>"]
+
+
+def test_build_sft_corpus_targets_gemma_end_of_turn(tmp_path: Path) -> None:
+    pretrain = tmp_path / "pretrain.jsonl"
+    pretrain.write_text(
+        "\n".join(
+            [
+                json.dumps({"utterance": "done.", "eou_label": 1}),
+                json.dumps({"utterance": "not yet", "eou_label": 0}),
+            ],
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    out_path = fld.build_sft_corpus(pretrain, tmp_path / "sft", target_pairs=2)
+    rows = [json.loads(line) for line in out_path.read_text().splitlines()]
+    assert rows[0]["completion"] == "<end_of_turn>"
+    assert rows[1]["completion"] == "..."
+    assert "<|im_" not in out_path.read_text()
 
 
 # ---------------------------------------------------------------------------

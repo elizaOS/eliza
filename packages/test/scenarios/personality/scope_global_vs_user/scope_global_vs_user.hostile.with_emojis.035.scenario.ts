@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "scope_global_vs_user.hostile.with_emojis.035",
   title:
     "scope :: admin_global_then_user_override :: hostile :: with_emojis :: 5-turn (35)",

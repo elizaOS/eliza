@@ -7,8 +7,8 @@ import {
   type BrowserBridgeAction,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeSettings,
-  type UpsertBrowserBridgeCompanionRequest,
   createBrowserBridgeCompanionStatus,
+  type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser";
 import { LifeOpsScheduleSyncClient } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-client";
 import type {
@@ -20,16 +20,13 @@ import type {
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
 } from "../contracts/index.js";
-import type { computeAdaptiveWindowPolicy } from "./defaults.js";
-import {
-  createLifeOpsAuditEvent,
-  LifeOpsRepository,
-} from "./repository.js";
-import { resolveLifeOpsScheduleSyncConfigFromElizaConfig } from "./schedule-sync-config.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,
 } from "./browser-constants.js";
+import type { computeAdaptiveWindowPolicy } from "./defaults.js";
+import { createLifeOpsAuditEvent, LifeOpsRepository } from "./repository.js";
+import { resolveLifeOpsScheduleSyncConfigFromElizaConfig } from "./schedule-sync-config.js";
 import { reminderProcessingQueues } from "./service-constants.js";
 import {
   defaultOwnerEntityId,
@@ -56,7 +53,12 @@ import type { LifeOpsServiceOptions } from "./service-types.js";
 // ---------------------------------------------------------------------------
 
 /** Constructor type for the mixin pattern. */
-export type Constructor<T = object> = new (...args: unknown[]) => T;
+// TypeScript's mixin pattern (TS2545) requires the base constructor's rest param
+// to be `any[]` specifically — `unknown[]` does not satisfy the constraint, so
+// every `with*` mixin that extends a `Constructor` would fail to type-check. This
+// is the documented mixin idiom (TS handbook), not a weak-typing slip.
+// biome-ignore lint/suspicious/noExplicitAny: required by the TS mixin constraint (TS2545)
+export type Constructor<T = object> = new (...args: any[]) => T;
 
 export type MixinClass<
   TBase extends Constructor,

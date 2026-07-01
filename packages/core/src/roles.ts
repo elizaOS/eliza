@@ -10,11 +10,31 @@ export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
 export type RoleGrantSource = "owner" | "manual" | "connector_admin";
 
+/**
+ * Canonical rank for every role tier across the codebase — the single source of
+ * truth for role ordering (#9948). It spans both vocabularies that historically
+ * disagreed: the `NONE` floor and the `MEMBER` alias (`environment.ts` `Role`)
+ * plus `USER`/`GUEST` (`RoleName`). `USER` and `MEMBER` are the same tier.
+ *
+ * Previously `roles.ts` and `runtime/context-gates.ts` each defined their own
+ * rank literal with different absolute values — two tables that could silently
+ * drift apart was the authz hazard called out in #9948. Both now derive from
+ * this constant.
+ */
+export const CANONICAL_ROLE_RANK = {
+	NONE: 0,
+	GUEST: 1,
+	USER: 2,
+	MEMBER: 2,
+	ADMIN: 3,
+	OWNER: 4,
+} as const;
+
 export const ROLE_RANK: Record<RoleName, number> = {
-	GUEST: 0,
-	USER: 1,
-	ADMIN: 2,
-	OWNER: 3,
+	GUEST: CANONICAL_ROLE_RANK.GUEST,
+	USER: CANONICAL_ROLE_RANK.USER,
+	ADMIN: CANONICAL_ROLE_RANK.ADMIN,
+	OWNER: CANONICAL_ROLE_RANK.OWNER,
 };
 
 export type RolesWorldMetadata = {
@@ -928,6 +948,35 @@ export async function hasRoleAccess(
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * Persist the deployed-app owner as an EXPLICIT, auditable grant on a world's
+ * metadata: `roles[ownerId] = "OWNER"` together with `roleSources[ownerId] =
+ * "owner"`. Before this, the owner's OWNER status was emergent — inferred from
+ * `ownership.ownerId` at read time and (at best) a bare `roles` entry with no
+ * recorded source — so it could not be audited or distinguished from a manual /
+ * connector grant (#9948). This records the grant and its provenance.
+ *
+ * Pure + idempotent: mutates `metadata` in place and returns `true` iff it
+ * actually changed something (so callers only persist on a real change).
+ */
+export function recordOwnerGrant(
+	metadata: RolesWorldMetadata,
+	ownerId: string,
+): boolean {
+	metadata.roles ??= {};
+	metadata.roleSources ??= {};
+	let changed = false;
+	if (metadata.roles[ownerId] !== "OWNER") {
+		metadata.roles[ownerId] = "OWNER";
+		changed = true;
+	}
+	if (metadata.roleSources[ownerId] !== "owner") {
+		metadata.roleSources[ownerId] = "owner";
+		changed = true;
+	}
+	return changed;
 }
 
 export async function setEntityRole(

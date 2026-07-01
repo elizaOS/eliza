@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.lifecycle.dismiss",
   title: "User dismisses a reminder without completing the task",
   domain: "reminders",

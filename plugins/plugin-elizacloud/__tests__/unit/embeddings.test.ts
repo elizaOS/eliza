@@ -12,17 +12,16 @@ vi.mock("../../src/utils/sdk-client", () => ({
 const emitModelUsageEvent = vi.fn();
 vi.mock("../../src/utils/events", () => ({ emitModelUsageEvent }));
 
-const { handleTextEmbedding, handleBatchTextEmbedding } = await import(
-  "../../src/models/embeddings"
-);
+const { handleTextEmbedding, handleBatchTextEmbedding, embeddingBackoffMs, EMBED_BACKOFF_CAP_MS } =
+  await import("../../src/models/embeddings");
 
 const DIM = 1536;
 
-function makeRuntime(): IAgentRuntime {
+function makeRuntime(dimension = DIM): IAgentRuntime {
   return {
     getSetting: (key: string) => {
       if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "text-embedding-3-small";
-      if (key === "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS") return "1536";
+      if (key === "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS") return String(dimension);
       return undefined;
     },
   } as unknown as IAgentRuntime;
@@ -135,28 +134,123 @@ describe("handleBatchTextEmbedding no-marker-on-failure", () => {
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
   });
 
-  // `retry-after: 1` keeps the backoff to ~1s (0 is falsy → handler defaults to
-  // 30s), well under the bumped per-test timeout.
+  // Backoff is driven through vitest fake timers so the ~1s exponential sleep
+  // (with Math.random jitter) never burns real wall-clock and can't flake.
   it("retries once after a 429 and returns real vectors on retry success", async () => {
-    requestRaw
-      .mockResolvedValueOnce(
-        new Response("slow down", { status: 429, headers: { "retry-after": "1" } })
-      )
-      .mockResolvedValueOnce(embeddingResponse([vec(0.9)]));
-    const result = await handleBatchTextEmbedding(makeRuntime(), ["a"]);
-    expect(result).toEqual([vec(0.9)]);
-    expect(requestRaw).toHaveBeenCalledTimes(2);
-  }, 10000);
+    vi.useFakeTimers();
+    try {
+      requestRaw
+        .mockResolvedValueOnce(
+          new Response("slow down", { status: 429, headers: { "retry-after": "1" } })
+        )
+        .mockResolvedValueOnce(embeddingResponse([vec(0.9)]));
+      const promise = handleBatchTextEmbedding(makeRuntime(), ["a"]);
+      await vi.runAllTimersAsync();
+      expect(await promise).toEqual([vec(0.9)]);
+      expect(requestRaw).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("throws (no markers) when the post-429 retry also fails", async () => {
-    requestRaw
-      .mockResolvedValueOnce(
-        new Response("slow down", { status: 429, headers: { "retry-after": "1" } })
-      )
-      .mockResolvedValueOnce(new Response("still bad", { status: 503, statusText: "Unavailable" }));
-    await expect(handleBatchTextEmbedding(makeRuntime(), ["a"])).rejects.toThrow(
-      /Rate-limit retry failed/
+    vi.useFakeTimers();
+    try {
+      requestRaw
+        .mockResolvedValueOnce(
+          new Response("slow down", { status: 429, headers: { "retry-after": "1" } })
+        )
+        .mockResolvedValueOnce(
+          new Response("still bad", { status: 503, statusText: "Unavailable" })
+        );
+      const promise = handleBatchTextEmbedding(makeRuntime(), ["a"]);
+      // Attach the rejection assertion before flushing timers so the rejection
+      // is observed (no unhandled-rejection warning) once the retry resolves.
+      const assertion = expect(promise).rejects.toThrow(/API error: 503/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(emitModelUsageEvent).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("embeddingBackoffMs cap + escalation", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("clamps even a large server retry-after to the cap (no jitter)", () => {
+    // Math.random()→0 removes the ±25% jitter so the value is exact.
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    // retry-after 600s would be 600_000ms uncapped — the cap is what stops a
+    // hostile/large hint from parking the embedding queue.
+    expect(embeddingBackoffMs(0, 600)).toBe(EMBED_BACKOFF_CAP_MS);
+    expect(embeddingBackoffMs(0, 600)).toBeLessThan(600_000);
+  });
+
+  it("escalates exponentially from the base, capped at EMBED_BACKOFF_CAP_MS", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    expect(embeddingBackoffMs(0)).toBe(1_000);
+    expect(embeddingBackoffMs(2)).toBe(4_000);
+    // 1000·2^5 = 32_000 → clamped to the 8_000 cap.
+    expect(embeddingBackoffMs(5)).toBe(EMBED_BACKOFF_CAP_MS);
+  });
+
+  it("adds bounded (≤25%) jitter on top of the base", () => {
+    vi.spyOn(Math, "random").mockReturnValue(1);
+    // base 1000 · (1 + 1·0.25) = 1250
+    expect(embeddingBackoffMs(0)).toBe(1_250);
+  });
+});
+
+describe("handleBatchTextEmbedding dimension + count integrity (#8769)", () => {
+  it("sends the configured `dimensions` in the POST body so the gateway pins width", async () => {
+    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.4)]));
+    // 384-configured agent; the response width won't match so the call rejects —
+    // we only care that the request carried `dimensions: 384`.
+    await handleBatchTextEmbedding(makeRuntime(384), ["a"]).catch(() => undefined);
+    const [method, path, opts] = requestRaw.mock.calls[0] as [
+      string,
+      string,
+      { json?: { dimensions?: number; model?: string; input?: string[] } },
+    ];
+    expect(method).toBe("POST");
+    expect(path).toBe("/embeddings");
+    expect(opts.json?.dimensions).toBe(384);
+  });
+
+  it("throws on a width mismatch (server returns 1536 for a 384-configured agent) and bills nothing", async () => {
+    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.5)])); // vec() is DIM(1536)-wide
+    await expect(handleBatchTextEmbedding(makeRuntime(384), ["a"])).rejects.toThrow(
+      /dimension mismatch: model returned 1536d but agent is configured for 384d/
     );
     expect(emitModelUsageEvent).not.toHaveBeenCalled();
-  }, 10000);
+  });
+
+  it("throws on a count mismatch (fewer vectors than inputs) instead of returning undefined holes", async () => {
+    // 2 inputs, server returns only 1 vector — the missing slot would be an
+    // undefined hole that escapes to the runtime.
+    requestRaw.mockResolvedValueOnce(embeddingResponse([vec(0.1)]));
+    await expect(handleBatchTextEmbedding(makeRuntime(), ["a", "b"])).rejects.toThrow(
+      /expected 2 embeddings, got 1/
+    );
+    expect(emitModelUsageEvent).not.toHaveBeenCalled();
+  });
+
+  it("throws on an out-of-range response index instead of crashing on undefined.originalIndex", async () => {
+    // A malformed/cross-batch absolute index (5) for a single-item batch.
+    requestRaw.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [{ embedding: vec(0.2), index: 5 }],
+          usage: { prompt_tokens: 1, total_tokens: 1 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    await expect(handleBatchTextEmbedding(makeRuntime(), ["a"])).rejects.toThrow(
+      /response index out of range/
+    );
+    expect(emitModelUsageEvent).not.toHaveBeenCalled();
+  });
 });

@@ -96,6 +96,7 @@ export type StartupEvent =
   // Backend poll results
   | { type: "BACKEND_REACHED"; firstRunComplete: boolean }
   | { type: "BACKEND_AUTH_REQUIRED" }
+  | { type: "BACKEND_UNAVAILABLE_FIRST_RUN" }
   | { type: "BACKEND_NOT_FOUND" }
   | { type: "BACKEND_TIMEOUT" }
   | { type: "BACKEND_POLL_RETRY" }
@@ -177,6 +178,12 @@ export function startupReducer(
           };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
+        case "BACKEND_UNAVAILABLE_FIRST_RUN":
+          return {
+            phase: "first-run-required",
+            serverReachable: false,
+            target: state.target,
+          };
         case "BACKEND_NOT_FOUND":
           return {
             phase: "error",
@@ -285,6 +292,8 @@ export function startupReducer(
             };
           }
           return { phase: "first-run-required", serverReachable: true };
+        case "BACKEND_UNAVAILABLE_FIRST_RUN":
+          return { phase: "first-run-required", serverReachable: false };
         case "AGENT_RUNNING":
           return { phase: "hydrating" };
         case "RETRY":
@@ -447,13 +456,19 @@ export function isStartupTerminal(state: StartupState): boolean {
  * of replacing the whole app with a full-screen loader until full `ready`.
  *
  * Deliberately FALSE for phases that legitimately own the whole screen — session
- * restore, backend polling, first-run, pairing — and for terminal `error`; those
- * still render StartupScreen. Effects that need a live runtime must stay gated on
- * agent readiness (`canRespond`), NOT on this — this un-gates RENDERING only.
+ * restore, backend polling, pairing — and for terminal `error`; those still
+ * render StartupScreen. `first-run-required` IS paintable: onboarding now happens
+ * IN the live chat (homescreen + auto-opened ContinuousChatOverlay seeded by the
+ * headless first-run conductor), not as a full-screen gate. Effects that need a
+ * live runtime must stay gated on agent readiness (`canRespond`), NOT on this —
+ * this un-gates RENDERING only.
  */
 export function isShellPaintable(phase: StartupPhaseValue): boolean {
   return (
-    phase === "starting-runtime" || phase === "hydrating" || phase === "ready"
+    phase === "first-run-required" ||
+    phase === "starting-runtime" ||
+    phase === "hydrating" ||
+    phase === "ready"
   );
 }
 

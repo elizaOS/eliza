@@ -1,33 +1,44 @@
 # @elizaos/plugin-sub-agent-claude-code
 
-Reference remote-mode sub-agent plugin: drives the Claude Code CLI inside an isolated Bun subprocess via `ClaudeCodeSubAgentService`.
+Compatibility package for the reference remote-mode Claude Code sub-agent. The implementation now
+lives in `@elizaos/plugin-remote-manifest/sub-agent-claude-code`; this package keeps the historical
+`@elizaos/plugin-sub-agent-claude-code` imports working.
 
 ## Purpose / role
 
-This plugin lets an Eliza agent spawn and communicate with the Claude Code CLI as a subprocess, with OS-level sandboxing (macOS `sandbox-exec`, Linux `bwrap`) and SOC2-aligned hardening for env filtering, cwd validation, and binary allowlisting. It implements the `plugin-worker-runtime` remote-plugin contract and is loaded via `runtime.installRemotePlugin(plugin, { source: { kind: "workspace", pkgName: "@elizaos/plugin-sub-agent-claude-code" } })`. The worker entry is `dist/worker.js`; the host entry (`dist/plugin.js`) exports the `Plugin` descriptor. For repo-wide conventions see the root `AGENTS.md`.
+This compatibility package lets an Eliza agent spawn and communicate with the Claude Code CLI as a
+subprocess, with OS-level sandboxing (macOS `sandbox-exec`, Linux `bwrap`) and SOC2-aligned
+hardening for env filtering, cwd validation, and binary allowlisting. It implements the consolidated
+`@elizaos/plugin-remote-manifest/worker-runtime` remote-plugin contract and is loaded via
+`runtime.installRemotePlugin(plugin, { source: { kind: "workspace", pkgName: "@elizaos/plugin-sub-agent-claude-code" } })`.
+The wrapper worker entry is `dist/worker.js`; the wrapper host entry (`dist/plugin.js`) re-exports
+the `Plugin` descriptor from `@elizaos/plugin-remote-manifest/sub-agent-claude-code`. For repo-wide
+conventions see the root `AGENTS.md`.
 
 ## Layout
 
 ```
 packages/plugin-sub-agent-claude-code/
   src/
-    plugin.ts            Plugin descriptor export (entry for host-side)
-    plugin.test.ts       Unit tests for plugin.ts
-    worker.ts            Worker entrypoint: calls bootstrap(plugin)
-    sub-agent-service.ts ClaudeCodeSubAgentService — session lifecycle, spawn, RPC
-    sub-agent-service.test.ts Unit tests for sub-agent-service.ts
-    sandbox.ts           OS sandboxing helpers (filterEnv, resolveSafeCwd, resolveSafeBinary, buildSandboxedCommand)
-    sandbox.test.ts      Unit tests for sandbox.ts helpers
-    session-recorder.ts  Per-session transcript writer + pruneOldSessions (SOC2 O-8)
-    session-recorder.test.ts Unit tests for session-recorder.ts
-  sandbox/
-    macos.sb             macOS sandbox-exec profile (Seatbelt)
-    linux-bwrap.sh       Linux bwrap wrapper script
-    SMOKE.md             Manual sandbox verification steps
+    plugin.ts / worker.ts / sub-agent-service.ts / sandbox.ts / session-recorder.ts
+                         Compatibility re-exports from
+                         `@elizaos/plugin-remote-manifest/sub-agent-claude-code*`
   dist/                  Build output (plugin.js, worker.js, *.d.ts)
   tsconfig.json
   tsconfig.build.json
   package.json
+
+packages/plugin-remote-manifest/src/sub-agent-claude-code/
+  plugin.ts              Plugin descriptor export
+  worker.ts              Worker entrypoint: calls bootstrap(plugin)
+  sub-agent-service.ts   ClaudeCodeSubAgentService — session lifecycle, spawn, RPC
+  sandbox.ts             OS sandboxing helpers
+  session-recorder.ts    Per-session transcript writer + pruneOldSessions (SOC2 O-8)
+
+packages/plugin-remote-manifest/sandbox/
+  macos.sb               macOS sandbox-exec profile (Seatbelt)
+  linux-bwrap.sh         Linux bwrap wrapper script
+  SMOKE.md               Manual sandbox verification steps
 ```
 
 ## Key exports / surface
@@ -86,10 +97,10 @@ bun run --cwd packages/plugin-sub-agent-claude-code clean
 3. The worker-runtime dispatch loop will route calls to it automatically.
 
 **Change sandbox permissions (macOS):**
-Edit `sandbox/macos.sb` (Seatbelt profile). Key parameters passed by `buildSandboxedCommand`: `WORKSPACE`, `SESSION`, `HOME`, `TMPDIR`. Run the smoke tests in `sandbox/SMOKE.md` after changes.
+Edit `packages/plugin-remote-manifest/sandbox/macos.sb` (Seatbelt profile). Key parameters passed by `buildSandboxedCommand`: `WORKSPACE`, `SESSION`, `HOME`, `TMPDIR`. Run the smoke tests in `packages/plugin-remote-manifest/sandbox/SMOKE.md` after changes.
 
 **Change sandbox permissions (Linux):**
-Edit `sandbox/linux-bwrap.sh`. The script receives `workspaceRoot` and `sessionId` as positional args before `--`.
+Edit `packages/plugin-remote-manifest/sandbox/linux-bwrap.sh`. The script receives `workspaceRoot` and `sessionId` as positional args before `--`.
 
 **Add a new whitelisted binary directory:**
 Add the absolute path to `BINARY_DIR_ALLOWLIST` in `src/sandbox.ts`.
@@ -103,3 +114,45 @@ Add the absolute path to `BINARY_DIR_ALLOWLIST` in `src/sandbox.ts`.
 - **Session transcripts are redacted before write.** `SessionRecorder` strips common credential patterns (API keys, GH tokens, Slack tokens, ETH/BTC addresses, card numbers) before flushing to disk. This is a coarse pass; combine with workspace isolation.
 - **`pruneOldSessions` is fire-and-forget.** Called at service start; errors are silently swallowed (non-critical cleanup).
 - **Stdout is pumped asynchronously.** `pumpStdout` runs in the background; `getOutput` reads from the in-memory buffer, not directly from the stream.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — CLI / tooling:**
+- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
+- Failure paths: bad args, missing deps, partial state, permission/network errors.
+- A recording/log of the actual run end to end — not a unit test of one helper.
+- Any model interaction captured as a live trajectory and reviewed.
+<!-- END: evidence-and-e2e-mandate -->

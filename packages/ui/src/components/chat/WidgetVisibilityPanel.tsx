@@ -8,7 +8,7 @@
  */
 
 import type { ReactNode } from "react";
-import type { ChatSidebarVisibilityHook } from "../../widgets/useChatSidebarVisibility";
+import type { WidgetVisibilityHook } from "../../widgets/useChatSidebarVisibility";
 import type { VisibilityCandidate } from "../../widgets/visibility";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -22,7 +22,7 @@ export interface WidgetVisibilityCandidate extends VisibilityCandidate {
 
 export interface WidgetVisibilityEditorProps {
   candidates: readonly WidgetVisibilityCandidate[];
-  visibility: ChatSidebarVisibilityHook;
+  visibility: WidgetVisibilityHook;
   onClose: () => void;
 }
 

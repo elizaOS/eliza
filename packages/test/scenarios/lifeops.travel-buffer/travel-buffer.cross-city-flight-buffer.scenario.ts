@@ -34,6 +34,7 @@ function checkFlightBufferReasoning(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.cross-city-flight-buffer",
   title:
     "Cross-city flight requires a multi-hour travel buffer, not 15-min default",

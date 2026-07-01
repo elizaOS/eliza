@@ -18,6 +18,7 @@ describe("app-shell-registry", () => {
       pluginId: "test-plugin",
       label: "Lazy test page",
       path: `/test-lazy-page-${before}`,
+      backgroundPolicy: "shared",
       loader: async () => ({ default: () => null }),
     });
 
@@ -26,6 +27,7 @@ describe("app-shell-registry", () => {
     const registration = listAppShellPages().find((entry) => entry.id === id);
     expect(registration).toEqual(
       expect.objectContaining({
+        backgroundPolicy: "shared",
         id,
         loader: expect.any(Function),
       }),

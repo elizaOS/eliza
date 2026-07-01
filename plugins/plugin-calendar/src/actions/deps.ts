@@ -28,8 +28,8 @@ export interface CalendarJsonModelResult<
  * mirrors the LifeOps `TravelBufferResult` fields the calendar handler reads.
  */
 export interface CalendarTravelBufferResult {
-  originAddress: string;
-  destinationAddress: string;
+  originAddress: string | null;
+  destinationAddress: string | null;
   bufferMinutes: number;
   method: string;
 }
@@ -67,7 +67,9 @@ export interface CalendarTravelBufferDep {
     travelIntent: CalendarTravelIntent;
   }): Promise<CalendarTravelBufferResult>;
   /** Narrow an unknown error to the travel-time-unavailable case. */
-  isTravelTimeUnavailable(error: unknown): error is { code: string; message: string };
+  isTravelTimeUnavailable(
+    error: unknown,
+  ): error is { code: string; message: string };
 }
 
 /**

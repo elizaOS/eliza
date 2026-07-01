@@ -1,92 +1,51 @@
 #!/usr/bin/env bun
 /**
- * Build script for plugin-computeruse
+ * Build script for @elizaos/plugin-computeruse. Orchestration lives in the
+ * shared driver (plugins/plugin-build.ts); this lists only what differs.
+ *
+ * Three Node/ESM entrypoints are bundled with linked sourcemaps and flat
+ * `[name].[ext]` naming (index + register-routes at the dist root, the mobile
+ * OCR provider under dist/mobile). Declarations are emitted declaration-only
+ * from tsconfig.build.json. The emitted `dist/` is byte-identical to the
+ * previous hand-rolled build.
  */
+import { buildPlugin } from "../plugin-build";
 
-import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { $ } from "bun";
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+const naming = { entry: "[name].[ext]" };
 
-const externalDeps = await externalsFromPackageJson("./package.json", {
-  extra: ["node:*"],
+await buildPlugin({
+  name: "plugin-computeruse",
+  clean: true,
+  externalsOptions: { extra: ["node:*"] },
+  targets: [
+    {
+      label: "index",
+      entry: "./src/index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      sourcemap: "linked",
+      naming,
+    },
+    {
+      label: "register-routes",
+      entry: "./src/register-routes.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      sourcemap: "linked",
+      naming,
+    },
+    {
+      label: "mobile/ocr-provider",
+      entry: "./src/mobile/ocr-provider.ts",
+      outSubdir: "mobile",
+      target: "node",
+      format: "esm",
+      sourcemap: "linked",
+      naming,
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsEmitDeclarationOnly: true,
 });
-
-async function cleanBuild(outdir = "dist") {
-  if (existsSync(outdir)) {
-    await rm(outdir, { recursive: true, force: true });
-    console.log(`Cleaned ${outdir} directory`);
-  }
-  if (existsSync("tsconfig.build.tsbuildinfo")) {
-    await rm("tsconfig.build.tsbuildinfo", { force: true });
-  }
-}
-
-async function build() {
-  const start = performance.now();
-  console.log("Building plugin-computeruse...");
-
-  try {
-    await cleanBuild("dist");
-
-    const [buildResult, declResult] = await Promise.all([
-      (async () => {
-        console.log("Bundling with Bun...");
-        const outputs: BuildArtifact[] = [];
-        for (const entrypoint of [
-          "./src/index.ts",
-          "./src/register-routes.ts",
-        ]) {
-          const result = await Bun.build({
-            entrypoints: [entrypoint],
-            outdir: "./dist",
-            target: "node",
-            format: "esm",
-            sourcemap: "linked",
-            minify: false,
-            external: externalDeps,
-            naming: {
-              entry: "[dir]/[name].[ext]",
-            },
-          });
-
-          if (!result.success) {
-            console.error("Build failed:", result.logs);
-            return { success: false, outputs };
-          }
-          outputs.push(...result.outputs);
-        }
-
-        const totalSize = outputs.reduce((sum, output) => sum + output.size, 0);
-        const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
-        console.log(`Built ${outputs.length} file(s) - ${sizeMB}MB`);
-
-        return { success: true, outputs };
-      })(),
-
-      (async () => {
-        console.log("Generating TypeScript declarations...");
-        try {
-          await $`bunx tsc --noCheck --emitDeclarationOnly --incremental --project ./tsconfig.build.json`;
-          console.log("TypeScript declarations generated");
-          return { success: true };
-        } catch (e) {
-          console.error("TypeScript declaration generation failed", e);
-          return { success: false };
-        }
-      })(),
-    ]);
-
-    if (!buildResult.success || !declResult.success) {
-      process.exit(1);
-    }
-
-    const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-    console.log(`Build complete! (${elapsed}s)`);
-  } catch (error) {
-    console.error("Build error:", error);
-    process.exit(1);
-  }
-}
-
-build();

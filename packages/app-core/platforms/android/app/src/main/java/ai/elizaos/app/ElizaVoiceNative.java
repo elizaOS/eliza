@@ -144,6 +144,9 @@ final class ElizaVoiceNative {
     /** Read the diariz int8 frame labels for the i-th turn of the last call. */
     static native byte[] nativePipelineTurnLabels(long handle, int index);
 
+    /** Read the segmented fp32 PCM for the i-th turn of the last call. */
+    static native float[] nativePipelineTurnPcm(long handle, int index);
+
     static native void nativePipelineReset(long handle);
 
     static native void nativePipelineClose(long handle);
@@ -157,4 +160,96 @@ final class ElizaVoiceNative {
 
     /** Run the whole pipeline (ctx→open→feed→flush) on one PCM buffer in one call. */
     static native String nativePipelineSelfTest(String bundleDir, float[] pcm, int feedSamples);
+
+    // ── Text generation (LLM) — the GPU-accelerated text path ────────────
+    //
+    // When this host is built against the dynamic-Vulkan libelizainference
+    // (libggml-vulkan.so staged alongside), llm_stream_open offloads the model
+    // to the GPU in the bionic app process — the path the musl bun agent can't
+    // take. nGpuLayers=-1 means all-GPU (default); the CPU/GPU choice is the
+    // staged LIB variant, not this flag.
+
+    /** {@code eliza_inference_llm_stream_supported()}. */
+    static native int nativeLlmStreamSupported();
+
+    /** {@code eliza_inference_embed_supported()}. */
+    static native int nativeEmbedSupported();
+
+    /** {@code eliza_inference_llm_eot_supported()} (ABI v11). */
+    static native int nativeEotSupported();
+
+    /** Tokenize text → int[] token ids. */
+    static native int[] nativeTokenize(long ctxHandle, String text, boolean addSpecial, boolean parseSpecial);
+
+    /** Pooled (MEAN) L2-normalized sentence embedding → float[n_embd]. */
+    static native float[] nativeEmbed(long ctxHandle, String text, int pooling);
+
+    /** End-of-turn score: next-token P(targetToken | tokens). */
+    static native float nativeEotScore(long ctxHandle, int[] tokens, int targetToken);
+
+    /** Open a streaming-LLM session (nGpuLayers=-1 all-GPU; drafterPath ""=none). */
+    static native long nativeLlmStreamOpen(long ctxHandle, int maxTokens, float temperature, float topP, int topK, int nGpuLayers, String drafterPath);
+
+    /** Feed pre-tokenized prompt tokens into the session KV before the first next(). */
+    static native void nativeLlmStreamPrefill(long streamHandle, int[] tokens);
+
+    /** Pull the next decode step → JSON {text, done, drafted, accepted}. */
+    static native String nativeLlmStreamNext(long streamHandle);
+
+    static native void nativeLlmStreamClose(long streamHandle);
+
+    /** Reset a persistent stream (clear KV + sampler) for warm reuse. 1=ok, 0=no. */
+    static native int nativeLlmStreamReset(long streamHandle);
+
+    /**
+     * Prefix-preserving reset: keep the first {@code nKeep} tokens of KV cache
+     * resident and drop the rest, so the next prefill only decodes the per-turn
+     * delta. Returns the n_keep actually applied ({@code >= 0}), or a negative
+     * code on a null/MTP/unopened stream (caller falls back to a full reset).
+     */
+    static native int nativeLlmStreamResetKeep(long streamHandle, int nKeep);
+
+    /**
+     * KEYSTONE proof: run a whole greedy text generation in one native call,
+     * in the bionic app process. With the dynamic-Vulkan lib staged, ggml-vulkan
+     * logs the Mali device + layer offload to logcat. Returns JSON
+     * {ok, text, tokens, ms, tokS}.
+     */
+    static native String nativeLlmSelfTest(String bundleDir, String prompt, int maxTokens);
+
+    /** Kokoro-82M model native sample rate (24000 for v1.0), or -1 if not loaded. */
+    static native int nativeKokoroSampleRate(long ctxHandle);
+
+    /**
+     * Synthesize {@code text} with the fused Kokoro-82M head (ABI v10), loading
+     * the GGUF + voice preset on first use. Returns 24 kHz fp32 PCM. This is the
+     * on-device voice the Android app speaks with — TalkMode delegates here (via
+     * the bionic inference host) instead of falling back to the platform TTS.
+     */
+    static native float[] nativeKokoroSynthesize(
+            long ctxHandle, String ggufPath, String voiceBinPath, String text, float speed);
+
+    // ── Batch ASR + mmproj vision (the agent's STT / screen-recognition path) ──
+
+    /**
+     * Transcribe {@code pcm} (16 kHz mono fp32) → UTF-8 transcript via the fused
+     * local ASR head ({@code eliza_inference_asr_transcribe}). VAD-free: the
+     * resident context mmap-acquires the {@code asr/} weights on first use. The
+     * bionic host's op="asr" calls this so the agent TRANSCRIPTION delegate gets
+     * a real on-device transcript without the full attribution pipeline.
+     */
+    static native String nativeAsrTranscribe(long ctxHandle, float[] pcm, int sampleRate);
+
+    /** {@code eliza_inference_vision_supported()} (ABI v9): 1 if mmproj vision is built. */
+    static native int nativeVisionSupported();
+
+    /**
+     * Describe a raw PNG/JPEG/WebP image with the resident TEXT model + the
+     * mmproj projector at {@code mmprojPath} ({@code eliza_inference_describe_image}).
+     * {@code prompt} may be empty (a default describe prompt is used). The bionic
+     * host's op="image" calls this so the agent IMAGE_DESCRIPTION delegate runs
+     * screen/vision recognition fully on-device.
+     */
+    static native String nativeDescribeImage(
+            long ctxHandle, byte[] imageBytes, String mmprojPath, String prompt);
 }

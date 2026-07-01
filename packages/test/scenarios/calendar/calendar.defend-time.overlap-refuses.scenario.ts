@@ -6,6 +6,7 @@ import {
 import { seedCalendarCache } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.defend-time.overlap-refuses",
   title:
     "Agent refuses to schedule during a blackout and suggests alternatives",

@@ -60,6 +60,7 @@ import {
 } from "./types";
 
 const DEFAULT_LOCAL_SYSTEM_PROMPT = "Respond to the current request only.";
+const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
 
 interface ContextEntry {
 	ctx: CapacitorLlamaContext;
@@ -293,12 +294,12 @@ async function tryLocalInferenceModel<T>(
 function buildNativeResult(
 	result: LocalGenerationResult,
 ): LocalNativeTextModelResult {
-	const nativeResult = {
+	const nativeResult = Object.assign(new String(result.text), {
 		text: result.text,
 		toolCalls: result.toolCalls,
 		...(result.finishReason ? { finishReason: result.finishReason } : {}),
-	};
-	return nativeResult as unknown as LocalNativeTextModelResult;
+	});
+	return nativeResult as LocalNativeTextModelResult;
 }
 
 function getLocalModelLabel(
@@ -530,7 +531,9 @@ class LocalAIManager {
 
 		const baseParams: CapacitorLlamaCompletionParams = {
 			prompt: renderCompletionPrompt({ ...params, system: systemPrompt }),
-			n_predict: params.maxTokens ?? 8192,
+			n_predict: params.omitMaxTokens
+				? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
+				: (params.maxTokens ?? 8192),
 			temperature: params.temperature ?? 0.7,
 			top_p: params.topP ?? 0.9,
 			...(typeof params.topK === "number" ? { top_k: params.topK } : {}),
@@ -805,3 +808,24 @@ export const localAiPlugin: Plugin = {
 };
 
 export default localAiPlugin;
+
+// On-device fused voice-turn entry (#8786): native iOS/Android mic-capture
+// front-ends hand completed PCM turns to `NativePcmVoiceTurnCoordinator`, which
+// serializes them through `runDeviceVoiceTurn` → `LocalInferenceEngine.runVoiceTurn`
+// (ASR + MTP text + speaker-attribution + TTS in one pass). On memory-constrained
+// devices the optional next-stage preload predictor (#8809) warms the response
+// model as soon as ASR completes.
+export {
+	type NativePcmVoiceTurn,
+	NativePcmVoiceTurnCoordinator,
+	type NativePcmVoiceTurnCoordinatorOptions,
+	type NativePcmVoiceTurnResult,
+} from "./native-voice-capture";
+export {
+	type CapacitorTextRunnerOptions,
+	createCapacitorMtpTextRunner,
+	type DeviceVoiceEngine,
+	type RunDeviceVoiceTurnArgs,
+	runDeviceVoiceTurn,
+	type VoiceTurnExitReason,
+} from "./voice-turn";

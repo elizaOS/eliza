@@ -32,52 +32,51 @@ function analysis(
         models: 0,
         artifacts: artifacts.length,
       },
-      coverage:
-        coverage ??
-        {
-          dataSources: {
-            huggingFace: 0,
-            feed: 0,
-            natural: 0,
-            scenarios: 0,
-            tests: 0,
-            trainingJsonl: 0,
-          },
-          readableSamples: {
-            huggingFace: 0,
-            feed: 0,
-            natural: 0,
-            scenarios: 0,
-            tests: 0,
-            trainingJsonl: 0,
-            total: 0,
-          },
-          evals: {
-            artifacts: 0,
-            comparisons: 0,
-            scoredComparisons: 0,
-          },
-          benchmarks: {
-            matrices: 0,
-            comparisons: 0,
-            scoredComparisons: 0,
-            caseSamples: 0,
-            tiers: [],
-            allEliza1TiersCovered: false,
-            tierCoverage: [],
-          },
-          models: {
-            artifacts: 0,
-            inventory: [],
-          },
+      coverage: coverage ?? {
+        dataSources: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
         },
+        readableSamples: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+          total: 0,
+        },
+        evals: {
+          artifacts: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+        },
+        benchmarks: {
+          matrices: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+          caseSamples: 0,
+          tiers: [],
+          allEliza1TiersCovered: false,
+          tierCoverage: [],
+        },
+        models: {
+          artifacts: 0,
+          stagedBundles: 0,
+          inventory: [],
+        },
+      },
       artifacts,
     },
   };
 }
 
 function eliza1ModelRegistryArtifacts(): TrainingAnalysisIndex["manifest"]["artifacts"] {
-  return ["0_8b", "2b", "4b", "9b", "27b"].flatMap((tier) =>
+  return ["2b", "4b", "9b", "27b"].flatMap((tier) =>
     (["base", "trained"] as const).map((variant) => {
       const model = `eliza-1-${tier}-${variant}`;
       return {
@@ -190,59 +189,55 @@ describe("training readiness report", () => {
           summary: {
             rows: 3,
             comparisons: 5,
-            tiers: ["0_8b", "2b", "4b", "9b", "27b"],
+            tiers: ["2b", "4b", "9b", "27b"],
             referenceModelId: "cerebras/gpt-oss-120b",
           },
           payload: {
             rows: [
-              ...["0_8b", "2b", "4b", "9b", "27b"].flatMap(
-                (tier, index) => [
-                  {
-                    modelId: `eliza-1-${tier}-base`,
-                    benchmark: "hermes",
-                    score: 0.4 + index * 0.01,
-                    variant: "base",
-                    tier,
-                    metrics: { useMocks: false },
+              ...["2b", "4b", "9b", "27b"].flatMap((tier, index) => [
+                {
+                  modelId: `eliza-1-${tier}-base`,
+                  benchmark: "hermes",
+                  score: 0.4 + index * 0.01,
+                  variant: "base",
+                  tier,
+                  metrics: { useMocks: false },
+                },
+                {
+                  modelId: `eliza-1-${tier}-trained`,
+                  benchmark: "hermes",
+                  score: 0.5 + index * 0.01,
+                  variant: "trained",
+                  tier,
+                  metrics: { useMocks: false },
+                  raw: {
+                    useMocks: false,
+                    caseSamples:
+                      tier === "2b"
+                        ? [
+                            {
+                              caseId: "message-route",
+                              prompt: "send David the update",
+                              expectedAction: "MESSAGE",
+                              actualAction: "MESSAGE",
+                              pass: true,
+                              trajectoryPath: "/tmp/cases/message-route.json",
+                            },
+                          ]
+                        : [],
                   },
-                  {
-                    modelId: `eliza-1-${tier}-trained`,
-                    benchmark: "hermes",
-                    score: 0.5 + index * 0.01,
-                    variant: "trained",
-                    tier,
-                    metrics: { useMocks: false },
-                    raw: {
-                      useMocks: false,
-                      caseSamples:
-                        tier === "0_8b"
-                          ? [
-                              {
-                                caseId: "message-route",
-                                prompt: "send David the update",
-                                expectedAction: "MESSAGE",
-                                actualAction: "MESSAGE",
-                                pass: true,
-                                trajectoryPath: "/tmp/cases/message-route.json",
-                              },
-                            ]
-                          : [],
-                    },
-                  },
-                ],
-              ),
+                },
+              ]),
             ],
-            comparisons: ["0_8b", "2b", "4b", "9b", "27b"].map(
-              (tier, index) => ({
-                tier,
-                benchmark: "hermes",
-                baseScore: 0.4 + index * 0.01,
-                trainedScore: 0.5 + index * 0.01,
-                referenceScore: 0.8,
-                improvementPercent: 25,
-                referenceModelId: "cerebras/gpt-oss-120b",
-              }),
-            ),
+            comparisons: ["2b", "4b", "9b", "27b"].map((tier, index) => ({
+              tier,
+              benchmark: "hermes",
+              baseScore: 0.4 + index * 0.01,
+              trainedScore: 0.5 + index * 0.01,
+              referenceScore: 0.8,
+              improvementPercent: 25,
+              referenceModelId: "cerebras/gpt-oss-120b",
+            })),
           },
         },
         ...eliza1ModelRegistryArtifacts(),
@@ -357,7 +352,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -394,8 +389,7 @@ describe("training readiness report", () => {
       report.checks.find((item) => item.id === "eval_comparison"),
     ).toMatchObject({
       status: "partial",
-      note:
-        "A comparison artifact is present, but it does not include base score, trained score, and percentage improvement from the Eliza harness.",
+      note: "A comparison artifact is present, but it does not include base score, trained score, and percentage improvement from the Eliza harness.",
       recommendedAction: {
         capability: "terminal-training-run-collection",
       },
@@ -417,28 +411,28 @@ describe("training readiness report", () => {
           payload: {
             rows: [
               {
-                modelId: "eliza-1-0_8b-base",
+                modelId: "eliza-1-2b-base",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.4,
                 variant: "base",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: false },
               },
               {
-                modelId: "eliza-1-0_8b-trained",
+                modelId: "eliza-1-2b-trained",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.5,
                 variant: "trained",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: false },
               },
             ],
             comparisons: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
-                baseModelId: "eliza-1-0_8b-base",
-                trainedModelId: "eliza-1-0_8b-trained",
+                baseModelId: "eliza-1-2b-base",
+                trainedModelId: "eliza-1-2b-trained",
                 baseScore: 0.4,
                 trainedScore: 0.5,
                 improvementPercent: 25,
@@ -455,8 +449,7 @@ describe("training readiness report", () => {
       label: "Base vs trained Eliza harness eval comparison",
       status: "ready",
       recommendedAction: null,
-      note:
-        "A scored base-vs-trained Eliza harness or eval comparison with percentage improvement is present.",
+      note: "A scored base-vs-trained Eliza harness or eval comparison with percentage improvement is present.",
     });
   });
 
@@ -475,28 +468,28 @@ describe("training readiness report", () => {
           payload: {
             rows: [
               {
-                modelId: "eliza-1-0_8b-base",
+                modelId: "eliza-1-2b-base",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.4,
                 variant: "base",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: true },
               },
               {
-                modelId: "eliza-1-0_8b-trained",
+                modelId: "eliza-1-2b-trained",
                 benchmark: "eliza_harness_action_selection",
                 score: 0.5,
                 variant: "trained",
-                tier: "0_8b",
+                tier: "2b",
                 metrics: { useMocks: true },
               },
             ],
             comparisons: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
-                baseModelId: "eliza-1-0_8b-base",
-                trainedModelId: "eliza-1-0_8b-trained",
+                baseModelId: "eliza-1-2b-base",
+                trainedModelId: "eliza-1-2b-trained",
                 baseScore: 0.4,
                 trainedScore: 0.5,
                 improvementPercent: 25,
@@ -552,9 +545,9 @@ describe("training readiness report", () => {
         comparisons: 5,
         scoredComparisons: 5,
         caseSamples: 5,
-        tiers: ["0_8b", "2b", "4b", "9b", "27b"],
+        tiers: ["2b", "4b", "9b", "27b"],
         allEliza1TiersCovered: true,
-        tierCoverage: ["0_8b", "2b", "4b", "9b", "27b"].map((tier) => ({
+        tierCoverage: ["2b", "4b", "9b", "27b"].map((tier) => ({
           tier,
           hasBase: true,
           hasTrained: true,
@@ -566,7 +559,8 @@ describe("training readiness report", () => {
       },
       models: {
         artifacts: 10,
-        inventory: ["0_8b", "2b", "4b", "9b", "27b"].flatMap((tier) =>
+        stagedBundles: 0,
+        inventory: ["2b", "4b", "9b", "27b"].flatMap((tier) =>
           (["base", "trained"] as const).map((variant) => ({
             model: `eliza-1-${tier}-${variant}`,
             tier,
@@ -688,7 +682,7 @@ describe("training readiness report", () => {
           path: "/tmp/bundle.json",
           summary: {
             schema: "eliza1_bundle_stage",
-            bundleDir: "/tmp/eliza-1-0_8b.bundle",
+            bundleDir: "/tmp/eliza-1-2b.bundle",
             apply: false,
             stagedCount: 0,
           },
@@ -720,8 +714,7 @@ describe("training readiness report", () => {
       report.checks.find((item) => item.id === "feed_generation"),
     ).toMatchObject({
       status: "partial",
-      note:
-        "A feed generation artifact is present, but it is a dry run or has no generated trajectory rows.",
+      note: "A feed generation artifact is present, but it is a dry run or has no generated trajectory rows.",
       recommendedAction: {
         capability: "terminal-training-feed-generate",
         params: { dryRun: false },
@@ -741,7 +734,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -760,7 +753,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -786,7 +779,6 @@ describe("training readiness report", () => {
           includeActionBenchmark: true,
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -806,7 +798,7 @@ describe("training readiness report", () => {
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
             {
-              tier: "0_8b",
+              tier: "2b",
               base: { variant: "base" },
               trained: { variant: "trained" },
             },
@@ -824,7 +816,6 @@ describe("training readiness report", () => {
           includeActionBenchmark: true,
           includeBenchmarkMatrix: true,
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -841,7 +832,7 @@ describe("training readiness report", () => {
         ?.recommendedAction,
     ).toMatchObject({
       capability: "terminal-training-stage-eliza1-bundle",
-      params: { tier: "0_8b", apply: true },
+      params: { tier: "2b", apply: true },
     });
     expect(
       report.checks.find((item) => item.id === "agentic_benchmarks"),
@@ -866,7 +857,7 @@ describe("training readiness report", () => {
             benchmark: "eliza_harness_action_selection",
           }),
           actionBenchmarkPair: {
-            tier: "0_8b",
+            tier: "2b",
             base: { variant: "base" },
             trained: { variant: "trained" },
           },
@@ -880,7 +871,6 @@ describe("training readiness report", () => {
         capability: "terminal-training-run-collection",
         params: {
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -897,7 +887,6 @@ describe("training readiness report", () => {
         capability: "terminal-training-run-collection",
         params: {
           actionBenchmarkPairs: [
-            expect.objectContaining({ tier: "0_8b" }),
             expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "4b" }),
             expect.objectContaining({ tier: "9b" }),
@@ -959,6 +948,7 @@ describe("training readiness report", () => {
         },
         models: {
           artifacts: 0,
+          stagedBundles: 0,
           inventory: [],
         },
       }),
@@ -969,8 +959,7 @@ describe("training readiness report", () => {
     ).toMatchObject({
       status: "partial",
       artifactCount: 2,
-      note:
-        "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
+      note: "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
       recommendedAction: {
         capability: "terminal-training-build-analysis-index",
       },

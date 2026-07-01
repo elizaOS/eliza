@@ -4,7 +4,7 @@ import { client } from "../../api";
 import { isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useBugReport } from "../../hooks";
-import { useApp } from "../../state";
+import { type useApp, useAppSelector } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
   createDesktopBugReportBundle,
@@ -62,10 +62,10 @@ const modalContentClassName =
   "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 ";
 
 const modalInputClassName =
-  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
+  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70 ";
 
 const modalTextareaClassName =
-  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
+  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 ";
 
 const subtleMonoDescriptionClassName = "font-mono text-xs-tight text-muted";
 
@@ -90,7 +90,8 @@ function normalizeHttpsResultUrl(url?: string): string | null {
 }
 
 export function BugReportModal() {
-  const { copyToClipboard, t } = useApp();
+  const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
+  const t = useAppSelector((s) => s.t);
   const desktopRuntime = isElectrobunRuntime();
   const branding = useBranding();
   const { isOpen, draft, close } = useBugReport();
@@ -391,7 +392,7 @@ export function BugReportModal() {
                 successHeadingRef.current = node;
               }}
               tabIndex={-1}
-              className="text-sm font-bold text-txt focus:outline-none"
+              className="text-sm font-bold text-txt "
             >
               {t("bugreportmodal.BugReportSubmitted")}
             </DialogTitle>

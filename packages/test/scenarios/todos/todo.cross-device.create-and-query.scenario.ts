@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.cross-device.create-and-query",
   title:
     "Create a todo on the dashboard, confirm it, then query it from mobile",
@@ -53,6 +54,17 @@ export default scenario({
       actionName: "LIFE",
       status: "success",
       minCount: 3,
+    },
+    {
+      type: "definitionCountDelta",
+      title: "Pick up dry cleaning",
+      titleAliases: [
+        "pick up dry cleaning",
+        "Pick up dry cleaning tomorrow",
+        "Dry cleaning",
+      ],
+      delta: 1,
+      cadenceKind: "once",
     },
   ],
 });

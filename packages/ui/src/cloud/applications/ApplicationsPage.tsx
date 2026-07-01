@@ -21,11 +21,11 @@ import {
   DashboardStatGrid,
   DashboardToolbar,
 } from "../../cloud-ui/components/layout";
+import { useRequireAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppsTable } from "./components/apps-table";
 import { CreateAppButton } from "./components/create-app-button";
 import { useApps } from "./lib/apps";
-import { useRequireAuth } from "./lib/use-session-auth";
 
 /** /dashboard/apps */
 export default function ApplicationsPage() {

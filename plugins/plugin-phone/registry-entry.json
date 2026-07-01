@@ -1,0 +1,30 @@
+{
+  "id": "phone",
+  "name": "Phone",
+  "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+  "npmName": "@elizaos/plugin-phone",
+  "version": "2.0.3-beta.2",
+  "source": "bundled",
+  "tags": ["device", "phone"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": ["os-shell"],
+    "style": "card",
+    "icon": "Phone",
+    "group": "system",
+    "actions": ["enable"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "feature",
+  "curatedApp": {
+    "slug": "phone",
+    "order": 2,
+    "aliases": []
+  }
+}

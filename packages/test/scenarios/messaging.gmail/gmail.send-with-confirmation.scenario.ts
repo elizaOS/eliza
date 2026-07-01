@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.send-with-confirmation",
   title: "Gmail send requires explicit confirmation after draft",
   domain: "messaging.gmail",

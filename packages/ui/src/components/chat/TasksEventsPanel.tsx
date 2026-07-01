@@ -16,7 +16,7 @@ import { PanelRightClose, PanelRightOpen, Pencil } from "lucide-react";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
 // resolveWidgetsForSlot — only WidgetHost participates in the cycle.
@@ -55,7 +55,7 @@ export function TasksEventsPanel({
   collapsed = false,
   onToggleCollapsed,
 }: TasksEventsPanelProps) {
-  const { plugins } = useApp();
+  const plugins = useAppSelector((s) => s.plugins);
   const visibility = useChatSidebarVisibility();
   const [editOpen, setEditOpen] = useState(false);
 

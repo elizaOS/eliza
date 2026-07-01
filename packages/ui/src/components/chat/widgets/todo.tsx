@@ -1,16 +1,21 @@
 import { ListTodo } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
-import { useApp } from "../../../state";
+import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
+import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
+import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { Badge } from "../../ui/badge";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./types";
+
+const TODO_WIDGET_KEY = "todo/todo.items";
 
 const TODO_REFRESH_INTERVAL_MS = 15_000;
 const MAX_VISIBLE_TODOS = 8;
@@ -137,14 +142,27 @@ function TodoItemsContent({
   );
 }
 
-function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const workbench = app?.workbench;
-  const t = app?.t ?? fallbackTranslate;
+function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
+  const { workbench, t: appT } = useAppSelectorShallow((s) => ({
+    workbench: s.workbench,
+    t: s.t,
+  }));
+  const t = appT ?? fallbackTranslate;
   const [todos, setTodos] = useState<WorkbenchTodo[]>(() =>
     dedupeTodos(workbench?.todos ?? []),
   );
   const [todosLoading, setTodosLoading] = useState(false);
+
+  // The async todo fetch can resolve after the widget unmounts; guard the
+  // post-await state writes so a late `finally` doesn't setState on an
+  // unmounted component (which throws once the host environment is gone).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     setTodos(dedupeTodos(workbench?.todos ?? []));
@@ -152,19 +170,31 @@ function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
 
   const loadTodos = useCallback(
     async (silent = false) => {
-      if (!silent) {
+      if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+        if (mountedRef.current) {
+          setTodos(dedupeTodos(workbench?.todos ?? []));
+          setTodosLoading(false);
+        }
+        return;
+      }
+
+      if (!silent && mountedRef.current) {
         setTodosLoading(true);
       }
 
       try {
         const result = await client.listWorkbenchTodos();
-        setTodos(dedupeTodos(result.todos));
+        if (mountedRef.current) {
+          setTodos(dedupeTodos(result.todos));
+        }
       } catch {
-        if ((workbench?.todos?.length ?? 0) > 0) {
+        if (mountedRef.current && (workbench?.todos?.length ?? 0) > 0) {
           setTodos(dedupeTodos(workbench?.todos ?? []));
         }
       } finally {
-        setTodosLoading(false);
+        if (mountedRef.current) {
+          setTodosLoading(false);
+        }
       }
     },
     [workbench?.todos],
@@ -179,6 +209,20 @@ function TodoSidebarWidget(_props: ChatSidebarWidgetProps) {
     () => void loadTodos(true),
     TODO_REFRESH_INTERVAL_MS,
   );
+
+  const openTodos = todos.filter((todo) => !todo.isCompleted);
+  const hasUrgent = openTodos.some((todo) => todo.isUrgent);
+  const onHome = slot === "home";
+  // Float the home card up when there are urgent open todos; clear otherwise.
+  usePublishHomeAttention(
+    TODO_WIDGET_KEY,
+    onHome && hasUrgent ? HOME_SIGNAL_WEIGHTS.reminder : null,
+  );
+
+  // On the home grid, render nothing when there are no open todos — the home
+  // surface must not show empty-state placeholders (#9143). The chat sidebar
+  // keeps its empty state.
+  if (onHome && openTodos.length === 0) return null;
 
   return (
     <WidgetSection

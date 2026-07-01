@@ -51,7 +51,6 @@ const ALL_BENCHMARKS: BenchmarkName[] = [
 ];
 
 const VALID_TIERS = new Set<string>([
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -92,7 +91,7 @@ interface Args {
 const HELP = `vision-language bench
 
 Flags:
-  --tier <id>          eliza-1 tier; one of eliza-1-0_8b, eliza-1-2b,
+  --tier <id>          eliza-1 tier; one of eliza-1-2b,
                        eliza-1-4b, eliza-1-9b, eliza-1-27b, eliza-1-27b-256k.
                        Default: eliza-1-9b.
   --harness <name>     eliza, hermes, openclaw, elizaos, or opencode.
@@ -345,14 +344,20 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   const baseSamples = await adapter.loadSamples(args.samples, {
     smoke: args.smoke,
   });
-  const counts = scenarioCounts(baseSamples.length, args.expandScenarios === true);
+  const counts = scenarioCounts(
+    baseSamples.length,
+    args.expandScenarios === true,
+  );
   if (args.countScenarios) {
     process.stdout.write(
       `vision-language ${args.benchmark} scenario counts: base=${counts.base} edge=${counts.edge} total=${counts.total}\n`,
     );
   }
   if (args.validateScenarios) {
-    const validation = validateSamples(baseSamples, args.expandScenarios === true);
+    const validation = validateSamples(
+      baseSamples,
+      args.expandScenarios === true,
+    );
     if (!validation.valid) {
       throw new Error(
         `invalid vision-language sample expansion for ${args.benchmark}: ${JSON.stringify(validation)}`,

@@ -1,18 +1,20 @@
 import { useEffect, useRef } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
+import { TOAST_TTL_MS } from "../../state/action-notice";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
 // Kept as a literal so Tailwind v4's source scanner emits the utility.
 
-const AUTO_DISMISS_MS = 20_000;
+const AUTO_DISMISS_MS = TOAST_TTL_MS.systemWarning;
 
 /**
  * Renders yellow warning banners for system-level warnings
  * broadcast via WebSocket `system-warning` events.
  */
 export function SystemWarningBanner() {
-  const { systemWarnings, dismissSystemWarning } = useApp();
+  const systemWarnings = useAppSelector((s) => s.systemWarnings);
+  const dismissSystemWarning = useAppSelector((s) => s.dismissSystemWarning);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );

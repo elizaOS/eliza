@@ -169,7 +169,7 @@ class AtroposTrainingConfig(BaseModel):
     """Configuration for Atropos GRPO training"""
 
     # Model settings
-    model_name: str = Field(default="Qwen/Qwen3.5-4B", description="Base model to train")
+    model_name: str = Field(default="google/gemma-4-E4B", description="Base model to train")
 
     # Training hyperparameters
     learning_rate: float = Field(default=1e-5, description="Initial learning rate")
@@ -1143,7 +1143,7 @@ def main():
     parser = argparse.ArgumentParser(description="Feed GRPO Trainer with Atropos")
 
     # Model settings
-    parser.add_argument("--model", default="Qwen/Qwen3.5-4B", help="Model to train")
+    parser.add_argument("--model", default="google/gemma-4-E4B", help="Model to train")
     parser.add_argument("--steps", type=int, default=100, help="Training steps")
     parser.add_argument("--batch-size", type=int, default=4, help="Batch size")
 

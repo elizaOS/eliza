@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { gunzipSync } from "node:zlib";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
+const HUMAN_CHAT_FIXTURES = process.env.ELIZA_UI_SMOKE_HUMAN_CHAT === "1";
+const SMOKE_NOTIFICATIONS = process.env.ELIZA_UI_SMOKE_NOTIFICATIONS === "1";
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
@@ -21,9 +22,10 @@ const ONE_PIXEL_PNG = Buffer.from(
   "base64",
 );
 
-// A minimal valid 16-bit PCM mono WAV of silence. The onboarding voice path
-// POSTs /api/tts/first-run/speak and plays the returned bytes as audio/wav, so
-// the stub must return decodable audio (not a 501) to avoid a console.error.
+// A minimal valid 16-bit PCM mono WAV of silence. The local-inference voice
+// path POSTs /api/tts/local-inference and plays the returned bytes as
+// audio/wav, so the stub must return decodable audio (not a 501) to avoid a
+// console.error.
 function buildSilentWav() {
   const sampleRate = 8000;
   const dataBytes = 1600; // ~0.1s of silence
@@ -51,62 +53,30 @@ const SMOKE_VOICE_TRANSCRIPT = "this is the voice smoke transcript";
 // The spoken reply the stub returns for that transcript — a clean sentence so
 // the overlay's TTS output is non-empty and the assistant bubble is assertable.
 const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
-function readSmokeVrm() {
-  const candidates = [
-    new URL(
-      "../../../plugins/plugin-companion/public/vrms/eliza-1.vrm.gz",
-      import.meta.url,
-    ),
-    new URL(
-      "../../../plugins/plugin-companion/public_src/vrms/eliza-1.vrm",
-      import.meta.url,
-    ),
-  ];
 
-  for (const candidate of candidates) {
-    if (!existsSync(candidate)) continue;
-    const body = readFileSync(candidate);
-    return candidate.pathname.endsWith(".gz") ? gunzipSync(body) : body;
-  }
-
-  return Buffer.alloc(4);
-}
-
-const SMOKE_VRM = readSmokeVrm();
-
+// A collapsed plugin declares ONE view that draws gui + tui (+ xr) from the
+// same `<Name>View` componentExport and the same bundle on the same `/<id>`
+// route. In the stub a `modalities` 6th element expands that single declaration
+// into one gui object + one tui object (both at `/<id>`, both serving the same
+// componentExport), mirroring how the real /api/views collapses modalities.
+// Plugins that still declare a standalone tui route (training) keep a separate
+// `tui` row with its own `/<id>/tui` path below.
 const smokeViewDeclarations = [
-  ["companion", "Companion", "plugin-companion", "/companion", "CompanionView"],
-  [
-    "companion",
-    "Companion TUI",
-    "plugin-companion",
-    "/companion/tui",
-    "CompanionTuiView",
-    "tui",
-  ],
-  ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsAppView"],
   [
     "contacts",
-    "Contacts TUI",
+    "Contacts",
     "plugin-contacts",
-    "/contacts/tui",
-    "ContactsTuiView",
-    "tui",
+    "/contacts",
+    "ContactsView",
+    ["gui", "tui"],
   ],
   [
     "hyperliquid",
     "Hyperliquid",
-    "plugin-hyperliquid-app",
+    "plugin-hyperliquid",
     "/hyperliquid",
-    "HyperliquidAppView",
-  ],
-  [
-    "hyperliquid",
-    "Hyperliquid TUI",
-    "plugin-hyperliquid-app",
-    "/hyperliquid/tui",
-    "HyperliquidTuiView",
-    "tui",
+    "HyperliquidView",
+    ["gui", "tui"],
   ],
   // NOTE: the LifeOps overview view was removed (PA no longer registers a
   // `lifeops` view). Its stub entries are deleted so the smoke launcher matches
@@ -136,83 +106,44 @@ const smokeViewDeclarations = [
     "Messages",
     "plugin-messages",
     "/messages",
-    "MessagesPluginView",
-  ],
-  [
-    "messages",
-    "Messages TUI",
-    "plugin-messages",
-    "/messages/tui",
-    "MessagesTuiView",
-    "tui",
+    "MessagesView",
+    ["gui", "tui"],
   ],
   [
     "model-tester",
     "Model Tester",
     "app-model-tester",
     "/model-tester",
-    "ModelTesterAppView",
+    "ModelTesterView",
+    ["gui", "tui"],
   ],
-  [
-    "model-tester",
-    "Model Tester TUI",
-    "app-model-tester",
-    "/model-tester/tui",
-    "ModelTesterTuiView",
-    "tui",
-  ],
-  ["phone", "Phone", "plugin-phone", "/phone", "PhonePluginView"],
-  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneTuiView", "tui"],
+  // Phone collapsed to ONE source: gui + tui (+ xr) all mount the single
+  // PhoneView spatial component from the same bundle.
+  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView", ["gui", "tui"]],
   [
     "polymarket",
     "Polymarket",
-    "plugin-polymarket-app",
+    "plugin-polymarket",
     "/polymarket",
-    "PolymarketAppView",
+    "PolymarketView",
+    ["gui", "tui"],
   ],
-  [
-    "polymarket",
-    "Polymarket TUI",
-    "plugin-polymarket-app",
-    "/polymarket/tui",
-    "PolymarketTuiView",
-    "tui",
-  ],
-  ["shopify", "Shopify", "plugin-shopify-ui", "/shopify", "ShopifyAppView"],
   [
     "shopify",
-    "Shopify TUI",
-    "plugin-shopify-ui",
-    "/shopify/tui",
-    "ShopifyTuiView",
-    "tui",
+    "Shopify",
+    "plugin-shopify",
+    "/shopify",
+    "ShopifyView",
+    ["gui", "tui"],
   ],
-  ["steward", "Steward", "plugin-steward-app", "/steward", "StewardView"],
-  [
-    "steward",
-    "Steward TUI",
-    "plugin-steward-app",
-    "/steward/tui",
-    "StewardTuiView",
-    "tui",
-  ],
-  ["vincent", "Vincent", "plugin-vincent", "/vincent", "VincentAppView"],
-  [
-    "vincent",
-    "Vincent TUI",
-    "plugin-vincent",
-    "/vincent/tui",
-    "VincentTuiView",
-    "tui",
-  ],
-  ["wallet", "Wallet", "plugin-wallet-ui", "/wallet", "InventoryView"],
+  ["steward", "Steward", "/steward", "StewardView", ["gui", "tui"]],
   [
     "wallet",
-    "Wallet TUI",
+    "Wallet",
     "plugin-wallet-ui",
-    "/wallet/tui",
-    "InventoryTuiView",
-    "tui",
+    "/wallet",
+    "InventoryView",
+    ["gui", "tui"],
   ],
   [
     "vector-browser",
@@ -221,93 +152,22 @@ const smokeViewDeclarations = [
     "/vector-browser",
     "VectorBrowserView",
   ],
-  [
-    "2004scape",
-    "2004Scape",
-    "plugin-2004scape",
-    "/2004scape",
-    "TwoThousandFourScapeOperatorSurface",
-  ],
-  [
-    "2004scape",
-    "2004Scape TUI",
-    "plugin-2004scape",
-    "/2004scape/tui",
-    "TwoThousandFourScapeTuiView",
-    "tui",
-  ],
-  ["feed", "Feed", "plugin-feed", "/feed", "FeedOperatorSurface"],
-  ["feed", "Feed TUI", "plugin-feed", "/feed/tui", "FeedTuiView", "tui"],
-  ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
+  ["feed", "Feed", "plugin-feed", "/feed", "FeedView", ["gui", "tui"]],
   [
     "views-manager",
-    "Views TUI",
+    "Views",
     "plugin-app-control",
-    "/views/tui",
-    "ViewManagerTuiView",
-    "tui",
+    "/views",
+    "ViewManagerView",
+    ["gui", "tui"],
   ],
-  [
-    "clawville",
-    "Clawville",
-    "plugin-clawville",
-    "/clawville",
-    "ClawvilleOperatorSurface",
-  ],
-  [
-    "clawville",
-    "Clawville TUI",
-    "plugin-clawville",
-    "/clawville/tui",
-    "ClawvilleTuiView",
-    "tui",
-  ],
-  [
-    "defense-of-the-agents",
-    "Defense of the Agents",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents",
-    "DefenseAgentsOperatorSurface",
-  ],
-  [
-    "defense-of-the-agents",
-    "Defense of the Agents TUI",
-    "plugin-defense-of-the-agents",
-    "/defense-of-the-agents/tui",
-    "DefenseAgentsTuiView",
-    "tui",
-  ],
-  [
-    "hyperscape",
-    "Hyperscape",
-    "plugin-hyperscape",
-    "/hyperscape",
-    "HyperscapeOperatorSurface",
-  ],
-  [
-    "hyperscape",
-    "Hyperscape TUI",
-    "plugin-hyperscape",
-    "/hyperscape/tui",
-    "HyperscapeTuiView",
-    "tui",
-  ],
-  ["scape", "Scape", "plugin-scape", "/scape", "ScapeOperatorSurface"],
-  ["scape", "Scape TUI", "plugin-scape", "/scape/tui", "ScapeTuiView", "tui"],
   [
     "screenshare",
     "Screenshare",
     "plugin-screenshare",
     "/screenshare",
-    "ScreenshareOperatorSurface",
-  ],
-  [
-    "screenshare",
-    "Screenshare TUI",
-    "plugin-screenshare",
-    "/screenshare/tui",
-    "ScreenshareTuiView",
-    "tui",
+    "ScreenshareView",
+    ["gui", "tui"],
   ],
   [
     "social-alpha",
@@ -321,15 +181,16 @@ const smokeViewDeclarations = [
     "Task Coordinator",
     "plugin-task-coordinator",
     "/task-coordinator",
-    "CodingAgentTasksPanel",
+    "TaskCoordinatorView",
+    ["gui", "tui"],
   ],
   [
-    "task-coordinator",
-    "Task Coordinator TUI",
+    "orchestrator",
+    "Orchestrator",
     "plugin-task-coordinator",
-    "/task-coordinator/tui",
-    "TaskCoordinatorTuiView",
-    "tui",
+    "/orchestrator",
+    "OrchestratorView",
+    ["gui", "tui"],
   ],
   [
     "trajectory-logger",
@@ -337,15 +198,10 @@ const smokeViewDeclarations = [
     "plugin-trajectory-logger",
     "/trajectory-logger",
     "TrajectoryLoggerView",
+    ["gui", "tui"],
   ],
-  [
-    "trajectory-logger",
-    "Trajectory Logger TUI",
-    "plugin-trajectory-logger",
-    "/trajectory-logger/tui",
-    "TrajectoryLoggerTuiView",
-    "tui",
-  ],
+  // Training is NOT collapsed: it keeps a standalone gui route plus a separate
+  // tui declaration on its own `/training/tui` route.
   ["training", "Fine Tuning", "plugin-training", "/training", "FineTuningView"],
   [
     "training",
@@ -357,41 +213,74 @@ const smokeViewDeclarations = [
   ],
 ];
 
-const smokeViews = smokeViewDeclarations.map(
-  ([id, label, pluginDirName, viewPath, componentExport, viewType = "gui"]) => {
-    const encodedId = encodeURIComponent(id);
-    const query =
-      viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
-    const bundlePath = path.join(
-      repoRoot,
-      "plugins",
-      pluginDirName,
-      "dist",
-      "views",
-      "bundle.js",
+function smokeViewObject({
+  id,
+  label,
+  pluginDirName,
+  viewPath,
+  componentExport,
+  viewType,
+}) {
+  const encodedId = encodeURIComponent(id);
+  const query = viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
+  const bundlePath = path.join(
+    repoRoot,
+    "plugins",
+    pluginDirName,
+    "dist",
+    "views",
+    "bundle.js",
+  );
+  return {
+    id,
+    label,
+    viewType,
+    pluginName: `@elizaos/${pluginDirName}`,
+    path: viewPath,
+    order: 100,
+    bundlePath: "dist/views/bundle.js",
+    bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
+    componentExport,
+    available: true,
+    realBundleAvailable: existsSync(bundlePath),
+    visibleInManager: true,
+    capabilities: [
+      {
+        id: "get-state",
+        label: "Get state",
+        inputSchema: { type: "object" },
+      },
+    ],
+    _smokePluginDirName: pluginDirName,
+  };
+}
+
+// A collapsed declaration carries a `modalities` array as its 6th element and
+// expands to one view object per surface (gui + tui), all sharing the same
+// `/<id>` route and `<Name>View` componentExport. A legacy declaration carries
+// a single `viewType` string (default "gui").
+const smokeViews = smokeViewDeclarations.flatMap(
+  ([
+    id,
+    label,
+    pluginDirName,
+    viewPath,
+    componentExport,
+    modalitiesOrViewType = "gui",
+  ]) => {
+    const viewTypes = Array.isArray(modalitiesOrViewType)
+      ? modalitiesOrViewType
+      : [modalitiesOrViewType];
+    return viewTypes.map((viewType) =>
+      smokeViewObject({
+        id,
+        label,
+        pluginDirName,
+        viewPath,
+        componentExport,
+        viewType,
+      }),
     );
-    return {
-      id,
-      label,
-      viewType,
-      pluginName: `@elizaos/${pluginDirName}`,
-      path: viewPath,
-      order: 100,
-      bundlePath: "dist/views/bundle.js",
-      bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
-      componentExport,
-      available: true,
-      realBundleAvailable: existsSync(bundlePath),
-      visibleInManager: true,
-      capabilities: [
-        {
-          id: "get-state",
-          label: "Get state",
-          inputSchema: { type: "object" },
-        },
-      ],
-      _smokePluginDirName: pluginDirName,
-    };
   },
 );
 
@@ -553,44 +442,20 @@ const stubCatalogApps = [
     heroImage: "/app-heroes/log-viewer.png",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-companion",
-    displayName: "Companion",
-    description: "The companion overlay shell for ambient agent presence.",
-    category: "social",
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-steward-app",
-    displayName: "Steward",
-    description: "Review wallet approvals and inventory status.",
-    capabilities: ["wallet", "approvals", "inventory"],
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-elizamaker",
-    displayName: "ElizaMaker",
-    description: "Run drop, mint, whitelist, and verification workflows.",
-    capabilities: ["drops", "minting", "whitelist"],
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-shopify-ui",
+    name: "@elizaos/plugin-shopify",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-vincent",
-    displayName: "Vincent",
-    description: "Manage Vincent DeFi account access and trading context.",
-    category: "platform",
-  }),
-  stubCatalogApp({
-    name: "@elizaos/plugin-hyperliquid-app",
+    name: "@elizaos/plugin-hyperliquid",
     displayName: "Hyperliquid",
     description: "Inspect Hyperliquid markets, positions, and order status.",
     category: "platform",
     capabilities: ["hyperliquid", "trading", "wallet"],
   }),
   stubCatalogApp({
-    name: "@elizaos/plugin-polymarket-app",
+    name: "@elizaos/plugin-polymarket",
     displayName: "Polymarket",
     description: "Browse prediction markets and native trading readiness.",
     category: "platform",
@@ -670,6 +535,28 @@ const stubMemoryBrowseResponse = {
   limit: 50,
   offset: 0,
 };
+
+const smokeNotifications = [
+  {
+    id: "smoke-notification-view-qa",
+    title: "View switching ready",
+    body: "Shopify and Wallet are registered for desktop QA.",
+    category: "workflow",
+    priority: "high",
+    source: "ui-smoke",
+    createdAt: Date.UTC(2026, 5, 25, 9, 0, 0),
+    deepLink: "/views",
+  },
+  {
+    id: "smoke-notification-cloud-chat",
+    title: "Cloud chat stub online",
+    body: "The smoke backend is serving deterministic chat responses.",
+    category: "status",
+    priority: "normal",
+    source: "ui-smoke",
+    createdAt: Date.UTC(2026, 5, 25, 8, 55, 0),
+  },
+];
 
 const emptyComputerUseApprovalSnapshot = {
   mode: "full_control",
@@ -1254,6 +1141,43 @@ function classifyAssistantAction(text) {
   return { type: "noop", target: null };
 }
 
+function navigationDetailForTarget(target) {
+  switch (target) {
+    case "/wallet":
+      return { viewId: "wallet", viewPath: "/wallet", viewLabel: "Wallet" };
+    case "/views":
+      return { viewPath: "/views", viewLabel: "Launcher" };
+    case "/settings":
+      return {
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+      };
+    case "/chat":
+      return { viewPath: "/chat", viewLabel: "Chat" };
+    default:
+      return typeof target === "string" && target.length > 0
+        ? { viewPath: target }
+        : null;
+  }
+}
+
+function maybeBroadcastAssistantNavigation(text) {
+  if (!HUMAN_CHAT_FIXTURES) return;
+  const action = classifyAssistantAction(text);
+  if (action.type !== "navigate") return;
+  const detail = navigationDetailForTarget(action.target);
+  if (!detail) return;
+  setTimeout(() => {
+    broadcastWsEvent({
+      type: "shell:navigate:view",
+      viewType: "gui",
+      alwaysOnTop: false,
+      ...detail,
+    });
+  }, 50);
+}
+
 function createDeterministicAssistantText({ body, conversationId, transport }) {
   const inputText = normalizeAssistantInput(body?.text ?? body?.message);
   if (inputText === SMOKE_VOICE_TRANSCRIPT) {
@@ -1270,6 +1194,16 @@ function createDeterministicAssistantText({ body, conversationId, transport }) {
       action: classifyAssistantAction(inputText),
     }).slice(0, -2)}`;
   }
+  const action = classifyAssistantAction(inputText);
+  if (HUMAN_CHAT_FIXTURES) {
+    if (action.type === "navigate") {
+      const label = action.target?.replace(/^\//, "") || "that view";
+      return `Opening ${label}.`;
+    }
+    return inputText
+      ? `I received "${inputText}".`
+      : "I am ready when you are.";
+  }
   const payload = {
     fixture: "ui-smoke-assistant-v1",
     registrySeam: "strict-fixture-registry",
@@ -1280,7 +1214,7 @@ function createDeterministicAssistantText({ body, conversationId, transport }) {
       length: inputText.length,
       hash: stableTextHash(inputText),
     },
-    action: classifyAssistantAction(inputText),
+    action,
   };
   return JSON.stringify(payload);
 }
@@ -2131,6 +2065,15 @@ function writeSseEvent(res, payload) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+function sendReadySseStream(req, res) {
+  sendSseHeaders(req, res);
+  writeSseEvent(res, { type: "ready" });
+  const interval = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 15_000);
+  req.on("close", () => clearInterval(interval));
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -2775,12 +2718,7 @@ async function handleDemoOrchestratorRoute(req, res, url) {
   const task = demoOrchestratorState.tasks.find((item) => item.id === taskId);
 
   if (action === "stream" && req.method === "GET") {
-    sendSseHeaders(req, res);
-    writeSseEvent(res, { type: "ready" });
-    const interval = setInterval(() => {
-      res.write(": heartbeat\n\n");
-    }, 15_000);
-    req.on("close", () => clearInterval(interval));
+    sendReadySseStream(req, res);
     return true;
   }
 
@@ -3203,14 +3141,6 @@ const server = http.createServer(async (req, res) => {
 
   if (
     (req.method === "GET" || req.method === "HEAD") &&
-    url.pathname === "/api/avatar/vrm"
-  ) {
-    sendBinary(req, res, 200, "application/octet-stream", SMOKE_VRM);
-    return;
-  }
-
-  if (
-    (req.method === "GET" || req.method === "HEAD") &&
     url.pathname === "/api/avatar/background"
   ) {
     sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
@@ -3222,6 +3152,32 @@ const server = http.createServer(async (req, res) => {
     url.pathname.startsWith("/api/apps/hero/")
   ) {
     sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/commands") {
+    sendJson(req, res, 200, {
+      commands: [],
+      surface: url.searchParams.get("surface"),
+      agentId: null,
+      generatedAt: SMOKE_GENERATED_AT,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/custom-actions") {
+    sendJson(req, res, 200, { actions: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/notifications") {
+    const notifications = SMOKE_NOTIFICATIONS ? smokeNotifications : [];
+    sendJson(req, res, 200, {
+      notifications,
+      unreadCount: notifications.filter((notification) => {
+        return !notification.readAt;
+      }).length,
+    });
     return;
   }
 
@@ -3343,15 +3299,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/agent/status") {
     sendJson(req, res, 200, { firstRunComplete: true, status: "running" });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/emote") {
-    const body = (await readJsonBody(req)) || {};
-    sendJson(req, res, 200, {
-      ok: true,
-      emoteId: typeof body.emoteId === "string" ? body.emoteId : null,
-    });
     return;
   }
 
@@ -3493,25 +3440,6 @@ const server = http.createServer(async (req, res) => {
         },
       ],
     });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/vincent/status") {
-    sendJson(req, res, 200, {
-      connected: false,
-      connectedAt: null,
-      tradingVenues: ["hyperliquid", "polymarket"],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/vincent/strategy") {
-    sendJson(req, res, 200, { connected: false, strategy: null });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/vincent/trading-profile") {
-    sendJson(req, res, 200, { connected: false, profile: null });
     return;
   }
 
@@ -3703,6 +3631,7 @@ const server = http.createServer(async (req, res) => {
       writeSseEvent(res, { type: "token", text, fullText: text });
       writeSseEvent(res, { type: "done", fullText: text, agentName: "Eliza" });
       res.end();
+      maybeBroadcastAssistantNavigation(body.text);
       return;
     }
 
@@ -3716,6 +3645,7 @@ const server = http.createServer(async (req, res) => {
       });
       appendStubMessage(conversationId, createStubMessage("assistant", text));
       sendJson(req, res, 200, { text, agentName: "Eliza" });
+      maybeBroadcastAssistantNavigation(body.text);
       return;
     }
   }
@@ -4340,6 +4270,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/approvals") {
+    // Mirror the canonical pending-actions route
+    // (packages/agent/src/api/approval-routes.ts). With no approval service in
+    // the smoke stub, the real route serves an empty pending list so the home
+    // widget stays quiet and retries without logging a 501.
+    sendJson(req, res, 200, { pending: [] });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/computer-use/approvals/stream"
@@ -4558,6 +4497,10 @@ const server = http.createServer(async (req, res) => {
     /^\/api\/orchestrator\/tasks\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname);
   if (orchestratorTaskMatch) {
     const [, taskId, action] = orchestratorTaskMatch;
+    if (req.method === "GET" && action === "stream") {
+      sendReadySseStream(req, res);
+      return;
+    }
     if (req.method === "GET" && action === "messages") {
       sendJson(req, res, 200, { items: [], nextCursor: null });
       return;
@@ -5138,14 +5081,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/tts/first-run/speak") {
-    // Onboarding synthesizes its scripted voice lines here and plays the bytes
-    // as audio/wav. Return decodable silence so the live stack never logs a
-    // 501; the real route (first-run-tts-route.ts) returns neural TTS audio.
-    sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
-    return;
-  }
-
   // ── Local-inference voice (drives the /chat overlay's bidirectional loop) ──
   // The client mic capture + VAD end-of-turn are REAL (Chromium fake-audio
   // file); these endpoints stand in for the on-device ASR/TTS models so the
@@ -5221,6 +5156,15 @@ wsServer.on("connection", (ws) => {
   ws.send(JSON.stringify({ type: "ready" }));
   ws.on("message", () => {});
 });
+
+function broadcastWsEvent(payload) {
+  const message = JSON.stringify(payload);
+  for (const client of wsServer.clients) {
+    if (client.readyState === 1) {
+      client.send(message);
+    }
+  }
+}
 
 server.listen(port, "127.0.0.1", () => {
   console.log(

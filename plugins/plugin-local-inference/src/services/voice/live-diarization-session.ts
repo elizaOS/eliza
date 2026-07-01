@@ -29,11 +29,22 @@ import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import {
 	type AttributedTurn,
+	type AttributionPipelineLike,
 	AudioFrameConsumer,
 	type AudioFrameConsumerConfig,
+	type AudioFrameConsumerDeps,
 	type AudioFrameEvent,
+	decodeAudioFramePcm,
+	type EchoReferenceProvider,
 	type RuntimeEventSink,
+	type TurnTranscriber,
+	type VadSegmenter,
 } from "./audio-frame-consumer.js";
+import {
+	estimateEchoDelaySamples,
+	platformPlaybackDelaySamples,
+} from "./echo-delay.js";
+import { EchoReferenceBuffer } from "./echo-reference-buffer.js";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
@@ -99,6 +110,17 @@ export interface LiveDiarizationStatus {
 	framesDropped: number;
 	/** Turns segmented + attributed so far. */
 	turnsObserved: number;
+	/** Live AEC wiring status. Echo cancellation runs only when this is true. */
+	aec: {
+		echoReferenceWired: boolean;
+		/** Playback→mic delay (samples @16 kHz) currently applied to align the
+		 * far-end reference — self-calibrated from real echo when confident,
+		 * otherwise the `ELIZA_VOICE_ECHO_DELAY_MS` seed (default 0). */
+		echoDelaySamples: number;
+		/** Peak cross-correlation [0,1] of the last accepted delay calibration;
+		 * 0 until a confident estimate replaces the seed. */
+		echoDelayConfidence: number;
+	};
 	/** The most recent attributed turns (capped), for device-evidence reads. */
 	recentTurns: LiveDiarizationTurnSummary[];
 	/** Populated only when readiness failed — the precise blocker. */
@@ -122,6 +144,120 @@ export interface LiveDiarizationTurnSummary {
 
 const MAX_RECENT_TURNS = 20;
 
+export interface LiveDiarizationSessionOptions {
+	/**
+	 * Agent-playback PCM provider for AEC. The caller owns playback capture and
+	 * delay calibration when supplied. Without an external provider, the session
+	 * uses its built-in playback buffer fed by /api/voice/playback-frames.
+	 */
+	echoReference?: EchoReferenceProvider | null;
+}
+
+export interface LiveDiarizationConsumerDepsInput {
+	vad: VadSegmenter;
+	pipeline: AttributionPipelineLike;
+	runtime: RuntimeEventSink;
+	transcribe?: TurnTranscriber | null;
+	echoReference?: EchoReferenceProvider | null;
+}
+
+export function buildLiveDiarizationConsumerDeps({
+	vad,
+	pipeline,
+	runtime,
+	transcribe,
+	echoReference,
+}: LiveDiarizationConsumerDepsInput): AudioFrameConsumerDeps {
+	return {
+		vad,
+		pipeline,
+		runtime,
+		...(transcribe ? { transcribe } : {}),
+		...(echoReference ? { echoReference } : {}),
+	};
+}
+
+const AUDIO_FRAME_SAMPLE_RATE = 16_000;
+
+/** Echo-delay self-calibration (#9583/#9586). */
+/** Accumulate this many playback-active samples before estimating the delay
+ * (~0.75 s @16 kHz — enough correlated echo for a stable cross-correlation). */
+const ECHO_CAL_TARGET_SAMPLES = 12_000;
+/** Bound the rolling calibration window so a long talk-over doesn't grow it. */
+const ECHO_CAL_MAX_SAMPLES = 24_000;
+/** Accept a calibrated delay only above this normalized cross-correlation; below
+ * it the near/far are independent (user talking, no echo) — keep the seed. */
+const ECHO_CAL_MIN_CONFIDENCE = 0.3;
+/** Largest playback→mic delay to search (300 ms @16 kHz). */
+const ECHO_CAL_MAX_LAG_SAMPLES = 4_800;
+/** Far-end mean-square floor below which a frame is "no playback" (skip). */
+const ECHO_CAL_FAR_ENERGY_FLOOR = 1e-7;
+
+function concatFloat32(chunks: Float32Array[]): Float32Array {
+	let total = 0;
+	for (const c of chunks) total += c.length;
+	const out = new Float32Array(total);
+	let off = 0;
+	for (const c of chunks) {
+		out.set(c, off);
+		off += c.length;
+	}
+	return out;
+}
+
+/**
+ * Playback→mic transport delay used to time-align the far-end echo reference,
+ * in samples @ 16 kHz. Device-tunable via `ELIZA_VOICE_ECHO_DELAY_MS`:
+ *   - a positive number → that many milliseconds, exactly;
+ *   - the literal `"auto"` → seed from a per-platform default
+ *     (`platformPlaybackDelaySamples`, #9583), useful on iOS/macOS where the
+ *     CoreAudio / AVAudioEngine transport delay is small but non-zero;
+ *   - unset / anything else → 0 (the default — the canceller aligns to the
+ *     most-recently-rendered playback and the NLMS filter adapts the residual).
+ *
+ * Either way the on-device calibration (`estimateEchoDelaySamples`, #9586)
+ * refines this seed at runtime once enough correlated echo is observed.
+ */
+function resolveEchoDelaySamples(): number {
+	const raw = process.env.ELIZA_VOICE_ECHO_DELAY_MS;
+	if (raw && raw.trim().toLowerCase() === "auto") {
+		// Resolve the platform id the way the rest of this plugin does
+		// (service.ts / backend-selector.ts): the mobile shells report
+		// `ELIZA_PLATFORM=ios|android`, where `process.platform` is `darwin`/
+		// `linux`. Using the resolved id makes the iOS (25 ms) / AOSP-Android
+		// (45 ms) seeds in the #9653 table reachable on device instead of
+		// collapsing to the host's darwin (20 ms) / linux (30 ms) seed.
+		const platformId =
+			process.env.ELIZA_PLATFORM === "ios"
+				? "ios"
+				: process.env.ELIZA_PLATFORM === "android"
+					? "android"
+					: process.platform;
+		return platformPlaybackDelaySamples(platformId, AUDIO_FRAME_SAMPLE_RATE);
+	}
+	const ms = Number(raw);
+	if (!Number.isFinite(ms) || ms <= 0) return 0;
+	return Math.round((ms / 1000) * AUDIO_FRAME_SAMPLE_RATE);
+}
+
+/**
+ * Opt-in residual-echo suppressor, off by default (#9583/#9649). Device-tunable
+ * via `ELIZA_VOICE_RESIDUAL_SUPPRESSION`:
+ *   - `"1"` / `"true"` / `"on"` → enable with the canceller's default gain;
+ *   - a number in (0,1] → enable with that residual gain (lower = stronger);
+ *   - unset / anything else → disabled (the canceller does linear NLMS only).
+ * Left off until validated with real device audio, per #9649 item 2.
+ */
+function resolveResidualSuppression(): boolean | { gain: number } | undefined {
+	const raw =
+		process.env.ELIZA_VOICE_RESIDUAL_SUPPRESSION?.trim().toLowerCase();
+	if (!raw) return undefined;
+	if (raw === "1" || raw === "true" || raw === "on") return true;
+	const gain = Number(raw);
+	if (Number.isFinite(gain) && gain > 0 && gain <= 1) return { gain };
+	return undefined;
+}
+
 /**
  * Owns the single live diarization consumer for the agent process. Built
  * lazily on first frame batch so it does not load voice models at boot.
@@ -139,8 +275,37 @@ export class LiveDiarizationSession {
 	private readonly recentTurns: LiveDiarizationTurnSummary[] = [];
 	private resolvedLibPath: string | null = null;
 	private buildError: string | null = null;
+	/** True once the fused ASR region is mmap-acquired for per-turn transcribe. */
+	private asrRegionAcquired = false;
+	/**
+	 * Far-end (agent TTS playback) alignment buffer for echo cancellation
+	 * (#9583/#9455). Fed by {@link pushPlayback}; read per mic frame via the
+	 * consumer's `echoReference` seam. Inert (zero far-end ⇒ NLMS passthrough)
+	 * until the device streams playback, so wiring it never regresses the
+	 * no-playback case.
+	 */
+	private readonly echoBuffer = new EchoReferenceBuffer();
+	/**
+	 * Playback→mic delay applied when reading the far-end reference. Seeded from
+	 * `ELIZA_VOICE_ECHO_DELAY_MS` (default 0) and then SELF-CALIBRATED on the live
+	 * path: once enough playback-active echo is observed, `estimateEchoDelaySamples`
+	 * (#9586) recovers the bulk transport lag by cross-correlation and replaces the
+	 * seed (#9583). Mutable for that reason.
+	 */
+	private echoDelaySamples = resolveEchoDelaySamples();
+	private echoDelayConfidence = 0;
+	private echoDelayCalibrated = false;
+	/** Rolling near/far windows accumulated only while the far-end is active, used
+	 * once to estimate the playback→mic delay. Cleared after a confident estimate
+	 * and on {@link resetPlayback}. */
+	private calNear: Float32Array[] = [];
+	private calFar: Float32Array[] = [];
+	private calSampleCount = 0;
 
-	constructor(private readonly runtime: RuntimeEventSink) {}
+	constructor(
+		private readonly runtime: RuntimeEventSink,
+		private readonly options: LiveDiarizationSessionOptions = {},
+	) {}
 
 	/** Ensure the real-deps consumer exists; idempotent + concurrency-safe. */
 	private ensureBuilt(): Promise<void> {
@@ -207,17 +372,62 @@ export class LiveDiarizationSession {
 			diarizer,
 			profileStore: store,
 		});
+		const residualSuppression = resolveResidualSuppression();
 		const config: AudioFrameConsumerConfig = {
 			source: { kind: "local_mic", deviceId: "android-audioframe" },
 			preRollSeconds: 0.3,
 			maxTurnSeconds: 30,
+			...(residualSuppression ? { residualSuppression } : {}),
 		};
+		// Join the fused batch ASR so the live path carries the real transcript
+		// on VOICE_TURN_OBSERVED (#8786). Null when the fused build has no ASR
+		// decoder — the path then stays diarization-only, as before.
+		const transcribe = this.buildTurnTranscriber(ffi, ctx);
 		const consumer = new AudioFrameConsumer(
-			{ vad: detector, pipeline, runtime: this.runtime },
+			buildLiveDiarizationConsumerDeps({
+				vad: detector,
+				pipeline,
+				runtime: this.runtime,
+				transcribe,
+				// Cancel the agent's own TTS playback before VAD/attribution so the
+				// live path never transcribes its echo (#9455/#9583). Hosts may
+				// provide their own live reference; otherwise the session uses the
+				// built-in playback buffer fed by pushPlayback.
+				echoReference:
+					this.options.echoReference ??
+					((timestampMs, samples) =>
+						this.echoReferenceFrame(timestampMs, samples)),
+			}),
 			config,
 		);
 		consumer.onTurn((turn) => this.recordTurn(turn));
 		this.consumer = consumer;
+	}
+
+	/**
+	 * Build a per-turn ASR transcriber over the fused batch decoder
+	 * (`eliza_inference_asr_transcribe`). Returns null when the fused build
+	 * exposes no ASR decoder; acquiring the ASR mmap region is best-effort (a
+	 * missing bundled ASR model leaves the path diarization-only rather than
+	 * failing the whole session). One batch decode per finalized turn — the turn
+	 * is already fully buffered for attribution, so no streaming state is needed.
+	 */
+	private buildTurnTranscriber(
+		ffi: ElizaInferenceFfi,
+		ctx: ElizaInferenceContextHandle,
+	): TurnTranscriber | null {
+		if (typeof ffi.asrTranscribe !== "function") return null;
+		try {
+			ffi.mmapAcquire(ctx, "asr");
+		} catch {
+			return null;
+		}
+		this.asrRegionAcquired = true;
+		return (pcm) => {
+			const text = ffi.asrTranscribe({ ctx, pcm, sampleRateHz: 16_000 });
+			const trimmed = text.trim();
+			return trimmed.length > 0 ? trimmed : null;
+		};
 	}
 
 	private recordTurn(turn: AttributedTurn): void {
@@ -240,12 +450,121 @@ export class LiveDiarizationSession {
 		if (this.recentTurns.length > MAX_RECENT_TURNS) this.recentTurns.shift();
 	}
 
+	/**
+	 * The far-end (agent TTS playback) reference aligned to a mic frame of
+	 * `samples` samples — the consumer's `echoReference` seam (#9455/#9583).
+	 * Reads the alignment buffer at the configured playback→mic delay; the slice
+	 * is zero-filled (⇒ NLMS passthrough) until the device streams playback.
+	 * Public so the wiring is unit-testable without the fused FFI.
+	 */
+	echoReferenceFrame(timestampMs: number, samples: number): Float32Array {
+		return this.echoBuffer.referenceAt(
+			timestampMs,
+			samples,
+			this.echoDelaySamples,
+		);
+	}
+
+	/** Current self-calibrated AEC delay state (for status + tests). */
+	aecDelayState(): {
+		delaySamples: number;
+		confidence: number;
+		calibrated: boolean;
+	} {
+		return {
+			delaySamples: this.echoDelaySamples,
+			confidence: this.echoDelayConfidence,
+			calibrated: this.echoDelayCalibrated,
+		};
+	}
+
+	/**
+	 * Self-calibrate the playback→mic delay (#9583/#9586) from real echo. Called
+	 * per mic frame while uncalibrated: when the far-end is active (the agent is
+	 * playing TTS), accumulate the time-aligned near/far windows; once ~0.75 s of
+	 * playback-active audio is buffered, recover the bulk transport lag by
+	 * cross-correlation and, if confident, replace the static seed. One-shot — the
+	 * device's speaker→mic path is stable, so we lock the first confident estimate
+	 * and stop re-measuring. Public so it can be unit-tested without the fused FFI.
+	 */
+	observeForDelayCalibration(nearPcm: Float32Array, timestampMs: number): void {
+		if (this.echoDelayCalibrated || nearPcm.length === 0) return;
+		// Read the RAW far-end at this frame (delay 0) — calibration recovers the
+		// delay, so it must not pre-apply the value it is trying to measure.
+		const far = this.echoBuffer.referenceAt(timestampMs, nearPcm.length, 0);
+		let farEnergy = 0;
+		for (let i = 0; i < far.length; i++) farEnergy += far[i] * far[i];
+		if (farEnergy / Math.max(1, far.length) < ECHO_CAL_FAR_ENERGY_FLOOR) {
+			return; // no playback → nothing to calibrate against
+		}
+
+		this.calNear.push(nearPcm.slice());
+		this.calFar.push(far);
+		this.calSampleCount += nearPcm.length;
+		while (
+			this.calSampleCount > ECHO_CAL_MAX_SAMPLES &&
+			this.calNear.length > 1
+		) {
+			this.calSampleCount -= (this.calNear.shift() as Float32Array).length;
+			this.calFar.shift();
+		}
+		if (this.calSampleCount < ECHO_CAL_TARGET_SAMPLES) return;
+
+		const near = concatFloat32(this.calNear);
+		const farWin = concatFloat32(this.calFar);
+		const est = estimateEchoDelaySamples(near, farWin, {
+			maxLagSamples: ECHO_CAL_MAX_LAG_SAMPLES,
+		});
+		if (est.confidence >= ECHO_CAL_MIN_CONFIDENCE) {
+			this.echoDelaySamples = est.lagSamples;
+			this.echoDelayConfidence = est.confidence;
+			this.echoDelayCalibrated = true;
+		}
+		this.calNear = [];
+		this.calFar = [];
+		this.calSampleCount = 0;
+	}
+
+	/**
+	 * Feed a batch of agent-playback (far-end) frames for echo cancellation. The
+	 * device captures the agent's TTS output in the SAME base64 LE-s16 16 kHz
+	 * mono wire format as the mic and POSTs it in real time as it renders; we
+	 * decode + append to the alignment buffer. The device MUST also call
+	 * {@link resetPlayback} when playback stops (or on barge-in) so the canceller
+	 * never aligns a later mic frame to stale, no-longer-playing audio.
+	 */
+	pushPlayback(frames: AudioFrameEvent[]): void {
+		for (const frame of frames) {
+			this.echoBuffer.pushAt(frame.timestamp, decodeAudioFramePcm(frame));
+		}
+	}
+
+	/** Drop buffered far-end playback (playback stopped / barge-in). Also clears
+	 * the in-progress delay-calibration window (it would otherwise straddle a
+	 * playback gap); the already-learned delay is kept. */
+	resetPlayback(): void {
+		this.echoBuffer.reset();
+		this.calNear = [];
+		this.calFar = [];
+		this.calSampleCount = 0;
+	}
+
 	/** Feed a batch of WebView-captured frames; resolves once VAD has processed them. */
 	async ingest(frames: AudioFrameEvent[]): Promise<void> {
 		await this.ensureBuilt();
 		if (!this.consumer) return;
 		for (const frame of frames) {
 			this.framesReceived += 1;
+			if (!this.echoDelayCalibrated) {
+				try {
+					this.observeForDelayCalibration(
+						decodeAudioFramePcm(frame),
+						frame.timestamp,
+					);
+				} catch {
+					// Let AudioFrameConsumer own decode-error accounting below.
+				}
+			}
 			await this.consumer.onAudioFrame(frame);
 		}
 	}
@@ -269,6 +588,12 @@ export class LiveDiarizationSession {
 			framesReceived: this.framesReceived,
 			framesDropped: this.consumer?.droppedFrames ?? 0,
 			turnsObserved: this.turnsObserved,
+			aec: {
+				echoReferenceWired:
+					this.consumer != null || this.options.echoReference != null,
+				echoDelaySamples: this.echoDelaySamples,
+				echoDelayConfidence: this.echoDelayConfidence,
+			},
 			recentTurns: [...this.recentTurns],
 			...(this.buildError ? { error: this.buildError } : {}),
 		};
@@ -277,6 +602,14 @@ export class LiveDiarizationSession {
 	/** Release native handles + listeners. */
 	async close(): Promise<void> {
 		await this.consumer?.close();
+		if (this.asrRegionAcquired && this.ffi && this.ctx !== null) {
+			try {
+				this.ffi.mmapEvict(this.ctx, "asr");
+			} catch {
+				// Best-effort release; the context is destroyed below regardless.
+			}
+			this.asrRegionAcquired = false;
+		}
 		await this.encoder?.dispose();
 		await this.diarizer?.dispose();
 		this.vad?.close();

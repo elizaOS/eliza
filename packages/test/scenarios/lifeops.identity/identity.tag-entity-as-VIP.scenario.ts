@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.tag-entity-as-VIP",
   title: "Tag a customer entity as VIP for inbox + push triage",
   domain: "lifeops.identity",

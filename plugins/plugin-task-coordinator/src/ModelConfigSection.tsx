@@ -4,7 +4,7 @@ import {
   SelectItem,
   SelectValue,
   SettingsControls,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type {
@@ -36,7 +36,7 @@ export function ModelConfigSection({
   isDynamic,
   setPref,
 }: ModelConfigSectionProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <>
       <div className="flex gap-3">

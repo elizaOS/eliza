@@ -260,18 +260,6 @@ const IOS_NATIVE_LLAMA_PRIORITY = 0;
 const ELIZA_1_HF_REPO = "elizaos/eliza-1";
 const IOS_NATIVE_CATALOG_MODELS: NativeCatalogModelEntry[] = [
 	{
-		id: "eliza-1-0_8b",
-		displayName: "eliza-1-0.8B",
-		hfRepo: ELIZA_1_HF_REPO,
-		hfPath: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-		ggufFile: "text/eliza-1-0_8b-128k.gguf",
-		sizeGb: 0.5,
-		minRamGb: 2,
-		params: "0.8B",
-		bucket: "small",
-		contextLength: 131_072,
-	},
-	{
 		id: "eliza-1-2b",
 		displayName: "eliza-1-2B",
 		hfRepo: ELIZA_1_HF_REPO,
@@ -435,7 +423,68 @@ function hydrateIosEnvFromArgv(
 	return { appSupportDir, bundlePath };
 }
 
+/**
+ * Install process-level crash guards for the on-device iOS runtime.
+ *
+ * The Bun runtime here IS the iOS app's WebView host process, so a default
+ * `unhandledRejection`/`uncaughtException` termination kills the whole app and
+ * forces the user to relaunch from the home screen. Instead we keep the runtime
+ * alive: a rejected background promise is logged and ignored, and an uncaught
+ * exception is logged but does not exit — a degraded-but-alive agent beats a
+ * dead app, and the bridge's boot-retry recovers transient failures.
+ *
+ * Inlined (not imported from `@elizaos/shared`) so the mobile bundle's
+ * dependency set is unchanged. Idempotent via a globalThis latch.
+ */
+function installIosBackendCrashGuards(): void {
+	const slot = globalThis as { __elizaIosCrashGuardsInstalled?: boolean };
+	if (slot.__elizaIosCrashGuardsInstalled) return;
+	slot.__elizaIosCrashGuardsInstalled = true;
+	const format = (value: unknown): string =>
+		value instanceof Error ? (value.stack ?? value.message) : String(value);
+	process.on("unhandledRejection", (reason) => {
+		console.error(
+			"[ios-bridge] Unhandled promise rejection (non-fatal):",
+			format(reason),
+		);
+	});
+	process.on("uncaughtException", (error) => {
+		console.error(
+			"[ios-bridge] Uncaught exception (agent kept alive):",
+			format(error),
+		);
+	});
+}
+
+/**
+ * Boot the runtime with a bounded retry so a transient init failure (a slow
+ * keychain read, a model file still being written, a flaky first DB open)
+ * self-heals instead of permanently wedging the backend in `bootError`.
+ */
+async function bootRuntimeWithRetry(
+	boot: () => Promise<IAgentRuntime>,
+): Promise<IAgentRuntime> {
+	const maxAttempts = 3;
+	let lastError: unknown;
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		try {
+			return await boot();
+		} catch (error) {
+			lastError = error;
+			if (attempt >= maxAttempts) break;
+			const backoffMs = 1000 * 2 ** (attempt - 1);
+			console.error(
+				`[ios-bridge] runtime boot attempt ${attempt}/${maxAttempts} failed; retrying in ${backoffMs}ms:`,
+				error instanceof Error ? error.message : String(error),
+			);
+			await new Promise((resolve) => setTimeout(resolve, backoffMs));
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
+	installIosBackendCrashGuards();
 	const argvEnv = hydrateIosEnvFromArgv();
 	// ── Mobile filesystem sandbox ────────────────────────────────────────────
 	// Install the fs shim as the very first action — before any runtime code
@@ -480,7 +529,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 
 	const { bootElizaRuntime, dispatchRoute } = await loadAgentModule();
 
-	const runtime = await bootElizaRuntime();
+	const runtime = await bootRuntimeWithRetry(bootElizaRuntime);
 	installIosNativeLlamaHandlers(runtime);
 
 	maybeAutoRunModelGrind();
@@ -1638,8 +1687,22 @@ async function unloadNativeLlamaModel(): Promise<void> {
 
 function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 	if (typeof params.prompt === "string" && params.prompt.length > 0) {
-		return renderChatMlPrompt(IOS_NATIVE_NO_THINK_SYSTEM, [
-			{ role: "user", content: params.prompt },
+		const trimmedPrompt = params.prompt.trimEnd();
+		if (
+			trimmedPrompt.includes("<start_of_turn>") &&
+			trimmedPrompt.includes("<start_of_turn>model")
+		) {
+			return trimmedPrompt;
+		}
+		const legacyMessages = trimmedPrompt.includes("<|im_start|>")
+			? collectChatMlPromptMessages(trimmedPrompt, IOS_NATIVE_NO_THINK_SYSTEM)
+			: null;
+		if (legacyMessages && legacyMessages.length > 0) {
+			return renderGemmaPrompt(legacyMessages);
+		}
+		return renderGemmaPrompt([
+			{ role: "system", content: IOS_NATIVE_NO_THINK_SYSTEM },
+			{ role: "user", content: trimmedPrompt },
 		]);
 	}
 	const systemBlocks = [IOS_NATIVE_NO_THINK_SYSTEM];
@@ -1677,23 +1740,63 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 			}
 		}
 	}
-	return renderChatMlPrompt(systemBlocks.join("\n\n"), chatMessages);
+	return renderGemmaPrompt([
+		{ role: "system", content: systemBlocks.join("\n\n") },
+		...chatMessages,
+	]);
 }
 
-function renderChatMlPrompt(
-	system: string,
+function roleForGemmaPrompt(role: string): "system" | "user" | "model" {
+	if (role === "assistant" || role === "tool") return "model";
+	if (role === "system") return "system";
+	return "user";
+}
+
+function collectChatMlPromptMessages(
+	prompt: string,
+	system?: string,
+): Array<{ role: string; content: string }> | null {
+	const headerPattern = /<\|im_start\|>(system|user|assistant|tool)(?:\n|$)/g;
+	const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+	let match = headerPattern.exec(prompt);
+	while (match !== null) {
+		headers.push({
+			index: match.index,
+			role: match[1],
+			bodyStart: match.index + match[0].length,
+		});
+		match = headerPattern.exec(prompt);
+	}
+	if (headers.length === 0) return null;
+	const messages: Array<{ role: string; content: string }> = [];
+	if (system?.trim() && headers[0]?.role !== "system") {
+		messages.push({ role: "system", content: system.trim() });
+	}
+	for (let i = 0; i < headers.length; i += 1) {
+		const current = headers[i];
+		const next = headers[i + 1];
+		const content = prompt
+			.slice(current.bodyStart, next ? next.index : prompt.length)
+			.replace(/<\|im_end\|>\s*$/g, "")
+			.trim();
+		if (content) messages.push({ role: current.role, content });
+	}
+	return messages.length > 0 ? messages : null;
+}
+
+function renderGemmaPrompt(
 	messages: Array<{ role: string; content: string }>,
 ): string {
-	const blocks = [`<|im_start|>system\n${system.trim()}\n<|im_end|>`];
+	const blocks: string[] = [];
 	for (const message of messages) {
-		const role =
-			message.role === "assistant" || message.role === "tool"
-				? message.role
-				: "user";
 		const content = message.content.trim();
-		if (content) blocks.push(`<|im_start|>${role}\n${content}\n<|im_end|>`);
+		if (content) {
+			blocks.push(
+				`<start_of_turn>${roleForGemmaPrompt(message.role)}\n${content}<end_of_turn>`,
+			);
+		}
 	}
-	blocks.push("<|im_start|>assistant\n<think>\n\n</think>\n\n");
+	blocks.push("<start_of_turn>model\n");
 	return blocks.join("\n");
 }
 
@@ -1708,8 +1811,11 @@ function stripReasoningBlocks(raw: string): string {
 
 function cleanIosNativeConversationReply(raw: string): string {
 	const withoutTokens = stripReasoningBlocks(raw)
+		.split("<end_of_turn>")[0]
+		.split("<start_of_turn>")[0]
 		.split("<|im_end|>")[0]
 		.split("<|im_start|>")[0]
+		.replace(/^\s*model\s*:\s*/i, "")
 		.replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
 		.trim();
 	const compact = withoutTokens.replace(/\s+/g, " ").trim();
@@ -1740,7 +1846,7 @@ async function maybeGenerateIosNativeConversationReply(
 			],
 			maxTokens: 32,
 			temperature: 0,
-			stopSequences: ["<|im_end|>", "<|im_start|>"],
+			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
 		},
 		IOS_NATIVE_LLAMA_PROVIDER,
 	);
@@ -1772,7 +1878,9 @@ function mergeStopSequences(values: unknown): string[] {
 	const requested = Array.isArray(values)
 		? values.filter((value): value is string => typeof value === "string")
 		: [];
-	return Array.from(new Set([...requested, "<|im_end|>", "<|endoftext|>"]));
+	return Array.from(
+		new Set([...requested, "<end_of_turn>", "<start_of_turn>", "<endoftext>"]),
+	);
 }
 
 function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
@@ -1957,10 +2065,10 @@ function nativeCatalogModels(): Array<Record<string, unknown>> {
 				displayName: model.displayName ?? model.id,
 				hfRepo: model.hfRepo ?? "elizaos/eliza-1",
 				ggufFile: path.basename(model.path),
-				params: model.id.includes("0_8b") ? "0.8B" : "2B",
+				params: "2B",
 				quant: "Q8_0",
 				sizeGb,
-				minRamGb: model.id.includes("0_8b") ? 2 : 4,
+				minRamGb: 4,
 				category: "chat",
 				bucket: sizeGb <= 1 ? "small" : "mid",
 				blurb: "Installed Eliza-1 on-device GGUF bundle.",
@@ -3030,6 +3138,45 @@ async function handleDirectCoreRoute(
 		});
 	}
 
+	if (method === "GET" && pathname === "/api/status") {
+		// The startup readiness poll (runStartingRuntime → client.getStatus) gates
+		// on `state === "running"` from /api/status, then dispatches AGENT_RUNNING.
+		// The agent's real /api/status (health-routes.ts) is NOT wired into
+		// dispatchRoute — same reason /api/health is shimmed above — so without this
+		// the poll 404s ("No iOS local route for GET /api/status") and the app shows
+		// "Startup failed: Agent Timeout" even though the in-process agent is up.
+		// The full-Bun in-process runtime is booted before routes are served here,
+		// so report it running + able to respond.
+		return jsonResponse(200, {
+			state: "running",
+			agentName: runtimeAgentName(backend.runtime),
+			model: null,
+			canRespond: true,
+			startedAt: null,
+			uptime: 0,
+			startup: { phase: "running", runtimePhase: "running" },
+			cloud: {
+				connectionStatus: "disconnected",
+				activeAgentId: null,
+				cloudProvisioned: false,
+				hasApiKey: false,
+			},
+			pendingRestart: false,
+			pendingRestartReasons: [],
+			iosBridge: "bun",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/apps/runs") {
+		// The home orchestrator widget polls /api/apps/runs (page-scoped-context
+		// provider). It is not served by dispatchRoute on the in-process iOS
+		// runtime, so without this shim the home surfaces a raw error toast
+		// ("No iOS local route for GET /api/apps/runs"). No app runs exist on a
+		// fresh local agent — return an empty list so the widget renders its empty
+		// state cleanly instead of an error.
+		return jsonResponse(200, []);
+	}
+
 	if (method === "GET" && pathname === "/api/first-run/status") {
 		// The full-Bun in-process agent is already provisioned and running, so
 		// first-run is complete from the backend's perspective (onboarding is a
@@ -3041,6 +3188,50 @@ async function handleDirectCoreRoute(
 			complete: true,
 			cloudProvisioned: false,
 			deploymentTarget: "local",
+		});
+	}
+
+	if (method === "POST" && pathname === "/api/first-run") {
+		// finishLocal() submits the first-run profile here. The in-process agent
+		// is already booted with its config, so the submit is acknowledged as
+		// complete — without this route the POST 404s ("No iOS local route for
+		// POST /api/first-run") and on-device onboarding can never finish, leaving
+		// the user stuck on "Starting local agent". Companion to the GET
+		// /api/first-run/status route above.
+		return jsonResponse(200, {
+			ok: true,
+			complete: true,
+			deploymentTarget: "local",
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/me") {
+		// The post-startup auth probe hits /api/auth/me; the in-process local
+		// agent has no remote auth, so report a local machine session (mirrors
+		// the WebView kernel shim). Without it the probe fails and the app shows
+		// "Backend Unreachable — auth probe could not reach /api/auth/me".
+		return jsonResponse(200, {
+			identity: {
+				id: "local-agent",
+				displayName: "Local Agent",
+				kind: "machine",
+			},
+			session: { id: "local", kind: "local", expiresAt: null },
+			access: {
+				mode: "local",
+				passwordConfigured: false,
+				ownerConfigured: false,
+			},
+		});
+	}
+
+	if (method === "GET" && pathname === "/api/auth/status") {
+		return jsonResponse(200, {
+			required: false,
+			pairingEnabled: false,
+			expiresAt: null,
+			authenticated: true,
+			localAccess: true,
 		});
 	}
 

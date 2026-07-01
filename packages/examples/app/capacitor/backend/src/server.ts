@@ -75,12 +75,8 @@ export function createApiServer() {
       }
 
       if (method === "POST" && url === "/greeting") {
-        const bodyText = await readBody(req);
-        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as {
-          config?: AppConfig;
-        };
-        const config = parseConfig(parsed.config);
-        sendJson(res, 200, { greeting: getGreetingText(config) });
+        await readBody(req);
+        sendJson(res, 200, { greeting: getGreetingText() });
         return;
       }
 

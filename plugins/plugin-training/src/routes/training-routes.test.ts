@@ -2,12 +2,42 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { TrajectoryListResult } from "@elizaos/agent";
 import { afterEach, describe, expect, it } from "vitest";
 import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
   handleTrainingRoutes,
   type TrainingRouteContext,
 } from "./training-routes.js";
+
+type TrajRecord = TrajectoryListResult["trajectories"][number];
+
+/** Build a full TrajectorySummaryRecord from an id (test fixture). */
+function trajRecord(id: string, extra: Partial<TrajRecord> = {}): TrajRecord {
+  return {
+    id,
+    agentId: "agent-1",
+    source: "test",
+    status: "completed",
+    startTime: 0,
+    endTime: 1,
+    durationMs: 1,
+    llmCallCount: 0,
+    providerAccessCount: 0,
+    totalPromptTokens: 0,
+    totalCompletionTokens: 0,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    ...extra,
+  };
+}
+
+/** Wrap records in a full TrajectoryListResult (offset/limit are required). */
+function listResult(
+  trajectories: TrajRecord[],
+  total = trajectories.length,
+): TrajectoryListResult {
+  return { trajectories, total, offset: 0, limit: 50 };
+}
 
 const tempDirs: string[] = [];
 
@@ -20,7 +50,7 @@ async function makeTempDir(): Promise<string> {
 function trainingService(): TrainingServiceLike {
   return {
     getStatus: () => ({}),
-    listTrajectories: async () => ({ trajectories: [], total: 0 }),
+    listTrajectories: async () => listResult([], 0),
     getTrajectoryById: async () => null,
     listDatasets: () => [],
     buildDataset: async () => ({}),
@@ -120,13 +150,7 @@ describe("training routes", () => {
     const root = await makeTempDir();
     const workspaceRoot = join(root, "workspace");
     await mkdir(
-      join(
-        workspaceRoot,
-        "packages",
-        "app-core",
-        "test",
-        "benchmarks",
-      ),
+      join(workspaceRoot, "packages", "app-core", "test", "benchmarks"),
       { recursive: true },
     );
     await writeFile(
@@ -200,7 +224,6 @@ describe("training routes", () => {
         recipe: {
           evals: {
             actionBenchmarkPairs: [
-              expect.objectContaining({ tier: "0_8b" }),
               expect.objectContaining({ tier: "2b" }),
               expect.objectContaining({ tier: "4b" }),
               expect.objectContaining({ tier: "9b" }),
@@ -220,10 +243,10 @@ describe("training routes", () => {
       ...trainingService(),
       listTrajectories: async (options: Record<string, unknown>) => {
         calls.push(options);
-        return {
-          trajectories: [{ id: "traj-keep" }, { id: "traj-drop" }],
-          total: 2,
-        };
+        return listResult(
+          [trajRecord("traj-keep"), trajRecord("traj-drop")],
+          2,
+        );
       },
       getTrajectoryById: async (id: string) => {
         const runId = id === "traj-keep" ? "app-run-1" : "app-run-2";
@@ -294,9 +317,7 @@ describe("training routes", () => {
       payload.manifest.steps.find((step) => step.id === "feed"),
     ).toMatchObject({ status: "skipped" });
     expect(
-      payload.manifest.steps.find(
-        (step) => step.id === "natural_trajectories",
-      ),
+      payload.manifest.steps.find((step) => step.id === "natural_trajectories"),
     ).toMatchObject({
       status: "succeeded",
       result: {
@@ -330,7 +351,7 @@ describe("training routes", () => {
       fakeBun,
       [
         "#!/bin/sh",
-        "mkdir -p \"$(dirname \"$ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH\")\"",
+        'mkdir -p "$(dirname "$ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH")"',
         "cat > \"$ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH\" <<'JSON'",
         '{"schema":"eliza_action_selection_benchmark_report","summary":{"total":0,"passed":0,"failed":0},"results":[]}',
         "JSON",
@@ -346,16 +367,16 @@ describe("training routes", () => {
       outputDir,
       dryRun: false,
       useMocks: true,
-      modelId: "eliza-1-0_8b-trained",
+      modelId: "eliza-1-2b-trained",
       variant: "trained",
-      tier: "0_8b",
+      tier: "2b",
       benchmark: "eliza_harness_action_selection",
     });
 
     expect(result.status).toBe(201);
     expect(result.payload).toMatchObject({
       matrixSource: {
-        modelId: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
         variant: "trained",
         useMocks: true,
       },

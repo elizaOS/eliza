@@ -361,5 +361,3 @@ export function configFileExists(): boolean {
   const persistPath = resolveConfigWritePath();
   return persistPath !== configPath && fs.existsSync(persistPath);
 }
-
-// Backward-compat aliases for downstream forks using the old name

@@ -16,7 +16,7 @@ export function PageEmptyState({
     return (
       <PagePanelRoot
         className={cn(
-          "flex min-h-[58vh] flex-col items-center justify-center px-6 py-10 text-center",
+          "flex min-h-[42vh] flex-col items-center justify-center px-4 py-8 text-center",
           className,
         )}
         {...props}
@@ -24,9 +24,7 @@ export function PageEmptyState({
         <div className="max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{title}</div>
           {description ? (
-            <div className="text-sm leading-relaxed text-muted">
-              {description}
-            </div>
+            <div className="text-sm text-muted">{description}</div>
           ) : null}
         </div>
         {action ? <div className="mt-4">{action}</div> : null}
@@ -39,7 +37,7 @@ export function PageEmptyState({
     return (
       <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-10 text-center",
+          "flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-8 text-center",
           className,
         )}
         {...props}
@@ -47,9 +45,7 @@ export function PageEmptyState({
         <div className="max-w-md space-y-2">
           <div className="text-base font-medium text-txt-strong">{title}</div>
           {description ? (
-            <div className="text-sm leading-relaxed text-muted">
-              {description}
-            </div>
+            <div className="text-sm text-muted">{description}</div>
           ) : null}
         </div>
         {action ? <div className="mt-4">{action}</div> : null}
@@ -62,8 +58,8 @@ export function PageEmptyState({
     <EmptyState
       className={cn(
         variant === "inset"
-          ? "min-h-[14rem] rounded-sm border border-dashed border-border bg-card px-5 py-10"
-          : "min-h-[18rem] rounded-sm border border-dashed border-border bg-card px-6 py-12 ",
+          ? "min-h-[10rem] px-4 py-8"
+          : "min-h-[12rem] px-4 py-8",
         className,
       )}
       description={description}

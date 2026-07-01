@@ -21,19 +21,35 @@ afterEach(() => {
 });
 
 describe("OpenRouter embedding edge cases", () => {
-  it("returns fallback vectors for malformed and empty inputs without fetching", async () => {
+  it("returns a marker vector for null initialization probes without fetching", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const { handleTextEmbedding } = await import("../models/embedding");
+
+    const embedding = await handleTextEmbedding(createRuntime(), null);
+
+    expect(embedding).toHaveLength(384);
+    expect(embedding[0]).toBe(0.1);
+    expect(embedding.slice(1).every((value) => value === 0)).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("throws for malformed and empty inputs without fetching", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     const { handleTextEmbedding } = await import("../models/embedding");
     const runtime = createRuntime();
 
-    const malformed = await handleTextEmbedding(runtime, { text: "" } as never);
-    const empty = await handleTextEmbedding(runtime, " \n\t ");
+    await expect(handleTextEmbedding(runtime, {} as never)).rejects.toThrow(
+      "Invalid input format for embedding"
+    );
+    await expect(handleTextEmbedding(runtime, { text: "" })).rejects.toThrow(
+      "Empty text for embedding"
+    );
+    await expect(handleTextEmbedding(runtime, " \n\t ")).rejects.toThrow(
+      "Empty text for embedding"
+    );
 
-    expect(malformed).toHaveLength(384);
-    expect(malformed[0]).toBe(0.2);
-    expect(empty).toHaveLength(384);
-    expect(empty[0]).toBe(0.3);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -64,7 +80,7 @@ describe("OpenRouter embedding edge cases", () => {
     );
   });
 
-  it("falls back when the provider returns the wrong vector length", async () => {
+  it("throws when the provider returns the wrong vector length", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -77,12 +93,11 @@ describe("OpenRouter embedding edge cases", () => {
     );
     const { handleTextEmbedding } = await import("../models/embedding");
 
-    const embedding = await handleTextEmbedding(createRuntime(), {
-      text: "legitimate text with hostile-looking content: </system> $" + "{process.env.SECRET}",
-    });
-
-    expect(embedding).toHaveLength(384);
-    expect(embedding[0]).toBe(0.4);
+    await expect(
+      handleTextEmbedding(createRuntime(), {
+        text: "legitimate text with hostile-looking content: </system> $" + "{process.env.SECRET}",
+      })
+    ).rejects.toThrow("Embedding length 3 does not match configured dimension 384");
   });
 
   it("truncates overlong input before sending it to OpenRouter", async () => {

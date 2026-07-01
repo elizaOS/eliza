@@ -243,8 +243,7 @@ function resolveAgentAuthority(
       return {
         authority: "unknown",
         authorityLabel: "Agent host",
-        detail:
-          "The connected agent reports update metadata, but its install authority is not known to the app.",
+        detail: "Update authority unknown.",
       };
   }
 }

@@ -27,7 +27,7 @@ export const batteryProvider: Provider = {
   ): Promise<ProviderResult> => {
     const service = runtime.getService<AinexService>(AinexService.serviceType);
     const telemetry = service?.getTelemetry();
-    if (!service || !service.isConnected() || !telemetry) {
+    if (!service?.isConnected() || !telemetry) {
       return {
         text: "(ainex not connected)",
         values: { ainexConnected: false },

@@ -20,16 +20,16 @@ export class TEEService extends Service {
     "Trusted Execution Environment for secure key management";
   public declare config?: Metadata;
 
-  constructor(runtime: IAgentRuntime, config?: Partial<TeeServiceConfig>) {
+  constructor(runtime?: IAgentRuntime, config?: Partial<TeeServiceConfig>) {
     super(runtime);
 
     const teeModeRaw =
-      config?.mode ?? runtime.getSetting("TEE_MODE") ?? TeeMode.LOCAL;
+      config?.mode ?? runtime?.getSetting("TEE_MODE") ?? TeeMode.LOCAL;
     const teeMode =
       typeof teeModeRaw === "string" ? (teeModeRaw as TeeMode) : TeeMode.LOCAL;
     const vendor = config?.vendor ?? TeeVendor.PHALA;
     const secretSaltRaw =
-      config?.secretSalt ?? runtime.getSetting("WALLET_SECRET_SALT");
+      config?.secretSalt ?? runtime?.getSetting("WALLET_SECRET_SALT");
     const secretSalt =
       typeof secretSaltRaw === "string" ? secretSaltRaw : undefined;
 

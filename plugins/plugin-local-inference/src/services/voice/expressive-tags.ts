@@ -308,7 +308,7 @@ export function enumToEmotion(
  * as model-native emotion recognition unless that backend explicitly advertises
  * such a field; callers should record heuristic attribution separately.
  */
-export const QWEN3_ASR_EMOTION_LABELS = [
+export const ASR_EMOTION_LABELS = [
 	"surprise",
 	"calm",
 	"happiness",
@@ -318,7 +318,7 @@ export const QWEN3_ASR_EMOTION_LABELS = [
 	"fear",
 ] as const;
 
-export type Qwen3AsrEmotionLabel = (typeof QWEN3_ASR_EMOTION_LABELS)[number];
+export type AsrEmotionLabel = (typeof ASR_EMOTION_LABELS)[number];
 
 /**
  * Explicit mapping from an ASR-perceived emotion label to the tag vocab the
@@ -328,7 +328,7 @@ export type Qwen3AsrEmotionLabel = (typeof QWEN3_ASR_EMOTION_LABELS)[number];
  * `null` (counted as "no agreement" rather than forced).
  */
 export const ASR_LABEL_TO_EMOTION_TAG: Readonly<
-	Record<Qwen3AsrEmotionLabel, ExpressiveEmotion | null>
+	Record<AsrEmotionLabel, ExpressiveEmotion | null>
 > = {
 	happiness: "happy",
 	sadness: "sad",
@@ -340,18 +340,18 @@ export const ASR_LABEL_TO_EMOTION_TAG: Readonly<
 };
 
 /** Normalize an arbitrary ASR-emitted emotion string (any casing, possibly an
- *  adjective form) to a `Qwen3AsrEmotionLabel` if it matches, else `null`. */
+ *  adjective form) to an `AsrEmotionLabel` if it matches, else `null`. */
 export function normalizeAsrEmotionLabel(
 	raw: string | null | undefined,
-): Qwen3AsrEmotionLabel | null {
+): AsrEmotionLabel | null {
 	if (!raw) return null;
 	const v = raw.trim().toLowerCase();
 	// Direct hit.
-	if ((QWEN3_ASR_EMOTION_LABELS as readonly string[]).includes(v)) {
-		return v as Qwen3AsrEmotionLabel;
+	if ((ASR_EMOTION_LABELS as readonly string[]).includes(v)) {
+		return v as AsrEmotionLabel;
 	}
 	// Common adjective forms → noun labels.
-	const ADJ: Record<string, Qwen3AsrEmotionLabel> = {
+	const ADJ: Record<string, AsrEmotionLabel> = {
 		happy: "happiness",
 		sad: "sadness",
 		angry: "anger",

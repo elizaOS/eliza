@@ -10,7 +10,7 @@ import {
   startIosLocalAgentKernel,
 } from "./ios-local-agent-kernel";
 import { createIttpAgentTransport } from "./ittp-agent-transport";
-import type { AgentRequestTransport } from "./transport";
+import { type AgentRequestTransport, headersToRecord } from "./transport";
 
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
@@ -96,7 +96,7 @@ const IOS_FULL_BUN_ENV: Record<string, string> = {
   RUNTIME_MODE: "local-safe",
   LOCAL_RUNTIME_MODE: "local-safe",
   ELIZA_IOS_LOCAL_BACKEND: "1",
-  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "60000",
+  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
   ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
   ELIZA_VAULT_BACKEND: "file",
   ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
@@ -305,9 +305,21 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return isConfiguredMobileLocalAgentUrl(value);
 }
 
+/**
+ * Whether the selected runtime runs an on-device agent that serves local-agent
+ * IPC. `local`, `cloud-hybrid`, and `tunnel-to-mobile` all run the bundled
+ * phone-side agent; only pure `cloud` talks exclusively to a remote agent.
+ */
+function iosRuntimeHasOnDeviceAgent(): boolean {
+  const mode = readRuntimeMode();
+  return (
+    mode === "local" || mode === "cloud-hybrid" || mode === "tunnel-to-mobile"
+  );
+}
+
 function canUseIosLocalAgentIpc(): boolean {
   if (!isNativeIos()) return false;
-  if (readRuntimeMode() === "local" || shouldRequireFullBunRuntime()) {
+  if (iosRuntimeHasOnDeviceAgent() || shouldRequireFullBunRuntime()) {
     return true;
   }
   return !usesStrictIosNetworkPolicy();
@@ -404,14 +416,6 @@ function requestPathFromUrl(url: string): string {
   return `${parsed.pathname}${parsed.search}`;
 }
 
-function headersToRecord(headers: Headers): Record<string, string> {
-  const out: Record<string, string> = {};
-  headers.forEach((value, key) => {
-    out[key] = value;
-  });
-  return out;
-}
-
 function normalizeNativeResult(
   value: unknown,
 ): IosLocalAgentNativeRequestResult | null {
@@ -458,20 +462,17 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
-      const mod = (await import(
-        "@elizaos/capacitor-bun-runtime"
-      )) as Partial<FullBunRuntimeModule>;
-      // The dynamic import can resolve to a module WITHOUT the ElizaBunRuntime
-      // export when the package is externalized in the native web bundle — yet
-      // the native plugin is still registered under "ElizaBunRuntime" (the
-      // availability check above passed). Re-create the Capacitor plugin proxy
-      // directly in that case, instead of crashing with "undefined is not an
-      // object (evaluating 'e.start')" — which otherwise blocks iOS
-      // remote-connect and the on-device runtime entirely.
-      const plugin =
-        mod.ElizaBunRuntime ??
-        registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime");
-      const runtime = wrapFullBunRuntime(plugin);
+      // The native ElizaBunRuntime plugin is registered (isFullBunRuntimePlugin-
+      // Available passed above). The JS wrapper `@elizaos/capacitor-bun-runtime`
+      // is externalized in the native web bundle, so the dynamic import has two
+      // non-fatal failure shapes: it can RESOLVE to a module without the
+      // ElizaBunRuntime export, OR it can THROW "Module name … does not resolve
+      // to a valid URL" (a bare specifier the WKWebView can't load). Either way
+      // the native plugin is reachable via registerPlugin — so recover instead of
+      // letting the import error escape to the strict handler and fail iOS local
+      // startup with "Backend Timeout" (the reported first-run hang). A genuine
+      // failure still surfaces below: runtime.start() throwing is NOT caught here.
+      const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;
@@ -519,6 +520,21 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
     kind: "primed",
     runtime: candidate ? wrapFullBunRuntime(candidate) : null,
   };
+}
+
+async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
+  let mod: Partial<FullBunRuntimeModule> | null = null;
+  try {
+    mod = (await import(
+      "@elizaos/capacitor-bun-runtime"
+    )) as Partial<FullBunRuntimeModule>;
+  } catch {
+    mod = null;
+  }
+  return (
+    mod?.ElizaBunRuntime ??
+    registerPlugin<FullBunRuntimePlugin>("ElizaBunRuntime")
+  );
 }
 
 async function tryFullBunNativeRequest(
@@ -614,7 +630,11 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
-  if (isNativeIosCloudRuntime() && !isCloudRuntimeAllowedLocalAgentPath(path)) {
+  if (
+    isNativeIosCloudRuntime() &&
+    !iosRuntimeHasOnDeviceAgent() &&
+    !isCloudRuntimeAllowedLocalAgentPath(path)
+  ) {
     throw new TypeError(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );

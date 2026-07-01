@@ -1,5 +1,5 @@
+import { Sparkles, X } from "lucide-react";
 import type * as React from "react";
-
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -11,7 +11,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
@@ -46,6 +45,14 @@ export interface ChatMessageProps {
   onDelete?: (messageId: string) => void;
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
   onSpeak?: (messageId: string, text: string) => void;
+  /**
+   * Dismiss a proactive suggestion (#8792). Distinct from `onDelete` so the
+   * suggestion's one-tap dismiss works without enabling delete on every
+   * ordinary message. Only rendered on suggestion bubbles.
+   */
+  onDismissSuggestion?: (messageId: string) => void;
+  /** Accept ("Do it") a proactive suggestion (#8792) — sends the implied action. */
+  onAcceptSuggestion?: (message: ChatMessageData) => void;
   replyTarget?: ChatMessageData | null;
   renderContent?: (message: ChatMessageData) => React.ReactNode;
   userMessagesOnRight?: boolean;
@@ -58,7 +65,10 @@ let hoverMediaQueryUnsubscribe: (() => void) | null = null;
 
 function getHoverMediaQuery(): MediaQueryList | null {
   if (hoverMediaQuery) return hoverMediaQuery;
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return null;
   }
   hoverMediaQuery = window.matchMedia(HOVER_MEDIA_QUERY);
@@ -103,7 +113,11 @@ function useSupportsHover(): boolean {
   );
 }
 
-function getChatMessageAnchorId(messageId: string): string {
+/**
+ * The DOM id a rendered chat message carries, so keyword-search jump-to-message
+ * can scroll a result into view. Shared with the message-search UI.
+ */
+export function getChatMessageAnchorId(messageId: string): string {
   return `chat-message-${messageId}`;
 }
 
@@ -237,6 +251,8 @@ function arePropsEqual(
       prev.labels === next.labels &&
       prev.onCopy === next.onCopy &&
       prev.onDelete === next.onDelete &&
+      prev.onDismissSuggestion === next.onDismissSuggestion &&
+      prev.onAcceptSuggestion === next.onAcceptSuggestion &&
       prev.onEdit === next.onEdit &&
       prev.onSpeak === next.onSpeak &&
       prev.replyTarget?.id === next.replyTarget?.id &&
@@ -292,6 +308,8 @@ export const ChatMessage = memo(function ChatMessage({
   onSpeak,
   onEdit,
   onDelete,
+  onDismissSuggestion,
+  onAcceptSuggestion,
   replyTarget = null,
   renderContent,
   userMessagesOnRight = true,
@@ -316,6 +334,9 @@ export const ChatMessage = memo(function ChatMessage({
     !isUser && typeof onSpeak === "function" && message.text.trim(),
   );
   const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
+  // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
+  // replies — render them with a distinct, one-tap-dismissible affordance.
+  const isSuggestion = !isUser && normalizedSource === "proactive-interaction";
   const senderDisplayName = isUser ? resolveSenderDisplayName(message) : null;
   const senderHandle = isUser
     ? resolveSenderHandle(message, senderDisplayName)
@@ -566,9 +587,50 @@ export const ChatMessage = memo(function ChatMessage({
         <ChatBubble
           tone={isUser ? "user" : "assistant"}
           source={normalizedSource}
-          className={`relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words`}
+          className={cn(
+            "relative group py-1 text-[15px] leading-[1.7] whitespace-pre-wrap break-words",
+            // Suggestion treatment: subtle accent tint + dashed accent border so
+            // a proactive offer reads as a suggestion, not a normal reply.
+            isSuggestion &&
+              "border border-dashed border-accent/45 bg-accent/[0.06]",
+          )}
           style={{ fontFamily: "var(--font-chat)" }}
+          data-proactive-suggestion={isSuggestion ? "true" : undefined}
         >
+          {isSuggestion && !isEditing ? (
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1 text-xs-tight font-medium text-accent/85">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                {labels.suggestion ?? "Suggestion"}
+              </span>
+              <div className="flex items-center gap-1">
+                {onAcceptSuggestion ? (
+                  <Button
+                    variant="surface"
+                    size="sm"
+                    onClick={() => onAcceptSuggestion(message)}
+                    className="h-6 rounded-sm px-2 text-xs-tight text-accent"
+                    title={labels.acceptSuggestion ?? "Do it"}
+                    aria-label={labels.acceptSuggestion ?? "Do it"}
+                  >
+                    {labels.acceptSuggestion ?? "Do it"}
+                  </Button>
+                ) : null}
+                {onDismissSuggestion ? (
+                  <Button
+                    variant="surface"
+                    size="icon"
+                    onClick={() => onDismissSuggestion(message.id)}
+                    className="h-6 w-6 rounded-sm text-muted"
+                    title={labels.dismiss ?? "Dismiss suggestion"}
+                    aria-label={labels.dismiss ?? "Dismiss suggestion"}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {showReplyReference ? (
             <a
               href={`#${getChatMessageAnchorId(replyTargetId)}`}
@@ -585,7 +647,7 @@ export const ChatMessage = memo(function ChatMessage({
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={handleEditKeyDown}
-                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none   "
                 style={{ fontFamily: "var(--font-chat)" }}
                 aria-label={labels.edit ?? "Edit message"}
                 disabled={savingEdit}

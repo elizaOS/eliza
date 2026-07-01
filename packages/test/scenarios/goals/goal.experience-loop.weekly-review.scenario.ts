@@ -100,6 +100,7 @@ async function seedWeeklyGoalReview(ctx: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "goal.experience-loop.weekly-review",
   title: "Weekly goal review returns drifting versus on-track goals",
   domain: "goals",

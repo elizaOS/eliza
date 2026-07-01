@@ -6,6 +6,7 @@ import {
 import { seedCalendarCache } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.defend-time.protects-focus",
   title: "Agent protects calendar focus blocks from meeting requests",
   domain: "calendar",

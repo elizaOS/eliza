@@ -29,11 +29,9 @@ const STATUS_DOT_CLASSES: Record<ProviderStatusTone, string> = {
 };
 
 /**
- * Compact provider chip. The AI Model section can list ~15 providers (cloud, six
- * coding subscriptions, local, and every installed API-key plugin); rendered as
- * full-width cards they stacked into an unscrollable wall on a phone. As wrapping
- * pills they stay readable and compact while every chip remains mounted, so the
- * agent surface can still address any provider by id from chat.
+ * Compact provider chip. The AI Model section lists many providers; wrapping
+ * pills keep them compact and every chip mounted so the agent surface can
+ * address any provider by id.
  */
 export function ProviderCard({
   id,
@@ -65,7 +63,7 @@ export function ProviderCard({
       title={`${label} · ${stateLabel}`}
       {...agentProps}
       className={cn(
-        "inline-flex min-h-[2.25rem] max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        "inline-flex min-h-[2.25rem] max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors   ",
         selected
           ? "border-accent/50 bg-accent/12 text-accent"
           : current

@@ -50,7 +50,7 @@ function makeTempBundle(args: {
 	if (args.hasMtp !== false) {
 		mkdirSync(pathJoin(root, "mtp"), { recursive: true });
 		writeFileSync(
-			pathJoin(root, "mtp", `eliza-1-${args.tier}-drafter.gguf`),
+			pathJoin(root, "mtp", `drafter-${args.tier}.gguf`),
 			"fake-mtp-drafter-gguf",
 		);
 	}
@@ -140,13 +140,12 @@ describe("WS2 mmproj routing", () => {
 		expect(resolved.modelPath).toBe(bundle.textPath);
 	});
 
-	it("resolves same-file MTP with no separate drafter and does not throw", async () => {
+	it("ignores an on-disk MTP drafter until the catalog advertises hosted Gemma MTP", async () => {
 		const tier = "2b";
-		// hasMtp: false ⇒ no bundled drafter GGUF on disk. Same-file MTP
-		// embeds the NextN head in the text GGUF, so the resolver must NOT
-		// throw and must leave draftModelPath unset while still plumbing the
-		// catalog draft window.
-		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: false, tier });
+		// The active HF tree does not yet host `mtp/drafter-<tier>.gguf` for
+		// Gemma, so the catalog must not enable speculative decoding just because
+		// a local file with that shape exists.
+		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: true, tier });
 		const installed = installedModel({
 			id: `eliza-1-${tier}`,
 			bundleRoot: bundle.bundleRoot,
@@ -155,9 +154,9 @@ describe("WS2 mmproj routing", () => {
 		const resolved = await resolveLocalInferenceLoadArgs(installed);
 		expect(resolved.modelPath).toBe(bundle.textPath);
 		expect(resolved.draftModelPath).toBeUndefined();
-		expect(resolved.draftMin).toBe(1);
-		expect(resolved.draftMax).toBe(2);
-		expect(resolved.useGpu).toBe(true);
+		expect(resolved.draftMin).toBeUndefined();
+		expect(resolved.draftMax).toBeUndefined();
+		expect(resolved.mobileSpeculative).toBeUndefined();
 	});
 
 	it("leaves mmprojPath undefined when bundleRoot is absent", async () => {
@@ -197,12 +196,11 @@ describe("WS2 mmproj routing", () => {
 		);
 	});
 
-	it("plumbs mmproj for the 0_8b tier — the smallest vision-enabled bundle", async () => {
-		// WS2 flipped hasVision: true on 0_8b specifically because the
-		// 220 MB mmproj is the smallest practical projector and fits the
-		// 2 GB-floor low-tier-Android target. Validate the resolver
-		// honours that catalog flip.
-		const tier = "0_8b";
+	it("plumbs mmproj for the 2b tier — the smallest vision-enabled bundle", async () => {
+		// The 2B entry tier ships hasVision: true; the 220 MB mmproj is the
+		// smallest practical projector and fits the small-phone target.
+		// Validate the resolver honours that catalog flag.
+		const tier = "2b";
 		const bundle = makeTempBundle({ hasMmproj: true, tier });
 		const installed = installedModel({
 			id: `eliza-1-${tier}`,

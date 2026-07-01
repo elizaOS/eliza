@@ -44,7 +44,7 @@ def test_low_vram_smoke_overrides_registry_2b_defaults() -> None:
     """Registry 2B says seq_len=8192, batch=1, accum=16, budget=15.5GB. The
     preset must tighten seq_len to 2048 and the budget to 11.5 so a 12 GB card
     can run the path."""
-    args = _resolve(["--registry-key", "qwen3.5-2b", "--low-vram-smoke"])
+    args = _resolve(["--registry-key", "gemma4-e2b", "--low-vram-smoke"])
     assert args.max_seq_len == 2048
     assert args.batch_size == 1
     assert args.grad_accum == 16
@@ -63,7 +63,7 @@ def test_low_vram_smoke_explicit_seq_len_wins() -> None:
     Useful for the "still OOMs at 2048, retry at 1024" workflow documented
     in the README."""
     args = _resolve(
-        ["--registry-key", "qwen3.5-2b", "--low-vram-smoke", "--max-seq-len", "1024"]
+        ["--registry-key", "gemma4-e2b", "--low-vram-smoke", "--max-seq-len", "1024"]
     )
     assert args.max_seq_len == 1024
     # Other preset overrides still apply.
@@ -73,7 +73,7 @@ def test_low_vram_smoke_explicit_seq_len_wins() -> None:
 
 def test_low_vram_smoke_explicit_memory_budget_wins() -> None:
     args = _resolve(
-        ["--registry-key", "qwen3.5-2b", "--low-vram-smoke", "--memory-budget-gb", "10.0"]
+        ["--registry-key", "gemma4-e2b", "--low-vram-smoke", "--memory-budget-gb", "10.0"]
     )
     assert args.memory_budget_gb == 10.0
 
@@ -81,7 +81,7 @@ def test_low_vram_smoke_explicit_memory_budget_wins() -> None:
 def test_low_vram_smoke_without_registry_key() -> None:
     """The preset is meant to be used with --registry-key but should still
     apply sane defaults when used standalone (model stays at the argparse
-    default Qwen3.5-0.8B)."""
+    default gemma-4-E2B)."""
     args = _resolve(["--low-vram-smoke"])
     assert args.max_seq_len == 2048
     assert args.batch_size == 1
@@ -93,7 +93,7 @@ def test_low_vram_smoke_without_registry_key() -> None:
 
 def test_no_low_vram_smoke_leaves_registry_defaults_alone() -> None:
     """Regression guard — the preset must only fire when the flag is set."""
-    args = _resolve(["--registry-key", "qwen3.5-2b"])
+    args = _resolve(["--registry-key", "gemma4-e2b"])
     assert args.max_seq_len == 8192
     assert args.batch_size == 1
     assert args.grad_accum == 16  # same as preset, coincidence at 2B
@@ -147,7 +147,7 @@ def test_low_vram_smoke_respects_explicit_max_samples_zero_with_registry() -> No
     --max-samples 0 (meaning "no cap"). Neither the registry nor the preset
     may rewrite the user's 0 to a positive value."""
     args = _resolve(
-        ["--registry-key", "qwen3.5-2b", "--low-vram-smoke", "--max-samples", "0"]
+        ["--registry-key", "gemma4-e2b", "--low-vram-smoke", "--max-samples", "0"]
     )
     assert args.max_samples == 0
     # Other preset overrides still apply.
@@ -160,7 +160,7 @@ def test_low_vram_smoke_respects_explicit_epochs_three() -> None:
     --epochs 3.0 (which equals the historical argparse default). The user's
     value must survive."""
     args = _resolve(
-        ["--registry-key", "qwen3.5-2b", "--low-vram-smoke", "--epochs", "3.0"]
+        ["--registry-key", "gemma4-e2b", "--low-vram-smoke", "--epochs", "3.0"]
     )
     assert args.epochs == 3.0
     # Other preset overrides still apply.

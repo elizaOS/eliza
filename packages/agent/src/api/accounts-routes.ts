@@ -68,9 +68,9 @@ import type { ElizaConfig } from "../config/types.eliza.ts";
 // ─── Account pool (single source of truth) ──────────────────────────
 //
 // All `LinkedAccountConfig` records (label / enabled / priority / health /
-// usage) are owned by `@elizaos/app-core`. We hit
-// it via dynamic import to avoid a cyclic package dep — app-core depends
-// on agent, not the other way around. The promise is cached at module
+// usage) are owned by `@elizaos/app-core`'s account-pool subpath. Import the
+// leaf module so account routes do not evaluate app-core's server/runtime
+// barrel during agent API initialization. The promise is cached at module
 // scope so we pay the import cost once per process.
 
 interface PoolFacade {
@@ -93,8 +93,8 @@ async function getPool(): Promise<PoolFacade> {
       // String-literal dynamic import — see comment in
       // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
       const mod = (await import(
-        /* @vite-ignore */ "@elizaos/app-core"
-      )) as unknown as {
+        /* @vite-ignore */ "@elizaos/app-core/account-pool"
+      )) as {
         getDefaultAccountPool: () => PoolFacade;
       };
       return mod.getDefaultAccountPool();

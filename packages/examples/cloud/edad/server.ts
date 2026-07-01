@@ -68,7 +68,9 @@ function flattenContent(content: unknown): string {
 
 /** The user's latest message text from the forwarded request body. */
 function extractUserText(json: unknown): string {
-  const msgs = (json as { messages?: Array<{ role?: string; content?: unknown }> })?.messages;
+  const msgs = (
+    json as { messages?: Array<{ role?: string; content?: unknown }> }
+  )?.messages;
   if (Array.isArray(msgs)) {
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i]?.role === "user") return flattenContent(msgs[i]?.content);
@@ -80,7 +82,9 @@ function extractUserText(json: unknown): string {
 /** The assistant reply text from the upstream result (Anthropic-style shape). */
 function extractReplyText(result: unknown): string {
   const r = result as { content?: unknown; message?: { content?: unknown } };
-  return flattenContent(r?.content) || flattenContent(r?.message?.content) || "";
+  return (
+    flattenContent(r?.content) || flattenContent(r?.message?.content) || ""
+  );
 }
 
 async function forwardMessages(
@@ -157,7 +161,11 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
 
   // Signed-in user's persisted chat history from this app's per-tenant DB.
   // Empty when the app has no isolated DB — the UI just starts a fresh chat.
-  if (segments.length === 1 && segments[0] === "history" && req.method === "GET") {
+  if (
+    segments.length === 1 &&
+    segments[0] === "history" &&
+    req.method === "GET"
+  ) {
     const messages = dbReady() ? await getHistory(userRef(userToken)) : [];
     return Response.json(
       { messages, db_enabled: dbReady() },
@@ -168,11 +176,27 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
   return jsonError(404, "not_found", "unknown route");
 }
 
-async function serveStatic(pathname: string): Promise<Response | null> {
+async function serveStatic(
+  req: Request,
+  pathname: string,
+): Promise<Response | null> {
   const target = pathname === "/" ? "/index.html" : pathname;
   if (target.includes("..") || !target.startsWith("/")) return null;
   const file = Bun.file(join(PUBLIC_DIR, target));
   if (!(await file.exists())) return null;
+  if (target === "/index.html") {
+    const html = await file.text();
+    const ogImageUrl = new URL("og-image.png", req.url).toString();
+    return new Response(
+      html.replaceAll('content="og-image.png"', `content="${ogImageUrl}"`),
+      {
+        headers: {
+          "cache-control": "no-store",
+          "content-type": "text/html; charset=utf-8",
+        },
+      },
+    );
+  }
   return new Response(file, { headers: { "cache-control": "no-store" } });
 }
 
@@ -201,7 +225,7 @@ const server = Bun.serve({
       return handleApi(req, segments);
     }
 
-    const staticRes = await serveStatic(url.pathname);
+    const staticRes = await serveStatic(req, url.pathname);
     if (staticRes) return staticRes;
 
     return new Response("not found", { status: 404 });

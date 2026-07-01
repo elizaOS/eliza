@@ -12,8 +12,8 @@
 //   once at APK build time, then every install is offline-capable.
 //
 // Output (per ABI is unnecessary — GGUF files are arch-independent):
-//   apps/app/android/app/src/main/assets/agent/models/<file>.gguf
-//   apps/app/android/app/src/main/assets/agent/models/manifest.json
+//   packages/app-core/platforms/android/app/src/main/assets/agent/models/<file>.gguf
+//   packages/app-core/platforms/android/app/src/main/assets/agent/models/manifest.json
 //
 // On-device: ElizaAgentService (or any white-label fork's equivalent)
 // extracts assets/agent/models/* into the per-user state dir's
@@ -25,9 +25,9 @@
 //
 // APK size impact (Q4_K_M quants):
 //   eliza-1-2B                   ~1.2 GB
-//   eliza-1-0.8B                   ~0.5 GB
+//   kokoro voice + preset        ~0.2 GB
 //   --------------------------------------
-//   total                          ~1.7 GB
+//   total                          ~1.4 GB
 //
 // Opt out for builders who want to download at runtime instead:
 //   --skip-bundled-models       (passed by build-aosp.mjs)
@@ -56,8 +56,8 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * eliza/packages/app-core/src/services/local-inference/catalog.ts so the
  * runtime registry treats them as known catalog models, not orphans.
  *
- * The Android image bundles the two mobile-friendly chat tiers so first boot
- * can pick 2B on modern devices and fall back to 0.8B on tight RAM.
+ * The Android image bundles the 2B chat tier — the smallest/entry tier and the
+ * small-phone floor — so first boot has a local chat model on tight RAM.
  *
  * Sizes are sanity-checked at download time. If HuggingFace serves
  * a smaller file (e.g. partial download, repo deleted, replaced) the
@@ -74,34 +74,58 @@ const CHAT_MODEL_ELIZA_1_MOBILE = {
   role: "chat",
 };
 
-const CHAT_MODEL_ELIZA_1_LITE = {
-  id: "eliza-1-0_8b",
-  displayName: "eliza-1-0.8B",
+// Kokoro-82M voice — the on-device TTS voice. Without it the bundle has no
+// tts/ model, so the runtime can't synthesize and the app falls back to the
+// platform TextToSpeech (the "android voice"). Kokoro is the small/fast voice
+// (~167 MB acoustic GGUF + a ~0.5 MB speaker preset), so bundling it keeps
+// first-boot voice working offline with no runtime download. Staged into
+// tts/kokoro/, exactly where the fused FFI's Kokoro loader (and
+// ElizaBionicInferenceServer.tts()) resolves it.
+const VOICE_MODEL_KOKORO = {
+  id: "eliza-1-kokoro",
+  displayName: "Eliza-1 Voice (Kokoro)",
   hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-  ggufFile: "text/eliza-1-0_8b-128k.gguf",
-  expectedMinBytes: 300 * 1024 * 1024,
-  expectedMaxBytes: 800 * 1024 * 1024,
-  role: "chat",
+  hfPath: "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+  ggufFile: "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+  expectedMinBytes: 150 * 1024 * 1024,
+  expectedMaxBytes: 200 * 1024 * 1024,
+  role: "tts",
+};
+
+const VOICE_PRESET_KOKORO = {
+  id: "eliza-1-kokoro-voice-af-sam",
+  displayName: "Eliza-1 Voice preset (af_sam)",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "voice/kokoro/voices/af_sam.bin",
+  ggufFile: "tts/kokoro/af_sam.bin",
+  expectedMinBytes: 256 * 1024,
+  expectedMaxBytes: 1024 * 1024,
+  role: "tts",
 };
 
 export const DEFAULT_MODELS = [
   CHAT_MODEL_ELIZA_1_MOBILE,
-  CHAT_MODEL_ELIZA_1_LITE,
+  VOICE_MODEL_KOKORO,
+  VOICE_PRESET_KOKORO,
 ];
 
-const ASSETS_MODELS_DIR = path.join(
-  repoRoot,
-  "apps",
-  "app",
-  "android",
-  "app",
-  "src",
-  "main",
-  "assets",
-  "agent",
-  "models",
-);
+export function resolveDefaultModelsAssetsDir(root = repoRoot) {
+  return path.join(
+    root,
+    "packages",
+    "app-core",
+    "platforms",
+    "android",
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+    "models",
+  );
+}
+
+const ASSETS_MODELS_DIR = resolveDefaultModelsAssetsDir(repoRoot);
 
 const MANIFEST_PATH = path.join(ASSETS_MODELS_DIR, "manifest.json");
 

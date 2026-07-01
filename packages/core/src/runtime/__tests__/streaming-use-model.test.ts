@@ -171,6 +171,46 @@ describe("AgentRuntime structured streaming", () => {
 		});
 	});
 
+	it("stops emitting non-local stream chunks once the abort signal fires mid-stream", async () => {
+		// runtime.ts: the non-local textStream loop checks `abortSignal?.aborted`
+		// at the top of each iteration. Aborting after the first chunk must break
+		// the loop so no further chunks reach the chat SSE callback, and the
+		// trailing flush must not emit a partial/garbled tail.
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const controller = new AbortController();
+		const handler = vi.fn(async () => ({
+			textStream: (async function* () {
+				yield "a";
+				yield "b";
+				yield "c";
+			})(),
+			text: Promise.resolve("abc"),
+			usage: Promise.resolve(undefined),
+			finishReason: Promise.resolve("stop"),
+		}));
+		runtime.registerModel(ModelType.ACTION_PLANNER, handler, "openai");
+
+		await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				abortSignal: controller.signal,
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+					// Abort right after the first chunk is delivered.
+					controller.abort();
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.ACTION_PLANNER, {
+					messages: [],
+				}),
+		);
+
+		// Only the first chunk was delivered; "b"/"c" were suppressed by the abort.
+		expect(streamed).toEqual(["a"]);
+	});
+
 	it("passes streaming-context callbacks to local handlers for plain text streams", async () => {
 		const runtime = makeRuntime();
 		const streamed: string[] = [];
@@ -206,6 +246,79 @@ describe("AgentRuntime structured streaming", () => {
 
 		expect(result).toBe("Hello there.");
 		expect(streamed).toEqual(["Hello", " there."]);
+	});
+
+	it("does not leak hidden local image-description calls into ambient chat streams", async () => {
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				stream?: boolean;
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			expect(streamingParams.stream).toBe(false);
+			expect(streamingParams.onStreamChunk).toBeUndefined();
+			return { title: "Image", description: "internal caption" };
+		});
+		runtime.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			handler,
+			"eliza-local-inference",
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+					imageUrl: "data:image/png;base64,aa==",
+				}),
+		);
+
+		expect(result).toEqual({ title: "Image", description: "internal caption" });
+		expect(streamed).toEqual([]);
+	});
+
+	it("passes image-description stream callbacks only when explicitly requested", async () => {
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				stream?: boolean;
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			expect(streamingParams.stream).toBe(true);
+			expect(typeof streamingParams.onStreamChunk).toBe("function");
+			await streamingParams.onStreamChunk?.("visible ");
+			await streamingParams.onStreamChunk?.("caption");
+			return { title: "Image", description: "visible caption" };
+		});
+		runtime.registerModel(
+			ModelType.IMAGE_DESCRIPTION,
+			handler,
+			"eliza-local-inference",
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+					imageUrl: "data:image/png;base64,aa==",
+					stream: true,
+				}),
+		);
+
+		expect(result).toEqual({ title: "Image", description: "visible caption" });
+		expect(streamed).toEqual(["visible ", "caption"]);
 	});
 
 	it("treats built-in Eliza local providers as local model routes", () => {

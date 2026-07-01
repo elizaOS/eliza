@@ -13,6 +13,7 @@
 // === API routes ===
 export {
   type AppManagerLike,
+  type AppsRouteActorRole,
   type AppsRouteContext,
   type FavoriteAppsStore,
   handleAppsRoutes,

@@ -97,12 +97,14 @@ describe("useInventoryData amount handling", () => {
 
       expect(result.current.totalUsd).toBe(10);
       expect(result.current.primaryNativeBalanceNum).toBe(0);
-      expect(result.current.tokenRows.every((row) => Number.isFinite(row.valueUsd))).toBe(
-        true,
-      );
-      expect(result.current.tokenRows.every((row) => Number.isFinite(row.balanceRaw))).toBe(
-        true,
-      );
+      expect(
+        result.current.tokenRows.every((row) => Number.isFinite(row.valueUsd)),
+      ).toBe(true);
+      expect(
+        result.current.tokenRows.every((row) =>
+          Number.isFinite(row.balanceRaw),
+        ),
+      ).toBe(true);
       unmount();
     }
   });

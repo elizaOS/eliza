@@ -104,7 +104,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
 
       const { dlopen, FFIType, ptr, CString } = bunFFI;
 
-      let lib;
+      let lib: ReturnType<BunFFIModule["dlopen"]>;
       try {
         lib = dlopen(libPath, {
           yolo_init: { args: [FFIType.cstring], returns: FFIType.pointer },
@@ -126,7 +126,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
       } catch (error) {
         logger.warn(
           `${MODULE_TAG} dlopen failed for ${libPath}:`,
-          error instanceof Error ? error.message : error,
+          error instanceof Error ? error.message : String(error),
         );
         return null;
       }
@@ -136,7 +136,7 @@ export async function loadYoloBindings(): Promise<YoloBindings | null> {
       async function ensureCtx(gguf: string): Promise<unknown> {
         const cached = ctxCache.get(gguf);
         if (cached) return cached;
-        const cstr = Buffer.from(gguf + "\0", "utf-8");
+        const cstr = Buffer.from(`${gguf}\0`, "utf-8");
         const handle = lib.symbols.yolo_init(ptr(cstr));
         if (!handle) {
           throw new Error(

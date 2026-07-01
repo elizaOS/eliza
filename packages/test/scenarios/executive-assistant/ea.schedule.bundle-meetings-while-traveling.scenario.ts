@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.schedule.bundle-meetings-while-traveling",
   title: "Bundle related meetings while the user is briefly in a city",
   domain: "executive-assistant",

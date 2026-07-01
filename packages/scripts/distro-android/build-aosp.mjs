@@ -3,13 +3,12 @@
  * build-aosp.mjs — Brand-aware orchestrator for the AOSP/Cuttlefish build.
  *
  * Pipeline (each step optional via flags):
- *   1. Cross-compile libllama.so per ABI (skipLibllama)
- *   2. Rebuild the privileged APK with brand AOSP env (rebuildPrivilegedApk)
- *   3. Sync the brand vendor tree into the AOSP checkout (syncToAosp)
- *   4. Validate the synced product layer (validate)
- *   5. m -j<jobs> with the brand lunch target (skipBuild)
- *   6. cvd start --daemon (launch)
- *   7. boot-validate.mjs (bootValidate)
+ *   1. Rebuild the privileged APK with brand AOSP env (rebuildPrivilegedApk)
+ *   2. Sync the brand vendor tree into the AOSP checkout (syncToAosp)
+ *   3. Validate the synced product layer (validate)
+ *   4. m -j<jobs> with the brand lunch target (skipBuild)
+ *   5. cvd start --daemon (launch)
+ *   6. boot-validate.mjs (bootValidate)
  *
  * Brand resolution: --brand-config <PATH> | $DISTRO_ANDROID_BRAND_CONFIG | brand.eliza.json
  */
@@ -20,7 +19,6 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.mjs";
-import { main as compileLibllamaMain } from "./compile-libllama.mjs";
 import { main as syncToAospMain } from "./sync-to-aosp.mjs";
 import { main as validateMain } from "./validate.mjs";
 
@@ -47,11 +45,6 @@ export function parseSubArgs(argv) {
     launch: false,
     bootValidate: false,
     skipStopCvd: false,
-    // AOSP builds need a musl-linked libllama.so per ABI for the on-device
-    // bun process to dlopen via bun:ffi. Default on; --skip-libllama lets
-    // developers iterate on non-inference paths without paying the
-    // llama.cpp cross-compile cost.
-    skipLibllama: false,
     // When set, also re-run `<brand.buildAndroidSystemCmd>` with AOSP env
     // flags so the privileged APK staged into vendor/<brand> is rebuilt
     // with libllama.so + BuildConfig.AOSP_BUILD=true.
@@ -85,13 +78,11 @@ export function parseSubArgs(argv) {
       args.bootValidate = true;
     } else if (arg === "--skip-stop-cvd") {
       args.skipStopCvd = true;
-    } else if (arg === "--skip-libllama") {
-      args.skipLibllama = true;
     } else if (arg === "--rebuild-privileged-apk") {
       args.rebuildPrivilegedApk = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node packages/scripts/distro-android/build-aosp.mjs [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--skip-stop-cvd] [--skip-libllama] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
+        "Usage: node packages/scripts/distro-android/build-aosp.mjs [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--skip-stop-cvd] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("--")) {
@@ -227,14 +218,11 @@ export async function main(argv = process.argv.slice(2)) {
 
   const brandConfigArgs = ["--brand-config", brand.brandConfigPath];
 
-  // Cross-compile libllama.so per ABI BEFORE we rebuild the privileged
-  // APK (so it's already in assets/agent/{abi}/ when gradle packs the
-  // APK) and BEFORE we sync the vendor tree into AOSP (so the synced
-  // APK contains it). The compile step is idempotent — `--skip-if-present`
-  // keeps re-runs cheap.
-  if (!args.skipLibllama) {
-    await compileLibllamaMain([...brandConfigArgs, "--skip-if-present"]);
-  }
+  // AOSP inference is served bionic-side, not via a per-ABI musl libllama.so.
+  // When the fused libelizainference.so + libggml-vulkan.so are staged in the
+  // privileged APK, ElizaAgentService delegates inference over the abstract UDS
+  // to ElizaBionicInferenceServer, so the OS-image bun process never dlopens
+  // its own libllama.so.
 
   if (args.rebuildPrivilegedApk) {
     rebuildPrivilegedApk(brand);

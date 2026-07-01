@@ -1,0 +1,23 @@
+{
+  "package": "eliza-plugin-klymax402",
+  "repository": "github:Br0ski777/eliza-plugin-klymax402",
+  "kind": "plugin",
+  "description": "15 x402 pay-per-call APIs on Base for ElizaOS agents — stock prices, B2B enrichment, web search, crypto funding rates, SEO analysis, NLP, SSL/DNS checks and more. Agents pay USDC per call with no API keys.",
+  "homepage": "https://klymax402.com",
+  "version": "0.1.0",
+  "tags": [
+    "x402",
+    "payments",
+    "base",
+    "usdc",
+    "micropayments",
+    "stock-price",
+    "b2b-enrichment",
+    "web-search",
+    "crypto",
+    "defi",
+    "seo",
+    "nlp",
+    "agentic-payments"
+  ]
+}

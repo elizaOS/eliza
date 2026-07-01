@@ -19,7 +19,7 @@ import {
 	enforceVerbosity,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
-import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
+import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
 	INFERENCE_MARKS,
@@ -30,6 +30,7 @@ import {
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
+import { fetchRemoteMedia } from "../media/fetch";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
 import {
@@ -40,7 +41,11 @@ import {
 import { retrieveActions } from "../runtime/action-retrieval";
 import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
-import { applyAddressedTo } from "../runtime/addressed-to";
+import {
+	addresseeIsNonOwnerBot,
+	applyAddressedTo,
+} from "../runtime/addressed-to";
+import { normalizeTopics } from "../runtime/builtin-field-evaluators";
 import {
 	filterByContextGate,
 	satisfiesContextGate,
@@ -75,7 +80,11 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
-import { parseJsonObject } from "../runtime/json-output";
+import {
+	extractJsonObjects,
+	parseJsonObject,
+	stripJsonStructuralJunkReply,
+} from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -98,6 +107,7 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import { privateActionAllowedOnTurn } from "../runtime/private-action-gate";
 import {
 	buildResponseGrammar,
 	buildSpanSamplerPlan,
@@ -115,10 +125,7 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
-import {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "../runtime/stage1-honesty-detector";
+import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -127,7 +134,6 @@ import {
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
-import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
@@ -186,6 +192,7 @@ import type {
 } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
+import type { ShortcutMatch } from "../types/shortcut";
 import type { State } from "../types/state";
 import type {
 	StreamingContextEventPayload,
@@ -224,18 +231,41 @@ import {
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
+import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
+import {
+	findAvailableActionName,
+	findWebLookupActionName,
+	findWebLookupActionNames,
+	inferDirectCurrentRequestCandidateActions as inferDirectCurrentRequestCandidateActionsFromHeuristics,
+	inferLocalShellCommandFromMessageText,
+	inferWebSearchQueryFromMessageText,
+	looksLikeLocalShellRequest,
+	looksLikeWebSearchRequest,
+} from "./message/direct-action-heuristics";
+import {
+	buildFailureReplyPrompt,
+	isAuthError,
+	isRateLimitError,
+	stripReasoningBlocks,
+} from "./message/fallback-reply";
+import {
+	extractGenerateTextContentText,
+	getV5ModelText,
+} from "./message/generate-text-result";
 import type { OptimizedPromptTask } from "./optimized-prompt";
 import {
 	type OptimizedPromptRuntimeLike,
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
 
-const PLANNER_CONTROL_ACTIONS = new Set(
-	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
-);
-const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
-const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
+export {
+	findWebLookupActionName,
+	findWebLookupActionNames,
+	inferLocalShellCommandFromMessageText,
+	inferWebSearchQueryFromMessageText,
+};
+
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -247,6 +277,7 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
 	"relationships",
+	"topics",
 	"addressedTo",
 	"emotion",
 ]);
@@ -612,102 +643,6 @@ function resolvePlannerActionNameFromLookup(
 	return [];
 }
 
-function normalizePlannerProviders(
-	parsedPlanner: Record<string, unknown>,
-	runtime?: IAgentRuntime,
-): string[] {
-	const providerNames = extractPlannerProviderNames(parsedPlanner);
-
-	if (!runtime) {
-		return providerNames;
-	}
-
-	const providerLookup = new Map<string, string>();
-	for (const provider of runtime.providers ?? []) {
-		const normalized = normalizeActionIdentifier(provider.name);
-		if (!normalized || providerLookup.has(normalized)) {
-			continue;
-		}
-		providerLookup.set(normalized, provider.name);
-	}
-	const normalizedProviders = providerNames
-		.map((providerName) => {
-			const normalizedProviderName = normalizeActionIdentifier(providerName);
-			const canonicalProvider =
-				providerLookup.get(normalizedProviderName) ??
-				(() => {
-					const aliasedProvider = PLANNER_PROVIDER_ALIASES.get(
-						normalizedProviderName,
-					);
-					if (!aliasedProvider) {
-						return undefined;
-					}
-					return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
-				})();
-			if (canonicalProvider) {
-				return canonicalProvider;
-			}
-			runtime.logger.warn(
-				{
-					src: "service:message",
-					providerName,
-				},
-				"Dropping unknown planner provider",
-			);
-			return "";
-		})
-		.filter((providerName) => providerName.length > 0);
-
-	if (normalizedProviders.length === 0) {
-		return normalizedProviders;
-	}
-
-	const providerDefinitions = new Map(
-		(runtime.providers ?? []).map((provider) => [
-			normalizeActionIdentifier(provider.name),
-			provider,
-		]),
-	);
-	const expandedProviders = [...normalizedProviders];
-	const seenProviders = new Set(
-		expandedProviders.map((providerName) =>
-			normalizeActionIdentifier(providerName),
-		),
-	);
-
-	for (let index = 0; index < expandedProviders.length; index += 1) {
-		const providerName = expandedProviders[index];
-		const providerDefinition = providerDefinitions.get(
-			normalizeActionIdentifier(providerName),
-		);
-		const companionProviders = providerDefinition?.companionProviders ?? [];
-		for (const companionProvider of companionProviders) {
-			const canonicalCompanion = providerLookup.get(
-				normalizeActionIdentifier(companionProvider),
-			);
-			if (!canonicalCompanion) {
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						providerName,
-						companionProvider,
-					},
-					"Dropping unknown companion provider",
-				);
-				continue;
-			}
-			const normalizedCompanion = normalizeActionIdentifier(canonicalCompanion);
-			if (seenProviders.has(normalizedCompanion)) {
-				continue;
-			}
-			seenProviders.add(normalizedCompanion);
-			expandedProviders.push(canonicalCompanion);
-		}
-	}
-
-	return expandedProviders;
-}
-
 function isStructuredPlannerIdentifier(value: string): boolean {
 	const unwrapped = unwrapPlannerIdentifier(value).trim();
 	return /^[A-Za-z][A-Za-z0-9_:-]*$/u.test(unwrapped);
@@ -1023,7 +958,9 @@ function latestMessageHistoryCompactionTelemetry(
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return undefined;
 	}
-	return value as unknown as MessageHistoryCompactionTelemetry;
+	// The guards above narrow `value` to a non-null, non-array object, so a plain
+	// downcast suffices here — no `as unknown` laundering needed.
+	return value as MessageHistoryCompactionTelemetry;
 }
 
 function appendMessageHistoryCompactionTelemetry(
@@ -1037,11 +974,8 @@ function appendMessageHistoryCompactionTelemetry(
 		...state,
 		data: {
 			...state.data,
-			messageHistoryCompaction: telemetry as unknown as State["data"][string],
-			messageHistoryCompactionHistory: [
-				...history,
-				telemetry as unknown as State["data"][string],
-			].slice(-10) as unknown as State["data"][string],
+			messageHistoryCompaction: telemetry,
+			messageHistoryCompactionHistory: [...history, telemetry].slice(-10),
 		},
 	};
 }
@@ -1321,18 +1255,17 @@ function _escapeHandlebars(text: string): string {
 	return text.replace(/\{\{\{|\{\{/g, (match) => `\\${match}`);
 }
 
-/**
- * Image description response from the model
- */
-interface ImageDescriptionResponse {
-	description: string;
-	title?: string;
-}
-
 type MediaWithInlineData = Media & {
 	_data?: unknown;
 	_mimeType?: unknown;
 };
+
+/**
+ * Hard cap on bytes fetched while enriching a single attachment (description /
+ * transcription / text extraction). Bounds memory and is enforced by the
+ * SSRF-guarded fetcher for remote URLs and explicitly for local ones.
+ */
+const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
@@ -1467,61 +1400,15 @@ interface StrategyResult {
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" }
-	| { kind: "rateLimited" };
+	| { kind: "rateLimited" }
+	| { kind: "authFailed" };
 
-/**
- * Detect provider rate-limit / 429 failures so the user-facing failure reply
- * can say "I'm being rate-limited, try again shortly" instead of the opaque
- * generic "something went wrong". The AI SDK surfaces these as
- * `AI_RetryError: Failed after N attempts. Last error: Too Many Requests`.
- */
-export function isRateLimitError(error: unknown): boolean {
-	if (!(error instanceof Error)) return false;
-	const haystack = `${error.name} ${error.message}`.toLowerCase();
-	return (
-		haystack.includes("too many requests") ||
-		haystack.includes("rate limit") ||
-		haystack.includes("rate_limit") ||
-		haystack.includes("ratelimit") ||
-		/\b429\b/.test(haystack)
-	);
-}
-
-export function buildFailureReplyPrompt(recentMessages: string): string {
-	return [
-		"You hit a transient model error and have to send a short user-facing reply.",
-		"Write a one or two sentence reply in plain language.",
-		"",
-		"Hard rules:",
-		"- Stay in character. Keep your usual voice and tone.",
-		"- NEVER answer the user's question on the merits.",
-		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
-		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
-		"- Acknowledge that something went wrong and suggest a retry.",
-		"- Do not paraphrase or echo the user's question as if you are about to answer it.",
-		"- NEVER mention internal mechanism words such as: planner, action_planner,",
-		"  XML, JSON, schema, structured output, model, retries, sonnet,",
-		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-		"  loop, runtime, dispatch, or hand off. The user does not know or care",
-		"  what those are.",
-		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-		"",
-		"Recent Conversation:",
-		recentMessages,
-		"",
-		"Reply:",
-	].join("\n");
-}
-
-export function stripReasoningBlocks(raw: string): string {
-	return raw
-		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-		.replace(/^[\s\S]*?<\/think>/i, "")
-		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
-		.replace(/\/?\bno_think\b/gi, "")
-		.trim();
-}
+export {
+	buildFailureReplyPrompt,
+	isAuthError,
+	isRateLimitError,
+	stripReasoningBlocks,
+} from "./message/fallback-reply";
 
 export type V5MessageRuntimeStage1Result =
 	| {
@@ -1541,57 +1428,47 @@ type ResponseHandlerEarlyReplyEvent = {
 	messageHandler: MessageHandlerResult;
 };
 
-function getV5ModelText(raw: string | GenerateTextResult): string {
-	if (typeof raw === "string") {
-		return raw;
-	}
-	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
-		return raw.text;
-	}
-	const contentText = extractGenerateTextContentText(raw);
-	if (contentText.trim().length > 0) {
-		return contentText;
-	}
-	const responseText = (raw as unknown as Record<string, unknown>).response;
-	if (typeof responseText === "string" && responseText.trim().length > 0) {
-		return responseText;
-	}
-	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
-}
-
-function extractGenerateTextContentText(raw: GenerateTextResult): string {
-	const content = (raw as unknown as Record<string, unknown>).content;
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const part of content) {
-		if (typeof part === "string") {
-			parts.push(part);
-			continue;
-		}
-		if (!part || typeof part !== "object" || Array.isArray(part)) continue;
-		const entry = part as Record<string, unknown>;
-		const type =
-			typeof entry.type === "string" ? entry.type.toLowerCase() : undefined;
-		const text =
-			typeof entry.text === "string"
-				? entry.text
-				: typeof entry.content === "string"
-					? entry.content
-					: "";
-		if (!text) continue;
-		if (!type || type === "text" || type === "output_text") {
-			parts.push(text);
-		}
-	}
-	return parts.join("");
-}
-
 function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
 	return (
 		message.content?.channelType === ChannelType.VOICE_DM ||
 		message.content?.channelType === ChannelType.VOICE_GROUP
 	);
+}
+
+/** A multi-party voice room (≥1 agent, ≥1 human / other agents). */
+function isVoiceGroupChannelMessage(message: Pick<Memory, "content">): boolean {
+	return message.content?.channelType === ChannelType.VOICE_GROUP;
+}
+
+/**
+ * Multi-agent / multi-speaker voice-room turn-taking (#8786). An agent DEFERS
+ * (suppresses its reply) when the turn is explicitly addressed to OTHER
+ * participants and not to this agent — the "only the addressed agent replies"
+ * contract that keeps ≥3-participant rooms from devolving into a cross-talk
+ * storm where every agent answers every utterance.
+ *
+ * Pure + deterministic. An empty `addressedTo` (no explicit target) never
+ * suppresses — normal `shouldRespond` decides — so a single-agent group room
+ * and undirected questions are unaffected; only an utterance directed AT a
+ * named participant who is not this agent is gated. Fails OPEN (no suppression)
+ * when this agent cannot be identified.
+ */
+function voiceGroupAddressSuppressesAgent(
+	addressedTo: readonly string[] | undefined,
+	selfIdentifiers: readonly string[],
+): boolean {
+	if (!Array.isArray(addressedTo) || addressedTo.length === 0) return false;
+	const self = new Set(
+		selfIdentifiers.map((s) => s.trim().toLowerCase()).filter(Boolean),
+	);
+	if (self.size === 0) return false; // can't identify self → fail open
+	const targets = addressedTo
+		.map((t) => t.trim().toLowerCase())
+		.filter(Boolean);
+	if (targets.length === 0) return false;
+	// Addressed to me (possibly among others) → not suppressed. Addressed only
+	// to others → defer to the agent who was named.
+	return !targets.some((t) => self.has(t));
 }
 
 type VoiceTurnSignalMetadata = {
@@ -1602,7 +1479,7 @@ type VoiceTurnSignalMetadata = {
 	model?: string;
 };
 
-function getVoiceTurnSignalMetadata(
+export function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
 	const content = message.content;
@@ -1644,7 +1521,32 @@ function getVoiceTurnSignalMetadata(
 	return Object.keys(signal).length > 0 ? signal : null;
 }
 
-function voiceTurnSignalSuppressesAgent(
+/**
+ * The resolved speaker entity for a voice turn (#8786). Voice attribution
+ * (imprint cluster → entityId) writes `speakerEntityId` onto the turn; like
+ * {@link getVoiceTurnSignalMetadata} it can arrive top-level (`content.speaker
+ * EntityId`, the in-process engine path) or nested under `content.metadata`
+ * (chat clients). Returns the trimmed id, or null when the speaker is unbound.
+ */
+export function getVoiceSpeakerEntityId(
+	message: Pick<Memory, "content">,
+): string | null {
+	const content = message.content;
+	const nested =
+		content?.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata)
+			? (content.metadata as Record<string, unknown>).speakerEntityId
+			: undefined;
+	const value =
+		(content as { speakerEntityId?: unknown } | undefined)?.speakerEntityId ??
+		nested;
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+export function voiceTurnSignalSuppressesAgent(
 	signal: VoiceTurnSignalMetadata | null,
 ): boolean {
 	if (!signal) return false;
@@ -1656,8 +1558,109 @@ function voiceTurnSignalSuppressesAgent(
 	);
 }
 
+/**
+ * The turn signal POSITIVELY confirms the agent should reply — the server-side
+ * "decide, don't just veto" path (#8786). Conservative: it only fires on the
+ * EXPLICIT `agentShouldSpeak === true` signal (the client sets this on a
+ * wake-word / direct-address turn), and only when end-of-turn doesn't read as
+ * the user still talking. Used to PROMOTE an IGNORE to RESPOND; it never
+ * overrides an explicit STOP or an already-RESPOND decision.
+ */
+export function voiceTurnSignalConfirmsAgent(
+	signal: VoiceTurnSignalMetadata | null,
+): boolean {
+	if (!signal) return false;
+	return (
+		signal.agentShouldSpeak === true &&
+		signal.nextSpeaker !== "user" &&
+		(typeof signal.endOfTurnProbability !== "number" ||
+			signal.endOfTurnProbability >= 0.4)
+	);
+}
+
+/**
+ * Read the transcription-mode flag off a turn. Mirrors
+ * {@link getVoiceTurnSignalMetadata}: chat clients nest custom fields under
+ * `content.metadata` (where the conversation route persists a request's
+ * `metadata`), while in-process callers may set `content.transcriptionMode`
+ * at top level — read both. Transcription mode records the user turn into the
+ * conversation but suppresses the agent's reply (long-form "transcribe, agent
+ * stays silent until an exit phrase").
+ */
+export function transcriptionModeActive(
+	message: Pick<Memory, "content">,
+): boolean {
+	const content = message.content;
+	if (content?.transcriptionMode === true) return true;
+	const metadata = content?.metadata;
+	if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+		return (metadata as Record<string, unknown>).transcriptionMode === true;
+	}
+	return false;
+}
+
 function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
+const MEDIA_CONTENT_URL_RE =
+	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+
+function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
+	const urls = new Set<string>();
+	for (const result of actionResults) {
+		if (!result.success) continue;
+		const data = result.data;
+		if (!data || typeof data !== "object") continue;
+		for (const key of [
+			"videoUrl",
+			"mediaUrl",
+			"imageUrl",
+			"audioUrl",
+			"url",
+		] as const) {
+			const value = data[key];
+			if (typeof value === "string" && value.trim()) {
+				urls.add(value.trim());
+			}
+		}
+	}
+	return [...urls];
+}
+
+export function sanitizeReplyTextAfterMediaDelivery(
+	text: string,
+	deliveredUrls: readonly string[],
+): string {
+	let cleaned = text.trim();
+	if (!cleaned) return cleaned;
+
+	for (const url of deliveredUrls) {
+		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+	}
+	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = cleaned
+		.replace(
+			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
+			"",
+		)
+		.replace(/:\s*$/g, "")
+		.replace(/<\s*>/g, "")
+		.replace(/\(\s*\)/g, "")
+		.replace(/\s{2,}/g, " ")
+		.trim();
+
+	if (
+		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
+			cleaned,
+		)
+	) {
+		cleaned = "";
+	}
+
+	return cleaned;
 }
 
 function createV5ReplyStrategyResult(args: {
@@ -1668,6 +1671,7 @@ function createV5ReplyStrategyResult(args: {
 	text: string;
 	thought: string;
 	mode?: StrategyMode;
+	attachments?: Media[];
 }): StrategyResult {
 	const responseContent: Content = {
 		thought: args.thought,
@@ -1676,6 +1680,7 @@ function createV5ReplyStrategyResult(args: {
 		text: args.text,
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
+		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 	};
 
 	return {
@@ -2029,7 +2034,7 @@ function getRecentConversationSearchText(
 		return [];
 	}
 	return recentMessages
-		.filter((memory): memory is Memory => {
+		.filter((memory): memory is Memory & { content: { text: string } } => {
 			if (!memory || typeof memory !== "object") return false;
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
@@ -2039,7 +2044,7 @@ function getRecentConversationSearchText(
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 		.slice(0, 8)
-		.map((memory) => memory.content.text?.trim() ?? "")
+		.map((memory) => memory.content.text.trim())
 		.filter(Boolean);
 }
 
@@ -2172,6 +2177,11 @@ async function collectV5PlannerCandidateActions(args: {
 		if (!normalizedName || seen.has(normalizedName)) {
 			return false;
 		}
+		// Private actions are reserved for the agent's own autonomous loop and
+		// must never be exposed to the planner on a user-driven turn.
+		if (!privateActionAllowedOnTurn(action, args.message)) {
+			return false;
+		}
 		if (
 			!actionPassesPlannerExecutionGates({
 				action,
@@ -2293,6 +2303,35 @@ function mergeAgentContexts(
 	}
 	return merged;
 }
+
+/**
+ * The agent contexts a focused coding sub-agent (the eliza-code ACP server,
+ * which sets ELIZA_PLANNER_FULL_ACTION_SURFACE) is considered to be operating in.
+ * Used to admit the coding tools (FILE/SHELL/WORKTREE gate on these) while the
+ * messaging/social chat actions stay gated off.
+ */
+const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
+	"code",
+	"files",
+	"terminal",
+	"automation",
+];
+
+/**
+ * Parent actions a coding sub-agent never needs, excluded from its planner
+ * surface even though they'd otherwise pass the coding-context gate. Each extra
+ * tool schema enlarges the request, and a large tool set + a large file
+ * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
+ * intermittently reject the request (server_error / 400) or narrate instead of
+ * emitting FILE. A coding sub-agent does not open/close UI views or spawn its
+ * own sub-agents, so dropping these trims the surface toward the tools that
+ * actually do the work (FILE/SHELL/WORKTREE/WEB/REPLY/STOP).
+ */
+const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
+	// Stored in normalizeActionIdentifier() form (uppercase, underscores
+	// stripped), since that is what the filter compares against.
+	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
+);
 
 function actionPassesPlannerExecutionGates(args: {
 	action: Action;
@@ -2430,7 +2469,25 @@ function buildV5PlannerActionSurface(params: {
 		params.messageHandler,
 	);
 
-	if (params.actions.length === 0) {
+	// Expose EVERY action as a native tool (no tiering) when the action set is
+	// empty, OR when explicitly forced. Tiering is built for large chat catalogs
+	// (30+ actions → expose the relevant few); a focused coding sub-agent has a
+	// small, all-relevant tool set (FILE/SHELL/READ/EDIT/…) and MUST get them all
+	// exposed natively — otherwise the model sees a tool in the prompt but cannot
+	// call it (it lands in tier-B, described-only), narrates instead of acting, and
+	// trips the terminal-only-continuations guard. `ELIZA_PLANNER_FULL_ACTION_SURFACE=1`
+	// opts a runtime into full mode (the eliza-code ACP coding agent sets it).
+	const fullSurfaceFlag =
+		typeof process !== "undefined"
+			? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
+			: undefined;
+	const forceFullSurface =
+		fullSurfaceFlag === "1" ||
+		fullSurfaceFlag === "true" ||
+		fullSurfaceFlag === "yes" ||
+		fullSurfaceFlag === "on" ||
+		params.actions.length === 0;
+	if (forceFullSurface) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
 			candidateActions,
@@ -2444,9 +2501,21 @@ function buildV5PlannerActionSurface(params: {
 		params.localizedExamples,
 	);
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
+	const messageText = getUserMessageText(params.message);
+	if (typeof messageText !== "string") {
+		params.logger?.warn(
+			{
+				src: "service:message",
+				messageId: params.message.id,
+			},
+			"Planner action retrieval received message without text",
+		);
+	}
+	const retrievalMessageText =
+		typeof messageText === "string" ? messageText : "";
 	const retrieval = retrieveActions({
 		catalog,
-		messageText: getUserMessageText(params.message) ?? "",
+		messageText: retrievalMessageText,
 		recentConversationText: getRecentConversationSearchText(
 			params.state,
 			params.message,
@@ -2486,6 +2555,26 @@ function buildV5PlannerActionSurface(params: {
 		}
 	}
 
+	// Every candidate action the message-handler proposed is described to the
+	// planner (and reinforced by action examples), so each MUST also be callable.
+	// Tiering can otherwise leave a proposed action in the described-only tier:
+	// the model then emits a tool_call the surface rejects as "unavailable",
+	// burning unavailable-tool retries and — for delegation (TASKS_SPAWN_AGENT) —
+	// silently breaking the hand-off (observed live: the planner called
+	// TASKS_SPAWN_AGENT, it was unavailable, and the build never delegated). The
+	// candidate set is already narrowed to the relevant actions, so exposing the
+	// registered ones keeps the callable surface tight.
+	for (const name of candidateActions) {
+		const normalized = normalizeActionIdentifier(name);
+		if (
+			params.actions.some(
+				(action) => normalizeActionIdentifier(action.name) === normalized,
+			)
+		) {
+			exposedActionNames.add(normalized);
+		}
+	}
+
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
@@ -2502,7 +2591,7 @@ function buildV5PlannerActionSurface(params: {
 				latencyMs: toolSearchEndedAt - toolSearchStartedAt,
 				toolSearch: {
 					query: {
-						text: getUserMessageText(params.message) ?? "",
+						text: retrievalMessageText,
 						tokens: retrieval.query.tokens,
 						candidateActions: [...candidateActions],
 						parentActionHints: [...parentActionHints],
@@ -2511,11 +2600,13 @@ function buildV5PlannerActionSurface(params: {
 						name: r.name,
 						score: r.score,
 						rank: idx,
-						rrfScore: (r as unknown as { rrfScore?: number }).rrfScore,
-						matchedBy: (r as unknown as { matchedBy?: string[] }).matchedBy,
-						stageScores: (
-							r as unknown as { stageScores?: Record<string, number> }
-						).stageScores,
+						rrfScore: r.rrfScore,
+						matchedBy: r.matchedBy,
+						// stageScores is Partial<Record<RetrievalStageName, number>>;
+						// the telemetry field is the structurally-identical
+						// Record<string, number>, so a plain `as` suffices (no
+						// `as unknown as`).
+						stageScores: r.stageScores as Record<string, number>,
 					})),
 					tier: {
 						tierA: tieredSurface.sortedTierAParentNames,
@@ -2762,7 +2853,7 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
+export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
 			name: "core.voice_turn_signal",
@@ -2783,6 +2874,59 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					],
 				};
 			},
+		},
+		{
+			name: "core.voice_turn_signal_confirm",
+			description:
+				"Server-side positive decision for voice: promotes an IGNORE to RESPOND when the turn signal explicitly confirms the agent should speak (wake-word / direct-address). Never overrides an explicit STOP or an already-RESPOND decision.",
+			priority: 0,
+			shouldRun: ({ message, messageHandler }) =>
+				isVoiceChannelMessage(message) &&
+				messageHandler.processMessage === "IGNORE" &&
+				voiceTurnSignalConfirmsAgent(getVoiceTurnSignalMetadata(message)),
+			evaluate: () => ({
+				processMessage: "RESPOND",
+				debug: ["voice turn signal confirmed reply (agentShouldSpeak)"],
+			}),
+		},
+		{
+			// Runs AFTER the suppress/confirm signal gates: an explicit address to
+			// ANOTHER participant is the final word — it overrides even a generic
+			// agentShouldSpeak confirm, so a misfiring signal can't make an
+			// un-addressed agent talk over the addressed one.
+			name: "core.voice_group_address",
+			description:
+				"Multi-agent/multi-speaker voice-room turn-taking: an agent defers (IGNORE) when a VOICE_GROUP turn is explicitly addressed to another named participant and not to this agent, so only the addressed agent replies. Undirected turns are left to normal shouldRespond.",
+			priority: 0,
+			shouldRun: ({ message, runtime, messageHandler }) =>
+				isVoiceGroupChannelMessage(message) &&
+				voiceGroupAddressSuppressesAgent(
+					messageHandler.extract?.addressedTo,
+					[runtime.character?.name, runtime.agentId].filter(
+						(v): v is string => typeof v === "string" && v.length > 0,
+					),
+				),
+			evaluate: ({ runtime, messageHandler }) => ({
+				processMessage: "IGNORE",
+				requiresTool: false,
+				clearReply: true,
+				debug: [
+					`voice group: turn addressed to [${(messageHandler.extract?.addressedTo ?? []).join(", ")}], not ${runtime.character?.name ?? runtime.agentId} → defer`,
+				],
+			}),
+		},
+		{
+			name: "core.transcription_mode",
+			description:
+				"Suppresses the agent's reply while transcription mode is active (the user turn is still persisted), so long-form recording lands in the conversation silently until an exit phrase turns the mode off.",
+			priority: 0,
+			shouldRun: ({ message }) => transcriptionModeActive(message),
+			evaluate: () => ({
+				processMessage: "IGNORE",
+				requiresTool: false,
+				clearReply: true,
+				debug: ["transcription mode active — reply suppressed, turn recorded"],
+			}),
 		},
 		{
 			name: "core.simple_registered_action_request",
@@ -2823,40 +2967,6 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 		},
 	];
 
-/**
- * Baseline instruction prefix for the `response` task. When an optimized
- * artifact exists for `response`, the resolver substitutes this string with
- * the optimizer's prompt before the per-turn context is appended.
- *
- * Kept as a single string so the operator can train against the exact
- * baseline by exporting `RESPONSE_TASK_BASELINE_INSTRUCTIONS` from this
- * module if needed.
- */
-const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
-	"task: Write one direct reply to the user.",
-	"",
-	"rules:",
-	"- answer directly in the agent's voice",
-	"- when the user asks for exact words, output only those exact words",
-	`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-	"- do not select actions or tools",
-	"- do not include internal reasoning",
-	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
-].join("\n");
-
-const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
-	one: 1,
-	two: 2,
-	three: 3,
-	four: 4,
-	five: 5,
-	six: 6,
-	seven: 7,
-	eight: 8,
-	nine: 9,
-	ten: 10,
-};
-
 const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
 
 available_contexts:
@@ -2876,102 +2986,7 @@ direct/private rules:
 Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
 `;
 
-function directReplyPromptForMessage(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-}): string {
-	const latestText = getUserMessageText(args.message) ?? "";
-	const contextText = truncateToCompleteSentence(
-		(args.state.text ?? "").trim(),
-		1000,
-	);
-	const instructions = resolveOptimizedPromptForRuntime(
-		args.runtime,
-		"response",
-		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
-	);
-	return [
-		instructions,
-		"",
-		contextText ? `recent_context:\n${contextText}` : "",
-		contextText ? "" : "",
-		`user_message: ${latestText}`,
-		`routing_thought: ${args.messageHandler.thought}`,
-	]
-		.filter((line) => line.length > 0)
-		.join("\n");
-}
-
-function extractExactWordsReply(
-	text: string | null | undefined,
-): string | null {
-	const input = text?.trim();
-	if (!input) return null;
-	const match = input.match(
-		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
-	);
-	if (!match) return null;
-	const expectedCountRaw = match[1]?.toLowerCase();
-	let reply = match[2]?.trim() ?? "";
-	reply = reply.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
-	if (reply.endsWith(".") && !/[.!?]\s*["'“”‘’]$/.test(match[2] ?? "")) {
-		reply = reply.slice(0, -1).trim();
-	}
-	if (!reply) return null;
-	if (expectedCountRaw) {
-		const expectedCount = /^\d+$/.test(expectedCountRaw)
-			? Number.parseInt(expectedCountRaw, 10)
-			: EXACT_WORD_COUNT_BY_NAME[expectedCountRaw];
-		const actualCount = reply.split(/\s+/).filter(Boolean).length;
-		if (
-			Number.isFinite(expectedCount) &&
-			expectedCount > 0 &&
-			actualCount !== expectedCount
-		) {
-			return null;
-		}
-	}
-	return reply;
-}
-
-async function generateDirectReplyModel(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-	signal?: AbortSignal;
-}): Promise<{
-	text: string;
-	raw: string | GenerateTextResult;
-	prompt: string;
-}> {
-	const prompt = directReplyPromptForMessage(args);
-	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
-		prompt,
-		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-		signal: args.signal,
-		providerOptions: { eliza: { thinking: "off" } },
-	})) as string | GenerateTextResult;
-	const modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
-	return {
-		text: extractExactWordsReply(getUserMessageText(args.message)) ?? modelText,
-		raw,
-		prompt,
-	};
-}
-
-async function generateDirectReplyOnce(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	messageHandler: MessageHandlerResult;
-}): Promise<string> {
-	return (await generateDirectReplyModel(args)).text;
-}
-
-function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
+function isUnusableStage1Reply(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
 	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
@@ -2985,11 +3000,125 @@ function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	return false;
 }
 
-function canKeepStage1ReplyWhenRegenerationIsEmpty(
-	reply: string | undefined,
-): boolean {
+const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
+	one: 1,
+	two: 2,
+	three: 3,
+	four: 4,
+	five: 5,
+	six: 6,
+	seven: 7,
+	eight: 8,
+	nine: 9,
+	ten: 10,
+};
+
+function parseExactWordsInstruction(
+	text: string | null | undefined,
+): { literal: string; expectedCount?: number } | null {
+	const input = text?.trim();
+	if (!input) return null;
+	const match = input.match(
+		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
+	);
+	if (!match) return null;
+	const literal = (match[2] ?? "")
+		.trim()
+		.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+		.trim();
+	if (!literal) return null;
+	const countRaw = match[1]?.toLowerCase();
+	const expectedCount =
+		countRaw === undefined
+			? undefined
+			: /^\d+$/.test(countRaw)
+				? Number.parseInt(countRaw, 10)
+				: EXACT_WORD_COUNT_BY_NAME[countRaw];
+	return { literal, expectedCount };
+}
+
+function wordCount(text: string): number {
+	return text.split(/\s+/).filter(Boolean).length;
+}
+
+function stripIncidentalTerminalPeriod(text: string): string {
+	return text.endsWith(".") ? text.slice(0, -1).trimEnd() : text;
+}
+
+function isRequestedTerseLiteralReply(args: {
+	reply: string | undefined;
+	messageText: string | null | undefined;
+}): boolean {
+	const reply = typeof args.reply === "string" ? args.reply.trim() : "";
+	if (!reply) return false;
+	const instruction = parseExactWordsInstruction(args.messageText);
+	if (!instruction) return false;
+	if (
+		instruction.expectedCount !== undefined &&
+		(!Number.isFinite(instruction.expectedCount) ||
+			instruction.expectedCount <= 0 ||
+			wordCount(reply) !== instruction.expectedCount)
+	) {
+		return false;
+	}
+	const requested = instruction.literal;
+	if (reply === requested) return true;
+	return reply === stripIncidentalTerminalPeriod(requested);
+}
+
+/**
+ * Recognize a simple imperative to emit ONE specific literal token, e.g.
+ * "Say PONG", "say pong", "please say PONG", "can you say PONG", "reply with OK",
+ * "respond with the word HELLO", "output PONG!". The lightweight sibling of
+ * {@link parseExactWordsInstruction} (which requires the explicit
+ * "...with exactly N words: ..." form). Anchored to the whole message and a
+ * single word, so it only fires on a clear "say <token>" request — not
+ * "say something nice about cats". Returns the requested literal or null.
+ */
+function parseSayLiteralInstruction(
+	text: string | null | undefined,
+): string | null {
+	const input = text?.trim();
+	if (!input) return null;
+	// Strip a leading connector mention prefix ("Name (@123) ", "<@123> ",
+	// "@name ") so "say PONG" still parses when the user @-mentioned the agent
+	// first — Discord/Telegram render the mention into the message text, which
+	// the anchored matcher below would otherwise reject.
+	const body = input
+		.replace(/^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u, "")
+		.trim();
+	const match = body.match(
+		/^(?:(?:can|could|would|will)\s+you\s+|please\s+|just\s+|kindly\s+){0,3}(?:say|reply|respond|answer|output|return|write|type|echo|print)(?:\s+(?:with|back|the\s+word|the\s+phrase)){0,2}\s*:?\s*["'“”‘’]?([\p{L}\p{N}]{1,40})["'“”‘’]?\s*[.!?]*$/iu,
+	);
+	return match ? match[1] : null;
+}
+
+function isTerseReplyWorthKeeping(args: {
+	reply: string | undefined;
+	messageText?: string | null;
+}): boolean {
+	const reply = args.reply;
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
-	return /^\d+$/.test(trimmed);
+	if (/^\d+$/.test(trimmed)) return true;
+	if (isRequestedTerseLiteralReply({ reply, messageText: args.messageText })) {
+		return true;
+	}
+	// The user explicitly asked the agent to say a specific token and it did
+	// (case-insensitive) — that reply is intentional, not the enum/scaffold
+	// leakage isUnusableStage1Reply guards against. Keep it instead of deferring,
+	// so "Say PONG"/"Say HELLO" don't dead-end into "I'm not sure how to answer
+	// that." just because the reply is an all-caps short word.
+	const requested = parseSayLiteralInstruction(args.messageText);
+	if (requested && trimmed) {
+		const norm = (s: string) =>
+			s
+				.trim()
+				.replace(/[.!?]+$/, "")
+				.trim()
+				.toLowerCase();
+		if (norm(trimmed) === norm(requested)) return true;
+	}
+	return false;
 }
 
 /**
@@ -3235,19 +3364,74 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
-function parseToolArguments(value: unknown): Record<string, unknown> | null {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		if (typeof value !== "string") {
-			return null;
-		}
+function canonicalJsonValue(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(canonicalJsonValue).join(",")}]`;
+	}
+	if (value && typeof value === "object") {
+		const entries = Object.entries(value as Record<string, unknown>).sort(
+			([left], [right]) => left.localeCompare(right),
+		);
+		return `{${entries
+			.map(
+				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
+			)
+			.join(",")}}`;
+	}
+	return JSON.stringify(value) ?? "undefined";
+}
+
+function parseToolArgumentsString(
+	value: string,
+): Record<string, unknown> | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: null;
+	} catch {
+		// Continue to the duplicated-streaming recovery below.
+	}
+
+	const objects = extractJsonObjects(trimmed);
+	if (objects.length === 0) return null;
+
+	let remainder = trimmed;
+	for (const objectText of objects) {
+		remainder = remainder.replace(objectText, "");
+	}
+	if (remainder.replace(/\0/g, "").trim().length > 0) {
+		return null;
+	}
+
+	const parsedObjects = objects.map((objectText) => {
 		try {
-			const parsed: unknown = JSON.parse(value);
+			const parsed: unknown = JSON.parse(objectText);
 			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
 				? (parsed as Record<string, unknown>)
 				: null;
 		} catch {
 			return null;
 		}
+	});
+	if (parsedObjects.some((parsed) => !parsed)) {
+		return null;
+	}
+
+	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
+	const canonical = canonicalJsonValue(first);
+	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+		return null;
+	}
+	return first;
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return typeof value === "string" ? parseToolArgumentsString(value) : null;
 	}
 	return value as Record<string, unknown>;
 }
@@ -3374,6 +3558,9 @@ function normalizeRawParsedForFieldRegistry(
 			? extract.addressedTo
 			: [];
 	}
+	if (normalized.topics === undefined) {
+		normalized.topics = Array.isArray(extract?.topics) ? extract.topics : [];
+	}
 	return normalized;
 }
 
@@ -3430,8 +3617,9 @@ export function messageHandlerFromFieldResult(
 		!rawContexts.some((context) => context.toLowerCase() === "code")
 			? ["code", ...rawContexts]
 			: rawContexts;
-	const replyTextRaw =
-		typeof result.replyText === "string" ? result.replyText : "";
+	const replyTextRaw = stripJsonStructuralJunkReply(
+		typeof result.replyText === "string" ? result.replyText : "",
+	);
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -3531,6 +3719,7 @@ export function messageHandlerFromFieldResult(
 				.map((addressed) => String(addressed).trim())
 				.filter(Boolean)
 		: [];
+	const topics = normalizeTopics(result.topics);
 	const preempt = fieldRun?.preempt;
 	const processMessage =
 		preempt?.mode === "ignore"
@@ -3550,11 +3739,6 @@ export function messageHandlerFromFieldResult(
 	);
 	const requestedPlanning =
 		initialPlanningContexts.length > 0 || validCandidateCount > 0;
-	const stage1HonestyViolation = looksLikeStage1HonestyViolation(replyTextRaw);
-	const forceHonestyPlanning =
-		processMessage === "RESPOND" &&
-		looksLikeNonRefusalStage1HonestyViolation(replyTextRaw);
-	const requestedPlanningForRouting = requestedPlanning || forceHonestyPlanning;
 	// The model can explicitly commit to delegation: for a genuine coding-work
 	// request it routes to a non-simple context of its OWN choosing AND names a
 	// runnable coding-delegation / spawn-class action in its OWN candidate list
@@ -3580,7 +3764,6 @@ export function messageHandlerFromFieldResult(
 	const preferCompleteDirectReply =
 		!preemptDirect &&
 		requestedPlanning &&
-		!stage1HonestyViolation &&
 		!modelCommittedToDelegation &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
@@ -3597,7 +3780,7 @@ export function messageHandlerFromFieldResult(
 		});
 	const shouldPlan =
 		!preemptDirect &&
-		requestedPlanningForRouting &&
+		requestedPlanning &&
 		!preferCompleteDirectReply &&
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
@@ -3613,13 +3796,7 @@ export function messageHandlerFromFieldResult(
 						]),
 					)
 				: routedContexts;
-	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
-	// Mirrors the logic in `parseMessageHandlerOutput`: when the planner is
-	// about to run, a prompt-contract violation in `replyText` from a
-	// safety-tuned hosted model — a refusal, a training-metadata/knowledge-cutoff
-	// leak, or a fabricated-moderation claim — is dropped so the planner's own
-	// message reaches the user instead.
-	const replyText = shouldPlan && stage1HonestyViolation ? "" : replyTextRaw;
+	const replyText = replyTextRaw;
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
@@ -3634,8 +3811,11 @@ export function messageHandlerFromFieldResult(
 		plan.candidateActions = planCandidateActions;
 	}
 	const extract =
-		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
-			? { facts, relationships, addressedTo }
+		facts.length > 0 ||
+		relationships.length > 0 ||
+		addressedTo.length > 0 ||
+		topics.length > 0
+			? { facts, relationships, addressedTo, topics }
 			: undefined;
 	return {
 		processMessage,
@@ -3821,7 +4001,6 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	const normalized = replyText.trim();
 	if (normalized.length < 24) return false;
 	if (looksLikeProgressOnlyReply(normalized)) return false;
-	if (looksLikeStage1HonestyViolation(normalized)) return false;
 	return (
 		/[.!?。！？]$/u.test(normalized) || normalized.split(/\s+/u).length >= 8
 	);
@@ -4034,8 +4213,8 @@ function inferAckIntentCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	if (looksLikeWebSearchRequest(actionText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
+		const lookupActions = findWebLookupActionNames(actions);
+		if (lookupActions.length > 0) return lookupActions;
 	}
 	return [];
 }
@@ -4044,137 +4223,17 @@ export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string[] {
-	if (looksLikeLocalShellRequest(messageText)) {
-		const shellAction = findAvailableActionName(actions, [
-			"SHELL",
-			"RUN_IN_TERMINAL",
-			"RUN_COMMAND",
-			"EXECUTE_COMMAND",
-			"TERMINAL",
-			"RUN_SHELL",
-			"EXEC",
-		]);
-		if (shellAction) return [shellAction];
-	}
-	// Coding-work precedes web-search: a coding request mentioning a live/market
-	// term ("build a crypto price tracker") must route to coding delegation, not a
-	// web lookup. Mirrors shouldPreferDirectCurrentCandidateActions' coding guard.
-	if (looksLikeCodingWorkRequest(messageText)) {
-		const codingAction = findCodingDelegationActionName(actions);
-		if (codingAction) return [codingAction];
-	}
-	const viewShellAction = findViewShellActionName(actions, messageText);
-	if (viewShellAction) return [viewShellAction];
-	const viewCapabilityAction = findViewCapabilityActionName(
+	return inferDirectCurrentRequestCandidateActionsFromHeuristics(
 		actions,
 		messageText,
+		{
+			// Coding-work precedes web-search: a coding request mentioning a live/market
+			// term ("build a crypto price tracker") must route to coding delegation,
+			// not a web lookup.
+			looksLikeCodingWorkRequest,
+			findCodingDelegationActionName,
+		},
 	);
-	if (viewCapabilityAction) return [viewCapabilityAction];
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupAction = findWebLookupActionName(actions);
-		if (lookupAction) return [lookupAction];
-	}
-	return [];
-}
-
-function shouldUseDirectReplyFastPath(args: {
-	message: Memory;
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
-}): boolean {
-	const text = (getUserMessageText(args.message) ?? "").trim();
-	if (!text || text.length > 280) return false;
-	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
-	if (
-		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
-	) {
-		return false;
-	}
-	if (looksLikeContextDependentMutationRequest(text)) return false;
-	if (/https?:\/\//iu.test(text)) return false;
-	if (
-		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|edit|modify|fix|improve|rewrite|update|delete|remove|uninstall|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|view|plugin|window|device|workflow|automation|draw|sketch|paint|illustrate|render|picture|photo|photograph|image|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts|voice\s+this|voice\s+over|audio|video|animate|animation)\b/iu.test(
-			text,
-		)
-	) {
-		return false;
-	}
-	return true;
-}
-
-function looksLikeContextDependentMutationRequest(text: string): boolean {
-	const tokens = new Set(
-		tokenizeActionMetadata(text).map(normalizeSingularToken),
-	);
-	const mutationTokens = [
-		"ADD",
-		"CREATE",
-		"DO",
-		"MAKE",
-		"PUT",
-		"SET",
-		"WRITE",
-		"EDIT",
-		"UPDATE",
-		"DELETE",
-		"REMOVE",
-	];
-	const contextReferenceTokens = [
-		"ANOTHER",
-		"IT",
-		"ONE",
-		"SAME",
-		"THAT",
-		"THEM",
-		"THESE",
-		"THIS",
-		"THOSE",
-	];
-	return (
-		mutationTokens.some((token) => tokens.has(token)) &&
-		contextReferenceTokens.some((token) => tokens.has(token))
-	);
-}
-
-function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
-	if (
-		!/\b(?:what\s+should|what\s+do|should\s+i|should\s+he|should\s+she|should\s+they|help|advice|urgent|emergency|crisis)\b/iu.test(
-			text,
-		)
-	) {
-		return false;
-	}
-	return /\b(?:lawyer|attorney|police|cop|cops|court|criminal|felony|arrest|charged|custody|cps|child\s+protective|landlord|grow|plants|contraband|evidence|overdose|too\s+many\s+pills|poison|suicide|self[-\s]?harm|kill\s+(?:myself|himself|herself|themselves)|medical\s+emergency|psychiatric\s+emergency|domestic\s+violence|abuse)\b/iu.test(
-		text,
-	);
-}
-
-/**
- * Resolve the action that satisfies a web / live-info lookup, or undefined when
- * the runtime has no real search backend registered.
- *
- * A web lookup needs a search action — not a shell. The earlier fallback to a
- * shell action conflated the two: on a runtime with shell but no search, a
- * live-info ask ("what's the current price of X") was force-routed to SHELL as
- * a required tool. A shell is the wrong instrument for that, a weak planner
- * cannot drive it, and the resulting required-tool loop surfaced a generic
- * failure instead of an honest "I don't have live access" reply. Returning
- * undefined lets the model answer directly. Genuine shell requests still route
- * to a shell action via the separate looksLikeLocalShellRequest path.
- */
-export function findWebLookupActionName(
-	actions: ReadonlyArray<Pick<Action, "name">>,
-): string | undefined {
-	return findAvailableActionName(actions, [
-		"SEARCH",
-		"WEB_SEARCH",
-		"SEARCH_WEB",
-		"BRAVE_SEARCH",
-		"INTERNET_SEARCH",
-		"SEARCH_INTERNET",
-		"LOOKUP_WEB",
-		"WEB_FETCH",
-		"GOOGLE",
-	]);
 }
 
 const CODING_DELEGATION_ACTION_TAGS = [
@@ -4209,267 +4268,6 @@ function findCodingDelegationActionName(
 		)?.name ??
 		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
 	);
-}
-
-const VIEW_REQUEST_OPERATION_GROUPS = {
-	create: ["ADD", "CREATE", "MAKE", "NEW"],
-	read: ["FIND", "GET", "LIST", "READ", "SHOW", "WHAT", "WHICH"],
-	update: ["CHANGE", "EDIT", "MODIFY", "RENAME", "UPDATE"],
-	delete: ["DELETE", "REMOVE"],
-	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
-	close: ["CLOSE", "DISMISS", "HIDE"],
-	layout: [
-		"ARRANGE",
-		"BOTTOM",
-		"HORIZONTAL",
-		"LEFT",
-		"LAYOUT",
-		"RIGHT",
-		"SPLIT",
-		"TILE",
-		"TOP",
-		"VERTICAL",
-	],
-	pin: ["DOCK", "PIN"],
-} as const;
-
-const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
-	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
-);
-
-const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
-	"ACTION",
-	"ACTIONS",
-	"APP",
-	"APPS",
-	"APPLICATION",
-	"APPLICATIONS",
-	"BROADCAST",
-	"CALL",
-	"CAPABILITY",
-	"CAPABILITIES",
-	"CURRENT",
-	"EVENT",
-	"EVENTS",
-	"INVOKE",
-	"LAYOUT",
-	"MANAGER",
-	"MODE",
-	"NOTIFY",
-	"PANEL",
-	"PANELS",
-	"PIN",
-	"PLUGIN",
-	"PLUGINS",
-	"SCREEN",
-	"SIGNAL",
-	"UI",
-	"USE",
-	"VIEW",
-	"VIEWS",
-	"WINDOW",
-	"WINDOWS",
-	"WITH",
-]);
-
-const VIEW_REQUEST_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
-	"APP",
-	"APPLICATION",
-	"MANAGER",
-	"PANEL",
-	"SCREEN",
-	"UI",
-	"VIEW",
-	"WINDOW",
-]);
-
-const VIEW_LAYOUT_FOLLOWUP_TOKENS: ReadonlySet<string> = new Set<string>([
-	"AGAIN",
-	"ALSO",
-	"HORIZONTAL",
-	"INSTEAD",
-	"NOW",
-	"TOO",
-	"VERTICAL",
-]);
-
-const VIEW_PLUGIN_SURFACE_TOKENS: ReadonlySet<string> = new Set<string>([
-	"BROWSER",
-	"CATALOG",
-	"MANAGER",
-	"MARKETPLACE",
-]);
-
-function findViewsActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
-): string | undefined {
-	return actions.find((action) => {
-		if (normalizeActionIdentifier(action.name) === "VIEWS") return true;
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	})?.name;
-}
-
-function collectViewActionMetadataEntries(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
-	viewActionName: string,
-): Array<Pick<Action, "name" | "similes" | "tags">> {
-	const normalizedViewActionName = normalizeActionIdentifier(viewActionName);
-	return actions.filter((action) => {
-		if (normalizeActionIdentifier(action.name) === normalizedViewActionName) {
-			return true;
-		}
-		return (action.tags ?? []).some(
-			(tag) => normalizedMetadataPhrase(tag) === "VIEW_CAPABILITY",
-		);
-	});
-}
-
-function findViewShellActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
-	messageText: string,
-): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
-	const viewActionName = findViewsActionName(actions);
-	if (!viewActionName) return undefined;
-
-	const messageTokens = tokenizeActionMetadata(messageText).map(
-		normalizeSingularToken,
-	);
-	const messageOperationGroups = operationGroupsForTokens(messageTokens);
-	if (messageOperationGroups.size === 0) return undefined;
-
-	const tokenSet = new Set(messageTokens);
-	for (const token of VIEW_REQUEST_SURFACE_TOKENS) {
-		if (tokenSet.has(token)) return viewActionName;
-	}
-	if (
-		(tokenSet.has("PLUGIN") || tokenSet.has("PLUGINS")) &&
-		messageTokens.some((token) => VIEW_PLUGIN_SURFACE_TOKENS.has(token))
-	) {
-		return viewActionName;
-	}
-	if (
-		messageOperationGroups.has("layout") &&
-		messageTokens.some((token) => VIEW_LAYOUT_FOLLOWUP_TOKENS.has(token))
-	) {
-		return viewActionName;
-	}
-	return undefined;
-}
-
-function findViewCapabilityActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
-	messageText: string,
-): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
-	const viewActionName = findViewsActionName(actions);
-	if (!viewActionName) return undefined;
-	const viewActions = collectViewActionMetadataEntries(actions, viewActionName);
-	if (viewActions.length === 0) return undefined;
-
-	const messageTokens = tokenizeActionMetadata(messageText);
-	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
-	const messageOperationGroups = operationGroupsForTokens(messageTokens);
-	if (messageOperationGroups.size === 0) return undefined;
-
-	for (const viewAction of viewActions) {
-		for (const alias of [
-			viewAction.name,
-			...(viewAction.similes ?? []),
-			...(viewAction.tags ?? []),
-		]) {
-			const aliasTokens = tokenizeActionMetadata(String(alias));
-			if (aliasTokens.length === 0) continue;
-			const aliasOperationGroups = operationGroupsForTokens(aliasTokens);
-			if (
-				aliasOperationGroups.size > 0 &&
-				!setsIntersect(aliasOperationGroups, messageOperationGroups)
-			) {
-				continue;
-			}
-			const targetTokens = aliasTokens
-				.map(normalizeSingularToken)
-				.filter(
-					(token) =>
-						!VIEW_REQUEST_OPERATION_TOKENS.has(token) &&
-						!VIEW_REQUEST_GENERIC_TOKENS.has(token),
-				);
-			if (targetTokens.length === 0) continue;
-			if (targetTokens.every((token) => messageTokenSet.has(token))) {
-				return viewActionName;
-			}
-		}
-	}
-	return undefined;
-}
-
-function looksLikeInstructionalViewQuestion(messageText: string): boolean {
-	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
-		messageText,
-	);
-}
-
-function tokenizeActionMetadata(value: string): string[] {
-	const matches = value
-		.replace(/([a-z])([A-Z])/g, "$1 $2")
-		.toUpperCase()
-		.match(/[A-Z0-9]+/g);
-	return matches ?? [];
-}
-
-function normalizedMetadataPhrase(value: string): string {
-	return tokenizeActionMetadata(value).map(normalizeSingularToken).join("_");
-}
-
-function normalizeSingularToken(token: string): string {
-	if (token === "CALENDER") return "CALENDAR";
-	if (token.length > 3 && token.endsWith("IES")) {
-		return `${token.slice(0, -3)}Y`;
-	}
-	if (token.length > 3 && token.endsWith("S")) {
-		return token.slice(0, -1);
-	}
-	return token;
-}
-
-function operationGroupsForTokens(tokens: readonly string[]): Set<string> {
-	const groups = new Set<string>();
-	for (const token of tokens.map(normalizeSingularToken)) {
-		for (const [group, groupTokens] of Object.entries(
-			VIEW_REQUEST_OPERATION_GROUPS,
-		)) {
-			if ((groupTokens as readonly string[]).includes(token)) {
-				groups.add(group);
-			}
-		}
-	}
-	return groups;
-}
-
-function setsIntersect<T>(
-	left: ReadonlySet<T>,
-	right: ReadonlySet<T>,
-): boolean {
-	for (const entry of left) {
-		if (right.has(entry)) return true;
-	}
-	return false;
-}
-
-function findAvailableActionName(
-	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
-	names: readonly string[],
-): string | undefined {
-	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return actions.find((action) => {
-		if (wanted.has(normalizeActionIdentifier(action.name))) return true;
-		const similes = Array.isArray(action.similes) ? action.similes : [];
-		return similes.some((simile) =>
-			wanted.has(normalizeActionIdentifier(String(simile))),
-		);
-	})?.name;
 }
 
 const LIVE_LOOKUP_UNAVAILABLE_REPLY =
@@ -4616,19 +4414,18 @@ function synthesizeSimpleReplyFromPlainText(
 function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 	if (typeof raw === "string") return raw.trim().length === 0;
 	if (!raw || typeof raw !== "object") return true;
-	const obj = raw as unknown as Record<string, unknown>;
-	const text = typeof obj.text === "string" ? obj.text.trim() : "";
+	// `raw` is narrowed to GenerateTextResult here; read its typed fields
+	// directly (the defensive `typeof` guards still cover non-conforming
+	// provider output) instead of laundering it through `as unknown as`.
+	const text = typeof raw.text === "string" ? raw.text.trim() : "";
 	if (text.length > 0) return false;
-	const toolCalls = obj.toolCalls;
-	if (Array.isArray(toolCalls) && toolCalls.length > 0) return false;
-	const contentText = extractGenerateTextContentText(
-		raw as unknown as GenerateTextResult,
-	);
+	if (Array.isArray(raw.toolCalls) && raw.toolCalls.length > 0) return false;
+	const contentText = extractGenerateTextContentText(raw);
 	if (contentText.trim().length > 0) return false;
 	return true;
 }
 
-function getStage1RetryReason(
+export function getStage1RetryReason(
 	raw: string | GenerateTextResult,
 ): "empty completion" | "malformed HANDLE_RESPONSE tool call" | null {
 	if (isEmptyStage1Result(raw)) {
@@ -4641,9 +4438,6 @@ function getStage1RetryReason(
 		return null;
 	}
 	if (extractHandleResponseToolArguments(raw)) {
-		return null;
-	}
-	if (parseMessageHandlerOutput(getV5ModelText(raw))) {
 		return null;
 	}
 	return "malformed HANDLE_RESPONSE tool call";
@@ -4760,7 +4554,7 @@ function getStage1FinishReason(raw: string | GenerateTextResult): string {
 
 function stage1HitCompletionLimit(
 	raw: string | GenerateTextResult,
-	maxTokens: number,
+	maxTokens: number | undefined,
 ): boolean {
 	if (typeof raw === "string") return false;
 	const finishReason = getStage1FinishReason(raw).toLowerCase();
@@ -4771,12 +4565,31 @@ function stage1HitCompletionLimit(
 	) {
 		return true;
 	}
+	// With direct-channel provider/model-max output, the runtime has no reliable
+	// caller cap to compare against. Truncation is detected via finishReason.
 	const completionTokens = raw.usage?.completionTokens;
 	return (
+		typeof maxTokens === "number" &&
 		typeof completionTokens === "number" &&
 		Number.isFinite(completionTokens) &&
 		completionTokens >= maxTokens
 	);
+}
+
+/**
+ * Whether a Stage-1 result should be regenerated. Empty or garbled output can be
+ * fixed by retrying, but a completion-limit truncation cannot: regenerating at
+ * the same token cap just truncates again, burning a full Stage-1 turn for the
+ * same result. A truncated envelope is routed to the dedicated truncation
+ * recovery below instead. Exported for unit coverage of the retry policy.
+ */
+export function shouldRetryStage1Generation(
+	reason: ReturnType<typeof getStage1RetryReason>,
+	raw: string | GenerateTextResult,
+	maxTokens: number | undefined,
+): boolean {
+	if (!reason) return false;
+	return !stage1HitCompletionLimit(raw, maxTokens);
 }
 
 function extractJsonStringField(
@@ -5419,6 +5232,155 @@ function collectPreviousActionResults(
 	return results;
 }
 
+/**
+ * Pre-LLM action shortcut gate (#8791).
+ *
+ * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
+ * model call. Explicit slash/`!` commands are always eligible (this is what
+ * makes slash commands deterministic per #8790); natural-language shortcuts use
+ * narrow/confidence-floored patterns. On a confident `action`-target match the
+ * matched action runs and its reply is returned as a `direct_reply` — emitting
+ * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
+ * client (the slash menu already runs them locally) so the gate ignores them.
+ *
+ * Returns `null` on no match / mis-fire so the turn proceeds unchanged
+ * (byte-identical to today). Set `ELIZA_SHORTCUTS_DISABLED=1` to bypass entirely.
+ */
+export async function runShortcutGate(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	responseId: UUID;
+	senderRole: RoleGateRole;
+}): Promise<V5MessageRuntimeStage1Result | null> {
+	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
+	const text = getUserMessageText(args.message) ?? "";
+	if (!text.trim()) return null;
+
+	const registry = (args.runtime as { shortcutRegistry?: ShortcutRegistry })
+		.shortcutRegistry;
+	if (!registry || registry.size === 0) return null;
+
+	const authorized = args.senderRole === "OWNER" || args.senderRole === "ADMIN";
+	const match = registry.match(text, {
+		actions: args.runtime.actions.map((action) => action.name),
+		allowNatural: true,
+		isAuthorized: authorized,
+		isElevated: args.senderRole === "OWNER",
+	});
+	if (!match) return null;
+	const target = match.shortcut.target;
+	// Navigate/client targets are resolved on the client (the slash menu runs
+	// them locally with no agent round-trip), so the agent gate only fires actions.
+	if (target.kind !== "action") return null;
+
+	const action = args.runtime.actions.find((a) => a.name === target.name);
+	if (!action) return null;
+
+	let valid = false;
+	try {
+		valid = await action.validate(args.runtime, args.message, args.state);
+	} catch (err) {
+		args.runtime.logger?.warn?.(
+			{
+				src: "shortcut-gate",
+				shortcut: match.shortcut.id,
+				action: action.name,
+				err,
+			},
+			"shortcut action validate() threw; falling through to pipeline",
+		);
+		return null;
+	}
+	if (!valid) return null;
+
+	let captured: string | undefined;
+	try {
+		await action.handler(
+			args.runtime,
+			args.message,
+			args.state,
+			{ ...target.parameters, ...match.parameters, mode: "simple" },
+			async (content) => {
+				if (typeof content?.text === "string" && content.text) {
+					captured = content.text;
+				}
+				return [];
+			},
+		);
+	} catch (err) {
+		args.runtime.logger?.warn?.(
+			{ src: "shortcut-gate", shortcut: match.shortcut.id, err },
+			"shortcut action failed; falling through to pipeline",
+		);
+		return null;
+	}
+	if (captured === undefined) return null;
+
+	// #8792: report the interaction so the proactive-comment decider can react.
+	void emitInteractionEvent(args.runtime, match, args.message);
+
+	const thought = `Shortcut: ${match.shortcut.id}`;
+	return {
+		kind: "direct_reply",
+		messageHandler: {
+			processMessage: "RESPOND",
+			thought,
+			plan: {
+				contexts: [SIMPLE_CONTEXT_ID],
+				reply: captured,
+				simple: true,
+				requiresTool: false,
+			},
+		},
+		result: createV5ReplyStrategyResult({
+			runtime: args.runtime,
+			message: args.message,
+			state: args.state,
+			responseId: args.responseId,
+			text: captured,
+			thought,
+		}),
+	};
+}
+
+/** Emit SLASH_COMMAND_INVOKED / SHORTCUT_FIRED for a gated interaction (#8792). */
+async function emitInteractionEvent(
+	runtime: IAgentRuntime,
+	match: ShortcutMatch,
+	message: Memory,
+): Promise<void> {
+	try {
+		const roomId = message.roomId;
+		if (match.shortcut.kind === "explicit") {
+			const command = (match.shortcut.aliases?.[0] ?? match.shortcut.id)
+				.replace(/^[/!]/, "")
+				.trim();
+			await runtime.emitEvent(EventType.SLASH_COMMAND_INVOKED, {
+				runtime,
+				source: "shortcut-gate",
+				command,
+				targetKind: "agent",
+				initiatedBy: "user",
+				roomId,
+			});
+		} else {
+			await runtime.emitEvent(EventType.SHORTCUT_FIRED, {
+				runtime,
+				source: "shortcut-gate",
+				shortcutId: match.shortcut.id,
+				initiatedBy: "user",
+				roomId,
+			});
+		}
+	} catch (err) {
+		runtime.logger?.debug?.(
+			{ src: "shortcut-gate", err },
+			"interaction event emit failed",
+		);
+	}
+}
+
 export async function runV5MessageRuntimeStage1(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -5483,61 +5445,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
-		if (
-			directMessageChannel &&
-			shouldUseDirectReplyFastPath({
-				message: args.message,
-				actions: args.runtime.actions,
-			})
-		) {
-			const fastStartedAt = Date.now();
-			const fastMessageHandler: MessageHandlerResult = {
-				processMessage: "RESPOND",
-				thought: "Direct private chat fast path.",
-				plan: {
-					contexts: [SIMPLE_CONTEXT_ID],
-					reply: "",
-					simple: true,
-					requiresTool: false,
-				},
-			};
-			const generated = await generateDirectReplyModel({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				messageHandler: fastMessageHandler,
-				signal: stage1TurnSignal,
-			});
-			const fastEndedAt = Date.now();
-			fastMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyFastPath: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-						},
-					},
-					raw: generated.raw,
-					parsed: fastMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fastMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fastMessageHandler.thought,
-				}),
-			};
-		}
+
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
 			message: args.message,
@@ -5683,9 +5591,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			maxTokens: directMessageChannel
-				? DIRECT_CHANNEL_STAGE1_MAX_TOKENS
-				: DEFAULT_STAGE1_MAX_TOKENS,
+			// Direct/DM/API Stage 1 packs the whole answer into `replyText`. We don't
+			// cap it: a hardcoded ceiling 400s on any model whose real limit differs
+			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
+			// to use provider/model-max output instead of the runtime default; group
+			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
+			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
+			omitMaxTokens: directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to
@@ -5715,7 +5627,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			stage1ModelParams,
 		)) as string | GenerateTextResult;
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
-		while (stage1RetryReason && stage1RetryCount < stage1RetryLimit) {
+		while (
+			stage1RetryCount < stage1RetryLimit &&
+			shouldRetryStage1Generation(
+				stage1RetryReason,
+				rawMessageHandler,
+				stage1ModelParams.maxTokens,
+			)
+		) {
 			stage1RetryCount += 1;
 			args.runtime.logger?.warn?.(
 				{
@@ -5788,64 +5707,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (
 			!messageHandler &&
-			isEmptyStage1Result(rawMessageHandler) &&
-			shouldUseStage1PlannerFallback(args.runtime, args.message) &&
-			shouldUseDirectReplyFastPath({
-				message: args.message,
-				actions: args.runtime.actions,
-			})
-		) {
-			const fastStartedAt = Date.now();
-			const fallbackMessageHandler: MessageHandlerResult = {
-				processMessage: "RESPOND",
-				thought:
-					"Stage 1 returned empty output for a simple addressed message; using direct reply fallback.",
-				plan: {
-					contexts: [SIMPLE_CONTEXT_ID],
-					reply: "",
-					simple: true,
-					requiresTool: false,
-				},
-			};
-			const generated = await generateDirectReplyModel({
-				runtime: args.runtime,
-				message: args.message,
-				state: args.state,
-				messageHandler: fallbackMessageHandler,
-				signal: stage1TurnSignal,
-			});
-			const fastEndedAt = Date.now();
-			fallbackMessageHandler.plan.reply = generated.text;
-			if (recorder && trajectoryId) {
-				await recordMessageHandlerStage({
-					recorder,
-					trajectoryId,
-					messages: [{ role: "user", content: generated.prompt }],
-					providerOptions: {
-						eliza: {
-							directReplyEmptyStage1Fallback: true,
-							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
-						},
-					},
-					raw: generated.raw,
-					parsed: fallbackMessageHandler,
-					startedAt: fastStartedAt,
-					endedAt: fastEndedAt,
-					logger: args.runtime.logger,
-				});
-			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fallbackMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fallbackMessageHandler.thought,
-				}),
-			};
-		}
-		if (
-			!messageHandler &&
 			shouldUseStage1PlannerFallback(args.runtime, args.message)
 		) {
 			const stage1FailureKind = getStage1RetryReason(rawMessageHandler);
@@ -5908,6 +5769,31 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
+		if (messageHandler.processMessage === "RESPOND") {
+			const injectionGate = await runShouldRespondInjectionGate({
+				runtime: args.runtime,
+				message: args.message,
+				resolveSenderRole: () => senderRole,
+			});
+			if (injectionGate.blocked) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: args.runtime.agentId,
+						reason: injectionGate.reason,
+						score: injectionGate.score,
+					},
+					"[ShouldRespondRiskGate] suppressing Stage 1 response before side effects or planner tools",
+				);
+				return {
+					kind: "terminal",
+					action: "IGNORE",
+					messageHandler,
+					state: args.state,
+				};
+			}
+		}
+
 		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
 		// Stage 2 path runs (simple reply or planner). This stage is purely a
 		// side-effect: it dedups + persists user-stated facts/relationships
@@ -5956,6 +5842,58 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
+		// Record Stage-1-extracted topics into the per-channel LRU. Pure
+		// fire-and-forget side-effect (like facts/addressedTo): it persists the
+		// room's running topic list for the CHANNEL_TOPICS provider and must
+		// never block or break the turn.
+		const topics = messageHandler.extract?.topics ?? [];
+		if (topics.length > 0 && args.message.roomId) {
+			const channelTopics = args.runtime.getService<ChannelTopicsService>(
+				ChannelTopicsService.serviceType,
+			);
+			if (channelTopics) {
+				void channelTopics
+					.recordTopics(args.message.roomId, topics)
+					.catch((error) => {
+						args.runtime.logger?.warn?.(
+							{
+								err: error,
+								messageId: args.message.id,
+								roomId: args.message.roomId,
+								topicCount: topics.length,
+							},
+							"[message] recordTopics failed",
+						);
+					});
+			}
+		}
+
+		// Stamp the turn's topics onto the inbound message memory so the dashboard
+		// can group the transcript by topic + show a topic chips bar (#8928).
+		// Additive, fire-and-forget metadata write — never blocks/breaks the turn.
+		if (topics.length > 0 && args.message.id) {
+			// args.message is always a message memory, so its metadata is
+			// MessageMetadata; force `type: "message"` so the spread result is a
+			// valid, discriminated MessageMetadata regardless of the inbound shape
+			// (never a sibling union member with an unexpected `topics` field).
+			const existingMetadata = args.message.metadata;
+			void args.runtime
+				.updateMemory({
+					id: args.message.id,
+					metadata: {
+						...(existingMetadata ?? {}),
+						type: "message" as const,
+						topics,
+					},
+				})
+				.catch((error) => {
+					args.runtime.logger?.warn?.(
+						{ err: error, messageId: args.message.id },
+						"[message] stamp message topics failed",
+					);
+				});
+		}
+
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
@@ -5974,7 +5912,30 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		const route = routeMessageHandlerOutput(messageHandler);
+		// #9874 item 1: suppress the simple→requiresTool promotion when this turn
+		// is bot-to-bot crosstalk addressed to a non-owner bot — the agent is
+		// overhearing, not being asked to act, so forcing a tool fabricates a
+		// phantom task. Cheap-gated: only resolve addressees when a promotion could
+		// actually fire (requiresTool / candidateActions) and the message carries
+		// explicit addressees.
+		const mayPromoteToTool =
+			messageHandler.plan.requiresTool === true ||
+			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
+		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom /
+		// getAgent): a transient failure must NOT convert a normal turn into the
+		// generic failure reply — it just means "don't suppress", matching the
+		// conservative contract and the fire-and-forget addressee handling above.
+		const suppressToolPromotion =
+			mayPromoteToTool && addressedTo.length > 0
+				? await addresseeIsNonOwnerBot({
+						runtime: args.runtime,
+						message: args.message,
+						addressedTo,
+					}).catch(() => false)
+				: false;
+		const route = routeMessageHandlerOutput(messageHandler, {
+			suppressToolPromotion,
+		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
 				kind: "terminal",
@@ -5985,28 +5946,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (route.type === "final_reply") {
-			// `replyText` (→ `route.reply`) is part of the HANDLE_RESPONSE envelope
-			// and is `required` in the schema, so the direct-reply path normally
-			// emits it inline with no extra model call. `generateDirectReplyOnce`
-			// runs when Stage-1 produced no usable reply text or a known
-			// low-quality scaffold/fragment pattern from strict JSON generation.
+			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
+			// `route.reply`) inline as part of the required HANDLE_RESPONSE envelope,
+			// uncapped for direct channels. There is no separate fast-path model
+			// call. When that text is unusable — empty, or a known low-quality
+			// scaffold/fragment from strict-JSON generation — ship a clear deferral
+			// instead of a blank/garbled bubble, but keep a valid-but-terse answer
+			// (e.g. "144" to a math question).
 			let reply = route.reply;
-			if (shouldRegenerateStage1ReplyText(route.reply)) {
-				const regenerated = await generateDirectReplyOnce({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler,
-				});
-				// Regeneration is an enhancement (terse fragment -> fuller reply).
-				// If it yields nothing usable, keep the original Stage-1 reply so a
-				// valid-but-terse answer (e.g. "144" to a math question) is never
-				// dropped to an empty message.
-				if (regenerated.trim().length > 0) {
-					reply = regenerated;
-				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
-					reply = "I'm not sure how to answer that.";
-				}
+			if (
+				isUnusableStage1Reply(route.reply) &&
+				!isTerseReplyWorthKeeping({
+					reply: route.reply,
+					messageText: getUserMessageText(args.message),
+				})
+			) {
+				reply = "I'm not sure how to answer that.";
 			}
 			if (
 				shouldReplaceUnavailableLiveLookupAck({
@@ -6052,10 +6007,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		});
 		const recomposedPlannerState =
 			typeof args.runtime.composeState === "function"
-				? await args.runtime.composeState(
+				? // Reuse what the Stage-1 compose already ran for this message;
+					// refresh ONLY RECENT_MESSAGES, which changes after an early reply
+					// (the planner must see the just-sent reply). Any planner-only
+					// context-gated providers not yet cached are composed too.
+					await args.runtime.composeState(
 						args.message,
 						plannerProviderNames,
 						true,
+						false,
+						["RECENT_MESSAGES"],
 					)
 				: args.state;
 		const selectedContextRoutingState =
@@ -6082,14 +6043,53 @@ export async function runV5MessageRuntimeStage1(args: {
 				...directPlannerCandidateActions,
 			]);
 		}
-		const plannerCandidateActions = await collectV5PlannerCandidateActions({
-			runtime: args.runtime,
-			message: args.message,
-			state: plannerState,
-			selectedContexts,
-			candidateActions: getMessageHandlerCandidateActions(messageHandler),
-			userRoles: [senderRole],
-		});
+		// Full-surface mode (a focused coding sub-agent): skip the relevance/role
+		// narrowing entirely and hand the planner EVERY action whose execution gates
+		// pass. The narrowing is built for big chat catalogs (retrieve the relevant
+		// few); a coding agent's whole small tool set is relevant, and narrowing was
+		// returning zero candidates → planner got no native tools → model narrated.
+		const fullSurfaceEnv =
+			typeof process !== "undefined"
+				? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
+				: undefined;
+		const useFullSurface =
+			fullSurfaceEnv === "1" ||
+			fullSurfaceEnv === "true" ||
+			fullSurfaceEnv === "yes" ||
+			fullSurfaceEnv === "on";
+		const plannerCandidateActions = useFullSurface
+			? (args.runtime.actions ?? []).filter(
+					(action) =>
+						// Full-surface = the eliza-code coding sub-agent (its ACP server
+						// sets ELIZA_PLANNER_FULL_ACTION_SURFACE). It must NOT receive the
+						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
+						// the model and it never calls FILE. Instead treat the coding
+						// contexts (code/files/terminal/automation) as active and run the
+						// normal execution gates: that admits the coding tools
+						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
+						// context-free control actions (REPLY/STOP/…) and drops the
+						// messaging/social chat actions. Role still applies (FILE=ADMIN,
+						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
+						// parents that pass the gate but a coder never needs are dropped
+						// too (see CODING_SUB_AGENT_EXCLUDED_ACTIONS) to keep the request
+						// small enough for weaker hosted models to handle large builds.
+						!CODING_SUB_AGENT_EXCLUDED_ACTIONS.has(
+							normalizeActionIdentifier(action.name),
+						) &&
+						actionPassesPlannerExecutionGates({
+							action,
+							activeContexts: CODING_SUB_AGENT_CONTEXTS,
+							userRoles: [senderRole],
+						}),
+				)
+			: await collectV5PlannerCandidateActions({
+					runtime: args.runtime,
+					message: args.message,
+					state: plannerState,
+					selectedContexts,
+					candidateActions: getMessageHandlerCandidateActions(messageHandler),
+					userRoles: [senderRole],
+				});
 		const localizedExamplesProvider = getLocalizedExamplesProvider(
 			args.runtime,
 		);
@@ -6190,8 +6190,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 		const plannerTools = collectPlannerTools(plannerContextWithDecision);
 		const benchmarkForcingToolCall = isBenchmarkForcingToolCall(args.message);
+		// Only HARD-enforce a non-terminal tool when Stage 1 both flagged the turn
+		// tool-required AND named at least one candidate action. A bare
+		// `requiresTool=true` with NO named tool is the Stage-1 classifier
+		// over-flagging pure-knowledge and sub-agent-relay turns (verified in the
+		// 2026-06-21 deepscan): forcing then makes the planner either loop
+		// re-emitting REPLY (rejected up to maxRequiredToolMisses times, answer
+		// only via fallback) or run an irrelevant tool (VIEWS / TASKS_HISTORY) just
+		// to satisfy the gate. When Stage 1 names no tool, plan with "auto" and
+		// trust the planner — it still calls a tool when one genuinely fits and
+		// answers directly when none does.
+		const stageOneNamedAToolForThisTurn =
+			messageHandler.plan.requiresTool === true &&
+			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
 		const requireNonTerminalToolCall =
-			(messageHandler.plan.requiresTool === true || benchmarkForcingToolCall) &&
+			(stageOneNamedAToolForThisTurn || benchmarkForcingToolCall) &&
 			plannerTools.length > 0;
 		const effectivePlannerContext = requireNonTerminalToolCall
 			? appendContextEvent(plannerContextWithDecision, {
@@ -6320,32 +6333,61 @@ export async function runV5MessageRuntimeStage1(args: {
 			actionResults.length > 0
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
-		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
+		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
+		const plannedText = sanitizeReplyTextAfterMediaDelivery(
+			plannedTextRaw,
+			deliveredMediaUrls,
+		);
+		// Some action turns intentionally finish without planner prose. For async
+		// work (for example spawning a coding task), still return a non-empty
+		// synchronous acknowledgement so HTTP/connector callers don't render a blank
+		// "(no response)" while the real work continues in the background. Respect
+		// explicit suppressPlannerReply terminal actions (IGNORE/STOP-style flows),
+		// which are deliberately silent.
+		const suppressesPlannerReply = actionResults.some(
+			(result) =>
+				(result.data as { suppressPlannerReply?: unknown } | undefined)
+					?.suppressPlannerReply === true,
+		);
+		const ranNonSilentAction =
+			actionResults.length > 0 && !suppressesPlannerReply;
+		const stageOneAck =
+			typeof messageHandler.plan.reply === "string"
+				? messageHandler.plan.reply.trim()
+				: "";
+		const ackFallback =
+			!plannedText && !earlyReplySent && !suppressesPlannerReply
+				? stageOneAck ||
+					(ranNonSilentAction ? "on it, working on that now." : "")
+				: "";
+		const effectiveReplyText = plannedText || ackFallback;
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
-			normalizeVisibleTextForDuplicateCheck(plannedText) ===
+			normalizeVisibleTextForDuplicateCheck(effectiveReplyText) ===
 				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
+		const shouldSendPlannedText =
+			Boolean(effectiveReplyText) && !plannedTextRepeatsEarlyReply;
 
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result:
-				plannedText && !plannedTextRepeatsEarlyReply
-					? createV5ReplyStrategyResult({
-							...args,
-							state: finalPlannerState,
-							text: plannedText,
-							thought:
-								plannerResult.evaluator?.thought ??
-								plannerResult.trajectory.steps.at(-1)?.thought ??
-								messageHandler.thought,
-						})
-					: {
-							responseContent: null,
-							responseMessages: [],
-							state: finalPlannerState,
-							mode: "none",
-						},
+			result: shouldSendPlannedText
+				? createV5ReplyStrategyResult({
+						...args,
+						state: finalPlannerState,
+						text: effectiveReplyText,
+						thought:
+							plannerResult.evaluator?.thought ??
+							plannerResult.trajectory.steps.at(-1)?.thought ??
+							messageHandler.thought,
+					})
+				: {
+						responseContent: null,
+						responseMessages: [],
+						state: finalPlannerState,
+						mode: "none",
+					},
 		};
 	} catch (err) {
 		endStatus = "errored";
@@ -6579,7 +6621,7 @@ function getMessageHandlerResponseText(
 	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
 		return raw.text;
 	}
-	const responseText = (raw as unknown as Record<string, unknown>).response;
+	const responseText = raw.response;
 	if (typeof responseText === "string" && responseText.trim().length > 0) {
 		return responseText;
 	}
@@ -6806,22 +6848,8 @@ function unwrapPlannerIdentifier(value: string): string {
 	return trimmed;
 }
 
-const PLANNER_PROVIDER_ALIASES = new Map(
-	[
-		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
-		["INBOX_TRIAGE", "inboxTriage"],
-		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
-		["PENDING_DRAFTS", "inboxTriage"],
-		["DRAFTS", "inboxTriage"],
-	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
-);
-
 const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
-);
-
-const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
-	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
 );
 
 // Actions the planner selects as explicit delegation / orchestration intent.
@@ -6834,8 +6862,8 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // structure the planner matches on ("every N minutes", "at 7am daily",
 // "schedule a cron task") does not keyword-overlap with the action's
 // description the way owner reminder/todo prose does.
-// Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
-// routinely overrides a correct CREATE_CRON / WORKFLOW pick on
+// Without these entries, the metadata-overlap correction path routinely
+// overrides a correct CREATE_CRON / WORKFLOW pick on
 // page-automations with owner task actions based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
 // CONTACT/ENTITY are explicit umbrella actions for contacts /
@@ -6862,652 +6890,12 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // scoring over-values for owner/life actions. If the planner already selected
 // a concrete media/ad action, do not rewrite it to LIFE/CALENDAR/etc. based on
 // incidental overlap.
-const EXPLICIT_INTENT_ACTIONS = new Set(
-	[
-		"SPAWN_AGENT",
-		"START_CODING_TASK",
-		"CREATE_TASK",
-		"GENERATE_IMAGE",
-		"GENERATE_MEDIA",
-		"CREATE_IMAGE",
-		"CAPTURE_IMAGE",
-		"PRODUCE_AGENT_AD_CREATIVE",
-		"PUBLISH_AGENT_AD_PACK",
-		"MANAGE_AGENT_ADS",
-		"ATTACHMENT",
-		"TRANSCRIBE_MEDIA",
-		"DOWNLOAD_MEDIA",
-		"CHAT_WITH_ATTACHMENTS",
-		"MESSAGE",
-		"POST",
-		"SUMMARIZE_CONVERSATION",
-		"SERVER_INFO",
-		"WORKFLOW",
-		"TRIGGER",
-		"CREATE_TRIGGER",
-		"SCHEDULE_TRIGGER",
-		"SCHEDULE_TASK",
-		"CREATE_HEARTBEAT",
-		"SCHEDULE_HEARTBEAT",
-		"CREATE_AUTOMATION",
-		"SCHEDULE_AUTOMATION",
-		"CREATE_CRON",
-		"CREATE_RECURRING",
-		"CONTACT",
-		"ENTITY",
-		// Owner task actions pick routine / reminder / todo / habit / goal intents that
-		// frequently mention a verb-noun pair the corrector will mis-rewrite.
-		// "remember to call mom on Sunday" → planner correctly picks OWNER_REMINDERS
-		// (a reminder), but the corrector keyword-rescores it to
-		// VOICE_CALL because of "call". Trust the planner's pick.
-		"OWNER_REMINDERS",
-		"OWNER_TODOS",
-		"OWNER_ROUTINES",
-		"OWNER_GOALS",
-	].map(normalizeActionIdentifier),
-);
-
-function _shouldAttemptCanonicalActionRepair(
-	rawPlannerActions: string[],
-	normalizedActions: string[],
-): boolean {
-	const hasUnknownOperationalAction = rawPlannerActions.some((actionName) => {
-		const normalized = normalizeActionIdentifier(actionName);
-		return (
-			normalized.length > 0 &&
-			!ACTION_REPAIR_PASSIVE_ACTIONS.has(normalized) &&
-			!PLANNER_CONTROL_ACTIONS.has(normalized)
-		);
-	});
-
-	if (!hasUnknownOperationalAction) {
-		return false;
-	}
-
-	return (
-		normalizedActions.length === 0 ||
-		normalizedActions.every((actionName) =>
-			ACTION_REPAIR_PASSIVE_ACTIONS.has(normalizeActionIdentifier(actionName)),
-		)
-	);
-}
-
-function buildCanonicalActionRepairPrompt(args: {
-	userText: string;
-	rawPlannerActions: string[];
-	rawPlannerProviders: string[];
-	plannerReplyText: string;
-	availableActionNames: string[];
-}): string {
-	const plannerReplyText =
-		args.plannerReplyText.trim().length > 0
-			? args.plannerReplyText.trim()
-			: "(empty)";
-	const rawPlannerActions = `planner_actions_raw: ${JSON.stringify(args.rawPlannerActions)}`;
-	const rawPlannerProviders = `planner_providers_raw: ${JSON.stringify(args.rawPlannerProviders)}`;
-	const availableRuntimeActions = `available_runtime_actions: ${JSON.stringify(args.availableActionNames)}`;
-
-	return [
-		"You are repairing an action-planner output that used a non-canonical action name.",
-		"Choose ONLY from the available runtime actions below.",
-		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
-		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
-		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
-		"Return ONLY a JSON object with top-level fields: actions, providers, params, and optional text.",
-		'Use "actions": ["ACTION_NAME"] for selected actions and a params object keyed by action name when inputs are needed.',
-		"Do not include text unless there is truly no matching runtime action.",
-		"",
-		`user_message:\n${args.userText}`,
-		"",
-		rawPlannerActions,
-		"",
-		rawPlannerProviders,
-		"",
-		`planner_reply_text:\n${plannerReplyText}`,
-		"",
-		availableRuntimeActions,
-		"",
-		"Example:",
-		'user_message: "Pull up a dossier on Satya Nadella."',
-		'planner_actions_raw: ["LOOKUP"]',
-		"output:",
-		JSON.stringify(
-			{
-				actions: ["DOSSIER"],
-				providers: [],
-				params: { DOSSIER: { subject: "Satya Nadella" } },
-			},
-			null,
-			2,
-		),
-	].join("\n");
-}
-
-async function _repairCanonicalPlannerActions(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	rawPlannerActions: string[];
-	rawPlannerProviders: string[];
-	plannerReplyText: string;
-}): Promise<Record<string, unknown> | null> {
-	const availableActionNames = Array.from(
-		new Set(
-			(args.runtime.actions ?? [])
-				.map((action) => action.name?.trim())
-				.filter((name): name is string => Boolean(name)),
-		),
-	).sort();
-
-	if (availableActionNames.length === 0) {
-		return null;
-	}
-
-	const repairPrompt = buildCanonicalActionRepairPrompt({
-		userText: String(args.message.content.text ?? ""),
-		rawPlannerActions: args.rawPlannerActions,
-		rawPlannerProviders: args.rawPlannerProviders,
-		plannerReplyText: args.plannerReplyText,
-		availableActionNames,
-	});
-
-	return args.runtime.dynamicPromptExecFromState({
-		state: { values: {}, data: {}, text: "" } as State,
-		params: {
-			prompt: repairPrompt,
-		},
-		schema: [
-			{
-				field: "actions",
-				description: "Selected canonical runtime action names",
-				type: "array",
-				items: { description: "One canonical runtime action name" },
-				required: true,
-				validateField: false,
-				streamField: false,
-			},
-			{
-				field: "providers",
-				description: "Optional provider names needed before the action",
-				type: "array",
-				items: { description: "One provider name" },
-				required: false,
-				validateField: false,
-				streamField: false,
-			},
-			{
-				field: "params",
-				description:
-					"Optional JSON object keyed by action name with repaired action params",
-				type: "object",
-				required: false,
-				validateField: false,
-				streamField: false,
-			},
-			{
-				field: "text",
-				description:
-					"Optional fallback reply only when no runtime action matches",
-				required: false,
-				validateField: false,
-				streamField: false,
-			},
-		],
-		options: {
-			modelType: ModelType.TEXT_LARGE,
-			contextCheckLevel: 0,
-			maxRetries: 1,
-		},
-	});
-}
-
-function _buildProviderFollowupPrompt(basePrompt: string): string {
-	return `${basePrompt}
-
-[PROVIDER FOLLOW-UP]
-The requested providers have already been executed, and their grounded results are now present in context above.
-Use those provider results to produce the final reply and/or action plan for this turn.
-Do not ask for the same providers again.
-If the provider results fully answer the user, reply directly.
-If DOCUMENTS contains a direct answer, prefer that grounded answer even when DOCUMENTS lists multiple files.
-Do not ask "which file?" when the grounded DOCUMENTS result already resolves the request.`;
-}
-
-function _buildActionRescuePrompt(
-	basePrompt: string,
-	draftReply: string,
-): string {
-	const trimmedDraftReply = draftReply.trim();
-	const draftSection =
-		trimmedDraftReply.length > 0
-			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
-			: "";
-
-	return `${basePrompt}
-
-	[ACTION RESCUE]
-	The previous draft stayed in prose-only mode or selected only passive reply actions.
-	Re-evaluate the turn using the same available actions and providers already in context above.
-	If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
-	Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
-	Missing details like the exact time, participant list, channel, platform, portal login, file arrival, itinerary specifics, or which item is at risk are not a reason to fall back to REPLY when a listed action can own the follow-up.
-	When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, outstanding event-asset checklists, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
-	For live checklist questions like what slides, bio, title, portal assets, drafts, or pending items the owner still owes, choose the owning inbox/calendar/computer-use action instead of answering from memory or treating it like a generic LifeOps reminder.
-	If the draft reply merely acknowledges the task or asks for details before selecting an owning action, treat that draft as incomplete and repair it.
-	Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
-}
-
-function _buildActionOnlyRescuePrompt(draftReply: string): string {
-	const trimmedDraftReply = draftReply.trim();
-	const draftSection =
-		trimmedDraftReply.length > 0
-			? `Draft reply:\n${trimmedDraftReply}\n\n`
-			: "";
-
-	return `Select the single best action for this turn using only the available actions already in context above.
-
-	Rules:
-	- Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
-	- If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
-	- If the right action still needs clarification, choose that action anyway.
-	- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
-	- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, event-asset checklists, and call-me-if-stuck escalations must choose the owning action on this turn.
-	- Choose REPLY only when no listed action owns the request.
-	- Do not invent action names.
-
-Examples:
-- "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> CALENDAR
-- "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> CALENDAR
-- "repair that missed call and hold the note for approval" -> MESSAGE action=triage
-- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> MESSAGE action=draft_followup
-	- "if direct relaying gets messy, suggest a group chat handoff" -> MESSAGE action=triage
-	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> MESSAGE action=list_inbox
-	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> CALENDAR
-	- "capture my reusable flight and hotel preferences" -> REPLY
-	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> CALENDAR
-	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> PERSONAL_ASSISTANT action=book_travel
-	- "when I'm done with the PPT, upload it to the speaker portal for me" -> COMPUTER_USE
-	- "if you get stuck in the browser or on my computer, call me" -> VOICE_CALL
-- "check disk space on this VPS with df -h" -> SHELL
-	- "what is the current BTC price in USD?" -> SEARCH
-
-${draftSection}Return JSON only:
-{
-  "thought": "short reasoning",
-  "actions": ["ACTION_NAME"]
-}`;
-}
-
-const ROUTING_REASSESS_ACTIONS = new Set(
-	["OWNER_TODOS", "OWNER_REMINDERS", "COMPUTER_USE", "OWNER_FINANCES"].map(
-		normalizeActionIdentifier,
-	),
-);
-
-const ACTION_OWNERSHIP_STOPWORDS = new Set([
-	"a",
-	"an",
-	"and",
-	"are",
-	"as",
-	"at",
-	"be",
-	"because",
-	"can",
-	"could",
-	"do",
-	"for",
-	"from",
-	"get",
-	"go",
-	"here",
-	"i",
-	"if",
-	"in",
-	"into",
-	"is",
-	"it",
-	"just",
-	"let",
-	"me",
-	"my",
-	"now",
-	"of",
-	"on",
-	"or",
-	"our",
-	"please",
-	"so",
-	"that",
-	"the",
-	"them",
-	"this",
-	"to",
-	"up",
-	"we",
-	"when",
-	"with",
-	"you",
-	"your",
-]);
-
-const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
-	/\b(?:if|when)\b/iu,
-	/\b(?:upload|send over|send|attach)\b/iu,
-	/\b(?:remind|warning|warn|nudge|alert)\b/iu,
-	/\b(?:book|schedule|reschedule|follow up|bump|handoff|route|escalat|calls?)\b/iu,
-	/\b(?:cancel|push|move|meeting|meetings|partnership|next month)\b/iu,
-	/\b(?:remember|store|save|keep track|set (?:up|a|an)|policy|workflow)\b/iu,
-	/\b(?:asset|assets|checklist|owe|owed|deadline|slides|bio|portal)\b/iu,
-	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
-];
-
-const ACTION_METADATA_FUTURE_HINTS =
-	/\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
-
 export type ActionOwnershipSuggestion = {
 	actionName: string;
 	score: number;
 	secondBestScore: number;
 	reasons: string[];
 };
-
-type ActionOwnershipCandidate = {
-	actionName: string;
-	score: number;
-	reasons: string[];
-};
-
-function tokenizeOwnershipText(text: string): string[] {
-	return text
-		.toLowerCase()
-		.split(/[^a-z0-9]+/u)
-		.map((token) => token.trim())
-		.filter(
-			(token) => token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
-		);
-}
-
-function buildTokenSet(text: string): Set<string> {
-	return new Set(tokenizeOwnershipText(text));
-}
-
-function exampleContentText(action: Action): string[] {
-	return (action.examples ?? []).flatMap((example) =>
-		example.flatMap((turn) => {
-			const text =
-				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
-			return text.length > 0 ? [text] : [];
-		}),
-	);
-}
-
-function splitActionMetadataText(value: string): string[] {
-	const trimmed = value.trim();
-	if (trimmed.length === 0) {
-		return [];
-	}
-	return trimmed
-		.split(/(?:[\r\n]+|(?<=[.!?;])\s+)/u)
-		.map((chunk) => chunk.trim())
-		.filter((chunk) => chunk.length > 0);
-}
-
-function actionMetadataTexts(action: Action): string[] {
-	return [
-		action.name,
-		action.description,
-		action.descriptionCompressed,
-		...(action.tags ?? []),
-		...(action.similes ?? []),
-		...exampleContentText(action),
-	]
-		.filter(
-			(value): value is string =>
-				typeof value === "string" && value.trim().length > 0,
-		)
-		.flatMap((value) => splitActionMetadataText(value));
-}
-
-function scoreActionOwnershipMatch(
-	messageText: string,
-	action: Action,
-): { score: number; reasons: string[] } {
-	const messageTokens = buildTokenSet(messageText);
-	if (messageTokens.size === 0) {
-		return { score: 0, reasons: [] };
-	}
-
-	let score = 0;
-	const reasons: string[] = [];
-	let bestExampleScore = 0;
-	const normalizedMessage = messageText.toLowerCase();
-	const actionMetadataBlob = actionMetadataTexts(action)
-		.join(" ")
-		.toLowerCase();
-
-	for (const chunk of actionMetadataTexts(action)) {
-		const chunkTokens = buildTokenSet(chunk);
-		if (chunkTokens.size === 0) {
-			continue;
-		}
-		const overlap = [...messageTokens].filter((token) =>
-			chunkTokens.has(token),
-		);
-		if (overlap.length === 0) {
-			continue;
-		}
-		const normalizedChunk = chunk.toLowerCase();
-		const overlapRatio = overlap.length / Math.max(3, chunkTokens.size);
-		if (
-			/\b(?:do not use this for|don't use this for|not for|belongs? to)\b/iu.test(
-				normalizedChunk,
-			)
-		) {
-			score -= overlap.length * 1.25 + overlapRatio;
-			if (overlap.length >= 2) {
-				reasons.push(`negative:${overlap.slice(0, 4).join(",")}`);
-			}
-			continue;
-		}
-		score += overlap.length * 1.25 + overlapRatio;
-		if (overlap.length >= 2) {
-			reasons.push(`overlap:${overlap.slice(0, 4).join(",")}`);
-		}
-
-		if (
-			normalizedChunk.length > 12 &&
-			(normalizedMessage.includes(normalizedChunk) ||
-				normalizedChunk.includes(normalizedMessage))
-		) {
-			score += 3;
-			reasons.push("phrase");
-		}
-
-		const exampleTokens = tokenizeOwnershipText(chunk);
-		if (exampleTokens.length >= 3) {
-			const exampleOverlap = overlap.length / exampleTokens.length;
-			if (exampleOverlap > bestExampleScore) {
-				bestExampleScore = exampleOverlap;
-			}
-		}
-	}
-
-	if (bestExampleScore >= 0.6) {
-		score += 4;
-		reasons.push("example");
-	}
-
-	if (
-		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-			messageText,
-		) &&
-		/\b(?:sleep window|no-call|blackout|preferred hours?|meeting preferences|scheduling rules)\b/iu.test(
-			actionMetadataBlob,
-		)
-	) {
-		score += 4;
-		reasons.push("schedule-policy");
-	}
-
-	if (
-		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
-			pattern.test(messageText),
-		) &&
-		ACTION_METADATA_FUTURE_HINTS.test(
-			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
-				.filter(Boolean)
-				.join(" "),
-		)
-	) {
-		score += 2;
-		reasons.push("workflow");
-	}
-
-	return { score, reasons };
-}
-
-function findDirectOwnedActionSuggestion(
-	runtime: Pick<IAgentRuntime, "actions">,
-	messageText: string,
-): ActionOwnershipSuggestion | null {
-	if (looksLikeLocalShellRequest(messageText)) {
-		const shellAction = findRuntimeActionByNames(runtime, [
-			"SHELL",
-			"RUN_IN_TERMINAL",
-			"RUN_COMMAND",
-			"EXECUTE_COMMAND",
-			"TERMINAL",
-			"SHELL",
-			"RUN_SHELL",
-			"EXEC",
-		]);
-		if (shellAction) {
-			return {
-				actionName: shellAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:local-shell-check"],
-			};
-		}
-	}
-
-	if (looksLikeWebSearchRequest(messageText)) {
-		const searchAction = findRuntimeActionByNames(runtime, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]);
-		if (searchAction) {
-			return {
-				actionName: searchAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:web-search"],
-			};
-		}
-	}
-
-	if (
-		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-			messageText,
-		)
-	) {
-		const calendarAction = (runtime.actions ?? []).find(
-			(action) =>
-				normalizeActionIdentifier(action.name) ===
-				normalizeActionIdentifier("CALENDAR"),
-		);
-		if (calendarAction) {
-			return {
-				actionName: calendarAction.name,
-				score: 100,
-				secondBestScore: 0,
-				reasons: ["direct:schedule-policy"],
-			};
-		}
-	}
-
-	return null;
-}
-
-function findRuntimeActionByNames(
-	runtime: Pick<IAgentRuntime, "actions">,
-	names: string[],
-): Action | undefined {
-	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return (runtime.actions ?? []).find((action) => {
-		const candidates = [action.name, ...(action.similes ?? [])]
-			.filter((value): value is string => typeof value === "string")
-			.map(normalizeActionIdentifier);
-		return candidates.some((candidate) => wanted.has(candidate));
-	});
-}
-
-function looksLikeLocalShellRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:run|execute|use)\s+(?:commands?|shell|terminal)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	if (looksLikeActionExplanationRequest(normalized)) {
-		return false;
-	}
-
-	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
-			normalized,
-		);
-	const asksToInspect =
-		/\b(?:run|execute|check|inspect|show|list|print|tail|look(?:\s+at)?|read|verify)\b/iu.test(
-			normalized,
-		);
-	const mentionsLocalSurface =
-		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|server|workspace|worktree|repo|repository|branch|head|vendored|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time|logs?|service|systemd)\b/iu.test(
-			normalized,
-		);
-	const asksRepoStateQuestion =
-		/\b(?:is|are|what|which|where)\b[^.?!\n]{0,80}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
-			normalized,
-		) &&
-		/\b(?:local(?:ly)?|running|workspace|worktree|repo|repository|vendored|submodules?|checked\s+out)\b/iu.test(
-			normalized,
-		);
-	const asksLocalStatusQuestion =
-		/\b(?:check|inspect|show|summarize|what|how\s+much|is|are)\b[\s\S]{0,160}\b(?:health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time)\b/iu.test(
-			normalized,
-		) &&
-		/\b(?:local|server|bot|runtime|right now|current|ready)\b/iu.test(
-			normalized,
-		);
-	const asksLocalSourceInspection =
-		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
-			normalized,
-		) &&
-		/\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/iu.test(
-			normalized,
-		);
-
-	return (
-		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
-		asksRepoStateQuestion ||
-		asksLocalStatusQuestion ||
-		asksLocalSourceInspection
-	);
-}
 
 function looksLikeActionExplanationRequest(text: string): boolean {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
@@ -7531,35 +6919,6 @@ function looksLikeActionExplanationRequest(text: string): boolean {
 		);
 
 	return !asksToExecuteAfterExplanation;
-}
-
-function looksLikeWebSearchRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	const explicitlyAsksSearch =
-		/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu.test(
-			normalized,
-		);
-	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
-			normalized,
-		);
-	const mentionsMarketOrNews =
-		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
-			normalized,
-		);
-	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
 }
 
 function looksLikeCodingWorkRequest(text: string): boolean {
@@ -7688,291 +7047,6 @@ function looksLikeCreativeCodingWorkRequest(text: string): boolean {
 	);
 }
 
-function quoteShellArg(value: string): string {
-	return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-function extractLocalShellPath(text: string): string | null {
-	const match = text.match(
-		/(?:^|[\s`'"])(\/(?:home|Users|workspace|workspaces|tmp|var\/tmp|opt|srv)\/[A-Za-z0-9._~+/@:-]+)/u,
-	);
-	if (!match?.[1]) {
-		return null;
-	}
-	return match[1].replace(/[),.;:]+$/u, "");
-}
-
-export function inferLocalShellCommandFromMessageText(
-	messageText: string,
-): string | null {
-	const text = messageText.toLowerCase();
-	if (!looksLikeLocalShellRequest(messageText)) {
-		return null;
-	}
-
-	if (/\bdf\s+-h\b/iu.test(messageText) || /\bdisk space\b/iu.test(text)) {
-		return "df -h";
-	}
-
-	if (/\bgit\b/iu.test(text)) {
-		const localPath = extractLocalShellPath(messageText);
-		if (!localPath) {
-			if (/\bgit\s+status\b/iu.test(messageText)) {
-				return "git status --short --branch";
-			}
-			return null;
-		}
-		const repo = quoteShellArg(localPath);
-		const commands = [`git -C ${repo} status --short --branch`];
-		if (
-			/\b(?:branch|head|sha|origin\/(?:develop|main|master)|latest|author config|commit author|user\.name|user\.email)\b/iu.test(
-				messageText,
-			)
-		) {
-			commands.push(
-				`git -C ${repo} branch --show-current`,
-				`git -C ${repo} rev-parse --short HEAD`,
-				`(git -C ${repo} rev-parse --short origin/develop 2>/dev/null || git -C ${repo} rev-parse --short origin/main 2>/dev/null || true)`,
-				`git -C ${repo} config user.name`,
-				`git -C ${repo} config user.email`,
-			);
-		}
-		return commands.join(" && ");
-	}
-
-	return null;
-}
-
-export function inferWebSearchQueryFromMessageText(
-	messageText: string,
-): string | null {
-	if (!looksLikeWebSearchRequest(messageText)) {
-		return null;
-	}
-
-	const query = messageText
-		.replace(/<@!?\d+>/gu, " ")
-		.replace(
-			/\banswer\s+(?:briefly|in\s+one\s+short\s+sentence|with\s+the\s+price\s+only)\b.*$/iu,
-			" ",
-		)
-		.replace(
-			/\band\s+mention\s+if\s+you\s+cannot\s+browse\s+live\s+prices\b.*$/iu,
-			" ",
-		)
-		.replace(
-			/\b(?:search\s+(?:the\s+)?web\s+(?:for|about)?|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu,
-			" ",
-		)
-		.replace(/\bwhat\s+is\s+the\b/iu, " ")
-		.replace(/[?.!]+/gu, " ")
-		.trim()
-		.replace(/\s+/gu, " ");
-
-	return query.length > 0 ? query : messageText.trim();
-}
-
-function _hasSelectedShellCommandAction(
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): boolean {
-	return (
-		responseContent?.actions?.some(
-			(actionName) =>
-				typeof actionName === "string" &&
-				[normalizeActionIdentifier("SHELL")].includes(
-					normalizeActionIdentifier(actionName),
-				),
-		) ?? false
-	);
-}
-
-function _hasSelectedSearchAction(
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): boolean {
-	return (
-		responseContent?.actions?.some((actionName) => {
-			if (typeof actionName !== "string") {
-				return false;
-			}
-			const normalized = normalizeActionIdentifier(actionName);
-			return (
-				normalized === normalizeActionIdentifier("SEARCH") ||
-				normalized === normalizeActionIdentifier("WEB_SEARCH")
-			);
-		}) ?? false
-	);
-}
-
-function _mergeLocalShellCommandParams(
-	existingParams: Content["params"],
-	command: string,
-): Content["params"] {
-	if (
-		existingParams &&
-		typeof existingParams === "object" &&
-		!Array.isArray(existingParams)
-	) {
-		return {
-			...(existingParams as Record<string, unknown>),
-			SHELL: {
-				...(((existingParams as Record<string, unknown>).SHELL as
-					| Record<string, unknown>
-					| undefined) ?? {}),
-				command,
-			},
-		} as Content["params"];
-	}
-
-	return {
-		SHELL: { command },
-	} as Content["params"];
-}
-
-function _mergeWebSearchQueryParams(
-	existingParams: Content["params"],
-	query: string,
-): Content["params"] {
-	if (
-		existingParams &&
-		typeof existingParams === "object" &&
-		!Array.isArray(existingParams)
-	) {
-		return {
-			...(existingParams as Record<string, unknown>),
-			SEARCH: {
-				...(((existingParams as Record<string, unknown>).SEARCH as
-					| Record<string, unknown>
-					| undefined) ?? {}),
-				category: "web",
-				query,
-			},
-		} as Content["params"];
-	}
-
-	return {
-		SEARCH: { category: "web", query },
-	} as Content["params"];
-}
-
-export function suggestOwnedActionFromMetadata(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Pick<Memory, "content">,
-): ActionOwnershipSuggestion | null {
-	const messageText = getUserMessageText(message);
-	if (messageText.length === 0) {
-		return null;
-	}
-
-	const directSuggestion = findDirectOwnedActionSuggestion(
-		runtime,
-		messageText,
-	);
-	if (directSuggestion) {
-		return directSuggestion;
-	}
-
-	if (
-		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
-			pattern.test(messageText),
-		)
-	) {
-		return null;
-	}
-
-	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
-		.filter((action) => {
-			const normalized = normalizeActionIdentifier(action.name);
-			return (
-				normalized.length > 0 &&
-				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(normalized) &&
-				normalized !== normalizeActionIdentifier("IGNORE") &&
-				normalized !== normalizeActionIdentifier("STOP")
-			);
-		})
-		.map((action) => ({
-			actionName: action.name,
-			...scoreActionOwnershipMatch(messageText, action),
-		}))
-		.filter((candidate) => candidate.score > 0)
-		.sort((left, right) => right.score - left.score);
-
-	if (ranked.length === 0) {
-		return null;
-	}
-
-	const best = ranked[0];
-	const secondBestScore = ranked[1]?.score ?? 0;
-	if (best.score < 8 || best.score - secondBestScore < 1.5) {
-		return null;
-	}
-
-	return {
-		actionName: best.actionName,
-		score: best.score,
-		secondBestScore,
-		reasons: best.reasons,
-	};
-}
-
-export function findOwnedActionCorrectionFromMetadata(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Pick<Memory, "content">,
-	responseContent: Pick<Content, "actions"> | null | undefined,
-): ActionOwnershipSuggestion | null {
-	const hasExplicitIntent = (responseContent?.actions ?? []).some(
-		(actionName) =>
-			typeof actionName === "string" &&
-			EXPLICIT_INTENT_ACTIONS.has(normalizeActionIdentifier(actionName)),
-	);
-	if (hasExplicitIntent) {
-		return null;
-	}
-
-	const currentAction = responseContent?.actions?.find(
-		(actionName) =>
-			typeof actionName === "string" &&
-			!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
-				normalizeActionIdentifier(actionName),
-			) &&
-			normalizeActionIdentifier(actionName) !==
-				normalizeActionIdentifier("IGNORE") &&
-			normalizeActionIdentifier(actionName) !==
-				normalizeActionIdentifier("STOP"),
-	);
-	if (!currentAction) {
-		return null;
-	}
-
-	const suggestion = suggestOwnedActionFromMetadata(runtime, message);
-	if (!suggestion) {
-		return null;
-	}
-
-	if (
-		normalizeActionIdentifier(suggestion.actionName) ===
-		normalizeActionIdentifier(currentAction)
-	) {
-		return null;
-	}
-
-	const currentActionDef = (runtime.actions ?? []).find(
-		(action) =>
-			normalizeActionIdentifier(action.name) ===
-			normalizeActionIdentifier(currentAction),
-	);
-	const currentScore = currentActionDef
-		? scoreActionOwnershipMatch(
-				typeof message.content?.text === "string" ? message.content.text : "",
-				currentActionDef,
-			).score
-		: 0;
-	if (suggestion.score - currentScore < 4) {
-		return null;
-	}
-
-	return suggestion;
-}
-
 function hasNonPassiveAction(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -8048,481 +7122,6 @@ export function shouldPromoteExplicitReplyToOwnedAction(
 		suggestion.reasons.includes("direct:local-shell-check") ||
 		suggestion.reasons.includes("direct:web-search")
 	);
-}
-
-function _shouldAttemptActionRescue(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Memory,
-	state: State,
-	responseContent:
-		| Pick<Content, "actions" | "providers" | "text">
-		| null
-		| undefined,
-): boolean {
-	if (!responseContent) {
-		return false;
-	}
-
-	if (hasNonPassiveAction(responseContent)) {
-		return false;
-	}
-
-	const draftText = String(responseContent.text ?? "").trim();
-	const source =
-		typeof message.content === "object" && message.content
-			? (message.content as { source?: unknown }).source
-			: undefined;
-	if (source === "discord" && draftText.length > 0) {
-		return false;
-	}
-	if (hasExplicitReplyIntent(responseContent) && draftText.length > 0) {
-		return false;
-	}
-
-	if (looksLikeNonActionableChatter(message)) {
-		return false;
-	}
-
-	if (looksLikeSelfPolicyExplanationRequest(message)) {
-		return false;
-	}
-
-	const availableActionNames =
-		typeof state.values?.actionNames === "string"
-			? state.values.actionNames
-			: "";
-	if (
-		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
-	) {
-		return false;
-	}
-
-	return true;
-}
-
-function getMessageText(message: Memory): string {
-	return getUserMessageText(message);
-}
-
-function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {
-	const text = getMessageText(message).toLowerCase();
-	if (!text) {
-		return false;
-	}
-
-	return [
-		/\bif\b/,
-		/\bwhen\b/,
-		/\bwhenever\b/,
-		/\bapproval\b/,
-		/\bapprove\b/,
-		/\bgood with you\b/,
-		/\bif needed\b/,
-		/\brebook\b/,
-		/\bgroup chat\b/,
-		/\bhandoff\b/,
-		/\bbump me again\b/,
-		/\bwith context\b/,
-		/\bwhat .* still owe\b/,
-		/\bslides\b/,
-		/\bportal assets?\b/,
-		/\bupdated copy\b/,
-		/\bexpired\b/,
-		/\bcancellation fee\b/,
-		/\bimportant meetings?\b/,
-		/\bstuck\b/,
-		/\bupload it to the portal\b/,
-	].some((pattern) => pattern.test(text));
-}
-
-function _shouldAttemptOwnershipRepair(
-	runtime: Pick<IAgentRuntime, "actions">,
-	message: Memory,
-	state: State,
-	responseContent:
-		| Pick<Content, "actions" | "providers" | "text">
-		| null
-		| undefined,
-): boolean {
-	if (!responseContent || !hasNonPassiveAction(responseContent)) {
-		return false;
-	}
-
-	if (looksLikeNonActionableChatter(message)) {
-		return false;
-	}
-
-	const availableActionNames =
-		typeof state.values?.actionNames === "string"
-			? state.values.actionNames
-			: "";
-	if (
-		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
-	) {
-		return false;
-	}
-
-	const normalizedActions = (responseContent.actions ?? [])
-		.map((actionName) =>
-			typeof actionName === "string"
-				? normalizeActionIdentifier(actionName)
-				: "",
-		)
-		.filter((actionName) => actionName.length > 0);
-	if (normalizedActions.length !== 1) {
-		return false;
-	}
-
-	return (
-		ROUTING_REASSESS_ACTIONS.has(normalizedActions[0]) &&
-		looksLikeOwnershipSensitiveRequest(message)
-	);
-}
-
-function _buildOwnershipRepairPrompt(
-	basePrompt: string,
-	selectedActionName: string,
-	draftReply: string,
-): string {
-	const trimmedDraftReply = draftReply.trim();
-	const draftSection =
-		trimmedDraftReply.length > 0
-			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
-			: "";
-
-	return `${basePrompt}
-
-[OWNERSHIP REPAIR]
-The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
-Re-evaluate the request and choose the single best owning action from the listed actions above.
-Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
-Generic contextual bump rules about unanswered events belong to MESSAGE action=draft_followup or an OWNER_* task surface, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
-Missing-ID or blocked-workflow prompts belong to VOICE_CALL or MESSAGE with the appropriate inbox/draft action, not COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
-Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to OWNER_TODOS unless the request is explicitly about personal todo/habit state.
-Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to calendar, OWNER_FINANCES, or call escalation actions; email unsubscribe belongs to MESSAGE action=manage unless the user explicitly asks to audit, cancel, or status-check a paid subscription.
-Flight-conflict rebooking belongs to CALENDAR even when the exact flight time or event ID still needs a follow-up.
-If the current action is already the most specific owner, keep it.${draftSection}`;
-}
-
-function _shouldAttemptProviderRescue(
-	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
-): boolean {
-	if (!responseContent) {
-		return false;
-	}
-
-	if ((responseContent.providers?.length ?? 0) > 0) {
-		return false;
-	}
-
-	const normalizedActions = (responseContent.actions ?? [])
-		.map((actionName) =>
-			typeof actionName === "string"
-				? normalizeActionIdentifier(actionName)
-				: "",
-		)
-		.filter((actionName) => actionName.length > 0);
-
-	if (normalizedActions.length === 0) {
-		return true;
-	}
-
-	return normalizedActions.every((actionName) =>
-		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
-	);
-}
-
-export function looksLikeSelfPolicyExplanationRequest(
-	message: Pick<Memory, "content">,
-): boolean {
-	const text =
-		typeof message.content.text === "string"
-			? message.content.text.toLowerCase()
-			: "";
-	if (!text.trim()) {
-		return false;
-	}
-
-	const hasNoWorkDirective =
-		/\b(?:do not|don't|dont|without)\s+(?:build|create|edit|change|modify|write|scaffold|run|execute|use|touch|commit|push|open|make)\b/iu.test(
-			text,
-		) ||
-		/\b(?:answer|respond)\s+(?:in|with)\s+(?:one|1|a)\s+(?:short\s+)?sentence\b/iu.test(
-			text,
-		) ||
-		/\bdo not run commands?\b/iu.test(text);
-	const asksMonetizedAppGuidance =
-		/\b(?:monetized|monetised)\b/iu.test(text) &&
-		/\b(?:workflow|skill|sdk|example app|reference app|build[- ]?monetized[- ]?app)\b/iu.test(
-			text,
-		);
-	const asksWorkspaceMap =
-		/\b(?:which|what|where)\b[\s\S]{0,120}\b(?:folder|folders|path|paths|repo|repos|repository|repositories|workspace|worktree|source)\b/iu.test(
-			text,
-		) &&
-		/\b(?:live|read[- ]?only|allowed|touch|edit|pr work|github|git config|default branch|latest)\b/iu.test(
-			text,
-		);
-	const asksAgentMethod =
-		/\b(?:what|which|how)\b[\s\S]{0,120}\b(?:workflow|workflows|skill|skills|sdk|example app|routing|configured|allowed|supposed to use|should you use)\b/iu.test(
-			text,
-		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/iu.test(text);
-	const asksQuestion =
-		/\?/.test(text) || /\b(?:what|which|where|how|should)\b/iu.test(text);
-	const asksActualWork =
-		/\b(?:build|create|make|implement|fix|edit|change|modify|write|scaffold|deploy|commit|push|open)\b[\s\S]{0,120}\b(?:app|code|file|files|pr|pull request|branch|repo|feature|bug)\b/iu.test(
-			text,
-		);
-
-	if (
-		hasNoWorkDirective &&
-		asksQuestion &&
-		(asksMonetizedAppGuidance || asksWorkspaceMap || asksAgentMethod)
-	) {
-		return true;
-	}
-
-	return (
-		asksQuestion &&
-		!asksActualWork &&
-		(asksWorkspaceMap || asksAgentMethod || asksMonetizedAppGuidance)
-	);
-}
-
-export function shouldSkipDocumentProviderRescue(message: Memory): boolean {
-	if ((message.content.attachments?.length ?? 0) > 0) {
-		return true;
-	}
-
-	const text =
-		typeof message.content.text === "string"
-			? message.content.text.toLowerCase()
-			: "";
-	if (!text) {
-		return false;
-	}
-
-	if (looksLikeLocalShellRequest(text)) {
-		return true;
-	}
-
-	const asksSelfPolicy =
-		/\b(?:configured|routing|workflow|workflows?|folders?|repos?|repositories|source|workspace|workspaces|skills?|sdk|example app|read-only|pr work)\b/.test(
-			text,
-		) && /\b(?:you|your|agent|codex|task agent|subagent)\b/.test(text);
-	const asksDocument =
-		/\b(uploaded|upload|attachment|attached|document|documents?|file|files?|document base|kb)\b/.test(
-			text,
-		);
-
-	if (asksDocument) {
-		return false;
-	}
-
-	if (looksLikeSelfPolicyExplanationRequest(message)) {
-		return true;
-	}
-
-	return asksSelfPolicy;
-}
-
-function buildProviderSelectionPrompt(draftReply?: string): string {
-	const trimmedDraftReply = draftReply?.trim() ?? "";
-	const draftReplySection =
-		trimmedDraftReply.length > 0
-			? `draft_reply:\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n\n`
-			: "";
-	const draftReplyRules =
-		trimmedDraftReply.length > 0
-			? [
-					"- if the draft reply asks the user to resend, restate, or clarify information that may already exist in provider context, choose the relevant providers instead of sending the draft reply as-is",
-					'- when the recent conversation already identifies a prior upload or document store question, prefer grounded provider lookup over asking "which file?" again',
-				]
-			: [];
-	return `task: Decide whether any providers should be called before sending the assistant's reply.
-
-recent conversation:
-{{recentMessages}}
-
-${draftReplySection}rules[${4 + draftReplyRules.length}]:
-- choose providers only when they can supply grounded information needed before the assistant replies
-- uploaded files, documents, prior uploads, and document store questions should use the relevant providers before asking the user to resend the material
-- if the user asks about an uploaded file or document and DOCUMENTS is available, prefer DOCUMENTS before sending any clarification reply
-- return an empty providers field when no provider lookup is needed
-- do not include actions, text, or thought in the output
-${draftReplyRules.join("\n")}
-
-output:
-JSON only. Return exactly one JSON object containing only provider names. No prose before or after it. No <think>.
-
-Examples:
-- user asks: "what is the qa codeword from the uploaded file?"
-  draft reply: "Which file are you referring to?"
-  output:
-  {"providers":["DOCUMENTS","DOCUMENTS"]}
-- user asks: "what is the qa codeword from the uploaded file?"
-  draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
-  output:
-  {"providers":["DOCUMENTS","DOCUMENTS"]}
-- user asks: "thanks, that's all"
-  draft reply: "Glad to help."
-  output:
-  {"providers":[]}`;
-}
-
-async function _recoverProvidersForTurn(args: {
-	runtime: IAgentRuntime;
-	message: Memory;
-	state: State;
-	draftReply?: string;
-	attachments?: GenerateTextAttachment[];
-}): Promise<string[]> {
-	if (shouldSkipDocumentProviderRescue(args.message)) {
-		return [];
-	}
-
-	try {
-		const parsed = await args.runtime.dynamicPromptExecFromState({
-			state: args.state,
-			params: {
-				prompt: buildProviderSelectionPrompt(args.draftReply),
-				...(args.attachments ? { attachments: args.attachments } : {}),
-			},
-			schema: [
-				{
-					field: "providers",
-					description:
-						"Provider names to call before replying, or an empty array",
-					type: "array",
-					items: { description: "One provider name" },
-					required: true,
-					validateField: false,
-					streamField: false,
-				},
-			],
-			options: {
-				modelType: ModelType.TEXT_LARGE,
-				contextCheckLevel: 0,
-				maxRetries: 1,
-			},
-		});
-		const normalizedProviders = normalizePlannerProviders(
-			parsed ?? { providers: [] },
-			args.runtime,
-		);
-		if (normalizedProviders.length > 0) {
-			return normalizedProviders;
-		}
-		const shouldUseDocuments = await shouldUseDocumentProviders(
-			args.runtime,
-			args.state,
-			args.attachments,
-		);
-		return shouldUseDocuments ? ["DOCUMENTS"] : [];
-	} catch (error) {
-		args.runtime.logger.warn(
-			{
-				src: "service:message",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Provider rescue model call failed",
-		);
-		return [];
-	}
-}
-
-function _buildGroundedFallbackReplyPrompt(): string {
-	return `task: Write the next assistant reply using grounded context.
-
-grounded context:
-{{providers}}
-
-recent conversation:
-{{recentMessages}}
-
-rules[5]:
-- answer directly from grounded context when it fully answers the user
-- do not ask the user to resend, rename, or specify a file if grounded document or document context already answers the request
-- do not say you cannot access the file when grounded context is already present above
-- if DOCUMENTS contains a direct answer, prefer that grounded answer even when DOCUMENTS lists multiple files
-- if grounded context is still insufficient, say exactly what is missing
-- return only the reply text
-
-output:
-Plain text only. No XML, JSON, bullets, or <think>.`;
-}
-
-function buildDocumentProviderDecisionPrompt(): string {
-	return `task: Decide whether the assistant should consult uploaded-document or document providers before replying.
-
-recent conversation:
-{{recentMessages}}
-
-rules[5]:
-- return true when the user is asking about an uploaded file, document, prior upload, or document store content
-- return true when the answer is likely already stored in uploaded documents or semantic document search
-- when DOCUMENTS is available and the user refers to an uploaded file or prior upload, return true
-- return false for generic chat, thanks, or requests that clearly do not depend on uploaded or document store content
-- return only the structured output, with no prose
-
-output:
-JSON only. Return exactly one JSON object.
-
-Examples:
-- user asks: "what is the qa codeword from the uploaded file?" -> useDocumentProviders: true
-- user asks: "thanks, that's all" -> useDocumentProviders: false`;
-}
-
-async function shouldUseDocumentProviders(
-	runtime: IAgentRuntime,
-	state: State,
-	attachments?: GenerateTextAttachment[],
-): Promise<boolean> {
-	try {
-		const parsed = await runtime.dynamicPromptExecFromState({
-			state,
-			params: {
-				prompt: buildDocumentProviderDecisionPrompt(),
-				...(attachments ? { attachments } : {}),
-			},
-			schema: [
-				{
-					field: "useDocumentProviders",
-					description:
-						"true when uploaded-document or document providers should be consulted before replying",
-					type: "boolean",
-					required: true,
-					validateField: false,
-					streamField: false,
-				},
-			],
-			options: {
-				modelType: ModelType.TEXT_LARGE,
-				contextCheckLevel: 0,
-				maxRetries: 1,
-			},
-		});
-		const value =
-			parsed?.useDocumentProviders ?? parsed?.use_document_providers;
-		if (typeof value === "boolean") {
-			return value;
-		}
-		if (typeof value === "string") {
-			return value.trim().toLowerCase() === "true";
-		}
-		return false;
-	} catch (error) {
-		runtime.logger.warn(
-			{
-				src: "service:message",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Documents provider decision model call failed",
-		);
-		return false;
-	}
 }
 
 function buildRuntimeActionLookup(runtime: {
@@ -8621,20 +7220,6 @@ export function getActionContinuationDecision(
 		continuingActions,
 		suppressingActions,
 	};
-}
-
-function _shouldContinueAfterActions(
-	runtime: IAgentRuntime,
-	responseContent: Content | null | undefined,
-): boolean {
-	return getActionContinuationDecision(runtime, responseContent).shouldContinue;
-}
-
-function _suppressesPostActionContinuation(
-	runtime: IAgentRuntime,
-	responseContent: Content | null | undefined,
-): boolean {
-	return getActionContinuationDecision(runtime, responseContent).suppressed;
 }
 
 export function actionResultsSuppressPostActionContinuation(
@@ -8912,6 +7497,10 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	if (!response.text.trim() && !response.attachments?.length) return false;
+	// Media actions already produced a file attachment; deliver it directly instead
+	// of spending another model call rewriting placeholder text.
+	if (response.attachments?.some((media) => Boolean(media?.url))) return false;
 	if (!response.text.trim()) return false;
 	if (response.source === "voice") return false;
 	if (response.source === "voice-cache") return false;
@@ -8998,75 +7587,6 @@ async function rewriteActionCallbackInCharacter(args: {
 		);
 		return fallback();
 	}
-}
-
-function getLatestVisibleReplyText(
-	responseContent: Content | null | undefined,
-	actionResults: ActionResult[],
-): string {
-	for (let index = actionResults.length - 1; index >= 0; index--) {
-		const result = actionResults[index];
-		const actionName =
-			typeof result?.data?.actionName === "string"
-				? result.data.actionName
-				: "";
-		if (!isReplyActionIdentifier(actionName)) {
-			continue;
-		}
-
-		if (typeof result.text === "string" && result.text.trim().length > 0) {
-			return result.text.trim();
-		}
-	}
-
-	const responseText =
-		typeof responseContent?.text === "string"
-			? responseContent.text.trim()
-			: "";
-	return responseText;
-}
-
-function isLikelyClarifyingQuestion(text: string): boolean {
-	const normalized = text.trim();
-	if (!normalized) {
-		return false;
-	}
-
-	if (/[?؟]\s*$/.test(normalized)) {
-		return true;
-	}
-
-	const firstSentence = extractFirstSentence(normalized)
-		.first.trim()
-		.toLowerCase();
-	return /^(what|which|when|where|who|whom|whose|why|how|can you|could you|would you|will you|do you|did you|are you|is it|should i|should we)\b/.test(
-		firstSentence,
-	);
-}
-
-function _shouldWaitForUserAfterIncompleteReflection(
-	responseContent: Content | null | undefined,
-	actionResults: ActionResult[],
-): boolean {
-	const latestVisibleReply = getLatestVisibleReplyText(
-		responseContent,
-		actionResults,
-	);
-	if (!isLikelyClarifyingQuestion(latestVisibleReply)) {
-		return false;
-	}
-
-	if (actionResults.length === 0) {
-		return isSimpleReplyResponse(responseContent);
-	}
-
-	return actionResults.every((result) => {
-		const actionName =
-			typeof result?.data?.actionName === "string"
-				? result.data.actionName
-				: "";
-		return isReplyActionIdentifier(actionName);
-	});
 }
 
 export function withActionResultsForPrompt(
@@ -10076,6 +8596,25 @@ export class DefaultMessageService implements IMessageService {
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
 		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
+		// Canonicalize the resolved speaker (imprint → entityId) onto
+		// `content.metadata.speakerEntityId` for every voice turn that carries one
+		// (#8786). Attribution can arrive top-level (in-process engine) or nested
+		// (chat clients); collapsing to one spot lets providers/extraction and the
+		// facts/relationships stage attribute the turn to the right person.
+		if (voiceResponseHandlerFastPath && message.content) {
+			const speakerEntityId = getVoiceSpeakerEntityId(message);
+			if (speakerEntityId) {
+				const md =
+					message.content.metadata &&
+					typeof message.content.metadata === "object" &&
+					!Array.isArray(message.content.metadata)
+						? (message.content.metadata as Record<string, unknown>)
+						: {};
+				if (md.speakerEntityId !== speakerEntityId) {
+					message.content.metadata = { ...md, speakerEntityId };
+				}
+			}
+		}
 		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
 					const text = event.text.trim();
@@ -10155,21 +8694,51 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		const directLifeOpsResult = await (
-			runtime as IAgentRuntime & {
-				lifeOpsDirectMessageHook?: {
-					handleMessageRequest?: (args: {
-						runtime: IAgentRuntime;
-						message: Memory;
-						state: State;
-					}) => Promise<ActionResult | null | undefined>;
-				};
+		// #8791: pre-LLM action shortcut gate runs FIRST — before any direct hook,
+		// planner, or model call. An explicit slash/`!` command (always-on) or a
+		// confident natural-language shortcut resolves to a deterministic action
+		// reply with zero inference. Placed here (ahead of the LifeOps/workflow
+		// direct hooks and the conditional v5 stage) so a slash command can never
+		// be pre-empted by another handler.
+		if (!strategyResult) {
+			const shortcutSenderRole = await resolveStage1SenderRole(
+				runtime,
+				message,
+			);
+			const shortcutOutcome = await runShortcutGate({
+				runtime,
+				message,
+				state,
+				responseId,
+				senderRole: shortcutSenderRole,
+			});
+			if (shortcutOutcome && shortcutOutcome.kind === "direct_reply") {
+				strategyResult = shortcutOutcome.result;
+				_usedV5Runtime = true;
+				runtime.logger?.debug?.(
+					{ src: "service:message", agentId: runtime.agentId },
+					"Message resolved via pre-LLM shortcut gate",
+				);
 			}
-		).lifeOpsDirectMessageHook?.handleMessageRequest?.({
-			runtime,
-			message,
-			state,
-		});
+		}
+
+		const directLifeOpsResult = strategyResult
+			? null
+			: await (
+					runtime as IAgentRuntime & {
+						lifeOpsDirectMessageHook?: {
+							handleMessageRequest?: (args: {
+								runtime: IAgentRuntime;
+								message: Memory;
+								state: State;
+							}) => Promise<ActionResult | null | undefined>;
+						};
+					}
+				).lifeOpsDirectMessageHook?.handleMessageRequest?.({
+					runtime,
+					message,
+					state,
+				});
 		if (directLifeOpsResult) {
 			const directText =
 				typeof directLifeOpsResult.text === "string" &&
@@ -10323,6 +8892,34 @@ export class DefaultMessageService implements IMessageService {
 					"v5 message handling",
 				);
 				_usedV5Runtime = true;
+			}
+		}
+
+		// #9949: role-keyed injection / social-engineering verify gate. The
+		// deterministic RiskFactors were stamped during the
+		// parallel_with_should_respond phase; here — and only when we are about
+		// to respond — escalate a borderline USER/GUEST message to a single
+		// TEXT_LARGE adjudication. OWNER/ADMIN bypass; benign traffic short-circuits
+		// before any model call. A blocked verdict suppresses the response.
+		if (shouldRespondToMessage) {
+			const injectionGate = await runShouldRespondInjectionGate({
+				runtime,
+				message,
+				resolveSenderRole: () => resolveStage1SenderRole(runtime, message),
+			});
+			if (injectionGate.blocked) {
+				shouldRespondToMessage = false;
+				terminalDecision = null;
+				strategyResult = null;
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						reason: injectionGate.reason,
+						score: injectionGate.score,
+					},
+					"[ShouldRespondRiskGate] suppressing response: injection/social-engineering verify blocked",
+				);
 			}
 		}
 
@@ -10537,9 +9134,11 @@ export class DefaultMessageService implements IMessageService {
 						}
 					}
 					if (callback) {
-						await callback(responseContent);
-						simpleReplyDelivered = true;
-						markInference(INFERENCE_MARKS.replyDelivered);
+						if (responseContent) {
+							await callback(responseContent);
+							simpleReplyDelivered = true;
+							markInference(INFERENCE_MARKS.replyDelivered);
+						}
 					}
 				}
 			}
@@ -10870,20 +9469,7 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// 5. Clear self-modification requests should bypass the ignore-biased
-		// classifier even in group chat, but only for narrow personality/style
-		// update phrasing to avoid broad false positives.
-		if (isExplicitSelfModificationRequest(message.content.text || "")) {
-			return {
-				shouldRespond: true,
-				skipEvaluation: true,
-				reason: "explicit self-modification request",
-				primaryContext: "social",
-				secondaryContexts: ["admin"],
-			};
-		}
-
-		// 6. All other cases are ambiguous enough to need the classifier.
+		// 5. All other cases are ambiguous enough to need the classifier.
 		// Lack of a platform mention is not proof the message isn't directed
 		// at the agent in a fast-moving group conversation.
 		return {
@@ -10920,221 +9506,270 @@ export class DefaultMessageService implements IMessageService {
 					? attachment.url
 					: getLocalServerUrl(attachment.url);
 
-				// Only process images that don't already have descriptions
-				if (
-					attachment.contentType === ContentType.IMAGE &&
-					!attachment.description
-				) {
-					// Skip image analysis when vision / image-description is explicitly
-					// disabled (e.g. the user toggled the Vision capability off).
-					const disableImageDesc = runtime.getSetting(
-						"DISABLE_IMAGE_DESCRIPTION",
-					);
-					if (disableImageDesc === true || disableImageDesc === "true") {
-						return processedAttachment;
-					}
-
-					runtime.logger.debug(
-						{ src: "service:message", imageUrl: attachment.url },
-						"Generating image description",
-					);
-
-					let imageUrl = url;
-					const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-					const inlineData = attachment as MediaWithInlineData;
-
+				try {
+					// Only process images that don't already have descriptions
 					if (
-						typeof inlineData._data === "string" &&
-						inlineData._data.trim() &&
-						typeof inlineData._mimeType === "string" &&
-						inlineData._mimeType.trim()
+						attachment.contentType === ContentType.IMAGE &&
+						!attachment.description
 					) {
-						imageUrl = `data:${inlineData._mimeType};base64,${inlineData._data}`;
-					} else if (!isRemote) {
-						// Convert local/internal media to base64
-						const res = await runtimeFetch(url);
-						if (!res.ok)
-							throw new Error(`Failed to fetch image: ${res.statusText}`);
-
-						const arrayBuffer = await res.arrayBuffer();
-						const buffer = Buffer.from(arrayBuffer);
-						const contentType =
-							res.headers.get("content-type") || "application/octet-stream";
-						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
-					}
-
-					// Describe via the shared content-addressed cache: identical image
-					// bytes reuse one stored description across messages and across the
-					// other describe paths (read action, basic-capabilities helper)
-					// instead of re-invoking the vision model every turn.
-					const resolvedImagePrompt = resolveOptimizedPromptForRuntime(
-						runtime,
-						"media_description",
-						imageDescriptionTemplate,
-					);
-					const described = await describeImageCached(
-						runtime,
-						imageUrl,
-						resolvedImagePrompt,
-					);
-					if (described) {
-						processedAttachment.description = described.description;
-						processedAttachment.title = described.title || "Image";
-						processedAttachment.text = described.text;
-						runtime.logger.debug(
-							{
-								src: "service:message",
-								descriptionPreview: described.description?.substring(0, 100),
-							},
-							"Generated image description",
+						// Skip image analysis when vision / image-description is explicitly
+						// disabled (e.g. the user toggled the Vision capability off).
+						const disableImageDesc = runtime.getSetting(
+							"DISABLE_IMAGE_DESCRIPTION",
 						);
-					} else {
-						runtime.logger.warn(
-							{ src: "service:message" },
-							"Image description unavailable for attachment",
-						);
-					}
-				} else if (
-					attachment.contentType === ContentType.DOCUMENT &&
-					!attachment.text
-				) {
-					const docFetch = runtime.fetch ?? globalThis.fetch;
-					const res = await docFetch(url);
-					if (!res.ok)
-						throw new Error(`Failed to fetch document: ${res.statusText}`);
-
-					const contentType = res.headers.get("content-type") || "";
-					const isPlainText = contentType.startsWith("text/plain");
-
-					if (isPlainText) {
-						runtime.logger.debug(
-							{ src: "service:message", documentUrl: attachment.url },
-							"Processing plain text document",
-						);
-
-						const textContent = await res.text();
-						processedAttachment.text = textContent;
-						processedAttachment.title =
-							processedAttachment.title || "Text File";
-
-						runtime.logger.debug(
-							{
-								src: "service:message",
-								textPreview: processedAttachment.text?.substring(0, 100),
-							},
-							"Extracted text content",
-						);
-					} else {
-						runtime.logger.warn(
-							{ src: "service:message", contentType },
-							"Skipping non-plain-text document",
-						);
-					}
-				} else if (
-					attachment.contentType === ContentType.AUDIO &&
-					!attachment.text
-				) {
-					runtime.logger.debug(
-						{ src: "service:message", audioUrl: attachment.url },
-						"Transcribing audio attachment",
-					);
-
-					try {
-						let transcriptionInput: string | Buffer = url;
-						const audioFetch = runtime.fetch ?? globalThis.fetch;
-
-						// For local/internal URLs, fetch the audio as a buffer
-						if (!isRemote) {
-							const res = await audioFetch(url);
-							if (!res.ok)
-								throw new Error(`Failed to fetch audio: ${res.statusText}`);
-							const arrayBuffer = await res.arrayBuffer();
-							transcriptionInput = Buffer.from(arrayBuffer);
+						if (disableImageDesc === true || disableImageDesc === "true") {
+							return processedAttachment;
 						}
 
-						const transcript = await runtime.useModel(
-							ModelType.TRANSCRIPTION,
-							transcriptionInput,
+						runtime.logger.debug(
+							{ src: "service:message", imageUrl: attachment.url },
+							"Generating image description",
 						);
 
-						if (typeof transcript === "string" && transcript.trim()) {
-							processedAttachment.text = transcript.trim();
-							processedAttachment.title = processedAttachment.title || "Audio";
-							processedAttachment.description = `Transcript: ${transcript.trim()}`;
+						let imageUrl = url;
+						const inlineData = attachment as MediaWithInlineData;
+
+						if (
+							typeof inlineData._data === "string" &&
+							inlineData._data.trim() &&
+							typeof inlineData._mimeType === "string" &&
+							inlineData._mimeType.trim()
+						) {
+							imageUrl = `data:${inlineData._mimeType};base64,${inlineData._data}`;
+						} else {
+							// Inline the bytes as a data URL so the vision model never fetches
+							// an attacker-controlled URL itself. Remote bytes go through the
+							// SSRF-guarded fetcher (blocks private/loopback hosts); local
+							// media-store URLs use the trusted runtime fetch.
+							const { buffer, contentType } = await this.fetchAttachmentBytes(
+								runtime,
+								attachment.url,
+								url,
+								isRemote,
+							);
+							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
+						}
+
+						// Describe via the shared content-addressed cache: identical image
+						// bytes reuse one stored description across messages and across the
+						// other describe paths (read action, basic-capabilities helper)
+						// instead of re-invoking the vision model every turn.
+						const resolvedImagePrompt = resolveOptimizedPromptForRuntime(
+							runtime,
+							"media_description",
+							imageDescriptionTemplate,
+						);
+						const described = await describeImageCached(
+							runtime,
+							imageUrl,
+							resolvedImagePrompt,
+						);
+						if (described) {
+							processedAttachment.description = described.description;
+							processedAttachment.title = described.title || "Image";
+							processedAttachment.text = described.text;
+							runtime.logger.debug(
+								{
+									src: "service:message",
+									descriptionPreview: described.description?.substring(0, 100),
+								},
+								"Generated image description",
+							);
+						} else {
+							runtime.logger.warn(
+								{ src: "service:message" },
+								"Image description unavailable for attachment",
+							);
+						}
+					} else if (
+						attachment.contentType === ContentType.DOCUMENT &&
+						!attachment.text
+					) {
+						const { buffer, contentType } = await this.fetchAttachmentBytes(
+							runtime,
+							attachment.url,
+							url,
+							isRemote,
+						);
+						const isPlainText = contentType.startsWith("text/plain");
+
+						if (isPlainText) {
+							runtime.logger.debug(
+								{ src: "service:message", documentUrl: attachment.url },
+								"Processing plain text document",
+							);
+
+							const textContent = buffer.toString("utf8");
+							processedAttachment.text = textContent;
+							processedAttachment.title =
+								processedAttachment.title || "Text File";
 
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									transcriptPreview: processedAttachment.text?.substring(
-										0,
-										100,
-									),
+									textPreview: processedAttachment.text?.substring(0, 100),
 								},
-								"Transcribed audio attachment",
+								"Extracted text content",
+							);
+						} else {
+							runtime.logger.warn(
+								{ src: "service:message", contentType },
+								"Skipping non-plain-text document",
 							);
 						}
-					} catch (err) {
-						runtime.logger.warn(
-							{ src: "service:message", err },
-							"Audio transcription failed, continuing without transcript",
+					} else if (
+						attachment.contentType === ContentType.AUDIO &&
+						!attachment.text
+					) {
+						runtime.logger.debug(
+							{ src: "service:message", audioUrl: attachment.url },
+							"Transcribing audio attachment",
 						);
+
+						try {
+							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
+							// the buffer to the transcription model so it never fetches an
+							// attacker-controlled URL itself.
+							const { buffer } = await this.fetchAttachmentBytes(
+								runtime,
+								attachment.url,
+								url,
+								isRemote,
+							);
+
+							const transcript = await runtime.useModel(
+								ModelType.TRANSCRIPTION,
+								buffer,
+							);
+
+							if (typeof transcript === "string" && transcript.trim()) {
+								processedAttachment.text = transcript.trim();
+								processedAttachment.title =
+									processedAttachment.title || "Audio";
+								processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+								runtime.logger.debug(
+									{
+										src: "service:message",
+										transcriptPreview: processedAttachment.text?.substring(
+											0,
+											100,
+										),
+									},
+									"Transcribed audio attachment",
+								);
+							}
+						} catch (err) {
+							runtime.logger.warn(
+								{ src: "service:message", err },
+								"Audio transcription failed, continuing without transcript",
+							);
+						}
+					} else if (
+						attachment.contentType === ContentType.VIDEO &&
+						!attachment.text
+					) {
+						runtime.logger.debug(
+							{ src: "service:message", videoUrl: attachment.url },
+							"Transcribing video attachment",
+						);
+
+						try {
+							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
+							// the buffer to the transcription model so it never fetches an
+							// attacker-controlled URL itself.
+							const { buffer } = await this.fetchAttachmentBytes(
+								runtime,
+								attachment.url,
+								url,
+								isRemote,
+							);
+
+							const transcript = await runtime.useModel(
+								ModelType.TRANSCRIPTION,
+								buffer,
+							);
+
+							if (typeof transcript === "string" && transcript.trim()) {
+								processedAttachment.text = transcript.trim();
+								processedAttachment.title =
+									processedAttachment.title || "Video";
+								processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+								runtime.logger.debug(
+									{
+										src: "service:message",
+										transcriptPreview: processedAttachment.text?.substring(
+											0,
+											100,
+										),
+									},
+									"Transcribed video attachment",
+								);
+							}
+						} catch (err) {
+							runtime.logger.warn(
+								{ src: "service:message", err },
+								"Video transcription failed, continuing without transcript",
+							);
+						}
 					}
-				} else if (
-					attachment.contentType === ContentType.VIDEO &&
-					!attachment.text
-				) {
-					runtime.logger.debug(
-						{ src: "service:message", videoUrl: attachment.url },
-						"Transcribing video attachment",
+
+					return processedAttachment;
+				} catch (err) {
+					// One bad attachment must never drop the others or the message text.
+					// Degrade to the un-enriched attachment (marking remote ones
+					// ephemeral so the UI can offer a retry) and keep processing.
+					runtime.logger.warn(
+						{ src: "service:message", url: attachment.url, err },
+						"Attachment processing failed; keeping un-enriched attachment",
 					);
-
-					try {
-						let transcriptionInput: string | Buffer = url;
-						const videoFetch = runtime.fetch ?? globalThis.fetch;
-
-						// For local/internal URLs, fetch the video as a buffer
-						if (!isRemote) {
-							const res = await videoFetch(url);
-							if (!res.ok)
-								throw new Error(`Failed to fetch video: ${res.statusText}`);
-							const arrayBuffer = await res.arrayBuffer();
-							transcriptionInput = Buffer.from(arrayBuffer);
-						}
-
-						const transcript = await runtime.useModel(
-							ModelType.TRANSCRIPTION,
-							transcriptionInput,
-						);
-
-						if (typeof transcript === "string" && transcript.trim()) {
-							processedAttachment.text = transcript.trim();
-							processedAttachment.title = processedAttachment.title || "Video";
-							processedAttachment.description = `Transcript: ${transcript.trim()}`;
-
-							runtime.logger.debug(
-								{
-									src: "service:message",
-									transcriptPreview: processedAttachment.text?.substring(
-										0,
-										100,
-									),
-								},
-								"Transcribed video attachment",
-							);
-						}
-					} catch (err) {
-						runtime.logger.warn(
-							{ src: "service:message", err },
-							"Video transcription failed, continuing without transcript",
-						);
-					}
+					return {
+						...attachment,
+						ephemeral: isRemote ? true : attachment.ephemeral,
+					};
 				}
-
-				return processedAttachment;
 			}),
 		);
 
 		return processedAttachments;
+	}
+
+	/**
+	 * Fetch an attachment's bytes for enrichment with a hard size cap. Remote
+	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
+	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
+	 * (built from a path-validated relative URL) use the runtime fetch. This is
+	 * the ONLY place a raw fetch is used during attachment enrichment.
+	 */
+	private async fetchAttachmentBytes(
+		runtime: IAgentRuntime,
+		rawUrl: string,
+		resolvedLocalUrl: string,
+		isRemote: boolean,
+	): Promise<{ buffer: Buffer; contentType: string }> {
+		if (isRemote) {
+			const { buffer, contentType } = await fetchRemoteMedia({
+				url: rawUrl,
+				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
+			});
+			return {
+				buffer,
+				contentType: contentType ?? "application/octet-stream",
+			};
+		}
+		const runtimeFetch = runtime.fetch ?? globalThis.fetch;
+		const res = await runtimeFetch(resolvedLocalUrl);
+		if (!res.ok) {
+			throw new Error(`Failed to fetch attachment: ${res.statusText}`);
+		}
+		const buffer = Buffer.from(await res.arrayBuffer());
+		if (buffer.length > ATTACHMENT_FETCH_MAX_BYTES) {
+			throw new Error(`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`);
+		}
+		const contentType =
+			res.headers.get("content-type") || "application/octet-stream";
+		return { buffer, contentType };
 	}
 
 	private resolveRecentMessagesForFailureReply(
@@ -11162,6 +9797,7 @@ export class DefaultMessageService implements IMessageService {
 		stage: string,
 	): Promise<FailureReplyAttempt> {
 		let sawRateLimit = false;
+		let sawAuthError = false;
 		for (const modelType of [
 			ModelType.TEXT_LARGE,
 			ModelType.RESPONSE_HANDLER,
@@ -11204,6 +9840,7 @@ export class DefaultMessageService implements IMessageService {
 				// failed for unrelated reasons where retrying won't help). The
 				// all-429 cascade from the live incident still lands here.
 				sawRateLimit = isRateLimitError(error);
+				sawAuthError = isAuthError(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -11221,6 +9858,11 @@ export class DefaultMessageService implements IMessageService {
 		// shortly", not "something broke".
 		if (sawRateLimit) {
 			return { kind: "rateLimited" };
+		}
+		// An auth failure (bad/expired/unauthorized cloud key) is actionable —
+		// tell the user to fix their key/credits, not the opaque generic message.
+		if (sawAuthError) {
+			return { kind: "authFailed" };
 		}
 		return { kind: "text", value: "" };
 	}
@@ -11267,7 +9909,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText = attempt.kind === "rateLimited" ? "" : attempt.value;
+		let replyText =
+			attempt.kind === "rateLimited" || attempt.kind === "authFailed"
+				? ""
+				: attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
@@ -11275,12 +9920,19 @@ export class DefaultMessageService implements IMessageService {
 			// character.templates.transientFailureReply (or
 			// rateLimitedReply for the throttling-specific case).
 			if (attempt.kind === "rateLimited") {
+				const tmpl = runtime.character.templates?.rateLimitedReply;
 				replyText =
-					runtime.character.templates?.rateLimitedReply ||
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
-			} else {
+			} else if (attempt.kind === "authFailed") {
+				const tmpl = runtime.character.templates?.authFailedReply;
 				replyText =
-					runtime.character.templates?.transientFailureReply ||
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
+			} else {
+				const tmpl = runtime.character.templates?.transientFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"Something went wrong on my end. Please try again.";
 			}
 		}
@@ -11328,8 +9980,11 @@ export class DefaultMessageService implements IMessageService {
 		responseId: UUID,
 		stage: string,
 	): StrategyResult {
+		const noProviderTmpl = runtime.character.templates?.noModelProviderReply;
 		const replyText =
-			runtime.character.templates?.noModelProviderReply ||
+			(typeof noProviderTmpl === "function"
+				? noProviderTmpl({ state })
+				: noProviderTmpl) ||
 			"This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).";
 
 		runtime.logger.warn(

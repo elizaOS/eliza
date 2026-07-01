@@ -11,11 +11,18 @@
 import { createContext, useContext } from "react";
 import type { SpatialModality } from "./ir.ts";
 
-/** An action raised by a primitive (e.g. a button press). */
+/**
+ * An action raised by a primitive (a button press, a field change) or by the
+ * spatial surface itself (a panel `move`/drag in the XR scene). `move` carries
+ * the panel's new world position so the host can persist 3D placement; the others
+ * carry the changed `value` where relevant.
+ */
 export interface SpatialAction {
-  type: "press" | "change" | "submit";
+  type: "press" | "change" | "submit" | "move";
   agentId: string;
   value?: string;
+  /** For `move`: the panel's new world-space position (metres). */
+  position?: { x: number; y: number; z: number };
 }
 
 export interface SpatialContextValue {

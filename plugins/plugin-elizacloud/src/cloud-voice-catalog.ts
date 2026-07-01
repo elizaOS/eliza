@@ -49,7 +49,7 @@ export interface CloudVoiceClient {
 type ClientFactory = (runtime: IAgentRuntime) => CloudVoiceClient;
 
 let clientFactory: ClientFactory = (runtime) =>
-  createElizaCloudClient(runtime) as unknown as CloudVoiceClient;
+  createElizaCloudClient(runtime) as CloudVoiceClient;
 
 /**
  * Test seam: substitute the SDK client factory. Pass `null` to reset to
@@ -61,7 +61,7 @@ export function setCloudVoiceClientFactoryForTesting(
 ): void {
   if (factory === null) {
     clientFactory = (runtime) =>
-      createElizaCloudClient(runtime) as unknown as CloudVoiceClient;
+      createElizaCloudClient(runtime) as CloudVoiceClient;
   } else {
     clientFactory = factory;
   }

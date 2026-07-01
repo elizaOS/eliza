@@ -1,5 +1,9 @@
 import { APP_RESUME_EVENT } from "@elizaos/shared";
-import { client, isApiError, useApp } from "@elizaos/ui";
+import { client } from "@elizaos/ui";
+// isApiError / useAppSelector are exported from the /api and /state subpaths,
+// not the @elizaos/ui root barrel.
+import { isApiError } from "@elizaos/ui/api";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorGrant,
@@ -373,8 +377,10 @@ function googleStatusesFromConnectorAccounts(
   side?: LifeOpsConnectorSide,
 ): LifeOpsGoogleConnectorStatus[] {
   return response.accounts
-    .filter((account) => (side ? googleSideForAccount(account) === side : true))
-    .map((account) =>
+    .filter((account: GoogleConnectorAccountRecord) =>
+      side ? googleSideForAccount(account) === side : true,
+    )
+    .map((account: GoogleConnectorAccountRecord) =>
       googleStatusFromConnectorAccount({
         account,
         defaultAccountId: response.defaultAccountId ?? null,
@@ -508,7 +514,9 @@ export interface UseGoogleLifeOpsConnectorOptions {
 export function useGoogleLifeOpsConnector(
   options: UseGoogleLifeOpsConnectorOptions = {},
 ) {
-  const { agentStatus, backendConnection, startupPhase } = useApp();
+  const agentStatus = useAppSelector((s) => s.agentStatus);
+  const backendConnection = useAppSelector((s) => s.backendConnection);
+  const startupPhase = useAppSelector((s) => s.startupPhase);
   const includeAccounts = options.includeAccounts ?? false;
   const pollIntervalMs =
     options.pollIntervalMs ?? DEFAULT_GOOGLE_CONNECTOR_POLL_INTERVAL_MS;

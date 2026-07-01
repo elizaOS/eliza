@@ -8,7 +8,8 @@
  *
  * No live API — `requestRaw` is mocked to return constructed `Response`s.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, ResponseSkeleton } from "@elizaos/core";
+import { ResponseSkeletonStreamExtractor } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Deferred = {
@@ -55,9 +56,12 @@ vi.mock("../src/utils/sdk-client", () => ({
 import {
   __resetNativeChatLimiterForTests,
   accumulateToolCallDeltas,
+  buildStreamAbortSignal,
   finalizeStreamedToolCalls,
+  handleResponseHandler,
   parseOpenAiSseStream,
   resolveStreamingEnabled,
+  resolveTextTimeoutMs,
   streamNativeChatCompletion,
 } from "../src/models/text";
 
@@ -85,12 +89,56 @@ function sseResponse(chunks: string[], contentType = "text/event-stream"): Respo
   });
 }
 
+/**
+ * Like {@link sseResponse} but the underlying stream is left OPEN (never
+ * `close()`d) and its `cancel` is observable. An early consumer break must call
+ * `reader.cancel()` (parseOpenAiSseStream's finally), which on an open stream
+ * invokes the source `cancel` — directly proving the upstream connection is torn
+ * down (not just that the permit is freed).
+ */
+function openSseResponseWithCancelSpy(chunks: string[]): {
+  response: Response;
+  cancelSpy: ReturnType<typeof vi.fn>;
+} {
+  const cancelSpy = vi.fn();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // Enqueue all frames but DO NOT close — so the stream is still readable
+      // when the consumer breaks and reader.cancel() reaches the source.
+      for (const c of chunks) controller.enqueue(enc.encode(c));
+    },
+    cancel(reason) {
+      cancelSpy(reason);
+    },
+  });
+  return {
+    response: new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+    cancelSpy,
+  };
+}
+
 function dataFrame(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
 
 function contentDelta(text: string): unknown {
   return { choices: [{ index: 0, delta: { content: text } }] };
+}
+
+/**
+ * One SSE frame carrying a `delta.tool_calls[0]` fragment (index 0). The Stage-1
+ * RESPONSE_HANDLER reply forces this shape — Cerebras returns the envelope as
+ * tool-call ARGUMENT deltas, never `delta.content`.
+ */
+function toolCallDelta(args: string, opts: { id?: string; name?: string } = {}): unknown {
+  const fn: Record<string, unknown> = { arguments: args };
+  if (opts.name) fn.name = opts.name;
+  const call: Record<string, unknown> = { index: 0, function: fn };
+  if (opts.id) call.id = opts.id;
+  return { choices: [{ index: 0, delta: { tool_calls: [call] } }] };
 }
 
 async function readStream(result: { textStream: AsyncIterable<string> }): Promise<string[]> {
@@ -165,6 +213,83 @@ describe("streamed tool-call delta assembly", () => {
     const acc = new Map();
     accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: "{}" } }]);
     expect(finalizeStreamedToolCalls(acc)).toEqual([]);
+  });
+
+  it("does NOT double when Cerebras re-sends the complete args in a final aggregated frame", () => {
+    // Cerebras streams the args incrementally, then emits a FINAL frame that
+    // re-carries id + name + the COMPLETE arguments object. Appending that
+    // re-send would yield `{"replyText":"PONG"}{"replyText":"PONG"}` (doubled).
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      { index: 0, id: "call_1", function: { name: "HANDLE_RESPONSE", arguments: "" } },
+    ]);
+    accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: '{"replyText":"PO' } }]);
+    accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: 'NG"}' } }]);
+    // Aggregated re-send of the whole object (re-carries id + name).
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"PONG"}' },
+      },
+    ]);
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "HANDLE_RESPONSE",
+        input: { replyText: "PONG" },
+      },
+    ]);
+  });
+
+  it("takes the authoritative re-send even when it diverges from the incremental copy", () => {
+    // The cloud character ("lowercase naturally") can make the model emit a
+    // different casing in the aggregated re-send than in the streamed fragments.
+    // The re-send is the authoritative full copy — keep a single, valid object.
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"PONG"}' },
+      },
+    ]);
+    accumulateToolCallDeltas(acc, [
+      {
+        index: 0,
+        id: "call_1",
+        function: { name: "HANDLE_RESPONSE", arguments: '{"replyText":"pong"}' },
+      },
+    ]);
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "HANDLE_RESPONSE",
+        input: { replyText: "pong" },
+      },
+    ]);
+  });
+
+  it("does NOT replace mid-stream when a nested inner object closes early", () => {
+    // Regression guard for the resend detector: a fragment can transiently
+    // contain a closed INNER object (`{"a":{"b":1}`) while the OUTER object is
+    // still open. JSON.parse rejects that prefix (a brace counter would not),
+    // so the fragments must keep appending — never replace mid-object.
+    const acc = new Map();
+    accumulateToolCallDeltas(acc, [
+      { index: 0, id: "call_1", function: { name: "set_filter", arguments: '{"a":{"b":1}' } },
+    ]);
+    accumulateToolCallDeltas(acc, [{ index: 0, function: { arguments: ',"c":2}' } }]);
+    expect(finalizeStreamedToolCalls(acc)).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "set_filter",
+        input: { a: { b: 1 }, c: 2 },
+      },
+    ]);
   });
 });
 
@@ -306,6 +431,85 @@ describe("streamNativeChatCompletion", () => {
     await readStream(second);
   });
 
+  it("releases the permit on an early consumer break without draining the stream", async () => {
+    process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
+    __resetNativeChatLimiterForTests();
+
+    // A multi-chunk stream the consumer will abandon after the first token.
+    nextResponse = sseResponse([
+      dataFrame(contentDelta("one")),
+      dataFrame(contentDelta("two")),
+      dataFrame(contentDelta("three")),
+      "data: [DONE]\n\n",
+    ]);
+    const first = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    expect(requestRaw).toHaveBeenCalledTimes(1);
+
+    // Second call queues behind the only permit.
+    nextResponse = sseResponse([dataFrame(contentDelta("x")), "data: [DONE]\n\n"]);
+    const secondPromise = streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestRaw).toHaveBeenCalledTimes(1);
+
+    // Pull exactly ONE chunk then break early: the generator's return() must
+    // release the permit (and cancel the upstream) WITHOUT draining the
+    // remaining "two"/"three" chunks, so the queued second call proceeds.
+    let pulled = 0;
+    for await (const _chunk of first.textStream) {
+      pulled += 1;
+      break;
+    }
+    expect(pulled).toBe(1);
+
+    const second = await secondPromise;
+    expect(requestRaw).toHaveBeenCalledTimes(2);
+    await readStream(second);
+  });
+
+  it("cancels the upstream reader on an early consumer break (tears down the connection)", async () => {
+    process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
+    __resetNativeChatLimiterForTests();
+
+    const { response, cancelSpy } = openSseResponseWithCancelSpy([
+      dataFrame(contentDelta("one")),
+      dataFrame(contentDelta("two")),
+      dataFrame(contentDelta("three")),
+    ]);
+    nextResponse = response;
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // Pull exactly one token then break — the generator's return() chain must
+    // reach parseOpenAiSseStream's finally and call reader.cancel() on the
+    // still-open upstream stream.
+    let pulled = 0;
+    for await (const _chunk of result.textStream) {
+      pulled += 1;
+      break;
+    }
+    expect(pulled).toBe(1);
+    // Give the unwinding finally blocks a microtask to run reader.cancel().
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cancelSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("ELIZAOS_CLOUD_STREAMING=0 disables streaming (kill-switch)", () => {
     process.env.ELIZAOS_CLOUD_STREAMING = "0";
     expect(resolveStreamingEnabled()).toBe(false);
@@ -313,5 +517,330 @@ describe("streamNativeChatCompletion", () => {
     expect(resolveStreamingEnabled()).toBe(true);
     delete process.env.ELIZAOS_CLOUD_STREAMING;
     expect(resolveStreamingEnabled()).toBe(true);
+  });
+});
+
+/**
+ * The Stage-1 RESPONSE_HANDLER call sets `tool_choice:"required"`, so Cerebras
+ * returns the whole reply envelope (incl. `replyText`) as tool-call ARGUMENT
+ * deltas — never `delta.content`. Without surfacing those into the textStream the
+ * runtime's structured extractor sees nothing and the reply lands all at once.
+ * These tests pin that the reply args ARE streamed (only on the structured
+ * `streamStructured` path), de-duped against Cerebras's aggregated re-send, and
+ * that the runtime extractor reduces the streamed envelope to ONLY `replyText`
+ * (no control-field leak).
+ */
+describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope", () => {
+  function structuredParams(): never {
+    // streamStructured===true is what gates tool-call-argument streaming.
+    return {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      streamStructured: true,
+    } as never;
+  }
+
+  beforeEach(() => {
+    transport.reset();
+    nextResponse = null;
+    requestRaw.mockClear();
+    delete process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY;
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+
+  it("surfaces tool-call argument deltas incrementally as the envelope grows", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","contexts":["general"],')),
+      dataFrame(toolCallDelta('"replyText":"On it ')),
+      dataFrame(toolCallDelta('now."}')),
+      dataFrame({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    const chunks = await readStream(result);
+    // Streamed across MULTIPLE chunks (the bug = one final blob).
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe(
+      '{"shouldRespond":"RESPOND","contexts":["general"],"replyText":"On it now."}'
+    );
+    // The authoritative deduped tool call is still surfaced for downstream parse.
+    const toolCalls = await (result as { toolCalls: Promise<unknown[]> }).toolCalls;
+    expect(toolCalls).toEqual([
+      {
+        type: "tool-call",
+        toolCallId: "call_1",
+        toolName: "HANDLE_RESPONSE",
+        input: { shouldRespond: "RESPOND", contexts: ["general"], replyText: "On it now." },
+      },
+    ]);
+  });
+
+  it("does NOT double when Cerebras re-sends the complete envelope in a final frame", async () => {
+    const full = '{"shouldRespond":"RESPOND","replyText":"PONG"}';
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","replyText":"PO')),
+      dataFrame(toolCallDelta('NG"}')),
+      // Aggregated re-send re-carrying id + name + the COMPLETE object.
+      dataFrame(toolCallDelta(full, { id: "call_1", name: "HANDLE_RESPONSE" })),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // The envelope is streamed exactly once — the re-send adds nothing.
+    expect((await readStream(result)).join("")).toBe(full);
+  });
+
+  it("stays buffered (no tool-arg streaming) when streamStructured is absent", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"replyText":"hi"}')),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      nativeParams(), // no streamStructured
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // Nothing reaches the UI token stream — the planner/non-structured shape must
+    // not leak its raw tool-call args.
+    expect(await readStream(result)).toEqual([]);
+    const toolCalls = await (result as { toolCalls: Promise<unknown[]> }).toolCalls;
+    expect(toolCalls).toHaveLength(1);
+  });
+
+  it("runtime extractor reduces the streamed envelope to ONLY replyText (no control-field leak)", async () => {
+    nextResponse = sseResponse([
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],')),
+      dataFrame(toolCallDelta('"replyText":"On it ')),
+      dataFrame(toolCallDelta('now.","facts":[]}')),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    // Feed the streamed chunks through the same extractor the runtime uses for the
+    // RESPONSE_HANDLER reply (unordered, streamFields=["replyText"]).
+    const visible: string[] = [];
+    const skeleton: ResponseSkeleton = { spans: [], id: "test" };
+    const extractor = new ResponseSkeletonStreamExtractor({
+      skeleton,
+      streamFields: ["replyText"],
+      unordered: true,
+      onChunk: (chunk) => visible.push(chunk),
+    });
+    for await (const chunk of result.textStream) extractor.push(chunk);
+    extractor.flush();
+
+    expect(visible.join("")).toBe("On it now.");
+    // The control fields were carried in the streamed envelope but never surfaced.
+    expect(visible.join("")).not.toContain("shouldRespond");
+    expect(visible.join("")).not.toContain("contexts");
+  });
+});
+
+describe("resolveTextTimeoutMs", () => {
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+  });
+
+  it("defaults to 120000 when the env is unset or blank", () => {
+    delete process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS;
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "   ";
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+  });
+
+  it("uses a positive override value", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "5000";
+    expect(resolveTextTimeoutMs()).toBe(5_000);
+  });
+
+  it("treats 0 / negative as opt-out (no client-side timeout)", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "0";
+    expect(resolveTextTimeoutMs()).toBeUndefined();
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "-1";
+    expect(resolveTextTimeoutMs()).toBeUndefined();
+  });
+
+  it("falls back to the default on a non-numeric value", () => {
+    process.env.ELIZAOS_CLOUD_TEXT_TIMEOUT_MS = "abc";
+    expect(resolveTextTimeoutMs()).toBe(120_000);
+  });
+});
+
+/**
+ * The routing DECISION in generateTextWithModel (text.ts wantsStream gate): only
+ * the structured RESPONSE_HANDLER reply (`stream && streamStructured===true`)
+ * streams token-by-token; everything else stays buffered so the planner/raw
+ * envelope can't leak into the UI token stream. Distinguished by whether the
+ * outgoing /chat/completions body carries `stream:true`.
+ */
+describe("cloud streaming gate decision (wantsStream)", () => {
+  function bufferedChatResponse(text: string): Response {
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: text }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  function lastJson(): Record<string, unknown> {
+    const call = requestRaw.mock.calls.at(-1) as [
+      string,
+      string,
+      { json?: Record<string, unknown> },
+    ];
+    return call[2].json ?? {};
+  }
+
+  beforeEach(() => {
+    transport.reset();
+    nextResponse = null;
+    requestRaw.mockClear();
+    delete process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY;
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+  afterEach(() => {
+    delete process.env.ELIZAOS_CLOUD_STREAMING;
+    __resetNativeChatLimiterForTests();
+  });
+
+  it("streams when native + stream + streamStructured===true (streaming enabled)", async () => {
+    nextResponse = sseResponse([dataFrame(contentDelta("hi")), "data: [DONE]\n\n"]);
+    const result = (await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamStructured: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+    await readStream(result);
+    expect(requestRaw).toHaveBeenCalledWith("POST", "/chat/completions", expect.anything());
+    expect(lastJson().stream).toBe(true);
+  });
+
+  it("stays buffered when streamStructured===false (no leak of the raw envelope)", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamStructured: false,
+    } as never);
+    expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("stays buffered when streamStructured is absent (planner-shaped call)", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+    } as never);
+    expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("stays buffered when the kill-switch is on even with streamStructured===true", async () => {
+    process.env.ELIZAOS_CLOUD_STREAMING = "0";
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      stream: true,
+      streamStructured: true,
+    } as never);
+    expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("omits native max_tokens only when omitMaxTokens is set", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      omitMaxTokens: true,
+    } as never);
+    expect(lastJson()).not.toHaveProperty("max_tokens");
+
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+    } as never);
+    expect(lastJson().max_tokens).toBe(8192);
+  });
+
+  it("omits responses max_output_tokens only when omitMaxTokens is set", async () => {
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      omitMaxTokens: true,
+    } as never);
+    expect(lastJson()).not.toHaveProperty("max_output_tokens");
+
+    nextResponse = bufferedChatResponse("buffered reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+    } as never);
+    expect(lastJson().max_output_tokens).toBe(8192);
+  });
+});
+
+describe("buildStreamAbortSignal", () => {
+  it("returns undefined when neither a runtime signal nor a positive timeout is given", () => {
+    expect(buildStreamAbortSignal(undefined, undefined)).toBeUndefined();
+    expect(buildStreamAbortSignal(undefined, 0)).toBeUndefined();
+    expect(buildStreamAbortSignal(undefined, -5)).toBeUndefined();
+  });
+
+  it("returns the runtime signal alone when no positive timeout", () => {
+    const ac = new AbortController();
+    expect(buildStreamAbortSignal(ac.signal, 0)).toBe(ac.signal);
+    expect(buildStreamAbortSignal(ac.signal, undefined)).toBe(ac.signal);
+  });
+
+  it("returns a timeout-only signal when no runtime signal", () => {
+    const sig = buildStreamAbortSignal(undefined, 10_000);
+    expect(sig).toBeInstanceOf(AbortSignal);
+    expect(sig).not.toBeNull();
+  });
+
+  it("merges both so aborting the runtime signal aborts the result", () => {
+    const ac = new AbortController();
+    const merged = buildStreamAbortSignal(ac.signal, 10_000);
+    expect(merged).toBeInstanceOf(AbortSignal);
+    expect(merged?.aborted).toBe(false);
+    ac.abort();
+    expect(merged?.aborted).toBe(true);
   });
 });

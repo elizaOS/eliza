@@ -128,6 +128,27 @@ export type ScenarioSeedStep =
       [key: string]: unknown;
     };
 
+export type ScenarioCleanupStep =
+  | {
+      type: "gmailDeleteDrafts";
+      name?: string;
+      [key: string]: unknown;
+    }
+  | {
+      type: "selfControlClearBlocks";
+      name?: string;
+      profile?: string;
+      [key: string]: unknown;
+    }
+  | {
+      type: "custom";
+      name?: string;
+      apply?: (
+        ctx: ScenarioContext,
+      ) => ScenarioCheckResult | Promise<ScenarioCheckResult>;
+      [key: string]: unknown;
+    };
+
 export type ScenarioJudgeRubric = {
   rubric: string;
   minimumScore?: number;
@@ -140,6 +161,19 @@ type CheckBase<Type extends string> = {
 };
 
 type StringMatcher = string | string[];
+type TurnMatcher = string | RegExp;
+type DefinitionCountRequiredSlot = {
+  label?: string;
+  minuteOfDay?: number;
+};
+type DefinitionCountWebsiteAccess = {
+  groupKey?: string;
+  websites?: string[];
+  unlockMode?: string;
+  unlockDurationMinutes?: number;
+  callbackKey?: string | null;
+  reason?: string;
+};
 
 export type ScenarioTurn = {
   kind?: string;
@@ -149,11 +183,20 @@ export type ScenarioTurn = {
   path?: string;
   body?: unknown;
   expectedStatus?: number;
+  durationMs?: number;
   worker?: string;
   now?: string;
   options?: Record<string, unknown>;
   assertResponse?: ScenarioAssertResponse;
   assertTurn?: (turn: ScenarioTurnExecution) => ScenarioCheckResult;
+  expectedActions?: string[];
+  responseIncludesAny?: TurnMatcher[];
+  responseIncludesAll?: TurnMatcher[];
+  responseExcludes?: TurnMatcher[];
+  forbiddenActions?: string[];
+  plannerIncludesAll?: TurnMatcher[];
+  plannerIncludesAny?: TurnMatcher[];
+  plannerExcludes?: TurnMatcher[];
   responseJudge?: ScenarioJudgeRubric;
   plannerJudge?: ScenarioJudgeRubric;
   [key: string]: unknown;
@@ -231,6 +274,23 @@ export type ScenarioFinalCheck =
       table: StringMatcher;
       minCount?: number;
     })
+  | (CheckBase<"memoryExists"> & {
+      table?: StringMatcher;
+      content?: unknown;
+      minCount?: number;
+      expected?: boolean;
+    })
+  | (CheckBase<"goalCountDelta"> & {
+      title: string;
+      titleAliases?: string[];
+      delta?: number;
+      expectedStatus?: string;
+      expectedReviewState?: string;
+      expectedGroundingState?: string;
+      requireDescription?: boolean;
+      requireSuccessCriteria?: boolean;
+      requireSupportStrategy?: boolean;
+    })
   | (CheckBase<"gmailActionArguments"> & {
       actionName?: StringMatcher;
       subaction?: StringMatcher;
@@ -267,23 +327,78 @@ export type ScenarioFinalCheck =
       expected?: boolean;
       minCount?: number;
     })
+  | (CheckBase<"definitionCountDelta"> & {
+      title: string;
+      titleAliases?: string[];
+      delta?: number;
+      cadenceKind?: "once" | "daily" | "weekly" | "times_per_day" | "interval";
+      requiredSlots?: DefinitionCountRequiredSlot[];
+      requiredWeekdays?: number[];
+      requiredWindows?: string[];
+      requiredEveryMinutes?: number;
+      requiredMaxOccurrencesPerDay?: number;
+      expectedTimeZone?: string;
+      requireReminderPlan?: boolean;
+      websiteAccess?: DefinitionCountWebsiteAccess;
+    })
+  | (CheckBase<"reminderIntensity"> & {
+      title: string;
+      titleAliases?: string[];
+      expected:
+        | "minimal"
+        | "normal"
+        | "persistent"
+        | "high_priority_only"
+        | "escalated";
+    })
   | (CheckBase<"judgeRubric"> & {
       name: string;
       rubric: string;
       minimumScore?: number;
     });
 
+/**
+ * Which CI lane a scenario runs in.
+ *
+ * - `pr-deterministic`: runs on every PR under the deterministic LLM proxy
+ *   (`SCENARIO_USE_LLM_PROXY=1`) with zero credentials. A scenario may only
+ *   claim this lane if it passes keyless — no live external service, no secret,
+ *   and every LLM call is either backed by a registered proxy fixture or
+ *   satisfied by the proxy's default reply.
+ * - `live-only`: needs live model credentials and/or external connector
+ *   services and runs only in the credentialed live lane. This is the default
+ *   for any scenario that does not declare a lane.
+ */
+export type ScenarioLane = "pr-deterministic" | "live-only";
+
 export type ScenarioDefinition = {
   id: string;
   title: string;
   domain: string;
   status?: "active" | "pending";
+  /**
+   * CI lane this scenario is eligible for.
+   * - `pr-deterministic`: runs keyless on every PR through the deterministic
+   *   LLM proxy + Mockoon connectors (zero external cost).
+   * - `live-only`: requires real provider/connector credentials; runs only in
+   *   the scheduled live lanes.
+   * Declare it as a string literal — the scenario tooling reads it statically.
+   * Absent means `live-only` (see {@link DEFAULT_SCENARIO_LANE}).
+   */
+  lane?: ScenarioLane;
   turns: ScenarioTurn[];
   seed?: ScenarioSeedStep[];
+  cleanup?: ScenarioCleanupStep[];
   finalChecks?: ScenarioFinalCheck[];
   [key: string]: unknown;
 };
 
 export declare const FINAL_CHECK_KEYS: ReadonlyMap<string, ReadonlySet<string>>;
+
+/** Lane assumed for any scenario that does not declare one. */
+export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
+
+/** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
+export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
 
 export function scenario<const T extends ScenarioDefinition>(value: T): T;

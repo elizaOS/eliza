@@ -16,6 +16,7 @@
  *   } satisfies AppConfig;
  */
 
+import { EXTERNAL_URLS } from "../brand/index.ts";
 import { type BrandingConfig, DEFAULT_BRANDING } from "./branding.ts";
 
 export interface AppDesktopConfig {
@@ -315,8 +316,8 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     appName: "Eliza",
     orgName: "elizaos",
     repoName: "eliza",
-    docsUrl: "https://eliza.app",
-    appUrl: "https://eliza.app",
+    docsUrl: EXTERNAL_URLS.docs,
+    appUrl: EXTERNAL_URLS.app,
     bugReportUrl: "https://github.com/elizaOS/eliza/issues/new",
     hashtag: "#elizaOS",
     fileExtension: ".eliza-agent",

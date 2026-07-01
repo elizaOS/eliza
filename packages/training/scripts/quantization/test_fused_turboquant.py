@@ -1,4 +1,4 @@
-"""End-to-end validation of fused-TurboQuant on a real Qwen model on the local 5080.
+"""End-to-end validation of fused-TurboQuant on a real Gemma model on the local 5080.
 
 Three measurements on identical prompts, identical lengths:
 
@@ -10,7 +10,7 @@ Three measurements on identical prompts, identical lengths:
      ``quantization.fused_turboquant_vendored.hf.patch_model``. This
      rewrites every full-attention ``forward`` to route through Triton
      kernels for encode / Q@K^T / decode and includes the gated-attention
-     patch for Qwen3.5/3.6.
+     patch for Gemma 4.
 
 Per path we record peak VRAM (``torch.cuda.max_memory_allocated``), tokens/sec
 (wall clock), and decode the first generation as a sanity sample. The
@@ -19,7 +19,7 @@ assertions at the end verify the *whole point* of the Triton kernel:
   - fused-turboquant peak VRAM ≤ pure-PyTorch peak VRAM, and
   - fused-turboquant tokens/sec ≥ 1.5x pure-PyTorch tokens/sec.
 
-Default model is ``Qwen/Qwen3.5-0.8B``. It is a hybrid linear
+Default model is ``google/gemma-4-E2B``. It is a hybrid linear
 attention + Gated Attention multimodal checkpoint, so compatibility with
 the fused path is a release requirement rather than an optional bonus.
 
@@ -453,12 +453,12 @@ def _print_table(result: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
+    ap.add_argument("--model", default="google/gemma-4-E2B")
     ap.add_argument(
         "--bonus-model",
-        default="Qwen/Qwen3.5-0.8B",
+        default="google/gemma-4-E2B",
         help="Optional bonus model. Skipped if check_model_compatibility "
-        "returns compatible=False (e.g., hybrid attention).",
+        "returns compatible=False (e.g., dense attention).",
     )
     ap.add_argument("--num-prompts", type=int, default=5)
     ap.add_argument("--max-new-tokens", type=int, default=128)

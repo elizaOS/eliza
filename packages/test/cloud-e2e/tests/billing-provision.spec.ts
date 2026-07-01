@@ -11,14 +11,14 @@ import { expect, test } from "../src/helpers/test-fixtures";
  *
  * Grounded on real source:
  *   • AGENT_PRICING.RUNNING_HOURLY_RATE = 0.01 and AGENT_PRICING.MINIMUM_DEPOSIT
- *     = 0.1 — packages/cloud-shared/src/lib/constants/agent-pricing.ts:16,32.
+ *     = 0.1 — packages/cloud/shared/src/lib/constants/agent-pricing.ts:16,32.
  *   • The active-billing reader reports a running dedicated agent as
  *     resourceType "agent_sandbox" / billingInterval "hour" / unitPrice
  *     RUNNING_HOURLY_RATE — active-billing.ts:164-197.
  *   • The hourly cron (/api/cron/agent-billing) deducts exactly hourlyCost from
  *     organizations.credit_balance and stamps last_billed_at — the SQL
  *     `credit_balance - hourlyCost` + `last_billed_at: now` in
- *     packages/cloud-shared/src/db/repositories/agent-billing.ts:215,256.
+ *     packages/cloud/shared/src/db/repositories/agent-billing.ts:215,256.
  *   • The provision route 402s below MINIMUM_DEPOSIT with requiredBalance /
  *     currentBalance and never enqueues a job — provision/route.ts:151-171,
  *     gated by checkAgentCreditGate (agent-billing-gate.ts:37, balance <=

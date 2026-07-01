@@ -1,5 +1,13 @@
 import { ChevronDown, X } from "lucide-react";
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import type {
   FieldRenderer,
@@ -10,7 +18,7 @@ import {
   CONFIG_SELECT_FLOATING_LAYER_NAME,
   CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
 } from "../../lib/floating-layers";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { DynamicValue } from "../../types";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -136,7 +144,7 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
     <div className="flex">
       <input
         ref={inputRef}
-        className="flex-1 px-3 py-2 border border-border border-r-0 bg-card text-sm font-[var(--mono)] transition-all focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent box-border h-9 rounded-l-sm placeholder:text-muted placeholder:opacity-60"
+        className="flex-1 px-3 py-2 border border-border border-r-0 bg-card text-sm font-[var(--mono)] transition-all     box-border h-9 rounded-l-sm placeholder:text-muted placeholder:opacity-60"
         type={visible ? "text" : "password"}
         value={fieldValue}
         placeholder={placeholder}
@@ -344,7 +352,7 @@ export function renderUrlField(props: FieldRenderProps) {
 
 /** Dropdown select. Options from hint.options or schema.enum. */
 export function RenderSelectField(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const enhancedOptions = (props.hint as Record<string, unknown>).options as
     | Array<{ value: string; label: string; description?: string }>
     | undefined;
@@ -433,25 +441,42 @@ function SearchableSelectInner({
   options: Array<{ value: string; label: string; description?: string }>;
   effectiveValue: string;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const matchingOpt = options.find((o) => o.value === effectiveValue);
   const [inputVal, setInputVal] = useState(
     matchingOpt?.label ?? effectiveValue,
   );
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const deferredFilter = useDeferredValue(filter);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
-  const filtered = filter
-    ? options.filter(
-        (o) =>
-          o.label.toLowerCase().includes(filter.toLowerCase()) ||
-          o.value.toLowerCase().includes(filter.toLowerCase()),
+  // Precompute lowercased label/value once per option list so the per-keystroke
+  // filter is a simple substring scan rather than re-lowercasing the whole list.
+  const searchIndex = useMemo(
+    () =>
+      options.map((o) => ({
+        option: o,
+        searchLabel: o.label.toLowerCase(),
+        searchValue: o.value.toLowerCase(),
+      })),
+    [options],
+  );
+
+  const filtered = useMemo(() => {
+    if (!deferredFilter) return options;
+    const needle = deferredFilter.toLowerCase();
+    return searchIndex
+      .filter(
+        (entry) =>
+          entry.searchLabel.includes(needle) ||
+          entry.searchValue.includes(needle),
       )
-    : options;
+      .map((entry) => entry.option);
+  }, [deferredFilter, options, searchIndex]);
 
   const select = useCallback(
     (opt: { value: string; label: string }) => {
@@ -554,7 +579,7 @@ function SearchableSelectInner({
             <div className="p-1.5">
               <input
                 ref={searchInputRef}
-                className="w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)] focus:border-accent focus:outline-none rounded-sm"
+                className="w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)]   rounded-sm"
                 type="text"
                 value={filter}
                 placeholder={`Search ${options.length} options...`}
@@ -947,7 +972,7 @@ export function renderJsonField(props: FieldRenderProps) {
 }
 
 function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const initial = props.isSet ? String(props.value ?? "") : "";
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -1059,7 +1084,7 @@ function ArrayItem({
   onMoveDown: () => void;
   onBlur: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div className="flex items-center gap-1">
       {!readonly && (
@@ -1117,7 +1142,7 @@ function ArrayItem({
 }
 
 function ArrayFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const rawVal = props.isSet ? props.value : [];
   const initialItems: string[] = Array.isArray(rawVal)
     ? rawVal.map(String)
@@ -1204,7 +1229,7 @@ export function renderKeyValueField(props: FieldRenderProps) {
 }
 
 function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const rawVal = props.isSet ? props.value : {};
   const initialPairs: Array<{ key: string; value: string }> =
     rawVal && typeof rawVal === "object" && !Array.isArray(rawVal)
@@ -1332,7 +1357,7 @@ export function renderDatetimeField(props: FieldRenderProps) {
 
 /** File path text input with path traversal guard. */
 export function RenderFileField(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const value = props.isSet ? String(props.value ?? "") : "";
   const placeholder = props.hint.placeholder ?? "/path/to/file";
 
@@ -1368,7 +1393,7 @@ export function RenderFileField(props: FieldRenderProps) {
 
 /** Placeholder for plugin-provided custom React components. */
 export function RenderCustomField(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const componentName = (props.hint as Record<string, unknown>).component as
     | string
     | undefined;
@@ -1552,7 +1577,7 @@ function processSimpleInline(text: string, key: number): React.ReactNode {
 }
 
 function MarkdownFieldInner(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [preview, setPreview] = useState(false);
   const value = typeof props.value === "string" ? props.value : "";
 
@@ -1631,7 +1656,7 @@ export const renderMarkdownField: FieldRenderer = (props) => (
 // ── 21. Checkbox Group ───────────────────────────────────────────────────
 
 function CheckboxGroupInner(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const fieldId = useId();
   const selected = new Set(
     Array.isArray(props.value)
@@ -1741,7 +1766,7 @@ export const renderGroupField: FieldRenderer = (props) => {
 // ── 23. Table ────────────────────────────────────────────────────────────
 
 function TableFieldInner(props: FieldRenderProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const MAX_TABLE_ROWS = 50;
   const columns: Array<{ key: string; label: string }> = ((
     props.hint as Record<string, unknown>
@@ -1809,7 +1834,7 @@ function TableFieldInner(props: FieldRenderProps) {
                 {columns.map((col) => (
                   <td key={col.key} className="px-1 py-0.5">
                     <input
-                      className="w-full px-2 py-1 bg-transparent text-sm border-none outline-none focus:bg-bg-hover"
+                      className="w-full px-2 py-1 bg-transparent text-sm border-none outline-none "
                       value={row[col.key] ?? ""}
                       placeholder={col.label}
                       disabled={props.readonly}

@@ -31,6 +31,7 @@ import {
   type AgentRuntime,
   AutonomyService,
   ChannelType,
+  isTruthyEnvValue,
   logger,
   ModelType,
   type Plugin,
@@ -51,8 +52,11 @@ import { getApps, loadRegistry } from "../registry";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
 import {
   type AppRoutePluginRegistryEntry,
+  drainAppRoutePluginLoaders,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
+import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
+import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
 import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
 type EmbeddingProgressCallback = (
@@ -94,6 +98,7 @@ import {
 } from "./startup-overlay.js";
 import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
+import { DEFAULT_TEXT_TO_SPEECH_PROVIDER } from "./tts-provider-registry.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
@@ -101,7 +106,6 @@ const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 
 /** Swarm / PTY paths call TEXT_TO_SPEECH; Edge TTS supplies that model with no API key. */
 const AGENT_ORCHESTRATOR_PLUGIN = "agent-orchestrator";
-const EDGE_TTS_PLUGIN = "@elizaos/plugin-edge-tts";
 const require = createRequire(import.meta.url);
 const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
 const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
@@ -219,9 +223,9 @@ export function collectPluginNames(
   if (
     result.has(AGENT_ORCHESTRATOR_PLUGIN) &&
     !isTextToSpeechEdgeTtsDisabled(config) &&
-    !result.has(EDGE_TTS_PLUGIN)
+    !result.has(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName)
   ) {
-    result.add(EDGE_TTS_PLUGIN);
+    result.add(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName);
   }
   syncBrandEnvAliases();
   return result;
@@ -341,12 +345,6 @@ class OptionalAppRoutePluginUnavailableError extends Error {
   }
 }
 
-function isOptionalAppRoutePluginUnavailableError(
-  err: unknown,
-): err is OptionalAppRoutePluginUnavailableError {
-  return err instanceof OptionalAppRoutePluginUnavailableError;
-}
-
 function splitPackageSpecifier(specifier: string): {
   packageName: string;
   exportSubpath: string;
@@ -444,9 +442,6 @@ async function loadAppRoutePluginFromSpecifier(
 export const __loadAppRoutePluginFromSpecifierForTest =
   loadAppRoutePluginFromSpecifier;
 
-const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
-const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
-
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
     const routePlugin = app.launch.routePlugin;
@@ -472,10 +467,10 @@ function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
  * exercise.
  *
  * A loader's id is its full package name (e.g. `@elizaos/plugin-personal-assistant`,
- * `@elizaos/plugin-steward-app`, `@elizaos/plugin-elizacloud:routes`). Tokens
+ * `@elizaos/plugin-elizacloud:routes`). Tokens
  * are matched against BOTH the full id and a normalized short alias
  * (see {@link normalizeAppRoutePluginId}), so the ergonomic short forms work
- * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,steward,training,shopify`.
+ * too: `ELIZA_SKIP_APP_ROUTE_PLUGINS=lifeops,training,shopify`.
  */
 export function getSkippedAppRoutePluginIds(): Set<string> {
   return new Set(
@@ -509,7 +504,7 @@ export function getDeferAppRoutesEnabled(
  * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
  * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
- * `@elizaos/plugin-steward-app` and `steward` both normalize to `steward`.
+ * `@elizaos/plugin-wallet-ui` and `wallet` both normalize to `wallet`.
  */
 export function normalizeAppRoutePluginId(id: string): string {
   return id
@@ -528,37 +523,6 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   for (const entry of listAppRoutePluginLoaders()) {
     byId.set(entry.id, entry);
   }
-  // plugin-workflow is default-enabled and registers its rawPath route plugin
-  // (`/api/automations`, `/api/workflow/*`) only as a side effect of its
-  // `register-routes` import. That side effect runs inside the plugin's own
-  // module init, which is not guaranteed to have executed before this snapshot
-  // is taken on the post-ready boot tail — so the loader can be missing and the
-  // routes 404. Register it explicitly here (load-order independent), mirroring
-  // how every other rawPath route plugin is wired via the registry.
-  if (!byId.has(WORKFLOW_ROUTE_PLUGIN_ID)) {
-    byId.set(WORKFLOW_ROUTE_PLUGIN_ID, {
-      id: WORKFLOW_ROUTE_PLUGIN_ID,
-      load: () =>
-        loadAppRoutePluginFromSpecifier(
-          "@elizaos/plugin-workflow/plugin-routes",
-          "workflowRoutePlugin",
-        ),
-    });
-  }
-  // plugin-wallet has the same load-order hazard: its rawPath route plugin
-  // (`/api/wallet/market-overview`) registers only as a side effect of the
-  // `register-routes` import, which is not guaranteed to have run before this
-  // snapshot. Register it explicitly so the route is always mounted.
-  if (!byId.has(WALLET_ROUTE_PLUGIN_ID)) {
-    byId.set(WALLET_ROUTE_PLUGIN_ID, {
-      id: WALLET_ROUTE_PLUGIN_ID,
-      load: () =>
-        loadAppRoutePluginFromSpecifier(
-          "@elizaos/plugin-wallet/routes/plugin",
-          "walletRoutePlugin",
-        ),
-    });
-  }
 
   const skip = getSkippedAppRoutePluginIds();
   if (skip.size === 0) {
@@ -566,7 +530,7 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
 
   // Match a loader against the skip tokens by full id OR normalized short alias
-  // (so both `@elizaos/plugin-steward-app` and `steward` skip the same loader).
+  // (so both `@elizaos/plugin-wallet-ui` and `wallet` skip the same loader).
   const skipNormalized = new Set(
     [...skip].map((token) => normalizeAppRoutePluginId(token)),
   );
@@ -591,52 +555,18 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
 }
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  // Load all app-route plugin modules concurrently. This runs on the gated
-  // ready-path (repairRuntimeAfterBoot is awaited before the runtime is handed
-  // back and /api/health flips ready), so the previous sequential await-loop
-  // serialized ~11 independent dynamic imports (lifeops alone registers 188
-  // routes) and dominated time-to-ready. Imports are independent; loading them
-  // together overlaps their I/O and module resolution. Route registration is
-  // still applied in loader order after all settle, so dispatch order is
-  // unchanged, and per-plugin failures stay isolated (a rejected load logs and
-  // contributes no routes rather than aborting the rest).
-  const loaded = await Promise.all(
-    getAppRoutePluginLoaders().map(async ({ id, load }) => {
-      try {
-        return await load();
-      } catch (err) {
-        if (isOptionalAppRoutePluginUnavailableError(err)) {
-          logger.debug(
-            `[eliza] App route plugin ${id} unavailable, skipping route registration`,
-          );
-          return null;
-        }
-        logger.warn(
-          `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
-        );
-        return null;
-      }
-    }),
-  );
-
-  for (const plugin of loaded) {
-    if (!plugin) continue;
-    // Push rawPath routes directly onto runtime.routes to avoid the core's
-    // registerPlugin() path mangling (which prepends /<pluginName>/ to every
-    // route path). The rawPath flag means these routes already have their
-    // final absolute paths (e.g. /api/lifeops/app-state).
-    if (plugin.routes?.length) {
-      for (const route of plugin.routes) {
-        const routePath = route.path.startsWith("/")
-          ? route.path
-          : `/${route.path}`;
-        runtime.routes.push({ ...route, path: routePath });
-      }
-    }
-    logger.info(
-      `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
-    );
-  }
+  // App-route plugins register a loader on a global registry (so they survive
+  // bundler tree-shaking) rather than exposing routes through Plugin.routes.
+  // getAppRoutePluginLoaders() resolves the curated registry-app loaders plus
+  // the globally-registered ones, minus any skipped via
+  // ELIZA_SKIP_APP_ROUTE_PLUGINS. The shared core drain loads them concurrently
+  // — overlapping ~11 independent dynamic imports (lifeops alone registers 188
+  // routes) on the gated ready-path instead of serializing them — applies them
+  // in loader order with per-loader failure isolation, and pushes their rawPath
+  // routes onto runtime.routes with a type:path dedup. That dedup is what lets
+  // the headless @elizaos/agent boot (which also drains this registry) and this
+  // app-core boot run against the same runtime.routes without double-mounting.
+  await drainAppRoutePluginLoaders(runtime, getAppRoutePluginLoaders());
 }
 
 interface RuntimeHookModule {
@@ -705,6 +635,24 @@ async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
+
+  // Make the app-bundled fused libelizainference (staged into the desktop
+  // package) discoverable before any local-inference handler probes
+  // `supported()`. No-op in dev / on mobile and when an explicit override is
+  // set. Must run before the ensureLocalInferenceHandler calls below.
+  ensureBundledFusedLibDir();
+
+  // Invariant guard: the mobile voice backend selector pins phones to the
+  // Kokoro-exclusive TTS path via `mobile: isMobilePlatform()`, which keys off
+  // ELIZA_PLATFORM. The mobile local-inference gate can fire on the
+  // device-bridge / ELIZA_LOCAL_LLAMA / riscv64 triggers without ELIZA_PLATFORM
+  // being set, leaving `mobile` false in the selector — risking OmniVoice on a
+  // phone. Evaluate both predicates here (outside the mobile branch below) so
+  // the warning is actually reachable on the real mismatch.
+  (await _localInference()).warnIfMobileGateActiveWithoutPlatform({
+    mobilePlatform: isMobilePlatform(),
+    warn: logger.warn,
+  });
 
   // Mobile (Android / iOS) shortcut: the runtime is already serving from
   // PGlite + the AI provider plugin. The remaining boot steps either spawn
@@ -792,6 +740,7 @@ export interface PostReadyBootSteps {
   registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
   registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
+  registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
   shouldStartTelegramStandaloneBot: () => boolean;
   ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
   stopTelegramBotPolling: (reason: string) => void;
@@ -805,6 +754,7 @@ const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
   registerAppRoutePlugins,
   registerTrainingRuntimeHooks,
   registerCoreSensitiveRequestAdapters,
+  registerSubAgentCredentialBridge,
   shouldStartTelegramStandaloneBot,
   ensureTelegramBotPolling,
   stopTelegramBotPolling,
@@ -851,6 +801,10 @@ export async function runPostReadyBootTail(
   // Register first-party sensitive-request delivery adapters with the
   // dispatch registry (no-op when the registry service isn't present).
   steps.registerCoreSensitiveRequestAdapters(runtime);
+
+  // Wire the sub-agent credential bridge (#10317) onto parent runtimes that can
+  // host coding sub-agents. No-op on child/sandboxed runtimes.
+  await steps.registerSubAgentCredentialBridge(runtime);
 
   if (steps.shouldStartTelegramStandaloneBot()) {
     await steps.ensureTelegramBotPolling(runtime);
@@ -1058,16 +1012,6 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
 // uncaughtException and kills the agent.
 let warmupInFlight: Promise<void> | null = null;
 
-function isTruthyEnvValue(value: string | undefined): boolean {
-  const normalized = value?.trim().toLowerCase();
-  return (
-    normalized === "1" ||
-    normalized === "true" ||
-    normalized === "yes" ||
-    normalized === "on"
-  );
-}
-
 function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
   return isTruthyEnvValue(process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP);
 }
@@ -1182,6 +1126,17 @@ async function warmupEmbeddingModelImpl(
   }
 }
 
+function isExplicitDesktopCloudOnlyRuntime(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const runtimeMode = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
+  return (
+    runtimeMode === "cloud" ||
+    runtimeMode === "elizacloud" ||
+    isTruthyEnvValue(env.ELIZA_DESKTOP_CLOUD_ONLY)
+  );
+}
+
 /**
  * Warm local voice models (Whisper STT + Kokoro TTS) in the background AFTER
  * the runtime is ready, by firing one tiny useModel request at each. Voice
@@ -1195,6 +1150,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
     !shouldWarmupVoice({
       mobile: isMobilePlatform(),
       skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
+      cloudOnly: isExplicitDesktopCloudOnlyRuntime(),
       hotReload: isTruthyEnvValue(process.env.ELIZA_DEV_IS_HOT_RELOAD),
     })
   ) {
@@ -1202,7 +1158,7 @@ async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
   }
   logger.info("[eliza] Starting deferred voice warmup");
   await warmVoiceModels(
-    runtime as unknown as Parameters<typeof warmVoiceModels>[0],
+    runtime as Parameters<typeof warmVoiceModels>[0],
     {
       ttsType: ModelType.TEXT_TO_SPEECH,
       transcriptionType: ModelType.TRANSCRIPTION,

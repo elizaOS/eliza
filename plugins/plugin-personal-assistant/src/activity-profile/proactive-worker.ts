@@ -23,6 +23,10 @@ import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { resolveEffectiveDayKey } from "./analyzer.js";
+import {
+  partitionFocusDeferredActions,
+  readOwnerFocusSession,
+} from "./focus-session.js";
 import { proactiveInboxDigestRequest } from "./proactive-inbox-digest.js";
 import {
   type CalendarEventSlim,
@@ -487,13 +491,37 @@ export async function executeProactiveTask(
       action !== null && action.status === "pending",
   );
 
+  // Consume the ambient app-usage signal (#9970): when the owner is heads-down
+  // in a sustained focus session, defer non-urgent nudges to the next tick
+  // rather than interrupting deep work. Deferred actions are simply not
+  // dispatched this tick — the fired log is untouched, so they retry once focus
+  // ends. Time-critical kinds (pre_activity_nudge, gm/gn, social_overuse_check)
+  // always pass through.
+  const focusSession = await readOwnerFocusSession({ runtime, now });
+  const { dispatch: dispatchableActions, deferred: focusDeferredActions } =
+    partitionFocusDeferredActions(allActions, focusSession !== null);
+  if (focusSession && focusDeferredActions.length > 0) {
+    logger.info(
+      {
+        boundary: "activity_profile",
+        operation: "proactive_focus_defer",
+        focusApp: focusSession.app.appName,
+        focusedMs: focusSession.focusedMs,
+        deferredKinds: focusDeferredActions.map((action) => action.kind),
+      },
+      `[proactive] Owner in focus session (${focusSession.app.appName} ${Math.round(
+        focusSession.focusedMs / 60_000,
+      )}m); deferring ${focusDeferredActions.length} non-urgent nudge(s) to next tick.`,
+    );
+  }
+
   const ownerContacts = loadOwnerContactsConfig({
     boundary: "activity_profile",
     operation: "owner_contacts_config",
     message:
       "[proactive] Failed to load owner contacts config; proactive messages cannot route to owner channels until config is available.",
   });
-  for (const action of allActions) {
+  for (const action of dispatchableActions) {
     if (action.scheduledFor > now.getTime()) {
       continue;
     }

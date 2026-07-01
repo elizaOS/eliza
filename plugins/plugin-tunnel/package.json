@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tunnel",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Tunnel plugin for elizaOS — local Tailscale CLI backend (serve/funnel). Pair with @elizaos/plugin-elizacloud for the hosted headscale backend.",
   "type": "module",
   "main": "dist/index.js",
@@ -31,6 +31,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "src"
   ],
@@ -60,7 +61,7 @@
     "zod": "^4.4.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
     "typescript": "^6.0.3"

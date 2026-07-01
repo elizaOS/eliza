@@ -66,7 +66,7 @@ class ContinuousRLConfig:
     """Configuration for a single continuous RL agent."""
 
     # Model
-    model_name: str = "Qwen/Qwen3.5-4B"
+    model_name: str = "google/gemma-4-E4B"
     device: str = "cuda"
 
     # Optimizer

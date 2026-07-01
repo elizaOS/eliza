@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-music",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -33,6 +33,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "dependencies": {
@@ -45,7 +46,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^22.19.17",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
@@ -58,7 +59,7 @@
     "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",

@@ -1,34 +1,15 @@
-import { rmSync } from "node:fs";
-import { join } from "node:path";
-import { build } from "bun";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-shell (Node). Orchestration lives in the
+ * shared driver (plugins/plugin-build.ts); this lists only what differs.
+ */
+import { buildPlugin } from "../plugin-build";
 
-const distDir = join(import.meta.dir, "dist");
-
-try {
-  rmSync(distDir, { recursive: true, force: true });
-} catch {
-  // ignore
-}
-
-console.log("Building TypeScript plugin...");
-
-await build({
-  entrypoints: ["./index.ts"],
-  outdir: "./dist",
-  target: "node",
-  format: "esm",
-  sourcemap: "external",
-  minify: false,
-  external: ["@elizaos/core", "@elizaos/shared", "cross-spawn", "zod", "@lydell/node-pty"],
+await buildPlugin({
+  name: "@elizaos/plugin-shell",
+  clean: true,
+  externals: ["@elizaos/core", "@elizaos/shared", "cross-spawn", "zod", "@lydell/node-pty"],
+  targets: [{ label: "Node", entry: "./index.ts", outSubdir: "", target: "node", format: "esm" }],
+  dtsProject: "tsconfig.build.json",
+  dtsEmitDeclarationOnly: true,
 });
-
-console.log("Build complete!");
-
-const proc = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDeclarationOnly"], {
-  cwd: import.meta.dir,
-  stdio: ["inherit", "inherit", "inherit"],
-});
-
-await proc.exited;
-
-console.log("Types generated!");

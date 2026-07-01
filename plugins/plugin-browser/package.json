@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Browser plugin: BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
   "main": "./dist/index.js",
@@ -31,8 +31,20 @@
   "scripts": {
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:real-chromium": "bun run test:real:external && bun run test:real:miniwob && bun run test:real:grounding",
+    "test:real:chromium": "bun run test:real:external && bun run test:real:miniwob && bun run test:real:grounding",
+    "test:real:miniwob": "vitest run --config vitest.real.config.ts src/benchmark/__tests__/miniwob-chromium.real.test.ts",
+    "test:real:grounding": "vitest run --config vitest.real.config.ts src/benchmark/__tests__/web-grounding-chromium.real.test.ts",
+    "test:real:external": "vitest run --config vitest.real.config.ts src/benchmark/__tests__/external-dataset-chromium.real.test.ts",
+    "bench:miniwob": "bun scripts/run-miniwob-benchmark.mjs",
+    "bench:miniwob:chromium": "bun scripts/run-miniwob-chromium-benchmark.mjs",
+    "bench:miniwob:chromium:capture": "bun scripts/capture-miniwob-chromium-evidence.mjs",
+    "bench:miniwob:chromium:record": "bun scripts/capture-miniwob-chromium-recording.mjs",
+    "bench:grounding:chromium": "bun scripts/capture-web-grounding-evidence.mjs",
+    "bench:external": "bun scripts/run-external-dataset-benchmark.mjs",
+    "bench:external:chromium": "bun scripts/run-external-dataset-chromium-benchmark.mjs",
     "build": "bun run build:js && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
@@ -66,6 +78,7 @@
   },
   "types": "./dist/index.d.ts",
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ]

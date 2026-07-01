@@ -18,9 +18,21 @@ const manifestPath = path.join(
   "main",
   "AndroidManifest.xml",
 );
-const installScriptPath = path.join(appCoreRoot, "scripts", "install-android-sms-gateway.mjs");
-const watchScriptPath = path.join(appCoreRoot, "scripts", "watch-sms-gateway-readiness.mjs");
-const readinessScriptPath = path.join(appCoreRoot, "scripts", "check-sms-gateway-readiness.mjs");
+const installScriptPath = path.join(
+  appCoreRoot,
+  "scripts",
+  "install-android-sms-gateway.mjs",
+);
+const watchScriptPath = path.join(
+  appCoreRoot,
+  "scripts",
+  "watch-sms-gateway-readiness.mjs",
+);
+const readinessScriptPath = path.join(
+  appCoreRoot,
+  "scripts",
+  "check-sms-gateway-readiness.mjs",
+);
 const installRunbookPath = path.join(
   appCoreRoot,
   "scripts",
@@ -51,7 +63,11 @@ const verifyBlueBubblesInboundScriptPath = path.join(
   "scripts",
   "verify-bluebubbles-inbound-readiness.mjs",
 );
-const mobileBuildScriptPath = path.join(appCoreRoot, "scripts", "run-mobile-build.mjs");
+const mobileBuildScriptPath = path.join(
+  appCoreRoot,
+  "scripts",
+  "run-mobile-build.mjs",
+);
 const verifyBlueBubblesScriptPath = path.join(
   appCoreRoot,
   "scripts",
@@ -92,7 +108,12 @@ const smsGatewayStatusScriptPath = path.join(
   "scripts",
   "sms-gateway-status.mjs",
 );
-const homepageReadmePath = path.join(repoRoot, "packages", "homepage", "README.md");
+const homepageReadmePath = path.join(
+  repoRoot,
+  "packages",
+  "homepage",
+  "README.md",
+);
 const packageJsonPath = path.join(appCoreRoot, "package.json");
 
 test("Android template keeps the default SMS gateway surface", () => {
@@ -131,9 +152,18 @@ test("Android gateway installer supports one-command wireless pairing", () => {
   const watchScript = fs.readFileSync(watchScriptPath, "utf8");
   const readinessScript = fs.readFileSync(readinessScriptPath, "utf8");
   const installRunbook = fs.readFileSync(installRunbookPath, "utf8");
-  const homepageReadinessScript = fs.readFileSync(homepageReadinessScriptPath, "utf8");
-  const homepagePorkbunDnsScript = fs.readFileSync(homepagePorkbunDnsScriptPath, "utf8");
-  const completionAuditScript = fs.readFileSync(completionAuditScriptPath, "utf8");
+  const homepageReadinessScript = fs.readFileSync(
+    homepageReadinessScriptPath,
+    "utf8",
+  );
+  const homepagePorkbunDnsScript = fs.readFileSync(
+    homepagePorkbunDnsScriptPath,
+    "utf8",
+  );
+  const completionAuditScript = fs.readFileSync(
+    completionAuditScriptPath,
+    "utf8",
+  );
   const verifyBlueBubblesInboundScript = fs.readFileSync(
     verifyBlueBubblesInboundScriptPath,
     "utf8",
@@ -143,11 +173,26 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     verifyCloudOnboardingScriptPath,
     "utf8",
   );
-  const verifyCloudProdScript = fs.readFileSync(verifyCloudProdScriptPath, "utf8");
-  const deployCloudProdScript = fs.readFileSync(deployCloudProdScriptPath, "utf8");
-  const continueGatewayScript = fs.readFileSync(continueGatewayScriptPath, "utf8");
-  const maintainCloudProdScript = fs.readFileSync(maintainCloudProdScriptPath, "utf8");
-  const smsGatewayStatusScript = fs.readFileSync(smsGatewayStatusScriptPath, "utf8");
+  const verifyCloudProdScript = fs.readFileSync(
+    verifyCloudProdScriptPath,
+    "utf8",
+  );
+  const deployCloudProdScript = fs.readFileSync(
+    deployCloudProdScriptPath,
+    "utf8",
+  );
+  const continueGatewayScript = fs.readFileSync(
+    continueGatewayScriptPath,
+    "utf8",
+  );
+  const maintainCloudProdScript = fs.readFileSync(
+    maintainCloudProdScriptPath,
+    "utf8",
+  );
+  const smsGatewayStatusScript = fs.readFileSync(
+    smsGatewayStatusScriptPath,
+    "utf8",
+  );
   const mobileBuildScript = fs.readFileSync(mobileBuildScriptPath, "utf8");
   const homepageReadme = fs.readFileSync(homepageReadmePath, "utf8");
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
@@ -179,7 +224,7 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     "_adb-tls-pairing",
     "wireless pairing ready",
     "Run Android pair/connect/install/watch flow when actionable",
-    "runInstallFlow([\"--pair\", pairing.endpoint, \"--connect\", \"auto\"], \"60\")",
+    'runInstallFlow(["--pair", pairing.endpoint, "--connect", "auto"], "60")',
     "tryConnectWirelessAdb",
     "connect-probe",
     "wireless adb connected",
@@ -501,14 +546,17 @@ test("Android gateway installer supports one-command wireless pairing", () => {
   );
 
   for (const marker of [
-    "expectedGatewayPhoneNumber = \"+14159611510\"",
+    'expectedGatewayPhoneNumber = "+14159611510"',
     "/doctor",
     "/diagnostics",
     "inbound-webhook",
     "gateway=${gatewayPhone}",
     "does not send SMS",
   ]) {
-    assert.match(verifyBlueBubblesInboundScript, new RegExp(escapeRegExp(marker)));
+    assert.match(
+      verifyBlueBubblesInboundScript,
+      new RegExp(escapeRegExp(marker)),
+    );
   }
 });
 
@@ -611,7 +659,12 @@ test("Porkbun DNS helper applies only the GitHub Pages records for eliza.app", a
         { type: "A", name: "", content: "185.199.109.153", ttl: "600" },
         { type: "A", name: "", content: "185.199.110.153", ttl: "600" },
         { type: "A", name: "", content: "185.199.111.153", ttl: "600" },
-        { type: "CNAME", name: "www", content: "elizaos.github.io.", ttl: "600" },
+        {
+          type: "CNAME",
+          name: "www",
+          content: "elizaos.github.io.",
+          ttl: "600",
+        },
       ],
     );
     assert.deepEqual(
@@ -639,7 +692,9 @@ test("Porkbun DNS helper applies only the GitHub Pages records for eliza.app", a
 
 test("BlueBubbles validation command refuses to POST without real-send confirmation", async () => {
   const bridge = await startMockBlueBubblesBridge();
-  const evidencePath = temporaryEvidencePath("bluebubbles-validation-no-confirm-");
+  const evidencePath = temporaryEvidencePath(
+    "bluebubbles-validation-no-confirm-",
+  );
   try {
     const result = await runNode([
       validateBlueBubblesScriptPath,
@@ -686,7 +741,9 @@ test("BlueBubbles e2e verifier stops before retrying when validation is missing"
 
 test("BlueBubbles validation command POSTs only after real-send confirmation", async () => {
   const bridge = await startMockBlueBubblesBridge();
-  const evidencePath = temporaryEvidencePath("bluebubbles-validation-confirmed-");
+  const evidencePath = temporaryEvidencePath(
+    "bluebubbles-validation-confirmed-",
+  );
   try {
     const result = await runNode([
       validateBlueBubblesScriptPath,
@@ -722,7 +779,9 @@ test("BlueBubbles validation command POSTs only after real-send confirmation", a
 });
 
 test("BlueBubbles validation command refuses confirmed sends when bridge prerequisites are blocked", async () => {
-  const evidencePath = temporaryEvidencePath("bluebubbles-validation-prereq-blocked-");
+  const evidencePath = temporaryEvidencePath(
+    "bluebubbles-validation-prereq-blocked-",
+  );
   const bridge = await startMockBlueBubblesBridge({
     checks: [
       { name: "bridge", status: "pass", detail: "local bridge status=ok" },
@@ -734,7 +793,8 @@ test("BlueBubbles validation command refuses confirmed sends when bridge prerequ
       {
         name: "outbound",
         status: "blocked",
-        detail: "Shortcut outbound validation missing: no successful validation send recorded",
+        detail:
+          "Shortcut outbound validation missing: no successful validation send recorded",
       },
     ],
   });
@@ -784,7 +844,8 @@ async function startMockBlueBubblesBridge(options = {}) {
           {
             name: "outbound",
             status: "blocked",
-            detail: "Shortcut outbound validation missing: no successful validation send recorded",
+            detail:
+              "Shortcut outbound validation missing: no successful validation send recorded",
           },
         ],
       });
@@ -799,7 +860,11 @@ async function startMockBlueBubblesBridge(options = {}) {
           shortcutsInputContract: {
             inputType: "json-file",
             requiredKeys: ["recipient", "message"],
-            optionalKeys: ["chatGuid", "gatewayPhoneNumber", "gatewayPhoneLabel"],
+            optionalKeys: [
+              "chatGuid",
+              "gatewayPhoneNumber",
+              "gatewayPhoneLabel",
+            ],
           },
           recentShortcutInputs: [
             {
@@ -817,7 +882,10 @@ async function startMockBlueBubblesBridge(options = {}) {
       return;
     }
 
-    if (req.method === "POST" && req.url?.startsWith("/pending-replies/retry")) {
+    if (
+      req.method === "POST" &&
+      req.url?.startsWith("/pending-replies/retry")
+    ) {
       state.retryRequests += 1;
       writeJson(res, 200, { sent: [] });
       return;
@@ -982,7 +1050,10 @@ function runNode(args) {
     execFile("node", args, { timeout: 5_000 }, (error, stdout, stderr) => {
       const errorText = error instanceof Error ? error.message : "";
       resolve({
-        code: error && typeof error === "object" && "code" in error ? error.code : 0,
+        code:
+          error && typeof error === "object" && "code" in error
+            ? error.code
+            : 0,
         output: `${stdout}${stderr}${errorText}`,
       });
     });

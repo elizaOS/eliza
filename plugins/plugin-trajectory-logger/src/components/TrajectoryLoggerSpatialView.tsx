@@ -46,6 +46,12 @@ export interface TrajectorySnapshot {
   ready: boolean;
   /** Whether the active ("now") trajectory is currently recording. */
   recording: boolean;
+  /**
+   * True when the trajectory routes are not mounted on this surface (the
+   * provider plugin is absent). Distinct from `error`: the view shows a calm
+   * "unavailable on this surface" message instead of the strips.
+   */
+  unavailable?: boolean;
   /** Fetch error from the trajectories endpoint, if any. */
   error?: string | null;
   /** In-flight trajectory track. */
@@ -58,7 +64,7 @@ export interface TrajectorySnapshot {
 
 export interface TrajectoryLoggerSpatialViewProps {
   snapshot: TrajectorySnapshot;
-  /** Dispatch by agent id: `select:<slot>:<phase>`, `refresh`. */
+  /** Dispatch by agent id: `back`, `select:<slot>:<phase>`, `refresh`. */
   onAction?: (action: string) => void;
 }
 
@@ -78,6 +84,7 @@ const EMPTY_TRACK: TrajectoryTrack = {
 export const EMPTY_TRAJECTORY_SNAPSHOT: TrajectorySnapshot = {
   ready: false,
   recording: false,
+  unavailable: false,
   error: null,
   now: EMPTY_TRACK,
   last: EMPTY_TRACK,
@@ -121,12 +128,20 @@ export function TrajectoryLoggerSpatialView({
 }: TrajectoryLoggerSpatialViewProps) {
   const selected = resolveSelected(snapshot);
   return (
-    <Card title="Trajectories" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
+        <Button
+          variant="ghost"
+          tone="default"
+          agent="back"
+          onPress={() => onAction?.("back")}
+        >
+          Back
+        </Button>
         <Text style="caption" tone="muted" grow={1}>
           route
         </Text>
-        {!snapshot.ready ? (
+        {snapshot.unavailable ? null : !snapshot.ready ? (
           <Text style="caption" tone="muted">
             loading
           </Text>
@@ -141,35 +156,43 @@ export function TrajectoryLoggerSpatialView({
         )}
       </HStack>
 
-      {snapshot.error ? (
-        <Text tone="danger" style="caption">
-          {snapshot.error}
+      {snapshot.unavailable ? (
+        <Text tone="muted" style="caption" dim>
+          Trajectory logging unavailable on this surface
         </Text>
-      ) : null}
+      ) : (
+        <>
+          {snapshot.error ? (
+            <Text tone="danger" style="caption">
+              {snapshot.error}
+            </Text>
+          ) : null}
 
-      <PhaseStrip
-        live
-        slot="now"
-        track={snapshot.now}
-        selectedPhase={selected?.slot === "now" ? selected.phase : null}
-        onSelect={(phase) => onAction?.(`select:now:${phase}`)}
-      />
-      <PhaseStrip
-        live={false}
-        slot="last"
-        track={snapshot.last}
-        selectedPhase={selected?.slot === "last" ? selected.phase : null}
-        onSelect={(phase) => onAction?.(`select:last:${phase}`)}
-      />
-
-      {selected.summary ? (
-        <VStack gap={1}>
-          <Divider
-            label={`${selected.slot === "now" ? "now" : "last"} / ${selected.summary.phase}`}
+          <PhaseStrip
+            live
+            slot="now"
+            track={snapshot.now}
+            selectedPhase={selected?.slot === "now" ? selected.phase : null}
+            onSelect={(phase) => onAction?.(`select:now:${phase}`)}
           />
-          <PhaseDrilldownBody phase={selected.summary} />
-        </VStack>
-      ) : null}
+          <PhaseStrip
+            live={false}
+            slot="last"
+            track={snapshot.last}
+            selectedPhase={selected?.slot === "last" ? selected.phase : null}
+            onSelect={(phase) => onAction?.(`select:last:${phase}`)}
+          />
+
+          {selected.summary ? (
+            <VStack gap={1}>
+              <Divider
+                label={`${selected.slot === "now" ? "now" : "last"} / ${selected.summary.phase}`}
+              />
+              <PhaseDrilldownBody phase={selected.summary} />
+            </VStack>
+          ) : null}
+        </>
+      )}
     </Card>
   );
 }
@@ -284,6 +307,15 @@ function preview(text: string, max = 160): string {
   return `${trimmed.slice(0, max)}...`;
 }
 
+/** Compact single-line JSON (TUI-safe: no embedded newlines to break width). */
+function jsonLine(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function HandleBody({
   calls,
   ctx,
@@ -361,25 +393,41 @@ function ActionBody({ events }: { events: UIToolEvent[] }) {
       {events.map((e) => {
         const name = e.actionName || e.toolName || e.name || "action";
         const tone = toolTone(e);
+        const args = e.args ?? e.input ?? null;
+        const result = e.result ?? e.output ?? null;
+        const hasArgs = !!args && Object.keys(args).length > 0;
+        const hasResult = result !== null && result !== undefined;
         return (
-          <HStack key={e.id} gap={1} align="center" agent={`tool-${e.id}`}>
-            <Text tone={tone} bold>
-              {toolMark(e)}
-            </Text>
-            <Text grow={1} wrap={false}>
-              {name}
-            </Text>
-            {typeof e.durationMs === "number" ? (
-              <Text style="caption" tone="muted">
-                {`${e.durationMs}ms`}
+          <VStack key={e.id} gap={0} agent={`tool-${e.id}`}>
+            <HStack gap={1} align="center">
+              <Text tone={tone} bold>
+                {toolMark(e)}
               </Text>
-            ) : null}
+              <Text grow={1} wrap={false}>
+                {name}
+              </Text>
+              {typeof e.durationMs === "number" ? (
+                <Text style="caption" tone="muted">
+                  {`${e.durationMs}ms`}
+                </Text>
+              ) : null}
+            </HStack>
             {e.error ? (
-              <Text style="caption" tone="danger" wrap={false}>
-                {preview(e.error, 40)}
+              <Text style="caption" tone="danger">
+                {preview(e.error, 80)}
               </Text>
             ) : null}
-          </HStack>
+            {hasArgs ? (
+              <Text style="caption" tone="muted">
+                {preview(jsonLine(args), 200)}
+              </Text>
+            ) : null}
+            {hasResult ? (
+              <Text style="caption" tone="muted">
+                {preview(jsonLine(result), 200)}
+              </Text>
+            ) : null}
+          </VStack>
         );
       })}
     </List>

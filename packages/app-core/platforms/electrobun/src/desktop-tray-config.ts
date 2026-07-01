@@ -55,26 +55,36 @@ export function shouldStartTrayFirst(
 }
 
 /**
- * Whether the app should launch into the first-run onboarding overlay: a
- * full-screen, borderless, transparent, click-through (passthrough)
- * always-on-top window that renders only the floating onboarding card instead
- * of the opaque dashboard. Empty (transparent) regions pass clicks straight
- * through to the desktop behind; the card itself is interactive.
+ * Platforms where the tray popover (a BrowserView attached to a frameless,
+ * transparent, always-on-top window anchored at the tray) is implemented today.
  *
- * Opt-in (default OFF). macOS-only — transparent + region-based passthrough is
- * a WKWebView capability we only rely on there — and excludes kiosk shell mode
- * (kiosk wants the fullscreen appliance window). Enable with
- * ELIZA_DESKTOP_ONBOARDING_OVERLAY=1.
+ * Scoped honestly per #9953 Phase 4: macOS first, where the transparent +
+ * always-on-top BrowserView popover primitive is proven (the same primitive the
+ * release-notes window uses). Windows (CEF message-loop ordering) and Linux
+ * (tray-geometry support varies by DE) are tracked follow-ups; on those the tray
+ * keeps its text context menu.
  */
-export function shouldStartOnboardingOverlay(
+export const TRAY_POPOVER_SUPPORTED_PLATFORMS: ReadonlySet<NodeJS.Platform> =
+  new Set<NodeJS.Platform>(["darwin"]);
+
+/**
+ * Whether a tray click should open the widget popover instead of (just) showing
+ * the main window. Opt-in (default OFF) via ELIZA_DESKTOP_TRAY_POPOVER=1;
+ * requires the tray to be enabled, a platform with a popover implementation, and
+ * excludes kiosk shell mode.
+ */
+export function shouldEnableTrayPopover(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   argv: readonly string[] = process.argv,
 ): boolean {
-  if (platform !== "darwin") {
+  if (!TRAY_POPOVER_SUPPORTED_PLATFORMS.has(platform)) {
     return false;
   }
-  if (!parseTruthy(env.ELIZA_DESKTOP_ONBOARDING_OVERLAY)) {
+  if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_POPOVER)) {
+    return false;
+  }
+  if (!shouldCreateDesktopTray(env)) {
     return false;
   }
   if (isKioskShellMode(env, argv)) {

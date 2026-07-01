@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "vitest";
+import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
 import { type Component, TUI } from "../src/tui.js";
-import { VirtualTerminal } from "./virtual-terminal.js";
 
 class TestComponent implements Component {
   lines: string[] = [];

@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.command-brief-risk-triage",
   title: "Command brief compresses calendar, inbox, reminders, and decisions",
   domain: "lifeops.executive-assistant",

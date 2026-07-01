@@ -158,7 +158,7 @@ describe("LM Studio text plumbing shape", () => {
     expect(args.model.modelId).toBe("auto-detected-model");
   });
 
-  it("returns a provider error string when model discovery has no usable models", async () => {
+  it("throws when model discovery has no usable models", async () => {
     detectLMStudioMock.mockResolvedValueOnce({
       available: false,
       baseURL: "http://localhost:1234/v1",
@@ -167,9 +167,7 @@ describe("LM Studio text plumbing shape", () => {
     const runtime = createRuntime();
     (runtime.getSetting as ReturnType<typeof vi.fn>).mockImplementation(() => null);
 
-    const result = await handleTextSmall(runtime, { prompt: "p" } as never);
-
-    expect(result).toMatch(/Error generating text/i);
+    await expect(handleTextSmall(runtime, { prompt: "p" } as never)).rejects.toThrow();
     expect(generateTextMock).not.toHaveBeenCalled();
   });
 
@@ -306,7 +304,7 @@ describe("LM Studio text plumbing shape", () => {
     expect(JSON.parse(out as string)).toEqual({ foo: "bar" });
   });
 
-  it("returns an error string when generateText throws (resilience)", async () => {
+  it("throws when generateText fails (no fabricated reply)", async () => {
     generateTextMock.mockRejectedValue(
       Object.assign(new Error("loaded model is unavailable"), {
         statusCode: 500,
@@ -315,8 +313,8 @@ describe("LM Studio text plumbing shape", () => {
       })
     );
 
-    const result = await handleResponseHandler(createRuntime(), { prompt: "p" } as never);
-    expect(typeof result).toBe("string");
-    expect(result).toMatch(/Error generating text/i);
+    await expect(handleResponseHandler(createRuntime(), { prompt: "p" } as never)).rejects.toThrow(
+      "loaded model is unavailable"
+    );
   });
 });

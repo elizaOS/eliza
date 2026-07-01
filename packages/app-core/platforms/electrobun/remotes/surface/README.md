@@ -106,10 +106,9 @@ It consumes:
 - `agent.message.stream.done`
 - `agent.message.stream.cancelled`
 
-## Build and Smoke
+## Smoke
 
 ```sh
-bun run --cwd elizalaunch/remotes/surface build
 bun run --cwd elizalaunch/remotes/surface smoke
 bun run --cwd elizalaunch/remotes/surface smoke:phase4
 ```

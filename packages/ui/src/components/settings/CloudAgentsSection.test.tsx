@@ -54,6 +54,10 @@ const persistenceMock = vi.hoisted(() => ({
 
 vi.mock("../../state", () => ({
   useApp: () => appMock.value,
+  useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
+    sel(appMock.value),
+  useAppSelectorShallow: (sel: (value: typeof appMock.value) => unknown) =>
+    sel(appMock.value),
 }));
 
 vi.mock("../../api", () => ({
@@ -62,6 +66,9 @@ vi.mock("../../api", () => ({
 
 vi.mock("../../api/client-cloud", () => ({
   resolveCloudAgentApiBase: () => "https://agent.example.test",
+  // currentCloudToken now resolves Steward-first via getCloudAuthToken; return
+  // null so it falls through to the persisted active-server token these tests set.
+  getCloudAuthToken: () => null,
 }));
 
 vi.mock("../../config/boot-config", () => ({
@@ -285,6 +292,10 @@ function resetClientMocks() {
   clientMock.getCloudCompatAgentStatus.mockReset();
   persistenceMock.loadPersistedActiveServer.mockReset();
   persistenceMock.savePersistedActiveServer.mockReset();
+  // deleteAgent now guards on window.confirm; default it to accept so the
+  // lifecycle tests exercise the delete path (the dismissal path is tested
+  // explicitly below).
+  window.confirm = () => true;
 }
 
 describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
@@ -444,7 +455,9 @@ describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
       () =>
         expect(
           screen.getByTestId("cloud-agent-status-agent-1").textContent,
-        ).toBe("Running"),
+          // `agentLifecycleLabel` renders the product copy for the lifecycle
+          // enum: a `running` cloud agent shows "Ready", not the raw "Running".
+        ).toBe("Ready"),
       { timeout: 6000 },
     );
   });
@@ -677,6 +690,16 @@ describe("CloudAgentsSection delete (job polling)", () => {
     await waitFor(() => expect(screen.queryByText("Sync")).toBeNull());
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
   });
+
+  it("does NOT delete when the confirm dialog is dismissed", async () => {
+    window.confirm = () => false;
+    await renderWithAgents([agent({ agent_name: "Sync" })]);
+
+    fireEvent.click(screen.getByLabelText("Delete Sync"));
+
+    expect(clientMock.deleteCloudCompatAgent).not.toHaveBeenCalled();
+    expect(screen.queryByText("Sync")).not.toBeNull();
+  });
 });
 
 describe("CloudAgentsSection load state (error vs empty)", () => {
@@ -756,3 +779,9 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
     expect(screen.queryByTestId("cloud-agents-error")).toBeNull();
   });
 });
+
+// The shared→dedicated handoff no longer drives this Settings row's "Waking…"
+// badge: PR3 re-points the live client SILENTLY (no row-level waking state), and
+// the in-flight progress is shown by the chat-shell handoff toast
+// (CloudHandoffBanner). The row's only "Waking…" state is now the local
+// suspended→resume flow, covered by "CloudAgentsSection waking on switch" above.

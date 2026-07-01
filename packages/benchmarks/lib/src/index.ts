@@ -8,11 +8,16 @@
 
 export {
   bundleIsPreRelease,
+  bundleTextRuntimeClass,
   ELIZA_ONE_MODEL_SIZES,
   ELIZA_ONE_RELEASE_STATES,
+  ELIZA_ONE_TEXT_RUNTIME_CLASSES,
   type ElizaOneBundleManifest,
   type ElizaOneModelSize,
   type ElizaOneReleaseState,
+  type ElizaOneTextRuntimeClass,
+  LITERT_ARTIFACT_EXT,
+  LITERT_BUNDLE_TEXT_SUBDIR,
   readElizaOneBundle,
 } from "./eliza-1-bundle.ts";
 export * from "./local-llama-cpp.ts";

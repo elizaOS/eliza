@@ -1,6 +1,7 @@
 // Re-exports for hosts that import directly from "@elizaos/plugin-wallet-ui".
 
 export { useWalletState } from "@elizaos/ui/state";
+export { InventoryAppView } from "./components/InventoryAppView.tsx";
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {

@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedMeetingPreferences } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.medication-conflicts-with-meal-time",
   title: "Medication time conflicts with stored breakfast preference",
   domain: "lifeops.hygiene",

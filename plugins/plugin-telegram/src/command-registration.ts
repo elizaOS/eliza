@@ -7,27 +7,50 @@
  * navigation commands the dashboard and Discord expose appear natively in
  * Telegram.
  *
+ * This is Telegram's implementation of the shared `ConnectorCommandBridge`
+ * contract (#8790): the same register/dispatch shape and the same auth-gating
+ * decision Discord uses, so both connectors behave consistently.
+ *
  * Per-target dispatch:
- *   - `agent`    → the reconstructed command text (the user's `/command args`
- *                  message) is routed through the agent's message pipeline via
- *                  `MessageManager.handleMessage(ctx, { forceReply: true })`,
- *                  the same path inbound messages take. `forceReply` bypasses
- *                  the `TELEGRAM_AUTO_REPLY` gate because an explicit slash
- *                  command is an explicit request for a response.
+ *   - `agent`    → deterministic commands
+ *                  (help/status/think/model/reset/…) resolve to a local reply
+ *                  via `resolveCommand`; pipeline-owned agent commands route
+ *                  the reconstructed command text (the user's `/command args`
+ *                  message) through the agent's message pipeline via
+ *                  `MessageManager.handleMessage(ctx, { forceReply: true })`.
+ *                  `forceReply` bypasses the `TELEGRAM_AUTO_REPLY` gate because
+ *                  an explicit slash command is an explicit request for a response.
  *   - `navigate` → replies describing the in-app destination, resolving the
  *                  `/settings <section>` argument when present.
  *   - `client`   → GUI/TUI-only behaviors have no Telegram surface; handled
  *                  defensively with a short reply rather than crashing.
+ *
+ * Auth gating: `requiresAuth` / `requiresElevated` commands are gated at the
+ * connector boundary using the agent's role model (`hasRoleAccess`) — the same
+ * mechanism every surface uses. The Telegram sender is mapped to a runtime
+ * entity (matching `MessageManager`'s account-scoped id), and a command is
+ * refused with a clear reply when the sender is not an owner (for
+ * `requiresAuth`) or admin (for `requiresElevated`).
  *
  * A matched `bot.command` handler never calls `next()`, so the catch-all
  * message handler registered in `service.ts` does not also process command
  * messages (no double-processing).
  */
 
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  hasRoleAccess,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import {
   type ConnectorCommand,
+  type ConnectorSenderAuth,
+  gateConnectorCommandByName,
   getConnectorCommands,
+  resolveCommand,
   resolveSettingsSection,
 } from "@elizaos/plugin-commands";
 import type { Context, Telegraf } from "telegraf";
@@ -43,6 +66,12 @@ const TELEGRAM_COMMAND_NAME_RE = /^[a-z0-9_]{1,32}$/;
 const TELEGRAM_COMMAND_DESCRIPTION_MAX = 256;
 /** Telegram caps the published command menu at 100 commands. */
 const TELEGRAM_MAX_COMMANDS = 100;
+/** Telegram caps a single text message at 4096 characters. */
+const TELEGRAM_MESSAGE_MAX = 4096;
+/** The catalog surface this bridge serves. */
+const TELEGRAM_SURFACE = "telegram";
+const DEFAULT_ACCOUNT_ID = "default";
+const TELEGRAM_EMBED_COMMAND = "app";
 
 /** A catalog command projected onto Telegram's native command surface. */
 export interface TelegramCommandDescriptor {
@@ -52,6 +81,15 @@ export interface TelegramCommandDescriptor {
   description: string;
   /** The originating catalog command. */
   command: ConnectorCommand;
+}
+
+/**
+ * Account-scoped key matching `MessageManager.scopedTelegramKey`, so the entity
+ * id this bridge derives for role resolution is the same id the inbound message
+ * pipeline assigns to the sender.
+ */
+function scopedTelegramKey(key: string, accountId: string): string {
+  return accountId === DEFAULT_ACCOUNT_ID ? key : `${accountId}:${key}`;
 }
 
 /**
@@ -80,10 +118,12 @@ function clampDescription(description: string): string {
  * name (first occurrence wins) and capped at Telegram's 100-command limit. Pure
  * — no side effects.
  */
-export function buildTelegramCommandDescriptors(): TelegramCommandDescriptor[] {
+export function buildTelegramCommandDescriptors(
+  agentId?: string | null,
+): TelegramCommandDescriptor[] {
   const out: TelegramCommandDescriptor[] = [];
   const seen = new Set<string>();
-  for (const command of getConnectorCommands("telegram")) {
+  for (const command of getConnectorCommands(TELEGRAM_SURFACE, { agentId })) {
     if (out.length >= TELEGRAM_MAX_COMMANDS) break;
     const name = sanitizeCommandName(command.name);
     if (!name || seen.has(name)) continue;
@@ -121,8 +161,144 @@ function firstCommandArg(text: string): string | undefined {
   return arg && arg.length > 0 ? arg : undefined;
 }
 
+function messageText(ctx: Context): string {
+  return ctx.message && "text" in ctx.message ? ctx.message.text : "";
+}
+
+export function resolveTelegramEmbedUrl(runtime: IAgentRuntime): string | null {
+  const configured = [
+    runtime.getSetting?.("TELEGRAM_EMBED_URL"),
+    runtime.getSetting?.("ELIZA_EMBED_URL"),
+    process.env.TELEGRAM_EMBED_URL,
+    process.env.ELIZA_EMBED_URL,
+    process.env.ELIZA_APP_URL,
+  ].find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
+  if (!configured) return null;
+  try {
+    const url = new URL(configured.trim());
+    if (url.protocol !== "https:") return null;
+    if (url.pathname === "/" || url.pathname === "") url.pathname = "/embed";
+    url.searchParams.set("platform", "telegram");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Build the Telegraf handler for a catalog command, branching on its target.
+ * Resolve the Telegram sender's trust level using the agent's role model — the
+ * same `hasRoleAccess` check every surface runs. OWNER access satisfies
+ * `requiresAuth`; ADMIN access satisfies `requiresElevated`. The sender's
+ * Telegram user id is mapped through the account-scoped `createUniqueUuid`
+ * (matching `MessageManager`), so role resolution reads the canonical-owner /
+ * world-role state the inbound pipeline established.
+ */
+export async function resolveTelegramSenderAuth(
+  ctx: Context,
+  runtime: IAgentRuntime,
+  accountId: string,
+): Promise<ConnectorSenderAuth> {
+  const fromId = ctx.from?.id;
+  const chatId = ctx.chat?.id;
+  if (fromId === undefined || chatId === undefined) {
+    // No identity to resolve — fail closed.
+    return { isAuthorized: false, isElevated: false };
+  }
+
+  const entityId = createUniqueUuid(
+    runtime,
+    scopedTelegramKey(String(fromId), accountId),
+  ) as UUID;
+  const roomId = createUniqueUuid(
+    runtime,
+    scopedTelegramKey(String(chatId), accountId),
+  ) as UUID;
+
+  const memory: Memory = {
+    id: createUniqueUuid(runtime, `${chatId}-${fromId}-cmd`) as UUID,
+    entityId,
+    agentId: runtime.agentId,
+    roomId,
+    content: { text: "/whoami", source: TELEGRAM_SURFACE },
+    createdAt: Date.now(),
+  };
+
+  const [isOwner, isAdmin] = await Promise.all([
+    hasRoleAccess(runtime, memory, "OWNER"),
+    hasRoleAccess(runtime, memory, "ADMIN"),
+  ]);
+
+  const senderName =
+    ctx.from?.username ?? ctx.from?.first_name ?? String(fromId);
+  return { isAuthorized: isOwner, isElevated: isAdmin, senderName };
+}
+
+/**
+ * Run an agent-target command. Deterministic commands
+ * (help/status/think/model/reset/…) resolve via `resolveCommand` and answer
+ * locally. Pipeline-owned commands route the command message through the agent
+ * pipeline, forcing a reply.
+ */
+async function dispatchAgentCommand(
+  ctx: Context,
+  runtime: IAgentRuntime,
+  messageManager: MessageManager,
+  accountId: string,
+  descriptor: TelegramCommandDescriptor,
+  sender: ConnectorSenderAuth,
+): Promise<void> {
+  const fromId = ctx.from?.id;
+  const chatId = ctx.chat?.id;
+  if (fromId !== undefined && chatId !== undefined) {
+    const entityId = createUniqueUuid(
+      runtime,
+      scopedTelegramKey(String(fromId), accountId),
+    ) as UUID;
+    const roomId = createUniqueUuid(
+      runtime,
+      scopedTelegramKey(String(chatId), accountId),
+    ) as UUID;
+    const message: Memory = {
+      id: createUniqueUuid(
+        runtime,
+        `${chatId}-${fromId}-${Date.now()}`,
+      ) as UUID,
+      entityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: { text: messageText(ctx), source: TELEGRAM_SURFACE },
+      createdAt: Date.now(),
+    };
+    const resolved = await resolveCommand(runtime, message, {
+      isAuthorized: sender.isAuthorized,
+      isElevated: sender.isElevated,
+      ...(sender.senderName ? { senderName: sender.senderName } : {}),
+    });
+    if (resolved.handled && resolved.reply !== undefined) {
+      await ctx.reply(resolved.reply.slice(0, TELEGRAM_MESSAGE_MAX));
+      return;
+    }
+  }
+
+  await messageManager.handleMessage(ctx, { forceReply: true });
+  logger.debug(
+    {
+      src: "plugin:telegram",
+      agentId: runtime.agentId,
+      accountId,
+      command: descriptor.name,
+    },
+    "Routed slash command to agent",
+  );
+}
+
+/**
+ * Build the Telegraf handler for a catalog command. Resolves the sender's trust
+ * level, gates `requiresAuth` / `requiresElevated` commands (refusing with a
+ * clear reply when the sender lacks access), then dispatches by target kind.
  * The handler never calls `next()`, terminating the middleware chain so the
  * catch-all message handler does not re-process the command.
  */
@@ -133,44 +309,83 @@ function buildCommandHandler(
   accountId: string,
 ): (ctx: Context) => Promise<void> {
   const { command } = descriptor;
-  const target = command.target;
 
-  if (target.kind === "navigate") {
-    return async (ctx: Context) => {
-      const text = ctx.message && "text" in ctx.message ? ctx.message.text : "";
+  return async (ctx: Context) => {
+    const sender = await resolveTelegramSenderAuth(ctx, runtime, accountId);
+    const gate = gateConnectorCommandByName(
+      runtime.agentId,
+      command.name,
+      sender,
+    );
+    if (!gate.allowed) {
+      await ctx.reply(gate.reply);
+      return;
+    }
+
+    const target = command.target;
+    if (target.kind === "navigate") {
       let sectionLabel: string | undefined;
       if (command.name === "settings") {
-        const raw = firstCommandArg(text);
+        const raw = firstCommandArg(messageText(ctx));
         if (raw) sectionLabel = resolveSettingsSection(raw) ?? raw;
       }
       await ctx.reply(describeNavigation(command, sectionLabel));
-    };
-  }
+      return;
+    }
 
-  if (target.kind === "client") {
-    // GUI/TUI-only behaviors have no Telegram surface; the catalog should not
-    // emit them for remote connectors, so this branch is defensive only.
-    return async (ctx: Context) => {
+    if (target.kind === "client") {
+      // GUI/TUI-only behaviors have no Telegram surface; the catalog should not
+      // emit them for remote connectors, so this branch is defensive only.
       await ctx.reply(
         `/${descriptor.name} is only available in the Eliza app.`,
       );
-    };
-  }
+      return;
+    }
 
-  // target.kind === "agent": route the command message through the agent
-  // pipeline, forcing a reply since the user explicitly invoked the command.
-  return async (ctx: Context) => {
-    await messageManager.handleMessage(ctx, { forceReply: true });
-    logger.debug(
-      {
-        src: "plugin:telegram",
-        agentId: runtime.agentId,
-        accountId,
-        command: descriptor.name,
-      },
-      "Routed slash command to agent",
+    await dispatchAgentCommand(
+      ctx,
+      runtime,
+      messageManager,
+      accountId,
+      descriptor,
+      sender,
     );
   };
+}
+
+function registerTelegramEmbedCommand(
+  bot: Telegraf<Context>,
+  runtime: IAgentRuntime,
+  accountId: string,
+): void {
+  bot.command(TELEGRAM_EMBED_COMMAND, async (ctx) => {
+    const sender = await resolveTelegramSenderAuth(ctx, runtime, accountId);
+    if (!sender.isAuthorized && !sender.isElevated) {
+      await ctx.reply(
+        "Opening the Eliza app from Telegram requires OWNER or ADMIN access.",
+      );
+      return;
+    }
+
+    const embedUrl = resolveTelegramEmbedUrl(runtime);
+    if (!embedUrl) {
+      await ctx.reply("The Eliza embedded app URL is not configured.");
+      return;
+    }
+
+    await ctx.reply("Open the Eliza app.", {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Open Eliza",
+              web_app: { url: embedUrl },
+            },
+          ],
+        ],
+      },
+    });
+  });
 }
 
 /**
@@ -184,7 +399,8 @@ export function registerTelegramCommandHandlers(
   messageManager: MessageManager,
   accountId: string,
 ): TelegramCommandDescriptor[] {
-  const descriptors = buildTelegramCommandDescriptors();
+  const descriptors = buildTelegramCommandDescriptors(runtime.agentId);
+  registerTelegramEmbedCommand(bot, runtime, accountId);
   for (const descriptor of descriptors) {
     const handler = buildCommandHandler(
       descriptor,
@@ -227,7 +443,7 @@ export async function applyTelegramSetMyCommands(
   runtime: IAgentRuntime,
   accountId: string,
 ): Promise<void> {
-  const descriptors = buildTelegramCommandDescriptors();
+  const descriptors = buildTelegramCommandDescriptors(runtime.agentId);
   if (descriptors.length === 0) return;
   const commands = descriptors.map((descriptor) => ({
     command: descriptor.name,

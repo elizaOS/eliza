@@ -100,10 +100,12 @@ const agentRequestHandlers = new Map<string, DefaultRequestHandlerType>();
 const agentJsonRpcHandlers = new Map<string, JsonRpcTransportHandler>();
 
 function getAgentRateLimiter(agentId: string): RateLimiter {
-  if (!agentRateLimiters.has(agentId)) {
-    agentRateLimiters.set(agentId, new RateLimiter(100));
+  let limiter = agentRateLimiters.get(agentId);
+  if (!limiter) {
+    limiter = new RateLimiter(100);
+    agentRateLimiters.set(agentId, limiter);
   }
-  return agentRateLimiters.get(agentId)!;
+  return limiter;
 }
 
 /**
@@ -209,13 +211,24 @@ async function getAgentJsonRpcHandler(
       );
       agentRequestHandlers.set(agentId, requestHandler);
     }
-    const requestHandler = agentRequestHandlers.get(agentId)!;
+    const requestHandler = agentRequestHandlers.get(agentId);
+    if (!requestHandler) {
+      throw new Error(
+        `A2A request handler for agent ${agentId} was not initialized`,
+      );
+    }
     agentJsonRpcHandlers.set(
       agentId,
       new JsonRpcTransportHandler(requestHandler),
     );
   }
-  return agentJsonRpcHandlers.get(agentId)!;
+  const jsonRpcHandler = agentJsonRpcHandlers.get(agentId);
+  if (!jsonRpcHandler) {
+    throw new Error(
+      `A2A JSON-RPC handler for agent ${agentId} was not initialized`,
+    );
+  }
+  return jsonRpcHandler;
 }
 
 export const POST = withErrorHandling(async function POST(

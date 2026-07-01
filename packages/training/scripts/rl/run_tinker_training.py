@@ -10,7 +10,7 @@ Prerequisites:
 3. Set OPENAI_API_KEY for RLAIF judge
 
 Usage:
-    python scripts/run_tinker_training.py --steps 100 --model Qwen/Qwen3.5-4B
+    python scripts/run_tinker_training.py --steps 100 --model google/gemma-4-E4B
 
 For help:
     python scripts/run_tinker_training.py --help
@@ -83,8 +83,8 @@ Examples:
   # Basic training run
   python scripts/run_tinker_training.py --steps 100
 
-  # Use a larger Qwen model
-  python scripts/run_tinker_training.py --model Qwen/Qwen3.5-27B
+  # Use a larger Gemma model
+  python scripts/run_tinker_training.py --model google/gemma-4-31B
 
   # Adjust hyperparameters
   python scripts/run_tinker_training.py --lr 1e-5 --group-size 8 --lora-rank 64

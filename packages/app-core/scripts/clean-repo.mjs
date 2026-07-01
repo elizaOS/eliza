@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 /**
  * Remove build outputs and tool caches so the next `bun run build` / dev run is cold.
  *
@@ -21,14 +21,32 @@ import {
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RECURSIVE_CLEANUP_SCRIPT = path.resolve(
+  __dirname,
+  "../../scripts/rm-path-recursive.mjs",
+);
 const root = resolveRepoRootFromImportMeta(import.meta.url);
 const deep = process.argv.includes("--deep");
 const globalToolCache = process.env.ELIZA_CLEAN_GLOBAL_TOOL_CACHE === "1";
 
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(detail || error?.message || String(error), {
+      cause: error,
+    });
+  }
+}
+
 function rmPath(label, abs) {
   if (!existsSync(abs)) return;
   try {
-    rmSync(abs, { recursive: true, force: true });
+    removeDirectoryRecursive(abs);
     console.log(`  removed ${label}`);
   } catch (err) {
     console.warn(
@@ -70,7 +88,7 @@ function rmPluginDists() {
   if (!existsSync(pluginsRoot)) return;
   for (const name of CAPACITOR_PLUGIN_NAMES) {
     const dir = nativePluginDir(name);
-    rmPath(path.relative(root, dir) + "/dist", path.join(dir, "dist"));
+    rmPath(`${path.relative(root, dir)}/dist`, path.join(dir, "dist"));
   }
   // Any extra plugin dirs (not in canonical list) still get dist removed
   try {

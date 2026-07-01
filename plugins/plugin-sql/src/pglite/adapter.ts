@@ -344,7 +344,12 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
             [roomIds, tableName, this.agentId]
           );
         deletedIds = (result.rows as Array<{ id: string }>).map((r) => r.id);
-      } catch {}
+      } catch (err) {
+        logger.debug(
+          { src: "plugin:sql", error: err instanceof Error ? err.message : String(err) },
+          "Failed to look up deleted memory ids for write-back"
+        );
+      }
     }
     await super.deleteAllMemories(roomIdsOrRoomId as never, tableName);
     for (const id of deletedIds) {

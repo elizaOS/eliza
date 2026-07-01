@@ -12,18 +12,16 @@ describe("shouldWarmupVoice", () => {
     expect(shouldWarmupVoice(base)).toBe(true);
   });
 
-  it("warms for cloud-only setups (localInferenceActive=false)", () => {
-    expect(shouldWarmupVoice({ ...base, localInferenceActive: false })).toBe(
-      true,
-    );
-  });
-
   it("skips on mobile", () => {
     expect(shouldWarmupVoice({ ...base, mobile: true })).toBe(false);
   });
 
   it("skips when explicitly disabled by env", () => {
     expect(shouldWarmupVoice({ ...base, skipEnv: true })).toBe(false);
+  });
+
+  it("skips for explicit cloud-only desktop runtimes", () => {
+    expect(shouldWarmupVoice({ ...base, cloudOnly: true })).toBe(false);
   });
 
   it("skips on a dev hot-reload respawn (cold boot still warms)", () => {

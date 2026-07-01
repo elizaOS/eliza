@@ -3,6 +3,11 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const rmPathRecursive = fileURLToPath(
+  new URL("../../../../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
+);
 
 async function runBuild(): Promise<boolean> {
   console.log("Building @elizaos/plugin-wallet evm chain...");
@@ -10,7 +15,7 @@ async function runBuild(): Promise<boolean> {
   const distDir = join(process.cwd(), "dist");
 
   if (existsSync(distDir)) {
-    await Bun.$`rm -rf ${distDir}`;
+    await Bun.$`node ${rmPathRecursive} ${distDir}`;
   }
 
   await mkdir(distDir, { recursive: true });
@@ -55,7 +60,7 @@ async function runBuild(): Promise<boolean> {
   console.log(`Build successful: ${result.outputs.length} files generated`);
 
   console.log("Generating TypeScript declarations...");
-  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json`
+  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json --noCheck`
     .quiet()
     .nothrow();
 

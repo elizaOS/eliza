@@ -4,18 +4,17 @@
 # instance unless you pass --yes-i-will-pay AND the relevant API-key env var is
 # set. --dry-run prints the provisioning plan and spends nothing.
 #
-# This wraps the existing primitives instead of duplicating them:
-#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [implemented here]
-#   * nebius       → `train_nebius.sh` (NEBIUS_*)     [delegated for --task train;
-#                                                      kernel-verify/bench stay vast-only here]
-#   * --task train → delegates to ../train_vast.sh provision-and-train
+# This is the selector front door. If --provider is omitted, tier-routing.json
+# chooses vast.ai or Nebius, then this script forwards every operational flag to
+# dispatch-vast.sh or dispatch-nebius.sh.
 #
 # Usage:
+#   run-on-cloud.sh --task train --tier 9b --dry-run                         # auto-routes
 #   run-on-cloud.sh --provider vast   --task build         --gpu h100 --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 [--yes-i-will-pay]
-#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_8b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 2b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task train         --gpu b200 --tier 27b --yes-i-will-pay
-#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_8b --yes-i-will-pay
+#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 2b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
 #
 # Tasks:
@@ -24,15 +23,15 @@
 #                  pulls JSON to packages/inference/verify/hardware-results/.
 #   bench          build linux-x64-cuda, run the e2e CUDA bench harness for the
 #                  given --tier; pulls JSON to packages/inference/verify/bench_results/.
-#   train          delegates to ../train_vast.sh provision-and-train (uses that
-#                  script's own GPU mapping + checkpoint pull + teardown).
+#   train          delegates to the selected provider dispatcher, which then
+#                  calls ../train_vast.sh or ../train_nebius.sh.
 #
 # GPU friendly names (mapped to vastai search filters / train_vast GPU tokens):
 #   h100 | h200 | a100 | a100-80 | rtx4090 | rtx5090 | b200 | l40s | blackwell6000
 #
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
-#   0_8b | 2b | 4b | 9b | 27b
-# The legacy Qwen3 tiers (0_6b / 1_7b) were dropped 2026-05-12 — those bases
+#   2b | 4b | 9b | 27b | 27b-256k
+# The legacy pre-Gemma tiers (0_6b / 1_7b) were dropped 2026-05-12 — those bases
 # don't work with the eliza-1 mtp spec-decode path.
 #
 # Required env per provider:
@@ -52,10 +51,11 @@ DATE_TAG="$(date -u +%Y-%m-%d)"
 GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 GIT_REMOTE="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || echo 'https://github.com/elizaOS/eliza.git')"
 
+ORIGINAL_ARGS=("$@")
 PROVIDER=""
 TASK=""
 GPU="h100"
-TIER="0_8b"
+TIER="2b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
@@ -79,11 +79,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$PROVIDER" ]] || die "--provider {vast,nebius} is required"
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
-case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
-case "$TIER" in 0_8b|2b|4b|9b|27b) ;; *) die "unknown tier '$TIER'" ;; esac
+case "$TIER" in 2b|4b|9b|27b|27b-256k) ;; *) die "unknown tier '$TIER'" ;; esac
+
+TIER_ROUTING_JSON="$HERE/tier-routing.json"
+if [[ -z "$PROVIDER" ]]; then
+  PROVIDER="$(python3 -c "import json; d=json.load(open('$TIER_ROUTING_JSON')); print(d['tiers']['$TIER'].get('recommended_provider','vast'))" 2>/dev/null || echo vast)"
+fi
+case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
+
+FORWARD_ARGS=()
+for ((i=0; i<${#ORIGINAL_ARGS[@]}; i++)); do
+  arg="${ORIGINAL_ARGS[$i]}"
+  case "$arg" in
+    --provider) i=$((i+1)) ;;
+    --provider=*) ;;
+    *) FORWARD_ARGS+=("$arg") ;;
+  esac
+done
+exec bash "$HERE/dispatch-${PROVIDER}.sh" "${FORWARD_ARGS[@]}"
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -110,18 +125,16 @@ gpu_to_train_vast_token() {
 }
 tier_to_registry_key() {
   # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
-  # eliza-1 fused-model line uses Qwen3.5 for 0_8b/2b/4b/9b and Qwen3.6 for
-  # 27B. Qwen3 doesn't work with mtp — the mtp kernels are validated
-  # against the Qwen3.5/3.6 architecture + 248320 tokenizer; a Qwen3 base has
-  # the wrong vocab + attention shape for the fused QJL/Polar paths. The
-  # 0_6b/1_7b legacy tier ids in the runtime
+  # eliza-1 fused-model line uses Gemma 4 for every tier (E2B/E4B/12B/31B).
+  # The mtp kernels are validated against the Gemma 4 architecture + 262144
+  # tokenizer; a non-Gemma base has the wrong vocab + attention shape for the
+  # fused paths. The 0_6b/1_7b legacy tier ids in the runtime
   # manifest stay addressable but no longer route to a registry key.
   case "$1" in
-    0_8b) echo qwen3.5-0.8b ;;
-    2b)   echo qwen3.5-2b ;;
-    4b)   echo qwen3.5-4b ;;
-    9b)   echo qwen3.5-9b ;;
-    27b) echo qwen3.6-27b ;;
+    2b)        echo gemma4-e2b ;;
+    4b)        echo gemma4-e4b ;;
+    9b)        echo gemma4-12b ;;
+    27b|27b-256k) echo gemma4-31b ;;
   esac
 }
 

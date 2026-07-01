@@ -20,6 +20,9 @@
       "react/*": ["../../node_modules/@types/react/*"],
       "react-dom": ["../../node_modules/@types/react-dom"],
       "react-dom/*": ["../../node_modules/@types/react-dom/*"],
+      "csstype": [
+        "../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
+      ],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
@@ -27,6 +30,8 @@
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
@@ -57,6 +62,8 @@
       "@elizaos/plugin-registry/*": ["./src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
+      "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
       "@elizaos/plugin-training": [
         "../../packages/ui/src/types/host-external-modules.ts"
       ]

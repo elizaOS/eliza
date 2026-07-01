@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-matrix",
-  "version": "2.0.3-beta.10",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,6 +28,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],
@@ -56,7 +57,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/bun": "^1.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"

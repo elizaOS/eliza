@@ -30,7 +30,7 @@ export function FormSelect({
     <Select {...props}>
       <SelectTrigger
         className={cn(
-          "h-11 w-full rounded-sm border border-border bg-bg px-4 py-2 text-sm text-txt outline-none transition-colors focus:border-accent focus-visible:border-accent data-[placeholder]:text-muted",
+          "h-11 w-full rounded-sm border border-border bg-bg px-4 py-2 text-sm text-txt outline-none transition-colors   data-[placeholder]:text-muted",
           triggerClassName,
         )}
       >
@@ -55,7 +55,7 @@ export const FormSelectItem = React.forwardRef<
   <SelectItem
     ref={ref}
     className={cn(
-      "min-h-[2.75rem] rounded-sm px-3 py-2.5 text-sm text-txt outline-none transition-colors focus:bg-accent-subtle focus:text-txt-strong data-[state=checked]:bg-accent-subtle data-[state=checked]:text-txt-strong",
+      "min-h-[2.75rem] rounded-sm px-3 py-2.5 text-sm text-txt outline-none transition-colors   data-[state=checked]:bg-accent-subtle data-[state=checked]:text-txt-strong",
       className,
     )}
     {...props}

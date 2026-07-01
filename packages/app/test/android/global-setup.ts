@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   AGENT_API_PORT,
+  APP_ID,
   adbReverse,
   adbTry,
   isInstalled,
@@ -24,6 +25,7 @@ const HEALTH_POLL_MS = Number(
 );
 const REQUIRE_AGENT = process.env.ELIZA_ANDROID_REQUIRE_AGENT !== "0";
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
+const CLEAR_APP_DATA = process.env.ELIZA_ANDROID_CLEAR_APP_DATA === "1";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,6 +75,12 @@ export default async function globalSetup() {
     });
   }
 
+  if (CLEAR_APP_DATA) {
+    console.log("[android-e2e] clearing app data before launch");
+    adbTry(adb, ["-s", serial, "shell", "am", "force-stop", APP_ID]);
+    adbTry(adb, ["-s", serial, "shell", "pm", "clear", APP_ID]);
+  }
+
   // Pre-grant the runtime permissions the app requests on launch, so a system
   // GrantPermissionsActivity doesn't cover the WebView and stall route render.
   for (const perm of [
@@ -80,11 +88,12 @@ export default async function globalSetup() {
     "android.permission.RECORD_AUDIO",
     "android.permission.CAMERA",
   ]) {
-    adbTry(adb, ["-s", serial, "shell", "pm", "grant", "ai.elizaos.app", perm]);
+    adbTry(adb, ["-s", serial, "shell", "pm", "grant", APP_ID, perm]);
   }
 
   // host backend: route the device's loopback :31337 to the host agent.
   if (BACKEND === "host") {
+    adbTry(adb, ["-s", serial, "shell", "am", "force-stop", APP_ID]);
     adbReverse(adb, serial, AGENT_API_PORT, AGENT_API_PORT);
     console.log(
       `[android-e2e] host backend: adb reverse tcp:${AGENT_API_PORT} -> host:${AGENT_API_PORT}`,

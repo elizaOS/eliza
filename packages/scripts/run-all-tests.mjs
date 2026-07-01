@@ -52,6 +52,17 @@
  *     are forwarded to single-vitest package scripts and exported via
  *     VITEST_TEST_EXCLUDE_PATHS for package configs/wrappers.
  *
+ *   --concurrency=<n>   (env: TEST_CONCURRENCY)
+ *     Run the parallel-safe `test` tasks through an n-worker pool instead of
+ *     strictly serially. Only the secret-free pr lane is parallelised (minus
+ *     the shared-database packages in test-task-pool.mjs); the e2e/integration
+ *     lanes and any post-merge lane always serialize. Default 1 preserves the
+ *     historical fully-serial behaviour, so existing callers are unaffected.
+ *
+ *   --plan[=text|json]
+ *     Discover and print the test plan without spawning package tests or
+ *     preparing local services. This is the audit/inventory path for #10200.
+ *
  * Companion env knobs (legacy, still honoured):
  *   TEST_PACKAGE_FILTER  — same surface as --filter
  *   TEST_SCRIPT_FILTER   — regex over script name (test, test:e2e, ...)
@@ -61,10 +72,18 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  isParallelSafeTask,
+  normalizeConcurrency,
+  parseShardSpec,
+  partitionTasks,
+  runPool,
+  taskBelongsToShard,
+} from "./lib/test-task-pool.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -139,19 +158,26 @@ function failUsage(message) {
 
 const noCloud = parseFlag("--no-cloud");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
+const barePlanFlag = parseFlag("--plan");
 let filterFlag;
 let patternFlag;
 let onlyFlag;
 let excludeFlags;
+let concurrencyFlag;
+let planFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
   onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
   excludeFlags = parseRepeatedFlagValue("--exclude");
+  concurrencyFlag = parseFlagValue("--concurrency");
+  planFlag = parseFlagValue("--plan");
 } catch (error) {
   failUsage(error.message);
 }
 const allFlag = parseFlag("--all");
+const planEnabled = planFlag !== null || barePlanFlag;
+const planFormat = planFlag || "text";
 
 if (helpFlag) {
   process.stdout.write(
@@ -165,9 +191,13 @@ if (helpFlag) {
       "  --only=e2e | test    Forward VITEST_E2E_ONLY / VITEST_UNIT_ONLY env to children.",
       "  --all                Explicitly run every discovered test lane (default without --only).",
       "  --exclude=<path>     Exclude a repo-relative test path from this lane.",
+      "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
+      "                       pool (pr lane only; default 1 = fully serial).",
+      "  --plan[=text|json]   Print the discovered test plan without running it.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
+      "  TEST_CONCURRENCY=<n>           Same as --concurrency (default 1).",
       "  TEST_SHARD=N/M                  1-indexed shard out of M total.",
       "  TEST_PACKAGE_FILTER=<regex>     Equivalent to --filter (legacy).",
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
@@ -186,6 +216,9 @@ if (allFlag && onlyFlag) {
 if (onlyFlag && !["e2e", "test"].includes(onlyFlag)) {
   failUsage(`--only must be "e2e" or "test", got "${onlyFlag}"`);
 }
+if (!["text", "json"].includes(planFormat)) {
+  failUsage(`--plan must be "text" or "json", got "${planFormat}"`);
+}
 if (argv.length > 0) {
   failUsage(`unknown argument(s): ${argv.join(" ")}`);
 }
@@ -196,28 +229,19 @@ if (argv.length > 0) {
 
 const TEST_LANE = process.env.TEST_LANE || "pr"; // "pr" | "post-merge"
 const TEST_SHARD = process.env.TEST_SHARD || ""; // "N/M"
+// Bounded worker-pool size for the parallel-safe `test` tasks. Default 1 keeps
+// the historical fully-serial behaviour; only an explicit opt-in parallelises.
+const concurrency = normalizeConcurrency(
+  concurrencyFlag ?? process.env.TEST_CONCURRENCY,
+);
 
-// Parse TEST_SHARD into { index, total } or null
-let shardConfig = null;
-if (TEST_SHARD) {
-  const parts = TEST_SHARD.split("/");
-  if (parts.length === 2) {
-    const index = parseInt(parts[0], 10);
-    const total = parseInt(parts[1], 10);
-    if (
-      !isNaN(index) &&
-      !isNaN(total) &&
-      total > 0 &&
-      index >= 1 &&
-      index <= total
-    ) {
-      shardConfig = { index, total };
-    } else {
-      console.warn(
-        `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
-      );
-    }
-  }
+// Parse TEST_SHARD into { index, total } or null (parseShardSpec is pure; warn
+// here when a non-empty spec is malformed).
+const shardConfig = parseShardSpec(TEST_SHARD);
+if (TEST_SHARD && !shardConfig) {
+  console.warn(
+    `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +379,15 @@ function collectPackageJsonPaths() {
   // negated dir is NOT a workspace member even if an earlier glob matched it
   // (e.g. `packages/*` + `!packages/feed` keeps the nested feed monorepo root
   // out — it has its own install/CI and its `test` runs the full feed suite).
+  //
+  // The exclusion covers the WHOLE excluded subtree, not just the literal dir:
+  // the root workspace also lists `packages/feed/packages/*` (so feed's
+  // sub-packages build alongside the rest), but those tests require feed's own
+  // install/environment (its postinstall pulls python + agent-framework deps,
+  // and shared deps like drizzle-orm live in the excluded `@feed/root`). They
+  // can't resolve under a plain root install, so honoring `!packages/feed` for
+  // the nested children keeps the full root `bun run test` from running tests
+  // that structurally belong to feed's own CI lane.
   const patterns = rootPackageJson.workspaces ?? [];
   const excludedDirs = new Set();
   for (const pattern of patterns) {
@@ -365,13 +398,21 @@ function collectPackageJsonPaths() {
       excludedDirs.add(packageDir);
     }
   }
+  const isExcluded = (packageDir) => {
+    for (const excluded of excludedDirs) {
+      if (packageDir === excluded || packageDir.startsWith(`${excluded}/`)) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   for (const pattern of patterns) {
     if (pattern.startsWith("!")) {
       continue;
     }
     for (const packageDir of expandWorkspacePattern(pattern)) {
-      if (excludedDirs.has(packageDir)) {
+      if (isExcluded(packageDir)) {
         continue;
       }
       const packageJsonPath = path.join(packageDir, "package.json");
@@ -738,6 +779,85 @@ function buildLaneEnv() {
   return extra;
 }
 
+function buildPlanSummary(tasks) {
+  const { parallel, serial } = partitionTasks(tasks, TEST_LANE);
+  const byScript = {};
+  const byPackage = {};
+  for (const task of tasks) {
+    byScript[task.scriptName] = (byScript[task.scriptName] ?? 0) + 1;
+    byPackage[task.packageName] = (byPackage[task.packageName] ?? 0) + 1;
+  }
+  return {
+    lane: TEST_LANE,
+    only: onlyFlag || "all",
+    noCloud,
+    shard: shardConfig,
+    filters: packageFilters.map((rx) => rx.source),
+    scriptFilter: scriptFilter?.source ?? null,
+    startAt: startAt || null,
+    concurrency,
+    packageCount: new Set(tasks.map((task) => task.packageName)).size,
+    taskCount: tasks.length,
+    parallelSafeTaskCount: parallel.length,
+    serialTaskCount: serial.length,
+    cloudStep: !noCloud,
+    byScript,
+    byPackage,
+  };
+}
+
+function printableTask(task) {
+  return {
+    packageName: task.packageName,
+    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    scriptName: task.scriptName,
+    label: task.label,
+    parallelSafe: isParallelSafeTask({
+      scriptName: task.scriptName,
+      lane: TEST_LANE,
+      packageName: task.packageName,
+    }),
+  };
+}
+
+function printPlan(tasks) {
+  const summary = buildPlanSummary(tasks);
+  const taskRows = tasks.map(printableTask);
+  if (planFormat === "json") {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          summary,
+          tasks: taskRows,
+          skipped: skippedPlanEntries,
+          cloudStep: summary.cloudStep
+            ? { label: "cloud#test", command: "bun run test:cloud" }
+            : null,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+
+  process.stdout.write(
+    [
+      `[eliza-test] PLAN lane=${summary.lane} only=${summary.only} tasks=${summary.taskCount} packages=${summary.packageCount}`,
+      `[eliza-test] PLAN parallel-safe=${summary.parallelSafeTaskCount} serial=${summary.serialTaskCount} concurrency=${summary.concurrency}`,
+      `[eliza-test] PLAN cloud-step=${summary.cloudStep ? "yes" : "no"}`,
+      ...taskRows.map(
+        (task) =>
+          `[eliza-test] PLAN ${task.parallelSafe ? "parallel" : "serial"} ${task.label}`,
+      ),
+      ...skippedPlanEntries.map(
+        (entry) => `[eliza-test] PLAN skip ${entry.label} (${entry.reason})`,
+      ),
+      "",
+    ].join("\n"),
+  );
+}
+
 function buildForwardedScriptArgs(scriptName, scripts) {
   if (excludeFlags.length === 0) {
     return [];
@@ -756,25 +876,23 @@ function buildForwardedScriptArgs(scriptName, scripts) {
   ]);
 }
 
-/**
- * Stable shard membership: SHA-1 of the task's relative package dir → bucket
- * → assign to shard N (1-indexed) of M. Hashing the relative dir (rather than
- * the full label) keeps a package's `test` and `test:e2e` tasks in the same
- * shard, which keeps Postgres + mock startup costs amortised across the
- * package's full task set.
- */
-function taskBelongsToShard(taskKey, shardCfg) {
-  if (!shardCfg) return true;
-  const hash = crypto.createHash("sha1").update(taskKey).digest("hex");
-  const bucket = parseInt(hash.slice(0, 8), 16) % shardCfg.total;
-  return bucket === shardCfg.index - 1;
-}
-
 // ---------------------------------------------------------------------------
 // Script runner
 // ---------------------------------------------------------------------------
 
-function runScript(cwd, scriptName, label, scripts, extraEnv = {}) {
+function runScript(
+  cwd,
+  scriptName,
+  label,
+  scripts,
+  extraEnv = {},
+  options = {},
+) {
+  // When pooled, several children run at once; streaming their output live
+  // would interleave mid-line. Buffer instead and flush a contiguous block
+  // only on failure (passing/skipped tasks stay quiet, reported by their PASS
+  // line) so the logs remain readable.
+  const stream = options.stream !== false;
   return new Promise((resolve, reject) => {
     const forwardedArgs = buildForwardedScriptArgs(scriptName, scripts);
     const liveTestDefault = TEST_LANE === "post-merge" ? "1" : "0";
@@ -800,14 +918,18 @@ function runScript(cwd, scriptName, label, scripts, extraEnv = {}) {
     let capturedOutput = "";
 
     child.stdout?.on("data", (chunk) => {
-      process.stdout.write(chunk);
+      if (stream) {
+        process.stdout.write(chunk);
+      }
       capturedOutput = appendCapturedOutput(
         capturedOutput,
         chunk.toString("utf8"),
       );
     });
     child.stderr?.on("data", (chunk) => {
-      process.stderr.write(chunk);
+      if (stream) {
+        process.stderr.write(chunk);
+      }
       capturedOutput = appendCapturedOutput(
         capturedOutput,
         chunk.toString("utf8"),
@@ -823,6 +945,11 @@ function runScript(cwd, scriptName, label, scripts, extraEnv = {}) {
       if (outputIndicatesNoTests(capturedOutput)) {
         resolve({ skipped: true });
         return;
+      }
+      if (!stream && capturedOutput) {
+        process.stdout.write(
+          `\n[eliza-test] ----- captured output: ${label} -----\n${capturedOutput}\n[eliza-test] ----- end output: ${label} -----\n`,
+        );
       }
       reject(
         new Error(
@@ -896,11 +1023,15 @@ function runCloudTests() {
 // Main
 // ---------------------------------------------------------------------------
 
-ensurePluginSqlPostgresEnv();
-
 const packageJsonPaths = collectPackageJsonPaths();
 
 let started = startAt.length === 0;
+
+// First pass: discover every runnable task (package × script) and apply all
+// filters/skips. Collecting up front lets the runner dispatch the parallel-safe
+// subset through a worker pool instead of the historical strictly-serial loop.
+const tasks = [];
+const skippedPlanEntries = [];
 
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
@@ -913,15 +1044,25 @@ for (const packageJsonPath of packageJsonPaths) {
     continue;
   }
   if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
-    console.log(
-      `[eliza-test] SKIP ${packageJson.name || relativeDir} (${relativeDir}) (cloud package skipped by --no-cloud)`,
-    );
+    const label = `${packageJson.name || relativeDir} (${relativeDir})`;
+    if (planEnabled) {
+      skippedPlanEntries.push({
+        label,
+        packageName: packageJson.name || relativeDir,
+        relativeDir,
+        reason: "cloud package skipped by --no-cloud",
+      });
+    } else {
+      console.log(
+        `[eliza-test] SKIP ${label} (cloud package skipped by --no-cloud)`,
+      );
+    }
     continue;
   }
 
-  const packageLabel = packageJson.name || relativeDir;
+  const packageName = packageJson.name || relativeDir;
   for (const scriptName of scriptNames) {
-    const label = `${packageLabel} (${relativeDir})#${scriptName}`;
+    const label = `${packageName} (${relativeDir})#${scriptName}`;
     if (!started) {
       if (label.includes(startAt)) {
         started = true;
@@ -941,25 +1082,114 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
     if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
-      console.log(
-        `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
-      );
+      if (planEnabled) {
+        skippedPlanEntries.push({
+          label,
+          packageName,
+          relativeDir,
+          scriptName,
+          reason: "no local test files for vitest script",
+        });
+      } else {
+        console.log(
+          `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
+        );
+      }
       continue;
     }
 
-    const extraEnv = buildLaneEnv();
+    tasks.push({ cwd, scriptName, label, scripts, packageName });
+  }
+}
 
-    console.log(`[eliza-test] START ${label}`);
-    const startedAt = Date.now();
-    const result = await runScript(cwd, scriptName, label, scripts, extraEnv);
+const laneEnv = buildLaneEnv();
+
+if (planEnabled) {
+  printPlan(tasks);
+  process.exit(0);
+}
+
+ensurePluginSqlPostgresEnv();
+
+// Run one task, logging START/PASS/SKIP/FAIL. `stream` echoes child output live
+// (serial path); when false the output is buffered and flushed only on failure
+// (pooled path) so concurrent children don't interleave mid-line.
+async function runTask(task, { stream }) {
+  console.log(`[eliza-test] START ${task.label}`);
+  const startedAt = Date.now();
+  try {
+    const result = await runScript(
+      task.cwd,
+      task.scriptName,
+      task.label,
+      task.scripts,
+      laneEnv,
+      { stream },
+    );
     const durationMs = Date.now() - startedAt;
     if (result.skipped) {
       console.log(
-        `[eliza-test] SKIP ${label} (${durationMs}ms, no test files found)`,
+        `[eliza-test] SKIP ${task.label} (${durationMs}ms, no test files found)`,
       );
-      continue;
+    } else {
+      console.log(`[eliza-test] PASS ${task.label} (${durationMs}ms)`);
     }
-    console.log(`[eliza-test] PASS ${label} (${durationMs}ms)`);
+    return result;
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    console.error(`[eliza-test] FAIL ${task.label} (${durationMs}ms)`);
+    throw error;
+  }
+}
+
+if (concurrency <= 1) {
+  // Default: fully serial, fail-fast — the historical behaviour, unchanged.
+  for (const task of tasks) {
+    await runTask(task, { stream: true });
+  }
+} else {
+  // Opt-in parallelism. Only the parallel-safe bucket (plain `test` scripts in
+  // the secret-free pr lane, minus the shared-DB packages) runs through the
+  // pool; the rest (e2e/integration/... lanes and any real lane) drains
+  // serially afterwards. Every task runs to completion so all failures are
+  // reported together instead of aborting on the first.
+  const { parallel, serial } = partitionTasks(tasks, TEST_LANE);
+  if (TEST_LANE !== "pr") {
+    console.log(
+      `[eliza-test] NOTE --concurrency=${concurrency} only parallelises the pr lane; running the ${TEST_LANE} lane serially.`,
+    );
+  } else {
+    console.log(
+      `[eliza-test] INFO running ${parallel.length} parallel-safe task(s) at concurrency ${concurrency}; ${serial.length} task(s) serialized.`,
+    );
+  }
+
+  const failures = [];
+
+  const poolResults = await runPool(
+    parallel,
+    (task) => runTask(task, { stream: false }),
+    concurrency,
+  );
+  poolResults.forEach((outcome, index) => {
+    if (outcome && !outcome.ok) {
+      failures.push(parallel[index].label);
+    }
+  });
+
+  for (const task of serial) {
+    try {
+      await runTask(task, { stream: true });
+    } catch {
+      failures.push(task.label);
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error(
+      `[eliza-test] ${failures.length} task(s) failed:\n  ${failures.join("\n  ")}`,
+    );
+    process.exit(1);
   }
 }
 

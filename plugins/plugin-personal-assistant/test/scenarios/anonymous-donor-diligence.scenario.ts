@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "anonymous-donor-diligence",
   title: "Assistant manages anonymous donor diligence",
   domain: "executive.privacy",

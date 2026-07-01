@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import android.net.Uri
 import android.provider.Telephony
 import android.telephony.SmsManager
 import com.getcapacitor.JSArray
@@ -127,50 +126,27 @@ class MessagesPlugin : Plugin() {
             call.reject("limit must be between 1 and 500")
             return
         }
-        val threadId = call.getString("threadId")?.trim()
-        val selection = if (threadId.isNullOrEmpty()) null else "${Telephony.Sms.THREAD_ID} = ?"
-        val selectionArgs = if (threadId.isNullOrEmpty()) null else arrayOf(threadId)
+        // The content://sms query is delegated to MessagesReader so it can be
+        // exercised by an instrumented androidTest without a Capacitor Bridge
+        // (issue #9967); the JS shape below is unchanged.
         val messages = JSArray()
-        val cursor = context.contentResolver.query(
-            Uri.parse("content://sms"),
-            arrayOf(
-                Telephony.Sms._ID,
-                Telephony.Sms.THREAD_ID,
-                Telephony.Sms.ADDRESS,
-                Telephony.Sms.BODY,
-                Telephony.Sms.DATE,
-                Telephony.Sms.TYPE,
-                Telephony.Sms.READ
-            ),
-            selection,
-            selectionArgs,
-            "${Telephony.Sms.DATE} DESC"
-        )
-        if (cursor == null) {
-            call.reject("SMS provider returned no cursor")
-            return
-        }
-        cursor.use {
-            val idCol = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
-            val threadCol = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
-            val addressCol = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-            val bodyCol = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
-            val dateCol = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
-            val typeCol = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
-            val readCol = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
-                val message = JSObject()
-                message.put("id", cursor.getString(idCol))
-                message.put("threadId", cursor.getString(threadCol))
-                message.put("address", cursor.getString(addressCol) ?: "")
-                message.put("body", cursor.getString(bodyCol) ?: "")
-                message.put("date", cursor.getLong(dateCol))
-                message.put("type", cursor.getInt(typeCol))
-                message.put("read", cursor.getInt(readCol) == 1)
-                messages.put(message)
-                count += 1
+        try {
+            for (record in MessagesReader(context).listMessages(call.getString("threadId"), limit)) {
+                messages.put(
+                    JSObject().apply {
+                        put("id", record.id)
+                        put("threadId", record.threadId)
+                        put("address", record.address)
+                        put("body", record.body)
+                        put("date", record.date)
+                        put("type", record.type)
+                        put("read", record.read)
+                    },
+                )
             }
+        } catch (error: IllegalStateException) {
+            call.reject(error.message ?: "SMS provider returned no cursor")
+            return
         }
         val result = JSObject()
         result.put("messages", messages)

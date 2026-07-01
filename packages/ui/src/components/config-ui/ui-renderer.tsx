@@ -1,4 +1,5 @@
-import React, {
+import type React from "react";
+import {
   createContext,
   useCallback,
   useContext,
@@ -14,7 +15,7 @@ import type {
   UiRenderContext,
   UiSpec,
 } from "../../config/ui-spec";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -688,7 +689,7 @@ const TableComponent: ComponentFn = (props) => {
 };
 
 const CarouselComponent: ComponentFn = (props) => {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const items =
     (props.items as Array<{ title: string; description: string }>) ?? [];
   const [current, setCurrent] = useState(0);
@@ -1396,7 +1397,17 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
       aria-modal="true"
     >
       <div className="w-full max-h-[80vh] bg-card p-5 overflow-y-auto animate-[slide-up_200ms_ease]">
-        <div className="w-10 h-1 bg-border mx-auto mb-3 rounded-full" />
+        <button
+          type="button"
+          aria-label="Close drawer"
+          onClick={close}
+          className="group mx-auto mb-3 flex h-8 w-32 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-surface/70"
+        >
+          <span
+            className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
+            aria-hidden
+          />
+        </button>
         {props.title ? (
           <div className="font-bold text-sm">{String(props.title)}</div>
         ) : null}
@@ -1469,8 +1480,41 @@ const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
 // ELEMENT RENDERER
 // ══════════════════════════════════════════════════════════════════════
 
+// Renders a single item of a `repeat` element. The per-item context is
+// memoized on the item identity so that re-rendering the parent (e.g. on an
+// unrelated state change) does not produce a fresh context value and force every
+// repeated child subtree to re-render.
+function RepeatItemRenderer({
+  ctx,
+  item,
+  el,
+  component,
+  resolvedProps,
+}: {
+  ctx: UiRenderContext;
+  item: Record<string, unknown>;
+  el: UiElement;
+  component: ComponentFn;
+  resolvedProps: Record<string, unknown>;
+}) {
+  const itemCtx = useMemo<UiRenderContext>(
+    () => ({ ...ctx, repeatItem: item }),
+    [ctx, item],
+  );
+  const childNodes = useMemo(
+    () =>
+      el.children.map((childId) => (
+        <UiContext.Provider key={childId} value={itemCtx}>
+          <ElementRenderer elementId={childId} />
+        </UiContext.Provider>
+      )),
+    [el.children, itemCtx],
+  );
+  return <>{component(resolvedProps, childNodes, itemCtx, el)}</>;
+}
+
 function ElementRenderer({ elementId }: { elementId: string }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const ctx = useUiCtx();
   const el = ctx.spec.elements[elementId];
   if (!el) return null;
@@ -1498,21 +1542,20 @@ function ElementRenderer({ elementId }: { elementId: string }) {
       | undefined;
     if (!Array.isArray(listData)) return null;
 
+    const repeatKey = el.repeat.key;
     return (
       <>
         {listData.map((item, index) => {
-          const itemCtx: UiRenderContext = { ...ctx, repeatItem: item };
-          const childNodes = el.children.map((childId) => (
-            <UiContext.Provider key={childId} value={itemCtx}>
-              <ElementRenderer elementId={childId} />
-            </UiContext.Provider>
-          ));
-          const repeatKey = el.repeat?.key;
           const itemKey = String(repeatKey != null ? item[repeatKey] : index);
           return (
-            <React.Fragment key={itemKey}>
-              {component(resolvedProps, childNodes, itemCtx, el)}
-            </React.Fragment>
+            <RepeatItemRenderer
+              key={itemKey}
+              ctx={ctx}
+              item={item}
+              el={el}
+              component={component}
+              resolvedProps={resolvedProps}
+            />
           );
         })}
       </>

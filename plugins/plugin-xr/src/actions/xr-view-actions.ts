@@ -1,3 +1,4 @@
+import { listViews } from "@elizaos/agent/api/views-registry";
 import type {
   Action,
   HandlerCallback,
@@ -20,9 +21,41 @@ function firstConnectionId(svc: XRSessionService): string | null {
   return svc.getConnections()[0]?.id ?? null;
 }
 
-function agentBaseUrl(runtime: IAgentRuntime): string {
-  const port = (runtime as unknown as { port?: number }).port ?? 31337;
+function agentBaseUrl(): string {
+  // The API port is orchestrator-assigned (never hardcoded) — read it from the
+  // environment, not a non-existent `runtime.port` field. Falls back to 31337.
+  const port =
+    process.env.ELIZA_API_PORT?.trim() ||
+    process.env.ELIZA_PORT?.trim() ||
+    "31337";
   return process.env.XR_AGENT_URL ?? `http://localhost:${port}`;
+}
+
+/** Read a structured action param (planner-emitted `options.parameters`, with a
+ *  legacy top-level `options` fallback). No natural-language inference (#10471). */
+function readRawParam(options: unknown, key: string): unknown {
+  const opts = (options ?? {}) as Record<string, unknown>;
+  const fromParams = (opts.parameters as Record<string, unknown> | undefined)?.[
+    key
+  ];
+  return fromParams ?? opts[key];
+}
+
+function readStringParam(options: unknown, key: string): string | undefined {
+  const value = readRawParam(options, key);
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNumberParam(options: unknown, key: string): number | undefined {
+  const value = readRawParam(options, key);
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function readBooleanParam(options: unknown, key: string): boolean | undefined {
+  const value = readRawParam(options, key);
+  return typeof value === "boolean" ? value : undefined;
 }
 
 // ── XR_OPEN_VIEW ───────────────────────────────────────────────────────────
@@ -88,7 +121,7 @@ export const xrOpenViewAction: Action = {
       return { success: false, text };
     }
 
-    const base = agentBaseUrl(runtime);
+    const base = agentBaseUrl();
     const scale = (options?.scale as number | undefined) ?? 1.0;
     svc.openView(connId, viewId, base, { scale, followMode: "billboard" });
     const text = `Opening ${viewId} view on your headset.`;
@@ -142,17 +175,12 @@ export const xrCloseViewAction: Action = {
       text = `Closed ${viewId}.`;
       await callback?.({ text });
     } else {
-      // Close all
-      for (const view of [
-        "wallet",
-        "training",
-        "companion",
-        "task-coordinator",
-        "views-manager",
-      ]) {
-        svc.closeView(connId, view);
+      const views = collectXRViews();
+      for (const view of views) {
+        svc.closeView(connId, view.id);
       }
-      text = "Closed all XR panels.";
+      text =
+        views.length > 0 ? "Closed all XR panels." : "No XR panels to close.";
       await callback?.({ text });
     }
     return { success: true, text };
@@ -168,11 +196,11 @@ export const xrSwitchViewAction: Action = {
     "Switches the active (foreground) view on the XR headset without closing others.",
   examples: [
     [
-      { name: "user", content: { text: "switch to companion in XR" } },
+      { name: "user", content: { text: "switch to calendar in XR" } },
       {
         name: "agent",
         content: {
-          text: "Switching to companion view.",
+          text: "Switching to calendar view.",
           action: "XR_SWITCH_VIEW",
         },
       },
@@ -220,7 +248,7 @@ export const xrListViewsAction: Action = {
       {
         name: "agent",
         content: {
-          text: "Available XR views: wallet, training, companion, task-coordinator.",
+          text: "Available XR views are registered by the loaded plugins.",
           action: "XR_LIST_VIEWS",
         },
       },
@@ -241,7 +269,7 @@ export const xrListViewsAction: Action = {
     }
 
     // Collect XR view declarations from all registered plugins
-    const xrViews = collectXRViews(runtime);
+    const xrViews = collectXRViews();
 
     const connId = firstConnectionId(svc);
     if (connId && (options?.sendCatalog as boolean | undefined) !== false) {
@@ -267,7 +295,36 @@ export const xrResizeViewAction: Action = {
   name: "XR_RESIZE_VIEW",
   similes: ["RESIZE_XR_PANEL", "XR_MAKE_BIGGER", "XR_MAKE_SMALLER", "XR_SCALE"],
   description:
-    "Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+    "Resizes or repositions the active XR view panel. Set scale (0.5 = half, 1.0 = default, 2.0 = double), distance in meters (1.5 = default, smaller = closer), or fullscreen.",
+  parameters: [
+    {
+      name: "scale",
+      description:
+        "Panel scale multiplier — e.g. 1.5 for bigger, 0.6 for smaller, 1.0 default.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "distance",
+      description:
+        "Panel distance from the user in meters — e.g. 0.8 for closer, 2.5 for farther, 1.5 default.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "fullscreen",
+      description: "Set true to fullscreen the panel.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
+      name: "viewId",
+      description:
+        "Optional id of the view/panel to resize; defaults to the active panel.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
   examples: [
     [
       { name: "user", content: { text: "make the panel bigger" } },
@@ -293,7 +350,7 @@ export const xrResizeViewAction: Action = {
     return svc?.hasActiveConnections() ?? false;
   },
 
-  handler: async (runtime, message, _state, options, callback) => {
+  handler: async (runtime, _message, _state, options, callback) => {
     const svc = getService(runtime);
     if (!svc) {
       const text = "No XR service.";
@@ -307,36 +364,27 @@ export const xrResizeViewAction: Action = {
       return { success: false, text };
     }
 
-    const inputText = message.content.text?.toLowerCase() ?? "";
-    let scale = (options?.scale as number | undefined) ?? 1.0;
-    let distance = (options?.distance as number | undefined) ?? 1.5;
+    // #10471: scale/distance/fullscreen come from structured params the planner
+    // emits (in any language), not from English keywords in the user's text.
+    const viewId = readStringParam(options, "viewId") ?? "";
+    const scale = readNumberParam(options, "scale");
+    const distance = readNumberParam(options, "distance");
+    const fullscreen = readBooleanParam(options, "fullscreen") ?? false;
 
-    if (
-      inputText.includes("bigger") ||
-      inputText.includes("larger") ||
-      inputText.includes("bigger")
-    )
-      scale = 1.5;
-    if (inputText.includes("smaller") || inputText.includes("tiny"))
-      scale = 0.6;
-    if (inputText.includes("closer") || inputText.includes("nearer"))
-      distance = 0.8;
-    if (
-      inputText.includes("farther") ||
-      inputText.includes("further") ||
-      inputText.includes("away")
-    )
-      distance = 2.5;
-    if (inputText.includes("fullscreen") || inputText.includes("full screen")) {
-      svc.resizeView(connId, "", { scale: 2.0, fullscreen: true });
+    if (fullscreen) {
+      svc.resizeView(connId, viewId, { scale: scale ?? 2.0, fullscreen: true });
       const text = "Panel fullscreened.";
       await callback?.({ text });
       return { success: true, text };
     }
 
-    const viewId = (options?.viewId as string | undefined) ?? "";
-    svc.resizeView(connId, viewId, { scale, distance });
-    const text = `Panel resized to ${scale}× at ${distance}m.`;
+    const finalScale = scale ?? 1.0;
+    const finalDistance = distance ?? 1.5;
+    svc.resizeView(connId, viewId, {
+      scale: finalScale,
+      distance: finalDistance,
+    });
+    const text = `Panel resized to ${finalScale}× at ${finalDistance}m.`;
     await callback?.({ text });
     return { success: true, text };
   },
@@ -345,82 +393,41 @@ export const xrResizeViewAction: Action = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Extract a likely view id from natural language */
-function extractViewId(text: string): string {
+export function extractViewId(text: string): string {
   const lower = text.toLowerCase();
-  const known = [
-    "wallet",
-    "companion",
-    "training",
-    "task-coordinator",
-    "orchestrator",
-    "views-manager",
-    "polymarket",
-    "vincent",
-    "steward",
-    "shopify",
-    "phone",
-    "contacts",
-    "messages",
-    "feed",
-    "2004scape",
-    "clawville",
-    "hyperliquid",
-    "hyperscape",
-    "lifeops",
-    "scape",
-    "screenshare",
-    "trajectory-logger",
-    "model-tester",
-    "smartglasses",
-    "facewear",
-    "defense-of-the-agents",
-  ];
-  for (const id of known) {
-    if (lower.includes(id.replace("-", " ")) || lower.includes(id)) return id;
+  for (const view of collectXRViews()) {
+    const terms = [view.id, view.id.replace(/-/g, " "), view.label].map(
+      (term) => term.toLowerCase(),
+    );
+    if (terms.some((term) => term && lower.includes(term))) {
+      return view.id;
+    }
   }
-  // Try to extract quoted word
   const quoted = text.match(/["']([^"']+)["']/);
   if (quoted?.[1]) return quoted[1];
   return "";
 }
 
+type XRViewSummary = {
+  id: string;
+  label: string;
+  icon?: string;
+  description?: string;
+};
+
 /** Collect all XR-typed views from registered plugins */
-function collectXRViews(
-  runtime: IAgentRuntime,
-): Array<{ id: string; label: string; icon?: string; description?: string }> {
-  const plugins =
-    (
-      runtime as unknown as {
-        plugins?: Array<{
-          views?: Array<{
-            id: string;
-            label: string;
-            viewType?: string;
-            icon?: string;
-            description?: string;
-          }>;
-        }>;
-      }
-    ).plugins ?? [];
-  const seen = new Set<string>();
-  const result: Array<{
-    id: string;
-    label: string;
-    icon?: string;
-    description?: string;
-  }> = [];
-  for (const plugin of plugins) {
-    for (const view of plugin.views ?? []) {
-      if (view.viewType === "xr" && !seen.has(view.id)) {
-        seen.add(view.id);
-        result.push({
-          id: view.id,
-          label: view.label,
-          icon: view.icon,
-          description: view.description,
-        });
-      }
-    }
+export function collectXRViews(): XRViewSummary[] {
+  const byId = new Map<string, XRViewSummary>();
+  for (const view of listViews({ developerMode: true, viewType: "xr" })) {
+    if (view.viewType !== "xr") continue;
+    byId.set(view.id, {
+      id: view.id,
+      label: view.label,
+      icon: view.icon,
+      description: view.description,
+    });
   }
-  return result;
+  return [...byId.values()].sort(
+    (a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id),
+  );
 }

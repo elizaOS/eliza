@@ -3,10 +3,10 @@ import { stripVTControlCharacters } from "node:util";
 import { describe, it } from "vitest";
 import type { AutocompleteProvider } from "../src/autocomplete.js";
 import { Editor, wordWrapLine } from "../src/components/editor.js";
+import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
 import { TUI } from "../src/tui.js";
 import { visibleWidth } from "../src/utils.js";
 import { defaultEditorTheme } from "./test-themes.js";
-import { VirtualTerminal } from "./virtual-terminal.js";
 
 /** Create a TUI with a virtual terminal for testing */
 function createTestTUI(cols = 80, rows = 24): TUI {

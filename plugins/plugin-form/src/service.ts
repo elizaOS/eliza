@@ -137,7 +137,10 @@ import { formatValue, validateField } from "./validation";
 
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 
-function assertSafeObjectKey(kind: string, key: unknown): asserts key is string {
+function assertSafeObjectKey(
+  kind: string,
+  key: unknown,
+): asserts key is string {
   if (typeof key !== "string" || key.trim() === "") {
     throw new Error(`${kind} must be a non-empty string`);
   }
@@ -1196,9 +1199,7 @@ export class FormService extends Service {
         const validation = validateField(fieldState.value, control);
         if (!validation.valid) {
           const error = validation.error ?? "validation failed";
-          throw new Error(
-            `Field ${control.key} is invalid: ${error}`,
-          );
+          throw new Error(`Field ${control.key} is invalid: ${error}`);
         }
 
         values[control.key] = fieldState.value;

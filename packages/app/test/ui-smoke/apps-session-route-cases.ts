@@ -38,15 +38,6 @@ function viewCardTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "companion",
-    path: "/apps/companion",
-    readyChecks: [
-      { text: "Companion" },
-      { selector: '[data-testid="companion-root"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "plugins app window",
     path: "/apps/plugins",
     readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
@@ -80,6 +71,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "memories app window",
     path: "/apps/memories",
     selector: '[data-testid="memory-viewer-view"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "transcripts app window",
+    path: "/apps/transcripts",
+    selector: '[data-testid="transcripts-view"]',
     timeoutMs: 90_000,
   },
   {
@@ -132,15 +129,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "vincent",
-    path: "/vincent",
-    readyChecks: [
-      { text: "Vincent" },
-      { selector: '[data-testid="vincent-shell"]' },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "runtime app window",
     path: "/apps/runtime",
     selector: '[data-testid="runtime-view"]',
@@ -153,9 +141,9 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "elizamaker app window",
-    path: "/apps/elizamaker",
-    selector: "#root",
+    name: "files app window",
+    path: "/apps/files",
+    selector: '[data-testid="files-view"]',
     timeoutMs: 90_000,
   },
   {
@@ -177,12 +165,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "facewear app window",
-    path: "/apps/facewear",
-    readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
-    timeoutMs: 90_000,
-  },
-  {
+    // Facewear GUI config now lives in Settings -> Wearables, not a launcher
+    // app window; only the agent TUI surface is reached by path here.
     name: "facewear tui app shell page",
     path: "/apps/facewear/tui",
     readyChecks: [
@@ -192,12 +176,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "smartglasses app window",
-    path: "/apps/smartglasses",
-    readyChecks: [{ text: "Smartglasses" }, { text: "Connect" }],
-    timeoutMs: 90_000,
-  },
-  {
+    // Smartglasses GUI config now lives in Settings -> Wearables; only the
+    // agent TUI surface is reached by path here.
     name: "smartglasses tui app shell page",
     path: "/apps/smartglasses/tui",
     readyChecks: [
@@ -235,24 +215,24 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     selector: '[data-testid="automations-shell"]',
     timeoutMs: 90_000,
   },
+  {
+    name: "background view",
+    path: "/background",
+    selector: 'button[aria-label="Upload a background image"]',
+    timeoutMs: 90_000,
+  },
 ];
 
 const managerVisibleViewTileCases = [
-  { viewId: "2004scape", path: "/2004scape" },
   { viewId: "calendar", path: "/calendar" },
-  { viewId: "clawville", path: "/clawville" },
-  { viewId: "companion", path: "/companion" },
   { viewId: "contacts", path: "/contacts" },
-  { viewId: "defense-of-the-agents", path: "/defense-of-the-agents" },
   { viewId: "documents", path: "/documents" },
-  { viewId: "facewear", path: "/apps/facewear" },
   { viewId: "feed", path: "/feed" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
   { viewId: "hyperliquid", path: "/hyperliquid" },
-  { viewId: "hyperscape", path: "/hyperscape" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
   { viewId: "model-tester", path: "/model-tester" },
@@ -260,20 +240,14 @@ const managerVisibleViewTileCases = [
   { viewId: "phone", path: "/phone" },
   { viewId: "polymarket", path: "/polymarket" },
   { viewId: "relationships", path: "/relationships" },
-  { viewId: "scape", path: "/scape" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "shopify", path: "/shopify" },
-  { viewId: "smartglasses", path: "/apps/smartglasses" },
   { viewId: "social-alpha", path: "/social-alpha" },
-  { viewId: "steward", path: "/steward" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
   { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
-  { viewId: "vincent", path: "/vincent" },
-  { viewId: "waifu-imagegen", path: "/waifu-imagegen" },
-  { viewId: "waifu-swap", path: "/waifu-swap" },
   { viewId: "wallet", path: "/wallet" },
   { viewId: "vector-browser", path: "/vector-browser" },
 ];
@@ -297,7 +271,6 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "companion", path: "/companion" },
   { viewId: "model-tester", path: "/model-tester" },
 ].map(({ viewId, path }) => ({
   viewId,

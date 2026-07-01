@@ -13,7 +13,7 @@ EnvironmentFile=/opt/eliza/cloud/.env.local
 # ssh2 + dockerode (via the deploy backend) are Node-only, so the daemon runs
 # under tsx (not bun). Use the installed workspace binary directly.
 Environment=NODE_OPTIONS=--max-old-space-size=1024
-ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud-shared/tsconfig.json /opt/eliza/packages/scripts/cloud/admin/daemons/apps-provisioning-worker.ts
+ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/scripts/cloud/admin/daemons/apps-provisioning-worker.ts
 
 Restart=always
 RestartSec=5

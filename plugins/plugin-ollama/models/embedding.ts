@@ -14,10 +14,32 @@ import { getBaseURL, getEmbeddingModel } from "../utils/config";
 import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/modelUsage";
 import { ensureModelAvailable } from "./availability";
 
+const INIT_PROBE_TEXT = "dimension probe";
+
+function extractText(params: TextEmbeddingParams | string | null): string | null {
+  if (params === null) {
+    return null;
+  }
+  if (typeof params === "string") {
+    return params;
+  }
+  if (typeof params === "object" && typeof params.text === "string") {
+    return params.text;
+  }
+  throw new Error("Invalid input format for embedding: expected string or { text: string }");
+}
+
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
+  const text = extractText(params);
+  const isInitProbe = text === null;
+
+  if (!isInitProbe && !text.trim()) {
+    throw new Error("Cannot generate embedding for empty text");
+  }
+
   try {
     const baseURL = getBaseURL(runtime);
     const customFetch = runtime.fetch ?? undefined;
@@ -30,44 +52,33 @@ export async function handleTextEmbedding(
     logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
     await ensureModelAvailable(modelName, baseURL, customFetch);
 
-    let text =
-      typeof params === "string"
-        ? params
-        : params
-          ? (params as TextEmbeddingParams).text || ""
-          : "";
-
     // Truncate to stay within embedding model token limits (~4 chars per token)
     const maxChars = 8_000 * 4;
-    if (text.length > maxChars) {
+    let embeddingText = isInitProbe ? INIT_PROBE_TEXT : text;
+    if (embeddingText.length > maxChars) {
       logger.warn(
-        `[Ollama] Embedding input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8000 tokens`
+        `[Ollama] Embedding input too long (~${Math.ceil(embeddingText.length / 4)} tokens), truncating to ~8000 tokens`
       );
-      text = text.slice(0, maxChars);
+      embeddingText = embeddingText.slice(0, maxChars);
     }
 
-    const embeddingText = text || "test";
+    const embedParams = {
+      model: ollama.embedding(modelName) as EmbeddingModel,
+      value: embeddingText,
+    };
 
-    try {
-      const embedParams = {
-        model: ollama.embedding(modelName) as EmbeddingModel,
-        value: embeddingText,
-      };
-
-      const { embedding, usage } = await embed(embedParams);
+    const { embedding, usage } = await embed(embedParams);
+    if (!isInitProbe) {
       emitModelUsed(
         runtime,
         ModelType.TEXT_EMBEDDING,
         modelName,
         normalizeTokenUsage(usage) ?? estimateEmbeddingUsage(embeddingText)
       );
-      return embedding;
-    } catch (embeddingError) {
-      logger.error({ error: embeddingError }, "Error generating embedding");
-      return Array(1536).fill(0);
     }
+    return embedding;
   } catch (error) {
     logger.error({ error }, "Error in TEXT_EMBEDDING model");
-    return Array(1536).fill(0);
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }

@@ -19,7 +19,14 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_FILE="$HERE/$(basename "${BASH_SOURCE[0]}")"
 cd "$HERE"
+
+RM_PATH_RECURSIVE_HOST="$(cd "$HERE/../../.." && pwd)/scripts/rm-path-recursive.mjs"
+[ -r "$RM_PATH_RECURSIVE_HOST" ] || {
+    echo "FATAL: cleanup helper not found at $RM_PATH_RECURSIVE_HOST" >&2
+    exit 1
+}
 
 IMAGE_TAG="eliza/bun-riscv64-builder"
 NO_CACHE=""
@@ -44,7 +51,7 @@ while [ $# -gt 0 ]; do
         -h|--help)
             # Usage block lives in the file header (lines 3-17 of the
             # leading comment, just below the shebang).
-            grep '^#' "$0" | sed -n '3,17p' | sed 's|^# \?||'
+            grep '^#' "$SCRIPT_FILE" | sed -n '3,17p' | sed 's|^# \?||'
             exit 0 ;;
         *)
             echo "Unknown arg: $1" >&2
@@ -100,6 +107,7 @@ if [ "$SHELL_MODE" = "1" ]; then
     exec docker run --rm -it \
         --platform "${PLATFORM}" \
         -v "$HERE:/work-host:rw" \
+        -v "$RM_PATH_RECURSIVE_HOST:/opt/rm-path-recursive.mjs:ro" \
         --entrypoint /bin/bash \
         "${IMAGE_TAG}"
 fi
@@ -120,6 +128,7 @@ DOCKER_RUN_ARGS=(
     --rm
     --platform "${PLATFORM}"
     -v "$HERE/build.sh:/opt/build.sh:ro"
+    -v "$RM_PATH_RECURSIVE_HOST:/opt/rm-path-recursive.mjs:ro"
     -v "$HERE/bun-version.json:/opt/bun-version.json:ro"
     -v "$PATCH_MOUNT:/opt/bun-patches:ro"
     -v "$HERE/webkit-patches:/opt/webkit-patches:ro"

@@ -4,7 +4,8 @@ import type {
   LifeOpsInboxMessage,
   LifeOpsInboxThreadGroup,
 } from "@elizaos/shared";
-import { client, useApp } from "@elizaos/ui";
+import { client } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type InboxChannel = "all" | LifeOpsInboxChannel;
@@ -65,7 +66,7 @@ function threadGroupMatchesQuery(
 }
 
 export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [feed, setFeed] = useState<LifeOpsInbox | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

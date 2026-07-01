@@ -1,13 +1,18 @@
 "use client";
 
-import type {
-  ComponentPropsWithoutRef,
-  DependencyList,
-  ReactNode,
+import {
+  type ComponentPropsWithoutRef,
+  type DependencyList,
+  type ReactNode,
+  useContext,
 } from "react";
 import { cn } from "../../lib/utils";
 import { DashboardPageContainer, DashboardPageStack } from "./dashboard-page";
-import { useSetPageHeader } from "./page-header-context.hooks";
+import { PageHeaderProvider } from "./page-header-context";
+import {
+  PageHeaderContext,
+  useSetPageHeader,
+} from "./page-header-context.hooks";
 
 type DashboardRoutePageBannerTone = "info" | "success" | "warning" | "error";
 
@@ -35,7 +40,9 @@ interface DashboardRoutePageProps {
 }
 
 const bannerTones: Record<DashboardRoutePageBannerTone, string> = {
-  info: "border-blue-400/30 bg-blue-400/10 text-blue-100",
+  // Brand rule: no blue. Slate reads as neutral "info" alongside the
+  // emerald/amber/red tones below.
+  info: "border-slate-400/30 bg-slate-400/10 text-slate-100",
   success: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100",
   warning: "border-amber-400/30 bg-amber-400/10 text-amber-100",
   error: "border-red-500/40 bg-red-500/10 text-red-400",
@@ -49,7 +56,30 @@ function normalizeLayoutProps<T extends object>(
   return value;
 }
 
-export function DashboardRoutePage({
+/**
+ * A dashboard route body. Publishes its title/description/actions to the page
+ * header context and renders the standard container/stack/banner layout.
+ *
+ * Self-sufficient w.r.t. the page header context: dashboard routes are mounted
+ * standalone by `CloudRouterShell` — and natively inside the app — with no
+ * ancestor `PageHeaderProvider`, which would make {@link useSetPageHeader}
+ * throw. When no provider is present this component supplies its own; when a
+ * host already provides one (e.g. a dashboard shell that renders the header
+ * chrome), it defers to that provider so the header stays visible to the chrome.
+ */
+export function DashboardRoutePage(props: DashboardRoutePageProps) {
+  const hasAncestorProvider = useContext(PageHeaderContext) !== undefined;
+  if (hasAncestorProvider) {
+    return <DashboardRoutePageBody {...props} />;
+  }
+  return (
+    <PageHeaderProvider>
+      <DashboardRoutePageBody {...props} />
+    </PageHeaderProvider>
+  );
+}
+
+function DashboardRoutePageBody({
   title,
   description,
   actions,

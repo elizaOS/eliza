@@ -27,6 +27,7 @@ function makeController(
     messages: [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }],
     canSend: true,
     responding: false,
+    turnStatus: null,
     recording: false,
     transcript: "",
     // Required ShellController surface the overlay reads unconditionally.
@@ -37,6 +38,7 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     setDictationSink: vi.fn(),
+    setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
     clearConversation: vi.fn(),
     ...overrides,
@@ -107,6 +109,7 @@ function makeSlash(
   return {
     commands: COMMANDS,
     loading: false,
+    naturalShortcutsEnabled: false,
     resolveChoices: () => [],
     resolveSection: (t: string) =>
       ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],
@@ -189,6 +192,25 @@ describe("ContinuousChatOverlay slash commands", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
+  it("natural navigation stays inert when the feature flag is off", () => {
+    const slash = makeSlash();
+    const { input, controller } = renderOverlay(slash);
+    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(controller.send).toHaveBeenCalledWith("open settings");
+    expect(slash.navigateSettings).not.toHaveBeenCalled();
+  });
+
+  it("feature-flagged natural navigation runs through the client command path", () => {
+    const slash = makeSlash({ naturalShortcutsEnabled: true });
+    const { input, controller } = renderOverlay(slash);
+    fireEvent.change(input, { target: { value: "open settings" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(slash.navigateSettings).toHaveBeenCalledWith(undefined);
+    expect(controller.send).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+  });
+
   it("Enter on an agent command sends the slash text", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
@@ -235,7 +257,8 @@ describe("ContinuousChatOverlay slash commands", () => {
         { id: "u1", role: "user", content: "/help me out", createdAt: 1 },
       ],
     });
-    renderOverlay(makeSlash(), controller);
+    const { input } = renderOverlay(makeSlash(), controller);
+    fireEvent.focus(input);
     const tokens = screen.getAllByTestId("slash-command-token");
     expect(tokens.length).toBeGreaterThan(0);
     expect(tokens[0].textContent).toBe("/help");

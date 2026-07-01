@@ -87,6 +87,20 @@ function isFlagEnabled(value: string | undefined): boolean {
 const webViewDebuggingEnabled =
   !isIosStoreBuild() && isFlagEnabled(process.env.ELIZA_WEBVIEW_DEBUG);
 
+export function resolveAndroidProjectPath(
+  useAppDir: string | undefined,
+  appId: string,
+): string {
+  return useAppDir === "1" || appId !== "ai.elizaos.app"
+    ? "android"
+    : "../app-core/platforms/android";
+}
+
+const androidProjectPath = resolveAndroidProjectPath(
+  process.env.ELIZA_ANDROID_USE_APP_DIR,
+  appConfig.appId,
+);
+
 const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
@@ -94,16 +108,12 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     iosScheme: "https",
-    // Allow the webview to connect to the embedded API server and game servers
+    // Allow the webview to connect to the embedded API server
     allowNavigation: [
       ...localNavigationHosts,
       "*.elizacloud.ai",
       "eliza.app",
       "*.eliza.app",
-      "rs-sdk-demo.fly.dev",
-      "*.fly.dev",
-      "hyperscape.gg",
-      "*.hyperscape.gg",
     ],
   },
   plugins: {
@@ -136,33 +146,35 @@ const config: CapacitorConfig = {
         "",
       apiBase: iosApiBase,
     },
-    // Native launch screen color. The app's real startup UI is rendered by React.
+    // Native launch screen color. Matches the default home background orange
+    // (#ef5a1f) so the native splash flows into the React home with no orange
+    // flash (issue #9565). The app's real startup UI is rendered by React.
     SplashScreen: {
       launchShowDuration: 0,
-      backgroundColor: "#FF5800",
+      backgroundColor: "#ef5a1f",
       androidScaleType: "CENTER_CROP",
       splashFullScreen: true,
       splashImmersive: true,
     },
   },
   ios: {
-    contentInset: "automatic",
+    // "never": the WKWebView extends edge-to-edge under the home indicator
+    // instead of being inset (which revealed the native background as an orange
+    // band at the bottom safe-area). The web layer owns safe-area insets via
+    // viewport-fit=cover + env(safe-area-inset-*); the chat composer adds its
+    // own bottom inset so it stays clear of the home indicator.
+    contentInset: "never",
     preferredContentMode: "mobile",
-    backgroundColor: "#FF5800",
+    backgroundColor: "#ef5a1f",
     allowsLinkPreview: false,
     webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
   android: {
-    // Point `cap sync` at the SAME android project gradle actually builds
-    // (packages/app-core/platforms/android, resolved relative to this config).
-    // Without this, cap sync writes a full project to packages/app/android while
-    // gradle builds app-core/platforms/android off a STALE committed
-    // capacitor.settings.gradle — so native plugins (@capacitor/browser, haptics,
-    // …) silently never compile and get pruned from the manifest (#8387). With
-    // the path unified, cap sync regenerates the full plugin set in place every
-    // build and nothing drifts.
-    path: "../app-core/platforms/android",
-    backgroundColor: "#FF5800",
+    // Keep `cap sync` pointed at the same Android tree run-mobile-build will
+    // package. Upstream elizaOS owns the shared app-core tree; white-label or
+    // explicitly isolated builds use the app-local ignored android/ project.
+    path: androidProjectPath,
+    backgroundColor: "#ef5a1f",
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: webViewDebuggingEnabled,

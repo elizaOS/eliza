@@ -23,7 +23,7 @@ import { evaluateTeeEvidencePolicy } from "./tee-policy.ts";
 /**
  * Local DICE key ceremony for tests. This is the reference vector the silicon
  * RoT/TSM must reproduce: a real UDS -> CDI ladder (HKDF-SHA256, matching
- * packages/chip/fw/dice/cdi.c) yields the DeviceID and Alias Ed25519 keypairs,
+ * packages/research/chip/fw/dice/cdi.c) yields the DeviceID and Alias Ed25519 keypairs,
  * which sign a real DICE certificate chain and the quote body. No fabricated
  * signatures — every signature here is produced and verified with node:crypto.
  */

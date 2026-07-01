@@ -26,7 +26,6 @@ import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
-import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import {
 	createImageGenCapabilityRegistration,
 	type ImageGenBackend,
@@ -286,10 +285,8 @@ export class LocalInferenceService {
 		return null;
 	}
 
-	async startDownload(
-		modelIdOrSpec: string | CatalogModel,
-	): Promise<DownloadJob> {
-		return this.downloader.start(modelIdOrSpec);
+	async startDownload(modelId: string): Promise<DownloadJob> {
+		return this.downloader.start(modelId);
 	}
 
 	async startSmallerFallbackDownload(
@@ -314,7 +311,9 @@ export class LocalInferenceService {
 		query: string,
 		limit?: number,
 	): Promise<CatalogModel[]> {
-		return searchHuggingFaceGguf(query, limit);
+		void query;
+		void limit;
+		return [];
 	}
 
 	async searchModelHub(
@@ -322,7 +321,10 @@ export class LocalInferenceService {
 		hub: "huggingface" | "modelscope",
 		limit?: number,
 	): Promise<CatalogModel[]> {
-		return searchModelHubGguf(query, hub, limit);
+		void query;
+		void hub;
+		void limit;
+		return [];
 	}
 
 	/**
@@ -498,6 +500,12 @@ export class LocalInferenceService {
 					0,
 					Math.floor(totalmem() / (1024 * 1024)) - ramHeadroomReserveMb(),
 				),
+			// The dominant resident consumer — the active text/embedding bundle —
+			// is owned by the engine, not the arbiter's resident map. Feed its
+			// footprint in so the proactive fit-to-budget `evictToFit` path
+			// actually trips before a second model overcommits RAM, instead of
+			// silently no-opping on the two roles that matter most (#8809 AC#1).
+			externalFootprintMb: () => localInferenceEngine.getResidentFootprintMb(),
 		});
 		arbiter.start();
 		setMemoryArbiter(arbiter);
@@ -528,6 +536,13 @@ export class LocalInferenceService {
 								maxTokens: request.maxTokens,
 								temperature: request.temperature,
 								signal: request.signal,
+								// Stream the description token-by-token when the caller wired
+								// a chunk sink (the IMAGE_DESCRIPTION handler forwards the
+								// runtime's onStreamChunk here); the engine/backend decode
+								// it through the same pipe as chat text when the fused lib
+								// exposes ABI-v13 streaming vision.
+								onTextChunk: request.onTextChunk,
+								maxTokensPerStep: request.maxTokensPerStep,
 							});
 							const trimmed = result.text.trim();
 							if (!trimmed) {

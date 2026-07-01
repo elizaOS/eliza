@@ -178,7 +178,7 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: {
 				image: { kind: "bytes", bytes: tinyPngBytes() },
 				prompt: "describe",
@@ -212,7 +212,7 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: {
 				image: { kind: "bytes", bytes: tinyPngBytes() },
 				prompt: "describe-again",
@@ -230,7 +230,7 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 	});
 
 	it("vision keyed by different modelKey on the same slot still evicts and reloads", async () => {
-		// 0_8b → 2b within the vision-describe capability is the on-device
+		// 4b → 2b within the vision-describe capability is the on-device
 		// scenario of a user switching tiers mid-session.
 		const arbiter = newArbiter();
 		arbiter.start();
@@ -249,14 +249,14 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-0_8b",
+			modelKey: "gemma-vl-4b",
 			payload: { image: { kind: "bytes", bytes: tinyPngBytes() } },
 		});
 		await arbiter.requestVisionDescribe<
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: { image: { kind: "bytes", bytes: tinyPngBytes() } },
 		});
 
@@ -265,7 +265,7 @@ describe("WS2 cross-modality eviction — vision-describe ↔ image-gen (same `v
 		expect(arbiter.residentSnapshot()).toHaveLength(1);
 		expect(
 			arbiter.residentSnapshot()[0].modelKey,
-		).toBe("qwen3-vl-2b");
+		).toBe("gemma-vl-2b");
 
 		await arbiter.shutdown();
 	});
@@ -300,7 +300,7 @@ describe("WS2 text+vision coexistence — different resident-role slots", () => 
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: { image: { kind: "bytes", bytes: tinyPngBytes() } },
 		});
 		expect(vis.loaded).toBe(1);
@@ -336,7 +336,7 @@ describe("WS2 text+vision coexistence — different resident-role slots", () => 
 			VisionDescribeRequest,
 			VisionDescribeResult
 		>({
-			modelKey: "qwen3-vl-2b",
+			modelKey: "gemma-vl-2b",
 			payload: { image: { kind: "bytes", bytes: tinyPngBytes() } },
 		});
 		expect(vis.loaded).toBe(1);

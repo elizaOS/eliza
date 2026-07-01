@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { reportShortcutFired } from "../../chat/useSlashCommandController";
 import { COMMON_SHORTCUTS } from "../../hooks";
-import { useApp } from "../../state";
+import { SHORTCUT_SHOW_KEYBOARD_SHORTCUTS } from "../../hooks/useKeyboardShortcuts";
+import { useTranslation } from "../../state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
@@ -26,7 +28,7 @@ function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
 }
 
 export function ShortcutsOverlay() {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -37,7 +39,15 @@ export function ShortcutsOverlay() {
           return;
         }
         event.preventDefault();
-        setOpen((value) => !value);
+        setOpen((value) => {
+          if (!value) {
+            reportShortcutFired(
+              SHORTCUT_SHOW_KEYBOARD_SHORTCUTS,
+              "shortcuts-overlay",
+            );
+          }
+          return !value;
+        });
       }
       if (event.key === "Escape" && open) {
         event.preventDefault();

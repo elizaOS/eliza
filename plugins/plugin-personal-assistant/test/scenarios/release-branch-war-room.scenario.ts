@@ -1,10 +1,17 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "release-branch-war-room",
   title: "Assistant runs release branch war-room coordination",
   domain: "executive.delegation",
-  tags: ["lifeops", "executive-assistant", "delegation", "briefing", "schedule"],
+  tags: [
+    "lifeops",
+    "executive-assistant",
+    "delegation",
+    "briefing",
+    "schedule",
+  ],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -22,7 +29,12 @@ export default scenario({
       name: "compress-release-risks",
       text: "The release branch is stuck. Build a war-room brief from engineering threads, unresolved blockers, decision owners, customer impact, and rollback criteria.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "owner_send_message", "priority"],
-      responseIncludesAny: ["blockers", "owners", "customer impact", "rollback"],
+      responseIncludesAny: [
+        "blockers",
+        "owners",
+        "customer impact",
+        "rollback",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
     {

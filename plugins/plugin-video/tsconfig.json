@@ -2,17 +2,11 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -22,16 +16,13 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
     "allowJs": true,
     "checkJs": false,
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "**/__tests__/**",
     "**/*.test.ts",

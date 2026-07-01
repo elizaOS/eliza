@@ -2,15 +2,21 @@
  * Eliza-curated local model catalog.
  *
  * Default local inference is restricted to the active Eliza-1 line:
- * eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
+ * eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
  * and eliza-1-27b-256k.
- * These ship Qwen3.5 bases for 0.8B/2B/4B/9B and Qwen3.6 for 27B. The
- * 2026-05-12 mandate retired the legacy Qwen3 bases; see
- * packages/training/scripts/training/model_registry.py for the active
- * registry. External Hub search remains custom/opt-in and never enters
- * first-run or default eligibility.
+ * These ship Gemma 4 bases: E2B/E4B/12B/31B mapped onto the
+ * 2B/4B/9B/27B release tiers (the 2026-06-22 cutover from the legacy
+ * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
+ * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
+ * (PLE) + MQA architecture; KV is already minimal so the legacy
+ * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
+ * weight-quant remains active. External Hub search remains custom/opt-in and
+ * never enters first-run or default eligibility.
+ * Separate-drafter MTP is still the required release shape, but runtime
+ * metadata is gated until the Gemma drafter GGUFs are actually hosted.
  */
 
+import { resolveHfDownloadBase } from "./hf-proxy.js";
 import type {
   CatalogModel,
   CatalogQuantizationId,
@@ -21,7 +27,6 @@ import type {
 export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -35,7 +40,6 @@ export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
 
 export const ELIZA_1_VISION_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -48,7 +52,6 @@ const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
 );
 
 export const ELIZA_1_MTP_TIER_IDS = [
-  "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
@@ -56,19 +59,47 @@ export const ELIZA_1_MTP_TIER_IDS = [
   "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-const _ELIZA_1_MTP_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_MTP_TIER_IDS,
-);
+/**
+ * Tiers whose Gemma MTP drafter GGUFs are present at
+ * `bundles/<tier>/mtp/drafter-<tier>.gguf` in the active HF tree.
+ *
+ * Current HF state (2026-06-25): the active bundles only expose legacy
+ * `dflash/` drafter paths, while the Gemma candidate publishes
+ * `candidates/gemma-2b-base-v1/mtp/MISSING.txt`. Keep this empty so the
+ * runtime and downloader do not advertise or fetch missing MTP artifacts.
+ */
+export const ELIZA_1_HOSTED_MTP_TIER_IDS =
+  [] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-function mtpSupportedForTier(id: Eliza1TierId): boolean {
-  return _ELIZA_1_MTP_TIER_ID_SET.has(id);
+function hostedMtpDrafterAvailableForTier(id: Eliza1TierId): boolean {
+  return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id);
 }
 
-// The quantized 4B (Qwen3.5) is the minimum tier that is good enough to ship
-// as the default chat model. The 0.8B/2B tiers remain in the catalog (and as
-// MTP drafter companions) but are no longer first-run defaults — they are too
-// small for a quality conversational experience.
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-4b";
+/**
+ * On-device (mobile-class) tiers. These are the tiers small enough to run on
+ * a phone, so they advertise the Gemma-4 QAT `Q4_0` quant as the
+ * mobile-preferred variant and ship a LiteRT `.litertlm` bundle for the
+ * on-device LiteRT-LM runtime (NPU/GPU delegate). Mirrors the Kokoro-only
+ * voice policy and the SD-1.5 image-gen tiering (2b/4b).
+ */
+export const ELIZA_1_ON_DEVICE_TIER_IDS = [
+  "eliza-1-2b",
+  "eliza-1-4b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_ON_DEVICE_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_ON_DEVICE_TIER_IDS,
+);
+
+export function isOnDeviceTier(id: Eliza1TierId): boolean {
+  return _ELIZA_1_ON_DEVICE_TIER_ID_SET.has(id);
+}
+
+// The quantized 2B (Gemma 4 E2B) is the shipped first-run default chat model:
+// it is the smallest/entry tier, fits 8 GB-class phones comfortably, downloads
+// fast, and is the model bundled into the AOSP image. Larger tiers (4B/9B/27B)
+// remain available for manual selection on higher-memory hosts.
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_RELEASE_TIER_IDS,
@@ -92,9 +123,9 @@ export function isDefaultEligibleId(id: string): boolean {
  * and for installs that depend on a private HF mirror).
  *
  * W3-12 audit (2026-05-14): the following areas require publish attention:
- *   - 0.8B/2B vision: enabled in the catalog and canonical vision tier set;
- *     publish staging must include `vision/mmproj-0_8b.gguf` and
- *     `vision/mmproj-2b.gguf` or manifest validation fails loudly.
+ *   - 2B vision: enabled in the catalog and canonical vision tier set;
+ *     publish staging must include `vision/mmproj-2b.gguf` or manifest
+ *     validation fails loudly.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
  *     published under the unified elizaos/eliza-1 `voice/<model-id>/...`
  *     layout. Per-tier manifests still need to consume these paths directly
@@ -105,7 +136,17 @@ export function isDefaultEligibleId(id: string): boolean {
  */
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
-> = {};
+> = {
+  // 2026-06-28: the HuggingFace `elizaos/eliza-1` 9b / 27b / 27b-256k text
+  // GGUFs still report `general.architecture = qwen35` (Qwen3.5 / "Qwen3.6
+  // 27B") — the Gemma-4 cutover only landed for the 2b and 4b tiers. Mark the
+  // un-cut tiers `pending` so first-run never recommends a non-Gemma model as
+  // the default Eliza-1; flip back to published once the Gemma-4 fine-tunes are
+  // staged + pass the text-architecture provenance gate (text-provenance.ts).
+  "eliza-1-9b": "pending",
+  "eliza-1-27b": "pending",
+  "eliza-1-27b-256k": "pending",
+};
 
 export function eliza1TierPublishStatus(
   id: Eliza1TierId | string,
@@ -154,7 +195,7 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Mobile-class tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~82M
+ *   - Mobile-class tiers (2b / 4b) → Kokoro only. Kokoro is ~82M
  *     params (a single ~60-80 MB GGUF) and hits ~97ms CPU TTFB, so it is
  *     both smaller and faster than OmniVoice (~400-625 MB) — the right
  *     trade for phones. OmniVoice is not shipped in these bundles. On
@@ -169,7 +210,6 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
   "eliza-1-2b": ["kokoro"],
   "eliza-1-4b": ["kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
@@ -177,12 +217,7 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   "eliza-1-27b-256k": ["omnivoice"],
 };
 
-const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
-  "turbo3",
-  "turbo4",
-  "qjl_full",
-  "polarquant",
-];
+const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = ["turbo3", "turbo4"];
 
 interface TierSpec {
   id: Eliza1TierId;
@@ -199,36 +234,15 @@ interface TierSpec {
   hasVision?: boolean;
   /**
    * WS3: whether this tier ships a default image-gen model in the bundle
-   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
-   * tiers (0_8b/2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b) default to Z-Image-Turbo Q4_K_M
-   * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
-   * NOT part of the base-v1 bundle.
+   * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). All active
+   * tiers default to SD 1.5 Q5_0 until a legacy-free split-diffusion text
+   * encoder is available. The diffusion weights are runtime-downloaded —
+   * they are NOT part of the base-v1 bundle.
    */
   hasImageGen?: boolean;
 }
 
 const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
-  "eliza-1-0_8b": {
-    id: "eliza-1-0_8b",
-    params: "0.8B",
-    sizeGb: 0.5,
-    minRamGb: 2,
-    q4MinRamGb: 2,
-    bucket: "small",
-    contextLength: 131072,
-    textFile: "text/eliza-1-0_8b-128k.gguf",
-    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
-    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
-    // fits even on 2 GB-floor devices when the text model is resident.
-    // Camera + screen analysis remain practical on low-tier phones at this
-    // size — the projector cache short-circuits the per-frame cost.
-    hasVision: true,
-    // WS3: image-gen via sd-cpp + SD 1.5 Q5_0 (~1.0 GB). Co-evicts
-    // with vision on the WS1 `vision` resident-role slot; only one of
-    // (VL describe, diffusion generate) is held at a time.
-    hasImageGen: true,
-  },
   "eliza-1-2b": {
     id: "eliza-1-2b",
     params: "2B",
@@ -244,18 +258,19 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
     // swap with the text weights under pressure.
     hasVision: true,
-    // WS3: image-gen on the standard small-phone default uses SD 1.5
-    // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
+    // WS3: image-gen on the standard small-phone default uses SD 1.5 Q5_0.
     hasImageGen: true,
   },
   "eliza-1-4b": {
     id: "eliza-1-4b",
     params: "4B",
     sizeGb: 2.6,
-    // 4B is the shipped mobile minimum/default. The Q4_K_M weights are 2.6 GB
-    // and the mobile bundle runs a 64k context with compressed KV
-    // (qjl1_256/tbq3_0), so an 8 GB-class phone clears it. The floor stays
-    // above the model size to leave headroom for the OS, app, and KV cache.
+    // 4B is the shipped mid/mobile tier. The 2.6 GB Q4_K_M weights are sized
+    // for a 128k Eliza-1 bundle on the Gemma 4 E4B base. Gemma KV is already
+    // minimal (MQA + windowed-SWA + shared-KV) so the runtime ships stock KV
+    // (f16/q8_0) — the legacy head_dim=128 QJL/Polar kernels do not apply to
+    // Gemma's dual head dims (512 global / 256 swa). The floor stays above the
+    // model size to leave headroom for the OS, app, and KV cache.
     minRamGb: 6,
     q4MinRamGb: 6,
     bucket: "mid",
@@ -263,8 +278,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     textFile: "text/eliza-1-4b-128k.gguf",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 4B is the last tier that defaults to SD 1.5; flagship-phone
-    // optional path can upgrade to SDXL-Turbo Q4_0.
+    // WS3: 4B uses the same monolithic SD 1.5 default as the rest of the
+    // Gemma cutover catalog.
     hasImageGen: true,
   },
   "eliza-1-9b": {
@@ -279,9 +294,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
-    // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
-    // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
-    // shared RAM / >=12 GB VRAM.
+    // WS3: keep 9B on the monolithic SD 1.5 default until a legacy-free
+    // split-diffusion text encoder is available.
     hasImageGen: true,
   },
   "eliza-1-27b": {
@@ -321,8 +335,6 @@ function tierSlug(id: Eliza1TierId): string {
 
 function tierDisplaySlug(id: Eliza1TierId): string {
   switch (id) {
-    case "eliza-1-0_8b":
-      return "0.8B";
     case "eliza-1-2b":
       return "2B";
     case "eliza-1-4b":
@@ -378,7 +390,7 @@ function bundleComponent(
  *
  * R8 §2 + omnivoice.cpp/AGENTS.md PolarQuant note: the K-quant family
  * (Q3..Q6) is the only weight-quant currently wired for OmniVoice's
- * Qwen3-shaped LM head — PolarQuant / TurboQuant for the LM weight bank
+ * MaskGIT LM weight bank — PolarQuant / TurboQuant for that LM bank
  * is *plausible* (same arch) but no recipe wires it yet; QJL is N/A
  * (OmniVoice has no KV cache between MaskGIT steps); V-cache PolarQuant
  * is N/A for the same reason. See `docs/inference/voice-quant-matrix.md`.
@@ -392,15 +404,13 @@ export type OmniVoiceQuantLevel =
 
 /**
  * Default OmniVoice K-quant the runtime picks per tier when no
- * device-class override applies. Mobile-class tiers (0_8b/2b/4b) default
+ * device-class override applies. Mobile-class tiers (2b/4b) default
  * to Q4_K_M (~4.5 bits/weight, the common sweet spot for llama.cpp /
  * Ollama / LM Studio). Desktop / workstation tiers default to Q8_0 (≈8
  * bits/weight, near-bf16 quality) because RAM headroom permits it.
  */
 function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
-  return id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
-    ? "Q4_K_M"
-    : "Q8_0";
+  return id === "eliza-1-2b" || id === "eliza-1-4b" ? "Q4_K_M" : "Q8_0";
 }
 
 /**
@@ -418,7 +428,6 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
@@ -451,9 +460,22 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const components: SourceComponentMap = {
     text: bundleComponent(id, spec.textFile),
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
-    asr: bundleComponent(id, "asr/eliza-1-asr.gguf"),
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
   };
+
+  // Gemma ASR artifacts are not hosted yet. Do not advertise retired pre-Gemma
+  // ASR files as active tier components. Runtime ASR remains gated by bundle
+  // manifest provenance until Gemma ASR files are published.
+
+  // LiteRT-LM single-file bundle for the on-device runtime: text + vision +
+  // audio + MTP packed into one QAT (.litertlm) artifact, parallel to the
+  // GGUF `text` component. Only the mobile-class tiers ship it.
+  if (isOnDeviceTier(id)) {
+    components.litert = bundleComponent(
+      id,
+      `text/eliza-1-${tierSlug(id)}.litertlm`,
+    );
+  }
 
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
@@ -467,9 +489,13 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Same-file MTP: the NextN head is embedded in the text GGUF
-  // (`qwen35.nextn_predict_layers > 0`), so there is no separate `mtp`
-  // drafter component to download.
+  // Separate-drafter MTP remains the Gemma release target, but the active HF
+  // tree does not host `mtp/drafter-<tier>.gguf` yet. The available `dflash/`
+  // files are legacy artifacts, so only advertise this component when the
+  // hosted Gemma drafter list is explicitly populated.
+  if (hostedMtpDrafterAvailableForTier(id)) {
+    components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
+  }
 
   return { finetuned: false, components };
 }
@@ -495,24 +521,30 @@ function runtimeForTier(
       ctxCheckpoints: 4,
       ctxCheckpointInterval: 4096,
     },
-    kvCache: {
-      typeK: "qjl1_256",
-      typeV: "tbq3_0",
-      requiresFork: "buun-llama-cpp",
-    },
   };
 
-  if (mtpSupportedForTier(id)) {
-    // Same-file MTP: no separate `drafterFile`. The NextN head lives in
-    // the text GGUF and is activated by `--spec-type draft-mtp` with no
-    // `-md`. These tiers carry a single NextN head
-    // (`nextn_predict_layers = 1`); benchmarks show `draft-n-max 2` is the
-    // throughput peak (a single head autoregressed past 2 collapses
-    // acceptance), so we do not scale the draft window with context length.
+  if (hostedMtpDrafterAvailableForTier(id)) {
+    // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
+    // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
+    //
+    // Draft window = 1 (single speculative token). The bionic/desktop FFI
+    // MTP engine uses a FIXED window equal to `draftMax` (no adaptive
+    // acceptance schedule; `eliza-inference-ffi.cpp` sets
+    // `sp.draft.n_max = draft_max`), so the catalog value is the live window.
+    // The gemma4-assistant NextN head reliably predicts exactly one token;
+    // its multi-token acceptance collapses past the first, so a larger window
+    // burns draft forwards that get rejected and regresses decode. Measured on
+    // Apple M-series Metal against the eliza-1-2b (Q8) target, greedy, across
+    // 3 prompts:
+    //   draftMax=1 => 1.37-1.66x win | =2 => ~0.90x | =4 => 0.61x | =6 => 0.37x
+    // draftMax=1 is the measured-optimal, never-regress window for this drafter
+    // on every tier; widening it is a per-tier/per-device tuning question that
+    // needs on-hardware measurement before it can beat 1.
     runtime.mtp = {
       specType: "draft-mtp",
+      drafterFile: `mtp/drafter-${tierSlug(id)}.gguf`,
       draftMin: 1,
-      draftMax: 2,
+      draftMax: 1,
       gpuLayers: "auto",
     };
   }
@@ -522,56 +554,97 @@ function runtimeForTier(
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
   q3_k_m: "q3_k_m",
+  // Google's official Gemma-4 QAT quant. `Q4_0` is the GGUF block format
+  // their QAT checkpoints export to — distinct from the post-training
+  // `q4_k_m` we ship as the desktop default.
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
   q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
+  // LiteRT-LM mobile bundle suffix. The artifact is a `.litertlm`, not a
+  // `.gguf`; `textLiteRtComponent` overrides the filename, so this suffix
+  // only feeds the non-LiteRT variant-id naming path defensively.
+  wna8o8: "wna8o8",
 };
 
 function textQuantizationMatrix(args: {
   primaryGgufFile: string;
   q4SizeGb: number;
   q4MinRamGb: number;
+  /**
+   * On-device (mobile-class) tier. When true the Gemma-4 QAT `Q4_0` variant
+   * is flagged `mobilePreferred` so the on-device selector picks it over the
+   * post-training `q4_k_m` default.
+   */
+  onDevice: boolean;
 }): NonNullable<CatalogModel["quantization"]> {
   const fileBase = args.primaryGgufFile.replace(/\.gguf$/, "");
+  const litertFile = `${fileBase.replace(/-128k$|-256k$/, "")}.litertlm`;
   const mk = (
     id: CatalogQuantizationId,
     label: CatalogQuantizationVariant["label"],
     scale: number,
     minRamScale: number,
     status: CatalogQuantizationVariant["status"],
+    extra?: Pick<
+      CatalogQuantizationVariant,
+      "mobilePreferred" | "artifactFormat"
+    >,
   ): CatalogQuantizationVariant => ({
     id,
     label,
     ggufFile:
-      id === "q4_k_m"
-        ? args.primaryGgufFile
-        : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
+      extra?.artifactFormat === "litertlm"
+        ? litertFile
+        : id === "q4_k_m"
+          ? args.primaryGgufFile
+          : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
     sizeGb: Number((args.q4SizeGb * scale).toFixed(1)),
     minRamGb: Math.ceil(args.q4MinRamGb * minRamScale),
     status,
+    ...extra,
   });
 
-  return {
-    defaultVariantId: "q4_k_m",
-    variants: [
-      mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
-      mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
-    ],
-  };
+  const variants: CatalogQuantizationVariant[] = [
+    mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
+    // Gemma-4 QAT Q4_0: same ~4-bit footprint as q4_k_m but the official
+    // quantization-aware-trained checkpoint. Keep this planned until the
+    // tier-specific `*-Q4_0.gguf` artifacts are present in the hosted bundle.
+    mk(
+      "q4_0",
+      "4-bit",
+      0.94,
+      0.95,
+      "planned",
+      args.onDevice ? { mobilePreferred: true } : undefined,
+    ),
+    mk("q4_k_m", "4-bit", 1, 1, "published"),
+    mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
+    mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+    mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
+  ];
+
+  // On-device tiers also advertise the LiteRT-LM `.litertlm` bundle: the
+  // wNa8o8 (4-bit weight / 8-bit activation) mobile schema run by the
+  // LiteRT-LM runtime (NPU/GPU delegate), not llama.cpp. It carries the same
+  // ~4-bit footprint as the QAT Q4_0 GGUF.
+  if (args.onDevice) {
+    variants.push(
+      mk("wna8o8", "4-bit", 0.94, 0.95, "planned", {
+        artifactFormat: "litertlm",
+      }),
+    );
+  }
+
+  return { defaultVariantId: "q4_k_m", variants };
 }
 
 function blurbForTier(id: Eliza1TierId): string {
   const displayName = tierDisplayName(id);
   switch (id) {
-    case "eliza-1-0_8b":
-      return `${displayName} - smallest local tier for low-memory phones and CPU fallback.`;
     case "eliza-1-2b":
-      return `${displayName} - recommended first-run local tier for responsive text and voice.`;
+      return `${displayName} - smallest/entry local tier for low-memory phones and CPU fallback.`;
     case "eliza-1-4b":
       return `${displayName} - balanced local tier for modern laptops and desktops.`;
     case "eliza-1-9b":
@@ -583,66 +656,6 @@ function blurbForTier(id: Eliza1TierId): string {
   }
   const exhaustive: never = id;
   return exhaustive;
-}
-
-const drafterId = (id: Eliza1TierId): `${Eliza1TierId}-drafter` =>
-  `${id}-drafter`;
-
-// DFlash speculative-decoding draft companions published under each tier's
-// HuggingFace bundle (elizaos/eliza-1 -> bundles/<slug>/dflash/drafter-<slug>.gguf).
-// Sizes are the published gguf byte sizes verified against the HF repo (2026-05);
-// params/minRamGb are companion metadata (these are hidden, runtimeRole-gated).
-const TIER_DRAFTERS: Partial<
-  Record<
-    Eliza1TierId,
-    {
-      ggufRel: string;
-      params: CatalogModel["params"];
-      sizeGb: number;
-      minRamGb: number;
-      bucket: CatalogModel["bucket"];
-    }
-  >
-> = {
-  "eliza-1-0_8b": {
-    ggufRel: "dflash/drafter-0_8b.gguf",
-    params: "0.5B",
-    sizeGb: 0.24,
-    minRamGb: 2,
-    bucket: "small",
-  },
-  "eliza-1-2b": {
-    ggufRel: "dflash/drafter-2b.gguf",
-    params: "0.8B",
-    sizeGb: 0.68,
-    minRamGb: 4,
-    bucket: "small",
-  },
-};
-
-function drafterCompanion(id: Eliza1TierId): CatalogModel {
-  const drafter = TIER_DRAFTERS[id];
-  if (!drafter) {
-    throw new Error(`No DFlash drafter spec for tier ${id}`);
-  }
-  return {
-    id: drafterId(id),
-    displayName: `${tierDisplayName(id)} drafter`,
-    hfRepo: ELIZA_1_HF_REPO,
-    hfPathPrefix: bundleRemotePrefix(id),
-    ggufFile: bundlePath(id, drafter.ggufRel),
-    params: drafter.params,
-    quant: "Eliza-1 DFlash drafter companion",
-    sizeGb: drafter.sizeGb,
-    minRamGb: drafter.minRamGb,
-    category: "chat",
-    bucket: drafter.bucket,
-    tokenizerFamily: "qwen35",
-    hiddenFromCatalog: true,
-    runtimeRole: "mtp-drafter",
-    companionForModelId: id,
-    blurb: "DFlash speculative-decoding draft companion.",
-  };
 }
 
 function chatTier(id: Eliza1TierId): CatalogModel {
@@ -662,7 +675,8 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     category: "chat",
     bucket: spec.bucket,
     contextLength: spec.contextLength,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "gemma4",
+    runtimeClass: "fused-eliza1",
     sourceModel: sourceModelForTier(id),
     voiceBackends: ELIZA_1_VOICE_BACKENDS[id],
     runtime: runtimeForTier(id, spec.contextLength),
@@ -671,6 +685,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
       primaryGgufFile: bundlePath(id, spec.textFile),
       q4SizeGb: spec.sizeGb,
       q4MinRamGb: spec.q4MinRamGb,
+      onDevice: isOnDeviceTier(id),
     }),
     blurb: blurbForTier(id),
     publishStatus: eliza1TierPublishStatus(id),
@@ -681,19 +696,8 @@ export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.map((id) =>
   chatTier(id),
 );
 
-// DFlash speculative-decoding drafter companions. Findable by id (installer
-// companion download + registry self-heal via findCatalogModel) but
-// intentionally NOT part of the published hub catalog (MODEL_CATALOG) — they are
-// hidden, mtp-drafter companion entries keyed to their parent tier.
-const DRAFTER_COMPANIONS: CatalogModel[] = ELIZA_1_TIER_IDS.filter(
-  (id) => TIER_DRAFTERS[id],
-).map((id) => drafterCompanion(id));
-
 export function findCatalogModel(id: string): CatalogModel | undefined {
-  return (
-    MODEL_CATALOG.find((m) => m.id === id) ??
-    DRAFTER_COMPANIONS.find((m) => m.id === id)
-  );
+  return MODEL_CATALOG.find((m) => m.id === id);
 }
 
 export function buildHuggingFaceResolveUrlForPath(
@@ -718,9 +722,7 @@ export function buildHuggingFaceResolveUrlForPath(
       .join("/");
     return `${base}/models/${model.hfRepo}/resolve/master/${encodedPath}`;
   }
-  const base =
-    process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
-    "https://huggingface.co";
+  const { base } = resolveHfDownloadBase();
   const encodedPath = pathWithPrefix
     .split("/")
     .map((segment) => encodeURIComponent(segment))

@@ -55,6 +55,62 @@ function isFirstRunPathTarget(value: string): value is FirstRunPathTarget {
 }
 
 /**
+ * Query-parameter aliases that carry the remote agent URL on a
+ * `<scheme>://first-run/runtime/remote?api=<url>` deep link. `api` is the
+ * documented form; the others are accepted so a host that already emits a
+ * `connect`-style `url=`/`apiBase=` link does not silently drop the address.
+ */
+const REMOTE_CONNECT_QUERY_KEYS = ["api", "apiBase", "url", "host"] as const;
+
+export interface FirstRunRemoteConnectDeepLink {
+  /** The raw remote agent URL captured from the deep link (not yet trusted). */
+  apiBase: string;
+}
+
+/**
+ * Parses a device "connect to a remote agent at a URL" first-run deep link:
+ * `<scheme>://first-run/runtime/remote?api=<url>`. Returns the captured URL
+ * when the link targets the remote runtime AND carries an address; returns
+ * `null` for every other shape (wrong scheme/host, a non-remote target, or a
+ * bare `remote` link with no URL — that case still flows through
+ * {@link routeFirstRunDeepLink} as a runtime pre-selection).
+ *
+ * This parser is intentionally pure: it does NOT validate trust or connect.
+ * The app shell owns the trust policy (`isTrustedDeepLinkApiBaseUrl`) and the
+ * connect dispatch, so the same hardened path serves both this link and the
+ * existing `<scheme>://connect?url=` link.
+ */
+export function parseFirstRunRemoteConnectDeepLink(
+  url: string,
+  urlScheme: string,
+): FirstRunRemoteConnectDeepLink | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== `${urlScheme}:`) return null;
+  if (parsed.host !== FIRST_RUN_HOST) return null;
+
+  const pathSegments = parsed.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  if (pathSegments[0] !== RUNTIME_SEGMENT) return null;
+  if (pathSegments[1] !== STEP_TO_FIRST_RUN_TARGET.remote) return null;
+
+  for (const key of REMOTE_CONNECT_QUERY_KEYS) {
+    const value = parsed.searchParams.get(key)?.trim();
+    if (value) return { apiBase: value };
+  }
+
+  return null;
+}
+
+/**
  * Parses `eliza://first-run/runtime/<id>` (or any scheme matching `urlScheme`)
  * and writes the matching first-run runtime query
  * params to the current location. Returns `true` when the URL matched the

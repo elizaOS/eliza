@@ -348,7 +348,7 @@ export function LogViewer({
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-white/10 bg-black/40 pl-9 text-white placeholder:text-white/40 focus-visible:ring-[#FF5800]/50"
+                  className="rounded-none border-white/10 bg-black/40 pl-9 text-white placeholder:text-white/40 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>
@@ -494,11 +494,16 @@ export function LogViewer({
                   <span className="flex-1 whitespace-pre-wrap break-all text-white/80">
                     {entry.message}
                   </span>
-                  {renderMetadata(entry.metadata) && (
-                    <span className="max-w-[200px] truncate text-xs text-white/50">
-                      {renderMetadata(entry.metadata)}
-                    </span>
-                  )}
+                  {(() => {
+                    const meta = renderMetadata(entry.metadata);
+                    return (
+                      meta && (
+                        <span className="max-w-[200px] truncate text-xs text-white/50">
+                          {meta}
+                        </span>
+                      )
+                    );
+                  })()}
                   {onCopyEntry && (
                     <BrandButton
                       variant="ghost"

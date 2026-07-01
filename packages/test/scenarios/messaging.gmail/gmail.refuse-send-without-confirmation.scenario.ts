@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.refuse-send-without-confirmation",
   title: "Refuse mass-email without explicit confirmation",
   domain: "messaging.gmail",

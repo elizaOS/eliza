@@ -1,10 +1,13 @@
-# ASR fine-tune scaffold — Qwen3-ASR (eliza-1)
+# ASR fine-tune scaffold — frozen during Gemma cutover
 
 This directory contains the fine-tune scaffold for the **eliza-1 ASR model**
-(`Qwen/Qwen3-ASR-0.6B` or `Qwen/Qwen3-ASR-1.7B`).
+while ASR artifacts are frozen. Real training and real eval are blocked until
+a verified Gemma-compatible ASR checkpoint and matching projector are
+configured.
 
-Per the W3-11 scope: real training is out of scope for Wave 3 (compute), but
-the scaffold, eval script, manifest entry, and CI smoke tests land here.
+The scaffold, eval script, manifest entry, and CI smoke tests remain here so
+publish tooling can exercise file shapes without downloading or training a
+retired ASR model.
 
 ---
 
@@ -29,10 +32,10 @@ python3 packages/training/scripts/asr/finetune_asr.py \
     --config packages/training/scripts/asr/configs/asr_same.yaml \
     --synthetic-smoke
 
-# Real training (RTX 5080 / H200):
+# Real training once a verified Gemma-compatible ASR base is configured:
 python3 packages/training/scripts/asr/finetune_asr.py \
     --run-dir /tmp/asr-runs/same \
-    --config packages/training/scripts/asr/configs/asr_same.yaml \
+    --config /path/to/gemma-asr.yaml \
     --data-dir packages/training/data/voice/same \
     --real-train
 
@@ -41,13 +44,13 @@ python3 packages/training/scripts/asr/eval_asr.py \
     --run-dir /tmp/asr-runs/same \
     --checkpoint /tmp/asr-runs/same/checkpoints/best.pt \
     --data-dir packages/training/data/voice/same \
-    --config packages/training/scripts/asr/configs/asr_same.yaml \
+    --config /path/to/gemma-asr.yaml \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json
 
 # HF push (gated on beats-baseline + operator sign-off):
 python3 packages/training/scripts/asr/finetune_asr.py \
     --run-dir /tmp/asr-runs/same \
-    --config packages/training/scripts/asr/configs/asr_same.yaml \
+    --config /path/to/gemma-asr.yaml \
     --data-dir packages/training/data/voice/same \
     --real-train \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \
@@ -60,17 +63,18 @@ python3 packages/training/scripts/asr/finetune_asr.py \
 
 ## Architecture
 
-Qwen3-ASR is a **Qwen3 text backbone + audio mmproj projector**:
+The active Gemma-compatible ASR architecture is intentionally not assumed by
+this scaffold until the verified checkpoint/projector pair is selected:
 
-- **Audio front-end**: WhisperFeatureExtractor (80-bin log-mel at 16 kHz,
-  n_fft=400, hop=160).
-- **Projection head**: maps mel frames to Qwen3 hidden space (1024 or 2048 dim).
-- **Text backbone**: Qwen3 decoder, trained to generate transcripts auto-regressively.
-- **Loss**: cross-entropy on the generated token sequence (teacher-forcing).
+- **Audio front-end**: configured by the selected ASR base.
+- **Projection head**: configured by the selected ASR base and staged as a
+  matching projector artifact.
+- **Text/audio backbone**: must be Gemma-compatible for active Eliza-1 bundles.
+- **Loss**: scaffold supports CTC primary loss plus optional LM-head
+  cross-entropy, subject to the selected model class.
 
 GGUF conversion: `packages/training/scripts/quantization/gguf_asr_apply.py`
-handles the two-stage convert (HF safetensors → f16 GGUF → Q4_K_M GGUF) for
-both the text body and the audio mmproj sidecar.
+is also blocked on a verified Gemma-compatible ASR checkpoint/projector pair.
 
 ---
 

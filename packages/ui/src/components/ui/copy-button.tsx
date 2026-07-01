@@ -28,6 +28,16 @@ export const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
     ref,
   ) => {
     const [copied, setCopied] = React.useState(false);
+    const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    React.useEffect(
+      () => () => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+        }
+      },
+      [],
+    );
 
     const handleCopy = React.useCallback(() => {
       // No clipboard API (insecure context / unsupported): nothing copied,
@@ -39,7 +49,13 @@ export const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
       navigator.clipboard.writeText(value).then(
         () => {
           setCopied(true);
-          setTimeout(() => setCopied(false), feedbackDuration);
+          if (timerRef.current) {
+            clearTimeout(timerRef.current);
+          }
+          timerRef.current = setTimeout(
+            () => setCopied(false),
+            feedbackDuration,
+          );
         },
         () => {
           // Write rejected (denied permission): leave the button in its

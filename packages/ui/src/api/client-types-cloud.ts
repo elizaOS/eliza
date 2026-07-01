@@ -12,16 +12,66 @@ import type {
   TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
 } from "@elizaos/core";
 import type {
+  AppLaunchDiagnostic,
+  AppLaunchDiagnosticSeverity,
+  AppLaunchResult,
+  AppRunActionResult,
+  AppRunAwaySummary,
+  AppRunCapabilityAvailability,
+  AppRunEvent,
+  AppRunEventKind,
+  AppRunEventSeverity,
+  AppRunHealth,
+  AppRunHealthDetails,
+  AppRunHealthFacet,
+  AppRunHealthState,
+  AppRunSummary,
+  AppRunViewerAttachment,
+  AppSessionActionResult,
+  AppSessionActivityItem,
   AppSessionConfig,
+  AppSessionControlAction,
+  AppSessionFeature,
+  AppSessionJsonValue,
+  AppSessionMode,
+  AppSessionRecommendation,
+  AppSessionState,
+  AppStopResult,
   AppUiExtensionConfig,
+  AppViewerAuthMessage,
   AppViewerConfig,
   RegistryAppInfo,
 } from "@elizaos/shared";
 import type { TrajectoryExportFormat } from "./client-types-core";
 
 export type {
+  AppLaunchDiagnostic,
+  AppLaunchDiagnosticSeverity,
+  AppLaunchResult,
+  AppRunActionResult,
+  AppRunAwaySummary,
+  AppRunCapabilityAvailability,
+  AppRunEvent,
+  AppRunEventKind,
+  AppRunEventSeverity,
+  AppRunHealth,
+  AppRunHealthDetails,
+  AppRunHealthFacet,
+  AppRunHealthState,
+  AppRunSummary,
+  AppRunViewerAttachment,
+  AppSessionActionResult,
+  AppSessionActivityItem,
   AppSessionConfig,
+  AppSessionControlAction,
+  AppSessionFeature,
+  AppSessionJsonValue,
+  AppSessionMode,
+  AppSessionRecommendation,
+  AppSessionState,
+  AppStopResult,
   AppUiExtensionConfig,
+  AppViewerAuthMessage,
   AppViewerConfig,
   RegistryAppInfo,
 };
@@ -47,6 +97,15 @@ export interface CloudCredits {
   low?: boolean;
   critical?: boolean;
   topUpUrl?: string;
+}
+
+export interface LocalAgentBackupMetadata {
+  fileName: string;
+  path: string;
+  createdAt: string;
+  agentId: string;
+  stateSha256: string;
+  sizeBytes: number;
 }
 
 export interface CloudBillingPaymentMethod {
@@ -399,178 +458,11 @@ export interface CloudCompatLaunchResult {
   };
 }
 
-// App types
-export type AppSessionMode = "viewer" | "spectate-and-steer" | "external";
-
-export type AppSessionFeature =
-  | "commands"
-  | "telemetry"
-  | "pause"
-  | "resume"
-  | "suggestions";
-
-export type AppSessionControlAction = "pause" | "resume";
-export type AppRunViewerAttachment = "attached" | "detached" | "unavailable";
-export type AppRunHealthState = "healthy" | "degraded" | "offline";
-export type AppRunCapabilityAvailability =
-  | "available"
-  | "unavailable"
-  | "unknown";
-export type AppRunEventKind =
-  | "launch"
-  | "refresh"
-  | "attach"
-  | "detach"
-  | "stop"
-  | "status"
-  | "summary"
-  | "health";
-export type AppRunEventSeverity = "info" | "warning" | "error";
-
-export type AppSessionJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | AppSessionJsonValue[]
-  | { [key: string]: AppSessionJsonValue };
-
-export interface AppViewerAuthMessage {
-  type: string;
-  authToken?: string;
-  sessionToken?: string;
-  agentId?: string;
-  characterId?: string;
-  followEntity?: string;
-}
-
-// AppViewerConfig, AppUiExtensionConfig — imported from @elizaos/shared/contracts/apps
-
-export interface AppSessionRecommendation {
-  id: string;
-  label: string;
-  type?: string;
-  reason?: string | null;
-  priority?: number | null;
-  command?: string | null;
-}
-
-export interface AppSessionActivityItem {
-  id: string;
-  type: string;
-  message: string;
-  timestamp?: number | null;
-  severity?: "info" | "warning" | "error";
-}
-
-// AppSessionConfig — imported from @elizaos/shared/contracts/apps
-
-export interface AppSessionState {
-  sessionId: string;
-  appName: string;
-  mode: AppSessionMode;
-  status: string;
-  displayName?: string;
-  agentId?: string;
-  characterId?: string;
-  followEntity?: string;
-  canSendCommands?: boolean;
-  controls?: AppSessionControlAction[];
-  summary?: string | null;
-  goalLabel?: string | null;
-  suggestedPrompts?: string[];
-  recommendations?: AppSessionRecommendation[];
-  activity?: AppSessionActivityItem[];
-  telemetry?: Record<string, AppSessionJsonValue> | null;
-}
-
-export interface AppSessionActionResult {
-  success: boolean;
-  message: string;
-  session?: AppSessionState | null;
-}
-
-export interface AppRunHealth {
-  state: AppRunHealthState;
-  message: string | null;
-}
-
-export interface AppRunHealthFacet {
-  state: AppRunHealthState | "unknown";
-  message: string | null;
-}
-
-export interface AppRunHealthDetails {
-  checkedAt: string | null;
-  auth: AppRunHealthFacet;
-  runtime: AppRunHealthFacet;
-  viewer: AppRunHealthFacet;
-  chat: AppRunHealthFacet;
-  control: AppRunHealthFacet;
-  message: string | null;
-}
-
-export interface AppRunEvent {
-  eventId: string;
-  kind: AppRunEventKind;
-  severity: AppRunEventSeverity;
-  message: string;
-  createdAt: string;
-  status?: string | null;
-  details?: Record<string, AppSessionJsonValue> | null;
-}
-
-export interface AppRunAwaySummary {
-  generatedAt: string;
-  message: string;
-  eventCount: number;
-  since: string | null;
-  until: string | null;
-}
-
-export interface AppRunSummary {
-  runId: string;
-  appName: string;
-  displayName: string;
-  pluginName: string;
-  launchType: string;
-  launchUrl: string | null;
-  viewer: AppViewerConfig | null;
-  session: AppSessionState | null;
-  characterId?: string | null;
-  agentId?: string | null;
-  status: string;
-  summary: string | null;
-  startedAt: string;
-  updatedAt: string;
-  lastHeartbeatAt: string | null;
-  supportsBackground: boolean;
-  supportsViewerDetach?: boolean;
-  chatAvailability?: AppRunCapabilityAvailability;
-  controlAvailability?: AppRunCapabilityAvailability;
-  viewerAttachment: AppRunViewerAttachment;
-  recentEvents?: AppRunEvent[];
-  awaySummary?: AppRunAwaySummary | null;
-  health: AppRunHealth;
-  healthDetails?: AppRunHealthDetails;
-}
-
-export interface AppRunActionResult {
-  success: boolean;
-  message: string;
-  run?: AppRunSummary | null;
-}
-
-export type AppLaunchDiagnosticSeverity = "info" | "warning" | "error";
-
-export interface AppLaunchDiagnostic {
-  code: string;
-  severity: AppLaunchDiagnosticSeverity;
-  message: string;
-}
-
-// RegistryAppInfo — imported from @elizaos/shared/contracts/apps
-
+// App types — the App-run / App-session DTO contract is owned by
+// @elizaos/shared/contracts/apps (re-exported from the shared root barrel and
+// re-exported above). Only InstalledAppInfo is defined here: the client's
+// installed-app view (installPath / isRunning) is a distinct shape from shared's
+// registry-oriented InstalledAppInfo (pluginName), so it stays UI-local.
 export interface InstalledAppInfo {
   name: string;
   displayName: string;
@@ -578,29 +470,6 @@ export interface InstalledAppInfo {
   installPath: string;
   installedAt: string;
   isRunning: boolean;
-}
-
-export interface AppLaunchResult {
-  pluginInstalled: boolean;
-  needsRestart: boolean;
-  displayName: string;
-  launchType: string;
-  launchUrl: string | null;
-  viewer: AppViewerConfig | null;
-  session: AppSessionState | null;
-  run: AppRunSummary | null;
-  diagnostics?: AppLaunchDiagnostic[];
-}
-
-export interface AppStopResult {
-  success: boolean;
-  appName: string;
-  runId: string | null;
-  stoppedAt: string;
-  pluginUninstalled: boolean;
-  needsRestart: boolean;
-  stopScope: "plugin-uninstalled" | "viewer-session" | "no-op";
-  message: string;
 }
 
 // Trajectories
@@ -1293,6 +1162,27 @@ export interface OrchestratorAccountOverview {
   strategy: string;
   availability: Record<string, OrchestratorAccountProviderAvailability[]>;
   assignments: OrchestratorAccountAssignment[];
+}
+
+/** Per-provider readiness verdict from `GET /api/orchestrator/accounts/readiness`. */
+export interface OrchestratorProviderReadiness {
+  agentType: string;
+  total: number;
+  enabled: number;
+  healthy: number;
+  required: number;
+  ok: boolean;
+}
+
+/** Payload for `GET /api/orchestrator/accounts/readiness`: whether the pool has
+ * enough healthy accounts (≥1 Codex AND ≥1 Claude; ≥2 each under rotation) to
+ * run the multi-account orchestrator, with the human-readable problems when not. */
+export interface OrchestratorAccountReadiness {
+  ready: boolean;
+  rotation: boolean;
+  required: number;
+  providers: OrchestratorProviderReadiness[];
+  problems: string[];
 }
 
 export type OrchestratorRoomParticipantKind =

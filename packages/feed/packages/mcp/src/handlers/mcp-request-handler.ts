@@ -172,9 +172,7 @@ export class MCPRequestHandler {
       );
 
       // Convert tool result to MCP content format
-      const content = this.convertToolResultToContent(
-        toolResult as unknown as JsonValue,
-      );
+      const content = this.convertToolResultToContent(toolResult as JsonValue);
 
       const result: ToolCallResult = {
         content,

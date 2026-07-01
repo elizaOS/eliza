@@ -157,6 +157,8 @@ function assertFailsBeforeDownload(
       (call) => call.command === "gh" && call.args.includes("download"),
     )
   ) {
-    throw new Error(`${name}: downloaded artifacts after rejected run metadata.`);
+    throw new Error(
+      `${name}: downloaded artifacts after rejected run metadata.`,
+    );
   }
 }

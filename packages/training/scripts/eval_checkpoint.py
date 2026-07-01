@@ -15,13 +15,13 @@ Args:
                           containing config.json + safetensors / sharded
                           state). Step is parsed from the dir name:
                           `checkpoint-<N>` -> N; `final` -> max known step + 1.
-  --registry-key <k>      Model registry key (qwen3.5-2b / qwen3.5-4b /
-                          qwen3.5-4b). Recorded in the result JSON so the
-                          UI can pick the right axis labels.
+  --registry-key <k>      Model registry key (gemma4-e2b / gemma4-e4b /
+                          gemma4-12b / gemma4-31b). Recorded in the result
+                          JSON so the UI can pick the right axis labels.
   --val-jsonl <path>      Validation JSONL. Default: data/smoke/val.jsonl.
   --max-examples <n>      Per-bucket cap for the native benchmark. Default 50 — the
                           smoke val set is tiny on purpose so each scoring
-                          pass takes ~10s on a 0.8B and ~30s on a 2B (per
+                          pass stays practical on the 2B entry tier (per
                           AGENTS spec for this script).
   --out <path>            Where to write the per-checkpoint result JSON.
                           The eval loop also writes a sibling `_eval.json`
@@ -234,7 +234,7 @@ def read_peak_vram_mb() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--checkpoint", required=True, help="Path to local checkpoint directory.")
-    ap.add_argument("--registry-key", required=True, help="Model registry key, e.g. qwen3.5-2b.")
+    ap.add_argument("--registry-key", required=True, help="Model registry key, e.g. gemma4-e2b.")
     ap.add_argument("--val-jsonl", default=str(ROOT / "data" / "smoke" / "val.jsonl"),
                     help="Validation JSONL. Default data/smoke/val.jsonl.")
     ap.add_argument("--max-examples", type=int, default=50,

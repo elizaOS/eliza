@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import {
   DEFAULT_MAX_EDGE,
   DEFAULT_OVERLAP_FRACTION,
@@ -16,8 +16,8 @@ const execAsync = promisify(exec);
 
 // `tileSize` in VisionConfig is the legacy fixed-grid edge. The new tiler
 // treats it as `maxEdge` — the largest dimension a single tile may have. The
-// tiler's defaults are tuned for Qwen3.5-VL; respect the config override only
-// when it stays in the model-sweet-spot range.
+// tiler's defaults target local Gemma vision OCR detail; respect the config
+// override only when it stays in a practical local-VLM range.
 const MIN_TILER_EDGE = 64;
 const SINGLE_DISPLAY_ID = "primary";
 
@@ -138,7 +138,7 @@ export class ScreenCaptureService {
         }
       }
     } catch (error) {
-      logger.error("[ScreenCapture] Failed to get screen info:", error);
+      logger.error({ error }, "[ScreenCapture] Failed to get screen info:");
     }
 
     // Default fallback
@@ -155,13 +155,14 @@ export class ScreenCaptureService {
       // Load and decode the image. The tiler does its own crop/extract so we
       // only need the metadata + raw bytes here.
       const imageBuffer = await fs.readFile(tempFile);
+      const sharp = await getSharp();
       const metadata = await sharp(imageBuffer).metadata();
 
       const width = metadata.width || 1920;
       const height = metadata.height || 1080;
 
-      // Hand layout to the overlap-aware tiler. It sizes tiles to the model
-      // sweet spot (Qwen3.5-VL) and seams them with overlap so glyphs that
+      // Hand layout to the overlap-aware tiler. It sizes tiles to the local
+      // Gemma vision budget and seams them with overlap so glyphs that
       // straddle a boundary still appear intact in at least one tile.
       const maxEdge = Math.max(
         MIN_TILER_EDGE,
@@ -259,7 +260,7 @@ export class ScreenCaptureService {
         throw new Error(`Unsupported platform: ${platform}`);
       }
     } catch (error) {
-      logger.error("[ScreenCapture] Screen capture failed:", error);
+      logger.error({ error }, "[ScreenCapture] Screen capture failed:");
 
       // Provide helpful error messages
       const errorMessage =

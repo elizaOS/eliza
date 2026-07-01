@@ -4,7 +4,7 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
-		"strict": false,
+		"strict": true,
 		"strictNullChecks": true,
 		"skipLibCheck": true,
 		"ignoreDeprecations": "6.0",
@@ -22,6 +22,9 @@
 			"@elizaos/app-core": ["./src/type-shims/app-core-root.ts"],
 			"@elizaos/app-core/agent-bridge": [
 				"../../packages/app-core/src/agent-bridge.ts"
+			],
+			"@elizaos/app-core/account-pool": [
+				"../../packages/app-core/src/account-pool.ts"
 			],
 			"@elizaos/app-core/api/auth": ["../../packages/app-core/src/api/auth.ts"],
 			"@elizaos/app-core/api/cloud-pair-route": [
@@ -43,6 +46,12 @@
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
+			"@elizaos/ui/agent-surface/types": [
+				"../../packages/ui/src/agent-surface/types.ts"
+			],
+			"@elizaos/ui/views/view-interact-protocol": [
+				"../../packages/ui/src/views/view-interact-protocol.ts"
+			],
 			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
 			"@elizaos/plugin-agent-skills": [
 				"../../plugins/plugin-agent-skills/src/index.ts"
@@ -64,6 +73,8 @@
 			],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+			"@elizaos/plugin-capacitor-bridge": ["./src/index.ts"],
+			"@elizaos/plugin-capacitor-bridge/*": ["./src/*"],
 			"@elizaos/plugin-commands": [
 				"../../plugins/plugin-commands/src/index.ts"
 			],

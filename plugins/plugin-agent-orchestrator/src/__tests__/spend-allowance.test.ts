@@ -2,14 +2,42 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   addSessionSpendUsd,
   CONTAINER_DAILY_COST_USD,
+  configureSpendLedger,
+  createTaskStoreSpendLedger,
   decideSpendAuthorization,
   estimateSelfSpendCostUsd,
   getSessionSpendUsd,
+  hydrateSessionSpendUsd,
   readSpendCapUsd,
   resetSessionSpendUsd,
   SPEND_HINT_PARAM,
+  type SpendLedgerStore,
   stripSpendHints,
+  withSessionSpendLock,
 } from "../services/spend-allowance.js";
+
+/** Flush the write-through `save()` microtasks (fire-and-forget in production). */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+}
+
+/** In-memory stand-in for OrchestratorTaskStore that survives a simulated
+ * process restart (we keep this map but clear the ledger cache). */
+function fakeStore(): SpendLedgerStore & {
+  sessions: Map<string, { metadata: Record<string, unknown> }>;
+} {
+  const sessions = new Map<string, { metadata: Record<string, unknown> }>();
+  return {
+    sessions,
+    findSession: async (id) => {
+      const s = sessions.get(id);
+      return s ? { session: s } : null;
+    },
+    updateSession: async (id, patch) => {
+      sessions.set(id, { metadata: patch.metadata });
+    },
+  };
+}
 
 describe("estimateSelfSpendCostUsd", () => {
   it("defaults containers to the base daily cost when no hint is given", () => {
@@ -228,5 +256,162 @@ describe("stripSpendHints", () => {
     const params = { id: "app-1" };
     expect(stripSpendHints(params)).toBe(params);
     expect(stripSpendHints(undefined)).toBeUndefined();
+  });
+});
+
+describe("durable spend ledger (#8924)", () => {
+  afterEach(() => {
+    resetSessionSpendUsd();
+    configureSpendLedger(null);
+  });
+
+  it("persists each debit write-through to the backing store", async () => {
+    const store = fakeStore();
+    store.sessions.set("s1", { metadata: {} });
+    configureSpendLedger(createTaskStoreSpendLedger(store));
+    addSessionSpendUsd("s1", 4);
+    addSessionSpendUsd("s1", 2.5);
+    await flush();
+    expect(store.sessions.get("s1")?.metadata.spendUsd).toBe(6.5);
+  });
+
+  it("rehydrates the persisted total across a simulated restart and enforces the cap", async () => {
+    const store = fakeStore();
+    store.sessions.set("s1", { metadata: {} });
+    configureSpendLedger(createTaskStoreSpendLedger(store));
+    addSessionSpendUsd("s1", 9);
+    await flush();
+
+    // Simulate a restart: in-memory cache lost, durable record remains.
+    resetSessionSpendUsd();
+    expect(getSessionSpendUsd("s1")).toBe(0);
+
+    // The new process hydrates from the backend before the cap check.
+    expect(await hydrateSessionSpendUsd("s1")).toBe(9);
+    expect(getSessionSpendUsd("s1")).toBe(9);
+
+    // Cap enforced from the persisted total ($9 of a $10 cap).
+    const within = decideSpendAuthorization({
+      command: "containers.create",
+      risk: "paid",
+      capUsd: 10,
+      alreadySpentUsd: getSessionSpendUsd("s1"),
+    });
+    expect(within.autoAuthorize).toBe(true); // 9 + 0.67 <= 10
+    const over = decideSpendAuthorization({
+      command: "domains.buy",
+      risk: "paid",
+      capUsd: 10,
+      alreadySpentUsd: getSessionSpendUsd("s1"),
+      params: { spendEstimateUsd: 2 },
+    });
+    expect(over.autoAuthorize).toBe(false);
+    expect(over.reason).toBe("over-cap");
+  });
+
+  it("load returns 0 for a missing session or one with no recorded spend", async () => {
+    const store = fakeStore();
+    const ledger = createTaskStoreSpendLedger(store);
+    expect(await ledger.load("missing")).toBe(0);
+    store.sessions.set("s1", { metadata: {} });
+    expect(await ledger.load("s1")).toBe(0);
+  });
+
+  it("save preserves other session metadata", async () => {
+    const store = fakeStore();
+    store.sessions.set("s1", { metadata: { foo: "bar" } });
+    await createTaskStoreSpendLedger(store).save("s1", 3);
+    expect(store.sessions.get("s1")?.metadata).toEqual({
+      foo: "bar",
+      spendUsd: 3,
+    });
+  });
+
+  it("does not persist and hydrate is a no-op when no backend is configured", async () => {
+    configureSpendLedger(null);
+    addSessionSpendUsd("s1", 5);
+    expect(getSessionSpendUsd("s1")).toBe(5);
+    expect(await hydrateSessionSpendUsd("s1")).toBe(5);
+  });
+});
+
+describe("spend ledger concurrency hardening", () => {
+  afterEach(() => {
+    resetSessionSpendUsd();
+    configureSpendLedger(null);
+  });
+
+  it("hydrate never lowers an un-persisted in-memory total (monotonic)", async () => {
+    // Backend whose load lags behind the in-memory ledger — i.e. a debit was
+    // committed this run but its write-through save has not landed yet.
+    configureSpendLedger({ load: async () => 0, save: async () => {} });
+    addSessionSpendUsd("s1", 6);
+    // A concurrent/subsequent hydrate must keep the un-persisted 6, not reset
+    // to the stale durable 0 (which would let the next command re-spend it).
+    expect(await hydrateSessionSpendUsd("s1")).toBe(6);
+    expect(getSessionSpendUsd("s1")).toBe(6);
+  });
+
+  it("hydrate folds in a higher durable total (another instance's spend)", async () => {
+    configureSpendLedger({ load: async () => 12, save: async () => {} });
+    addSessionSpendUsd("s1", 3);
+    expect(await hydrateSessionSpendUsd("s1")).toBe(12);
+  });
+
+  it("save is monotonic: a stale-lower total cannot regress the durable value", async () => {
+    const store = fakeStore();
+    store.sessions.set("s1", { metadata: { spendUsd: 10 } });
+    const ledger = createTaskStoreSpendLedger(store);
+    await ledger.save("s1", 6); // a stale, lower running total
+    expect(store.sessions.get("s1")?.metadata.spendUsd).toBe(10);
+    await ledger.save("s1", 12); // a higher total still advances
+    expect(store.sessions.get("s1")?.metadata.spendUsd).toBe(12);
+  });
+
+  it("serializes concurrent critical sections so the cap is not bypassed", async () => {
+    // Cap $10, each command costs $6: only one may auto-authorize. The durable
+    // load lags (always 0), so only the per-session lock + monotonic hydrate
+    // stop both from reading a pre-commit total of 0 and self-authorizing.
+    configureSpendLedger({
+      load: async () => {
+        await Promise.resolve();
+        return 0;
+      },
+      save: async () => {},
+    });
+    const runCommand = () =>
+      withSessionSpendLock("sLock", async () => {
+        await hydrateSessionSpendUsd("sLock");
+        const decision = decideSpendAuthorization({
+          command: "domains.buy",
+          risk: "paid",
+          capUsd: 10,
+          alreadySpentUsd: getSessionSpendUsd("sLock"),
+          params: { [SPEND_HINT_PARAM]: 6 },
+        });
+        if (decision.autoAuthorize && decision.estimatedCostUsd) {
+          addSessionSpendUsd("sLock", decision.estimatedCostUsd);
+        }
+        return decision.autoAuthorize;
+      });
+
+    const results = await Promise.all([runCommand(), runCommand()]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(getSessionSpendUsd("sLock")).toBe(6);
+  });
+
+  it("a failing critical section does not wedge the next one for that session", async () => {
+    const order: string[] = [];
+    const boom = withSessionSpendLock("sX", async () => {
+      order.push("a");
+      throw new Error("boom");
+    });
+    const next = withSessionSpendLock("sX", async () => {
+      order.push("b");
+      return "ok";
+    });
+    await expect(boom).rejects.toThrow("boom");
+    expect(await next).toBe("ok");
+    expect(order).toEqual(["a", "b"]);
   });
 });

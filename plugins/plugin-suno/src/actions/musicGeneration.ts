@@ -53,21 +53,15 @@ function normalizeSubaction(value: unknown): SunoMusicSubaction | null {
     return null;
 }
 
-function inferSubaction(message: Memory, params: SunoMusicGenerationParams): SunoMusicSubaction {
+export function inferSubaction(params: SunoMusicGenerationParams): SunoMusicSubaction {
     const explicit = normalizeSubaction(params.action ?? params.subaction ?? params.operation);
     if (explicit) return explicit;
-    const text = (message.content?.text ?? '').toLowerCase();
-    if (params.audio_id || /\b(extend|lengthen|longer|add \d+.*seconds?)\b/.test(text)) {
-        return 'extend';
-    }
-    if (
-        params.reference_audio ||
-        params.style ||
-        params.bpm ||
-        params.key ||
-        params.mode ||
-        /\b(custom|style|bpm|key|mode|reference)\b/.test(text)
-    ) {
+    // #10471: no English NL keyword inference. 'extend' requires a specific
+    // audio_id and 'custom_generate' is driven by the custom params (style/bpm/
+    // key/mode/reference_audio) — both structured signals the planner emits in
+    // any language. Default 'generate'.
+    if (params.audio_id) return 'extend';
+    if (params.reference_audio || params.style || params.bpm || params.key || params.mode) {
         return 'custom_generate';
     }
     return 'generate';
@@ -115,7 +109,7 @@ export const sunoGenerateMusicHandler = async (
     callback?: HandlerCallback
 ): Promise<ActionResult> => {
     const params = paramsFromMessageAndOptions(message, options);
-    const subaction = inferSubaction(message, params);
+    const subaction = inferSubaction(params);
 
     let provider: SunoProvider;
     try {

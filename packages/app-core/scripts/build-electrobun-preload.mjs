@@ -59,9 +59,15 @@ const TEMP_PRELOAD_SRC = path.join(
 );
 
 // Try to locate the bun binary
-const bunBin = process.env.BUN_INSTALL
-  ? path.join(process.env.BUN_INSTALL, "bin", "bun")
-  : "bun";
+function resolveBunBin() {
+  if (process.env.BUN_INSTALL) {
+    const candidate = path.join(process.env.BUN_INSTALL, "bin", "bun");
+    if (existsSync(candidate)) return candidate;
+  }
+  return "bun";
+}
+
+const bunBin = resolveBunBin();
 
 function buildLocalEntrypoint() {
   const req = createRequire(path.join(ELECTROBUN_DIR, "package.json"));
@@ -109,8 +115,13 @@ try {
     stdio: "inherit",
     env: process.env,
   });
-} catch {
-  process.exit(1);
+} catch (error) {
+  console.error(
+    `[build-electrobun-preload] failed to build preload bridge: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+  );
+  process.exitCode = 1;
 } finally {
   rmSync(TEMP_DIRECT_RPC_SRC, { force: true });
   rmSync(TEMP_PRELOAD_SRC, { force: true });

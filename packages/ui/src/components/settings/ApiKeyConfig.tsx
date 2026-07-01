@@ -9,7 +9,7 @@ import {
 import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useTimeout } from "../../hooks/useTimeout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
 import { SettingsActionButton } from "./settings-agent-rows";
@@ -181,7 +181,7 @@ export function ApiKeyConfig({
   const { setTimeout } = useTimeout();
   const { configRef, validateAll } = useConfigValidation();
 
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [pluginFieldValues, setPluginFieldValues] = useState<
     Record<string, Record<string, string>>
   >({});

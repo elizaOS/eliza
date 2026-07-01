@@ -13,39 +13,23 @@
  * path; the localStorage Bearer path also works for native cloud connections.
  */
 
-import {
-  clearStoredStewardToken,
-  STEWARD_REFRESH_ENDPOINT,
-  STEWARD_SESSION_ENDPOINT,
-  STEWARD_TOKEN_KEY,
-} from "@elizaos/shared/steward-session-client";
-import {
-  createContext,
-  lazy,
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useRef,
-} from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { decodeJwtPayload } from "../lib/jwt";
+import { isPlaceholderValue, readStoredToken } from "./StewardProviderShared";
 import { resolveBrowserStewardApiUrl } from "./steward-url";
 
-export function isPlaceholderValue(value: string | undefined): boolean {
-  if (!value) return true;
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized.length === 0 ||
-    normalized.includes("your_steward_") ||
-    normalized.includes("your-steward-") ||
-    normalized.includes("replace_with") ||
-    normalized.includes("placeholder")
-  );
-}
-
-function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
-}
+export {
+  clearServerStewardSessionCookies,
+  clearStaleStewardSession,
+  configuredRefreshEndpoint,
+  configuredSessionEndpoint,
+  isPlaceholderValue,
+  LocalStewardAuthContext,
+  type LocalStewardAuthValue,
+  readStoredToken,
+  tokenIsExpired,
+  tokenSecsRemaining,
+} from "./StewardProviderShared";
 
 /**
  * Vite production builds replace `import.meta.env` with a literal containing
@@ -62,144 +46,6 @@ function isPlaywrightTestAuthEnabled(): boolean {
     return true;
   }
   return false;
-}
-
-const ELIZA_CLOUD_COOKIE_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-]);
-const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT =
-  "https://api.elizacloud.ai/api/auth/steward-session";
-const ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT =
-  "https://api.elizacloud.ai/api/auth/steward-refresh";
-
-export type LocalStewardAuthValue = {
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  user: {
-    id: string;
-    email?: string | null;
-    walletAddress?: string;
-    wallet_address?: string;
-  } | null;
-  session: unknown;
-  signOut: () => unknown;
-  getToken: () => unknown;
-  verifyEmailCallback: (
-    token: string,
-    email: string,
-  ) => Promise<{ token: string; refreshToken?: string }>;
-};
-
-export const LocalStewardAuthContext =
-  createContext<LocalStewardAuthValue | null>(null);
-
-function isLocalhostApiBase(value: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(
-    value.trim(),
-  );
-}
-
-function isBrowserOnElizaHost(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase())
-  );
-}
-
-function configuredApiBase(): string | undefined {
-  return (
-    import.meta.env?.VITE_API_URL ||
-    import.meta.env?.NEXT_PUBLIC_API_URL ||
-    (typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_API_URL
-      : undefined)
-  );
-}
-
-export function configuredSessionEndpoint(): string {
-  const apiBase = configuredApiBase();
-  // Reject localhost API bases when running in a browser pointed at a known
-  // Eliza Cloud host so a leaked dev URL can't POST to localhost (blocked by
-  // CSP); fall through to the same-origin / direct api.elizacloud.ai path.
-  if (apiBase && !isPlaceholderValue(apiBase)) {
-    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
-      return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
-    }
-  }
-  if (isBrowserOnElizaHost()) {
-    return ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT;
-  }
-  return STEWARD_SESSION_ENDPOINT;
-}
-
-export function configuredRefreshEndpoint(): string {
-  const apiBase = configuredApiBase();
-  if (apiBase && !isPlaceholderValue(apiBase)) {
-    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
-      return `${trimTrailingSlash(apiBase)}${STEWARD_REFRESH_ENDPOINT}`;
-    }
-  }
-  if (isBrowserOnElizaHost()) {
-    return ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT;
-  }
-  return STEWARD_REFRESH_ENDPOINT;
-}
-
-function stewardSessionClearUrls(): string[] {
-  if (typeof window === "undefined") return [configuredSessionEndpoint()];
-  const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
-  if (isBrowserOnElizaHost()) {
-    urls.add(ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT);
-  }
-  return [...urls];
-}
-
-export function clearServerStewardSessionCookies(): void {
-  for (const url of stewardSessionClearUrls()) {
-    fetch(url, { method: "DELETE", credentials: "include" }).catch(() => {});
-  }
-}
-
-export function readStoredToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(STEWARD_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function tokenIsExpired(token: string): boolean {
-  const payload = decodeJwtPayload(token);
-  // A token we can't read is treated as expired; a readable token without an
-  // `exp` claim never expires locally.
-  if (!payload) return true;
-  if (!payload.exp) return false;
-  return payload.exp * 1000 < Date.now();
-}
-
-export function tokenSecsRemaining(token: string): number | null {
-  const payload = decodeJwtPayload(token);
-  if (!payload?.exp) return null;
-  return payload.exp - Date.now() / 1000;
-}
-
-/**
- * Wipe every trace of an in-browser Steward session — used when the server has
- * rejected a token that locally still looks valid. Best-effort; dispatches
- * `steward-token-sync` so listeners recompute auth state.
- */
-export function clearStaleStewardSession(): void {
-  if (typeof window === "undefined") return;
-  clearStoredStewardToken();
-  clearServerStewardSessionCookies();
-  try {
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
-  } catch {
-    // ignore
-  }
 }
 
 const StewardAuthRuntimeProvider = lazy(
@@ -224,6 +70,77 @@ function shouldLoadStewardRuntime(pathname: string): boolean {
   if (readStoredToken()) return true;
   return STEWARD_RUNTIME_ROUTE_PATTERNS.some((pattern) =>
     pattern.test(pathname),
+  );
+}
+
+/**
+ * Suspense fallback for the lazy `@stwd/*` runtime chunk. It must NOT render the
+ * page children: reaching this branch means `needsStewardRuntime` is true, so the
+ * children depend on Steward auth context (e.g. `AuthorizeContent` calls
+ * `useAuth()`). Rendering them before `StewardProvider` is in the tree throws
+ * "useAuth must be used within a <StewardProvider>" (#10680). Show a neutral
+ * loading state until the runtime resolves, then the real tree renders.
+ */
+function StewardRuntimeLoading() {
+  return (
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      role="status"
+      style={{
+        alignItems: "center",
+        background: "#f8f4ef",
+        color: "#2f261f",
+        display: "flex",
+        justifyContent: "center",
+        minHeight: "100vh",
+        padding: "24px",
+      }}
+    >
+      <span style={{ fontSize: 16 }}>Loading…</span>
+    </main>
+  );
+}
+
+function StewardConfigError() {
+  return (
+    <main
+      aria-labelledby="steward-config-error-title"
+      role="alert"
+      style={{
+        alignItems: "center",
+        background: "#f8f4ef",
+        color: "#2f261f",
+        display: "flex",
+        minHeight: "100vh",
+        padding: "24px",
+      }}
+    >
+      <section
+        style={{
+          border: "1px solid #d8c7b8",
+          borderRadius: 8,
+          margin: "0 auto",
+          maxWidth: 560,
+          padding: "24px",
+        }}
+      >
+        <h1
+          id="steward-config-error-title"
+          style={{
+            fontSize: 24,
+            lineHeight: 1.2,
+            margin: "0 0 12px",
+          }}
+        >
+          Sign-in temporarily unavailable
+        </h1>
+        <p style={{ fontSize: 16, lineHeight: 1.5, margin: 0 }}>
+          Eliza Cloud authentication is not configured for this environment. Set
+          a valid Steward API URL and reload this page.
+        </p>
+      </section>
+    </main>
   );
 }
 
@@ -263,12 +180,18 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  if (!hasValidUrl || !shouldLoadStewardRuntime(location.pathname)) {
+  const needsStewardRuntime = shouldLoadStewardRuntime(location.pathname);
+
+  if (!needsStewardRuntime) {
     return <>{children}</>;
   }
 
+  if (!hasValidUrl) {
+    return <StewardConfigError />;
+  }
+
   return (
-    <Suspense fallback={children}>
+    <Suspense fallback={<StewardRuntimeLoading />}>
       <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
         {children}
       </StewardAuthRuntimeProvider>

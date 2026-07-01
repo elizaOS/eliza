@@ -6,7 +6,7 @@
  * operator runs do not fail on coverage reporter output or macOS file limits.
  * It does not send SMS and does not mutate external systems.
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,23 +14,37 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
 const packagesRoot = path.join(repoRoot, "packages");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 const groups = [
   {
     key: "routing-contracts",
-    label: "known-owner priority, friend-contact routing, and contact recording",
+    label:
+      "known-owner priority, friend-contact routing, and contact recording",
     files: [
-      "cloud-shared/src/lib/services/phone-gateway-devices.test.ts",
-      "cloud-shared/src/lib/services/agent-gateway-router.test.ts",
-      "cloud-shared/src/lib/services/message-router/index.test.ts",
+      "cloud/shared/src/lib/services/phone-gateway-devices.test.ts",
+      "cloud/shared/src/lib/services/agent-gateway-router.test.ts",
+      "cloud/shared/src/lib/services/message-router/index.test.ts",
     ],
   },
   {
     key: "provisioning-handoff",
     label: "$5 starter credit and onboarding transcript handoff",
     files: [
-      "cloud-shared/src/lib/services/eliza-app/onboarding-chat.test.ts",
-      "cloud-shared/src/lib/services/eliza-app/provisioning.test.ts",
+      "cloud/shared/src/lib/services/eliza-app/onboarding-chat.test.ts",
+      "cloud/shared/src/lib/services/eliza-app/provisioning.test.ts",
     ],
   },
   {
@@ -41,7 +55,7 @@ const groups = [
   {
     key: "bluebubbles-webhook",
     label: "BlueBubbles webhook registers/routes the shared gateway device",
-    files: ["cloud-api/webhooks/bluebubbles/route.test.ts"],
+    files: ["cloud/api/webhooks/bluebubbles/route.test.ts"],
   },
   {
     key: "operator-scripts",
@@ -73,7 +87,9 @@ function runGroup(group) {
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
     const status = result.status ?? (result.error ? 1 : 0);
     if (status === 0) {
-      const passLine = output.match(/\d+ pass\s*\n0 fail/)?.[0]?.replace(/\s+/g, " ");
+      const passLine = output
+        .match(/\d+ pass\s*\n0 fail/)?.[0]
+        ?.replace(/\s+/g, " ");
       console.log(
         `[sms-gateway-software] PASS ${group.key}: ${group.label}${passLine ? ` (${passLine})` : ""}`,
       );
@@ -83,7 +99,7 @@ function runGroup(group) {
     console.error(output.trim());
     return false;
   } finally {
-    fs.rmSync(cwd, { recursive: true, force: true });
+    removePathRecursive(cwd);
   }
 }
 

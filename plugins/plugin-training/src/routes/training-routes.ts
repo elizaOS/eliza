@@ -12,17 +12,16 @@ import {
 } from "../core/benchmark-matrix-artifact.js";
 import { runBenchmarkVsCerebras } from "../core/benchmark-vs-cerebras-runner.js";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
+import { stageEliza1Bundle } from "../core/eliza1-bundle-stager.js";
 import {
   runLocalEvalComparison,
   writeEvalComparisonArtifact,
 } from "../core/eval-comparison-artifact.js";
-import { stageEliza1Bundle } from "../core/eliza1-bundle-stager.js";
 import { runFeedGeneration } from "../core/feed-generation-runner.js";
 import { ingestHuggingFaceDataset } from "../core/huggingface-dataset-ingest.js";
 import { createHashAnonymizer } from "../core/privacy-filter.js";
 import { runScenarios } from "../core/scenario-runner.js";
 import { buildTrainingAnalysisIndex } from "../core/training-analysis-index.js";
-import { writeTrainingReadinessReport } from "../core/training-readiness-report.js";
 import {
   buildTrainingCollectionPreflightWithProbes,
   listTrainingCollections,
@@ -41,10 +40,12 @@ import {
   loadRun,
   triggerTraining,
 } from "../core/training-orchestrator.js";
+import { writeTrainingReadinessReport } from "../core/training-readiness-report.js";
 import { resolveHfUploadConfig } from "../core/trajectory-hf-upload.js";
-import type {
-  TrajectoryTaskDatasetExport,
-  TrajectoryTrainingTask,
+import {
+  buildTaskRecord,
+  type TrajectoryTaskDatasetExport,
+  type TrajectoryTrainingTask,
 } from "../core/trajectory-task-datasets.js";
 import { detectAvailableBackends } from "../services/training-backend-check.js";
 import { isNotImplementedError } from "../services/training-service.js";
@@ -89,13 +90,7 @@ function sendServiceError<R>(
 }
 
 function emptyTaskCounters(): Record<TrajectoryTrainingTask, number> {
-  return {
-    should_respond: 0,
-    context_routing: 0,
-    action_planner: 0,
-    response: 0,
-    media_description: 0,
-  };
+  return buildTaskRecord<number>(() => 0);
 }
 
 function getTriggerEntry(
@@ -1397,8 +1392,9 @@ export async function handleTrainingRoutes(
   // === Synthetic dataset generation ===
 
   if (method === "GET" && pathname === "/api/training/blueprints") {
-    const { ALL_BLUEPRINTS, BLUEPRINT_STATS } =
-      await import("../core/scenario-blueprints.js");
+    const { ALL_BLUEPRINTS, BLUEPRINT_STATS } = await import(
+      "../core/scenario-blueprints.js"
+    );
     json(res, {
       count: ALL_BLUEPRINTS.length,
       stats: BLUEPRINT_STATS,
@@ -1437,8 +1433,9 @@ export async function handleTrainingRoutes(
       return true;
     }
 
-    const { auditRuntimeContextCoverage, hasContextAuditGaps } =
-      await import("../core/context-audit.js");
+    const { auditRuntimeContextCoverage, hasContextAuditGaps } = await import(
+      "../core/context-audit.js"
+    );
     const audit = auditRuntimeContextCoverage(
       runtime as AgentRuntime & {
         plugins: NonNullable<AgentRuntime["plugins"]>;
@@ -1490,8 +1487,9 @@ export async function handleTrainingRoutes(
       createCerebrasTeacher,
       createOpenAITeacher,
     } = await import("../core/dataset-generator.js");
-    const { buildRoleplayEpisodes, exportRoleplayEpisodes } =
-      await import("../core/roleplay-trajectories.js");
+    const { buildRoleplayEpisodes, exportRoleplayEpisodes } = await import(
+      "../core/roleplay-trajectories.js"
+    );
 
     const teacher =
       trainProvider === "cerebras" && cerebrasKey
@@ -1579,8 +1577,9 @@ export async function handleTrainingRoutes(
       createCerebrasTeacher,
       createOpenAITeacher,
     } = await import("../core/dataset-generator.js");
-    const { buildRoleplayEpisodes, exportRoleplayEpisodes } =
-      await import("../core/roleplay-trajectories.js");
+    const { buildRoleplayEpisodes, exportRoleplayEpisodes } = await import(
+      "../core/roleplay-trajectories.js"
+    );
 
     const teacher =
       trainProvider === "cerebras" && cerebrasKey
@@ -1737,8 +1736,9 @@ export async function handleTrainingRoutes(
               trajectoryHasRunId(trajectory, requestedRunId),
             )
           : details;
-        const { buildTrajectoryExportBundle } =
-          await import("../core/trajectory-export-bundle.js");
+        const { buildTrajectoryExportBundle } = await import(
+          "../core/trajectory-export-bundle.js"
+        );
         const bundle = await buildTrajectoryExportBundle({
           trajectories: bundleTrajectories,
           outputDir:
@@ -1780,8 +1780,9 @@ export async function handleTrainingRoutes(
         | undefined;
 
       if (body.splitByTask || body.outputDir || body.tasks?.length) {
-        const { exportTrajectoryTaskDatasets } =
-          await import("../core/trajectory-task-datasets.js");
+        const { exportTrajectoryTaskDatasets } = await import(
+          "../core/trajectory-task-datasets.js"
+        );
         const dataset = await exportTrajectoryTaskDatasets(
           details,
           body.outputDir ?? `.tmp/training-trajectory-export-${Date.now()}`,
@@ -1799,8 +1800,9 @@ export async function handleTrainingRoutes(
           summary: dataset.summary,
         };
       } else {
-        const { exportTrajectoriesAsTraining } =
-          await import("../core/dataset-generator.js");
+        const { exportTrajectoriesAsTraining } = await import(
+          "../core/dataset-generator.js"
+        );
         exported = await exportTrajectoriesAsTraining(
           details,
           body.agentName ?? runtime?.character?.name ?? "Agent",
@@ -1869,8 +1871,9 @@ export async function handleTrainingRoutes(
         )
       ).filter((t): t is Trajectory => t !== null);
 
-      const { buildTrajectoryExportBundle } =
-        await import("../core/trajectory-export-bundle.js");
+      const { buildTrajectoryExportBundle } = await import(
+        "../core/trajectory-export-bundle.js"
+      );
       const bundle = await buildTrajectoryExportBundle({
         trajectories: details,
         outputDir:

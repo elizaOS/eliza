@@ -2,6 +2,8 @@ import {
 	createUniqueUuid,
 	hasRoleAccess,
 	type IAgentRuntime,
+	type Memory,
+	type UUID,
 } from "@elizaos/core";
 import type {
 	AutocompleteInteraction,
@@ -412,6 +414,98 @@ const modelCommand: SlashCommand = {
 	},
 };
 
+/** Label on the embedded-app launch link. */
+const APP_LAUNCH_LABEL = "Open Eliza App";
+
+/**
+ * Resolve the embedded-app `/embed` launch URL (#9947). Reads the explicit
+ * `ELIZA_EMBED_URL` if set, otherwise derives `<web base>/embed` from
+ * `ELIZA_APP_URL` / `ELIZA_CLOUD_URL`. Returns `undefined` when nothing is
+ * configured or the resolved URL is not absolute `https`.
+ */
+function resolveEmbedLaunchUrl(runtime: IAgentRuntime): string | undefined {
+	const direct = runtime.getSetting("ELIZA_EMBED_URL");
+	if (typeof direct === "string" && direct.trim().length > 0) {
+		return toHttpsUrl(direct.trim(), "discord");
+	}
+	const base =
+		runtime.getSetting("ELIZA_APP_URL") ||
+		runtime.getSetting("ELIZA_CLOUD_URL");
+	if (typeof base === "string" && base.trim().length > 0) {
+		return toHttpsUrl(`${base.trim().replace(/\/+$/, "")}/embed`, "discord");
+	}
+	return undefined;
+}
+
+/** Return the URL only when it parses as absolute `https`, else `undefined`. */
+function toHttpsUrl(url: string, platform: "discord"): string | undefined {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return undefined;
+	}
+	if (parsed.protocol !== "https:") return undefined;
+	if (parsed.pathname === "/" || parsed.pathname === "") {
+		parsed.pathname = "/embed";
+	}
+	parsed.searchParams.set("platform", platform);
+	return parsed.toString();
+}
+
+/**
+ * `/app` — role-gated embedded-app (Discord Activity) launch. The handler maps
+ * the Discord user to the runtime entity the rest of the pipeline uses and
+ * gates on the core role model: only an ADMIN-or-above member receives the
+ * `/embed` launch link; everyone else gets an ephemeral denial. The launch
+ * itself (minting a scoped session via `verifyEmbedLaunch`) needs live creds
+ * and happens after the user opens the link — this command only emits it.
+ */
+const appCommand: SlashCommand = {
+	name: "app",
+	description: "Launch the embedded Eliza app (admins only)",
+	ephemeral: true,
+	requiredRole: "ADMIN",
+	async execute(interaction, runtime) {
+		const memory: Memory = {
+			id: createUniqueUuid(runtime, `${interaction.id}-app`) as UUID,
+			entityId: createUniqueUuid(runtime, interaction.user.id) as UUID,
+			agentId: runtime.agentId,
+			roomId: createUniqueUuid(
+				runtime,
+				interaction.channelId || interaction.user.id,
+			) as UUID,
+			content: { text: "/app", source: "discord" },
+			createdAt: Date.now(),
+		};
+
+		const elevated = await hasRoleAccess(runtime, memory, "ADMIN");
+		if (!elevated) {
+			await interaction.reply({
+				content:
+					"You need at least **ADMIN** role to launch the embedded Eliza app.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const url = resolveEmbedLaunchUrl(runtime);
+		if (!url) {
+			await interaction.reply({
+				content:
+					"The embedded app is not configured. Set `ELIZA_EMBED_URL` (or `ELIZA_APP_URL`).",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		await interaction.reply({
+			content: `[${APP_LAUNCH_LABEL}](${url})`,
+			ephemeral: true,
+		});
+	},
+};
+
 function registerBuiltins(): void {
 	for (const command of [
 		helpCommand,
@@ -421,6 +515,7 @@ function registerBuiltins(): void {
 		settingsCommand,
 		modelCommand,
 		setupCommand,
+		appCommand,
 	]) {
 		commands.set(command.name, command);
 	}

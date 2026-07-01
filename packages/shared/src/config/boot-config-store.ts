@@ -8,6 +8,8 @@
 
 import type { BrandingConfig } from "./branding.js";
 
+export { syncBrandEnvToEliza, syncElizaEnvToBrand } from "@elizaos/core";
+
 export interface BundledVrmAsset {
   title: string;
   slug: string;
@@ -59,6 +61,8 @@ export interface AppBootConfig {
   cloudApiBase?: string;
   vrmAssets?: BundledVrmAsset[];
   firstRunStyles?: unknown[];
+  /** Default-on shared cloud tier; false is the dedicated-direct kill-switch. */
+  preferSharedCloudTier?: boolean;
   characterCatalog?: CharacterCatalogData;
   envAliases?: readonly (readonly [string, string])[];
   clientMiddleware?: ClientMiddleware;
@@ -67,7 +71,8 @@ export interface AppBootConfig {
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://www.elizacloud.ai",
+  cloudApiBase: "https://elizacloud.ai",
+  preferSharedCloudTier: true,
 };
 
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
@@ -117,56 +122,6 @@ export function setBootConfig(config: AppBootConfig): void {
 
 export function getBootConfig(): AppBootConfig {
   return getBootConfigStore().current;
-}
-
-const mirroredBrandKeys = new Set<string>();
-const mirroredElizaKeys = new Set<string>();
-
-const getProcessEnv = (): Record<string, string | undefined> | null => {
-  try {
-    const p = (globalThis as Record<string, unknown>).process as
-      | { env?: Record<string, string | undefined> }
-      | undefined;
-    return p?.env ?? null;
-  } catch {
-    return null;
-  }
-};
-
-/** Sync brand env vars → Eliza equivalents. Server-side only. */
-export function syncBrandEnvToEliza(
-  aliases: readonly (readonly [string, string])[],
-): void {
-  const env = getProcessEnv();
-  if (!env) return;
-  for (const [brandKey, elizaKey] of aliases) {
-    const value = env[brandKey];
-    if (typeof value === "string") {
-      env[elizaKey] = value;
-      mirroredElizaKeys.add(elizaKey);
-    } else if (mirroredElizaKeys.has(elizaKey)) {
-      delete env[elizaKey];
-      mirroredElizaKeys.delete(elizaKey);
-    }
-  }
-}
-
-/** Sync Eliza env vars → brand equivalents. Server-side only. */
-export function syncElizaEnvToBrand(
-  aliases: readonly (readonly [string, string])[],
-): void {
-  const env = getProcessEnv();
-  if (!env) return;
-  for (const [brandKey, elizaKey] of aliases) {
-    const value = env[elizaKey];
-    if (typeof value === "string") {
-      env[brandKey] = value;
-      mirroredBrandKeys.add(brandKey);
-    } else if (mirroredBrandKeys.has(brandKey)) {
-      delete env[brandKey];
-      mirroredBrandKeys.delete(brandKey);
-    }
-  }
 }
 
 function resolveAssets(

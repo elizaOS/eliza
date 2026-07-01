@@ -15,9 +15,8 @@ import {
   startMockApiServer,
 } from "../electrobun-packaged/mock-api";
 
-type ShellMode = "companion" | "native";
+type ShellMode = "native";
 type ViewId =
-  | "companion"
   | "chat"
   | "stream"
   | "character"
@@ -179,14 +178,6 @@ const viewports: ViewportSpec[] = [
 ];
 
 const views: ViewSpec[] = [
-  {
-    id: "companion",
-    label: "Companion",
-    path: "/companion",
-    shellMode: "companion",
-    lastNativeTab: "chat",
-    readyChecks: [{ selector: '[data-testid="companion-root"]' }],
-  },
   {
     id: "chat",
     label: "Chat",

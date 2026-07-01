@@ -1,8 +1,8 @@
 /**
  * Unit tests for the calendar client methods that `client-calendar.ts` augments
- * onto the `@elizaos/ui` `ElizaClient` prototype. `@elizaos/ui` is mocked so the
- * suite stays node-safe; we assert each method issues the right verb, path, and
- * query/body against a spied `fetch`.
+ * onto the `@elizaos/ui/api` `ElizaClient` prototype. The UI API client is
+ * mocked so the suite stays node-safe; we assert each method issues the right
+ * verb, path, and query/body against a spied `fetch`.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ const { FakeElizaClient } = vi.hoisted(() => {
   return { FakeElizaClient };
 });
 
-vi.mock("@elizaos/ui", () => ({ ElizaClient: FakeElizaClient }));
+vi.mock("@elizaos/ui/api", () => ({ ElizaClient: FakeElizaClient }));
 
 // Import for its side effect: augments FakeElizaClient.prototype.
 import "../src/api/client-calendar.js";
@@ -38,12 +38,14 @@ beforeEach(() => {
 describe("calendar client methods", () => {
   it("getLifeOpsCalendarFeed builds the feed path with a query", async () => {
     await client.getLifeOpsCalendarFeed({
+      side: "owner",
       timeMin: "2026-05-12T00:00:00.000Z",
       timeMax: "2026-05-13T00:00:00.000Z",
       grantId: "g1",
     });
     const path = client.fetch.mock.calls[0][0] as string;
     expect(path).toContain("/api/lifeops/calendar/feed?");
+    expect(path).toContain("side=owner");
     expect(path).toContain("timeMin=");
     expect(path).toContain("grantId=g1");
   });

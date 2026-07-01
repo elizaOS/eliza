@@ -1,3 +1,5 @@
+// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
+// browser barrel, which doesn't reliably re-export this newer component.
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,6 +12,7 @@ import {
   AlertDialogTrigger,
   Button,
   type ChangeSetData,
+  ChatEmptyStateWithRecommendations,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
   type CodingAgentRerunFromEventInput,
@@ -21,11 +24,10 @@ import {
   type CodingAgentTaskSessionRecord,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
-  type CodingAgentTaskTimelineItem,
   type CodingAgentTaskUsageSummary,
   client,
   DiffReviewPanel,
-  useApp,
+  useAppSelectorShallow,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
@@ -43,26 +45,17 @@ import {
   ChevronDown,
   ChevronsUp,
   ChevronUp,
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  CircleDashed,
-  CirclePlay,
   CircleStop,
-  CircleX,
   Copy,
   Gauge,
   GitFork,
   Layers,
-  type LucideIcon,
-  OctagonX,
   PanelRightOpen,
   Pause,
   Play,
   RotateCcw,
   Trash2,
   UserPlus,
-  UserRound,
   X,
 } from "lucide-react";
 import {
@@ -76,11 +69,8 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  paramPriority,
-  TASK_LIST_LIMIT,
-  type TaskPriority,
-} from "./orchestrator-params";
+import { OrchestratorAccountHealthPanel } from "./OrchestratorAccountHealthPanel";
+import { paramPriority, type TaskPriority } from "./orchestrator-params";
 import {
   type ConversationBlock,
   ConversationBlockView,
@@ -88,14 +78,29 @@ import {
 } from "./orchestrator-stream";
 import { buildConversation } from "./orchestrator-stream.helpers";
 import {
+  FILTER_OPTIONS,
+  fallbackTranslate,
+  labelPriority,
+  labelStatus,
+  PlanStepGlyph,
+  PRIORITY_ICON,
+  resolveSenderName,
+  SessionGlyph,
+  type StatusFilter,
+  StatusGlyph,
+  TERMINAL_TASK_STATUSES,
+  type Translate,
+  VerificationGlyph,
+} from "./orchestrator-workbench-glyphs";
+import {
   BackChip,
   SparseWatermark,
   TaskCard,
-  TaskEmptyState,
   TaskMetaChip,
   TaskSearchInput,
   TaskStatusChip,
 } from "./TaskCardList";
+import { useOrchestratorData } from "./use-orchestrator-data";
 import {
   formatClockTime,
   formatCompactNumber,
@@ -105,9 +110,6 @@ import {
   formatUsd,
 } from "./view-format";
 
-type Translate = (key: string, vars?: Record<string, unknown>) => string;
-type TaskStatus = CodingAgentTaskThread["status"];
-type StatusFilter = "all" | TaskStatus;
 type OperatorTab = "input" | "output" | "events" | "usage";
 type DetailDrawerSelection =
   | { kind: "session"; sessionId: string }
@@ -118,361 +120,6 @@ type DetailDrawerSelection =
       eventIds: string[];
       messageIds: string[];
     };
-
-const fallbackTranslate: Translate = (key, vars) =>
-  String(vars?.defaultValue ?? key);
-
-const TIMELINE_PAGE_LIMIT = 50;
-const POLL_INTERVAL_MS = 5_000;
-/** While a task has a working agent, poll its room fast so the conversation,
- * tool calls, and tokens stream in near-live instead of lurching every 5s. */
-const ACTIVE_POLL_INTERVAL_MS = 1_500;
-
-const STATUS_ICON: Record<TaskStatus, LucideIcon> = {
-  open: Circle,
-  active: CirclePlay,
-  waiting_on_user: UserRound,
-  blocked: OctagonX,
-  validating: CircleDashed,
-  done: CircleCheck,
-  failed: CircleX,
-  archived: Archive,
-  interrupted: CircleAlert,
-};
-
-const STATUS_TONE: Record<TaskStatus, string> = {
-  open: "text-muted",
-  active: "text-ok",
-  waiting_on_user: "text-warn",
-  blocked: "text-warn",
-  validating: "text-accent",
-  done: "text-ok",
-  failed: "text-danger",
-  archived: "text-muted",
-  interrupted: "text-warn",
-};
-
-const STATUS_PULSE: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
-  "active",
-  "validating",
-]);
-
-/** Terminal task statuses — the task is settled and no longer mutable
- * through the Edit-group actions (fork, restart, add agent, edit plan)
- * or the priority dropdown. Reopen (when archived) and Delete remain the
- * only meaningful affordances. Mirrors the design doc's
- * {done, failed, archived} set; the `CodingAgentTaskThread["status"]`
- * union has no `"closed"` member. */
-const TERMINAL_TASK_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>([
-  "done",
-  "failed",
-  "archived",
-]);
-
-const PRIORITY_ICON: Record<TaskPriority, LucideIcon | null> = {
-  low: ChevronDown,
-  normal: null,
-  high: ChevronUp,
-  urgent: ChevronsUp,
-};
-
-const SESSION_ICON: Record<string, LucideIcon> = {
-  active: CirclePlay,
-  running: CirclePlay,
-  tool_running: CirclePlay,
-  blocked: OctagonX,
-  idle: Circle,
-  completed: CircleCheck,
-  stopped: CircleStop,
-  error: CircleX,
-  errored: CircleX,
-};
-
-const SESSION_TONE: Record<string, string> = {
-  active: "text-ok",
-  running: "text-ok",
-  tool_running: "text-ok",
-  blocked: "text-warn",
-  idle: "text-muted",
-  completed: "text-ok",
-  stopped: "text-muted",
-  error: "text-danger",
-  errored: "text-danger",
-};
-
-const SESSION_PULSE: ReadonlySet<string> = new Set([
-  "active",
-  "running",
-  "tool_running",
-]);
-
-const VERIFICATION_ICON: Record<
-  CodingAgentTaskArtifactRecord["verificationStatus"],
-  LucideIcon
-> = {
-  passed: CircleCheck,
-  failed: CircleX,
-  pending: CircleDashed,
-  unknown: Circle,
-};
-
-const VERIFICATION_TONE: Record<
-  CodingAgentTaskArtifactRecord["verificationStatus"],
-  string
-> = {
-  passed: "text-ok",
-  failed: "text-danger",
-  pending: "text-warn",
-  unknown: "text-muted",
-};
-
-const PLAN_STEP_ICON: Record<string, LucideIcon> = {
-  done: CircleCheck,
-  completed: CircleCheck,
-  passed: CircleCheck,
-  in_progress: CircleDashed,
-  active: CircleDashed,
-  running: CircleDashed,
-  blocked: OctagonX,
-  failed: CircleX,
-  pending: Circle,
-  todo: Circle,
-};
-
-const PLAN_STEP_TONE: Record<string, string> = {
-  done: "text-ok",
-  completed: "text-ok",
-  passed: "text-ok",
-  in_progress: "text-accent",
-  active: "text-accent",
-  running: "text-accent",
-  blocked: "text-warn",
-  failed: "text-danger",
-  pending: "text-muted",
-  todo: "text-muted",
-};
-
-const FILTER_OPTIONS: StatusFilter[] = [
-  "all",
-  "active",
-  "blocked",
-  "validating",
-  "waiting_on_user",
-  "interrupted",
-  "open",
-  "done",
-  "failed",
-];
-
-const STATUS_LABEL_KEY: Record<TaskStatus, string> = {
-  open: "orchestrator.status.open",
-  active: "orchestrator.status.active",
-  waiting_on_user: "orchestrator.status.waitingOnUser",
-  blocked: "orchestrator.status.blocked",
-  validating: "orchestrator.status.validating",
-  done: "orchestrator.status.done",
-  failed: "orchestrator.status.failed",
-  archived: "orchestrator.status.archived",
-  interrupted: "orchestrator.status.interrupted",
-};
-
-function labelStatus(status: TaskStatus, t: Translate): string {
-  return t(STATUS_LABEL_KEY[status], {
-    defaultValue: status.replace(/_/g, " "),
-  });
-}
-
-function labelPriority(priority: TaskPriority, t: Translate): string {
-  return t(`orchestrator.priority.${priority}`, { defaultValue: priority });
-}
-
-function StatusGlyph({
-  status,
-  paused,
-  t,
-  size = "h-3.5 w-3.5",
-}: {
-  status: TaskStatus;
-  paused?: boolean;
-  t: Translate;
-  size?: string;
-}) {
-  const Icon = STATUS_ICON[status];
-  const label = labelStatus(status, t);
-  const pulse = STATUS_PULSE.has(status) && !paused ? " animate-pulse" : "";
-  return (
-    <span
-      className="inline-flex shrink-0"
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      <Icon className={`${size} ${STATUS_TONE[status]}${pulse}`} aria-hidden />
-    </span>
-  );
-}
-
-function SessionGlyph({
-  status,
-  t,
-  size = "h-3.5 w-3.5",
-}: {
-  status: string;
-  t: Translate;
-  size?: string;
-}) {
-  const Icon = SESSION_ICON[status] ?? Circle;
-  const tone = SESSION_TONE[status] ?? "text-muted";
-  const label = labelSessionStatus(status, t);
-  const pulse = SESSION_PULSE.has(status) ? " animate-pulse" : "";
-  return (
-    <span
-      className="inline-flex shrink-0"
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      <Icon className={`${size} ${tone}${pulse}`} aria-hidden />
-    </span>
-  );
-}
-
-function VerificationGlyph({
-  status,
-  t,
-}: {
-  status: CodingAgentTaskArtifactRecord["verificationStatus"];
-  t: Translate;
-}) {
-  const Icon = VERIFICATION_ICON[status];
-  const label = t(`orchestrator.verification.${status}`, {
-    defaultValue: status,
-  });
-  return (
-    <span
-      className="inline-flex shrink-0"
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      <Icon
-        className={`h-3.5 w-3.5 ${VERIFICATION_TONE[status]}`}
-        aria-hidden
-      />
-    </span>
-  );
-}
-
-function PlanStepGlyph({ status, t }: { status: string; t: Translate }) {
-  const key = status
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-  const Icon = PLAN_STEP_ICON[key] ?? Circle;
-  const tone = PLAN_STEP_TONE[key] ?? "text-muted";
-  const label = t(`orchestrator.planStatus.${key}`, {
-    defaultValue: status.replace(/_/g, " "),
-  });
-  return (
-    <span
-      className="mt-px inline-flex shrink-0"
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      <Icon className={`h-3.5 w-3.5 ${tone}`} aria-hidden />
-    </span>
-  );
-}
-
-const SENDER_LABEL_KEY: Record<
-  CodingAgentTaskMessageRecord["senderKind"],
-  { key: string; fallback: string }
-> = {
-  user: { key: "orchestrator.sender.user", fallback: "You" },
-  orchestrator: {
-    key: "orchestrator.sender.orchestrator",
-    fallback: "Orchestrator",
-  },
-  sub_agent: { key: "orchestrator.sender.subAgent", fallback: "Sub-agent" },
-  system: { key: "orchestrator.sender.system", fallback: "System" },
-};
-
-function labelSender(
-  kind: CodingAgentTaskMessageRecord["senderKind"],
-  t: Translate,
-): string {
-  const meta = SENDER_LABEL_KEY[kind];
-  return t(meta.key, { defaultValue: meta.fallback });
-}
-
-/**
- * Resolve the display name for a timeline message's sender. Sub-agents render
- * their per-session label (the name they were spun up with); the orchestrator
- * renders the running agent's name (usually "Eliza"). Falls back to the generic
- * role label when no specific name is available.
- */
-function resolveSenderName(
-  message: CodingAgentTaskMessageRecord,
-  sessionLabelById: Map<string, string>,
-  mainAgentName: string | undefined,
-  t: Translate,
-): string {
-  if (message.senderKind === "sub_agent") {
-    const label = message.sessionId
-      ? sessionLabelById.get(message.sessionId)?.trim()
-      : undefined;
-    return label || labelSender("sub_agent", t);
-  }
-  if (message.senderKind === "orchestrator") {
-    return mainAgentName?.trim() || labelSender("orchestrator", t);
-  }
-  return labelSender(message.senderKind, t);
-}
-
-function getClientErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
-/**
- * True when the connected agent simply doesn't serve the orchestrator backend
- * (a 404 on its routes) — e.g. a local on-device agent without
- * agent-orchestrator. This is NOT a failure: the workbench runs against
- * whatever agent the client points at, so a cloud or desktop agent that has the
- * backend just works. We surface a calm "connect a cloud/desktop agent" hint
- * instead of a red error in that case.
- */
-function isOrchestratorBackendAbsent(error: unknown): boolean {
-  const status = (error as { status?: unknown } | null)?.status;
-  if (status === 404) return true;
-  const msg = error instanceof Error ? error.message.toLowerCase() : "";
-  return msg === "not found" || msg.includes("404");
-}
-
-/** Merge timeline records by id and return them ascending by timestamp. */
-function mergeById<T extends { id: string; timestamp: number }>(
-  previous: T[],
-  incoming: T[],
-): T[] {
-  if (incoming.length === 0) return previous;
-  const byId = new Map<string, T>();
-  for (const item of previous) byId.set(item.id, item);
-  for (const item of incoming) byId.set(item.id, item);
-  return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
-}
-
-function splitTimelineItems(items: CodingAgentTaskTimelineItem[]): {
-  messages: CodingAgentTaskMessageRecord[];
-  events: CodingAgentTaskEventRecord[];
-} {
-  const messages: CodingAgentTaskMessageRecord[] = [];
-  const events: CodingAgentTaskEventRecord[] = [];
-  for (const item of items) {
-    if (item.kind === "message") messages.push(item.message);
-    else events.push(item.event);
-  }
-  return { messages, events };
-}
 
 interface NormalizedPlan {
   summary: string | null;
@@ -570,10 +217,8 @@ function renderCost(
     : value;
 }
 
-/** A vertical hairline divider between header summary segments (the token kit
- * has no Separator export, so this is a thin local primitive). */
 /** One labeled count in the header summary — a baseline-aligned number + tiny
- * uppercase label, no pill/border (replaces the old cryptic icon chips). */
+ * label, no pill/border. */
 function HeaderStat({
   value,
   label,
@@ -588,15 +233,12 @@ function HeaderStat({
       <span className={`text-sm font-semibold tabular-nums ${toneClass}`}>
         {value}
       </span>
-      <span className="text-2xs uppercase tracking-[0.08em] text-muted">
-        {label}
-      </span>
+      <span className="text-2xs text-muted">{label}</span>
     </span>
   );
 }
 
-/** A borderless inspector section: a small uppercase label over its content,
- * separated from its neighbours by whitespace alone — no card, no border. */
+/** Borderless inspector section separated by whitespace alone. */
 function InspectorSection({
   title,
   action,
@@ -609,9 +251,7 @@ function InspectorSection({
   return (
     <section className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted/70">
-          {title}
-        </h3>
+        <h3 className="text-xs font-medium text-muted">{title}</h3>
         {action}
       </div>
       {children}
@@ -625,6 +265,8 @@ function WorkbenchHeader({
   isMobile,
   onPauseAll,
   onResumeAll,
+  accountsOpen,
+  onToggleAccounts,
   t,
   locale,
 }: {
@@ -633,13 +275,15 @@ function WorkbenchHeader({
   isMobile: boolean;
   onPauseAll: () => void;
   onResumeAll: () => void;
+  accountsOpen: boolean;
+  onToggleAccounts: () => void;
   t: Translate;
   locale?: string;
 }) {
   const title = (
     <div className="flex shrink-0 items-center gap-2">
       <Layers className="h-4 w-4 text-accent" />
-      <span className="text-sm font-semibold tracking-tight text-txt-strong">
+      <span className="text-sm font-semibold text-txt-strong">
         {t("orchestrator.title", { defaultValue: "Orchestrator" })}
       </span>
     </div>
@@ -717,6 +361,23 @@ function WorkbenchHeader({
       group: "orchestrator-header",
       description: "Resume every paused orchestrator task",
     });
+  const accountsLabel = t("orchestrator.toggleAccounts", {
+    defaultValue: "Coding accounts & pool health",
+  });
+  const accountsToggle = (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onToggleAccounts}
+      className="h-7 w-7 shrink-0 p-0"
+      aria-label={accountsLabel}
+      aria-pressed={accountsOpen}
+      title={accountsLabel}
+      data-testid="orchestrator-accounts-toggle"
+    >
+      <Gauge className="h-3.5 w-3.5" />
+    </Button>
+  );
   // Pause-all / resume-all only surface while there is something to act on, so a
   // quiet orchestrator shows no controls at all — the dashboard is read-only
   // until work is in flight. New tasks are started conversationally in chat.
@@ -763,7 +424,10 @@ function WorkbenchHeader({
       <header className="flex flex-col gap-2 bg-bg px-4 py-2.5">
         <div className="flex items-center gap-2">
           {title}
-          {actions}
+          <div className="ml-auto flex items-center gap-1.5">
+            {accountsToggle}
+            {actions}
+          </div>
         </div>
         <div className="flex items-center justify-between gap-2">
           {summary}
@@ -778,6 +442,7 @@ function WorkbenchHeader({
       {title}
       {summary}
       {usageReadout}
+      {accountsToggle}
       {actions}
     </header>
   );
@@ -829,7 +494,7 @@ function FilterSelect({
         ref={ref}
         aria-label={filterLabel}
         data-testid="orchestrator-filter"
-        className="h-9 rounded-xl border-0 bg-bg-accent/30 text-xs"
+        className="h-9 border-0 bg-transparent px-1 text-xs"
         {...agentProps}
       >
         <span className="flex items-center gap-2">
@@ -861,7 +526,7 @@ function FilterSelect({
   );
 }
 
-/** Visual metadata chips for an orchestrator task card. */
+/** Visual metadata for an orchestrator task row. */
 function orchestratorTaskChips(
   thread: CodingAgentTaskThread,
   t: Translate,
@@ -927,7 +592,7 @@ function SubAgentCard({
   const workspace =
     session.repo ||
     session.workdir ||
-    t("orchestrator.noWorkspace", { defaultValue: "No workspace" });
+    t("orchestrator.noWorkspace", { defaultValue: "None" });
   const stopLabel = t("orchestrator.action.stopAgent", {
     defaultValue: "Stop agent",
   });
@@ -951,7 +616,7 @@ function SubAgentCard({
       description: `Stop the "${session.label}" sub-agent`,
     });
   return (
-    <div className="rounded-md bg-bg/40 p-2">
+    <div className="py-1">
       <div className="flex items-center gap-1.5">
         <SessionGlyph status={session.status} t={t} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
@@ -961,7 +626,7 @@ function SubAgentCard({
           ref={inspectRef}
           type="button"
           onClick={() => onInspect(session.sessionId)}
-          className="flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+          className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
           data-testid="orchestrator-inspect-session"
           aria-label={inspectLabel}
           title={inspectLabel}
@@ -975,7 +640,7 @@ function SubAgentCard({
             type="button"
             disabled={busy}
             onClick={() => onStop(session.sessionId)}
-            className="flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+            className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-danger disabled:opacity-50"
             data-testid="orchestrator-stop-agent"
             aria-label={stopLabel}
             {...stopAgentProps}
@@ -998,14 +663,6 @@ function SubAgentCard({
       <div className="mt-0.5 truncate text-2xs text-muted/80">{workspace}</div>
     </div>
   );
-}
-
-/** Sub-agent status labels reuse task-status keys where they overlap and fall
- * back to the raw token otherwise (sessions carry framework-specific states). */
-function labelSessionStatus(status: string, t: Translate): string {
-  return t(`orchestrator.sessionStatus.${status}`, {
-    defaultValue: status.replace(/_/g, " "),
-  });
 }
 
 function PlanSection({ plan, t }: { plan: NormalizedPlan; t: Translate }) {
@@ -1151,7 +808,7 @@ function EditedPlanRestartSection({
           type="button"
           disabled={busy}
           onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
           data-testid="orchestrator-plan-edit-toggle"
           {...toggleAgentProps}
         >
@@ -1326,11 +983,11 @@ function UsageSection({
 }
 
 const FIELD_CLASS =
-  "w-full rounded-sm bg-bg-accent/40 px-2.5 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:bg-bg-accent/70";
+  "w-full border-border/35 border-b bg-transparent px-1 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/60";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="mb-1 block text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+    <span className="mb-1 block text-xs font-medium text-muted">
       {children}
     </span>
   );
@@ -1468,7 +1125,7 @@ function AddAgentForm({
     });
 
   return (
-    <div className="mt-1.5 space-y-1.5 rounded-md bg-bg/40 p-2">
+    <div className="mt-1.5 space-y-1.5">
       <input
         ref={labelRef}
         value={label}
@@ -1588,10 +1245,10 @@ function ControlButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center rounded-md p-1.5 transition-colors disabled:opacity-50 ${
+      className={`flex items-center justify-center p-1.5 transition-colors disabled:opacity-50 ${
         tone === "danger"
-          ? "text-muted hover:bg-danger/10 hover:text-danger"
-          : "text-muted hover:bg-bg-hover/60 hover:text-txt"
+          ? "text-muted hover:text-danger"
+          : "text-muted hover:text-txt"
       }`}
       data-testid={testId}
       {...agentProps}
@@ -1631,7 +1288,7 @@ function RecoveryActionButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-2xs font-semibold text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+      className="inline-flex h-7 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
       {...agentProps}
     >
@@ -1756,14 +1413,14 @@ export function TaskInspector({
     >
       {onClose ? (
         <div className="flex items-center justify-between">
-          <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+          <h3 className="text-xs font-medium text-muted">
             {t("orchestrator.inspector.title", { defaultValue: "Details" })}
           </h3>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="-mr-1 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
             aria-label={closeDetailsLabel}
             data-testid="orchestrator-close-inspector"
             {...closeAgentProps}
@@ -1902,7 +1559,7 @@ export function TaskInspector({
               const next = paramPriority(event.target.value);
               if (next && next !== detail.priority) onSetPriority(next);
             }}
-            className="rounded-md bg-bg-accent/30 px-2 py-1 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+            className="border-border/35 border-b bg-transparent px-1 py-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
             data-testid="orchestrator-priority-select"
             {...priorityAgentProps}
           >
@@ -2097,7 +1754,7 @@ function JsonBlock({
     typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return (
     <pre
-      className="max-h-72 overflow-auto rounded-md bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
+      className="max-h-72 overflow-auto bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
       data-testid="orchestrator-detail-json"
     >
       {compactText(text)}
@@ -2144,7 +1801,7 @@ function OperatorTabs({
   ];
   return (
     <div
-      className="flex rounded-md bg-bg/40 p-0.5"
+      className="flex gap-2"
       role="tablist"
       aria-label={t("orchestrator.detail.tabsLabel", {
         defaultValue: "Detail tabs",
@@ -2157,10 +1814,8 @@ function OperatorTabs({
           role="tab"
           aria-selected={active === tab.id}
           onClick={() => onSelect(tab.id)}
-          className={`flex-1 rounded px-2 py-1 text-2xs font-semibold uppercase tracking-[0.08em] transition-colors ${
-            active === tab.id
-              ? "bg-bg-hover text-txt-strong"
-              : "text-muted hover:bg-bg-hover/50 hover:text-txt"
+          className={`flex-1 px-1 py-1 text-xs font-medium transition-colors ${
+            active === tab.id ? "text-accent" : "text-muted hover:text-txt"
           }`}
         >
           {tab.label}
@@ -2358,9 +2013,7 @@ function OperatorDrawerShell({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="truncate text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-            {title}
-          </h3>
+          <h3 className="truncate text-xs font-medium text-muted">{title}</h3>
           <p className="mt-0.5 truncate text-xs-tight font-medium text-txt">
             {subtitle}
           </p>
@@ -2368,7 +2021,7 @@ function OperatorDrawerShell({
         <button
           type="button"
           onClick={onClose}
-          className="-mr-1 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+          className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
           aria-label={closeLabel}
           data-testid="orchestrator-close-operator-detail"
         >
@@ -2420,10 +2073,7 @@ function EventList({
         if (item.kind === "message") {
           const message = item.record;
           return (
-            <div
-              key={`message-${message.id}`}
-              className="rounded-md bg-bg/40 p-2"
-            >
+            <div key={`message-${message.id}`} className="py-1">
               <div className="mb-1 flex items-center gap-2 text-2xs text-muted">
                 <span className="font-semibold text-txt">
                   {message.senderKind}
@@ -2444,7 +2094,7 @@ function EventList({
         }
         const event = item.record;
         return (
-          <div key={`event-${event.id}`} className="rounded-md bg-bg/40 p-2">
+          <div key={`event-${event.id}`} className="py-1">
             <div className="mb-1 flex items-center gap-2 text-2xs text-muted">
               <span className="font-semibold text-txt">
                 {event.eventType.replace(/_/g, " ")}
@@ -2711,7 +2361,7 @@ function OperatorDetailDrawer({
       );
     } else if (block?.kind === "user") {
       body = (
-        <pre className="whitespace-pre-wrap rounded-md bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+        <pre className="whitespace-pre-wrap bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
           {block.content}
         </pre>
       );
@@ -2791,13 +2441,13 @@ function OperatorDetailDrawer({
       );
     } else if (block?.kind === "agent" || block?.kind === "user") {
       body = (
-        <pre className="whitespace-pre-wrap rounded-md bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+        <pre className="whitespace-pre-wrap bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
           {compactText(block.content)}
         </pre>
       );
     } else if (block?.kind === "reasoning") {
       body = (
-        <pre className="whitespace-pre-wrap rounded-md bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
+        <pre className="whitespace-pre-wrap bg-bg/60 px-2.5 py-1.5 text-xs-tight text-txt">
           {compactText(block.text)}
         </pre>
       );
@@ -2831,7 +2481,7 @@ function OperatorDetailDrawer({
       onClose={onClose}
     >
       <ErrorFirstBanner text={errorText} />
-      <div className="space-y-1.5 rounded-md bg-bg/40 p-2">
+      <div className="space-y-1.5">
         {session ? (
           <>
             <DetailRow
@@ -2855,11 +2505,8 @@ function OperatorDetailDrawer({
         ) : null}
       </div>
       {recoveryActions.length > 0 ? (
-        <div
-          className="space-y-1.5 rounded-md bg-bg/40 p-2"
-          data-testid="orchestrator-detail-recovery"
-        >
-          <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+        <div className="space-y-1.5" data-testid="orchestrator-detail-recovery">
+          <div className="text-xs font-medium text-muted">
             {label("recovery", "Recovery")}
           </div>
           <div className="flex flex-wrap gap-1.5">{recoveryActions}</div>
@@ -2989,7 +2636,7 @@ function TimelineHeader({
             ref={backRef}
             type="button"
             onClick={onBack}
-            className="-ml-1 shrink-0 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            className="-ml-1 shrink-0 p-1 text-muted transition-colors hover:text-txt"
             aria-label={backLabel}
             data-testid="orchestrator-back"
             {...backAgentProps}
@@ -3002,7 +2649,7 @@ function TimelineHeader({
             ref={detailsRef}
             type="button"
             onClick={onOpenInspector}
-            className="shrink-0 rounded-md p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            className="shrink-0 p-1 text-muted transition-colors hover:text-txt"
             aria-label={detailsLabel}
             title={detailsLabel}
             data-testid="orchestrator-open-inspector"
@@ -3028,7 +2675,7 @@ function TimelineHeader({
         ref={detailsRef}
         type="button"
         onClick={onOpenInspector}
-        className="shrink-0 rounded-md p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+        className="shrink-0 p-1 text-muted transition-colors hover:text-txt"
         aria-label={detailsLabel}
         title={detailsLabel}
         data-testid="orchestrator-open-inspector"
@@ -3041,49 +2688,67 @@ function TimelineHeader({
 }
 
 export function OrchestratorWorkbench() {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const locale =
-    typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
-  const copyToClipboard = app?.copyToClipboard;
+  const {
+    t: appT,
+    uiLanguage,
+    copyToClipboard,
+    agentStatus,
+    setTab,
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    uiLanguage: s.uiLanguage,
+    copyToClipboard: s.copyToClipboard,
+    agentStatus: s.agentStatus,
+    setTab: s.setTab,
+  }));
+  const t = appT ?? fallbackTranslate;
+  const locale = typeof uiLanguage === "string" ? uiLanguage : undefined;
   const mainAgentName =
-    typeof app?.agentStatus?.agentName === "string"
-      ? app.agentStatus.agentName
+    typeof agentStatus?.agentName === "string"
+      ? agentStatus.agentName
       : undefined;
 
-  const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(
-    null,
-  );
-  const [tasks, setTasks] = useState<CodingAgentTaskThread[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(
     readInitialTaskId,
   );
-  const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(
-    null,
-  );
-  const [messages, setMessages] = useState<CodingAgentTaskMessageRecord[]>([]);
-  const [events, setEvents] = useState<CodingAgentTaskEventRecord[]>([]);
-  const [timelineCursor, setTimelineCursor] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [addAgentOpen, setAddAgentOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [detailDrawer, setDetailDrawer] =
     useState<DetailDrawerSelection | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [mutating, setMutating] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // The connected agent doesn't serve the orchestrator backend (local on-device
-  // agent without it) — shown as a calm hint, not a red error.
-  const [backendAbsent, setBackendAbsent] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const isMobile = useIsMobile();
   const deferredSearch = useDeferredValue(search.trim());
-  const detailReqRef = useRef(0);
   const selectedIdRef = useRef<string | null>(selectedId);
   selectedIdRef.current = selectedId;
+
+  // The live-data layer (status/tasks/detail/timeline + fetch / poll / SSE /
+  // mutation) lives in useOrchestratorData; this component owns the UI state
+  // (selection, filters, drawers) and feeds it in.
+  const {
+    status,
+    tasks,
+    detail,
+    messages,
+    events,
+    timelineCursor,
+    loading,
+    mutating,
+    loadError,
+    backendAbsent,
+    actionError,
+    runMutation,
+    loadOlderTimeline,
+  } = useOrchestratorData({
+    selectedId,
+    showArchived,
+    statusFilter,
+    deferredSearch,
+    t,
+  });
 
   // The conversation sticks to the newest entry, but only while the reader is
   // already near the bottom — scrolling up to read history is never yanked by
@@ -3096,201 +2761,17 @@ export function OrchestratorWorkbench() {
       el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
-  const fetchTasksAndStatus = useCallback(
-    async (silent: boolean) => {
-      if (!silent) setLoading(true);
-      try {
-        const [nextStatus, nextTasks] = await Promise.all([
-          client.getOrchestratorStatus(),
-          client.listCodingAgentTaskThreads({
-            includeArchived: showArchived,
-            status: statusFilter === "all" ? undefined : statusFilter,
-            search: deferredSearch || undefined,
-            limit: TASK_LIST_LIMIT,
-          }),
-        ]);
-        setStatus(nextStatus);
-        setTasks(nextTasks);
-        setLoadError(null);
-        setBackendAbsent(false);
-      } catch (error) {
-        if (!silent) {
-          if (isOrchestratorBackendAbsent(error)) {
-            // Not a failure — this agent just doesn't run the orchestrator
-            // backend. Connect a cloud or desktop agent and it works.
-            setBackendAbsent(true);
-            setLoadError(null);
-          } else {
-            setBackendAbsent(false);
-            setLoadError(
-              getClientErrorMessage(
-                error,
-                t("orchestrator.loadFailed", {
-                  defaultValue: "Failed to load orchestrator state.",
-                }),
-              ),
-            );
-          }
-        }
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [deferredSearch, showArchived, statusFilter, t],
-  );
-
-  const fetchDetail = useCallback(async (id: string, reset: boolean) => {
-    const token = ++detailReqRef.current;
-    const [nextDetail, timelinePage] = await Promise.all([
-      client.getCodingAgentTaskThread(id),
-      client.listOrchestratorTaskTimeline(id, { limit: TIMELINE_PAGE_LIMIT }),
-    ]);
-    // Discard if a newer fetch superseded this one, or if the selection moved on
-    // while in flight — otherwise a non-reset poll/refresh could merge one task's
-    // transcript into another task's room (cross-task contamination).
-    if (token !== detailReqRef.current || id !== selectedIdRef.current) return;
-    const timeline = splitTimelineItems(timelinePage.items);
-    setDetail(nextDetail);
-    if (reset) {
-      setMessages(mergeById([], timeline.messages));
-      setEvents(mergeById([], timeline.events));
-      setTimelineCursor(timelinePage.nextCursor);
-    } else {
-      setMessages((prev) => mergeById(prev, timeline.messages));
-      setEvents((prev) => mergeById(prev, timeline.events));
-      setTimelineCursor((prev) => prev ?? timelinePage.nextCursor);
-    }
-  }, []);
-
+  // Reset transient per-task UI (mobile inspector drawer, add-agent form, the
+  // detail drawer) and re-pin to bottom whenever the selection changes, so a
+  // freshly opened task starts clean. The room itself is loaded by the data
+  // layer (useOrchestratorData) reacting to the same selectedId.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on selection change
   useEffect(() => {
-    void fetchTasksAndStatus(false);
-    const timer = window.setInterval(
-      () => void fetchTasksAndStatus(true),
-      POLL_INTERVAL_MS,
-    );
-    return () => window.clearInterval(timer);
-  }, [fetchTasksAndStatus]);
-
-  const detailPollMs =
-    detail !== null &&
-    (detail.activeSessionCount > 0 ||
-      detail.status === "active" ||
-      detail.status === "validating")
-      ? ACTIVE_POLL_INTERVAL_MS
-      : POLL_INTERVAL_MS;
-
-  useEffect(() => {
-    // Reset transient per-task UI (mobile inspector drawer, add-agent form)
-    // and load the room whenever the selection changes, so a freshly opened
-    // task starts clean and scrolled to its latest activity.
     setInspectorOpen(false);
     setAddAgentOpen(false);
     setDetailDrawer(null);
     stickToBottomRef.current = true;
-    if (!selectedId) {
-      setDetail(null);
-      setMessages([]);
-      setEvents([]);
-      setTimelineCursor(null);
-      return;
-    }
-    void fetchDetail(selectedId, true).catch((err: unknown) => {
-      console.error("[OrchestratorWorkbench] fetchDetail (initial)", { err });
-    });
-  }, [selectedId, fetchDetail]);
-
-  useEffect(() => {
-    // Reconcile poll — the safety net. The SSE stream below drives near-live
-    // updates; this only covers a dropped/absent stream (reconnect fallback).
-    if (!selectedId) return;
-    const timer = window.setInterval(
-      () =>
-        void fetchDetail(selectedId, false).catch((err: unknown) => {
-          console.error("[OrchestratorWorkbench] fetchDetail (poll)", { err });
-        }),
-      detailPollMs,
-    );
-    return () => window.clearInterval(timer);
-  }, [selectedId, detailPollMs, fetchDetail]);
-
-  // Coalesce a burst of change pings into one tail refetch per ~150ms window,
-  // so live token streaming doesn't trigger a fetch storm.
-  const refetchTimerRef = useRef<number | null>(null);
-  const scheduleRefetch = useCallback(() => {
-    if (refetchTimerRef.current != null) return;
-    refetchTimerRef.current = window.setTimeout(() => {
-      refetchTimerRef.current = null;
-      const current = selectedIdRef.current;
-      if (current)
-        void fetchDetail(current, false).catch((err: unknown) => {
-          console.error("[OrchestratorWorkbench] fetchDetail (debounced)", {
-            err,
-          });
-        });
-    }, 150);
-  }, [fetchDetail]);
-
-  useEffect(() => {
-    // Live push: subscribe to the task's SSE stream; each "change" ping
-    // schedules a debounced tail refetch, so messages/tool-calls/status appear
-    // ~instantly instead of on the poll boundary.
-    if (!selectedId) return;
-    const unsubscribe = client.streamOrchestratorTask(
-      selectedId,
-      scheduleRefetch,
-    );
-    return () => {
-      unsubscribe();
-      if (refetchTimerRef.current != null) {
-        window.clearTimeout(refetchTimerRef.current);
-        refetchTimerRef.current = null;
-      }
-    };
-  }, [selectedId, scheduleRefetch]);
-
-  const runMutation = useCallback(
-    async (fn: () => Promise<unknown>) => {
-      setMutating(true);
-      setActionError(null);
-      try {
-        await fn();
-        await fetchTasksAndStatus(true);
-        const current = selectedIdRef.current;
-        if (current)
-          await fetchDetail(current, false).catch((err: unknown) => {
-            console.error("[OrchestratorWorkbench] fetchDetail (mutation)", {
-              err,
-            });
-          });
-      } catch (error) {
-        setActionError(
-          getClientErrorMessage(
-            error,
-            t("orchestrator.actionFailed", { defaultValue: "Action failed." }),
-          ),
-        );
-      } finally {
-        setMutating(false);
-      }
-    },
-    [fetchTasksAndStatus, fetchDetail, t],
-  );
-
-  const loadOlderTimeline = useCallback(async () => {
-    const current = selectedIdRef.current;
-    if (!current || !timelineCursor) return;
-    const page = await client.listOrchestratorTaskTimeline(current, {
-      cursor: timelineCursor,
-      limit: TIMELINE_PAGE_LIMIT,
-    });
-    // The selection may have moved on during the await — don't merge task A's
-    // history into task B (mirrors the fetchDetail guard).
-    if (current !== selectedIdRef.current) return;
-    const timeline = splitTimelineItems(page.items);
-    setMessages((prev) => mergeById(prev, timeline.messages));
-    setEvents((prev) => mergeById(prev, timeline.events));
-    setTimelineCursor(page.nextCursor);
-  }, [timelineCursor]);
+  }, [selectedId]);
 
   // Stop every still-running coding agent on the open task — the prominent
   // in-conversation interrupt (parity with Claude Code / Codex / opencode),
@@ -3517,9 +2998,20 @@ export function OrchestratorWorkbench() {
         onResumeAll={() =>
           runMutation(() => client.resumeAllOrchestratorTasks())
         }
+        accountsOpen={accountsOpen}
+        onToggleAccounts={() => setAccountsOpen((prev) => !prev)}
         t={t}
         locale={locale}
       />
+
+      {accountsOpen ? (
+        <div className="border-b border-border/40 px-4 py-2">
+          <OrchestratorAccountHealthPanel
+            t={t}
+            onConnect={() => setTab?.("settings")}
+          />
+        </div>
+      ) : null}
 
       {backendAbsent ? (
         <div className="px-4 py-1.5 text-2xs text-muted">
@@ -3547,60 +3039,77 @@ export function OrchestratorWorkbench() {
             className="relative flex flex-1 flex-col gap-3 px-4 pb-28 pt-4"
             data-testid="orchestrator-rail"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <TaskSearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder={searchLabel}
-                inputRef={searchRef}
-                testId="orchestrator-search"
-                className="min-w-[12rem] flex-1"
-                agentProps={searchAgentProps}
-              />
-              <div className="flex items-center gap-2">
-                <div className="w-40">
-                  <FilterSelect
-                    status={status}
-                    active={statusFilter}
-                    onSelect={setStatusFilter}
-                    t={t}
-                  />
+            {tasks.length > 0 || loading ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <TaskSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder={searchLabel}
+                  inputRef={searchRef}
+                  testId="orchestrator-search"
+                  className="min-w-[12rem] flex-1"
+                  agentProps={searchAgentProps}
+                />
+                <div className="flex items-center gap-2">
+                  <div className="w-40">
+                    <FilterSelect
+                      status={status}
+                      active={statusFilter}
+                      onSelect={setStatusFilter}
+                      t={t}
+                    />
+                  </div>
+                  <button
+                    ref={showArchivedRef}
+                    type="button"
+                    onClick={() => setShowArchived((value) => !value)}
+                    aria-pressed={showArchived}
+                    className={`inline-flex h-9 items-center gap-2 px-2 text-xs font-medium transition-colors ${
+                      showArchived ? "text-accent" : "text-muted hover:text-txt"
+                    }`}
+                    data-testid="orchestrator-show-archived"
+                    {...showArchivedAgentProps}
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    {showArchivedLabel}
+                  </button>
                 </div>
-                <button
-                  ref={showArchivedRef}
-                  type="button"
-                  onClick={() => setShowArchived((value) => !value)}
-                  aria-pressed={showArchived}
-                  className={`inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium transition-colors ${
-                    showArchived
-                      ? "bg-accent-subtle text-accent"
-                      : "bg-bg-accent/30 text-muted hover:text-txt"
-                  }`}
-                  data-testid="orchestrator-show-archived"
-                  {...showArchivedAgentProps}
-                >
-                  <Archive className="h-3.5 w-3.5" />
-                  {showArchivedLabel}
-                </button>
               </div>
-            </div>
+            ) : null}
 
             {tasks.length === 0 ? (
               loading ? (
                 <p className="p-2 text-sm text-muted">
                   {t("orchestrator.loadingTasks", {
-                    defaultValue: "Loading tasks…",
+                    defaultValue: "Loading",
                   })}
                 </p>
               ) : (
-                <TaskEmptyState
-                  title={t("orchestrator.empty.title", {
-                    defaultValue: "No tasks yet",
-                  })}
-                  hint={t("orchestrator.empty.hint", {
-                    defaultValue:
-                      "Ask me to start a coding task and it will appear here.",
-                  })}
+                <ChatEmptyStateWithRecommendations
+                  icon={Layers}
+                  testId="task-empty-state"
+                  title={
+                    backendAbsent
+                      ? t("orchestrator.empty.setupTitle", {
+                          defaultValue:
+                            "Connect a cloud or desktop agent, then describe a task in the chat below.",
+                        })
+                      : t("orchestrator.empty.title", {
+                          defaultValue:
+                            "Describe a task in the chat below and it will appear here.",
+                        })
+                  }
+                  recommendations={[
+                    t("orchestrator.empty.rec.fixBug", {
+                      defaultValue: "Ask Eliza to fix a bug",
+                    }),
+                    t("orchestrator.empty.rec.tests", {
+                      defaultValue: "Ask Eliza to write tests for a module",
+                    }),
+                    t("orchestrator.empty.rec.feature", {
+                      defaultValue: "Ask Eliza to build a small feature",
+                    }),
+                  ]}
                 />
               )
             ) : (
@@ -3627,9 +3136,15 @@ export function OrchestratorWorkbench() {
 
         {/* Task room — full-pane detail, entered by clicking a card. */}
         <main
-          className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg-accent/10"
+          className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg"
           data-testid="orchestrator-timeline"
-          style={selectedId ? undefined : HIDDEN_STYLE}
+          // Keep a real minimum height in the one-column desktop layout: stacked
+          // below the (often tall) inspector, a basis-0 flex-1 timeline would
+          // otherwise collapse toward zero and bleed its header over the
+          // inspector's controls. A definite floor makes the outer container
+          // scroll through both panels instead. Inline (the view bundle ships no
+          // CSS of its own). Hidden entirely until a task room is open.
+          style={selectedId ? { minHeight: "20rem" } : HIDDEN_STYLE}
         >
           {detail ? (
             <>
@@ -3655,7 +3170,7 @@ export function OrchestratorWorkbench() {
                       ref={loadOlderRef}
                       type="button"
                       onClick={() => void loadOlderTimeline()}
-                      className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
+                      className="flex items-center gap-1 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
                       data-testid="orchestrator-load-older"
                       aria-label={loadOlderLabel}
                       {...loadOlderAgentProps}
@@ -3679,17 +3194,15 @@ export function OrchestratorWorkbench() {
                     return (
                       <div
                         key={block.key}
-                        className={`group flex gap-1.5 rounded-md transition-colors ${
-                          selected
-                            ? "bg-accent-subtle ring-1 ring-accent/60"
-                            : "hover:bg-bg-hover/30"
+                        className={`group flex gap-1.5 transition-colors ${
+                          selected ? "text-accent" : "hover:bg-bg-hover/30"
                         }`}
                         data-testid="orchestrator-conversation-block"
                       >
                         <button
                           type="button"
                           onClick={() => handleSelectBlock(block)}
-                          className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted opacity-0 transition-colors hover:bg-bg-hover/60 hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                          className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center text-muted opacity-0 transition-colors hover:text-txt focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                           aria-label={t("orchestrator.action.inspectBlock", {
                             defaultValue: `Inspect ${blockTitle(block, t)}`,
                           })}
@@ -3728,14 +3241,14 @@ export function OrchestratorWorkbench() {
                     type="button"
                     onClick={handleStopActive}
                     disabled={mutating}
-                    className="flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs text-txt transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                    className="flex items-center gap-1 px-1 py-0.5 text-2xs text-txt transition-colors hover:text-danger disabled:opacity-50"
                     data-testid="orchestrator-stop-active"
                     aria-label={stopLabel}
                     {...stopActiveAgentProps}
                   >
                     <CircleStop className="h-3 w-3" />
                     {stopLabel}
-                    <kbd className="ml-0.5 rounded bg-bg-hover/60 px-1 text-[0.9em] text-muted">
+                    <kbd className="ml-0.5 px-1 text-[0.9em] text-muted">
                       Esc
                     </kbd>
                   </button>

@@ -31,7 +31,11 @@ import {
   startMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
+// Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
+// is armed, and it refuses to arm in production — see crash-injection.ts.
+import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
+import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import {
   type PluginResolutionPhase,
@@ -42,6 +46,7 @@ import {
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
 
 export {
   CHANNEL_PLUGIN_MAP,
@@ -68,15 +73,14 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-// `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-companion` are NOT
-// eagerly imported here. Both packages transitively import from
-// `@elizaos/agent` (e.g. `hasOwnerAccess` from this package's barrel) — a
-// top-level static import would form a module-init cycle that leaves named
-// exports (like a plugin's actions array) as `undefined`, crashing
-// `runtime.registerPlugin` when it iterates `plugin.actions`.
+// `@elizaos/plugin-personal-assistant` is NOT eagerly imported here. It
+// transitively imports from `@elizaos/agent` (e.g. `hasOwnerAccess` from this
+// package's barrel) — a top-level static import would form a module-init cycle
+// that leaves named exports (like a plugin's actions array) as `undefined`,
+// crashing `runtime.registerPlugin` when it iterates `plugin.actions`.
 //
-// Both still resolve at plugin-load time via headless dynamic-import
-// entrypoints in `plugin-resolver.ts`, after the static module graph has fully
+// It still resolves at plugin-load time via a headless dynamic-import
+// entrypoint in `plugin-resolver.ts`, after the static module graph has fully
 // evaluated, so the cycle never forms and browser-only UI exports stay out of
 // the agent process.
 // Keep this here as a single sentinel: if we ever need a static reference,
@@ -89,6 +93,7 @@ import {
   type Component,
   createBasicCapabilitiesPlugin,
   createMessageMemory,
+  drainAppRoutePluginLoaders,
   type Entity,
   type LogEntry,
   logger,
@@ -111,6 +116,7 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import type { Vault } from "@elizaos/vault";
 
 type AccountPoolCredentialsOptions = {
@@ -169,33 +175,8 @@ import {
   resolvePrimaryModel,
 } from "./model-resolution.ts";
 
-const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string =
-  "@elizaos/app-steward/services/steward-evm-bridge";
-
-type ElizaMakerModule = {
-  initializeOGCode?: () => void;
-};
-
-type StewardEvmBridgeModule = {
-  stewardEvmPreBoot?: (runtime: AgentRuntime) => Promise<void> | void;
-  stewardEvmPostBoot?: (runtime: AgentRuntime) => Promise<void> | void;
-};
-
 type E2BCapabilityRouterModule =
   typeof import("../services/e2b-capability-router.ts");
-
-async function loadElizaMakerModule(): Promise<ElizaMakerModule> {
-  return (await import(
-    /* @vite-ignore */ ELIZAMAKER_MODULE
-  )) as ElizaMakerModule;
-}
-
-async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
-  return (await import(
-    /* @vite-ignore */ STEWARD_EVM_BRIDGE_MODULE
-  )) as StewardEvmBridgeModule;
-}
 
 async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModule> {
   const moduleId = "../services/e2b-capability-router.ts";
@@ -208,6 +189,7 @@ import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.ts";
+import { listViews } from "../api/views-registry.ts";
 import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
 import {
   configFileExists,
@@ -267,7 +249,14 @@ import {
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
+import {
+  installDatabaseTrajectoryLogger,
+  shouldEnableTrajectoryLoggingByDefault,
+} from "./trajectory-persistence.ts";
+import {
+  validateViewActionMap,
+  validateViewCoverage,
+} from "./view-action-affinity.ts";
 
 function isPluginSqlResolutionError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
@@ -340,6 +329,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     }
     if (packageName === "@elizaos/plugin-coding-tools") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
+    }
+    if (packageName === "@elizaos/plugin-pty") {
+      return await import(/* @vite-ignore */ "@elizaos/plugin-pty");
     }
     if (packageName === "@elizaos/plugin-ollama") {
       return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
@@ -488,6 +480,15 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       load: () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
     },
     {
+      // Opt-in only: dormant unless a character lists @elizaos/plugin-pty (no
+      // autoEnable). Registers PTY_SERVICE so the web terminal can drive a real
+      // interactive CLI (eliza-code on Eliza Cloud/cerebras).
+      packageName: "@elizaos/plugin-pty",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-pty"),
+    },
+    {
       packageName: "@elizaos/plugin-commands",
       phase: "deferred",
       required: false,
@@ -533,7 +534,13 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
       packageName: "@elizaos/plugin-gitpathologist",
       phase: "deferred",
       required: false,
-      load: () => getOptionalPlugin("@elizaos/plugin-gitpathologist"),
+      // Not in the mobile bundle — attempting the import there hangs the full
+      // 30s deferred-plugin timeout before being skipped. Skip it up front on
+      // android/ios (it's a desktop dev tool, already gated in plugin-collector).
+      load: () =>
+        isMobilePlatform()
+          ? Promise.resolve(null)
+          : getOptionalPlugin("@elizaos/plugin-gitpathologist"),
     },
   ];
 
@@ -811,7 +818,10 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
       try {
         const runtime = current?.getRuntime();
         if (runtime) {
-          await shutdownRuntime(runtime, "signal shutdown");
+          // SIGINT/SIGTERM is an interactive/dev teardown — use the capped fast
+          // path so the process exits promptly instead of waiting on in-flight
+          // deferred service starts or an embedding-queue flush (#9605).
+          await shutdownRuntime(runtime, "signal shutdown", { fast: true });
         }
       } catch (err) {
         logger.warn(`[eliza] Error during shutdown: ${formatError(err)}`);
@@ -901,7 +911,7 @@ export async function configureLocalEmbeddingPlugin(
   );
   const detectedPreset = detectEmbeddingPreset();
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
-    384, 512, 768, 1024, 1536, 3072,
+    384, 512, 768, 1024, 1536, 2048, 3072,
   ]);
 
   const normalizeEmbeddingDimensions = (
@@ -1069,6 +1079,12 @@ function trimEnvString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function trimCloudCredential(value: unknown): string | undefined {
+  const trimmed = trimEnvString(value);
+  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return undefined;
+  return trimmed;
+}
+
 type MutableConfigEnv = Record<string, unknown> & {
   vars?: Record<string, unknown>;
 };
@@ -1113,6 +1129,221 @@ function readEffectiveEnvValue(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
   return trimEnvString(env[key]) ?? readConfigEnvValue(config, key);
+}
+
+function readEffectiveCloudCredential(
+  config: ElizaConfig,
+  key: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  return (
+    trimCloudCredential(env[key]) ??
+    trimCloudCredential(readConfigEnvValue(config, key))
+  );
+}
+
+function isProvisionedCloudContainer(env: NodeJS.ProcessEnv = process.env) {
+  return env.ELIZA_CLOUD_PROVISIONED === "1";
+}
+
+const CLOUD_ROUTING_MODEL_ENV: ReadonlyArray<[string, string]> = [
+  ["ELIZAOS_CLOUD_NANO_MODEL", "nanoModel"],
+  ["ELIZAOS_CLOUD_SMALL_MODEL", "smallModel"],
+  ["ELIZAOS_CLOUD_MEDIUM_MODEL", "mediumModel"],
+  ["ELIZAOS_CLOUD_LARGE_MODEL", "largeModel"],
+  ["ELIZAOS_CLOUD_MEGA_MODEL", "megaModel"],
+  ["ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL", "responseHandlerModel"],
+  ["ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL", "shouldRespondModel"],
+  ["ELIZAOS_CLOUD_ACTION_PLANNER_MODEL", "actionPlannerModel"],
+  ["ELIZAOS_CLOUD_PLANNER_MODEL", "plannerModel"],
+  ["ELIZAOS_CLOUD_RESPONSE_MODEL", "responseModel"],
+  ["ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL", "mediaDescriptionModel"],
+];
+
+function mergeMissingCloudRoutingModelPins(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  const existingRouting = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  );
+  const llmText = existingRouting?.llmText as
+    | Record<string, unknown>
+    | undefined;
+  if (!llmText) return false;
+
+  const patch: Record<string, string> = {};
+  for (const [envKey, routingField] of CLOUD_ROUTING_MODEL_ENV) {
+    if (trimEnvString(llmText[routingField])) continue;
+    const value = readEffectiveEnvValue(config, envKey, env);
+    if (value) patch[routingField] = value;
+  }
+  if (Object.keys(patch).length === 0) return false;
+
+  config.serviceRouting = {
+    ...(existingRouting ?? {}),
+    llmText: {
+      ...llmText,
+      ...patch,
+    },
+  };
+  return true;
+}
+
+/** @internal Exported for regression coverage. */
+export function ensureProvisionedCloudContainerConfig(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (!isProvisionedCloudContainer(env)) {
+    return false;
+  }
+
+  const apiKey =
+    trimCloudCredential(config.cloud?.apiKey) ??
+    readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY", env);
+  if (!apiKey) {
+    return false;
+  }
+
+  let changed = false;
+  const cloud = config.cloud ?? {};
+  const baseUrl =
+    trimEnvString(config.cloud?.baseUrl) ??
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_BASE_URL", env);
+  const agentId =
+    trimEnvString(config.cloud?.agentId) ??
+    readEffectiveEnvValue(config, "ELIZA_CLOUD_AGENT_ID", env) ??
+    readEffectiveEnvValue(config, "WAIFU_ELIZA_CLOUD_AGENT_ID", env);
+
+  if (
+    config.cloud?.enabled !== true ||
+    config.cloud?.apiKey !== apiKey ||
+    (baseUrl && config.cloud?.baseUrl !== baseUrl) ||
+    (agentId && config.cloud?.agentId !== agentId)
+  ) {
+    config.cloud = {
+      ...cloud,
+      enabled: true,
+      apiKey,
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(agentId ? { agentId } : {}),
+    };
+    changed = true;
+  }
+
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  if (
+    deploymentTarget.runtime !== "cloud" ||
+    deploymentTarget.provider !== "elizacloud"
+  ) {
+    config.deploymentTarget = {
+      runtime: "cloud",
+      provider: "elizacloud",
+    };
+    changed = true;
+  }
+
+  const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
+  if (!topology.services.inference) {
+    const existingRouting = resolveServiceRoutingInConfig(
+      config as Record<string, unknown>,
+    );
+    const cloudRouting = buildDefaultElizaCloudServiceRouting({
+      includeInference: true,
+      nanoModel: readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL", env),
+      smallModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_SMALL_MODEL",
+        env,
+      ),
+      mediumModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_MEDIUM_MODEL",
+        env,
+      ),
+      largeModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_LARGE_MODEL",
+        env,
+      ),
+      megaModel: readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEGA_MODEL", env),
+      responseHandlerModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL",
+        env,
+      ),
+      shouldRespondModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
+        env,
+      ),
+      actionPlannerModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
+        env,
+      ),
+      plannerModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_PLANNER_MODEL",
+        env,
+      ),
+      responseModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_RESPONSE_MODEL",
+        env,
+      ),
+      mediaDescriptionModel: readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL",
+        env,
+      ),
+    });
+    config.serviceRouting = {
+      ...(existingRouting ?? {}),
+      ...cloudRouting,
+    };
+    changed = true;
+  } else if (mergeMissingCloudRoutingModelPins(config, env)) {
+    changed = true;
+  }
+
+  if (changed) {
+    logger.info(
+      "[eliza] Provisioned cloud container missing managed runtime topology; forcing Eliza Cloud routing in memory",
+    );
+  }
+
+  const finalTopology = resolveElizaCloudTopology(
+    config as Record<string, unknown>,
+  );
+  logger.info(
+    `[eliza][cloud-topology] provisioned=true changed=${changed} -> runtime=${finalTopology.runtime} inference=${finalTopology.services.inference}`,
+  );
+
+  return changed;
+}
+
+/** @internal Exported for regression coverage. */
+export function shouldStartElizaCloudThinClient(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (isProvisionedCloudContainer(env)) {
+    return false;
+  }
+
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  return Boolean(
+    deploymentTarget.runtime === "cloud" &&
+      deploymentTarget.provider === "elizacloud" &&
+      config.cloud?.apiKey &&
+      config.cloud?.agentId?.trim(),
+  );
 }
 
 function setConfigEnvValue(
@@ -1307,6 +1538,7 @@ type RuntimeAdapterWithClose = {
 export async function shutdownRuntime(
   runtime: AgentRuntime | null | undefined,
   context: string,
+  options: { fast?: boolean } = {},
 ): Promise<void> {
   if (!runtime) return;
 
@@ -1314,7 +1546,9 @@ export async function shutdownRuntime(
   let firstError: unknown = null;
 
   try {
-    await runtime.stop();
+    // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
+    // not block on a slow deferred service start or a long embedding drain.
+    await runtime.stop(options.fast ? { fast: true } : undefined);
   } catch (err) {
     firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
@@ -1533,6 +1767,19 @@ async function prepareRuntimeForTrajectoryCapture(
 ): Promise<void> {
   await waitForTrajectoriesService(runtime, context);
   ensureTrajectoryLoggerEnabled(runtime, context);
+  // Bridge the in-memory "trajectories" service to the SQL trajectory_steps
+  // tables that the viewer + collection read. Without this the core service
+  // captures LLM calls only into its own trajectory_step_index store, so every
+  // platform without the plugin-training log-backfill (mobile, cloud) shows a
+  // trajectory with zero recorded LLM calls. Patching here makes capture land
+  // in trajectory_steps universally (local + cloud + mobile).
+  try {
+    await installDatabaseTrajectoryLogger(runtime);
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
+    );
+  }
   await installPromptOptimizationLayer(runtime, context, config);
 }
 
@@ -1848,9 +2095,10 @@ export async function autoFetchCloudGithubToken(
  */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  ensureProvisionedCloudContainerConfig(config);
   const cloud = config.cloud;
 
-  const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const isCloudContainer = isProvisionedCloudContainer();
   if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
 
@@ -1955,17 +2203,40 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     | undefined;
   if (effectivelyEnabled) {
     const nano =
-      llmText?.nanoModel || models?.nano || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+      llmText?.nanoModel ||
+      models?.nano ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_NANO_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const small =
-      llmText?.smallModel || models?.small || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
-    const medium = llmText?.mediumModel || models?.medium || small;
+      llmText?.smallModel ||
+      models?.small ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SMALL_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+    const medium =
+      llmText?.mediumModel ||
+      models?.medium ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEDIUM_MODEL") ||
+      small;
     const large =
-      llmText?.largeModel || models?.large || DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
-    const mega = llmText?.megaModel || models?.mega || large;
+      llmText?.largeModel ||
+      models?.large ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_LARGE_MODEL") ||
+      DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
+    const mega =
+      llmText?.megaModel ||
+      models?.mega ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEGA_MODEL") ||
+      large;
     const responseHandlerModel =
-      llmText?.responseHandlerModel || llmText?.shouldRespondModel;
+      llmText?.responseHandlerModel ||
+      llmText?.shouldRespondModel ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL");
     const actionPlannerModel =
-      llmText?.actionPlannerModel || llmText?.plannerModel;
+      llmText?.actionPlannerModel ||
+      llmText?.plannerModel ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_PLANNER_MODEL");
     process.env.SMALL_MODEL = small;
     process.env.NANO_MODEL = nano;
     process.env.MEDIUM_MODEL = medium;
@@ -3265,6 +3536,9 @@ export async function startEliza(
   // never complete — is still countable via /api/dev/boot-history. void: never
   // delay readiness. recordBootTelemetry below captures the completed-boot case.
   void recordBootEvent("[eliza-boot]");
+  // #10203 crash/restart stability: a `boot`-point fault fires here, the
+  // earliest awaited seam, so the supervisor restart path can be exercised.
+  await maybeInjectFault("boot");
 
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
   // STATIC_ELIZA_PLUGINS blocking map BEFORE any plugin resolution happens. See the
@@ -3328,6 +3602,12 @@ export async function startEliza(
     );
     applySandboxConnectorOwnership(process.env, config);
   }
+  ensureProvisionedCloudContainerConfig(config);
+  // 2b. Propagate cloud config into process.env before boot prefetches. A
+  // provisioned container may start with only ELIZA_CLOUD_PROVISIONED in the
+  // real env and cloud credentials in config.env.
+  applyCloudConfigToEnv(config);
+
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
   // network, up to a 3s timeout each) without blocking. They only write
   // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
@@ -3344,9 +3624,6 @@ export async function startEliza(
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
     config.cloud?.agentId?.trim(),
   );
-
-  // 2b. Propagate cloud config into process.env for ElizaCloud plugin
-  applyCloudConfigToEnv(config);
 
   // 2c. Propagate x402 config into process.env
   applyX402ConfigToEnv(config);
@@ -3486,16 +3763,6 @@ export async function startEliza(
           ? ` | connection: ${(postgresUrl.length > 4096 ? postgresUrl.slice(0, 4096) : postgresUrl).replace(/:\/\/([^:@]{1,1024}):([^@]{1,1024})@/, "://$1:***@")}`
           : ""),
     );
-  }
-
-  // 2d-iii. OG tracking code initialization
-  if (!isMobilePlatform()) {
-    try {
-      const { initializeOGCode } = await loadElizaMakerModule();
-      initializeOGCode?.();
-    } catch {
-      // Silent — OG tracking is non-critical
-    }
   }
 
   // 2d-ii. Allow destructive migrations (e.g. dropping tables removed between
@@ -3670,13 +3937,11 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  if (
-    deploymentTarget.runtime === "cloud" &&
-    deploymentTarget.provider === "elizacloud" &&
-    config.cloud?.apiKey &&
-    config.cloud?.agentId?.trim()
-  ) {
-    return startInCloudMode(config, config.cloud.agentId, opts);
+  const thinClientCloudAgentId = shouldStartElizaCloudThinClient(config)
+    ? config.cloud?.agentId?.trim()
+    : undefined;
+  if (thinClientCloudAgentId) {
+    return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
 
   // 3. Build elizaOS Character from Eliza config
@@ -3788,6 +4053,8 @@ export async function startEliza(
     forceIncludePluginNames: initialForceIncludePluginNames,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
+  // #10203: exercise a fault right after the blocking plugin set resolves.
+  await maybeInjectFault("plugin-load");
 
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
@@ -4153,7 +4420,7 @@ export async function startEliza(
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge"
+        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
@@ -4186,7 +4453,7 @@ export async function startEliza(
   }
 
   // 7d. Register the roles capability (cheap, gates provider/action visibility).
-  //     The remaining core plugins (companion, app-control, device-filesystem,
+  //     The remaining core plugins (app-control, device-filesystem,
   //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
   //     video) are NOT essential to the chat path and are loaded in the
   //     background after the runtime is ready — see runDeferredBoot below.
@@ -4199,6 +4466,7 @@ export async function startEliza(
       `[eliza] Roles capability pre-registration failed: ${formatError(err)}`,
     );
   }
+  bootTimer.lap("svc:roles-register");
 
   const warmAgentSkillsService = async (): Promise<void> => {
     // Let runtime startup complete first; this warm-up runs asynchronously
@@ -4270,15 +4538,6 @@ export async function startEliza(
     }
   };
 
-  const runStewardEvmPreBoot = async (): Promise<void> => {
-    try {
-      const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
-      await stewardEvmPreBoot?.(runtime);
-    } catch (err) {
-      logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
-    }
-  };
-
   const registerConnectorSetupService = async (): Promise<void> => {
     try {
       const { ConnectorSetupService } = await import(
@@ -4294,6 +4553,7 @@ export async function startEliza(
 
   const registerRemoteCodingRunner = async (): Promise<void> => {
     if (isBundledMobileRuntime()) return;
+    if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
     try {
       const { registerE2BRemoteCapabilityRouterIfEnabled } =
         await loadE2BCapabilityRouterModule();
@@ -4484,17 +4744,6 @@ export async function startEliza(
     }
   };
 
-  const runStewardEvmPostBoot = async (): Promise<void> => {
-    try {
-      const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
-      await stewardEvmPostBoot?.(runtime);
-    } catch (err) {
-      logger.debug(
-        `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
-      );
-    }
-  };
-
   const installServerSideWebSearchIfAvailable = async (): Promise<void> => {
     try {
       const { installServerSideWebSearch } = await import(
@@ -4526,6 +4775,26 @@ export async function startEliza(
     } catch (err) {
       logger.debug(
         `[eliza] WEB_FETCH action registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
+  const registerWebSearchActionIfEnabled = async (): Promise<void> => {
+    try {
+      const { webSearch, isWebSearchEnabled } = await import(
+        "./actions/web-search.ts"
+      );
+      if (!isWebSearchEnabled()) {
+        logger.info(
+          "[eliza] WEB_SEARCH action disabled; set ELIZA_INLINE_WEB_SEARCH=1 to force inline search, or unset ELIZA_SERVER_WEB_SEARCH when using the default inline surface",
+        );
+        return;
+      }
+      runtime.registerAction(webSearch);
+      logger.info("[eliza] Registered keyless WEB_SEARCH action");
+    } catch (err) {
+      logger.debug(
+        `[eliza] WEB_SEARCH action registration skipped: ${formatError(err)}`,
       );
     }
   };
@@ -4721,8 +4990,8 @@ export async function startEliza(
   // plugins continue after the ready gate unless legacy blocking mode is
   // requested). The runtime is reported ready as soon as this resolves.
   const initializeRuntimeServices = async (): Promise<void> => {
-    await runStewardEvmPreBoot();
     await registerConnectorSetupService();
+    bootTimer.lap("svc:connector-setup");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
@@ -4853,7 +5122,7 @@ export async function startEliza(
     return deferredResolvedPlugins;
   };
 
-  // Deferred boot: non-essential core plugins (companion, app-control,
+  // Deferred boot: non-essential core plugins (app-control,
   // device-filesystem, shell, coding-tools, agent-skills, commands, google,
   // lifeops, browser, video), auto-enabled providers/connectors, custom
   // plugins, plus the post-init tail. Runs in the background after the runtime
@@ -4891,6 +5160,22 @@ export async function startEliza(
       bootTimer.lap("deferred:core-plugin-waves");
     }
 
+    // Drain app-route plugin loaders into runtime.routes. App-route plugins
+    // (e.g. @elizaos/plugin-agent-orchestrator:routes) register a loader on a
+    // global registry via registerAppRoutePluginLoader rather than exposing
+    // their HTTP routes through Plugin.routes directly. packages/app-core's
+    // boot path drains this registry, but the headless agent-server boot did
+    // not, so /api/coding-agents/* and /api/orchestrator/* 404ed even though
+    // the orchestrator plugin's services were registered. This MUST run after
+    // the deferred plugin wave (the orchestrator loads deferred, ~5s after
+    // runtime.initialize), otherwise the registry is still empty. Mirror
+    // app-core's registerAppRoutePlugins: load each loader and push its rawPath
+    // routes onto runtime.routes so tryHandleRuntimePluginRoute can dispatch.
+    // The drain is idempotent (dedups by type:path), so in a combined app-core
+    // deployment where app-core also drains the registry, neither double-mounts.
+    await drainAppRoutePluginLoaders(runtime);
+    bootTimer.lap("deferred:app-route-plugins");
+
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
 
@@ -4898,26 +5183,19 @@ export async function startEliza(
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     await registerConversationProximityProvider();
-    await seedBundledDocumentsIfEnabled();
-    await runStewardEvmPostBoot();
-    await installServerSideWebSearchIfAvailable();
-    await registerWebFetchActionIfEnabled();
-    bootTimer.lap("deferred:post-init");
-
-    const autonomyLoopEnabled = isAutonomyEnabled();
-    await startAutonomyServiceIfEnabled(true);
-    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
-    startAgentSkillsWarmup();
-    startEmbeddingWarmup();
-    // Re-probe the embedding dimension now that the deferred plugin waves have
-    // registered the cloud TEXT_EMBEDDING handler (plugin-elizacloud). The probe
-    // in runtime.initialize() runs ~38s earlier — before that deferred handler
-    // exists — so on a cloud agent it finds no TEXT_EMBEDDING model and the SQL
-    // adapter keeps its hardcoded dim384 default; every 1536-dim cloud vector is
-    // then dropped on a "dimension mismatch with configured column (dim384)".
+    // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
+    // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler
+    // (plugin-elizacloud, 1536-dim); the probe in runtime.initialize() ran ~38s
+    // earlier, before that handler existed, so the SQL adapter kept its
+    // hardcoded dim384 default. seedBundledDocumentsIfEnabled() embeds its docs
+    // at 1536 via the cloud handler, so if the column is still dim384 every
+    // bundled-doc vector is dropped on a "dimension mismatch with configured
+    // column (dim384)" and the agent boots with no recall memory. Snapping the
+    // column to dim1536 here — after the handler is registered, before the seed
+    // writes — lets those embeddings (and all later memory) persist.
     // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
-    // no-ops when no handler is registered, e.g. cloud-proxied agents), so this
-    // safely snaps the column to dim1536 and lets memory embeddings persist.
+    // no-ops when no TEXT_EMBEDDING handler is registered, e.g. cloud-proxied
+    // agents), so this is safe on every boot path.
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
@@ -4927,6 +5205,17 @@ export async function startEliza(
         }`,
       );
     }
+    await seedBundledDocumentsIfEnabled();
+    await installServerSideWebSearchIfAvailable();
+    await registerWebFetchActionIfEnabled();
+    await registerWebSearchActionIfEnabled();
+    bootTimer.lap("deferred:post-init");
+
+    const autonomyLoopEnabled = isAutonomyEnabled();
+    await startAutonomyServiceIfEnabled(true);
+    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
+    startAgentSkillsWarmup();
+    startEmbeddingWarmup();
     // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
     // — if no wallet route or signing flow triggers it earlier, wallets are
     // still generated here. The singleton keeps this harmless if already
@@ -4940,16 +5229,35 @@ export async function startEliza(
     installActionAliases(runtime);
     // Same timing reason: validate the intent→action map only once the deferred
     // plugins have registered. Run during blocking init it would warn about
-    // actions like TASKS (agent-orchestrator) and PLAY_EMOTE (companion) that
-    // simply hadn't loaded yet.
+    // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
     validateIntentActionMap(
       runtime.actions.map((a) => a.name),
+      runtime.logger,
+    );
+    // Same timing: turn the (previously dead-but-tested) view-coverage validators
+    // into a live drift guard now that all plugins/views are registered (#8798).
+    // Warns when a VIEW_ACTION_MAP entry names an unregistered action, or a
+    // registered view has neither an affinity entry nor a declared ViewCapability.
+    const developerViews = listViews({ developerMode: true });
+    validateViewActionMap(
+      runtime.actions.map((a) => a.name),
+      runtime.logger,
+    );
+    validateViewCoverage(
+      developerViews.map((v) => v.id),
+      developerViews.filter((v) => v.capabilities?.length).map((v) => v.id),
       runtime.logger,
     );
     bootTimer.lap("deferred:complete");
   };
 
   try {
+    // Time from the register-sql lap up to entering service init (roles
+    // capability registration + any blocking pre-init work). Split out so a
+    // device boot can attribute the dominant cost instead of lumping it into
+    // svc:pre-init (issue #9565): on a bundled mobile runtime the three hooks
+    // below are each fast/no-op, yet svc:pre-init was ~15s of a 16s cold boot.
+    bootTimer.lap("svc:boot-prep");
     await initializeRuntimeServices();
   } catch (err) {
     const pgliteDataDir = resolveActivePgliteDataDir(config);
@@ -4986,6 +5294,12 @@ export async function startEliza(
   bootTimer.summary();
   void recordBootTelemetry(bootTimer.getSummary());
   startMemorySampler({ intervalMs: 30_000 });
+  // Proactively bounce the runtime before an OOM kill when RSS climbs past the
+  // configured threshold (opt-in via ELIZA_MEMORY_WATCHDOG). Restarts cleanly
+  // through requestRestart()/the supervisor — never a silent process.exit.
+  startMemoryWatchdog();
+  // #10203: a `ready`-point fault fires once the agent has reached steady boot.
+  await maybeInjectFault("ready");
 
   installActionAliases(runtime);
 
@@ -5277,7 +5591,10 @@ export async function startEliza(
           } catch {
             // non-fatal
           }
-          if (!isBundledMobileRuntime()) {
+          if (
+            !isBundledMobileRuntime() &&
+            shouldLoadRemoteCodingRunnerForBoot(newRuntime)
+          ) {
             try {
               const { registerE2BRemoteCapabilityRouterIfEnabled } =
                 await loadE2BCapabilityRouterModule();
@@ -5285,13 +5602,6 @@ export async function startEliza(
             } catch {
               // non-fatal
             }
-          }
-          try {
-            const { stewardEvmPreBoot: preBootHR } =
-              await loadStewardEvmBridgeModule();
-            await preBootHR?.(newRuntime);
-          } catch {
-            // non-fatal
           }
           assertPersistentDatabaseRequired(newRuntime);
           await newRuntime.initialize();
@@ -5310,14 +5620,6 @@ export async function startEliza(
             logger.debug(
               `[eliza] Hot-reload plugin provider role gating skipped: ${formatError(err)}`,
             );
-          }
-
-          try {
-            const { stewardEvmPostBoot: postBootHR } =
-              await loadStewardEvmBridgeModule();
-            await postBootHR?.(newRuntime);
-          } catch {
-            // non-fatal
           }
 
           // Ensure AutonomyService survives hot-reload; the loop remains opt-in.

@@ -1,21 +1,26 @@
 import { Volume2, VolumeX } from "lucide-react";
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { Z_TUTORIAL } from "../../../lib/floating-layers";
 
 /**
  * The tour spotlight: a full-screen overlay that
- *  - draws a breathing orange glow ring around the target (the indicator that
- *    points at the next control);
+ *  - draws a breathing glow around the target (the indicator that points at the
+ *    next control), painted in the active theme's `--accent`;
  *  - floats a small instruction card near the target (auto-flips above/below);
  *  - for a centered card (welcome / finish) dims the whole screen instead.
  *
- * Brand orange (#FF5800) is the only accent; resting→hover stays orange→darker.
+ * Every color here reads from theme tokens (`--accent`, `--accent-hover`,
+ * `--accent-rgb`, `--card`, …) so the spotlight matches the active brand —
+ * orange in the default theme, white/black in the mono themes, gold on the
+ * classic brand — instead of hardcoding one accent.
  */
 
-const BRAND = "#FF5800";
-const PAD = 8; // glow ring inset around the target
+const PAD = 8; // glow  inset around the target
 
 export interface SpotlightCardProps {
+  /** Active tour frame id — stamped on the card so e2e can drive frame-by-frame. */
+  stepId: string;
   title: string;
   body: string;
   /** Narration muted — toggles the speaker control. */
@@ -46,13 +51,28 @@ interface Rect {
   height: number;
 }
 
+/**
+ * Resolve the spotlight target. A test id can be present in several conditional
+ * branches of a component (e.g. `chat-composer-action` renders in six places of
+ * the composer), so the first DOM match is not trustworthy — we pick the first
+ * candidate that is actually on-screen (non-zero box, intersecting the
+ * viewport). Hidden/unmounted branches collapse to a zero box and are skipped;
+ * off-canvas duplicates are skipped. Returns null only when no visible element
+ * matches, which the overlay surfaces (a `data-tutorial-target-missing` marker)
+ * instead of silently degrading to a full dim.
+ */
 function measure(selector: string | null): Rect | null {
   if (!selector || typeof document === "undefined") return null;
-  const el = document.querySelector(selector);
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  if (r.width === 0 && r.height === 0) return null;
-  return { top: r.top, left: r.left, width: r.width, height: r.height };
+  const vw = typeof window === "undefined" ? 0 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 0 : window.innerHeight;
+  for (const el of Array.from(document.querySelectorAll(selector))) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    const onScreen = r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw;
+    if (!onScreen) continue;
+    return { top: r.top, left: r.left, width: r.width, height: r.height };
+  }
+  return null;
 }
 
 export function TutorialSpotlight({
@@ -116,15 +136,23 @@ export function TutorialSpotlight({
         ? { top: hole.top + hole.height + 14, left: clampLeft(hole.left) }
         : { top: Math.max(14, hole.top - 172), left: clampLeft(hole.left) };
 
+  // A non-null target that resolves to nothing visible means the spotlight can't
+  // frame a control this frame — mark it (rather than silently full-dimming) so
+  // the e2e and a developer can see the targeting broke.
+  const targetMissing = targetSelector != null && rect == null;
+
   return createPortal(
     <div
       className="fixed inset-0"
-      // Inline z-index (not a Tailwind arbitrary class — that huge value isn't
-      // reliably generated) so the spotlight + card always sit ABOVE the chat
-      // overlay (z 9000), even when the chat is expanded full-screen while the
-      // user performs the instructed action. Clicks pass through except the card.
-      style={{ pointerEvents: "none", zIndex: 2147483000 }}
+      // Z from the registered scale (floating-layers): above the chat/shell
+      // overlay (Z_SHELL_OVERLAY 9000) so the spotlight + card always sit over an
+      // expanded chat while the user performs the instructed action, but below
+      // the system-critical band so a fatal banner is never painted over.
+      // Clicks pass through except the card.
+      style={{ pointerEvents: "none", zIndex: Z_TUTORIAL }}
       aria-live="polite"
+      data-testid="tutorial-spotlight"
+      data-tutorial-target-missing={targetMissing ? targetSelector : undefined}
     >
       <style>{SPOTLIGHT_KEYFRAMES}</style>
 
@@ -144,18 +172,19 @@ export function TutorialSpotlight({
           />
         ))}
 
-      {/* The breathing orange glow around the target (soft halo, not a hard
-          outlined box). */}
+      {/* The breathing glow around the target (soft halo, not a hard outlined
+          box), painted in the active theme's accent. */}
       {hole && (
         <div
           className="absolute rounded-2xl"
+          data-testid="tutorial-glow"
           style={{
             top: hole.top,
             left: hole.left,
             width: hole.width,
             height: hole.height,
             pointerEvents: "none",
-            boxShadow: "0 0 18px 5px rgba(255,88,0,0.5)",
+            boxShadow: "0 0 18px 5px rgba(var(--accent-rgb), 0.5)",
             animation: "tutorial-glow 1.6s ease-in-out infinite",
           }}
         />
@@ -219,6 +248,7 @@ function BackdropWithHole({ hole }: { hole: Rect }): React.ReactElement {
 }
 
 function SpotlightCard({
+  stepId,
   title,
   body,
   muted,
@@ -232,14 +262,15 @@ function SpotlightCard({
 }): React.ReactElement {
   return (
     <div
-      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-white/12 bg-neutral-950/95 p-4 text-white shadow-2xl backdrop-blur-md motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
+      className="absolute w-[300px] max-w-[calc(100vw-28px)] rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-xl motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       style={{ ...cardStyle, pointerEvents: "auto" }}
       data-testid="tutorial-card"
+      data-tutorial-step-id={stepId}
       role="dialog"
       aria-label="Tour step"
     >
       <h3 className="text-[15px] font-semibold leading-snug">{title}</h3>
-      <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-white/75">
+      <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-muted">
         {body}
       </p>
       <div className="mt-3 flex items-center justify-between gap-2">
@@ -250,7 +281,7 @@ function SpotlightCard({
             data-testid="tutorial-mute"
             aria-label={muted ? "Unmute narration" : "Mute narration"}
             aria-pressed={muted}
-            className="text-white/45 transition-colors hover:text-white/80"
+            className="text-muted transition-colors hover:text-card-foreground"
           >
             {muted ? (
               <VolumeX className="h-4 w-4" aria-hidden />
@@ -262,7 +293,7 @@ function SpotlightCard({
             type="button"
             onClick={onSkip}
             data-testid="tutorial-skip"
-            className="text-[12px] text-white/45 underline-offset-2 hover:text-white/70 hover:underline"
+            className="text-[12px] text-muted underline-offset-2 hover:text-card-foreground hover:underline"
           >
             Skip tour
           </button>
@@ -272,13 +303,16 @@ function SpotlightCard({
             type="button"
             onClick={onContinue}
             data-testid="tutorial-continue"
-            className="rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition-colors"
-            style={{ backgroundColor: BRAND }}
+            className="rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors"
+            style={{
+              backgroundColor: "var(--accent)",
+              color: "var(--accent-foreground)",
+            }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#D44A00";
+              e.currentTarget.style.backgroundColor = "var(--accent-hover)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = BRAND;
+              e.currentTarget.style.backgroundColor = "var(--accent)";
             }}
           >
             {continueLabel ?? "Continue"}
@@ -289,10 +323,13 @@ function SpotlightCard({
   );
 }
 
+// @keyframes can't interpolate a `var(--accent)` color, so the breathing glow
+// reads `--accent-rgb` (themed per brand in base.css / brand-gold.css) and only
+// animates the alpha + spread.
 const SPOTLIGHT_KEYFRAMES = `
 @keyframes tutorial-glow {
-  0%, 100% { box-shadow: 0 0 16px 4px rgba(255,88,0,0.45); }
-  50%      { box-shadow: 0 0 30px 11px rgba(255,88,0,0.8); }
+  0%, 100% { box-shadow: 0 0 16px 4px rgba(var(--accent-rgb), 0.45); }
+  50%      { box-shadow: 0 0 30px 11px rgba(var(--accent-rgb), 0.8); }
 }
 @media (prefers-reduced-motion: reduce) {
   [style*="tutorial-glow"] { animation: none !important; }

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, type TestInfo, test } from "@playwright/test";
 import { assertScreenshotNotBlank } from "../ui-smoke/helpers/screenshot-quality";
-import { startLiveApiServer, type TestApiServer } from "./live-api";
+import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
@@ -15,8 +15,12 @@ type EvalErr = { ok: false; error: string };
 type EvalResult<T> = EvalOk<T> | EvalErr;
 
 const SETTINGS_SELECTOR = '[data-testid="settings-shell"]';
-const PLUGINS_SELECTOR = '[data-testid="connectors-settings-content"]';
-const FIRST_RUN_SELECTOR = '[data-testid="first-run-shell"]';
+const PLUGINS_SELECTOR = '[data-testid="plugins-shell"]';
+// #9952: onboarding is now in-chat — a fresh / reset profile paints the home plus
+// the auto-opened REAL floating ContinuousChatOverlay (the conductor seeds the
+// greeting + choices into it), so the chat overlay IS the first-run surface. The
+// removed full-screen `startup-first-run-background` gate no longer exists.
+const FIRST_RUN_SELECTOR = '[data-testid="continuous-chat-overlay"]';
 const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
@@ -86,12 +90,20 @@ async function waitForEval<T>(
   },
 ): Promise<T> {
   let lastResult: T | undefined;
+  let lastError: Error | null = null;
   try {
     await expect
       .poll(
         async () => {
-          lastResult = await harness.eval<T>(script);
-          return predicate(lastResult);
+          try {
+            lastResult = await harness.eval<T>(script);
+            lastError = null;
+            return predicate(lastResult);
+          } catch (error) {
+            lastError =
+              error instanceof Error ? error : new Error(String(error));
+            return false;
+          }
         },
         {
           timeout: options.timeout,
@@ -102,7 +114,9 @@ async function waitForEval<T>(
   } catch (error) {
     const suffix =
       typeof lastResult === "undefined"
-        ? "No renderer result was captured."
+        ? `No renderer result was captured.${
+            lastError ? ` Last eval error: ${lastError.message}` : ""
+          }`
         : `Last renderer result: ${JSON.stringify(lastResult)}`;
     throw new Error(
       `${options.message}\n${suffix}\n${error instanceof Error ? error.message : String(error)}`,
@@ -270,31 +284,12 @@ async function setPersistedSettingsState(
   await waitForMediaSettingsRoute(harness);
   const result = await harness.eval<
     EvalResult<{
-      vrmPower: string | null;
-      animateWhenHidden: string | null;
       provider: unknown;
     }>
   >(
     `(async () => {
       try {
         ${getRouteNavigationScript(SETTINGS_MEDIA_ROUTE)}
-
-        const powerRoot = document.querySelector('[data-testid="settings-companion-vrm-power"]');
-        const animateSwitch = document.querySelector('[data-testid="settings-companion-animate-when-hidden"] [role="switch"]');
-        const powerButtons = powerRoot ? Array.from(powerRoot.querySelectorAll("button")) : [];
-        const qualityButton = powerButtons.find((button) =>
-          /always quality/i.test((button.textContent || "").trim()),
-        );
-
-        qualityButton?.click();
-        if (
-          animateSwitch &&
-          animateSwitch.getAttribute("aria-checked") !== "true"
-        ) {
-          animateSwitch.click();
-        }
-        localStorage.setItem("eliza:companion-vrm-power", "quality");
-        localStorage.setItem("eliza:companion-animate-when-hidden", "1");
 
         const apiBase = ${getApiBaseExpression()};
         if (!apiBase) {
@@ -324,10 +319,6 @@ async function setPersistedSettingsState(
 
         return {
           ok: true,
-          vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
-          animateWhenHidden: localStorage.getItem(
-            "eliza:companion-animate-when-hidden",
-          ),
           provider: { success: true, provider: "openai" },
         };
       } catch (error) {
@@ -344,24 +335,18 @@ async function setPersistedSettingsState(
     return;
   }
 
-  expect(result.vrmPower).toBe("quality");
-  expect(result.animateWhenHidden).toBe("1");
   expect(result.provider).toMatchObject({ success: true, provider: "openai" });
 }
 
 async function readPersistedSettingsState(
   harness: PackagedDesktopHarness,
 ): Promise<{
-  vrmPower: string | null;
-  animateWhenHidden: string | null;
   providerLabel: string | null;
   backend: string | null;
 }> {
   await waitForProviderTrigger(harness);
   const result = await harness.eval<
     EvalResult<{
-      vrmPower: string | null;
-      animateWhenHidden: string | null;
       providerLabel: string | null;
       backend: string | null;
     }>
@@ -395,10 +380,6 @@ async function readPersistedSettingsState(
 
         return {
           ok: true,
-          vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
-          animateWhenHidden: localStorage.getItem(
-            "eliza:companion-animate-when-hidden",
-          ),
           providerLabel: backend === "openai" ? "OpenAI" : backend,
           backend,
         };
@@ -419,7 +400,7 @@ async function readPersistedSettingsState(
   return result;
 }
 
-async function readVisiblePluginSectionIds(
+async function readVisiblePluginIds(
   harness: PackagedDesktopHarness,
 ): Promise<string[]> {
   const result = await waitForEval<EvalResult<{ ids: string[] }>>(
@@ -429,14 +410,14 @@ async function readVisiblePluginSectionIds(
         ${getRouteNavigationScript(PLUGINS_ROUTE)}
         const shell = document.querySelector(${JSON.stringify(PLUGINS_SELECTOR)});
         const ids = Array.from(
-          document.querySelectorAll('[data-testid^="connector-section-"]'),
+          document.querySelectorAll('[data-plugin-id]'),
         )
-          .map((node) => node.getAttribute("data-testid"))
+          .map((node) => node.getAttribute("data-plugin-id"))
           .filter((value) => typeof value === "string");
         return {
           ok: true,
           shellReady: Boolean(shell),
-          ids: ids.map((value) => value.replace(/^connector-section-/, "")),
+          ids,
         };
       } catch (error) {
         return {
@@ -445,10 +426,13 @@ async function readVisiblePluginSectionIds(
         };
       }
     })()`,
-    (current) => current.ok && current.ids.length >= 2,
+    (current) =>
+      current.ok &&
+      current.ids.includes("openai") &&
+      current.ids.includes("ollama"),
     {
       timeout: 20_000,
-      message: `Timed out waiting for visible plugin sections at ${PLUGINS_ROUTE}.`,
+      message: `Timed out waiting for visible plugin catalog entries at ${PLUGINS_ROUTE}.`,
     },
   );
 
@@ -467,13 +451,11 @@ async function seedResettableState(
     EvalResult<{
       firstRunComplete: string | null;
       activeServer: string | null;
-      vrmPower: string | null;
     }>
   >(
     `(() => {
       try {
         localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem("eliza:companion-vrm-power", "quality");
         localStorage.setItem(
           "elizaos:active-server",
           JSON.stringify({
@@ -486,7 +468,6 @@ async function seedResettableState(
           ok: true,
           firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
           activeServer: localStorage.getItem("elizaos:active-server"),
-          vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
         };
       } catch (error) {
         return {
@@ -507,13 +488,34 @@ async function triggerSettingsReset(
     harness,
     `(() => {
       try {
-        ${getRouteNavigationScript(SETTINGS_ROUTE)}
+        const shell = document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)});
+        if (!shell) {
+          ${getRouteNavigationScript(SETTINGS_ROUTE)}
+          return {
+            ok: false,
+            error: "Settings shell was not mounted; navigating to Settings.",
+          };
+        }
+        const resetByAgentId = document.querySelector(
+          '[data-agent-id="advanced-reset-open"]',
+        );
         const buttons = Array.from(
           document.querySelectorAll('[data-testid="settings-shell"] button'),
         );
-        const resetButton = buttons.find((button) =>
-          /reset everything/i.test((button.textContent || "").trim()),
-        );
+        const resetButton =
+          resetByAgentId instanceof HTMLButtonElement
+            ? resetByAgentId
+            : buttons.find((button) =>
+                /reset everything/i.test((button.textContent || "").trim()),
+              );
+        if (!resetButton) {
+          const advancedSection = document.querySelector(
+            '[data-agent-id="section-advanced"]',
+          );
+          if (advancedSection instanceof HTMLButtonElement) {
+            advancedSection.click();
+          }
+        }
         return resetButton
           ? {
               ok: true,
@@ -544,16 +546,21 @@ async function triggerSettingsReset(
   const result = await waitForEval<
     EvalResult<{
       label: string;
-      autoConfirmed: boolean;
-      messageBoxStubCalls: number;
+      confirmClicked: boolean;
+      restartStubCalls: number;
     }>
   >(
     harness,
     `(() => {
       try {
-        ${getRouteNavigationScript(SETTINGS_ROUTE)}
+        const shell = document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)});
+        if (!shell) {
+          return {
+            ok: false,
+            error: "Settings shell disappeared before reset confirmation.",
+          };
+        }
         const rpc = ${getDesktopRpcExpression()};
-        const canAutoConfirm = Boolean(rpc?.request?.desktopShowMessageBox);
         window.confirm = () => true;
         if (rpc?.request) {
           const resetTest =
@@ -585,21 +592,50 @@ async function triggerSettingsReset(
           }
         }
         const resetTest = window.__ELIZA_PACKAGED_RESET_TEST__ ?? null;
-        if (resetTest?.messageBoxStubCalls > 0) {
+        if (resetTest?.confirmClicked) {
           return {
             ok: true,
             label: "Reset Everything",
-            autoConfirmed: canAutoConfirm,
-            messageBoxStubCalls: resetTest.messageBoxStubCalls,
+            confirmClicked: true,
+            restartStubCalls: resetTest.restartStubCalls ?? 0,
           };
         }
+        const confirmButton = document.querySelector(
+          '[data-agent-id="advanced-reset-confirm"]',
+        );
+        if (confirmButton instanceof HTMLButtonElement) {
+          window.__ELIZA_PACKAGED_RESET_TEST__ = {
+            ...(window.__ELIZA_PACKAGED_RESET_TEST__ ?? {}),
+            confirmClicked: true,
+          };
+          confirmButton.click();
+          return {
+            ok: true,
+            label: (confirmButton.textContent || "").trim(),
+            confirmClicked: true,
+            restartStubCalls:
+              window.__ELIZA_PACKAGED_RESET_TEST__?.restartStubCalls ?? 0,
+          };
+        }
+        const resetByAgentId = document.querySelector(
+          '[data-agent-id="advanced-reset-open"]',
+        );
         const buttons = Array.from(
           document.querySelectorAll('[data-testid="settings-shell"] button'),
         );
-        const resetButton = buttons.find((button) =>
-          /reset everything/i.test((button.textContent || "").trim()),
-        );
+        const resetButton =
+          resetByAgentId instanceof HTMLButtonElement
+            ? resetByAgentId
+            : buttons.find((button) =>
+                /reset everything/i.test((button.textContent || "").trim()),
+              );
         if (!resetButton) {
+          const advancedSection = document.querySelector(
+            '[data-agent-id="section-advanced"]',
+          );
+          if (advancedSection instanceof HTMLButtonElement) {
+            advancedSection.click();
+          }
           return {
             ok: false,
             error: "Settings reset button disappeared before click.",
@@ -610,9 +646,9 @@ async function triggerSettingsReset(
           ok: false,
           error: "Clicked Settings reset button; waiting for confirmation handler.",
           label: (resetButton.textContent || "").trim(),
-          autoConfirmed: canAutoConfirm,
-          messageBoxStubCalls:
-            window.__ELIZA_PACKAGED_RESET_TEST__?.messageBoxStubCalls ?? 0,
+          confirmClicked: false,
+          restartStubCalls:
+            window.__ELIZA_PACKAGED_RESET_TEST__?.restartStubCalls ?? 0,
         };
       } catch (error) {
         return {
@@ -621,11 +657,11 @@ async function triggerSettingsReset(
         };
       }
     })()`,
-    (current) => current.ok && current.messageBoxStubCalls > 0,
+    (current) => current.ok && current.confirmClicked,
     {
       timeout: 30_000,
       message:
-        "Timed out waiting for the Settings reset click to enter the desktop confirmation path.",
+        "Timed out waiting for the Settings reset click to enter the reset confirmation path.",
     },
   );
 
@@ -819,15 +855,20 @@ async function withPackagedHarness(
     "Packaged launcher is required for packaged desktop regressions.",
   ).toBeTruthy();
 
-  let api: TestApiServer | null = null;
+  let api: MockApiServer | null = null;
   let harness: PackagedDesktopHarness | null = null;
 
   try {
-    api = await startLiveApiServer({ firstRunComplete: true, port: 0 });
+    api = await startMockApiServer({ firstRunComplete: true, port: 0 });
     harness = new PackagedDesktopHarness({
       tempRoot,
       launcherPath: launcherPath as string,
       apiBase: api.baseUrl,
+      // These regressions assert the legacy full-window vibrancy/tray/resize
+      // behaviour. Since #10350 flipped the default resting surface to the
+      // chromeless bottom bar, opt out here so they keep testing the full window
+      // (the bottom-bar default is covered by electrobun-bottom-bar.e2e.spec.ts).
+      extraEnv: { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
     });
     debugPackagedPhase("starting initial packaged launch");
     await harness.start({
@@ -837,6 +878,9 @@ async function withPackagedHarness(
     debugPackagedPhase("initial packaged launch ready");
     await seedReturningInstallState(harness, api.baseUrl);
     debugPackagedPhase("seeded returning-install state");
+    const rendererOriginBeforeRelaunch = await harness
+      .eval<string | null>(`window.location.origin || null`)
+      .catch(() => null);
     const requestCountBeforeRelaunch = api.requests.length;
     debugPackagedPhase("starting packaged relaunch");
     await harness.relaunch({
@@ -848,39 +892,50 @@ async function withPackagedHarness(
     // Verify that localStorage state survived the relaunch. If not, the
     // startup coordinator will fall back to a fresh-install probe path and
     // may stall or show the first-run overlay instead of the app shell.
-    const persistenceCheck = await harness
-      .eval<{
-        ok: boolean;
+    const persistenceCheck = await waitForEval<
+      EvalResult<{
         firstRunComplete: string | null;
         activeServer: string | null;
         apiBase: string | null;
-      }>(
-        `(() => {
+        origin: string | null;
+      }>
+    >(
+      harness,
+      `(() => {
         try {
           return {
             ok: true,
             firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
             activeServer: localStorage.getItem("elizaos:active-server"),
             apiBase: ${getApiBaseExpression()} ?? null,
+            origin: window.location.origin || null,
           };
         } catch (e) {
-          return { ok: false, firstRunComplete: null, activeServer: null, apiBase: null };
+          return {
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+          };
         }
       })()`,
-      )
-      .catch(() => ({
-        ok: false,
-        firstRunComplete: null,
-        activeServer: null,
-        apiBase: null,
-      }));
+      (current) => current.ok,
+      {
+        timeout: process.env.CI ? 120_000 : 90_000,
+        message:
+          "Timed out waiting for renderer localStorage probe after packaged relaunch.",
+      },
+    );
 
-    if (!persistenceCheck.firstRunComplete || !persistenceCheck.activeServer) {
+    if (
+      persistenceCheck.ok &&
+      (!persistenceCheck.firstRunComplete || !persistenceCheck.activeServer)
+    ) {
       console.warn(
         `[packaged-harness] localStorage was NOT persisted across relaunch.`,
         `firstRunComplete=${persistenceCheck.firstRunComplete}`,
         `activeServer=${persistenceCheck.activeServer}`,
         `apiBase=${persistenceCheck.apiBase}`,
+        `originBefore=${rendererOriginBeforeRelaunch}`,
+        `originAfter=${persistenceCheck.origin}`,
         `— re-seeding state for this session.`,
       );
       // Re-seed when WKWebView did not flush localStorage before process exit.
@@ -978,7 +1033,7 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
   void _browserName;
   test.skip(
     !isPackagedPlatform(),
-    "Packaged desktop regressions require a macOS or Windows launcher.",
+    "Packaged desktop regressions require a macOS, Windows, or Linux launcher.",
   );
 
   await withPackagedHarness(async ({ harness }) => {
@@ -994,8 +1049,6 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
 
     await openRouteAndWait(harness, SETTINGS_ROUTE, SETTINGS_SELECTOR);
     const settingsState = await readPersistedSettingsState(harness);
-    expect(settingsState.vrmPower).toBe("quality");
-    expect(settingsState.animateWhenHidden).toBe("1");
     expect(settingsState.providerLabel).toContain("OpenAI");
     expect(settingsState.backend).toBe("openai");
     await writeHarnessScreenshot(
@@ -1005,7 +1058,7 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
     );
 
     await openRouteAndWait(harness, PLUGINS_ROUTE, PLUGINS_SELECTOR);
-    const pluginIds = await readVisiblePluginSectionIds(harness);
+    const pluginIds = await readVisiblePluginIds(harness);
     expect(pluginIds).toEqual(expect.arrayContaining(["openai", "ollama"]));
     await writeHarnessScreenshot(
       harness,
@@ -1021,7 +1074,7 @@ test("packaged desktop reset from Settings returns the shell to first-run setup"
   void _browserName;
   test.skip(
     !isPackagedPlatform(),
-    "Packaged desktop regressions require a macOS or Windows launcher.",
+    "Packaged desktop regressions require a macOS, Windows, or Linux launcher.",
   );
 
   await withPackagedHarness(async ({ api, harness }) => {
@@ -1039,8 +1092,8 @@ test("packaged desktop reset from the application menu returns the shell to firs
 }, testInfo) => {
   void _browserName;
   test.skip(
-    !isPackagedPlatform(),
-    "Packaged desktop regressions require a macOS or Windows launcher.",
+    process.platform === "linux" || !isPackagedPlatform(),
+    "Application menu reset is only supported on packaged macOS or Windows launchers.",
   );
 
   await withPackagedHarness(async ({ api, harness }) => {

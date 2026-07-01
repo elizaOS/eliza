@@ -4,6 +4,7 @@ Next.js application: UI, API routes, SSE, auth wiring, and Vercel Analytics/Spee
 
 ## Observability
 
+- **Vercel Analytics / Speed Insights** are opt-in via `NEXT_PUBLIC_ENABLE_VERCEL_OBSERVABILITY=1`. Railway production leaves this unset so `_vercel/*` scripts are not mounted from a non-Vercel host.
 - **Vercel Speed Insights** (real-user Web Vitals) is wrapped in **`GatedSpeedInsights`**: route allowlist + session sampling + optional disable for minimal/embed layout.
 - **Why documented centrally:** Operators tune sampling without reading layout code; rationale for allowlists and defaults lives in one place.
 

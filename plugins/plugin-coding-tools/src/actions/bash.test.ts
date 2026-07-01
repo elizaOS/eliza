@@ -28,7 +28,9 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import {
+  type CommandPlatform,
   localResourceUserFacingText,
+  resolveCommandPlatform,
   resolveCryptoSpotPriceCommand,
   resolveDiskInspectionCommand,
   resolveLocalStatusCommand,
@@ -564,6 +566,7 @@ describeIfPosix("shellAction", () => {
         "check disk space on / and /home and name the biggest cleanup candidate you can see",
       command:
         "df -h / /home && echo '---' && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -579,6 +582,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
       command: "free -m",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -602,6 +606,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "check the local bot health endpoint and summarize ready status and plugin counts, concise",
       command: "curl -s http://localhost:3000/health",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -614,6 +619,7 @@ describeIfPosix("shellAction", () => {
     const result = resolveLocalStatusCommand({
       messageText: "how much RAM is free right now? concise",
       command: "top -b -n 1 | head",
+      platform: "linux",
     });
 
     expect(result).toEqual({
@@ -639,6 +645,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the vendored opencode source include Cerebras endpoint detection? concise",
       command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -658,6 +665,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -674,6 +682,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "ls -R . | head -n 50",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -691,6 +700,7 @@ describeIfPosix("shellAction", () => {
       messageText:
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command: "ls -R /home/example | grep -i opencode -n",
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -708,6 +718,7 @@ describeIfPosix("shellAction", () => {
         "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
       command:
         'grep -R "cerebrasReasoning" -n plugins/plugin-agent-orchestrator/vendor/opencode | head -n 20',
+      platform: "linux",
     });
 
     expect(result.rewritten).toBe(true);
@@ -992,6 +1003,47 @@ describeIfPosix("shellAction", () => {
       else process.env.HOME = previousHome;
       await fs.rm(tmpHome, { recursive: true, force: true });
     }
+    // This test runs the REAL disk-intent shell pipeline, which scans /tmp and
+    // /var/tmp with `du`. On a busy host with a large /tmp those scans can run
+    // well past the 15s package default (the shell's own hard timeout is 120s),
+    // so give this real-I/O case its own generous budget.
+  }, 90_000);
+
+  it("runs explicit coding sub-agent shell commands without message-text rewrites", async () => {
+    const previousMode = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "shell-coding-subagent-"),
+    );
+    await fs.writeFile(path.join(tempDir, "sentinel.txt"), "sentinel", "utf8");
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "true";
+
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-636363636363",
+          "check disk space and free RAM on this server, summarize cleanup candidates and memory availability",
+        ),
+        undefined,
+        { command: "ls -1", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("$ ls -1");
+      expect(result.text).toContain("sentinel.txt");
+      expect(result.text).not.toContain("df -h / /home");
+      expect(result.text).not.toContain("--- memory ---");
+      expect(result.userFacingText).toBe("sentinel.txt");
+      expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      } else {
+        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = previousMode;
+      }
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("does not treat later output section markers as cleanup candidates", () => {
@@ -1086,5 +1138,157 @@ describeIfPosix("shellAction", () => {
     );
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.action).toBe("view_history");
+  });
+});
+
+// These run on every platform (including win32): they pass an explicit
+// `platform` so the canned-command dialect is asserted deterministically,
+// independent of the host shell the test runner happens to be on.
+describe("platform-aware canned resource commands", () => {
+  describe("windows (PowerShell)", () => {
+    it("rewrites memory probes to a Win32_OperatingSystem query (no `free`)", () => {
+      const result = resolveLocalStatusCommand({
+        messageText: "how much RAM is free right now? concise",
+        command: "top -b -n 1 | head",
+        platform: "windows",
+      });
+      expect(result.kind).toBe("memory");
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Win32_OperatingSystem");
+      expect(result.command).toContain("Mem:");
+      expect(result.command).not.toContain("free -m");
+    });
+
+    it("rewrites health probes to Invoke-WebRequest against /api/health", () => {
+      const result = resolveLocalStatusCommand({
+        messageText:
+          "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+        command: "curl -s http://localhost:3000/health",
+        platform: "windows",
+      });
+      expect(result.kind).toBe("health");
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Invoke-WebRequest");
+      expect(result.command).toContain("/api/health");
+      expect(result.command).toContain("ELIZA_API_PORT");
+      expect(result.command).not.toContain("curl");
+    });
+
+    it("rewrites combined disk+memory probes to PowerShell with both markers", () => {
+      const result = resolveDiskInspectionCommand({
+        messageText:
+          "check disk space and free RAM on this server, summarize the biggest cleanup candidate and memory availability",
+        command: "free -m",
+        platform: "windows",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Get-PSDrive");
+      expect(result.command).toContain("--- cleanup candidates ---");
+      expect(result.command).toContain("--- memory ---");
+      expect(result.command).toContain("Win32_OperatingSystem");
+      expect(result.command).not.toContain("free -m");
+      expect(result.command).not.toContain("df -h");
+    });
+  });
+
+  describe("macos", () => {
+    it("rewrites memory probes to a vm_stat/sysctl synthesis (no Linux `free`)", () => {
+      const result = resolveLocalStatusCommand({
+        messageText: "how much RAM is free right now? concise",
+        command: "top -l 1 | head",
+        platform: "macos",
+      });
+      expect(result.kind).toBe("memory");
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("vm_stat");
+      expect(result.command).toContain("hw.memsize");
+      expect(result.command).not.toContain("free -m");
+    });
+
+    it("uses a macOS cleanup-candidate set for broad disk scans", () => {
+      const result = resolveDiskInspectionCommand({
+        messageText:
+          "check disk space on / and name the biggest cleanup candidate you can see",
+        command: "df -h / && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+        platform: "macos",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Library/Caches");
+      expect(result.command).toContain(".Trash");
+      expect(result.command).not.toContain("free -m");
+    });
+  });
+
+  describe("linux", () => {
+    it("keeps the POSIX `free -m` memory probe", () => {
+      const result = resolveLocalStatusCommand({
+        messageText: "how much RAM is free right now? concise",
+        command: "top -b -n 1 | head",
+        platform: "linux",
+      });
+      expect(result).toEqual({
+        command: "free -m",
+        kind: "memory",
+        rewritten: true,
+      });
+    });
+
+    it("keeps the POSIX df/du bounded disk scan", () => {
+      const result = resolveDiskInspectionCommand({
+        messageText:
+          "check disk space on / and /home and name the biggest cleanup candidate you can see",
+        command:
+          "df -h / /home && du -sh /* 2>/dev/null | sort -hr | head -n 5",
+        platform: "linux",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("df -h / /home");
+      expect(result.command).toContain("$HOME/.cache");
+      expect(result.command).not.toContain("Win32_OperatingSystem");
+    });
+  });
+
+  describe("resolveCommandPlatform", () => {
+    it("resolves the host shell to a known platform dialect", () => {
+      const platform: CommandPlatform = resolveCommandPlatform();
+      expect(["windows", "macos", "linux"]).toContain(platform);
+    });
+  });
+
+  describe("windows (PowerShell) source inspection", () => {
+    it("rewrites a broad source grep to a PowerShell git-grep/rg/Select-String chain (no POSIX find)", () => {
+      const result = resolveSourceInspectionCommand({
+        messageText:
+          "does the vendored opencode source include Cerebras endpoint detection? concise",
+        command: 'grep -R "Cerebras" /home/example -n 2>/dev/null | head -n 20',
+        platform: "windows",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("git grep -n --recurse-submodules");
+      expect(result.command).toContain("Get-Command rg");
+      expect(result.command).toContain("Select-String");
+      expect(result.command).toContain("$LASTEXITCODE");
+      expect(result.command).toContain("'Cerebras'");
+      // none of the POSIX-only forms survive
+      expect(result.command).not.toContain("command -v");
+      expect(result.command).not.toContain("2>/dev/null");
+      expect(result.command).not.toContain("|| true");
+      expect(result.command).not.toContain('[ -d "$SEARCH_ROOT" ]');
+    });
+
+    it("rewrites a broad source directory walk to a PowerShell Get-ChildItem listing (no sed)", () => {
+      const result = resolveSourceInspectionCommand({
+        messageText:
+          "does the local vendored opencode source include gpt-oss Cerebras reasoning replay handling? answer with what you find",
+        command: "find /home/example -type d -name '*opencode*' 2>/dev/null",
+        platform: "windows",
+      });
+      expect(result.rewritten).toBe(true);
+      expect(result.command).toContain("Get-ChildItem");
+      expect(result.command).toContain("-notmatch");
+      expect(result.command).toContain("node_modules");
+      expect(result.command).not.toContain("sed -n");
+      expect(result.command).not.toContain('find "$SEARCH_ROOT"');
+    });
   });
 });

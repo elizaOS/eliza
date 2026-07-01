@@ -51,7 +51,10 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "../internal/normalize.js";
-import { CalendarRepository, createLifeOpsCalendarSyncState } from "./CalendarRepository.js";
+import {
+  CalendarRepository,
+  createLifeOpsCalendarSyncState,
+} from "./CalendarRepository.js";
 import {
   calendarFeedPreferenceKey,
   ensureCalendarFeedIncludes,
@@ -197,13 +200,15 @@ export class CalendarService extends Service {
   private readonly repo: CalendarRepository;
   private gate: CalendarHostGate;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.repo = new CalendarRepository(runtime);
-    this.gate = createDefaultCalendarHostGate(runtime);
+    this.repo = new CalendarRepository(this.runtime);
+    this.gate = createDefaultCalendarHostGate(this.runtime);
   }
 
-  static override async start(runtime: IAgentRuntime): Promise<CalendarService> {
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<CalendarService> {
     return new CalendarService(runtime);
   }
 
@@ -692,9 +697,7 @@ export class CalendarService extends Service {
           ? event.calendarId === args.calendarId
           : true,
       )
-      .filter((event) =>
-        args.grantId ? event.grantId === args.grantId : true,
-      )
+      .filter((event) => (args.grantId ? event.grantId === args.grantId : true))
       .map((event) => event.id);
   }
 
@@ -912,7 +915,9 @@ export class CalendarService extends Service {
 
   private async updateAppleCalendarEvent(
     eventId: string,
-    nativePatch: Parameters<typeof updateNativeAppleCalendarEvent>[0]["request"],
+    nativePatch: Parameters<
+      typeof updateNativeAppleCalendarEvent
+    >[0]["request"],
   ): Promise<LifeOpsCalendarEvent> {
     const nativeEvent = await updateNativeAppleCalendarEvent({
       agentId: this.agentId(),

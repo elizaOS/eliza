@@ -7,6 +7,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { runBookTravelHandler } from "./book-travel.js";
 import { createOwnerHealthAction, runHealthHandler } from "./health.js";
@@ -578,6 +579,14 @@ export const personalAssistantAction: Action = {
     },
   ],
   handler: async (runtime, message, state, options, callback) => {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      return {
+        success: false,
+        text: "Personal-assistant workflows are restricted to the owner.",
+        data: { actionName: "PERSONAL_ASSISTANT", error: "PERMISSION_DENIED" },
+      };
+    }
+
     const action = readStringParam(options, "action")?.trim().toLowerCase();
     if (action === "book_travel") {
       return runBookTravelHandler(runtime, message, state, options, callback);

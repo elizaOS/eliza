@@ -69,7 +69,7 @@ const ARCHETYPE_MODELS: Record<string, string> = {
 };
 
 // Default fallback model
-const DEFAULT_MODEL = "qwen2.5:7b-instruct";
+const DEFAULT_MODEL = "hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0";
 
 function getConfiguredDefaultModel(): string | undefined {
   return process.env.OLLAMA_MODEL;
@@ -323,7 +323,7 @@ export async function importModelToOllama(params: {
   baseModel?: string;
 }): Promise<boolean> {
   // Create Modelfile for Ollama
-  const modelfile = `FROM ${params.baseModel || "qwen2.5:7b-instruct"}
+  const modelfile = `FROM ${params.baseModel || DEFAULT_MODEL}
 ADAPTER ${params.modelPath}
 PARAMETER temperature 0.7
 PARAMETER num_predict 8192

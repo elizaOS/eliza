@@ -12,7 +12,6 @@ export type PageScope =
   | "page-connectors"
   | "page-phone"
   | "page-plugins"
-  | "page-lifeops"
   | "page-settings"
   | "page-wallet";
 
@@ -24,7 +23,6 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-connectors",
   "page-phone",
   "page-plugins",
-  "page-lifeops",
   "page-settings",
   "page-wallet",
 ] as const;
@@ -72,16 +70,6 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
     primaryContext: "plugins",
     secondaryContexts: ["page", "page-plugins", "plugins", "admin"],
   },
-  "page-lifeops": {
-    primaryContext: "lifeops",
-    secondaryContexts: [
-      "page",
-      "page-lifeops",
-      "lifeops",
-      "automation",
-      "social_posting",
-    ],
-  },
   "page-settings": {
     primaryContext: "settings",
     secondaryContexts: ["page", "page-settings", "settings", "admin"],
@@ -98,7 +86,7 @@ const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 13;
+export const PAGE_SCOPE_VERSION = 15;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -156,12 +144,6 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     systemAddendum:
       "You are answering inside the Plugins view. The user can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. Recommend the smallest plugin setup or troubleshooting action that fits the user's goal, reference visible plugin state when present, and never invent installed plugins, credentials, or enabled capabilities.",
   },
-  "page-lifeops": {
-    title: "LifeOps chat",
-    body: "Ask me about the visible LifeOps item or the next action you want handled.",
-    systemAddendum:
-      "You are answering inside the LifeOps view. The user can inspect the current overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. Recommend capability readiness and overview review before creating or changing durable personal workflows. When the user asks for concrete LifeOps work, route through the LifeOps app actions/providers already available in the runtime instead of generic advice. Reference live LifeOps state when present, and never invent reminders, goals, messages, calendar events, or connector state.",
-  },
   "page-settings": {
     title: "Settings chat",
     body: "Use me to tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Recommended: describe the capability you want to enable or troubleshoot, and I'll point to the right section or explain the tradeoffs.",
@@ -170,9 +152,9 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-wallet": {
     title: "Wallet chat",
-    body: "Use me to inspect token inventory, NFTs, LP positions, balances, P&L, activity, EVM/Solana addresses, RPC readiness, native Hyperliquid/Polymarket readiness, and Vincent delegated trading. Recommended: ask me to prepare a swap, bridge, market review, or delegated trading plan with the amount and constraints you want.",
+    body: "Use me to inspect token inventory, NFTs, LP positions, balances, P&L, activity, EVM/Solana addresses, RPC readiness, and native Hyperliquid/Polymarket readiness. Recommended: ask me to prepare a swap, bridge, or market review with the amount and constraints you want.",
     systemAddendum:
-      "You are answering inside the Wallet view. The user can inspect token inventory, NFTs, LP positions, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, native Hyperliquid and Polymarket readiness, and Vincent delegated trading. There are no chain filters in this surface. Recommend the smallest concrete wallet action that fits the user's goal. For swaps, bridges, transfers, signatures, trading actions, or prediction-market actions, confirm the asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking available wallet actions. If the user asks about Hyperliquid or Polymarket, prefer the native app surfaces for reads/status and only surface Vincent for delegated automated trading. Never invent balances, positions, fills, markets, odds, or execution support.",
+      "You are answering inside the Wallet view. The user can inspect token inventory, NFTs, LP positions, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and native Hyperliquid and Polymarket readiness. There are no chain filters in this surface. Recommend the smallest concrete wallet action that fits the user's goal. For swaps, bridges, transfers, signatures, trading actions, or prediction-market actions, confirm the asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking available wallet actions. If the user asks about Hyperliquid or Polymarket, prefer the native app surfaces for reads/status. Never invent balances, positions, fills, markets, odds, or execution support.",
   },
 };
 
@@ -184,7 +166,6 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
   "page-connectors": "Connectors",
   "page-phone": "Phone",
   "page-plugins": "Plugins",
-  "page-lifeops": "LifeOps",
   "page-settings": "Settings",
   "page-wallet": "Wallet",
 };

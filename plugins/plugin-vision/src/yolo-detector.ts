@@ -14,7 +14,7 @@
 // **No fallback.** If the native lib or GGUF is missing, init throws.
 
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
+import { getSharp } from "./image/sharp-compat";
 import {
   defaultYoloWeightsPath,
   isYoloReady,
@@ -203,6 +203,7 @@ export class YOLODetector {
       throw new Error("[YOLO] native bindings unavailable at detect time");
     }
 
+    const sharp = await getSharp();
     const meta = await sharp(imageBuffer).metadata();
     const origW = meta.width ?? 0;
     const origH = meta.height ?? 0;
@@ -254,7 +255,7 @@ export class YOLODetector {
 
     const filtered = this.classFilterLower
       ? detections.filter((d) =>
-          this.classFilterLower!.has(d.className.toLowerCase()),
+          this.classFilterLower?.has(d.className.toLowerCase()),
         )
       : detections;
 
@@ -319,7 +320,8 @@ export class YOLODetector {
     const sorted = [...detections].sort((a, b) => b.score - a.score);
     const kept: Detection[] = [];
     while (sorted.length) {
-      const top = sorted.shift()!;
+      const top = sorted.shift();
+      if (!top) break;
       kept.push(top);
       for (let i = sorted.length - 1; i >= 0; i--) {
         if (this.iou(top, sorted[i]) > this.cfg.nmsIouThreshold)

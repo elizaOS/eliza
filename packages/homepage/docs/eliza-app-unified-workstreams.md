@@ -31,10 +31,10 @@ same runtime target, and same handoff semantics.
   `packages/app/scripts/ensure-capacitor-platform.mjs`.
 - Provisioning and one-agent handoff:
   `packages/homepage/src/lib/hooks/use-eliza-app-provisioning-chat.ts`,
-  `packages/cloud-api/eliza-app/provisioning-agent/route.ts`,
-  `packages/cloud-api/eliza-app/provisioning-agent/chat/route.ts`,
-  `packages/cloud-api/eliza-app/provision-agent/route.ts`,
-  `packages/cloud-api/v1/eliza/agents/[agentId]/provision/route.ts`.
+  `packages/cloud/api/eliza-app/provisioning-agent/route.ts`,
+  `packages/cloud/api/eliza-app/provisioning-agent/chat/route.ts`,
+  `packages/cloud/api/eliza-app/provision-agent/route.ts`,
+  `packages/cloud/api/v1/eliza/agents/[agentId]/provision/route.ts`.
 - Messaging gateways:
   `plugins/plugin-bluebubbles/src/service.ts`,
   `plugins/plugin-bluebubbles/src/setup-routes.ts`,
@@ -45,12 +45,12 @@ same runtime target, and same handoff semantics.
   `packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx`,
   `packages/ui/src/components/connectors/TelegramAccountConnectorPanel.tsx`,
   `packages/ui/src/components/connectors/WhatsAppQrOverlay.tsx`,
-  `packages/cloud-api/eliza-app/webhook/_forward.ts`,
-  `packages/cloud-api/eliza-app/webhook/discord/route.ts`,
-  `packages/cloud-api/eliza-app/webhook/telegram/route.ts`,
-  `packages/cloud-api/eliza-app/webhook/whatsapp/route.ts`,
-  `packages/cloud-services/gateway-discord/src/index.ts`,
-  `packages/cloud-services/gateway-webhook/src/webhook-handler.ts`.
+  `packages/cloud/api/eliza-app/webhook/_forward.ts`,
+  `packages/cloud/api/eliza-app/webhook/discord/route.ts`,
+  `packages/cloud/api/eliza-app/webhook/telegram/route.ts`,
+  `packages/cloud/api/eliza-app/webhook/whatsapp/route.ts`,
+  `packages/cloud/services/gateway-discord/src/index.ts`,
+  `packages/cloud/services/gateway-webhook/src/webhook-handler.ts`.
 
 ## Workstream 1: Downloads And App Stores
 
@@ -157,13 +157,13 @@ Implementation requirements:
 - Homepage entry points in `packages/homepage/src/pages/get-started.tsx` should
   keep using environment-driven bot identifiers documented in
   `packages/homepage/README.md`.
-- Cloud API webhook routes under `packages/cloud-api/eliza-app/webhook/` remain
+- Cloud API webhook routes under `packages/cloud/api/eliza-app/webhook/` remain
   thin forwarders to gateway services; channel logic belongs in
-  `packages/cloud-services/gateway-discord` or
-  `packages/cloud-services/gateway-webhook`.
+  `packages/cloud/services/gateway-discord` or
+  `packages/cloud/services/gateway-webhook`.
 - Account linking must route through existing auth/connection endpoints under
-  `packages/cloud-api/eliza-app/auth/` and
-  `packages/cloud-api/eliza-app/connections/`.
+  `packages/cloud/api/eliza-app/auth/` and
+  `packages/cloud/api/eliza-app/connections/`.
 - Telegram bot and Telegram account setup remain separate UI concepts:
   `TelegramBotSetupPanel.tsx` for bot onboarding and
   `TelegramAccountConnectorPanel.tsx` for user account linking.
@@ -179,8 +179,8 @@ Acceptance criteria:
 - Webhook retries are idempotent: duplicate platform events do not create extra
   agents or duplicate onboarding sessions.
 - Gateway service tests pass:
-  `bun test packages/cloud-services/gateway-discord/tests` and
-  `bun test packages/cloud-services/gateway-webhook/__tests__`.
+  `bun test packages/cloud/services/gateway-discord/tests` and
+  `bun test packages/cloud/services/gateway-webhook/__tests__`.
 
 ## Workstream 5: One-Agent-Per-User Handoff
 
@@ -194,7 +194,7 @@ Implementation requirements:
   the browser-side handoff contract: `agentId`, `bridgeUrl`, and
   `containerStatus` must be enough to transition from setup to real chat.
 - Replace demo-only in-memory agent provisioning in
-  `packages/cloud-api/eliza-app/provision-agent/route.ts` with persistent
+  `packages/cloud/api/eliza-app/provision-agent/route.ts` with persistent
   account-bound provisioning before production launch.
 - Enforce one active personal agent per user at the provisioning boundary.
   Additional channel connections attach to that agent.

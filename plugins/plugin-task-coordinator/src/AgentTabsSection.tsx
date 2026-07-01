@@ -2,7 +2,7 @@ import {
   type AgentPreflightResult,
   Button,
   SettingsControls,
-  useApp,
+  useAppSelector,
 } from "@elizaos/ui";
 import {
   AlertTriangle,
@@ -43,7 +43,7 @@ export function AgentTabsSection({
   onSelectAgent,
   onAuth,
 }: AgentTabsSectionProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const activeNeedsAuth = Boolean(
     activeTab &&
       llmProvider === "subscription" &&
@@ -76,12 +76,12 @@ export function AgentTabsSection({
               key={agent}
               variant={active ? "default" : "ghost"}
               size="sm"
-              className={`flex-1 h-9 rounded-lg border px-3 py-2 text-xs font-semibold ${
+              className={`h-8 flex-1 px-2 text-xs font-semibold ${
                 active
                   ? "bg-accent text-accent-fg dark:text-accent-fg shadow-sm"
                   : needsAuth
-                    ? "border-warn/30 text-warn hover:bg-warn/10 hover:text-warn"
-                    : "border-transparent text-muted hover:bg-bg-hover hover:text-txt"
+                    ? "text-warn hover:bg-warn/10 hover:text-warn"
+                    : "text-muted hover:bg-bg-hover hover:text-txt"
               }`}
               onClick={() => onSelectAgent(agent)}
               aria-label={`${AGENT_LABELS[agent]} ${statusLabel}`}
@@ -102,7 +102,7 @@ export function AgentTabsSection({
       </SettingsControls.SegmentedGroup>
 
       {activeTab && activeNeedsAuth && (
-        <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-warn/25 bg-warn/5 px-2.5 py-2 text-xs text-warn">
+        <div className="mt-1.5 flex items-center justify-between gap-2 px-1 py-1 text-xs text-warn">
           <div className="inline-flex min-w-0 items-center gap-1.5">
             <KeyRound className="h-3.5 w-3.5 shrink-0" aria-hidden />
             <span className="truncate">
@@ -115,7 +115,7 @@ export function AgentTabsSection({
             variant="ghost"
             size="sm"
             disabled={activeAuthenticating}
-            className="h-7 shrink-0 rounded-md px-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
+            className="h-7 shrink-0 px-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
             onClick={() => onAuth(activeTab)}
           >
             {activeAuthenticating ? (
@@ -166,7 +166,7 @@ export function AgentTabsSection({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 rounded-md"
+                className="h-7 w-7"
                 aria-label={t("codingagentsettingssection.Retry", {
                   defaultValue: "Retry",
                 })}

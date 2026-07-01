@@ -253,7 +253,7 @@ export class AutonomousPlanningCoordinator {
       });
     }
 
-    // Use LARGE model (trained W&B model if available, else qwen3-32b) for complex planning
+    // Use the large configured model for complex planning.
     const planResponse = await callGroqDirect({
       prompt: finalPrompt,
       system: planningAgent.agentSystem ?? undefined,

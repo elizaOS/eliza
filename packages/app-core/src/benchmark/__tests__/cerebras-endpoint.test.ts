@@ -43,6 +43,8 @@ const ENV_KEYS = [
   "OPENAI_LARGE_MODEL",
   "OPENAI_SMALL_MODEL",
   "ELIZA_PROVIDER",
+  "BENCHMARK_MODEL_NAME",
+  "BENCHMARK_MODEL_PROVIDER",
 ] as const;
 
 describe("bench-server Cerebras autowiring", () => {
@@ -95,16 +97,36 @@ describe("bench-server Cerebras autowiring", () => {
 
   it("respects an explicit CEREBRAS_MODEL override", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
-    process.env.CEREBRAS_MODEL = "qwen-3-235b-a22b-instruct-2507";
+    process.env.CEREBRAS_MODEL = "gemma-4-31b";
 
     autoWireCerebras();
 
-    expect(process.env.OPENAI_LARGE_MODEL).toBe(
-      "qwen-3-235b-a22b-instruct-2507",
-    );
-    expect(process.env.OPENAI_SMALL_MODEL).toBe(
-      "qwen-3-235b-a22b-instruct-2507",
-    );
+    expect(process.env.OPENAI_LARGE_MODEL).toBe("gemma-4-31b");
+    expect(process.env.OPENAI_SMALL_MODEL).toBe("gemma-4-31b");
+  });
+
+  it("treats an explicit Gemma 4 benchmark model as Cerebras intent", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OPENAI_API_KEY = "sk-real-openai";
+    process.env.BENCHMARK_MODEL_NAME = "Gemma-4-31B";
+
+    autoWireCerebras();
+
+    expect(process.env.OPENAI_BASE_URL).toBe("https://api.cerebras.ai/v1");
+    expect(process.env.OPENAI_API_KEY).toBe("csk-test");
+    expect(process.env.ELIZA_PROVIDER).toBe("cerebras");
+  });
+
+  it("treats the public GLM preview model as Cerebras intent", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OPENAI_BASE_URL = "https://api.openrouter.ai/api/v1";
+    process.env.BENCHMARK_MODEL_NAME = "zai-glm-4.7";
+
+    autoWireCerebras();
+
+    expect(process.env.OPENAI_BASE_URL).toBe("https://api.cerebras.ai/v1");
+    expect(process.env.OPENAI_API_KEY).toBe("csk-test");
+    expect(process.env.ELIZA_PROVIDER).toBe("cerebras");
   });
 
   it("is a no-op when CEREBRAS_API_KEY is unset", () => {

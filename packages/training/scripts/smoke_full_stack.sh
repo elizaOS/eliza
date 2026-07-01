@@ -3,13 +3,13 @@
 # training+quant+inference+bench stack.
 #
 # Single command. ~15-30 minutes on one consumer GPU (RTX 4090/5090/H100).
-# Trains the smallest model (Qwen/Qwen3.5-0.8B), produces every quant
+# Trains the smallest model (google/gemma-4-E2B), produces every quant
 # sidecar, serves with vLLM, hits the OpenAI-compat tool-call endpoint,
 # benchmarks each variant, and gates on hard pass criteria.
 #
 # Usage:
 #   bash training/scripts/smoke_full_stack.sh
-#   bash training/scripts/smoke_full_stack.sh --registry-key qwen3.5-0.8b
+#   bash training/scripts/smoke_full_stack.sh --registry-key gemma4-e2b
 #   bash training/scripts/smoke_full_stack.sh --skip-train
 #
 # Env knobs:
@@ -32,7 +32,7 @@
 set -euo pipefail
 
 # ---------- args ----------
-REGISTRY_KEY="qwen3.5-0.8b"
+REGISTRY_KEY="gemma4-e2b"
 SKIP_TRAIN=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -224,8 +224,8 @@ if [[ $HAS_PYTHON_H -eq 1 ]]; then
     #   2 → check_model_compatibility() rejected the model (publish-blocking
     #       for that recipe, but smoke marks it as a SKIP — it's an
     #       architectural mismatch, not a recipe bug)
-    #   3 → EXIT_INCOMPATIBLE_ARCH: hybrid linear+full attention model
-    #       (Qwen3.5/3.6) — the vendored fused cache cannot model
+    #   3 → EXIT_INCOMPATIBLE_ARCH: Gemma 4 dense attention model
+    #       (Gemma 4) — the vendored fused cache cannot model
     #       has_previous_state for linear-attention layers. SKIP.
     #   other → operational failure (stop the smoke).
     set +e
@@ -311,7 +311,7 @@ if [[ $HAS_PYTHON_H -eq 0 ]]; then
 else
 # Preflight: does vLLM actually know how to load this architecture? vLLM's
 # ModelRegistry tracks supported architectures by class name; new HF model
-# families (e.g. Qwen3_5ForCausalLM) land in transformers before vLLM
+# families (e.g. Gemma4ForCausalLM) land in transformers before vLLM
 # adds an in-tree implementation. If the checkpoint's `architectures[0]`
 # is not registered, vLLM aborts at engine-init and the smoke fails for
 # reasons unrelated to the recipe pipeline. Mark the step SKIPPED with
@@ -334,7 +334,7 @@ case "$ARCH_CHECK" in
         : ;;  # supported, proceed
     missing:*)
         echo "[smoke]   SKIP: vLLM does not support architecture ${ARCH_CHECK#missing:}"
-        echo "[smoke]          (Qwen3_5/Qwen3_6 hybrid linear+full attention models"
+        echo "[smoke]          (Gemma 4 Gemma 4 dense attention models"
         echo "[smoke]           are not yet in vLLM's ModelRegistry.)"
         mark_skip_incompat "vllm-toolcall"
         ARCH_INCOMPAT=1
@@ -453,7 +453,7 @@ echo "[smoke] STEP 9/9: summary + acceptance gate"
 # Serialize the architecture-aware step bookkeeping so the gate logic below
 # can compute applicable_steps / passed_steps and Gate 5 (cloud dispatch)
 # can read the resulting JSON. A step that the architecture cannot run
-# (e.g., fused-turboquant on hybrid attention) is NOT counted against the
+# (e.g., fused-turboquant on dense attention) is NOT counted against the
 # gate — it's still listed under skipped_incompatible for traceability.
 ALL_STEPS_JSON="$(printf '%s\n' "${ALL_STEPS[@]}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"
 PASSED_JSON="$(printf '%s\n' "${PASSED_STEPS[@]:-}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"

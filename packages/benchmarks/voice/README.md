@@ -10,9 +10,21 @@ in `reports/`.
 ## Quick Start
 
 ```bash
-# Full E2E with real models (requires eliza-1-0_8b.bundle + libvoice_classifier.dylib)
-ELIZA_VOICE_CLASSIFIER_LIB=<repo>/build-darwin/libvoice_classifier.dylib \
-  bun packages/benchmarks/voice/three-voice-e2e-real.mjs
+# Local real-acoustic eval: real pyannote diarizer + WeSpeaker encoder on real
+# audio (Apple Silicon Metal, no GPU runner / no ElevenLabs)
+ELIZA_INFERENCE_LIBRARY=<repo>/libelizainference.dylib ELIZA_BUNDLE_DIR=<bundle> \
+ELIZA_PYANNOTE_GGUF=<pyannote.gguf> ELIZA_WESPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_SPK_A_WAV=<a.wav> ELIZA_SPK_B_WAV=<b.wav> \
+  bun packages/benchmarks/voice/local-acoustic-eval.mjs
+
+# Provisioned CI real matrix: fused lib + GGUFs + generated speech.
+# Writes DER/WER/echo-rejection/owner-security JSON + Markdown reports.
+ELIZA_ASR_BUNDLE=<bundle> \
+ELIZA_INFERENCE_LIBRARY=<libelizainference> \
+ELIZA_SPEAKER_GGUF=<wespeaker.gguf> \
+ELIZA_DIARIZ_GGUF=<pyannote.gguf> \
+ELEVENLABS_API_KEY=<key> \
+  bun packages/benchmarks/voice/voice-real-ci-matrix.mjs
 
 # Pure-JS smoke test — no model bundle required
 bun packages/benchmarks/voice/owner-voice-first-run.mjs

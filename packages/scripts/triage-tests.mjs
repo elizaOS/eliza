@@ -28,6 +28,7 @@ const SKIP_DIRS = new Set([
   ".cache",
   "target",
   ".benchmark-logs",
+  ".worktrees",
   "build",
   "tsbuild",
   ".next",
@@ -38,6 +39,7 @@ const SKIP_DIRS = new Set([
 
 const SKIP_PATH_FRAGMENTS = [
   path.sep + ".claude" + path.sep + "worktrees" + path.sep,
+  path.sep + ".eliza" + path.sep + "e2e-worktrees" + path.sep,
 ];
 
 const TEST_EXTS = [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"];

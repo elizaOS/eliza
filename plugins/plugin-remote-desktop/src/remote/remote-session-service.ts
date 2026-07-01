@@ -18,8 +18,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/agent";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   DataPlaneUnavailableReason,
   RemoteSession,
@@ -54,13 +53,31 @@ export interface DataPlaneResolver {
   }): Promise<DataPlaneResolution> | DataPlaneResolution;
 }
 
+export interface RemoteSessionLogger {
+  debug: (
+    value: string | Error | Record<string, unknown>,
+    message?: string,
+    ...args: unknown[]
+  ) => void;
+  info: (
+    value: string | Error | Record<string, unknown>,
+    message?: string,
+    ...args: unknown[]
+  ) => void;
+  warn: (
+    value: string | Error | Record<string, unknown>,
+    message?: string,
+    ...args: unknown[]
+  ) => void;
+}
+
 export interface RemoteSessionServiceOptions {
   pairingCodes?: PairingCodeStore;
   dataPlane?: DataPlaneResolver;
   /** Read once per `startSession` call; overridable for tests. */
   isLocalMode?: () => boolean;
   now?: () => Date;
-  logger?: Pick<typeof logger, "info" | "warn" | "debug">;
+  logger?: RemoteSessionLogger;
   storagePath?: string;
 }
 
@@ -96,7 +113,7 @@ export class RemoteSessionService {
   private readonly dataPlane: DataPlaneResolver;
   private readonly isLocalMode: () => boolean;
   private readonly now: () => Date;
-  private readonly log: Pick<typeof logger, "info" | "warn" | "debug">;
+  private readonly log: RemoteSessionLogger;
   private readonly storagePath: string;
 
   constructor(options: RemoteSessionServiceOptions = {}) {

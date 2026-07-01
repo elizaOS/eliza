@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tailscale",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Tunnel plugin for elizaOS — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter",
   "type": "module",
   "main": "dist/index.js",
@@ -31,6 +31,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "scripts": {
@@ -39,7 +40,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "clean": "rm -rf dist coverage",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist coverage",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -56,7 +57,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.6.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

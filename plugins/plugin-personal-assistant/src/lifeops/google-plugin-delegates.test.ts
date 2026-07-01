@@ -1,9 +1,8 @@
 import { getConnectorAccountManager, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { LifeOpsServiceBase } from "./service-mixin-core.js";
-import { withGoogle } from "./service-mixin-google.js";
+import { LifeOpsService } from "./service.js";
 
-const TestGoogleService = withGoogle(LifeOpsServiceBase);
+const TestGoogleService = LifeOpsService;
 
 function runtime(): IAgentRuntime {
   return {

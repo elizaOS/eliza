@@ -1,13 +1,13 @@
 import { FolderOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { useApp, useContentPack } from "../../state";
+import { useAppSelector, useContentPack } from "../../state";
 import { Button } from "../ui/button";
 import { SettingsInput } from "../ui/settings-controls";
 import { SettingsGroup } from "./settings-layout";
 
 export function LoadContentPackForm() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const {
     activePack,
     error: packLoadError,

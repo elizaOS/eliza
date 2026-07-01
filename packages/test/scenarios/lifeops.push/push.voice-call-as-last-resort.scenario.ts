@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.voice-call-as-last-resort",
   title:
     "Voice call fires only after the SMS rung has been unacknowledged for 10m",

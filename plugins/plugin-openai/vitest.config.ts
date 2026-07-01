@@ -33,11 +33,15 @@ export default defineConfig({
 	test: {
 		environment: "node",
 		include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+		// `*.real.test.ts` are kept in: they self-skip keyless (describe.skipIf)
+		// and run live only in the nightly external-api-live-drift lane.
+		// `*.harness.test.ts` boot a real PGLite runtime and need the workspace
+		// source aliases from vitest.harness.config.ts — run via `test:harness`.
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",
 			"**/*.live.test.ts",
-			"**/*.real.test.ts",
+			"**/*.harness.test.ts",
 		],
 	},
 });

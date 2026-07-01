@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 import types
 from pathlib import Path
 
@@ -16,9 +17,7 @@ from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
     _score_from_app_eval,
-    _score_from_compactbench,
     _score_from_eliza_1,
-    _score_from_loca_bench,
     _score_from_personality_bench,
     _score_from_woobench,
     discover_adapters,
@@ -80,6 +79,11 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
 
     assert set(discovery.all_directories) - covered_dirs == set()
     assert ".pytest_cache" not in discovery.all_directories
+    assert "memperf" not in discovery.all_directories
+    assert "mobile-resource" not in discovery.all_directories
+    assert "skillsbench" not in discovery.all_directories
+    assert "skillsbench" not in orchestrator_adapters.IGNORED_BENCHMARK_DIRS
+    assert not (_workspace_root() / "benchmarks" / "skillsbench").exists()
     assert "swe-bench-pro" not in discovery.all_directories
     assert "swe-bench-workspace" not in discovery.all_directories
     assert not any("gaia" in name.lower() for name in discovery.all_directories)
@@ -87,7 +91,8 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
 
 
 def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
+    discovery = discover_adapters(_workspace_root())
+    adapters = discovery.adapters
 
     assert adapters["app-eval"].directory == "app-eval"
     assert adapters["openclaw_bench"].directory == "openclaw-benchmark"
@@ -98,7 +103,8 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["mmau"].directory == "mmau-audio"
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
-    assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+    assert "mmau" not in discovery.all_directories
+    assert "elizaos_mmau" not in discovery.all_directories
 
 
 def test_voice_audio_defaults_do_not_publish_mock_fixture_runs(
@@ -892,22 +898,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             assert cell.command is None
             assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
 
-    compactbench_hermes = cells[("compactbench", "hermes")]
-    assert compactbench_hermes.compatible is True
-    assert compactbench_hermes.command is not None
-    assert (
-        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
-        in compactbench_hermes.command
-    )
-
-    compactbench_openclaw = cells[("compactbench", "openclaw")]
-    assert compactbench_openclaw.compatible is True
-    assert compactbench_openclaw.command is not None
-    assert (
-        "eliza_compactbench/openclaw_compactor.py:OpenClawNativeToolCompactor"
-        in compactbench_openclaw.command
-    )
-
 
 def test_real_matrix_compatible_commands_do_not_default_to_mock_or_stub(
     monkeypatch: pytest.MonkeyPatch,
@@ -1158,20 +1148,42 @@ def test_eliza_1_score_rejects_all_adapter_errors(tmp_path: Path) -> None:
         _score_from_eliza_1(result_path)
 
 
-def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> None:
+def test_mmau_uses_canonical_audio_package_without_legacy_shims(tmp_path: Path) -> None:
+    benchmarks_root = _workspace_root() / "benchmarks"
+    assert not (benchmarks_root / "mmau").exists()
+    assert not (benchmarks_root / "elizaos_mmau").exists()
+
+    importlib.invalidate_caches()
+    benchmarks_package = importlib.import_module("benchmarks")
+    assert importlib.machinery.PathFinder.find_spec(
+        "benchmarks.mmau", list(benchmarks_package.__path__)
+    ) is None
+    assert (
+        importlib.machinery.PathFinder.find_spec("elizaos_mmau", [str(benchmarks_root)])
+        is None
+    )
+
+    pyproject = tomllib.loads(
+        (benchmarks_root / "mmau-audio" / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert pyproject["project"]["scripts"] == {
+        "mmau-audio": "elizaos_mmau_audio.cli:main",
+        "elizaos-mmau-audio": "elizaos_mmau_audio.cli:main",
+    }
+
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(_workspace_root() / "packages")
+    env["PYTHONPATH"] = str(benchmarks_root / "mmau-audio")
 
     result = subprocess.run(
         [
             sys.executable,
             "-m",
-            "benchmarks.mmau",
+            "elizaos_mmau_audio",
             "--mock",
             "--limit",
             "1",
             "--output",
-            str(tmp_path / "mmau-legacy"),
+            str(tmp_path / "mmau-canonical"),
             "--json",
         ],
         cwd=_workspace_root(),
@@ -1182,7 +1194,7 @@ def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> 
     )
 
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / "mmau-legacy" / "mmau-results.json").exists()
+    assert (tmp_path / "mmau-canonical" / "mmau-results.json").exists()
 
 
 def test_hermes_native_envs_publish_real_harness_rows(
@@ -1339,15 +1351,6 @@ def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
 
 def test_framework_publishes_real_harness_rows() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["framework"]
-
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
-    assert _is_harness_compatible(adapter, "eliza") is True
-    assert _is_harness_compatible(adapter, "hermes") is True
-    assert _is_harness_compatible(adapter, "openclaw") is True
-
-
-def test_compactbench_publishes_all_real_compactor_harnesses() -> None:
-    adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
 
     assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
@@ -1794,7 +1797,6 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
         "bfcl": ("--max-per-category", "1"),
         "hyperliquid_bench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
-        "loca_bench": ("--max-tool-uses", "40"),
     }
     for benchmark_id, (flag, value) in expected_flags.items():
         adapter = adapters[benchmark_id]
@@ -1912,36 +1914,6 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(
     assert env["ELIZA_BENCH_FORCE_TOOL_CALL"] == "0"
     assert env["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
     assert env["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
-
-    evm = adapters["evm"]
-    effective_evm = _effective_request(
-        evm,
-        RunRequest(
-            benchmarks=("evm",),
-            agent="openclaw",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={},
-        ),
-    )
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
-        output_root=tmp_path / "evm",
-        run_root=tmp_path,
-        request=effective_evm,
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-    env = evm.env_builder(ctx, evm) if evm.env_builder else {}
-    assert env["BENCHMARK_HARNESS"] == "openclaw"
-    assert env["ELIZA_BENCH_HARNESS"] == "openclaw"
-    assert env["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
-    assert env["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
-    assert env["MODEL_NAME"] == "cerebras/gpt-oss-120b"
-    assert env["MAX_MESSAGES"] == "2"
-    assert env["EXPAND_SCENARIOS"] == "true"
 
     solana = adapters["solana"]
     effective_solana = _effective_request(
@@ -2324,136 +2296,6 @@ def test_configbench_adapter_command_forwards_limit(tmp_path: Path) -> None:
     assert "--eliza" not in command
 
 
-def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
-    adapter = adapters["compactbench"]
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("compactbench",),
-            agent="eliza",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={"case_count": 1, "drift_cycles": 1, "score": True},
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-
-    assert "--analyze-valid-hits" in command
-    assert "--valid-hit-output" in command
-    assert command[command.index("--valid-hit-output") + 1] == str(
-        tmp_path / "out" / "compactbench-results.valid-hits.jsonl"
-    )
-    assert command[command.index("--method") + 1] == (
-        "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
-    )
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
-
-
-def test_compactbench_python_falls_back_when_local_python_lacks_dependencies(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    compactbench_root = tmp_path / "compactbench"
-    venv_bin = compactbench_root / ".venv" / "bin"
-    venv_bin.mkdir(parents=True)
-    local_python = venv_bin / "python"
-    local_python.write_text("#!/bin/sh\n", encoding="utf-8")
-
-    good_python = tmp_path / "conda-python"
-    good_python.write_text("#!/bin/sh\n", encoding="utf-8")
-    monkeypatch.setattr(orchestrator_adapters.sys, "executable", "/broken/sys-python")
-    monkeypatch.setattr(
-        orchestrator_adapters.shutil,
-        "which",
-        lambda name: str(good_python) if name == "python" else None,
-    )
-    monkeypatch.setattr(
-        orchestrator_adapters,
-        "_python_can_import",
-        lambda candidate, module: candidate == str(good_python)
-        and module == "ruamel.yaml",
-    )
-
-    assert orchestrator_adapters._compactbench_python_executable(
-        compactbench_root
-    ) == str(good_python)
-
-
-def test_compactbench_hermes_adapter_uses_native_tool_compactor(
-    tmp_path: Path,
-) -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
-    adapter = adapters["compactbench"]
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("compactbench",),
-            agent="hermes",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={"case_count": 1, "drift_cycles": 1},
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-    env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
-
-    assert command[command.index("--method") + 1] == (
-        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
-    )
-    assert "--analyze-valid-hits" in command
-    assert env["HERMES_BENCH_PROVIDER"] == "cerebras"
-
-
-def test_compactbench_score_prefers_repaired_valid_hit_analysis(tmp_path: Path) -> None:
-    raw = tmp_path / "compactbench-results.jsonl"
-    raw.write_text(
-        '{"event":"run_end","overall_score":0.25,"compression_ratio":2.0}\n',
-        encoding="utf-8",
-    )
-    valid = tmp_path / "compactbench-results.valid-hits.jsonl"
-    valid.write_text(
-        "\n".join(
-            [
-                '{"event":"analysis_start"}',
-                (
-                    '{"event":"analysis_end","overall_score":0.95,'
-                    '"benchmark_quality_score":0.95,'
-                    '"raw_lexical_overall_score":0.25,'
-                    '"valid_false_negatives":3,'
-                    '"semantic_false_positives":0,'
-                    '"failures_remaining":1,'
-                    '"repaired_expected_conflicts":0,'
-                    '"removed_invalid_items":0,'
-                    '"judge_refusals":0}'
-                ),
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    score = _score_from_compactbench(raw)
-
-    assert score.score == 0.95
-    assert score.metrics["raw_lexical_overall_score"] == 0.25
-    assert score.metrics["valid_false_negatives"] == 3
-    assert score.metrics["scorer_name"] == "repaired_valid_hits"
-
-
 def test_scambench_orchestrator_default_is_tiny_bridge_smoke(tmp_path: Path) -> None:
     adapters = discover_adapters(_workspace_root()).adapters
     adapter = adapters["scambench"]
@@ -2592,57 +2434,6 @@ def test_vending_score_rejects_zero_successful_runs() -> None:
         )
 
 
-def test_compactbench_score_accepts_valid_hit_file_from_locator(tmp_path: Path) -> None:
-    valid = tmp_path / "compactbench-results.valid-hits.jsonl"
-    valid.write_text(
-        "\n".join(
-            [
-                '{"event":"analysis_start"}',
-                '{"event":"analysis_end","overall_score":0.8}',
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    score = _score_from_compactbench(valid)
-
-    assert score.score == 0.8
-    assert score.metrics["scorer_name"] == "repaired_valid_hits"
-
-
-def test_compactbench_score_requires_repaired_valid_hit_analysis(tmp_path: Path) -> None:
-    raw = tmp_path / "compactbench-results.jsonl"
-    raw.write_text(
-        '{"event":"run_end","overall_score":0.25,"compression_ratio":2.0}\n',
-        encoding="utf-8",
-    )
-
-    try:
-        _score_from_compactbench(raw)
-    except ValueError as exc:
-        assert "valid-hit analysis is required" in str(exc)
-    else:
-        raise AssertionError("expected missing repaired analysis to fail scoring")
-
-
-def test_compare_label_runs_multi_harness_compactbench() -> None:
-    adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
-    request = RunRequest(
-        benchmarks=("compactbench",),
-        agent="compare",
-        provider="cerebras",
-        model="gpt-oss-120b",
-        extra_config={},
-        force=True,
-    )
-
-    effective = _effective_request(adapter, request)
-
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
-    assert effective.agent == "compare"
-    assert _is_harness_compatible(adapter, "compare") is True
-
-
 def test_compare_label_still_runs_multi_harness_adapters() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["context_bench"]
 
@@ -2708,52 +2499,6 @@ def test_adhdbench_adapter_defaults_to_bounded_quick_smoke(tmp_path: Path) -> No
 
     assert "--quick" in command
     assert command[command.index("--ids") + 1] == "L0-002"
-
-
-def test_loca_adapter_enables_openclaw_direct_openai_tool_path(tmp_path: Path) -> None:
-    adapter = discover_adapters(_workspace_root()).adapters["loca_bench"]
-    ctx = ExecutionContext(
-        workspace_root=_workspace_root(),
-        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
-        output_root=tmp_path / "out",
-        run_root=tmp_path,
-        request=RunRequest(
-            benchmarks=("loca_bench",),
-            agent="openclaw",
-            provider="cerebras",
-            model="gpt-oss-120b",
-            extra_config={
-                "max_context_size": 1_000_000,
-                "reset_size": 500_000,
-                "reasoning_effort": "low",
-                "timeout": 120,
-                "allow_empty": True,
-                "expand_scenarios": True,
-            },
-        ),
-        run_group_id="test",
-        env={},
-        repo_meta={},
-    )
-
-    command = adapter.command_builder(ctx, adapter)
-    env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
-
-    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes", "smithers")
-    assert _is_harness_compatible(adapter, "eliza") is True
-    assert _is_harness_compatible(adapter, "hermes") is True
-    assert _is_harness_compatible(adapter, "openclaw") is True
-    assert "--allow-empty" not in command
-    assert "--expand-scenarios" in command
-    assert command[command.index("--max-context-size") + 1] == "1000000"
-    assert command[command.index("--reset-size") + 1] == "500000"
-    assert command[command.index("--reasoning-effort") + 1] == "low"
-    assert env["MAX_CONVERSATION_TOKENS"] == "1000000"
-    assert env["LOCA_HARNESS_TIMEOUT_S"] == "115"
-    assert env["LOCA_OPENCLAW_THINKING"] == "low"
-    assert env["LOCA_OPENCLAW_MODE"] == "direct-openai-compatible"
-    assert env["OPENCLAW_DIRECT_OPENAI_COMPAT"] == "1"
-    assert env["OPENCLAW_USE_CLI"] == "0"
 
 
 def test_lifeops_required_env_tracks_static_vs_live_modes() -> None:
@@ -3175,31 +2920,6 @@ def test_terminalbench_score_rejects_docker_unavailable_results() -> None:
         )
 
 
-def test_evm_primary_score_is_normalized_ratio(tmp_path: Path) -> None:
-    result_path = tmp_path / "evm_metrics.json"
-    result_path.write_text(
-        json.dumps(
-            {
-                "final_reward": 8,
-                "max_reward": 16,
-                "final_contracts": 4,
-                "model": "test",
-                "run_id": "r1",
-                "chain": "general",
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    score = orchestrator_adapters._score_from_evm(result_path)
-
-    assert score.score == 0.5
-    assert score.unit == "ratio"
-    assert score.metrics["final_reward"] == 8
-    assert score.metrics["max_reward"] == 16
-    assert score.metrics["raw_unit"] == "unique_selectors"
-
-
 def test_swe_registry_forwards_harness_and_bare_cerebras_model(
     tmp_path: Path,
 ) -> None:
@@ -3556,107 +3276,6 @@ def test_action_calling_orchestrator_default_is_bounded_smoke(tmp_path: Path) ->
     assert command[command.index("--max-new-tokens") + 1] == "512"
 
 
-def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> None:
-    audit = tmp_path / "eliza_loca_audit.json"
-    audit.write_text(
-        json.dumps(
-            {
-                "summary": {
-                    "avg_accuracy": 0.0,
-                    "issue_count": 0,
-                    "trajectory_count": 1,
-                    "metadata_total_tasks": 1,
-                    "total_api_tokens": 0,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="no API token usage"):
-        _score_from_loca_bench(audit)
-
-
-def test_loca_score_treats_all_error_tasks_as_zero(tmp_path: Path) -> None:
-    audit = tmp_path / "eliza_loca_audit.json"
-    audit.write_text(
-        json.dumps(
-            {
-                "summary": {
-                    "avg_accuracy": None,
-                    "issue_count": 0,
-                    "trajectory_count": 1,
-                    "aggregate_trajectory_count": 1,
-                    "metadata_total_tasks": 1,
-                    "failed_trajectory_count": 1,
-                    "total_api_tokens": 120,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    summary = _score_from_loca_bench(audit)
-
-    assert summary.score == 0.0
-    assert summary.metrics["failed_trajectory_count"] == 1
-
-
-def test_loca_score_accepts_external_telemetry_for_error_tasks(tmp_path: Path) -> None:
-    output_root = tmp_path / "output"
-    loca_output = output_root / "loca-output"
-    loca_output.mkdir(parents=True)
-    (output_root / "telemetry.jsonl").write_text(
-        json.dumps({"total_tokens": 42}) + "\n",
-        encoding="utf-8",
-    )
-    audit = loca_output / "eliza_loca_audit.json"
-    audit.write_text(
-        json.dumps(
-            {
-                "summary": {
-                    "avg_accuracy": None,
-                    "issue_count": 0,
-                    "trajectory_count": 1,
-                    "aggregate_trajectory_count": 1,
-                    "metadata_total_tasks": 1,
-                    "failed_trajectory_count": 1,
-                    "total_api_tokens": 0,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    summary = _score_from_loca_bench(audit)
-
-    assert summary.score == 0.0
-    assert summary.metrics["total_api_tokens"] == 42
-    assert summary.metrics["external_telemetry_tokens"] == 42
-
-
-def test_loca_score_rejects_empty_runs(tmp_path: Path) -> None:
-    audit = tmp_path / "eliza_loca_audit.json"
-    audit.write_text(
-        json.dumps(
-            {
-                "summary": {
-                    "avg_accuracy": 1.0,
-                    "issue_count": 0,
-                    "trajectory_count": 0,
-                    "aggregate_trajectory_count": 0,
-                    "metadata_total_tasks": 0,
-                    "total_api_tokens": 0,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="no captured trajectories"):
-        _score_from_loca_bench(audit)
-
-
 def test_scambench_registry_command_and_score_contract(tmp_path: Path) -> None:
     registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
     entry = registry["scambench"]
@@ -3754,3 +3373,50 @@ def test_app_eval_score_normalizes_ten_point_summary(tmp_path: Path) -> None:
     assert score.score == 0.75
     assert score.unit == "ratio"
     assert score.metrics["overall_score"] == 7.5
+
+
+# Benchmarks with no keyless (no-API-key) smoke route, with the reason they
+# cannot run in the always-on no-key CI lane. Each MUST be deliberately listed
+# here, so a newly added benchmark either is keyless-smoke-runnable or is an
+# explicit, justified manual-only entry — the de-larp guard for #9475.
+MANUAL_ONLY_BENCHMARKS = frozenset(
+    {
+        # Requires extra.traj_set: a directory of pre-recorded trajectory JSON
+        # files to replay; there is no synthetic keyless input, so it cannot run
+        # in the no-key smoke lane.
+        "trajectory_replay",
+    }
+)
+
+
+def test_every_registered_benchmark_has_smoke_lane_or_manual_only_marker(
+    tmp_path: Path,
+) -> None:
+    """Every registered benchmark must build a keyless (mock) smoke command, or
+    be an explicit, justified MANUAL_ONLY_BENCHMARKS entry. This keeps the suite
+    self-policing: a new benchmark can't silently inflate the registry without a
+    no-key smoke route or a deliberate manual-only marker (#9475)."""
+    registry = get_benchmark_registry(_workspace_root())
+    registry_ids = {entry.id for entry in registry}
+
+    # No stale markers: every manual-only id must still exist in the registry.
+    assert MANUAL_ONLY_BENCHMARKS <= registry_ids, (
+        "stale MANUAL_ONLY_BENCHMARKS entries: "
+        f"{sorted(MANUAL_ONLY_BENCHMARKS - registry_ids)}"
+    )
+
+    mock_model = ModelSpec(provider="mock", model="mock")
+    smoke_extra = {"mock": True, "max_tasks": 1, "iterations": 1}
+
+    for entry in registry:
+        if entry.id in MANUAL_ONLY_BENCHMARKS:
+            # Confirm it genuinely has no keyless smoke route (else drop the marker).
+            with pytest.raises(Exception):
+                entry.build_command(tmp_path / entry.id, mock_model, smoke_extra)
+            continue
+        command = entry.build_command(tmp_path / entry.id, mock_model, smoke_extra)
+        assert isinstance(command, list) and command, (
+            f"benchmark {entry.id!r} produced no keyless smoke command; "
+            "give it a no-key smoke route or add it to MANUAL_ONLY_BENCHMARKS"
+        )
+        assert isinstance(command[0], str)

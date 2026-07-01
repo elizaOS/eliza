@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import {
   buildViewerSessionKey,
@@ -21,12 +21,24 @@ export function GameViewOverlay() {
     activeGameSandbox,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameDisplayName: s.activeGameDisplayName,
+    activeGamePostMessageAuth: s.activeGamePostMessageAuth,
+    activeGamePostMessagePayload: s.activeGamePostMessagePayload,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    activeGameSandbox: s.activeGameSandbox,
+    setState: s.setState,
+    t: s.t,
+  }));
 
   // --- Drag state ---
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const dragFrameRef = useRef(0);
+  const dragPendingPosRef = useRef<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
@@ -66,18 +78,40 @@ export function GameViewOverlay() {
     setDragging(true);
 
     const onMove = (ev: MouseEvent) => {
-      setPos({
+      dragPendingPosRef.current = {
         x: ev.clientX - dragOffset.current.x,
         y: ev.clientY - dragOffset.current.y,
+      };
+      if (dragFrameRef.current) return;
+      dragFrameRef.current = requestAnimationFrame(() => {
+        dragFrameRef.current = 0;
+        if (dragPendingPosRef.current) setPos(dragPendingPosRef.current);
       });
     };
     const onUp = () => {
       setDragging(false);
+      if (dragFrameRef.current) {
+        cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = 0;
+      }
+      if (dragPendingPosRef.current) {
+        setPos(dragPendingPosRef.current);
+        dragPendingPosRef.current = null;
+      }
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (dragFrameRef.current) {
+        cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = 0;
+      }
+    };
   }, []);
 
   const handleClose = useCallback(() => {
@@ -181,8 +215,6 @@ export function GameViewOverlay() {
           resize: "both",
           background: "rgba(18, 22, 32, 0.96)",
           border: "1px solid rgba(240, 178, 50, 0.18)",
-          boxShadow:
-            "0 8px 60px rgba(0,0,0,0.6), 0 0 40px rgba(240,178,50,0.06)",
           ...style,
         }}
       >

@@ -166,6 +166,7 @@ function fakeService(scene: Scene): ComputerUseService {
     getCurrentScene: () => scene,
     refreshScene: async () => scene,
     getDisplays: () => [androidDisplay()],
+    setSceneVlmAnnotations: () => {},
   } as unknown as ComputerUseService;
 }
 

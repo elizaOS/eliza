@@ -80,9 +80,13 @@ function manifestHasRiscv64ChipTarget(manifest) {
     (device) =>
       isObject(device) &&
       (String(device.architecture ?? "").toLowerCase() === "riscv64" ||
-        String(device.codename ?? "").toLowerCase().includes("riscv64")) &&
+        String(device.codename ?? "")
+          .toLowerCase()
+          .includes("riscv64")) &&
       (String(device.deviceClass ?? "").toLowerCase() === "chip" ||
-        String(device.codename ?? "").toLowerCase().includes("eliza_ai_soc")),
+        String(device.codename ?? "")
+          .toLowerCase()
+          .includes("eliza_ai_soc")),
   );
 }
 
@@ -95,20 +99,25 @@ function artifactIntegrityDirectory(manifest, artifactDir) {
   return DEFAULT_RISCV64_ARTIFACT_DIR;
 }
 
-function releaseArtifactInstructions(manifest, artifactDir, manifestPath = "MANIFEST.json") {
+function releaseArtifactInstructions(
+  manifest,
+  artifactDir,
+  manifestPath = "MANIFEST.json",
+) {
   const stageDir = artifactIntegrityDirectory(manifest, artifactDir);
   const requiredFiles = (manifest.artifacts ?? [])
     .map((artifact) => artifact?.filename)
     .filter((filename) => typeof filename === "string" && filename.length > 0);
   const copyCommands = requiredFiles.map(
-    (filename) => `cp "${DEFAULT_RISCV64_PRODUCT_OUT}/${filename}" "${stageDir}/${filename}"`,
+    (filename) =>
+      `cp "${DEFAULT_RISCV64_PRODUCT_OUT}/${filename}" "${stageDir}/${filename}"`,
   );
   return {
     applies_to: manifestHasRiscv64ChipTarget(manifest)
       ? "eliza_ai_soc_riscv64"
       : "generic_android_release",
     build_commands: [
-      "packages/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace \"$AOSP_WORKSPACE\" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report \"$AOSP_WORKSPACE/eliza-build-report.json\"",
+      'packages/research/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace "$AOSP_WORKSPACE" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report "$AOSP_WORKSPACE/eliza-build-report.json"',
     ],
     stage_commands: [`mkdir -p "${stageDir}"`, ...copyCommands],
     manifest_update_commands: [
@@ -394,7 +403,11 @@ function inspectArtifacts(manifest, artifactDir) {
   return records;
 }
 
-function validateArtifacts(manifest, artifactDir, manifestPath = "MANIFEST.json") {
+function validateArtifacts(
+  manifest,
+  artifactDir,
+  manifestPath = "MANIFEST.json",
+) {
   const errors = [];
   for (const artifact of inspectArtifacts(manifest, artifactDir)) {
     if (artifact.status === "missing") {

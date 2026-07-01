@@ -602,6 +602,24 @@ export async function importAppPlugin(
     return null;
   }
 
+  // Prefer the package's React-free `./plugin` subpath imported BY NAME so the
+  // package's export conditions (eliza-source/bun → src) are applied. A file-URL
+  // import (importLocalAppPluginModule, below) does not apply those conditions
+  // to nested bare specifiers, which mis-resolves condition-gated deps such as
+  // `@elizaos/agent/services/app-session-gate` to their `.d.ts` and breaks the
+  // import. Plugins that don't expose `./plugin` simply fall through.
+  try {
+    const subpathModule = (await import(
+      /* webpackIgnore: true */ `${packageName}/plugin`
+    )) as AppPluginModule;
+    const plugin = resolvePluginExport(subpathModule, packageName);
+    if (plugin) {
+      return plugin;
+    }
+  } catch {
+    // No `./plugin` subpath export — fall through to the local/by-name imports.
+  }
+
   try {
     const localModule = await importLocalAppPluginModule(packageName);
     if (localModule) {

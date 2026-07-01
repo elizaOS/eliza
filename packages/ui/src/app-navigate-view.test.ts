@@ -122,6 +122,7 @@ describe("App navigate-view shell handler", () => {
       pinned: true,
     });
     expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("remote-ledger");
+    expect(fixture.setTab).toHaveBeenCalledWith("apps");
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/remote-ledger");
   });
 
@@ -140,7 +141,19 @@ describe("App navigate-view shell handler", () => {
       pinned: false,
     });
     expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("local-notes");
+    expect(fixture.setTab).toHaveBeenCalledWith("apps");
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/local-notes");
+  });
+
+  it("activates the route tab before navigating app paths", () => {
+    const fixture = createHandlerFixture();
+
+    fixture.handler(
+      navigateEvent({ viewId: "plugins", viewPath: "/apps/plugins" }),
+    );
+
+    expect(fixture.setTab).toHaveBeenCalledWith("plugins");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/plugins");
   });
 
   it("closes a targeted desktop view tab and falls back to chat", () => {
@@ -225,7 +238,38 @@ describe("App navigate-view shell handler", () => {
       placement: "right",
     });
     expect(fixture.setTab).toHaveBeenCalledWith("views");
-    expect(fixture.navigatePath).toHaveBeenCalledWith("/notes");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/views");
+  });
+
+  it("activates the first resolved layout participant when the first requested view is unavailable", () => {
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+      desktopTabEnabled: true,
+    });
+    const fixture = createHandlerFixture([calendar]);
+
+    fixture.handler(
+      navigateEvent({
+        action: "split-view",
+        views: ["missing-notes", "calendar"],
+        layout: "horizontal",
+      }),
+    );
+
+    expect(fixture.openDesktopTab).toHaveBeenCalledWith(calendar, {
+      pinned: false,
+    });
+    expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("calendar");
+    expect(fixture.setViewLayout).toHaveBeenCalledWith({
+      mode: "split",
+      viewIds: ["calendar"],
+      layout: "horizontal",
+      placement: undefined,
+    });
+    expect(fixture.setTab).toHaveBeenCalledWith("views");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/views");
   });
 
   it("opens a managed app window through the desktop bridge", async () => {
@@ -339,6 +383,7 @@ describe("App navigate-view shell handler", () => {
     );
 
     await vi.waitFor(() => {
+      expect(fixture.setTab).toHaveBeenCalledWith("views");
       expect(fixture.navigatePath).toHaveBeenCalledWith("/views/remote-ledger");
     });
   });

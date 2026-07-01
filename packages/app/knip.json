@@ -23,7 +23,6 @@
     "@capacitor/browser",
     "@capacitor/haptics",
     "@capacitor/push-notifications",
-    "@elizaos/plugin-clawville",
     "@elizaos/app-.*",
     "@elizaos/capacitor-.*",
     "@elizaos/plugin-.*",

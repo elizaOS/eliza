@@ -31,7 +31,7 @@ export const NetworkPolicy = registerPlugin<NetworkPolicyPlugin>(
  */
 export function installNetworkPolicyGlobal(): void {
   (
-    globalThis as unknown as { ElizaNetworkPolicy?: NetworkPolicyPlugin }
+    globalThis as { ElizaNetworkPolicy?: NetworkPolicyPlugin }
   ).ElizaNetworkPolicy = NetworkPolicy;
 }
 

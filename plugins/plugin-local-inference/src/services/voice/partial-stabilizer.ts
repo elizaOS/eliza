@@ -1,8 +1,8 @@
 /**
  * A2 — LocalAgreement-n streaming-ASR partial stabilizer.
  *
- * Streaming ASR (the Qwen3-ASR fused build, or any whisper-style decoder
- * running on partial windows) emits a fresh partial transcript on every
+ * Streaming ASR (the fused Gemma ASR build running on partial windows)
+ * emits a fresh partial transcript on every
  * audio frame. Each partial can revise tokens the previous partial
  * already showed — "the cat sa" → "the cat sat" → "the cat sat on" is
  * fine, but "the cat sa" → "the cap sat" rewrites earlier text. Handing

@@ -1,4 +1,4 @@
-import { type AgentPreflightResult, client, useApp } from "@elizaos/ui";
+import { type AgentPreflightResult, client, useAppSelector } from "@elizaos/ui";
 import { ExternalLink, Terminal } from "lucide-react";
 import {
   type ReactNode,
@@ -33,19 +33,18 @@ function AgentAdvancedSettingsDisclosure({
   children: ReactNode;
 }) {
   return (
-    <details className="group rounded-xl border border-border/60 bg-card/45 px-3 py-2">
-      <summary className="cursor-pointer select-none list-none text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:text-txt">
+    <details className="group px-1 py-1">
+      <summary className="cursor-pointer select-none list-none text-xs font-medium text-muted transition-colors hover:text-txt">
         Defaults and workspace
       </summary>
-      <div className="mt-3 flex flex-col gap-4 border-t border-border/40 pt-3">
-        {children}
-      </div>
+      <div className="mt-3 flex flex-col gap-4">{children}</div>
     </details>
   );
 }
 
 export function CodingAgentSettingsSection() {
-  const { t, elizaCloudConnected } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
 
   const [activeTab, setActiveTab] = useState<AgentTab | null>(null);
   const [loading, setLoading] = useState(true);
@@ -384,14 +383,14 @@ export function CodingAgentSettingsSection() {
             return (
               <div
                 key={agent}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-3 py-2"
+                className="flex items-center justify-between gap-3 px-1 py-1.5"
               >
                 <div className="min-w-0">
                   <div className="font-semibold text-txt">
                     {AGENT_LABELS[agent]}
                   </div>
                   {preflight?.installCommand ? (
-                    <code className="inline-flex max-w-full items-center gap-1 truncate rounded border border-border/50 bg-bg px-1.5 py-0.5 text-2xs text-muted-strong">
+                    <code className="inline-flex max-w-full items-center gap-1 truncate text-2xs text-muted-strong">
                       <Terminal className="h-3 w-3 shrink-0" aria-hidden />
                       <span className="truncate">
                         {preflight.installCommand}

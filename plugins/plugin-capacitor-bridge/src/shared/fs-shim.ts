@@ -435,35 +435,43 @@ function wrapFsPath<T extends AnyFn>(
 	original: T,
 	mode: FsAccessMode = "read",
 ): T {
-	return function sandboxedFsCall(this: unknown, ...args: unknown[]) {
+	return function sandboxedFsCall(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
 		// Normalise PathLike (URL, Buffer, string) to string for checking.
-		const raw = args[0];
+		const raw = a[0];
 		const pathStr = pathLikeToString(raw);
 
 		if (pathStr !== null) {
 			// Throws EACCES if out-of-sandbox.
 			const resolved = resolveSandboxed(pathStr, mode);
 			if (mode === "write") guardWritePath(resolved, pathStr);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
 
-		return original.apply(this, args as Parameters<T>);
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
 function wrapFsOpenPath<T extends AnyFn>(original: T): T {
-	return function sandboxedOpenCall(this: unknown, ...args: unknown[]) {
-		const raw = args[0];
+	return function sandboxedOpenCall(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
+		const raw = a[0];
 		const pathStr = pathLikeToString(raw);
 
 		if (pathStr !== null) {
-			const mode = modeForMobileFsOpenFlags(args[1]);
+			const mode = modeForMobileFsOpenFlags(a[1]);
 			const resolved = resolveSandboxed(pathStr, mode);
 			if (mode === "write") guardWritePath(resolved, pathStr);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
 
-		return original.apply(this, args as Parameters<T>);
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -476,9 +484,13 @@ function wrapFsTwoPaths<T extends AnyFn>(
 	srcMode: FsAccessMode,
 	dstMode: FsAccessMode,
 ): T {
-	return function sandboxedFsCall(this: unknown, ...args: unknown[]) {
-		const rawSrc = args[0];
-		const rawDst = args[1];
+	return function sandboxedFsCall(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
+		const rawSrc = a[0];
+		const rawDst = a[1];
 
 		const srcStr = pathLikeToString(rawSrc);
 		const dstStr = pathLikeToString(rawDst);
@@ -486,15 +498,15 @@ function wrapFsTwoPaths<T extends AnyFn>(
 		if (srcStr !== null) {
 			const resolved = resolveSandboxed(srcStr, srcMode);
 			if (srcMode === "write") guardWritePath(resolved, srcStr);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
 		if (dstStr !== null) {
 			const resolved = resolveSandboxed(dstStr, dstMode);
 			if (dstMode === "write") guardWritePath(resolved, dstStr);
-			args[1] = resolved;
+			a[1] = resolved;
 		}
 
-		return original.apply(this, args as Parameters<T>);
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 
@@ -506,17 +518,21 @@ function wrapFsTwoPaths<T extends AnyFn>(
  * sub-paths conventionally used for agent bundles and native modules.
  */
 function wrapFsWriteGuard<T extends AnyFn>(original: T): T {
-	return function sandboxedFsWrite(this: unknown, ...args: unknown[]) {
-		const raw = args[0];
+	return function sandboxedFsWrite(
+		this: unknown,
+		...args: Parameters<T>
+	): ReturnType<T> {
+		const a: unknown[] = args;
+		const raw = a[0];
 		const pathStr = pathLikeToString(raw);
 
 		if (pathStr !== null) {
 			const resolved = resolveSandboxed(pathStr, "write");
 			guardWritePath(resolved, pathStr);
-			args[0] = resolved;
+			a[0] = resolved;
 		}
 
-		return original.apply(this, args as Parameters<T>);
+		return original.apply(this, a as Parameters<T>) as ReturnType<T>;
 	} as T;
 }
 

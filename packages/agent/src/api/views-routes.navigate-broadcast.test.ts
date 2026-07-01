@@ -7,9 +7,12 @@ import {
   unregisterPluginViews,
 } from "./views-registry.ts";
 import {
+  type CurrentViewState,
   clearCurrentViewState,
   getCurrentViewState,
   handleViewsRoutes,
+  isViewSwitchFresh,
+  VIEW_SWITCH_FRESH_MS,
   type ViewsRouteContext,
 } from "./views-routes.ts";
 
@@ -314,5 +317,157 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(state?.viewPath).toBe("/settings");
     expect(state?.viewType).toBe("gui");
     expect(state?.action).toBe("pin-tab");
+  });
+
+  // ── #9945: settings subview deep-linking ──────────────────────────────────
+
+  it("threads a body subview into the frame, response, and current state", async () => {
+    const { ctx, json, broadcastWs } = makeNavigateCtx("settings", {
+      subview: "voice",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "shell:navigate:view",
+        viewId: "settings",
+        subview: "voice",
+      }),
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "settings",
+        subview: "voice",
+      }),
+    );
+    expect(getCurrentViewState()?.subview).toBe("voice");
+  });
+
+  it("accepts `section` as an alias for `subview`", async () => {
+    const { ctx, broadcastWs } = makeNavigateCtx("settings", {
+      section: "connectors",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({ viewId: "settings", subview: "connectors" }),
+    );
+  });
+
+  it("omits subview from the frame when the body has none", async () => {
+    const { ctx, broadcastWs } = makeNavigateCtx("settings", {});
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    const frame = broadcastWs.mock.calls[0][0] as Record<string, unknown>;
+    expect("subview" in frame).toBe(false);
+  });
+
+  // ── #8788: turn-scoped "view switch just happened" stamp ──────────────────
+
+  function makeCurrentCtx(): {
+    ctx: ViewsRouteContext;
+    json: ReturnType<typeof vi.fn>;
+  } {
+    const req = Readable.from([]) as unknown as http.IncomingMessage;
+    const res = {} as http.ServerResponse;
+    const json = vi.fn();
+    const pathname = "/api/views/current";
+    const ctx: ViewsRouteContext = {
+      req,
+      res,
+      method: "GET",
+      pathname,
+      url: new URL(`http://local${pathname}`),
+      json,
+      error: vi.fn(),
+      broadcastWs: vi.fn(),
+    };
+    return { ctx, json };
+  }
+
+  it("stamps switchedAt + source=agent on navigate and reports justSwitched via GET current", async () => {
+    const nav = makeNavigateCtx("settings", {});
+    await handleViewsRoutes(nav.ctx);
+
+    const state = getCurrentViewState();
+    expect(typeof state?.switchedAt).toBe("string");
+    expect(state?.source).toBe("agent");
+    expect(isViewSwitchFresh(state)).toBe(true);
+
+    const cur = makeCurrentCtx();
+    await handleViewsRoutes(cur.ctx);
+    expect(cur.json).toHaveBeenCalledWith(
+      cur.ctx.res,
+      expect.objectContaining({
+        currentView: expect.objectContaining({ viewId: "settings" }),
+        justSwitched: true,
+      }),
+    );
+  });
+
+  it("marks source=user and skips the shell echo for a user-reported switch", async () => {
+    const nav = makeNavigateCtx("settings", { source: "user" });
+    await handleViewsRoutes(nav.ctx);
+    // State is recorded (so the agent observes the user's manual switch)...
+    expect(getCurrentViewState()?.source).toBe("user");
+    // ...but the shell:navigate:view echo is suppressed (the client already
+    // navigated locally — re-broadcasting would loop).
+    expect(nav.broadcastWs).not.toHaveBeenCalled();
+  });
+
+  it("does not re-stamp switchedAt when re-navigating to the same view", async () => {
+    // Fake timers so each navigate gets a distinct, controlled timestamp
+    // (real wall-clock resolution can collapse sub-millisecond navigates).
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      const first = makeNavigateCtx("settings", {});
+      await handleViewsRoutes(first.ctx);
+      const switchedAt = getCurrentViewState()?.switchedAt;
+      expect(switchedAt).toBe("2026-01-01T00:00:00.000Z");
+
+      // Re-navigate to the SAME view: updatedAt moves but switchedAt is preserved.
+      vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
+      const second = makeNavigateCtx("settings", { action: "pin-tab" });
+      await handleViewsRoutes(second.ctx);
+      expect(getCurrentViewState()?.switchedAt).toBe(switchedAt);
+      expect(getCurrentViewState()?.updatedAt).toBe("2026-01-01T00:00:02.000Z");
+
+      // Navigating to a DIFFERENT view re-stamps switchedAt.
+      vi.setSystemTime(new Date("2026-01-01T00:00:04.000Z"));
+      const third = makeNavigateCtx("character", {});
+      await handleViewsRoutes(third.ctx);
+      expect(getCurrentViewState()?.switchedAt).toBe(
+        "2026-01-01T00:00:04.000Z",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("isViewSwitchFresh expires a stale switch after the freshness window", () => {
+    const base: CurrentViewState = {
+      viewId: "settings",
+      viewPath: "/settings",
+      viewLabel: "Settings",
+      viewType: "gui",
+      switchedAt: new Date(1_000_000).toISOString(),
+      source: "agent",
+      updatedAt: new Date(1_000_000).toISOString(),
+    };
+    // Within the window → fresh; past it → stale; missing stamp → never fresh.
+    expect(isViewSwitchFresh(base, 1_000_000 + VIEW_SWITCH_FRESH_MS - 1)).toBe(
+      true,
+    );
+    expect(isViewSwitchFresh(base, 1_000_000 + VIEW_SWITCH_FRESH_MS + 1)).toBe(
+      false,
+    );
+    expect(isViewSwitchFresh({ ...base, switchedAt: undefined })).toBe(false);
+    expect(isViewSwitchFresh(null)).toBe(false);
   });
 });

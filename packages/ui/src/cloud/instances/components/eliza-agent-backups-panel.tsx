@@ -1,5 +1,6 @@
 "use client";
 
+import { formatByteSize } from "@elizaos/shared/utils/format";
 import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui/cloud-ui";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { formatByteSize } from "../lib/format-bytes";
 
 interface ElizaAgentBackupsPanelProps {
   agentId: string;
@@ -175,7 +175,7 @@ export function ElizaAgentBackupsPanel({
   );
 
   return (
-    <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">
+    <BrandCard className="relative" cornerSize="sm">
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>

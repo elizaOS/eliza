@@ -1,8 +1,8 @@
 /**
  * Model and provider discovery helpers.
  *
- * Extracted from server.ts. Handles model listing, provider caching,
- * and inventory (chain/RPC) option resolution.
+ * Handles model listing, provider caching, and inventory (chain/RPC)
+ * option resolution.
  */
 
 import fs from "node:fs";
@@ -539,34 +539,60 @@ export async function fetchNearAIModels(
   baseUrl: string,
 ): Promise<CachedModel[]> {
   try {
-    const url = `${baseUrl.replace(/\/+$/, "")}/model/list`;
+    type NearAIModelEntry = {
+      id?: string;
+      modelId?: string;
+      name?: string;
+      type?: string;
+      is_ready?: boolean;
+      output_modalities?: string[];
+      architecture?: {
+        outputModalities?: string[];
+        output_modalities?: string[];
+      };
+      metadata?: {
+        modelDisplayName?: string;
+        architecture?: {
+          outputModalities?: string[];
+          output_modalities?: string[];
+        };
+      };
+    };
+
+    const url = `${baseUrl.replace(/\/+$/, "")}/models`;
     const headers: Record<string, string> = {};
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
     const res = await fetch(url, { headers });
     if (!res.ok) return [];
     const data = (await res.json()) as {
-      models?: Array<{
-        modelId: string;
-        metadata?: {
-          modelDisplayName?: string;
-          architecture?: { outputModalities?: string[] };
-        };
-      }>;
+      data?: NearAIModelEntry[];
+      models?: NearAIModelEntry[];
     };
-    return (data.models ?? [])
+    return (data.data ?? data.models ?? [])
+      .filter((model) => model.is_ready !== false)
       .map((model) => {
-        const outputs = model.metadata?.architecture?.outputModalities ?? [];
-        const category = outputs.some(
-          (output) => output.toLowerCase() === "image",
-        )
+        const id = model.id ?? model.modelId;
+        if (!id) return null;
+        const outputs =
+          model.output_modalities ??
+          model.architecture?.outputModalities ??
+          model.architecture?.output_modalities ??
+          model.metadata?.architecture?.outputModalities ??
+          model.metadata?.architecture?.output_modalities ??
+          [];
+        const normalizedOutputs = outputs.map((output) => output.toLowerCase());
+        const category = normalizedOutputs.includes("image")
           ? "image"
-          : classifyModel(model.modelId);
+          : model.type
+            ? restTypeToCategory(model.type)
+            : classifyModel(id);
         return {
-          id: model.modelId,
-          name: model.metadata?.modelDisplayName ?? model.modelId,
+          id,
+          name: model.name ?? model.metadata?.modelDisplayName ?? id,
           category,
         };
       })
+      .filter((model): model is CachedModel => model !== null)
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
     logger.warn(

@@ -36,10 +36,7 @@ const MTP_BINARY_RELATIVE = path.join("build", "bin", "llama-server");
 export const MTP_FORK_PATH = MTP_FORK_ROOT;
 
 /** Absolute filesystem path to the expected `llama-server` binary. */
-export const MTP_BINARY_PATH = path.join(
-  MTP_FORK_ROOT,
-  MTP_BINARY_RELATIVE,
-);
+export const MTP_BINARY_PATH = path.join(MTP_FORK_ROOT, MTP_BINARY_RELATIVE);
 
 /**
  * Expand a leading `~` to the user's home directory. No-op for absolute

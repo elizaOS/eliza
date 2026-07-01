@@ -3,7 +3,7 @@
  * the continuous-chat overlay's resting composer strip (#8225).
  *
  * The client sends recent conversation context, the local hour, and the
- * active page scope ("page-lifeops", "page-browser", …). Two tiers:
+ * active page scope ("page-wallet", "page-browser", …). Two tiers:
  *
  * - `model`     — the small text model writes EXACTLY 3 short, first-person
  *                 prompts tailored to the character, the conversation, and
@@ -126,6 +126,9 @@ const SCOPE_STARTERS: Record<string, readonly string[]> = {
     "List my automations",
     "What ran today?",
   ],
+  // "What apps do I have?" is served by the LIST_CLOUD_APPS action
+  // (@elizaos/plugin-cloud-apps) — its WHAT_APPS_DO_I_HAVE / MY_APPS similes
+  // match this exact phrase, so clicking the chip lists the user's Cloud apps.
   "page-apps": ["What apps do I have?", "Recommend an app", "Build me an app"],
   "page-connectors": [
     "Check my connections",
@@ -138,7 +141,6 @@ const SCOPE_STARTERS: Record<string, readonly string[]> = {
     "Suggest a plugin",
     "Configure a plugin",
   ],
-  "page-lifeops": ["Plan my day", "What's on my plate?", "Review my reminders"],
   "page-settings": [
     "Review my settings",
     "Switch my model",
@@ -213,7 +215,7 @@ function buildPrompt(
         .join("\n")
     : "No conversation yet.";
 
-  // "page-lifeops" → "lifeops" — a human-readable view name for the prompt.
+  // "page-wallet" → "wallet" — a human-readable view name for the prompt.
   const viewName = request.scope?.replace(/^page-/, "");
 
   return [

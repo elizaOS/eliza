@@ -19,13 +19,13 @@ This file maps every package under `packages/` to its docs-site coverage. Mainta
 | `packages/ui/`                   | App       | `apps/ui-library.md`                                                 |
 | `packages/tui/`                  | App       | (terminal UI; folded into `apps/*` desktop coverage)                 |
 | `packages/homepage/`             | App       | (marketing site; no in-docs coverage by design)                      |
-| `packages/os-homepage/`          | App       | (marketing site; no in-docs coverage by design)                      |
-| `packages/cloud-api/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |
+| `packages/os/homepage/`          | App       | (marketing site; no in-docs coverage by design)                      |
+| `packages/cloud/api/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |
 | `packages/cloud-frontend/`       | Cloud     | `tracks/cloud/overview.mdx`, `guides/cloud.md`                       |
-| `packages/cloud-sdk/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |
-| `packages/cloud-shared/`         | Cloud     | (shared schemas; consumed by cloud track)                            |
-| `packages/chip/`                 | Chip      | `tracks/chip/*.mdx`                                                  |
-| `packages/robot/`                | Robot     | `tracks/training/robot.mdx`                                          |
+| `packages/cloud/sdk/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |
+| `packages/cloud/shared/`         | Cloud     | (shared schemas; consumed by cloud track)                            |
+| `packages/research/chip/`                 | Chip      | `tracks/chip/*.mdx`                                                  |
+| `packages/research/robot/`                | Robot     | `tracks/training/robot.mdx`                                          |
 | `packages/feed/`                 | Robot     | `tracks/training/feed.mdx`                                           |
 | `packages/benchmarks/`           | Robot     | `tracks/training/benchmarks.mdx`                                     |
 | `packages/vault/`                | Runtime   | `guides/wallet.md`, `guides/platform-secure-store.md`                |
@@ -40,12 +40,12 @@ These packages exist in the monorepo but should NOT appear in the docs site:
 | `packages/native/`                     | Internal runtime + plugin implementations.                          |
 | `packages/bun-ios-runtime/`            | Internal iOS runtime detail; surfaced via mobile docs only.         |
 | `packages/electrobun-remote-plugins/`         | Private. Internal remote plugin primitives for desktop shells.             |
-| `packages/browser-bridge-extension/`   | Private. Internal browser extension.                                |
+| `packages/browser-extension/`          | Private. Internal browser extension.                                |
 | `packages/swe-bench-workspace/`        | Test infrastructure artifact.                                       |
 | `packages/shared/`                     | Internal shared utilities.                                          |
-| `packages/cloud-infra/`                | Kubernetes/Terraform infrastructure; private.                       |
-| `packages/cloud-routing/`              | Private infrastructure routing.                                     |
-| `packages/cloud-services/`             | Empty / not present.                                                |
+| `packages/cloud/infra/`                | Kubernetes/Terraform infrastructure; private.                       |
+| `packages/cloud/routing/`              | Private infrastructure routing.                                     |
+| `packages/cloud/services/`             | Empty / not present.                                                |
 | `packages/scripts/`                    | Build / release orchestration; documented in repo READMEs only.     |
 | `packages/test/`                       | Cross-package test fixtures.                                        |
 | `packages/scenario-runner/` (internal) | Schema authoring goes to plugin authors; covered in `plugins/scenarios`. |

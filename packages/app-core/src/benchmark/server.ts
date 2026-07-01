@@ -1944,6 +1944,19 @@ export async function startBenchmarkServer() {
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
     "GOOGLE_GENERATIVE_AI_API_KEY",
+    // Base-URL overrides MUST be folded too: `getSetting()` never reads
+    // process.env (multi-tenant isolation), and `plugin-openai`'s
+    // `getBaseURL()` resolves the endpoint via `getSetting("OPENAI_BASE_URL")` /
+    // `getSetting("CEREBRAS_BASE_URL")`. Without these the agent's conversational
+    // model calls fall back to `https://api.openai.com/v1` even when the run
+    // points at an OpenAI-compatible endpoint (Cerebras/OpenRouter/…), so the
+    // provided key auth-fails and every agent-driven benchmark scores 0 on the
+    // "agent's reply" path while the direct-call benchmarks (which read
+    // process.env) pass. See #10199.
+    "OPENAI_BASE_URL",
+    "CEREBRAS_BASE_URL",
+    "OPENROUTER_BASE_URL",
+    "GROQ_BASE_URL",
   ];
   for (const key of envKeys) {
     const value = process.env[key]?.trim();
@@ -2038,7 +2051,7 @@ export async function startBenchmarkServer() {
   // registers a `localInferenceLoader` service, so its TEXT_EMBEDDING handler
   // falls all the way through to the zero-vector path even when an Eliza-1
   // bundle is installed locally. Calling it here makes the bench-server use
-  // the eliza-1 embedding model (text/eliza-1-0_8b-32k.gguf) when present,
+  // the eliza-1 embedding model (text/eliza-1-2b-32k.gguf) when present,
   // and harmlessly skips handler upgrades when no backend is available —
   // matching the main app's behavior so benchmark runs reflect real
   // retrieval semantics.

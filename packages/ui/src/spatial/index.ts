@@ -61,6 +61,16 @@ export type {
   SpatialTone,
 } from "./ir.ts";
 export { isContainer, resolvePadding } from "./ir.ts";
+// Panel → texture — draw panel content to an origin-clean 2D canvas the immersive
+// renderer uploads as a textured quad (foreignObject DOM snapshots taint WebGL).
+export {
+  type PanelContent,
+  type PanelTexel,
+  type RasterizeOptions,
+  rasterizePanelToCanvas,
+  solidColorTexel,
+  wrapText,
+} from "./panel-texture.ts";
 // Authoring vocabulary (the primitives + sugar).
 export {
   Button,
@@ -68,6 +78,8 @@ export {
   Card,
   Divider,
   type DividerProps,
+  Escape,
+  type EscapeProps,
   Field,
   type FieldProps,
   getSpatialKind,
@@ -85,3 +97,43 @@ export {
   type TextProps,
   VStack,
 } from "./primitives.tsx";
+// WebXR runtime — make navigator.xr available everywhere (native preferred,
+// polyfill fallback) + enter a real immersive XRWebGLLayer scene.
+export {
+  detectWebXRCapability,
+  ensureWebXR,
+  enterImmersiveScene,
+  type ImmersivePanel,
+  type ImmersiveSceneHandle,
+  type ImmersiveSceneOptions,
+  type WebXRCapability,
+} from "./webxr-runtime.ts";
+// Real 3D spatial renderer (XR modality) + its deterministic math core.
+export {
+  type XRDevicePose,
+  type XRPanelSpec,
+  type XRSceneAPI,
+  type XRSceneHit,
+  type XRScenePanelInfo,
+  XRSpatialScene,
+  type XRSpatialSceneProps,
+} from "./xr-scene.tsx";
+export {
+  billboardOrientation,
+  type Camera,
+  deviceRay,
+  forwardOf,
+  nearestPanelHit,
+  type PanelPlane,
+  type PlaneHit,
+  panelLocalToWorld,
+  projectToScreen,
+  type Quat,
+  quatLookAt,
+  type Ray,
+  rayPlaneHit,
+  screenToRay,
+  type Vec3,
+  type Viewport,
+  vec3,
+} from "./xr-scene-math.ts";

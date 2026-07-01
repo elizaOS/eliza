@@ -4,9 +4,10 @@
  * The env knob is `KOKORO_BACKEND`:
  *
  *   ffi   (default)  → KokoroFfiRuntime → in-process synthesis through the
- *                       fused `libelizainference` handle (ABI v10
- *                       `eliza_inference_kokoro_*`). This is the SOLE synthesis
- *                       path on every platform.
+ *                       fused `libelizainference` handle (the
+ *                       `eliza_inference_kokoro_*` exports, introduced at ABI
+ *                       v10; the fused library is currently ABI v12). This is
+ *                       the SOLE synthesis path on every platform.
  *   mock             → KokoroMockRuntime. Tests only.
  *
  * The legacy `fork` / `server` value (POST `/v1/audio/speech` on a running

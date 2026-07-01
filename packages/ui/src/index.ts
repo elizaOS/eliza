@@ -44,11 +44,11 @@ export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
 export * from "./backgrounds/index";
 export * from "./bridge/index";
-export * from "./cache-telemetry";
 export {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
 } from "./bridge/index";
+export * from "./cache-telemetry";
 export * from "./character-catalog";
 export {
   DEFAULT_ELIZA_CHARACTER_ASSET,
@@ -95,14 +95,6 @@ export {
   TelegramIcon,
   WhatsAppIcon,
 } from "./cloud-ui/components/icons";
-export {
-  type AspectRatio,
-  EnhancedLoading,
-  ImageEmptyState,
-  ImageLoadingState,
-  ImagePromptInput,
-  type StylePreset,
-} from "./cloud-ui/components/image-gen";
 export {
   AnimatedCounter,
   AnimatedCounterWithLabel,
@@ -162,19 +154,23 @@ export {
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
 } from "./components";
-export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/apps/AppWindowRenderer";
 export * from "./components/apps/AppWindowRenderer.helpers";
+export * from "./components/apps/EmbeddedAppViewer";
 export * from "./components/apps/extensions/registry";
 export * from "./components/apps/extensions/surface";
 export * from "./components/apps/extensions/surface.helpers";
 export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
-export * from "./components/apps/surfaces/GameOperatorShell";
-export * from "./components/apps/surfaces/registry";
-export * from "./components/apps/surfaces/types";
 export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
+// Vision-critical chat widgets (#8933) — presentational only, exported with
+// their public prop/value types for stories + host wiring.
+export {
+  type BrowserLaunchStatus,
+  BrowserLaunchWidget,
+  type BrowserLaunchWidgetProps,
+} from "./components/chat/widgets/browser-launch-widget";
 export {
   getInlineWidget,
   getInlineWidgets,
@@ -184,14 +180,52 @@ export {
   registerInlineWidget,
 } from "./components/chat/widgets/inline-registry";
 export {
+  type GrillingCriterion,
+  type GrillingCriterionState,
+  type GrillingStatus,
+  OrchestratorGrillingCard,
+  type OrchestratorGrillingCardProps,
+} from "./components/chat/widgets/orchestrator-grilling-card";
+export {
   EmptyWidgetState,
   WidgetSection,
 } from "./components/chat/widgets/shared";
 export { registerTaskWidget } from "./components/chat/widgets/task-widget";
+export {
+  type TopicChip,
+  TopicChipsBar,
+  type TopicChipsBarProps,
+} from "./components/chat/widgets/topic-chips-bar";
+export {
+  type TopicGroup,
+  TopicGroupedTranscript,
+  type TopicGroupedTranscriptProps,
+} from "./components/chat/widgets/topic-grouped-transcript";
 export type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "./components/chat/widgets/types";
+export {
+  buildCockpitCreateTaskInput,
+  type CockpitModeConfig,
+  CockpitModePicker,
+  CockpitNewSessionForm,
+  CockpitTierToggle,
+  type CockpitTierToggleProps,
+  CockpitView,
+  type CockpitViewProps,
+  cockpitModeToProviderPolicy,
+  ELIZA_CLOUD_TIER_MODEL,
+  type ElizaCloudTier,
+} from "./components/cockpit/index";
+// Surfaced directly on the root barrel (also reachable via the composites/hooks
+// chains) so dist-mapped consumers resolve them by name.
+export {
+  ChatEmptyStateWithRecommendations,
+  type ChatEmptyStateWithRecommendationsProps,
+  type ChatRecommendation,
+} from "./components/composites/chat/ChatEmptyStateWithRecommendations";
+export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content";
@@ -229,6 +263,7 @@ export * from "./components/primitives/index";
 export {
   SettingsActionButton,
   SettingsInputRow,
+  SettingsSegmentedRow,
   SettingsSelectRow,
   SettingsSwitchRow,
   SettingsTextareaRow,
@@ -280,7 +315,10 @@ export {
 } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
 export { IconTooltip } from "./components/ui/tooltip-extended";
+export { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 export { TerminalPluginView } from "./components/views/TerminalPluginView";
+export { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
+export { ViewTelemetryProfiler } from "./components/views/ViewTelemetryProfiler";
 export type {
   ActionConfirm,
   ActionDefinition,
@@ -307,9 +345,6 @@ export type {
   CharacterCatalogData,
   ClientMiddleware,
   CodingAgentTasksPanelProps,
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-  CompanionShellComponentProps,
   CondExpr,
   CustomProviderOption,
   DynamicProp,
@@ -326,13 +361,9 @@ export type {
   PatchOp,
   PathVisibility,
   RepeatConfig,
-  ResolveCompanionInferenceNoticeArgs,
   ResolvedCharacterAsset,
   ResolvedField,
   ResolvedInjectedCharacter,
-  StewardApprovalQueueProps,
-  StewardLogoProps,
-  StewardTransactionHistoryProps,
   UIStreamConfig,
   UiAction,
   UiComponentType,
@@ -428,10 +459,34 @@ export * from "./first-run/first-run-config";
 export * from "./first-run/mobile-runtime-mode";
 export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
+export {
+  DEFAULT_FRAME_BUDGET,
+  FRAME_SAMPLER_INIT,
+  type FrameBudget,
+  type FrameBudgetSummary,
+  type FrameBudgetTelemetryEvent,
+  frameBudgetMs,
+  shouldReportFrameBudget,
+  summarizeFrameSamples,
+} from "./hooks/frame-budget";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
+export { useChatPrefill } from "./hooks/useChatPrefill";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
+export {
+  type FrameBudgetMonitorOptions,
+  isPerfHudEnabled,
+  startFrameBudgetMonitor,
+  useFrameBudgetMonitor,
+} from "./hooks/useFrameBudgetMonitor";
+export {
+  DEFAULT_CLS_BUDGET,
+  type LayoutShiftMonitorOptions,
+  type LayoutShiftTelemetryEvent,
+  startLayoutShiftMonitor,
+  useLayoutShiftMonitor,
+} from "./hooks/useLayoutShiftMonitor";
 export { useMediaQuery } from "./hooks/useMediaQuery";
 export {
   type AnyRenderTelemetryEvent,
@@ -455,15 +510,32 @@ export * from "./lib/utils";
 export { cn } from "./lib/utils";
 export type { Tab } from "./navigation/index";
 export * from "./navigation/index";
+export {
+  type ResourceCountersSnapshot,
+  snapshotResourceCounters,
+  totalLiveResources,
+  trackMedia,
+  trackSubscription,
+  trackTimer,
+} from "./perf/resource-counters";
+export {
+  type MemoryBudgetReport,
+  type MemorySampleSummary,
+  shouldReportMemoryGrowth,
+  summarizeMemorySamples,
+} from "./perf/view-memory-budget";
 export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
 export * from "./slots/task-coordinator-slots.helpers";
+export {
+  getKeepAliveMaxViews,
+  getKeepAliveTtlMs,
+  isLowMemoryDevice,
+} from "./state/bounded-view-lru";
 export type {
   ActionNotice,
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
   InventoryChainFilters,
 } from "./state/index";
 export * from "./state/index";
@@ -473,13 +545,43 @@ export {
   getVrmPreviewUrl,
   getVrmUrl,
   mergeStreamingText,
-  useCompanionSceneConfig,
+  useAppSelector,
+  useAppSelectorShallow,
   usePtySessions,
   useTranslation,
   useWalletState,
   VRM_COUNT,
 } from "./state/index";
 export type { UiTheme } from "./state/ui-preferences";
+export {
+  usePausableInterval,
+  usePauseAware,
+  useViewLifecycle,
+  type ViewLifecycleHandlers,
+  type ViewLifecycleState,
+} from "./state/useViewLifecycle";
+export {
+  useRegisterViewChatBinding,
+  type ViewChatBinding,
+} from "./state/view-chat-binding";
+// View lifecycle / memory / crash-containment primitives (#10202).
+export {
+  PINNED_VIEW_IDS,
+  registerViewPolicy,
+  resolveViewLifecyclePolicy,
+  type ViewLifecycleController,
+  type ViewRenderSet,
+  viewLifecycleController,
+} from "./state/view-lifecycle";
+export {
+  useViewLifecycleSlot,
+  ViewLifecycleSlot,
+} from "./state/view-lifecycle-context";
+export type {
+  ViewLifecyclePhase,
+  ViewLifecyclePolicy,
+  ViewLifecycleTransition,
+} from "./state/view-lifecycle-types";
 export * from "./themes/index.js";
 export * from "./types/index";
 export type {
@@ -564,6 +666,13 @@ export {
 export { confirmDesktopAction } from "./utils/desktop-dialogs";
 export type { DesktopPowerState } from "./utils/desktop-workspace";
 export { openExternalUrl } from "./utils/openExternalUrl";
+export {
+  emitViewRuntimeTelemetry,
+  installViewRuntimeTelemetryRing,
+  readViewRuntimeTelemetry,
+  VIEW_RUNTIME_TELEMETRY_EVENT,
+  type ViewRuntimeTelemetryEvent,
+} from "./view-runtime-telemetry";
 export * from "./views/view-event-bus";
 export * from "./views/view-event-types";
 export * from "./voice";

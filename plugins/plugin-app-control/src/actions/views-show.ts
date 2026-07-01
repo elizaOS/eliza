@@ -14,7 +14,13 @@ import type {
 	Memory,
 	ViewType,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import {
+	getUserMessageText,
+	logger,
+	resolveServerOnlyPort,
+} from "@elizaos/core";
+import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
+import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { scoreView } from "./views-search.js";
@@ -47,6 +53,10 @@ const FILLER_WORDS = new Set([
 	"an",
 ]);
 
+const DOCUMENT_SURFACE_WORDS =
+	/\b(?:documents?|docs?|files?|knowledge|uploads?|retrieval|papers?)\b/i;
+const NOTES_SURFACE_WORD = /\bnotes?\b/i;
+
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
 // Anchoring with \b stops the bare verb "view" from firing inside words like
 // "overview"/"preview"/"review"/"interview" (which an unanchored indexOf scan
@@ -59,6 +69,10 @@ const SHOW_VERB_PATTERN = new RegExp(
 		.join("|")})\\b`,
 	"i",
 );
+
+export function isStandaloneNotesSurfaceRequest(text: string): boolean {
+	return NOTES_SURFACE_WORD.test(text) && !DOCUMENT_SURFACE_WORDS.test(text);
+}
 
 function extractViewTarget(
 	message: Memory | undefined,
@@ -76,7 +90,7 @@ function extractViewTarget(
 		readStringOpt(options, "name");
 	if (explicit) return explicit;
 
-	const text = message?.content?.text ?? "";
+	const text = getUserMessageText(message);
 
 	const match = SHOW_VERB_PATTERN.exec(text);
 	if (match) {
@@ -165,16 +179,12 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 		viewId: "todos",
 	},
 	{
-		re: /\b(my (documents?|files?|notes?|papers?)|my docs|pull up (the |my )?(documents?|files?|notes?))\b/i,
+		re: /\b(my (documents?|files?|papers?)|my docs|pull up (the |my )?(documents?|files?))\b/i,
 		viewId: "documents",
 	},
 	{
 		re: /\b(my (contacts?|relationships?|people|network|address book)|who do i know|my rolodex)\b/i,
 		viewId: "relationships",
-	},
-	{
-		re: /\b(my companion|the companion|companion view|my avatar)\b/i,
-		viewId: "companion",
 	},
 	{
 		re: /\b(my (settings|preferences)|(change|update|edit|open|go to|show|take me to) (my |the |app )?(settings|preferences|configuration)|app settings|settings (page|screen|menu)|configure (the )?app)\b/i,
@@ -230,9 +240,36 @@ const INTENT_VIEW_RULES: ReadonlyArray<{ re: RegExp; viewId: string }> = [
 ];
 
 /**
+ * All view ids any `INTENT_VIEW_RULES` rule can resolve to. Exported for the
+ * cross-list drift guard (#8797) so a passive intent can never target a view the
+ * matcher cannot also reach by explicit command.
+ */
+export const INTENT_VIEW_IDS: readonly string[] = [
+	...new Set(INTENT_VIEW_RULES.map((rule) => rule.viewId)),
+];
+
+/**
  * Map a passive domain intent to a concrete view id, or null when no rule
  * matches. Used both as a `runViewsShow` fallback (when normal resolution
  * fails) and by `inferMode` to route intent-only utterances to `show`.
+ *
+ * #10471 boundary — RETAINED, INTENTIONAL FAST-PATH ALLOW-LIST (not a smell).
+ * This deterministic matcher is deliberately kept out of the string-smell
+ * cleanup for three reasons, documented here as the required written
+ * justification:
+ *   1. It is *multilingual by construction* — `matchViewCommand` covers explicit
+ *      "open X" navigation in every language, and `INTENT_VIEW_RULES` carries
+ *      parallel English + ES/FR/DE/ZH/JA/KO rules — so it is the opposite of the
+ *      i18n-hostile English-only matching #10471 targets.
+ *   2. It is a *fallback that never decides against the model*: it fires only
+ *      after normal id/label/fuzzy resolution returns nothing, and never
+ *      overrides an explicit navigation the planner already produced.
+ *   3. Eliza is local-first; a small/on-device planner cannot be relied on to
+ *      route navigation across languages, so this pre-LLM safety net is a
+ *      correctness requirement, not a shortcut. Removing it would regress
+ *      weak-local-model multilingual navigation.
+ * Keep the rules anchored on a possessive / navigation verb around a surface
+ * noun (as below) so they only fire on genuine navigation intent.
  */
 export function resolveIntentView(text: string | undefined): string | null {
 	const t = (text ?? "").toLowerCase();
@@ -282,14 +319,48 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
+function resolveRegisteredNotesView(
+	views: readonly ViewSummary[],
+):
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" } {
+	const resolution = resolveView("notes", views);
+	if (resolution.kind !== "match") return resolution;
+	return resolution.view.id === "documents" ? { kind: "none" } : resolution;
+}
+
 interface NavigateResult {
 	ok: boolean;
 	text: string;
+	/** Resolved sub-section the renderer was asked to focus (settings only). */
+	subview?: string;
+}
+
+/**
+ * Resolve a caller-supplied sub-section token into the value the renderer
+ * focuses. Settings is the only view with addressable sub-sections today, so we
+ * reuse the canonical client token→section-id map (`resolveSettingsSectionToken`)
+ * rather than inventing a second mapping. An unknown token for the settings view
+ * (or any token for another view) is passed through verbatim — the renderer
+ * applies the same resolution and ignores values it doesn't recognize.
+ */
+function resolveSubviewForView(
+	view: ViewSummary,
+	subview: string | undefined,
+): string | undefined {
+	const token = subview?.trim();
+	if (!token) return undefined;
+	if (view.id === "settings") {
+		return resolveSettingsSectionToken(token) ?? token.toLowerCase();
+	}
+	return token;
 }
 
 async function navigateToView(
 	view: ViewSummary,
 	requestedViewType?: ViewType,
+	subview?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -299,6 +370,7 @@ async function navigateToView(
 	// chain's verifiedUserFacing logic.
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
+	const resolvedSubview = resolveSubviewForView(view, subview);
 
 	try {
 		const resp = await fetch(
@@ -306,18 +378,28 @@ async function navigateToView(
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ path: view.path, viewType: requestedViewType }),
+				body: JSON.stringify({
+					path: view.path,
+					viewType: requestedViewType,
+					...(resolvedSubview ? { subview: resolvedSubview } : {}),
+				}),
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
+		const sectionSuffix = resolvedSubview ? ` → ${resolvedSubview}` : "";
 		if (resp.ok)
 			return {
 				ok: true,
-				text: `Navigated to ${view.label} (${view.viewType ?? "gui"}).`,
+				text: `Navigated to ${view.label}${sectionSuffix} (${view.viewType ?? "gui"}).`,
+				subview: resolvedSubview,
 			};
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
-			return { ok: true, text: `Opened ${view.label}.` };
+			return {
+				ok: true,
+				text: `Opened ${view.label}${sectionSuffix}.`,
+				subview: resolvedSubview,
+			};
 
 		const body = await resp.text().catch(() => "");
 		logger.warn(
@@ -351,7 +433,7 @@ export async function runViewsShow({
 	viewType,
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
-	const messageText = message?.content?.text ?? "";
+	const messageText = getUserMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
@@ -366,6 +448,14 @@ export async function runViewsShow({
 
 	const views = await client.listViews({ viewType });
 	let resolution = resolveView(target, views);
+	if (
+		isStandaloneNotesSurfaceRequest(messageText) &&
+		resolution.kind === "match" &&
+		resolution.view.id === "documents"
+	) {
+		target = "notes";
+		resolution = resolveRegisteredNotesView(views);
+	}
 
 	// The user's own words are authoritative: when the message names a known
 	// domain surface, prefer that deterministic intent view over a (possibly
@@ -400,10 +490,16 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
-	const result = await navigateToView(view, viewType);
+	const subview =
+		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
+	const result = await navigateToView(view, viewType, subview ?? undefined);
+
+	// Record the switch so the compose hook injects the acknowledgement provider
+	// (and the provider phrases it) on this turn's reply and the immediate next.
+	if (result.ok) markViewSwitch(message?.roomId);
 
 	logger.info(
-		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}`,
+		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
 	await callback?.({ text: result.text });
 	return {
@@ -414,7 +510,8 @@ export async function runViewsShow({
 			viewId: view.id,
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: view.label,
+			...(result.subview ? { subview: result.subview } : {}),
 		},
-		data: { view },
+		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
 	};
 }

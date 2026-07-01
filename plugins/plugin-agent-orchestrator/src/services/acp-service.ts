@@ -92,6 +92,21 @@ type RunResult = {
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
+
+/**
+ * Resolve the absolute workdir for a spawned session. When `isolate` is true,
+ * the session lands in a per-session subdir (`<base>/task-<sessionId>`) so
+ * concurrent tasks sharing a scratch root never collide; otherwise the base is
+ * used verbatim (cwd self-checkout / a route / an explicit caller-chosen dir).
+ * Pure + exported for unit testing the concurrency-isolation guarantee.
+ */
+export function computeSessionWorkdir(
+  base: string,
+  sessionId: string,
+  isolate: boolean,
+): string {
+  return isolate ? resolve(base, `task-${sessionId}`) : resolve(base);
+}
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
@@ -539,12 +554,20 @@ export class AcpService extends Service {
     // tail is therefore the resolver for DIRECT (non-orchestrated) callers of
     // spawnSession; its last resort is the scratch DEFAULT_WORKDIR_ROOT rather
     // than process.cwd() because a direct caller has no self-checkout intent.
-    const workdir = resolve(
+    const baseWorkdir =
       opts.workdir ??
-        this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
-        this.setting("ACPX_DEFAULT_CWD") ??
-        DEFAULT_WORKDIR_ROOT,
-    );
+      this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
+      this.setting("ACPX_DEFAULT_CWD") ??
+      DEFAULT_WORKDIR_ROOT;
+    // Isolate concurrent sessions into a per-session subdir of a SHARED scratch
+    // root so simultaneous projects never write into the same directory and
+    // corrupt each other. Orchestrated callers opt in via opts.isolateWorkdir
+    // (set ONLY when the resolver landed on a configured workspace root — never
+    // for cwd self-checkout or a route/explicit dir). DIRECT callers (no
+    // opts.workdir) always isolate: they have no self-checkout intent and would
+    // otherwise share the configured root / DEFAULT_WORKDIR_ROOT.
+    const isolate = opts.workdir ? opts.isolateWorkdir === true : true;
+    const workdir = computeSessionWorkdir(baseWorkdir, id, isolate);
     await mkdir(workdir, { recursive: true });
     // Give the sub-agent its eliza-context + non-interactive operating manual on
     // disk (where every backend reads it) — only when the workspace is bare, so
@@ -1298,7 +1321,7 @@ export class AcpService extends Service {
         durationMs: Date.now() - startedAt,
         exitCode: 0,
         signal: null,
-        ...(finalStopReason === "error"
+        ...(finalStopReason === "error" && !finalText?.trim()
           ? { error: "ACP prompt ended with stopReason error" }
           : {}),
       };
@@ -1306,7 +1329,11 @@ export class AcpService extends Service {
         await this.store.updateStatus(session.id, "stopped");
       } else if (cancelled) {
         await this.store.updateStatus(session.id, "cancelled");
-      } else if (finalStopReason === "error") {
+      } else if (finalStopReason === "error" && !finalText?.trim()) {
+        // Mirror the handleAcpEvent guard: a stopReason-error session that still
+        // captured a real deliverable is relayed as a completion, so don't mark
+        // it errored in the durable store — that would show a false-failed task
+        // in history/providers while the user actually got the result.
         await this.store.updateStatus(
           session.id,
           "errored",
@@ -1403,6 +1430,12 @@ export class AcpService extends Service {
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
         "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
       );
+    // The elizaos native agent is the eliza-code ACP server
+    // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
+    // ACP mode, so the bare-name fallback below would spawn the wrong binary —
+    // resolve to the eliza-code bin unless an explicit command is configured.
+    if (normalizedAgentType === "elizaos")
+      return this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ?? "eliza-code-acp";
     return String(normalizedAgentType);
   }
 
@@ -1717,21 +1750,33 @@ export class AcpService extends Service {
           asRecord(params?.toolCall)?.kind ??
           "permission required",
       );
-      this.emitSessionEvent(sessionId, "blocked", {
-        message: description,
-        request: params,
-      });
-      if (isAuthText(description))
-        this.emitSessionEvent(sessionId, "login_required", {
+      // The native transport auto-responds to permission requests per the
+      // session's preset; surfacing "blocked" for a request it immediately
+      // approves is a phantom block that derails the planner (re-spawns + a
+      // user-facing "agent is blocked"). Only surface a genuine wait-for-user:
+      // an auth challenge (always), or an op the transport won't approve (a
+      // restrictive preset, or the legacy CLI transport with no native client).
+      const autoApproved =
+        this.nativeClients.get(sessionId)?.approvesPermissionRequest(params) ??
+        false;
+      const isAuthChallenge = isAuthText(description);
+      if (isAuthChallenge || !autoApproved) {
+        this.emitSessionEvent(sessionId, "blocked", {
           message: description,
           request: params,
         });
-      void this.store.updateStatus(sessionId, "blocked").catch((err) =>
-        this.log("warn", "failed to persist blocked status", {
-          sessionId,
-          err,
-        }),
-      );
+        if (isAuthChallenge)
+          this.emitSessionEvent(sessionId, "login_required", {
+            message: description,
+            request: params,
+          });
+        void this.store.updateStatus(sessionId, "blocked").catch((err) =>
+          this.log("warn", "failed to persist blocked status", {
+            sessionId,
+            err,
+          }),
+        );
+      }
     }
 
     if (sessionId && method === "session/update") {
@@ -1924,7 +1969,16 @@ export class AcpService extends Service {
         // that hit token limits, ran out of turns, or stopped for any
         // other non-error reason — the sub-agent did real work (commits,
         // edits, deploys) and the user got nothing back.
-        if (stopReason === "error") {
+        // A terminal stopReason of `error` does NOT mean the work was lost: the
+        // sub-agent often wrote files, deployed, and printed a verified result
+        // before its LAST step errored (a flaky post-build verify, a lint exit,
+        // a model glitch). When real output was captured, relay it as a
+        // completion so the normal task_complete path (URL verification,
+        // deliverable capture, changeset narration) runs and can still downgrade
+        // to a failure if the claimed URLs are dead. Only a stopReason error with
+        // NO captured output is a true, user-facing failure — otherwise the user
+        // gets a false "hit a snag" for a build that actually succeeded.
+        if (stopReason === "error" && !finalText?.trim()) {
           this.emitSessionEvent(sessionId, "error", {
             message: "acpx prompt ended with stopReason error",
             stopReason,
@@ -2306,6 +2360,13 @@ function approvalArgs(preset: ApprovalPreset): string[] {
       return ["--approve-all"];
     case "readonly":
       return ["--deny-all"];
+    case "verifier":
+      // Independent read-only verifier (#8898). acpx has no execute-approve flag,
+      // so on the CLI transport the verifier gets the reads-approved / deny-the-rest
+      // baseline (writes are denied — never over-permissioned). Execute approval is
+      // enforced on the NATIVE transport (isOperationApproved), which is the
+      // orchestrator default; CLI deny-writes is the safe floor.
+      return ["--approve-reads", "--non-interactive-permissions", "deny"];
     default:
       return ["--approve-reads", "--non-interactive-permissions", "deny"];
   }
@@ -2332,6 +2393,12 @@ function normalizeApprovalPreset(value: string | undefined): ApprovalPreset {
   )
     return "permissive";
   if (normalized === "autonomous") return "autonomous";
+  if (
+    normalized === "verifier" ||
+    normalized === "read-execute" ||
+    normalized === "read-only-execute"
+  )
+    return "verifier";
   return "autonomous";
 }
 
@@ -2422,6 +2489,11 @@ export function shouldForwardEnv(key: string): boolean {
     FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
+    // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
+    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match. A
+    // spawned monetized-app build needs them to register the app (POST
+    // /api/v1/apps) without hunting the filesystem for the key.
+    key.startsWith("ELIZAOS_CLOUD") ||
     // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
     // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
     // is unreachable from an ACP-spawned sub-agent.

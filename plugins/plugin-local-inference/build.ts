@@ -1,7 +1,24 @@
 #!/usr/bin/env bun
-import { rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+	new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url),
+);
+
+function rmRecursive(target: string) {
+	const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, target], {
+		stdio: "inherit",
+	});
+	if (result.error) throw result.error;
+	if (result.status !== 0) {
+		throw new Error(
+			`rm-path-recursive failed for ${target} with status ${result.status}`,
+		);
+	}
+}
 
 const external = await externalsFromPackageJson("./package.json", {
 	// Transitive workspace deps + native sub-packages + wildcards the prior
@@ -21,7 +38,7 @@ const external = await externalsFromPackageJson("./package.json", {
 console.log("🔨 Building @elizaos/plugin-local-inference...");
 const start = Date.now();
 
-rmSync("dist", { recursive: true, force: true });
+rmRecursive("dist");
 
 const result = await Bun.build({
 	// Entrypoints MUST start with "./". Without it, Bun.build mis-roots
@@ -30,9 +47,12 @@ const result = await Bun.build({
 	// (oven-sh/bun#12734).
 	entrypoints: [
 		"./src/index.ts",
+		"./src/local-inference-routes.ts",
 		"./src/runtime/index.ts",
 		"./src/routes/index.ts",
 		"./src/services/index.ts",
+		"./src/voice-wake.ts",
+		"./src/voice-workbench.ts",
 	],
 	outdir: "dist",
 	target: "node",
@@ -53,6 +73,10 @@ if (!result.success) {
 console.log("📝 Generating TypeScript declarations...");
 // Override rootDir to src so declarations land directly in dist/ rather than nested under the monorepo rootDir
 await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
+
+await import(new URL("./dist/local-inference-routes.js", import.meta.url).href);
+await import(new URL("./dist/voice-wake.js", import.meta.url).href);
+await import(new URL("./dist/voice-workbench.js", import.meta.url).href);
 
 console.log(
 	`✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,

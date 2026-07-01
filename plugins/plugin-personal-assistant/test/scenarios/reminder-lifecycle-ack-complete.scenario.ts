@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder-lifecycle-ack-complete",
   title: "Compressed reminder lifecycle with ack and completion",
   domain: "lifeops",

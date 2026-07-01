@@ -121,6 +121,7 @@ function checkAgentSurfacedTimeout(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "planner.action-timeout",
   title:
     "Action handler hang triggers timeout that the agent surfaces honestly",

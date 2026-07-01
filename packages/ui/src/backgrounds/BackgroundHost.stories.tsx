@@ -104,6 +104,6 @@ export const ThemedBackground: Story = {
  */
 export const WithClassName: Story = {
   args: {
-    className: "shadow-inner",
+    className: "",
   },
 };

@@ -165,26 +165,35 @@ export async function ensureOnboarded(): Promise<void> {
   );
 }
 
-function seedCompletedFirstRunStorageForOrigin(apiBase: string): void {
+function seedCompletedFirstRunStorageForOrigin(): void {
   localStorage.setItem("eliza:first-run-complete", "1");
   localStorage.setItem("eliza:setup:step", "activate");
   localStorage.setItem("eliza:ui-shell-mode", "native");
   localStorage.setItem("eliza:chat:voiceMuted", "true");
+  // Pin the active server to THIS page's origin, not the raw agent port. The dev
+  // UI server proxies /api -> the agent (see packages/app/vite.config.ts), so a
+  // same-origin base reaches the agent through that proxy. Pinning the raw
+  // loopback (127.0.0.1:31337) instead makes the browser hit the agent
+  // cross-origin, which 401s /api/auth/status; with no token that strands
+  // startup at `pairing-required` — the shell never paints and the chat composer
+  // never appears (the dev-smoke red, #9452). location.origin is also how a real
+  // `bun run dev` browser session reaches the agent, so this matches production.
+  const base = location.origin;
   localStorage.setItem(
     "elizaos:active-server",
     JSON.stringify({
-      id: `remote:${apiBase}`,
+      id: `remote:${base}`,
       kind: "remote",
       label: "Dev smoke API",
-      apiBase,
+      apiBase: base,
     }),
   );
 }
 
 export async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
-  await page.addInitScript(seedCompletedFirstRunStorageForOrigin, API_BASE);
+  await page.addInitScript(seedCompletedFirstRunStorageForOrigin);
   if (page.url() !== "about:blank") {
-    await page.evaluate(seedCompletedFirstRunStorageForOrigin, API_BASE);
+    await page.evaluate(seedCompletedFirstRunStorageForOrigin);
   }
 }
 

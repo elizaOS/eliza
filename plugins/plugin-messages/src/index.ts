@@ -1,12 +1,4 @@
-export {
-  MessagesAppView,
-  MessagesPluginView,
-} from "./components/MessagesAppView";
-export {
-  MESSAGES_APP_NAME,
-  messagesApp,
-  registerMessagesApp,
-} from "./components/messages-app";
+export { MessagesView } from "./components/MessagesView";
 export { appMessagesPlugin, default } from "./plugin";
 export * from "./register";
 export * from "./ui";

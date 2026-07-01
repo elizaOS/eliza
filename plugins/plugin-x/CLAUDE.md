@@ -15,7 +15,11 @@ Auto-enabled when `config.connectors.x` (or legacy `config.connectors.twitter`) 
 - `XService` (`serviceType = "x"`) — Core service. Starts `TwitterClientInstance` per account; registers the X message connector (DMs) and post connector (public feed) with the runtime; manages per-account client lifecycle.
 - `XWorkflowCredentialProvider` (`serviceType = "workflow_credential_provider"`) — Supplies OAuth 1.0a credentials (`twitterApi` credential type) to the workflow plugin. Only supports `twitterApi`; does not support `twitterOAuth2Api`.
 
-**No actions, providers, or evaluators** are registered.
+**Providers** (registered in `XPlugin.providers`):
+
+- `xIdentityProvider` (`name = "TWITTER_IDENTITY"`) — Makes the agent aware of its own X account: `@username`, screen name (display name), bio, and any configured nicknames. Reads the already-loaded `client.profile` via `XService.getActiveProfile()`; never issues a network call and returns empty context until the X client has authenticated. Nicknames are sourced from the `TWITTER_NICKNAMES` setting plus the character `name`.
+
+**No actions or evaluators** are registered.
 
 **Connectors registered at runtime startup** (inside `XService.start`):
 
@@ -37,10 +41,11 @@ plugins/plugin-x/
     constants.ts                   Shared string constants
     templates.ts                   LLM prompt templates for post/interaction generation
     post.ts                        TwitterPostClient — autonomous tweet generation loop
-    interactions.ts                TwitterInteractionClient — mention/reply polling loop
-    timeline.ts                    TwitterTimelineClient — home timeline action loop (like/retweet/quote)
+    interactions.ts                TwitterInteractionClient — mention/reply polling loop; search-discovered target-user/timeline engagement (like/retweet/quote/reply)
+    timeline.ts                    TwitterTimelineClient — home/following feed action loop (like/retweet/quote/reply); interprets tweet media (image/gif/video) via IMAGE_DESCRIPTION before deciding/replying
     discovery.ts                   TwitterDiscoveryClient — autonomous follow/like/reply discovery loop
     lifeops-message-adapter.ts     LifeOps BaseMessageAdapter adapter — bridges XService DM send/list to the LifeOps message-adapter interface
+    identity-provider.ts           xIdentityProvider (TWITTER_IDENTITY) — surfaces the agent's own username/screen name/bio/nicknames into prompt context
     connector-account-provider.ts  ConnectorAccountProvider impl; bridges env-mode + OAuth PKCE to ConnectorAccountManager
     connector-credential-refs.ts   Persists connector credential references into runtime cache
     workflow-credential-provider.ts XWorkflowCredentialProvider service
@@ -114,6 +119,7 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 | `TWITTER_ENABLE_ACTIONS` | No | `false` | Enable timeline action loop (like/retweet/quote) |
 | `TWITTER_ENABLE_DISCOVERY` | No | `false` | Enable discovery loop (follows + engagement) |
 | `TWITTER_TARGET_USERS` | No | `""` | Comma-separated usernames to target; empty = all; `*` = all |
+| `TWITTER_NICKNAMES` | No | `""` | Comma-separated nicknames/aliases the agent answers to; surfaced via the `TWITTER_IDENTITY` provider |
 | `TWITTER_RETRY_LIMIT` | No | `5` | Max retries on failed operations |
 | `TWITTER_POST_INTERVAL` | No | `120` | Fixed minutes between posts when MIN/MAX not set |
 | `TWITTER_POST_INTERVAL_MIN` | No | `90` | Minimum minutes between posts |
@@ -164,4 +170,46 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 - **Multi-account**: use `TWITTER_ACCOUNTS` (JSON) or add accounts via the ConnectorAccountManager HTTP surface. All methods on `XService` accept an `accountId` parameter. The default account is `TWITTER_DEFAULT_ACCOUNT_ID` (default: `"default"`).
 - **`XWorkflowCredentialProvider`** only resolves `twitterApi` (OAuth 1.0a). Attempting to use `twitterOAuth2Api` with env-mode credentials will silently fail at workflow execution time.
 - **twitter-api-v2** is the sole external Twitter API dep. Check its types and docs when adding new API calls.
-- **No actions or providers** are registered by this plugin; all agent-facing behavior goes through message/post connector handlers.
+- **One provider** (`TWITTER_IDENTITY`) is registered to make the agent aware of its own X identity; no actions or evaluators are registered. All other agent-facing behavior goes through message/post connector handlers.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — platform connector:**
+- A real (or sandbox-account) round-trip on the platform: inbound message → agent → outbound reply, captured as logs **and** a screenshot/recording of the actual conversation.
+- The raw inbound event/webhook payload and the outbound API request/response, with IDs mapped correctly (`stringToUuid` / `createUniqueUuid`).
+- Attachments, threads/replies, edits, multi-account, and rate-limit/error paths — not just a single text ping.
+- The agent trajectory for the turn the connector drove.
+<!-- END: evidence-and-e2e-mandate -->

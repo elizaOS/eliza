@@ -5,7 +5,7 @@
  * Send a voice message, get a voice response back — the full optimized
  * voice-assistant loop the W1–W13 swarm landed, run interactively:
  *
- *   mic → VAD (RMS + Silero v5 GGUF) → streaming ASR (fused Qwen3-ASR)
+ *   mic → VAD (RMS + Silero v5 GGUF) → streaming local ASR
  *      → turn controller (prewarm-on-speech-start, speculative-on-pause,
  *        abort-on-resume, promote-or-rerun on speech-end)
  *      → runtime message handler (Stage-1 forced-JSON grammar, streamed)
@@ -43,7 +43,7 @@
  *   →first-replyText-char=Yms llm-first-token → llm-first-replytext-char
  *   →first-TTS-audio=Zms      vad-trigger → tts-first-audio-chunk
  *   →audio-played=Wms         vad-trigger → audio-first-played (the headline TTAP)
- *   mtp-accept=N%          MTP drafter token-acceptance rate (from llama-server /metrics)
+ *   mtp-accept=N%          MTP draft token-acceptance rate (from llama-server /metrics)
  */
 
 import { existsSync } from "node:fs";
@@ -101,6 +101,46 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
   -h, --help           this help
 `;
 
+function bundleDirName(modelId) {
+  return `${modelId.replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`;
+}
+
+function bundlePrimaryTextPath(catalogEntry, bundleRoot) {
+  const rel = catalogEntry?.ggufFile;
+  if (typeof rel !== "string" || rel.trim().length === 0) return null;
+  return path.join(bundleRoot, rel);
+}
+
+function resolveInstalledBundleRoot(catalogEntry, modelsDir) {
+  const modelId = catalogEntry?.id ?? "eliza-1-2b";
+  const candidate = path.join(modelsDir, bundleDirName(modelId));
+  if (!existsSync(candidate)) {
+    return {
+      bundleRoot: null,
+      reason: "missing-root",
+      expectedPath: candidate,
+    };
+  }
+
+  const textPath = bundlePrimaryTextPath(catalogEntry, candidate);
+  if (!textPath) {
+    return {
+      bundleRoot: null,
+      reason: "missing-catalog-text",
+      expectedPath: candidate,
+    };
+  }
+  if (!existsSync(textPath)) {
+    return {
+      bundleRoot: null,
+      reason: "missing-text-gguf",
+      expectedPath: textPath,
+    };
+  }
+
+  return { bundleRoot: candidate, textPath };
+}
+
 // ---------------------------------------------------------------------------
 // Pretty printing
 // ---------------------------------------------------------------------------
@@ -146,7 +186,7 @@ async function inspectActiveOptimizations(args) {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
       "../../shared/src/local-inference/catalog.ts"
     );
-    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_8b`); the
+    // The duet harness passes `args.modelId` (e.g. `eliza-1-2b`); the
     // interactive harness leaves it unset → the first-run default.
     catalogEntry = findCatalogModel(
       args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID,
@@ -175,15 +215,14 @@ async function inspectActiveOptimizations(args) {
 
   // ── Bundle installed? ──────────────────────────────────────────────────
   let bundleRoot = null;
+  let bundleInstallIssue = null;
   try {
     const { elizaModelsDir } = await import(
       "../../shared/src/local-inference/paths.ts"
     );
-    const candidate = path.join(
-      elizaModelsDir(),
-      `${(catalogEntry?.id ?? "eliza-1-2b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
-    );
-    if (existsSync(candidate)) bundleRoot = candidate;
+    const resolved = resolveInstalledBundleRoot(catalogEntry, elizaModelsDir());
+    bundleRoot = resolved.bundleRoot;
+    if (!resolved.bundleRoot) bundleInstallIssue = resolved;
   } catch {
     /* reported via the catalog branch already */
   }
@@ -194,8 +233,12 @@ async function inspectActiveOptimizations(args) {
       detail: `installed at ${bundleRoot}`,
     });
   } else {
+    const detail =
+      bundleInstallIssue?.reason === "missing-text-gguf"
+        ? ` (missing primary text GGUF at ${bundleInstallIssue.expectedPath})`
+        : "";
     missing.push({
-      what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not installed`,
+      what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not fully installed${detail}`,
       fix: "download it (run the harness without --list-active for the auto-download prompt) or follow docs/eliza-1-pipeline/06-test-matrix.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
@@ -281,12 +324,12 @@ async function inspectActiveOptimizations(args) {
     active.push({
       name: "streaming OmniVoice TTS",
       on: true,
-      detail: `fused libelizainference at ${ttsLibPath} (OmniVoice TTS + Qwen3-ASR); streaming LLM→TTS via the voice scheduler. On macOS-Metal this is the full graph; on a CPU fused build it runs but slower.`,
+      detail: `fused libelizainference at ${ttsLibPath} (OmniVoice TTS + local ASR); streaming LLM→TTS via the voice scheduler. On macOS-Metal this is the full graph; on a CPU fused build it runs but slower.`,
     });
   } else {
     missing.push({
       what: "no real TTS backend — interactive voice needs the fused libelizainference build (the stub backend emits silence and is rejected)",
-      fix: "build it: see packages/app-core/scripts/omnivoice-merged/README.md (the fused build ships real OmniVoice TTS + Qwen3-ASR on macOS-Metal; stub elsewhere)",
+      fix: "build it: see packages/app-core/scripts/omnivoice-merged/README.md (the fused build ships real OmniVoice TTS + local ASR on macOS-Metal; stub elsewhere)",
     });
     active.push({
       name: "streaming OmniVoice TTS",
@@ -296,28 +339,28 @@ async function inspectActiveOptimizations(args) {
     });
   }
 
-  // ── ASR backend (fused Qwen3-ASR via libelizainference only) ───────────
+  // ── ASR backend (eligible local ASR via libelizainference only) ─────────
   let asrBackend = null;
   if (bundleRoot && existsSync(path.join(bundleRoot, "asr"))) {
-    asrBackend = "fused (Qwen3-ASR region in the bundle)";
+    asrBackend = "fused (local ASR region in the bundle)";
   }
   if (asrBackend) {
     active.push({ name: "streaming ASR", on: true, detail: asrBackend });
   } else {
     missing.push({
-      what: "no ASR backend (no fused Qwen3-ASR region in the bundle)",
-      fix: "rebuild or download a libelizainference bundle that ships the Qwen3-ASR region (asr/ subdirectory).",
+      what: "no ASR backend (no fused local ASR region in the bundle)",
+      fix: "rebuild or download a libelizainference bundle that ships an eligible local ASR region (asr/ subdirectory).",
     });
   }
 
   // ── Silero VAD model ───────────────────────────────────────────────────
   let vadPath = null;
   try {
-    const { resolveSileroVadCppGgufPath } = await import(
+    const { resolveSileroVadPath } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
     );
-    vadPath = resolveSileroVadCppGgufPath({
-      modelPath: process.env.ELIZA_SILERO_VAD_GGUF,
+    vadPath = resolveSileroVadPath({
+      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
       bundleRoot: bundleRoot ?? undefined,
     });
   } catch {
@@ -325,17 +368,17 @@ async function inspectActiveOptimizations(args) {
   }
   if (vadPath) {
     active.push({
-      name: "VAD (RMS gate + Silero v5 GGUF)",
+      name: "VAD (RMS gate + fused Silero v5)",
       on: true,
-      detail: `Silero model at ${vadPath} (via libsilero_vad); the cheap RMS energy gate runs in front of it`,
+      detail: `Silero model at ${vadPath} (via the fused libelizainference VAD ABI); the cheap RMS energy gate runs in front of it`,
     });
   } else {
     missing.push({
-      what: "no Silero VAD GGUF (vad/silero-vad-v5.gguf not in the bundle, ELIZA_SILERO_VAD_GGUF unset)",
-      fix: "stage the MIT-licensed Silero v5 VAD GGUF into <state-dir>/local-inference/vad/silero-vad-v5.gguf or set ELIZA_SILERO_VAD_GGUF; the harness can auto-download it",
+      what: "no Silero VAD GGML model (vad/silero-vad-v5.1.2.ggml.bin not in the bundle, ELIZA_VAD_MODEL_PATH unset)",
+      fix: "stage the Silero v5 VAD GGML model into <state-dir>/local-inference/vad/silero-vad-v5.1.2.ggml.bin or set ELIZA_VAD_MODEL_PATH",
     });
     active.push({
-      name: "VAD (RMS gate + Silero v5 GGUF)",
+      name: "VAD (RMS gate + fused Silero v5)",
       on: false,
       detail: "Silero model not found",
     });
@@ -489,7 +532,7 @@ const PLATFORM_MATRIX = [
           "TurboQuant/QJL/Polar CPU SIMD TUs compiled in; turbo3_tcq decode CPU",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "CPU SIMD kernels reference-verified; build runs on this host",
@@ -500,7 +543,7 @@ const PLATFORM_MATRIX = [
         kernels: "mtp + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (CUDA build)",
         verified:
           "CUDA kernels hardware-verified on RTX 5080; build needs nvcc (not present here)",
@@ -512,7 +555,7 @@ const PLATFORM_MATRIX = [
           "HIP build; custom kernels not yet HIP-ported → reduced-optimization local mode (stock f16 KV; ELIZA_LOCAL_ALLOW_STOCK_KV=1)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (HIP build)",
         verified: "needs ROCm host (hipcc); not built here",
       },
@@ -523,7 +566,7 @@ const PLATFORM_MATRIX = [
           "mtp + turbo3/4/tcq + qjl + polar shaders staged + dispatch source-patched (runtime-verified Intel ANV; needs-hardware elsewhere)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (Vulkan build)",
         verified:
           "Vulkan shaders + fused-attn graph dispatch verified on Intel ARL ANV; build runs on this host",
@@ -540,7 +583,7 @@ const PLATFORM_MATRIX = [
           "TurboQuant/QJL/Polar CPU SIMD TUs (ARMv8.4 dotprod path) compiled in",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "silero-vad-cpp GGUF (arm64)",
+        vad: "fused libelizainference Silero v5 (arm64)",
         ttsAsr: "fused libelizainference (CPU build)",
         verified: "needs an arm64 Linux host or cross-toolchain (not present)",
       },
@@ -550,7 +593,7 @@ const PLATFORM_MATRIX = [
         kernels: "mtp + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "silero-vad-cpp GGUF (arm64)",
+        vad: "fused libelizainference Silero v5 (arm64)",
         ttsAsr: "fused libelizainference (CUDA build)",
         verified:
           "needs aarch64+CUDA host (GH200/Grace-Hopper); not built here",
@@ -567,7 +610,7 @@ const PLATFORM_MATRIX = [
         kernels: "TurboQuant/QJL/Polar CPU SIMD TUs compiled in",
         mic: "ffmpeg -f dshow (DirectShow) — or renderer getUserMedia → PushMicSource",
         player: "ffplay (ffmpeg) — or renderer AudioContext",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "build needs MSVC/mingw (cross from this Linux host: --dry-run only)",
@@ -578,7 +621,7 @@ const PLATFORM_MATRIX = [
         kernels: "mtp + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (CUDA build)",
         verified: "needs Windows + CUDA SDK; not built here",
       },
@@ -589,7 +632,7 @@ const PLATFORM_MATRIX = [
           "mtp + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
-        vad: "silero-vad-cpp GGUF",
+        vad: "fused libelizainference Silero v5",
         ttsAsr: "fused libelizainference (Vulkan build)",
         verified:
           "needs Windows + a Vulkan 1.3 GPU; build cross-config --dry-run only here",
@@ -605,7 +648,7 @@ const PLATFORM_MATRIX = [
         kernels: "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled in",
         mic: "ffmpeg -f dshow — or renderer getUserMedia → PushMicSource",
         player: "ffplay — or renderer AudioContext",
-        vad: "silero-vad-cpp GGUF (arm64)",
+        vad: "fused libelizainference Silero v5 (arm64)",
         ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "needs an MSVC arm64 cross-toolchain or a native Windows arm64 host",
@@ -617,7 +660,7 @@ const PLATFORM_MATRIX = [
           "mtp + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
-        vad: "silero-vad-cpp GGUF (arm64)",
+        vad: "fused libelizainference Silero v5 (arm64)",
         ttsAsr: "fused libelizainference (Vulkan build)",
         verified: "needs Windows arm64 + Adreno; not built here",
       },
@@ -635,9 +678,9 @@ const PLATFORM_MATRIX = [
         mic: "sox -d (rec) — or ffmpeg -f avfoundation — or renderer getUserMedia",
         player:
           "sox/play — or ffplay — (afplay needs a file, not used) — or renderer AudioContext",
-        vad: "silero-vad-cpp GGUF (arm64)",
+        vad: "fused libelizainference Silero v5 (arm64)",
         ttsAsr:
-          "fused libelizainference.dylib (real OmniVoice TTS + Qwen3-ASR, full graph)",
+          "fused libelizainference.dylib (real OmniVoice TTS + local ASR, full graph)",
         verified:
           "Metal kernels hardware-verified on M4 Max; needs a macOS arm64 host to build",
       },
@@ -655,7 +698,7 @@ const PLATFORM_MATRIX = [
         mic: "Capacitor Microphone plugin → PushMicSource (no CLI recorder on iOS)",
         player:
           "Capacitor audio sink → PcmRingBuffer → native AudioQueue/AVAudioEngine",
-        vad: "silero-vad-cpp GGUF (iOS native library)",
+        vad: "fused libelizainference Silero v5 (iOS)",
         ttsAsr:
           "fused libelizainference (ios-arm64-metal-fused — to add) carried inside the xcframework, or the Capacitor framework links omnivoice symbols",
         verified:
@@ -674,7 +717,7 @@ const PLATFORM_MATRIX = [
           "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled into the .so",
         mic: "Capacitor Microphone plugin → PushMicSource",
         player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
-        vad: "silero-vad-cpp GGUF (Android native library)",
+        vad: "fused libelizainference Silero v5 (Android)",
         ttsAsr:
           "fused libelizainference (android-arm64-cpu-fused — to add) inside the AAR",
         verified:
@@ -688,7 +731,7 @@ const PLATFORM_MATRIX = [
           "mtp + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware: needs a physical Android Vulkan device)",
         mic: "Capacitor Microphone plugin → PushMicSource",
         player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
-        vad: "silero-vad-cpp GGUF (Android native library)",
+        vad: "fused libelizainference Silero v5 (Android)",
         ttsAsr:
           "fused libelizainference (android-arm64-vulkan-fused — to add) inside the AAR",
         verified:
@@ -700,7 +743,7 @@ const PLATFORM_MATRIX = [
 
 /** Inspect what the *host* would actually use, for the local row callout. */
 async function inspectHostPeripherals() {
-  const out = { recorder: null, player: null, vadLib: null, vadLibError: null };
+  const out = { recorder: null, player: null };
   try {
     const { resolveDesktopRecorder } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
@@ -717,17 +760,6 @@ async function inspectHostPeripherals() {
     out.player = resolveSystemPlayerName(24_000);
   } catch {
     /* ignore */
-  }
-  try {
-    const { resolveSileroVadGgmlLibrary } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/vad-ggml.ts"
-    );
-    out.vadLib =
-      resolveSileroVadGgmlLibrary({
-        libraryPath: process.env.ELIZA_SILERO_VAD_LIB,
-      }) ?? null;
-  } catch (err) {
-    out.vadLibError = err instanceof Error ? err.message : String(err);
   }
   return out;
 }
@@ -770,14 +802,7 @@ async function printPlatformReport() {
     `  audio player : ${host.player ?? c("yellow", "(none on PATH — falls back to WavFileAudioSink)")}`,
   );
   log(
-    `  VAD library  : ${
-      host.vadLib
-        ? host.vadLib
-        : c(
-            "yellow",
-            `(unavailable — ${host.vadLibError ?? "libsilero_vad not found"}; VAD disabled)`,
-          )
-    }`,
+    `  VAD          : ${c("dim", "fused Silero v5 (via the libelizainference VAD ABI; no separate library)")}`,
   );
   log("");
   log(
@@ -974,41 +999,12 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`,
   );
 
-  // Register the MTP drafter companion too (so the engine wires -md).
-  const companionId =
-    catalogEntry.runtime?.mtp?.drafterModelId ??
-    catalogEntry.companionModelIds?.[0];
-  if (companionId) {
-    const { findCatalogModel } = await import(
-      "../../shared/src/local-inference/catalog.ts"
+  if (catalogEntry.runtime?.mtp?.enabled) {
+    tag(
+      "setup",
+      "blue",
+      `${catalogEntry.id} declares same-file MTP metadata; no separate drafter registration is needed`,
     );
-    const companion = findCatalogModel(companionId);
-    if (companion) {
-      const drafterGguf = path.join(bundleRoot, companion.ggufFile);
-      if (existsSync(drafterGguf)) {
-        const dstat = await fs.stat(drafterGguf);
-        await upsertElizaModel({
-          id: companion.id,
-          displayName: companion.displayName ?? companion.id,
-          path: drafterGguf,
-          sizeBytes: dstat.size,
-          hfRepo: companion.hfRepo,
-          installedAt: now,
-          lastUsedAt: null,
-          source: "eliza-download",
-          sha256: null,
-          lastVerifiedAt: now,
-          runtimeRole: "mtp-drafter",
-          companionFor: catalogEntry.id,
-          ...bundleMeta,
-        });
-        tag(
-          "setup",
-          "blue",
-          `registered ${companion.id} (MTP drafter) at ${drafterGguf}`,
-        );
-      }
-    }
   }
   return model;
 }
@@ -1030,7 +1026,7 @@ async function bootStandaloneRuntime({ roomId }) {
   // The runtime needs plugin-sql (storage) + the local-inference model handler.
   // Core wires DefaultMessageService during initialize(). Fail loudly if a
   // piece is missing rather than half-booting.
-  const { AgentRuntime, ModelType } = await import("@elizaos/core");
+  const { AgentRuntime } = await import("@elizaos/core");
   let sqlPlugin;
   try {
     sqlPlugin =
@@ -1568,21 +1564,15 @@ async function main() {
       const { decodeMonoPcm16Wav } = await import(
         "../../../plugins/plugin-local-inference/src/services/voice/engine-bridge.ts"
       );
-      const { createSileroVadDetector } = await import(
-        "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
-      );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
       const push = new PushMicSource({ sampleRate: decoded.sampleRate });
       micSource = push;
-      const vad = await createSileroVadDetector({
-        sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-        modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-      });
+      // The engine constructs the fused Silero VAD (via the libelizainference
+      // VAD ABI) from its own bridge ffi/ctx when no `vad` is supplied.
       controller = await engine.startVoiceSession({
         roomId: args.room,
         micSource: push,
-        vad,
         generate: wrappedGenerate,
         prewarm: async (rid) => {
           try {
@@ -1634,18 +1624,12 @@ async function main() {
     const { DesktopMicSource } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
-    const { createSileroVadDetector } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
-    );
     micSource = new DesktopMicSource();
-    const vad = await createSileroVadDetector({
-      sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-    });
+    // The engine constructs the fused Silero VAD (via the libelizainference
+    // VAD ABI) from its own bridge ffi/ctx when no `vad` is supplied.
     controller = await engine.startVoiceSession({
       roomId: args.room,
       micSource,
-      vad,
       generate: wrappedGenerate,
       prewarm: async (rid) => {
         try {
@@ -1765,6 +1749,7 @@ export {
   inspectActiveOptimizations,
   PLATFORM_MATRIX,
   printPlatformReport,
+  resolveInstalledBundleRoot,
 };
 
 if (import.meta.main) {

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-relationships",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Entity and relationship knowledge graph for Eliza agents. Provides the ENTITY umbrella action (person/org/place/project/concept CRUD), EntityStore with identity merge engine, RelationshipStore for typed edges, voice-observer-bridge, and an entity-graph context provider. Backed by drizzle pgSchema('app_relationships').",
   "type": "module",
   "main": "dist/index.js",
@@ -63,7 +63,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.0.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -79,9 +79,9 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "lint:check": "bun run lint",
     "check": "bun run typecheck && bun run test"

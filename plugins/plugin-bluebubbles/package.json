@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bluebubbles",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,6 +28,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],
@@ -53,7 +54,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^24.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"

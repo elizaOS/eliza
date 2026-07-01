@@ -1,4 +1,6 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModelType, type IAgentRuntime, logger } from "@elizaos/core";
 
@@ -44,6 +46,8 @@ function textToSpeech() {
 }
 
 describe("@elizaos/plugin-edge-tts", () => {
+	const tempDirs: string[] = [];
+
 	beforeEach(() => {
 		edgeTTSMock.constructors.length = 0;
 		edgeTTSMock.ttsPromise.mockReset();
@@ -55,6 +59,9 @@ describe("@elizaos/plugin-edge-tts", () => {
 	afterEach(() => {
 		for (const key of EDGE_ENV_KEYS) {
 			delete process.env[key];
+		}
+		for (const dir of tempDirs.splice(0)) {
+			rmSync(dir, { recursive: true, force: true });
 		}
 		vi.mocked(logger.error).mockClear();
 	});
@@ -184,6 +191,22 @@ describe("@elizaos/plugin-edge-tts", () => {
 		expect(logger.error).toHaveBeenCalledWith(
 			"EdgeTTS model error: upstream websocket closed"
 		);
+	});
+
+	it("confines recursive temp cleanup to the expected temp root", () => {
+		const allowedRoot = mkdtempSync(path.join(tmpdir(), "edge-tts-root-"));
+		const outsideRoot = mkdtempSync(path.join(tmpdir(), "edge-tts-outside-"));
+		tempDirs.push(allowedRoot, outsideRoot);
+
+		const ownedDir = path.join(allowedRoot, "owned");
+		mkdirSync(ownedDir);
+		writeFileSync(path.join(ownedDir, "speech.mp3"), "audio");
+		writeFileSync(path.join(outsideRoot, "speech.mp3"), "outside-audio");
+
+		expect(_test.removeEdgeTempDir(ownedDir, allowedRoot)).toBe(true);
+		expect(existsSync(ownedDir)).toBe(false);
+		expect(_test.removeEdgeTempDir(outsideRoot, allowedRoot)).toBe(false);
+		expect(existsSync(path.join(outsideRoot, "speech.mp3"))).toBe(true);
 	});
 
 	it("does not let standalone helper overrides replace validated text", async () => {

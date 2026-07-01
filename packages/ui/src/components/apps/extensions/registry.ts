@@ -17,7 +17,7 @@ const DETAIL_EXTENSION_COMPONENTS = new Map<
  * Call this once per app at module load time (e.g. from the app's UI entry).
  *
  * @example
- *   registerDetailExtension("feed-operator-dashboard", FeedDetailExtension);
+ *   registerDetailExtension("example-detail-panel", ExampleDetailExtension);
  */
 export function registerDetailExtension(
   detailPanelId: string,

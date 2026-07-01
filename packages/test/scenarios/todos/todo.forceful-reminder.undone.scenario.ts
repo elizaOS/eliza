@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.forceful-reminder.undone",
   title: "Undone overdue todo prompts forceful reminder on greeting",
   domain: "todos",

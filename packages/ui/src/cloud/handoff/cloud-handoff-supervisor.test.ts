@@ -62,7 +62,7 @@ describe("startCloudConversationHandoff", () => {
   });
 
   it("fails closed (no switch) when the import errors", async () => {
-    const authedFetch: AuthedAgentFetch = vi.fn(async (base, path) => {
+    const authedFetch: AuthedAgentFetch = vi.fn(async (_base, path) => {
       if (path.endsWith("/messages")) {
         return {
           status: 200,

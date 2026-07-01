@@ -189,34 +189,17 @@ export class PlanningService extends Service {
 		responseContent?: Content,
 	): Promise<ActionPlan | null> {
 		try {
-			let actions: string[] = [];
-			if (responseContent?.actions && responseContent.actions.length > 0) {
-				actions = responseContent.actions;
-			} else {
-				const text = message.content.text?.toLowerCase() || "";
-				if (text.includes("email")) {
-					actions = ["SEND_EMAIL"];
-				} else if (
-					text.includes("research") &&
-					(text.includes("send") || text.includes("summary"))
-				) {
-					actions = ["SEARCH", "REPLY"];
-				} else if (
-					text.includes("search") ||
-					text.includes("find") ||
-					text.includes("research")
-				) {
-					actions = ["SEARCH"];
-				} else if (text.includes("analyze")) {
-					actions = ["REPLY"];
-				} else {
-					actions = ["REPLY"];
-				}
-			}
-
-			if (actions.length === 0) {
-				return null;
-			}
+			// The model chooses which actions to run (the `<response>` actions
+			// field). When it chose none, the documented model-output contract
+			// treats the turn as a plain REPLY — so reply naturally instead of
+			// guessing intent by matching English keywords in the user's text
+			// (`text.includes("email"|"search"|"analyze"|…)`), which was brittle,
+			// English-only, and routed actions the model never decided to run
+			// (#10470, and the over-narration class in #10424).
+			const actions =
+				responseContent?.actions && responseContent.actions.length > 0
+					? responseContent.actions
+					: ["REPLY"];
 
 			const planId = asUUID(uuidv4());
 			const stepIds: UUID[] = [];

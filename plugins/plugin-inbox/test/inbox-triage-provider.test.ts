@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+// inbox-triage.ts imports hasOwnerAccess from the @elizaos/agent/security/access
+// subpath (the barrel does not re-export it); mock that exact specifier or the
+// real owner check runs, the provider returns early, and counts come back 0.
+vi.mock("@elizaos/agent/security/access", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
@@ -53,11 +56,10 @@ function triageRow(
 function makeRuntime(rowsFor: (sql: string) => unknown): IAgentRuntime {
   return {
     agentId: "33333333-3333-3333-3333-333333333333" as UUID,
+    getService: () => null,
     adapter: {
       db: {
-        execute: async (query: {
-          queryChunks: Array<{ value?: unknown }>;
-        }) => {
+        execute: async (query: { queryChunks: Array<{ value?: unknown }> }) => {
           const chunk = query.queryChunks[0]?.value;
           const sql = Array.isArray(chunk) ? String(chunk[0]) : String(chunk);
           return rowsFor(sql);

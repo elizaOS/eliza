@@ -1,4 +1,5 @@
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { type Tab, tabFromPath } from "./navigation";
 import { recordRecentViewId } from "./view-recents";
 
 export type NavigateViewDetail = {
@@ -7,6 +8,8 @@ export type NavigateViewDetail = {
   viewLabel?: string;
   viewType?: "gui" | "tui" | "xr";
   action?: string;
+  /** Sub-section to deep-link within the target view (e.g. a Settings section id). */
+  subview?: string;
   views?: string[];
   layout?: string;
   placement?: string;
@@ -167,9 +170,14 @@ export function createNavigateViewHandler({
   navigatePath?: (path: string) => void;
   openDesktopTab: DesktopTabOpen;
   setActiveDesktopTabId: (viewId: string | null) => void;
-  setTab: (tab: "views" | "apps" | "chat") => void;
+  setTab: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
 }): (event: Event) => void {
+  const activateTabForPath = (path: string) => {
+    const routeTab = tabFromPath(path);
+    if (routeTab) setTab(routeTab);
+  };
+
   return (event: Event) => {
     const detail = (event as CustomEvent<NavigateViewDetail>).detail;
     if (!detail) return;
@@ -189,7 +197,6 @@ export function createNavigateViewHandler({
     if (detail.action === "split-view" || detail.action === "tile-views") {
       const viewIds = layoutViewIdsForDetail(detail);
       const resolvedViewIds: string[] = [];
-      let primaryPath: string | null = detail.viewPath ?? null;
       for (const viewId of viewIds) {
         const entry = desktopEntryForDetail(
           availableViewsForDesktopTabs,
@@ -199,9 +206,9 @@ export function createNavigateViewHandler({
         resolvedViewIds.push(entry.id);
         recordRecentViewId(entry.id);
         openDesktopTab(entry, { pinned: false });
-        primaryPath ??= entry.path ?? `/apps/${entry.id}`;
       }
-      const primaryViewId = viewIds[0] ?? detail.viewId ?? null;
+      const primaryViewId =
+        resolvedViewIds[0] ?? viewIds[0] ?? detail.viewId ?? null;
       if (primaryViewId) setActiveDesktopTabId(primaryViewId);
       setViewLayout?.({
         mode: detail.action === "split-view" ? "split" : "tile",
@@ -210,7 +217,7 @@ export function createNavigateViewHandler({
         placement: detail.placement,
       });
       setTab("views");
-      if (primaryPath) navigatePath(primaryPath);
+      navigatePath("/views");
       return;
     }
     const path = pathForNavigateViewDetail(detail);
@@ -241,9 +248,13 @@ export function createNavigateViewHandler({
         },
       })
         .then((result) => {
-          if (!result) navigatePath(viewPath);
+          if (!result) {
+            activateTabForPath(viewPath);
+            navigatePath(viewPath);
+          }
         })
         .catch(() => {
+          activateTabForPath(viewPath);
           navigatePath(viewPath);
         });
       return;
@@ -258,6 +269,7 @@ export function createNavigateViewHandler({
         setActiveDesktopTabId(entry.id);
       }
     }
+    activateTabForPath(path);
     navigatePath(path);
   };
 }

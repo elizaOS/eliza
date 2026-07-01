@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hiring-loop-candidate-coordination",
   title: "Assistant coordinates candidate interviews across calendar and mail",
   domain: "executive.hiring",

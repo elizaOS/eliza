@@ -29,14 +29,16 @@ const noopCtx: InlineWidgetContext = {
 };
 
 describe("inline-widget registry", () => {
-  it("ships the built-in widgets after side-effect import", () => {
-    const kinds = getInlineWidgets().map((w) => w.kind);
-    expect(kinds).toEqual(
-      expect.arrayContaining(["choice", "followups", "form"]),
-    );
-    // `task` is owned by the orchestrator plugin (registerTaskWidget), not a
-    // ui built-in — it is absent until that plugin loads.
-    expect(kinds).not.toContain("task");
+  it("ships EXACTLY the built-in widgets after side-effect import", () => {
+    // Exact-set, not arrayContaining: a new built-in registered without a
+    // matrix entry (or a built-in dropped) must fail here. See the dedicated
+    // WIDGET_MATRIX gate in inline-registry.matrix.test.tsx. `task` is owned by
+    // the orchestrator plugin (registerTaskWidget), not a UI built-in.
+    expect(
+      getInlineWidgets()
+        .map((w) => w.kind)
+        .sort(),
+    ).toEqual(["choice", "followups", "form"]);
   });
 
   it("lets a plugin register a new marker and render it end to end", () => {
@@ -72,7 +74,7 @@ describe("inline-widget registry", () => {
     expect(matches).toHaveLength(1);
     expect(matches[0]?.data).toMatchObject({ pct: 42 });
 
-    render(<>{def?.render(matches[0]?.data, noopCtx, "k")}</>);
+    render(def?.render(matches[0]?.data, noopCtx, "k"));
     const node = screen.getByTestId("gauge");
     expect(node.getAttribute("data-pct")).toBe("42");
     expect(node.textContent).toBe("42%");

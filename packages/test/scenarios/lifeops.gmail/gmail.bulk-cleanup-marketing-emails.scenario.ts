@@ -13,6 +13,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.bulk-cleanup-marketing-emails",
   title: "Bulk archive marketing emails without touching person mail",
   domain: "lifeops.gmail",
@@ -65,7 +66,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "MESSAGE",
+        removeLabelIds: "INBOX",
       },
     },
     {

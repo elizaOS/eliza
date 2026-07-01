@@ -53,6 +53,32 @@ const STUB_MARKERS = Object.freeze([
   "unsupported in ABI-only build",
 ]);
 
+// #9508: the presence of this env-var name in libggml-vulkan.so proves the Mali
+// scalar-flash-attn subgroup-race mitigation is compiled in — it is only emitted
+// by source carrying the `VK_VENDOR_ID_ARM` `disable_subgroups` branch (the
+// override knob for it). A Vulkan backend WITHOUT this marker is the stale
+// pre-#9508 prebuilt that SIGABRTs mid-decode on Mali GPUs.
+const MALI_FA_MITIGATION_MARKER = "GGML_VK_FA_ALLOW_SUBGROUPS";
+
+// Mali flash-attn mitigation gate (#9508/#9528), extracted so the fail-closed
+// behavior is unit-testable headless (it is pure fs marker-scanning, no nm/otool).
+// A Vulkan fused build MUST ship a libggml-vulkan.so carrying the ARM
+// subgroup-race mitigation marker, or it SIGABRTs mid-decode on Mali GPUs.
+export function assertVulkanMaliMitigation({ lib, target }) {
+  if (!target.includes("vulkan")) return;
+  const vulkanBackend = path.join(path.dirname(lib), "libggml-vulkan.so");
+  if (!fs.existsSync(vulkanBackend)) {
+    throw new Error(
+      `[omnivoice-verify] symbol-verify: target=${target} is a Vulkan build but libggml-vulkan.so is missing next to ${lib} — the GPU backend did not build, so the fused lib would silently run CPU-only on device.`,
+    );
+  }
+  if (!binaryContainsAnyMarker(vulkanBackend, [MALI_FA_MITIGATION_MARKER])) {
+    throw new Error(
+      `[omnivoice-verify] symbol-verify: ${vulkanBackend} lacks the '${MALI_FA_MITIGATION_MARKER}' Mali flash-attn mitigation marker — this is a stale pre-#9508 GPU backend that SIGABRTs mid-decode on Mali. Build libggml-vulkan.so from source carrying the VK_VENDOR_ID_ARM disable_subgroups branch; never stage a prebuilt artifact into a release.`,
+    );
+  }
+}
+
 function pickToolForPlatform(target) {
   // target is e.g. "darwin-arm64-metal-fused", "linux-x64-vulkan-fused", etc.
   if (target.startsWith("darwin-") || target.startsWith("ios-")) {
@@ -420,6 +446,13 @@ function verifyFusedSymbolsInner({ outDir, target }) {
       `[omnivoice-verify] symbol-verify: libelizainference at ${lib} is missing required ABI symbol(s): ${missingAbiSymbols.join(", ")}. The fused libelizainference is the SOLE on-device inference library (standalone libllama.so is retired), so a missing text/voice/embed/vision symbol is a hard build error with no fallback. Rebuild the fused target against the FFI header at plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h.`,
     );
   }
+
+  // Mali flash-attn mitigation gate (#9508). A Vulkan fused build MUST ship a
+  // libggml-vulkan.so that carries the ARM subgroup-race mitigation, or it
+  // SIGABRTs mid-decode on Mali GPUs (Tensor G-series etc.). Building from
+  // source emits the mitigation; copying a stale prebuilt does not. Fail-closed
+  // so a stale GPU backend can never be baked into a release APK.
+  assertVulkanMaliMitigation({ lib, target });
 
   if (isIos) {
     return {

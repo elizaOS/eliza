@@ -17,8 +17,6 @@ export interface HomeGridApp extends AppIdentitySource {
 export const PINNABLE_INTERNAL_APPS: readonly string[] = [
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-elizamaker",
   "@elizaos/app-skills-viewer",
   "@elizaos/app-memory-viewer",
   "@elizaos/app-plugin-viewer",

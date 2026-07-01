@@ -1,4 +1,4 @@
-// Keep in sync with packages/robot/eliza_robot/profiles/schema.py
+// Keep in sync with packages/research/robot/eliza_robot/profiles/schema.py
 //
 // These types mirror the Pydantic v2 RobotProfile schema. Any change to the
 // Python schema (new field, renamed field, narrower type) MUST be reflected
@@ -71,7 +71,7 @@ export type BridgeEvent =
   | "policy.status";
 
 // ---------------------------------------------------------------------------
-// RobotProfile mirror — see packages/robot/eliza_robot/profiles/schema.py
+// RobotProfile mirror — see packages/research/robot/eliza_robot/profiles/schema.py
 // ---------------------------------------------------------------------------
 
 export type JointGroup = "LEG" | "ARM" | "HEAD";

@@ -1,10 +1,17 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "executive-assistant-handoff-continuity",
   title: "Assistant prepares executive assistant handoff continuity",
   domain: "executive.delegation",
-  tags: ["lifeops", "executive-assistant", "delegation", "documents", "privacy"],
+  tags: [
+    "lifeops",
+    "executive-assistant",
+    "delegation",
+    "documents",
+    "privacy",
+  ],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

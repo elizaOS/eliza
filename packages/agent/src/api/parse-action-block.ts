@@ -41,6 +41,7 @@ export interface ConsoleBridge {
 /** PTY service interface (accessed via runtime.getService). */
 export interface PTYService {
   consoleBridge?: ConsoleBridge;
+  listSessions?(): Array<{ sessionId: string; ownerClientId?: string }>;
   stopSession?(sessionId: string): Promise<void>;
 }
 

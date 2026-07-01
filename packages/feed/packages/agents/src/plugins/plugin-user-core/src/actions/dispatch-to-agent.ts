@@ -18,23 +18,20 @@
 import type {
   Action,
   ActionResult,
-  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type BroadcastFn,
-  dispatchAgentChat,
-} from "../../../../services/AgentChatService";
+import { defineActionParameters } from "../../../shared/action-parameters";
+import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 export const dispatchToAgentAction: Action = {
   name: "DISPATCH_TO_AGENT",
   description:
     "Execute a command on the user's behalf by dispatching to a specific agent in their team. Use when the user wants to trade, post, comment, or take any agent action. Do NOT use for information queries — use CHECK_PERPS, CHECK_PREDICTIONS etc. for those.",
 
-  parameters: {
+  parameters: defineActionParameters({
     agentId: {
       type: "string",
       required: true,
@@ -47,7 +44,7 @@ export const dispatchToAgentAction: Action = {
       description:
         'The exact instruction to send to the agent (e.g., "open a 2x long on TSLAI for $100", "post about the current market")',
     },
-  } as unknown as Action["parameters"],
+  }),
 
   examples: [
     [
@@ -103,6 +100,9 @@ export const dispatchToAgentAction: Action = {
 
     // broadcastFn is injected by the coordinator route into state.data
     const broadcastFn = state?.data?.broadcastFn as BroadcastFn | undefined;
+    const dispatchAgentChat = state?.data?.dispatchAgentChat as
+      | DispatchAgentChatFn
+      | undefined;
 
     const agentId = actionParams?.agentId;
     const command = actionParams?.command;
@@ -111,12 +111,19 @@ export const dispatchToAgentAction: Action = {
     const ownerName = state?.values?.ownerName as string | undefined;
     const ownerUsername = state?.values?.ownerUsername as string | undefined;
 
-    if (!agentId || !command || !ownerId || !teamChatId || !broadcastFn) {
+    if (
+      !agentId ||
+      !command ||
+      !ownerId ||
+      !teamChatId ||
+      !broadcastFn ||
+      !dispatchAgentChat
+    ) {
       const failResult: ActionResult = {
         success: false,
         text: "Missing required parameters for agent dispatch.",
       };
-      _callback?.({ content: failResult as unknown as Content });
+      _callback?.({ text: failResult.text });
       return failResult;
     }
 
@@ -137,8 +144,8 @@ export const dispatchToAgentAction: Action = {
         success: false,
         text: `Failed to dispatch to agent "${agentId}": ${result.error ?? "Unknown error"}. Check the Team Members list for the correct agent [id: ...] and retry.`,
         values: { agentId, command, error: result.error },
-      } as unknown as ActionResult;
-      _callback?.({ content: failResult as unknown as Content });
+      };
+      _callback?.({ text: failResult.text, agentId, command });
       return failResult;
     }
 
@@ -152,8 +159,14 @@ export const dispatchToAgentAction: Action = {
         agentResponse: result.response,
         actionsExecuted: result.actionsExecuted,
       },
-    } as unknown as ActionResult;
-    _callback?.({ content: successResult as unknown as Content });
+    };
+    _callback?.({
+      text: successResult.text,
+      agentId: result.agentId,
+      agentUsername: result.agentUsername,
+      dispatchedCommand: command,
+      actionsExecuted: result.actionsExecuted,
+    });
     return successResult;
   },
 };

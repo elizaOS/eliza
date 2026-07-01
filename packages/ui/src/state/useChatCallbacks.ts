@@ -6,25 +6,30 @@
  */
 
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
-import type { CodingAgentSession, Conversation, FirstRunOptions } from "../api";
+import type {
+  ChatTurnStatus,
+  CodingAgentSession,
+  Conversation,
+  FirstRunOptions,
+} from "../api";
 import {
   type AgentStatus,
   type ConversationMessage,
   client,
   type ImageAttachment,
 } from "../api";
-import { type Tab, tabFromPath } from "../navigation";
+import type { Tab } from "../navigation";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
 import {
   isConversationRecord,
   normalizeConversationList,
 } from "./chat-conversation-guards";
-import type { AppState, LifecycleAction, UiShellMode } from "./internal";
+import type { AppState, LifecycleAction } from "./internal";
 import {
   type LoadConversationMessagesResult,
   loadActiveConversationId,
 } from "./internal";
-import type { FirstRunMode, SetupStep } from "./types";
+import { deriveAgentReady, type FirstRunMode, type SetupStep } from "./types";
 
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
@@ -74,11 +79,6 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   }
 }
 
-import { isRoutineCodingAgentMessage } from "../chat";
-
-const COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1000;
-const COMPANION_STALE_THREAD_VISIBLE_MESSAGE_LIMIT = 2;
-
 function isPersistedGreetingMessage(message: ConversationMessage): boolean {
   return (
     message.role === "assistant" &&
@@ -87,44 +87,236 @@ function isPersistedGreetingMessage(message: ConversationMessage): boolean {
   );
 }
 
-function shouldStartFreshCompanionConversation(
-  messages: ConversationMessage[],
-  now = Date.now(),
-): boolean {
-  const visibleMessages = messages
-    .filter((message) => shouldKeepConversationMessage(message))
-    .filter((message) => !isRoutineCodingAgentMessage(message))
-    .slice(-COMPANION_STALE_THREAD_VISIBLE_MESSAGE_LIMIT);
+function hasUserConversationMessage(messages: ConversationMessage[]): boolean {
+  return messages.some((message) => message.role === "user");
+}
 
-  if (visibleMessages.length === 0) {
-    return false;
+function isDraftOnlyConversationMessages(
+  messages: ConversationMessage[],
+): boolean {
+  if (hasUserConversationMessage(messages)) return false;
+  if (messages.length === 0) return true;
+  return messages.every(isPersistedGreetingMessage);
+}
+
+/** The subset of the API client the initial-conversation hydration needs.
+ *  Injected (not the module singleton) so the policy below is unit-testable. */
+export type HydrateConversationClient = Pick<
+  typeof client,
+  | "listConversations"
+  | "getConversationMessages"
+  | "sendWsMessage"
+  | "createConversation"
+>;
+
+export interface HydrateInitialConversationDeps {
+  client: HydrateConversationClient;
+  conversationHydrationEpochRef: MutableRefObject<number>;
+  activeConversationIdRef: MutableRefObject<string | null>;
+  greetingFiredRef: MutableRefObject<boolean>;
+  conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
+  setConversations: (conversations: Conversation[]) => void;
+  setActiveConversationId: (id: string | null) => void;
+  setConversationMessages: (messages: ConversationMessage[]) => void;
+  uiLanguage: string;
+}
+
+function conversationRecency(conversation: Conversation): number {
+  const updated = Date.parse(conversation.updatedAt);
+  return Number.isNaN(updated) ? 0 : updated;
+}
+
+async function resolveRestoredConversationWithMessages(
+  api: HydrateConversationClient,
+  conversations: Conversation[],
+): Promise<{
+  conversation: Conversation;
+  messages: ConversationMessage[];
+}> {
+  const savedConversationId = loadActiveConversationId();
+  const restoredConversation =
+    conversations.find(
+      (conversation) => conversation.id === savedConversationId,
+    ) ?? conversations[0];
+  let restoredMessages: ConversationMessage[] = [];
+  try {
+    restoredMessages = filterRenderableConversationMessages(
+      (await api.getConversationMessages(restoredConversation.id)).messages,
+    );
+  } catch {
+    return { conversation: restoredConversation, messages: [] };
   }
 
   if (
-    visibleMessages.length === 1 &&
-    isPersistedGreetingMessage(visibleMessages[0])
+    conversations.length <= 1 ||
+    !isDraftOnlyConversationMessages(restoredMessages)
   ) {
-    return false;
+    return { conversation: restoredConversation, messages: restoredMessages };
   }
 
-  return visibleMessages.every((message) => {
-    if (!Number.isFinite(message.timestamp)) {
-      return false;
+  // Scan most-recently-updated first so we restore the user's latest real chat,
+  // not the oldest. Sort defensively client-side instead of relying on the
+  // server's list ordering. Common case is a single extra fetch (the draft sits
+  // at index 0, the latest real chat next); the loop is bounded by the rare
+  // case where every conversation is a greeting-only draft.
+  const candidatesByRecencyDesc = [...conversations].sort(
+    (a, b) => conversationRecency(b) - conversationRecency(a),
+  );
+  for (const candidate of candidatesByRecencyDesc) {
+    if (candidate.id === restoredConversation.id) continue;
+    let candidateMessages: ConversationMessage[];
+    try {
+      candidateMessages = filterRenderableConversationMessages(
+        (await api.getConversationMessages(candidate.id)).messages,
+      );
+    } catch {
+      continue;
     }
-    return now - message.timestamp > COMPANION_STALE_THREAD_MAX_AGE_MS;
-  });
-}
-
-function getNavigationPathFromWindow(): string {
-  if (typeof window === "undefined") return "/";
-  if (window.location.protocol === "file:") {
-    return window.location.hash.replace(/^#/, "") || "/";
+    if (hasUserConversationMessage(candidateMessages)) {
+      return { conversation: candidate, messages: candidateMessages };
+    }
   }
-  return window.location.pathname || "/";
+
+  return { conversation: restoredConversation, messages: restoredMessages };
 }
 
-function shouldAutoCreateInitialConversation(): boolean {
-  return tabFromPath(getNavigationPathFromWindow()) === "chat";
+/**
+ * Hydrate the app's single active conversation on boot.
+ *
+ * INVARIANT: the ContinuousChatOverlay is mounted over EVERY surface, so the
+ * chat must ALWAYS end up with an active, greeted conversation — never an empty
+ * thread — regardless of which route the shell launched on. So when the server
+ * has zero conversations this ALWAYS creates one with a bootstrap greeting (it
+ * is NOT gated on the URL being /chat, the bug that left the overlay
+ * permanently empty when the shell booted at /views or a cached app slug).
+ *
+ * Returns a conversation id when the caller should still backfill a greeting
+ * (restored-but-empty, or created without an inline greeting), else null.
+ * Extracted from the hook so it can be tested directly with a fake client.
+ */
+export async function hydrateInitialConversation(
+  deps: HydrateInitialConversationDeps,
+): Promise<string | null> {
+  const {
+    client: api,
+    conversationHydrationEpochRef,
+    activeConversationIdRef,
+    greetingFiredRef,
+    conversationMessagesRef,
+    setConversations,
+    setActiveConversationId,
+    setConversationMessages,
+    uiLanguage,
+  } = deps;
+  const hydrationEpoch = ++conversationHydrationEpochRef.current;
+  const isCurrentHydration = () =>
+    conversationHydrationEpochRef.current === hydrationEpoch;
+
+  try {
+    const { conversations: rawConversations } = await api.listConversations();
+    const conversations = normalizeConversationList(rawConversations);
+    traceGreeting("hydrate:listConversations", {
+      count: conversations.length,
+    });
+    if (!isCurrentHydration()) {
+      return null;
+    }
+    setConversations(conversations);
+    if (conversations.length > 0) {
+      const { conversation: restoredConversation, messages: nextMessages } =
+        await resolveRestoredConversationWithMessages(api, conversations);
+      if (!isCurrentHydration()) {
+        return null;
+      }
+      setActiveConversationId(restoredConversation.id);
+      activeConversationIdRef.current = restoredConversation.id;
+      api.sendWsMessage({
+        type: "active-conversation",
+        conversationId: restoredConversation.id,
+      });
+      try {
+        greetingFiredRef.current =
+          hasConversationBootstrapMessage(nextMessages);
+        conversationMessagesRef.current = nextMessages;
+        setConversationMessages(nextMessages);
+        return nextMessages.length === 0 ? restoredConversation.id : null;
+      } catch {
+        if (!isCurrentHydration()) {
+          return null;
+        }
+        // transient fetch failures are expected on early load; others are silent
+        greetingFiredRef.current = false;
+        conversationMessagesRef.current = [];
+        setConversationMessages([]);
+        return restoredConversation.id;
+      }
+    }
+
+    if (!isCurrentHydration()) {
+      return null;
+    }
+    traceGreeting("hydrate:no_conversations_on_server");
+    greetingFiredRef.current = false;
+    conversationMessagesRef.current = [];
+    setConversationMessages([]);
+    setActiveConversationId(null);
+    activeConversationIdRef.current = null;
+    setConversations([]);
+
+    traceGreeting("hydrate:auto_create_initial_conversation");
+    try {
+      const { conversation: rawConversation, greeting: inlineGreeting } =
+        await api.createConversation(undefined, {
+          bootstrapGreeting: true,
+          lang: uiLanguage,
+        });
+      if (!isConversationRecord(rawConversation)) {
+        throw new Error("Conversation creation returned an invalid payload.");
+      }
+      const conversation = rawConversation;
+
+      if (!isCurrentHydration()) {
+        return null;
+      }
+
+      setConversations([conversation]);
+      setActiveConversationId(conversation.id);
+      activeConversationIdRef.current = conversation.id;
+      api.sendWsMessage({
+        type: "active-conversation",
+        conversationId: conversation.id,
+      });
+
+      const greetingText = inlineGreeting?.text?.trim() || "";
+      if (greetingText) {
+        const nextMessages: ConversationMessage[] = [
+          {
+            id: `greeting-${Date.now()}`,
+            role: "assistant",
+            text: greetingText,
+            timestamp: Date.now(),
+            source: "agent_greeting",
+            ...(inlineGreeting?.localInference
+              ? { localInference: inlineGreeting.localInference }
+              : {}),
+          },
+        ];
+        greetingFiredRef.current = true;
+        conversationMessagesRef.current = nextMessages;
+        setConversationMessages(nextMessages);
+        return null;
+      }
+
+      return conversation.id;
+    } catch {
+      if (!isCurrentHydration()) {
+        return null;
+      }
+      return null;
+    }
+  } catch {
+    return null;
+  }
 }
 
 // ── Deps interface ──────────────────────────────────────────────────
@@ -135,7 +327,6 @@ export interface UseChatCallbacksDeps {
 
   // UI state
   uiLanguage: string;
-  uiShellMode: UiShellMode;
   tab: Tab;
 
   // Agent status
@@ -153,6 +344,8 @@ export interface UseChatCallbacksDeps {
   setChatInput: (v: string) => void;
   setChatSending: (v: boolean) => void;
   setChatFirstTokenReceived: (v: boolean) => void;
+  /** Set/clear the live server-reported phase of the in-flight turn (#8813). */
+  setServerTurnStatus: (status: ChatTurnStatus | null) => void;
   setChatLastUsage: (v: {
     promptTokens: number;
     completionTokens: number;
@@ -188,7 +381,6 @@ export interface UseChatCallbacksDeps {
   chatSendNonceRef: MutableRefObject<number>;
   greetingFiredRef: MutableRefObject<boolean>;
   greetingInFlightConversationRef: MutableRefObject<string | null>;
-  companionStaleConversationRefreshRef: MutableRefObject<string | null>;
 
   // Lifecycle
   lifecycleAction: LifecycleAction | null;
@@ -222,6 +414,8 @@ export interface UseChatCallbacksDeps {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  /** Warm the message cache for adjacent conversations (smooth swipe nav). */
+  prefetchConversationMessages: (ids: readonly string[]) => void;
   loadPlugins: () => Promise<unknown>;
 
   // Cloud state
@@ -244,6 +438,7 @@ export interface UseChatCallbacksDeps {
   setElizaCloudLoginError: (v: string | null) => void;
 
   // First-run setters (used by completeResetLocalStateAfterServerWipe)
+  firstRunComplete: boolean;
   firstRunCompletionCommittedRef: MutableRefObject<boolean>;
   setFirstRunUiRevealNonce: (fn: (n: number) => number) => void;
   setFirstRunLoading: (v: boolean) => void;
@@ -289,16 +484,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const {
     t,
     uiLanguage,
-    uiShellMode,
     tab,
     agentStatus,
     activeConversationId,
     companionMessageCutoffTs,
-    conversationMessages,
     ptySessions,
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,
@@ -318,7 +512,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -334,6 +527,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     resetBackendConnection,
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -352,6 +546,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
+    firstRunComplete,
     firstRunCompletionCommittedRef,
     setFirstRunUiRevealNonce,
     setFirstRunLoading,
@@ -488,142 +683,52 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     [fetchGreeting],
   );
 
-  const hydrateInitialConversationState = useCallback(async (): Promise<
-    string | null
-  > => {
-    const hydrationEpoch = ++conversationHydrationEpochRef.current;
-    const isCurrentHydration = () =>
-      conversationHydrationEpochRef.current === hydrationEpoch;
+  const hydrateInitialConversationState = useCallback(
+    (): Promise<string | null> =>
+      hydrateInitialConversation({
+        client,
+        conversationHydrationEpochRef,
+        activeConversationIdRef,
+        greetingFiredRef,
+        conversationMessagesRef,
+        setConversations,
+        setActiveConversationId,
+        setConversationMessages,
+        uiLanguage,
+      }),
+    [
+      activeConversationIdRef,
+      conversationHydrationEpochRef,
+      conversationMessagesRef,
+      greetingFiredRef,
+      uiLanguage,
+      setActiveConversationId,
+      setConversationMessages,
+      setConversations,
+    ],
+  );
 
-    try {
-      const { conversations: rawConversations } =
-        await client.listConversations();
-      const conversations = normalizeConversationList(rawConversations);
-      traceGreeting("hydrate:listConversations", {
-        count: conversations.length,
-      });
-      if (!isCurrentHydration()) {
-        return null;
-      }
-      setConversations(conversations);
-      if (conversations.length > 0) {
-        const savedConversationId = loadActiveConversationId();
-        const restoredConversation =
-          conversations.find(
-            (conversation) => conversation.id === savedConversationId,
-          ) ?? conversations[0];
-        if (!isCurrentHydration()) {
-          return null;
-        }
-        setActiveConversationId(restoredConversation.id);
-        activeConversationIdRef.current = restoredConversation.id;
-        client.sendWsMessage({
-          type: "active-conversation",
-          conversationId: restoredConversation.id,
-        });
-        try {
-          const { messages } = await client.getConversationMessages(
-            restoredConversation.id,
-          );
-          if (!isCurrentHydration()) {
-            return null;
-          }
-          const nextMessages = filterRenderableConversationMessages(messages);
-          greetingFiredRef.current =
-            hasConversationBootstrapMessage(nextMessages);
-          conversationMessagesRef.current = nextMessages;
-          setConversationMessages(nextMessages);
-          return nextMessages.length === 0 ? restoredConversation.id : null;
-        } catch {
-          if (!isCurrentHydration()) {
-            return null;
-          }
-          // transient fetch failures are expected on early load; others are silent
-          greetingFiredRef.current = false;
-          conversationMessagesRef.current = [];
-          setConversationMessages([]);
-          return restoredConversation.id;
-        }
-      }
-
-      if (!isCurrentHydration()) {
-        return null;
-      }
-      traceGreeting("hydrate:no_conversations_on_server");
-      greetingFiredRef.current = false;
-      conversationMessagesRef.current = [];
-      setConversationMessages([]);
-      setActiveConversationId(null);
-      activeConversationIdRef.current = null;
-      setConversations([]);
-
-      if (!shouldAutoCreateInitialConversation()) {
-        return null;
-      }
-
-      traceGreeting("hydrate:auto_create_initial_conversation");
-      try {
-        const { conversation: rawConversation, greeting: inlineGreeting } =
-          await client.createConversation(undefined, {
-            bootstrapGreeting: true,
-            lang: uiLanguage,
-          });
-        if (!isConversationRecord(rawConversation)) {
-          throw new Error("Conversation creation returned an invalid payload.");
-        }
-        const conversation = rawConversation;
-
-        if (!isCurrentHydration()) {
-          return null;
-        }
-
-        setConversations([conversation]);
-        setActiveConversationId(conversation.id);
-        activeConversationIdRef.current = conversation.id;
-        client.sendWsMessage({
-          type: "active-conversation",
-          conversationId: conversation.id,
-        });
-
-        const greetingText = inlineGreeting?.text?.trim() || "";
-        if (greetingText) {
-          const nextMessages: ConversationMessage[] = [
-            {
-              id: `greeting-${Date.now()}`,
-              role: "assistant",
-              text: greetingText,
-              timestamp: Date.now(),
-              source: "agent_greeting",
-              ...(inlineGreeting?.localInference
-                ? { localInference: inlineGreeting.localInference }
-                : {}),
-            },
-          ];
-          greetingFiredRef.current = true;
-          conversationMessagesRef.current = nextMessages;
-          setConversationMessages(nextMessages);
-          return null;
-        }
-
-        return conversation.id;
-      } catch {
-        if (!isCurrentHydration()) {
-          return null;
-        }
-        return null;
-      }
-    } catch {
-      return null;
-    }
+  // Backfill the bootstrap greeting once the agent first becomes ready. The
+  // initial post-hydrate `requestGreetingWhenRunning` is one-shot and bails when
+  // the agent isn't running yet (a slow on-device model still warming, or no
+  // provider wired at boot) — without this retry a restored/created conversation
+  // that hydrated empty would stay permanently blank, so the chat would have no
+  // chat in it even though an active conversation exists. The helper self-gates
+  // on `greetingFiredRef`, so this never double-greets.
+  const agentReady = deriveAgentReady(agentStatus);
+  useEffect(() => {
+    if (!agentReady) return;
+    if (greetingFiredRef.current) return;
+    if (conversationMessagesRef.current.length > 0) return;
+    const convId = activeConversationIdRef.current;
+    if (!convId) return;
+    void requestGreetingWhenRunning(convId);
   }, [
+    agentReady,
+    requestGreetingWhenRunning,
     activeConversationIdRef,
-    conversationHydrationEpochRef,
     conversationMessagesRef,
     greetingFiredRef,
-    uiLanguage,
-    setActiveConversationId,
-    setConversationMessages,
-    setConversations,
   ]);
 
   // ── Send sub-hook ───────────────────────────────────────────────────
@@ -643,6 +748,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,
@@ -671,6 +777,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
   const lifecycle = useChatLifecycle({
     agentStatus,
     setAgentStatus,
+    pollAgentReadiness: firstRunComplete,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -758,17 +865,40 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
 
       send.interruptActiveChatPipeline();
       resetConversationDraftState();
+      // Snapshot the navigation epoch AFTER the draft reset — `resetConversationDraftState`
+      // itself bumps this epoch, so capturing it before (the old order) made the
+      // navigated-away guard below fire on EVERY call, silently abandoning the
+      // freshly-created conversation instead of activating it (clear showed no new
+      // chat and orphan drafts piled up). Now only a genuine handleSelectConversation
+      // during the create await — a real navigation away — changes it.
+      const creationEpoch = conversationHydrationEpochRef.current;
 
       try {
+        // Create WITHOUT bootstrapGreeting: server-side greeting generation is
+        // model-bound, and on the single-threaded on-device agent it queues
+        // behind in-flight FFI work (a warming/loading 1.4 GB model, an active
+        // generation), so a `bootstrapGreeting` create can block for many
+        // seconds — up to its 120 s timeout — before the conversation record
+        // even comes back. That froze the new chat behind the loading spinner
+        // ("reset shows a spinner but never makes the new chat"). Creating bare
+        // is a quick insert, so the fresh conversation activates immediately
+        // (below) and the greeting is fetched separately/async (the inline path
+        // is still honored if a server ever returns one).
         const { conversation: rawConversation, greeting: inlineGreeting } =
           await client.createConversation(title, {
-            bootstrapGreeting: true,
             lang: uiLanguage,
           });
         if (!isConversationRecord(rawConversation)) {
           throw new Error("Conversation creation returned an invalid payload.");
         }
         const conversation = rawConversation;
+        // Bail if the user navigated away while the conversation was being
+        // created: switching now would override their selected conversation
+        // with this throwaway fresh thread. The
+        // orphaned empty conversation is reaped by cleanupEmptyConversations.
+        if (conversationHydrationEpochRef.current !== creationEpoch) {
+          return;
+        }
         const nextCutoffTs = Date.now();
         setConversations((prev) => {
           const next = shouldReplacePreviousDraftConversation
@@ -795,6 +925,15 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           }
         }
 
+        // The greeting may have been fetched across an `await`; if the user
+        // navigated away meanwhile, do not clobber their current thread or run
+        // follow-up side effects for this fresh conversation.
+        const stillOnNewConversation =
+          activeConversationIdRef.current === conversation.id &&
+          conversationHydrationEpochRef.current === creationEpoch;
+        if (!stillOnNewConversation) {
+          return;
+        }
         if (greetingText) {
           greetingFiredRef.current = true;
           const initMessages: ConversationMessage[] = [
@@ -873,6 +1012,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       resetConversationDraftState,
       uiLanguage,
       activeConversationIdRef,
+      conversationHydrationEpochRef,
       conversationMessagesRef,
       greetingFiredRef,
       send.interruptActiveChatPipeline,
@@ -884,50 +1024,22 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     ],
   );
 
-  useEffect(() => {
-    if (uiShellMode !== "companion" || tab !== "companion") {
-      companionStaleConversationRefreshRef.current = null;
-      return;
-    }
-
-    if (!activeConversationId) {
-      return;
-    }
-
-    if (!shouldStartFreshCompanionConversation(conversationMessages)) {
-      companionStaleConversationRefreshRef.current = null;
-      return;
-    }
-
-    if (companionStaleConversationRefreshRef.current === activeConversationId) {
-      return;
-    }
-
-    companionStaleConversationRefreshRef.current = activeConversationId;
-    void handleNewConversation();
-  }, [
-    activeConversationId,
-    conversationMessages,
-    handleNewConversation,
-    tab,
-    uiShellMode,
-    companionStaleConversationRefreshRef,
-  ]);
-
   const handleSelectConversation = useCallback(
     async (id: string) => {
       conversationHydrationEpochRef.current += 1;
-      if (
-        id === activeConversationId &&
-        conversationMessagesRef.current.length > 0
-      )
+      // Read the LIVE active id from the ref, not the closure: callers can hold
+      // a stale `handleSelectConversation` captured before another navigation
+      // changes `activeConversationId`. Using the closure here made selecting
+      // that previous conversation hit this early-return and silently no-op.
+      const currentActiveId = activeConversationIdRef.current;
+      if (id === currentActiveId && conversationMessagesRef.current.length > 0)
         return;
 
       send.interruptActiveChatPipeline();
 
       // Clean up empty conversations: if the previous conversation has only
       // system/greeting messages and no user messages, delete it silently.
-      const prevId = activeConversationId;
+      const prevId = currentActiveId;
       if (prevId && prevId !== id) {
         const prevMessages = conversationMessagesRef.current;
         const hasUserMessage = prevMessages.some((m) => m.role === "user");
@@ -942,7 +1054,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         }
       }
 
-      const previousActive = activeConversationId;
+      const previousActive = currentActiveId;
       setActiveConversationId(id);
       activeConversationIdRef.current = id;
       client.sendWsMessage({ type: "active-conversation", conversationId: id });
@@ -1011,13 +1123,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       );
     },
     [
-      activeConversationId,
       loadConversationMessages,
       loadConversations,
       setActionNotice,
       activeConversationIdRef,
       conversationHydrationEpochRef,
-      conversationMessagesRef.current,
+      conversationMessagesRef,
       send.interruptActiveChatPipeline,
       setActiveConversationId,
       setConversationMessages,
@@ -1025,6 +1136,25 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       setUnreadConversations,
     ],
   );
+
+  // Warm the message cache for the conversations on either side of the active
+  // one (the list is most-recent-first) whenever the active conversation
+  // changes — including the initial hydrated one, so even the FIRST horizontal
+  // swipe paints instantly from cache instead of waiting on the network.
+  // Best-effort and deduped inside prefetchConversationMessages.
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const order = conversationsRef.current;
+    const idx = order.findIndex((c) => c.id === activeConversationId);
+    if (idx < 0) return;
+    const neighbors = [
+      order[idx - 2]?.id,
+      order[idx - 1]?.id,
+      order[idx + 1]?.id,
+      order[idx + 2]?.id,
+    ].filter((n): n is string => typeof n === "string");
+    if (neighbors.length > 0) prefetchConversationMessages(neighbors);
+  }, [activeConversationId, prefetchConversationMessages, conversationsRef]);
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {

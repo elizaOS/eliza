@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PushTokenRegistry } from "./push-token-registry.ts";
 
@@ -7,7 +8,7 @@ function createRuntime(): {
   cache: Map<string, unknown>;
 } {
   const cache = new Map<string, unknown>();
-  const runtime = {
+  const runtime = createMockRuntime({
     agentId: "00000000-0000-0000-0000-0000000000aa",
     getCache: async <T>(key: string): Promise<T | undefined> =>
       cache.get(key) as T | undefined,
@@ -16,7 +17,7 @@ function createRuntime(): {
       return true;
     },
     deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
-  } as unknown as IAgentRuntime;
+  });
   return { runtime, cache };
 }
 

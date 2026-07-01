@@ -1,8 +1,8 @@
 "use client";
 
+import { consumeStewardPkceVerifier } from "@elizaos/shared/steward-session-client";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { consumeStewardPkceVerifier } from "@elizaos/shared/steward-session-client";
 import { useStewardAuthContext } from "@/components/providers/StewardAuthProvider";
 
 type FeedStewardOAuthProvider = "google" | "discord" | "twitter";
@@ -21,10 +21,28 @@ function isFeedOAuthProvider(value: string): value is FeedStewardOAuthProvider {
 }
 
 /**
+ * Snapshot of the OAuth params, captured at client module-eval time.
+ *
+ * Steward returns the one-time code in the URL *fragment* (`#code=…`). Next.js's
+ * App Router normalizes the URL during hydration and drops the fragment before
+ * our mount effect runs, so reading `window.location.hash` inside the effect
+ * intermittently sees an empty hash and bounces the user back to `/` with
+ * `auth_error=missing_code`. Module scope runs as the route chunk first
+ * executes — earlier than the router's normalization — so the fragment is still
+ * present here. The effect prefers this snapshot and only falls back to the live
+ * location (for the legacy `?token=` query flow, which the router keeps).
+ */
+const INITIAL_OAUTH_LOCATION =
+  typeof window !== "undefined"
+    ? { hash: window.location.hash, search: window.location.search }
+    : { hash: "", search: "" };
+
+/**
  * OAuth callback page for Steward OAuth providers (Google, Discord, Twitter/X).
  *
  * PKCE code flow (current):
- *   ?code=<nonce>  → POST /api/auth/steward/oauth/exchange → session cookies
+ *   #code=<nonce>  → POST /api/auth/steward/oauth/exchange → session cookies
+ *   (Steward returns the code in the URL fragment, not the query string.)
  *
  * Legacy token-in-URL flow (backward compat during rollout):
  *   ?token=<jwt>&refresh_token=<rt>
@@ -45,11 +63,22 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    const searchParams = new URLSearchParams(window.location.search);
-    const error = searchParams.get("error");
-    const code = searchParams.get("code");
-    const token = searchParams.get("token");
-    const refreshToken = searchParams.get("refresh_token") ?? undefined;
+    // Steward's PKCE flow returns the one-time code in the URL *fragment*
+    // (`#code=…&state=…`) — deliberately, so it stays out of server logs /
+    // Referer / browser history. Read from the module-eval snapshot (see
+    // INITIAL_OAUTH_LOCATION) because the App Router strips the fragment before
+    // this effect runs; fall back to the live location for the legacy
+    // token-in-URL flow (`?token=…`).
+    const hash = INITIAL_OAUTH_LOCATION.hash || window.location.hash;
+    const search = INITIAL_OAUTH_LOCATION.search || window.location.search;
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+    const queryParams = new URLSearchParams(search);
+    const pick = (key: string): string | null =>
+      hashParams.get(key) ?? queryParams.get(key);
+    const error = pick("error");
+    const code = pick("code");
+    const token = pick("token");
+    const refreshToken = pick("refresh_token") ?? undefined;
 
     window.history.replaceState(null, "", window.location.pathname);
 
@@ -78,7 +107,10 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    const redirectUri = buildFeedOAuthRedirectUri(window.location.origin, provider);
+    const redirectUri = buildFeedOAuthRedirectUri(
+      window.location.origin,
+      provider,
+    );
 
     fetch("/api/auth/steward/oauth/exchange", {
       method: "POST",

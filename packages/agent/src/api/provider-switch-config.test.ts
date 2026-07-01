@@ -73,6 +73,8 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     "OPENAI_LARGE_MODEL",
     "CEREBRAS_MODEL",
     "GROQ_LARGE_MODEL",
+    "NEARAI_SMALL_MODEL",
+    "NEARAI_LARGE_MODEL",
   ] as const;
 
   afterEach(() => {
@@ -311,5 +313,40 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     const vars = (config.env as { vars?: Record<string, string> } | undefined)
       ?.vars;
     expect(vars?.CEREBRAS_API_KEY).toBeUndefined();
+  });
+});
+
+describe("applyFirstRunConnectionConfig (NEAR AI local provider)", () => {
+  const NEARAI_ENV = [
+    "NEARAI_API_KEY",
+    "NEARAI_SMALL_MODEL",
+    "NEARAI_LARGE_MODEL",
+  ] as const;
+
+  beforeEach(() => {
+    for (const key of NEARAI_ENV) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of NEARAI_ENV) delete process.env[key];
+  });
+
+  it("sets NEAR AI Gemma defaults for both text tiers", async () => {
+    const config: Partial<ElizaConfig> = {};
+
+    await applyFirstRunConnectionConfig(config, {
+      kind: "local-provider",
+      provider: "nearai",
+      apiKey: "near-test-123",
+    });
+
+    const vars = (config.env as { vars?: Record<string, string> } | undefined)
+      ?.vars;
+    expect(vars?.NEARAI_API_KEY).toBe("near-test-123");
+    expect(vars?.NEARAI_SMALL_MODEL).toBe("google/gemma-4-31B-it");
+    expect(vars?.NEARAI_LARGE_MODEL).toBe("google/gemma-4-31B-it");
+    expect(process.env.NEARAI_SMALL_MODEL).toBe("google/gemma-4-31B-it");
+    expect(process.env.NEARAI_LARGE_MODEL).toBe("google/gemma-4-31B-it");
+    expect(config.serviceRouting?.llmText?.backend).toBe("nearai");
+    expect(config.serviceRouting?.llmText?.transport).toBe("direct");
   });
 });

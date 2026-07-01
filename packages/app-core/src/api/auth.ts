@@ -6,10 +6,18 @@
  */
 
 import type http from "node:http";
+import { type RoleGateRole, roleRank } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/shared";
 // AuthStore is statically imported elsewhere in the package; the dynamic
 // import below was INEFFECTIVE_DYNAMIC_IMPORT.
-import { AuthStore } from "../services/auth-store.js";
+import { type AuthIdentityRow, AuthStore } from "../services/auth-store.js";
+import {
+  type EmbedSessionClaims,
+  type EmbedSessionSecretRuntime,
+  readEmbedSessionSecretSetting,
+  resolveEmbedSessionSecret,
+  verifyEmbedSessionToken,
+} from "./auth/embed-session-token.js";
 import {
   CSRF_HEADER_NAME,
   findActiveSession,
@@ -20,6 +28,12 @@ import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
 
 export { tokenMatches } from "./auth/tokens.js";
+
+interface CompatStateLike {
+  current:
+    | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
+    | null;
+}
 
 /**
  * Normalise a potentially multi-valued HTTP header into a single string.
@@ -67,6 +81,41 @@ export function getProvidedApiToken(
     extractHeaderValue(req.headers["x-api-token"]);
 
   return headerToken?.trim() || null;
+}
+
+/**
+ * Resolve a request's embed session principal (#9947), or `null`.
+ *
+ * A cross-origin embedded surface (Telegram Mini App / Discord Activity iframe)
+ * cannot present the first-party session cookie, so after `/api/embed/auth`
+ * verifies its platform-signed launch it mints a scoped, HMAC-signed bearer.
+ * This resolves + verifies that bearer against the same configured secret,
+ * failing closed on a tampered/expired/malformed token or an unconfigured
+ * secret. `read` defaults to `process.env`; the sync boundary-role path passes
+ * its own env source.
+ */
+export function resolveEmbedPrincipal(
+  req: Pick<http.IncomingMessage, "headers">,
+  now?: number,
+  read: (key: string) => unknown = (key) => process.env[key],
+): EmbedSessionClaims | null {
+  const secret = resolveEmbedSessionSecret(read);
+  if (!secret) return null;
+  const provided = getProvidedApiToken(req);
+  if (!provided) return null;
+  return verifyEmbedSessionToken(provided, secret, now);
+}
+
+/**
+ * Map a verified embed principal to a boundary role. OWNER→OWNER; ADMIN→USER —
+ * non-escalating, because the HTTP boundary has no ADMIN tier and ADMIN ranks
+ * below OWNER. Returns `null` when there is no valid embed principal.
+ */
+export function embedBoundaryRole(
+  claims: EmbedSessionClaims | null,
+): RoleGateRole | null {
+  if (!claims) return null;
+  return claims.role === "OWNER" ? "OWNER" : "USER";
 }
 
 // ── Auth attempt rate limiter ─────────────────────────────────────────────────
@@ -175,6 +224,7 @@ export async function ensureCompatApiAuthorizedAsync(
   options: {
     store: import("../services/auth-store").AuthStore;
     now?: number;
+    readSetting?: (key: string) => unknown;
     /**
      * Skip CSRF enforcement for routes that ALWAYS handle CSRF themselves
      * (e.g. login routes that mint the cookie, where there is no prior
@@ -237,6 +287,13 @@ export async function ensureCompatApiAuthorizedAsync(
       expectedToken &&
       tokenMatches(expectedToken, provided)
     ) {
+      return true;
+    }
+
+    // Embed session token (cross-origin Mini App / Activity iframe): a valid,
+    // unexpired token minted by /api/embed/auth authenticates the verified
+    // OWNER/ADMIN principal. Bearer-only, so CSRF-exempt like the paths above.
+    if (resolveEmbedPrincipal(req, options.now, options.readSetting)) {
       return true;
     }
   }
@@ -340,6 +397,212 @@ export function ensureAuthSessionOrBootstrap(
   return { kind: "denied", status: 401, reason: "auth_required" };
 }
 
+// ── Role-aware boundary helpers ───────────────────────────────────────────────
+//
+// The HTTP boundary is binary today: `ensureCompatApiAuthorized` /
+// `isTrustedLocalRequest` answer one yes/no question (FULL access or 401/403).
+// These helpers layer a canonical role tier on top of those exact primitives —
+// no new auth scheme — so callers can express a *minimum* role instead of just
+// "authenticated". The role vocabulary + ranking is owned by `@elizaos/core`
+// (`roleRank` over the canonical rank table); we never define ranks here.
+
+/**
+ * Classify the caller into a canonical boundary role using the existing trust
+ * + token primitives in this module.
+ *
+ *   - trusted same-machine dashboard request → `"OWNER"`
+ *   - request presenting the configured `ELIZA_API_TOKEN` → `"OWNER"`
+ *     (that token grants full access today; there is no non-owner token tier
+ *     at this synchronous boundary — session tiers are resolved on the async
+ *     DB-backed path instead)
+ *   - everything else → `"NONE"`
+ *
+ * Fails closed: any path that is not a recognised owner principal resolves to
+ * `"NONE"` (rank 0).
+ */
+export function resolveBoundaryRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  env: NodeJS.ProcessEnv = process.env,
+): RoleGateRole {
+  if (isTrustedLocalRequest(req)) {
+    return "OWNER";
+  }
+
+  const expectedToken = resolveApiToken(env);
+  if (expectedToken) {
+    const provided = getProvidedApiToken(req);
+    if (provided && tokenMatches(expectedToken, provided)) {
+      return "OWNER";
+    }
+  }
+
+  return "NONE";
+}
+
+/**
+ * Returns `true` iff the caller's boundary role ranks at or above `minRole`.
+ *
+ * This is a pure predicate (no response side effects) so it composes with any
+ * gating strategy. It fails closed: an unrecognised caller resolves to `"NONE"`
+ * (rank 0), which only satisfies a `"NONE"` minimum.
+ */
+export function ensureMinRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  minRole: RoleGateRole,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return roleRank(resolveBoundaryRole(req, env)) >= roleRank(minRole);
+}
+
+type RouteRoleResolution =
+  | { ok: true; role: RoleGateRole }
+  | { ok: false; status: 401 | 403 | 429; reason: string };
+
+function roleForAuthIdentity(
+  identity: Pick<AuthIdentityRow, "kind"> | null,
+): RoleGateRole {
+  if (identity?.kind === "owner") return "OWNER";
+  if (identity?.kind === "machine") return "USER";
+  return "NONE";
+}
+
+async function resolveSessionRole(
+  store: AuthStore,
+  identityId: string,
+): Promise<RoleGateRole> {
+  const identity = await store.findIdentity(identityId).catch(() => null);
+  return roleForAuthIdentity(identity);
+}
+
+async function resolveAuthorizedRouteRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  state: CompatStateLike,
+  options: { skipCsrf?: boolean; now?: number } = {},
+): Promise<RouteRoleResolution> {
+  const ip = req.socket.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "Too many authentication attempts",
+    };
+  }
+
+  if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
+
+  const adapter = state.current?.adapter;
+  const db = adapter?.db;
+  if (!db) {
+    const expectedToken = getCompatApiToken();
+    if (!expectedToken) {
+      recordFailedAuth(ip);
+      return { ok: false, status: 401, reason: "Unauthorized" };
+    }
+
+    const providedToken = getProvidedApiToken(req);
+    if (providedToken && tokenMatches(expectedToken, providedToken)) {
+      return { ok: true, role: "OWNER" };
+    }
+
+    recordFailedAuth(ip);
+    return { ok: false, status: 401, reason: "Unauthorized" };
+  }
+
+  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
+  const method = (req.method ?? "GET").toUpperCase();
+  const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
+
+  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  if (sessionCookie) {
+    const session = await findActiveSession(
+      store,
+      sessionCookie,
+      options.now,
+    ).catch(() => null);
+    if (session) {
+      if (csrfRequired) {
+        const csrfHeader = extractHeaderValue(
+          (req.headers as http.IncomingHttpHeaders)[CSRF_HEADER_NAME],
+        );
+        if (!verifyCsrfToken(session, csrfHeader)) {
+          return { ok: false, status: 403, reason: "csrf_required" };
+        }
+      }
+      return {
+        ok: true,
+        role: await resolveSessionRole(store, session.identityId),
+      };
+    }
+  }
+
+  const provided = getProvidedApiToken(req);
+  if (provided) {
+    const sessionFromBearer = await findActiveSession(
+      store,
+      provided,
+      options.now,
+    ).catch(() => null);
+    if (sessionFromBearer) {
+      return {
+        ok: true,
+        role: await resolveSessionRole(store, sessionFromBearer.identityId),
+      };
+    }
+
+    const expectedToken = getCompatApiToken();
+    if (
+      process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&
+      expectedToken &&
+      tokenMatches(expectedToken, provided)
+    ) {
+      return { ok: true, role: "OWNER" };
+    }
+
+    // Embed session token → its verified boundary role (OWNER→OWNER,
+    // ADMIN→USER). Fails closed on a tampered/expired token or no secret.
+    const embedRole = embedBoundaryRole(
+      resolveEmbedPrincipal(req, options.now, (key) =>
+        readEmbedSessionSecretSetting(state.current, key),
+      ),
+    );
+    if (embedRole) {
+      return { ok: true, role: embedRole };
+    }
+  }
+
+  recordFailedAuth(ip);
+  return { ok: false, status: 401, reason: "Unauthorized" };
+}
+
+/**
+ * Cookie/session-aware route guard with a canonical minimum role.
+ *
+ * This is the async counterpart to {@link ensureMinRole}: it preserves the
+ * existing route auth semantics (trusted loopback, session cookie with CSRF,
+ * session bearer, and Android's configured local-auth bearer) while letting
+ * sensitive HTTP routes require OWNER instead of accepting any valid session.
+ */
+export async function ensureRouteMinRole(
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  res: http.ServerResponse,
+  state: CompatStateLike,
+  minRole: RoleGateRole,
+  options: { skipCsrf?: boolean; now?: number } = {},
+): Promise<boolean> {
+  const resolved = await resolveAuthorizedRouteRole(req, state, options);
+  if (!resolved.ok) {
+    sendJsonError(res, resolved.status, resolved.reason);
+    return false;
+  }
+
+  if (roleRank(resolved.role) < roleRank(minRole)) {
+    sendJsonError(res, 403, "Insufficient role");
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Gate a sensitive route. Without a configured token, only trusted same-machine
  * dashboard requests are allowed. Remote callers need a real auth method.
@@ -349,9 +612,11 @@ export function ensureCompatSensitiveRouteAuthorized(
   res: http.ServerResponse,
 ): boolean {
   if (!getCompatApiToken()) {
-    // No API token configured. Allow only the same-machine dashboard path.
-    // Remote access must use a configured auth method.
-    if (isTrustedLocalRequest(req)) {
+    // No API token configured. The only principal we can name on a tokenless
+    // boundary is the trusted same-machine OWNER — resolve the caller through
+    // the role path and require OWNER rather than trusting the request
+    // ambiently. Remote access must use a configured auth method.
+    if (ensureMinRole(req, "OWNER")) {
       return true;
     }
     sendJsonError(
@@ -362,10 +627,6 @@ export function ensureCompatSensitiveRouteAuthorized(
     return false;
   }
   return ensureCompatApiAuthorized(req, res);
-}
-
-interface CompatStateLike {
-  current: { adapter?: { db?: unknown } | null } | null;
 }
 
 /**
@@ -396,5 +657,6 @@ export async function ensureRouteAuthorized(
     store,
     now: options.now,
     skipCsrf: options.skipCsrf,
+    readSetting: (key) => readEmbedSessionSecretSetting(state.current, key),
   });
 }

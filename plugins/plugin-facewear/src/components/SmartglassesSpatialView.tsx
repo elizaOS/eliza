@@ -133,7 +133,7 @@ export function SmartglassesSpatialView({
     .reverse();
 
   return (
-    <Card title="Smartglasses" gap={1} padding={1}>
+    <Card gap={1} padding={1}>
       <HStack gap={1} align="center">
         <Text
           style="caption"
@@ -301,7 +301,7 @@ export function SmartglassesSpatialView({
       </HStack>
       {report.wifi.networks.length === 0 ? (
         <Text style="caption" tone="muted">
-          No networks seen
+          None
         </Text>
       ) : (
         <List gap={0}>
@@ -321,7 +321,7 @@ export function SmartglassesSpatialView({
       <Divider label="events" />
       {report.events.length === 0 ? (
         <Text style="caption" tone="muted" align="center">
-          No events yet
+          None
         </Text>
       ) : (
         <List gap={0}>

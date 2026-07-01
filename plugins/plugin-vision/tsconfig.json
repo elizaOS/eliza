@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -17,7 +17,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false,
-    "noImplicitAny": false,
     "types": ["node"]
   },
   "include": ["src/*.ts", "src/@types/**/*.ts", "src/workers/**/*.ts"],

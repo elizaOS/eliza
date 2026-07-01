@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "invisalign-weekday-lunch",
   title: "Invisalign weekday lunch phrasing",
   domain: "habits",

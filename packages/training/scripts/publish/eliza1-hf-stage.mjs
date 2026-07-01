@@ -13,7 +13,7 @@
 //   node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
 //   node packages/training/scripts/publish/eliza1-hf-stage.mjs --bundles-root ~/staging
 //   node packages/training/scripts/publish/eliza1-hf-stage.mjs --report /tmp/plan.json
-//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --tier 0_8b --tier 2b
+//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --tier 2b --tier 4b
 //
 // Exit codes mirror the Python publisher:
 //   0 — every tier uploadable (or --allow-missing was passed)

@@ -18,7 +18,14 @@ const skipDirs = new Set([
   "dist",
   "node_modules",
 ]);
-const validModes = new Set(["all", "build", "docs", "list", "test", "typecheck"]);
+const validModes = new Set([
+  "all",
+  "build",
+  "docs",
+  "list",
+  "test",
+  "typecheck",
+]);
 
 function usage() {
   console.log(`Usage: node packages/examples/scripts/verify-examples.mjs [options]
@@ -121,7 +128,11 @@ function checkDocs(packages) {
     }
   }
 
-  if (!existsSync(rootReadmePath) || !existsSync(validationPath) || !existsSync(setupGuidePath)) {
+  if (
+    !existsSync(rootReadmePath) ||
+    !existsSync(validationPath) ||
+    !existsSync(setupGuidePath)
+  ) {
     return failures;
   }
 
@@ -149,7 +160,6 @@ function checkDocs(packages) {
   }
 
   for (const requiredText of [
-    "Roblox",
     "Minecraft",
     "AWS",
     "GCP",

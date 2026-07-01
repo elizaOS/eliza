@@ -144,7 +144,7 @@ def _build_fixture_bundle(
                     "sha256": drafter_sha,
                     "targetCheckpointSha256": text_sha,
                     "matchesTargetCheckpoint": True,
-                    "architecture": "qwen35",
+                    "architecture": "gemma4",
                     "finalElizaWeights": True,
                 },
                 "tokenizerCompatibility": {
@@ -376,7 +376,7 @@ def _build_fixture_bundle(
             }
         ),
     )
-    graph_kernel_set = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"]
+    graph_kernel_set = ["turbo3_tcq"]
     for backend in ("metal", "vulkan", "cuda", "rocm", "cpu"):
         _write(
             bundle / "evals" / f"{backend}_dispatch.json",
@@ -472,7 +472,7 @@ def _build_fixture_bundle(
 
 def _source_models() -> dict[str, dict[str, str]]:
     return {
-        "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
+        "text": {"repo": "unsloth/gemma-4-E4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
             "repo": ELIZA_1_HF_REPO,
@@ -480,7 +480,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
-        "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj.gguf"},
+        "vision": {"repo": "unsloth/gemma-4-E4B-GGUF", "file": "mmproj.gguf"},
     }
 
 
@@ -688,16 +688,16 @@ def _disable_mtp_for_tier(bundle: Path, tier: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_layout_accepts_0_8b_mtp_disabled_policy(tmp_path: Path) -> None:
+def test_layout_rejects_empty_mtp_dir_on_mtp_enabled_tier(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(
         tmp_path,
-        tier="0_8b",
-        eval_blob=_passing_eval_blob("0_8b"),
+        tier="2b",
+        eval_blob=_passing_eval_blob("2b"),
     )
-    _disable_mtp_for_tier(bundle, "0_8b")
+    _disable_mtp_for_tier(bundle, "2b")
 
     with pytest.raises(OrchestratorError) as exc:
-        validate_bundle_layout(_ctx("0_8b", bundle))
+        validate_bundle_layout(_ctx("2b", bundle))
 
     assert exc.value.exit_code == EXIT_BUNDLE_LAYOUT_FAIL
     assert "mtp/ must contain at least one .gguf" in str(exc.value)
@@ -914,12 +914,16 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     assert rc == EXIT_USAGE
 
 
-def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
+def test_gemma_bundle_does_not_require_legacy_qjl_or_polar_sidecars(
+    tmp_path: Path,
+) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "quantization" / "qjl_config.json").unlink()
+    (bundle / "quantization" / "polarquant_config.json").unlink()
+    _write_checksums(bundle)
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
-    assert rc == EXIT_MISSING_FILE
+    assert rc == EXIT_OK
 
 
 def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
@@ -1030,7 +1034,7 @@ def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
+def test_base_v1_release_evidence_rejects_retired_qwen_asr_provenance(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
@@ -1043,16 +1047,7 @@ def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
-    assert rc == EXIT_OK
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["provenance"]["releaseState"] == "base-v1"
-    assert manifest["provenance"]["finetuned"] is False
-    assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
-        "unsloth/Qwen3.5-4B-GGUF"
-    )
-    assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
-        "unsloth/Qwen3.5-4B-GGUF"
-    )
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None:
@@ -1069,7 +1064,7 @@ def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
+def test_base_v1_release_evidence_rejects_qwen_component_repos(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
@@ -1152,6 +1147,21 @@ def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_runtime_dispatch_report_requires_gemma_cache_family(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "evals" / "metal_dispatch.json"
+    report = json.loads(report_path.read_text())
+    report["kernelSet"] = []
+    report["graphDispatch"]["cacheFamilies"] = []
+    report_path.write_text(json.dumps(report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -1359,7 +1369,7 @@ def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
     assert release["final"]["sizeFirstRepoIds"] is True
 
 
-def test_real_base_v1_publish_preserves_release_state(
+def test_real_base_v1_publish_rejects_retired_qwen_asr_provenance(
     tmp_path: Path, monkeypatch
 ) -> None:
     import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
@@ -1395,11 +1405,7 @@ def test_real_base_v1_publish_preserves_release_state(
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
-    assert rc == EXIT_OK
-    release = json.loads((bundle / "evidence" / "release.json").read_text())
-    assert release["releaseState"] == "base-v1"
-    assert release["hf"]["status"] == "uploaded"
-    assert release["hf"]["uploadEvidence"]["commit"] == "basev1"
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
 # ---------------------------------------------------------------------------

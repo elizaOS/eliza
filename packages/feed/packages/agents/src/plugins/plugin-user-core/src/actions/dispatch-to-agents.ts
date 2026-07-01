@@ -18,16 +18,13 @@
 import type {
   Action,
   ActionResult,
-  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type BroadcastFn,
-  dispatchAgentChat,
-} from "../../../../services/AgentChatService";
+import { defineActionParameters } from "../../../shared/action-parameters";
+import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 /** Per-agent dispatch timeout — prevents one slow agent from blocking all others */
 const DISPATCH_TIMEOUT_MS = 15_000;
@@ -53,14 +50,14 @@ export const dispatchToAgentsAction: Action = {
 
   // Parameters defined as plain object for Feed's dispatch system.
   // Cast needed: alpha elizaos expects ActionParameter[] (protobuf array).
-  parameters: {
+  parameters: defineActionParameters({
     dispatches: {
       type: "array",
       required: true,
       description:
         'Array of dispatch objects, each with agentId and command. Example: [{"agentId": "abc", "command": "check positions"}, {"agentId": "def", "command": "analyze trends"}]',
     },
-  } as unknown as Action["parameters"],
+  }),
 
   examples: [
     [
@@ -117,6 +114,9 @@ export const dispatchToAgentsAction: Action = {
       | undefined;
 
     const broadcastFn = state?.data?.broadcastFn as BroadcastFn | undefined;
+    const dispatchAgentChat = state?.data?.dispatchAgentChat as
+      | DispatchAgentChatFn
+      | undefined;
     const ownerId = state?.values?.ownerId as string | undefined;
     const teamChatId = state?.values?.teamChatId as string | undefined;
     const ownerName = state?.values?.ownerName as string | undefined;
@@ -130,14 +130,15 @@ export const dispatchToAgentsAction: Action = {
       dispatches.length === 0 ||
       !ownerId ||
       !teamChatId ||
-      !broadcastFn
+      !broadcastFn ||
+      !dispatchAgentChat
     ) {
       const failResult = {
         success: false,
         text: "Missing required parameters for multi-agent dispatch. Provide an array of {agentId, command} objects.",
       };
-      _callback?.({ content: failResult as unknown as Content });
-      return failResult as unknown as ActionResult;
+      _callback?.({ text: failResult.text });
+      return failResult;
     }
 
     // Validate each dispatch entry
@@ -198,7 +199,10 @@ export const dispatchToAgentsAction: Action = {
     // Collect results
     const agentResults: AgentDispatchResult[] = settledResults.map(
       (settled, i) => {
-        const dispatch = cappedDispatches[i]!;
+        const dispatch = cappedDispatches[i];
+        if (!dispatch) {
+          throw new Error(`Missing dispatch metadata for result ${i}`);
+        }
         if (settled.status === "fulfilled") {
           const result = settled.value;
           return {
@@ -243,8 +247,12 @@ export const dispatchToAgentsAction: Action = {
         successCount,
         totalCount,
       },
-    } as unknown as ActionResult;
-    _callback?.({ content: finalResult as unknown as Content });
+    };
+    _callback?.({
+      text: finalResult.text,
+      successCount,
+      totalCount,
+    });
     return finalResult;
   },
 };

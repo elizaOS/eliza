@@ -54,8 +54,16 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 }));
 
 vi.mock("@elizaos/ui/components", () => ({
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+    React.createElement("button", { type: "button", ...props }, children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
+  // The panels register a detail extension at module load; the real export is a
+  // void side-effect, so a no-op keeps the import resolvable under the mock.
+  registerDetailExtension: () => {},
 }));
 
 vi.mock("@elizaos/ui/components/ui/select", () => ({

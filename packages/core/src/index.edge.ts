@@ -8,7 +8,10 @@
  * in code that would fail at runtime.
  */
 
+export * from "./access-context";
+export * from "./access-control/filter";
 export * from "./actions";
+export * from "./activity-plaintext";
 export * from "./capabilities";
 export * from "./character";
 export * from "./character-utils";
@@ -45,20 +48,12 @@ export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
-export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
-export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
-export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/rlm";
-export {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "./runtime/stage1-honesty-detector";
 export * from "./runtime/system-prompt";
 export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
-export * from "./secrets";
 export * from "./security";
 export * from "./services";
 export * from "./services/agentEvent";
@@ -66,7 +61,6 @@ export * from "./services/approval";
 export * from "./services/message";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
-export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/runtime-capability-service";
 export * from "./services/setup-cli";
@@ -104,6 +98,7 @@ export * from "./utils/description-compressed-lint";
 export * from "./utils/environment";
 export * from "./utils/prompt-compression";
 export * from "./utils/read-env";
+export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export * from "./validation";
 

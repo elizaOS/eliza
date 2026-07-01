@@ -30,12 +30,22 @@ export interface PresentedDocument {
   addedByRole?: string;
   addedFrom?: string;
   url?: string;
+  /** Served URL of the original-bytes file linked to this document, so the
+   *  detail view can offer "download original" (PR6). */
+  mediaUrl?: string;
+  /** Stored filename of the linked original-bytes file (PR6). */
+  mediaFileName?: string;
   provenance: DocumentProvenance;
   canEditText: boolean;
   editabilityReason?: string;
   canDelete: boolean;
   deleteabilityReason?: string;
   content?: { text?: string };
+  /** When this document is the searchable mirror of a voice Transcript, the
+   *  original transcript record id (so the Knowledge view can link back to it)
+   *  and its audio URL. Populated from the mirror metadata (#8789). */
+  transcriptId?: string;
+  transcriptAudioUrl?: string;
 }
 
 const BINARY_CONTENT_TYPE_PREFIXES = [
@@ -394,11 +404,23 @@ export function presentDocument(
     addedByRole: asString(metadata?.addedByRole),
     addedFrom: asString(metadata?.addedFrom),
     url: asString(metadata?.url),
+    ...(asString(metadata?.mediaUrl)
+      ? { mediaUrl: asString(metadata?.mediaUrl) }
+      : {}),
+    ...(asString(metadata?.mediaFileName)
+      ? { mediaFileName: asString(metadata?.mediaFileName) }
+      : {}),
     provenance,
     canEditText: editability.canEditText,
     editabilityReason: editability.reason,
     canDelete: deleteability.canDelete,
     deleteabilityReason: deleteability.reason,
     ...(previewText ? { content: { text: previewText } } : {}),
+    ...(asString(metadata?.transcriptId)
+      ? { transcriptId: asString(metadata?.transcriptId) }
+      : {}),
+    ...(asString(metadata?.audioUrl)
+      ? { transcriptAudioUrl: asString(metadata?.audioUrl) }
+      : {}),
   };
 }

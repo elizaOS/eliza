@@ -130,6 +130,36 @@ describe("Groq native text plumbing", () => {
     });
   });
 
+  it("omits maxOutputTokens on the wire when omitMaxTokens is set", async () => {
+    // Direct-channel Stage-1 opts out of a cap so the model's own max applies;
+    // the wire request must carry no maxOutputTokens (a hardcoded value 400s when
+    // it exceeds the model's real limit).
+    const generateText = vi.fn(async () => ({
+      text: "uncapped",
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    }));
+    vi.doMock("ai", async () => {
+      const actual = await vi.importActual<typeof import("ai")>("ai");
+      return { ...actual, generateText };
+    });
+    vi.doMock("@ai-sdk/groq", () => ({
+      createGroq: () => ({
+        languageModel: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { groqPlugin } = await import("../index");
+    const handler = groqPlugin.models?.TEXT_SMALL as (
+      runtime: IAgentRuntime,
+      params: unknown
+    ) => Promise<unknown>;
+    await handler(createRuntime(), { prompt: "no cap", omitMaxTokens: true });
+
+    const call = generateText.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call).not.toHaveProperty("maxOutputTokens");
+  });
+
   it("passes messages instead of prompt and omits duplicate system text from usage prompt", async () => {
     const generateText = vi.fn(async () => ({
       text: "message answer",

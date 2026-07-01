@@ -11,17 +11,22 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
-const { clientMock, updateSecretsMock } = vi.hoisted(() => ({
-  clientMock: {
-    getPermission: vi.fn(),
-    requestPermission: vi.fn(),
-    openPermissionSettings: vi.fn(),
-    updateSecrets: vi.fn(),
-  },
-  updateSecretsMock: vi.fn(),
-}));
+const { clientMock, updateSecretsMock, tunnelCredentialMock } = vi.hoisted(
+  () => ({
+    clientMock: {
+      getPermission: vi.fn(),
+      requestPermission: vi.fn(),
+      openPermissionSettings: vi.fn(),
+      updateSecrets: vi.fn(),
+      tunnelCredential: vi.fn(),
+    },
+    updateSecretsMock: vi.fn(),
+    tunnelCredentialMock: vi.fn(),
+  }),
+);
 
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
@@ -68,15 +73,14 @@ function renderWithApp(
   message: ConversationMessage,
   sendActionMessage = vi.fn(),
 ) {
+  const appValue = {
+    t: (key: string) => key,
+    sendActionMessage,
+  } as never;
+  // MessageContent reads context via the selector store, so seed it too.
+  __setAppValueForTests(appValue);
   render(
-    <AppContext.Provider
-      value={
-        {
-          t: (key: string) => key,
-          sendActionMessage,
-        } as never
-      }
-    >
+    <AppContext.Provider value={appValue}>
       <MessageContent message={message} />
     </AppContext.Provider>,
   );
@@ -125,6 +129,39 @@ function pendingOwnerInlineSecretRequest(): ConversationMessage["secretRequest"]
   };
 }
 
+function pendingTunnelSecretRequest(): ConversationMessage["secretRequest"] {
+  return {
+    key: "OPENAI_API_KEY",
+    reason: "Sub-agent needs this credential to continue",
+    status: "pending",
+    delivery: {
+      mode: "inline_owner_app",
+      instruction: "Provide it securely below.",
+      privateRouteRequired: true,
+      canCollectValueInCurrentChannel: true,
+      tunnel: {
+        credentialScopeId: "cred_scope_0011223344556677",
+        childSessionId: "pty-1-abc",
+      },
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "secret",
+      mode: "inline_owner_app",
+      fields: [
+        {
+          name: "OPENAI_API_KEY",
+          label: "OPENAI_API_KEY",
+          input: "secret",
+          required: true,
+        },
+      ],
+      submitLabel: "Provide credential",
+      statusOnly: true,
+    },
+  };
+}
+
 function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
   return {
     key: "GITHUB_OAUTH",
@@ -150,14 +187,48 @@ function pendingOAuthRequest(): ConversationMessage["secretRequest"] {
   };
 }
 
+function pendingImageSecretRequest(): ConversationMessage["secretRequest"] {
+  return {
+    key: "TOTP_SEED_PHOTO",
+    reason: "Photograph the 2FA seed",
+    status: "pending",
+    delivery: {
+      mode: "inline_owner_app",
+      instruction: "Upload a photo of the seed.",
+      privateRouteRequired: true,
+      canCollectValueInCurrentChannel: true,
+    },
+    form: {
+      type: "sensitive_request_form",
+      kind: "secret",
+      mode: "inline_owner_app",
+      fields: [
+        {
+          name: "seed_photo",
+          label: "Seed photo",
+          input: "image",
+          required: true,
+          mimeTypes: ["image/png"],
+          maxBytes: 1_000_000,
+        },
+      ],
+      submitLabel: "Upload",
+      statusOnly: true,
+    },
+  };
+}
+
 describe("MessageContent sensitive requests", () => {
   afterEach(() => {
     cleanup();
+    __setAppValueForTests(null);
   });
 
   beforeEach(() => {
     updateSecretsMock.mockReset();
+    tunnelCredentialMock.mockReset();
     clientMock.updateSecrets.mockImplementation(updateSecretsMock);
+    clientMock.tunnelCredential.mockImplementation(tunnelCredentialMock);
     clientMock.getPermission.mockResolvedValue(permissionState());
     clientMock.requestPermission.mockResolvedValue(
       permissionState({ status: "granted", canRequest: false }),
@@ -238,6 +309,85 @@ describe("MessageContent sensitive requests", () => {
     ]);
     expect(container.textContent?.includes(rawSecret)).toBe(false);
     expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
+    // Mutual exclusivity: a normal secret request never tunnels.
+    expect(tunnelCredentialMock).not.toHaveBeenCalled();
+  });
+
+  it("routes a tunnel-delivery request through client.tunnelCredential, never updateSecrets (#10317)", async () => {
+    tunnelCredentialMock.mockResolvedValueOnce({ ok: true });
+    const rawSecret = ["tunnel", "secret", String(Date.now())].join("-");
+    const { container } = render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingTunnelSecretRequest() })}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), {
+      target: { value: rawSecret },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Provide credential" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sensitive-request-status").textContent).toBe(
+        "Saved",
+      );
+    });
+
+    expect(tunnelCredentialMock).toHaveBeenCalledTimes(1);
+    expect(tunnelCredentialMock.mock.calls[0]?.[0]).toEqual({
+      credentialScopeId: "cred_scope_0011223344556677",
+      childSessionId: "pty-1-abc",
+      key: "OPENAI_API_KEY",
+      value: rawSecret,
+    });
+    // MUTUALLY EXCLUSIVE: the value never reaches the agent secret store.
+    expect(updateSecretsMock).not.toHaveBeenCalled();
+    // The value is never rendered back into chat text.
+    expect(container.textContent?.includes(rawSecret)).toBe(false);
+  });
+
+  it("renders an image field as a file input and delivers it via updateSecrets (#8910)", async () => {
+    updateSecretsMock.mockResolvedValueOnce({
+      ok: true,
+      updated: ["seed_photo"],
+    });
+    render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingImageSecretRequest() })}
+      />,
+    );
+
+    const input = screen.getByTestId(
+      "sensitive-request-file-seed_photo",
+    ) as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(input.accept).toBe("image/png");
+    expect(input.getAttribute("capture")).toBe("environment");
+
+    const file = new File([new Uint8Array([1, 2, 3])], "seed.png", {
+      type: "image/png",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    // FileReader populates the value asynchronously; wait for the submit to enable.
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("sensitive-request-submit") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByTestId("sensitive-request-submit"));
+
+    await waitFor(() => {
+      expect(updateSecretsMock).toHaveBeenCalledTimes(1);
+    });
+    const payload = updateSecretsMock.mock.calls[0]?.[0] as Record<
+      string,
+      string
+    >;
+    expect(Object.keys(payload)).toEqual(["seed_photo"]);
+    // Delivered as a data URL through the existing submit path.
+    expect(payload.seed_photo.startsWith("data:image/png")).toBe(true);
   });
 
   it("renders an OAuth request with a Connect button and never shows the URL in chat", () => {
@@ -318,6 +468,7 @@ describe("MessageContent sensitive requests", () => {
 describe("MessageContent permission cards", () => {
   afterEach(() => {
     cleanup();
+    __setAppValueForTests(null);
   });
 
   beforeEach(() => {

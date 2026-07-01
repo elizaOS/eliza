@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "declaration": true,
     "declarationMap": true,
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -17,13 +17,14 @@
     "rootDir": "../..",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "bun-types"],
-    "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/cloud-sdk": ["../../packages/cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"]
     }

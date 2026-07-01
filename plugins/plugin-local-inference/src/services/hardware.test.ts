@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { classifyDeviceTier } from "./device-tier";
+import {
+	__resetGpuDetectionCacheForTests,
+	__setGpuDetectionSpawnSyncForTests,
+} from "./gpu-detect";
 import {
 	detectCpuFeatures,
 	detectOpenVinoDevices,
 	deviceCapsFromProbe,
+	probeHardware,
 } from "./hardware";
 
 function detector(files: Record<string, string[] | true>) {
@@ -179,5 +185,56 @@ describe("detectCpuFeatures", () => {
 			ramMb: 16 * 1024,
 			cpuFeatures: undefined,
 		});
+	});
+});
+
+describe("probeHardware GPU detection", () => {
+	afterEach(() => {
+		__setGpuDetectionSpawnSyncForTests(null);
+		__resetGpuDetectionCacheForTests();
+	});
+
+	const fakeSpawn =
+		(stdout: string, status: number) =>
+		(): { stdout: string; stderr: string; status: number; signal: null } => ({
+			stdout,
+			stderr: "",
+			status,
+			signal: null,
+		});
+
+	it("populates a CUDA GPU + VRAM from nvidia-smi and lifts the tier off CPU", async () => {
+		// reset clears BOTH the cache and any prior override, so reset first.
+		__resetGpuDetectionCacheForTests();
+		__setGpuDetectionSpawnSyncForTests(
+			fakeSpawn("NVIDIA GeForce RTX 4090, 24564\n", 0) as never,
+		);
+		const probe = await probeHardware();
+		expect(probe.gpu).not.toBeNull();
+		expect(probe.gpu?.backend).toBe("cuda");
+		expect(probe.gpu?.totalVramGb).toBeGreaterThanOrEqual(23);
+		// A 24 GB discrete GPU must not be mis-tiered as a CPU box (POOR). The tier
+		// also factors host free RAM (classifyDeviceTier reads probe.freeRamGb, which
+		// probeHardware fills from real os.freemem()); under parallel-suite memory
+		// pressure that can dip below the OKAY gate (3 GB) and legitimately tier even
+		// a 24 GB-GPU box to POOR, flaking this assertion. Pin free RAM to an adequate
+		// value so this asserts the GPU-detection -> off-CPU path deterministically
+		// (host free RAM is not what this test exercises).
+		const probeWithAdequateRam = { ...probe, freeRamGb: 16 };
+		expect(["MAX", "GOOD", "OKAY"]).toContain(
+			classifyDeviceTier(probeWithAdequateRam).tier,
+		);
+	});
+
+	it("reports gpu:null when nvidia-smi is absent on a non-Apple host", async () => {
+		__resetGpuDetectionCacheForTests();
+		__setGpuDetectionSpawnSyncForTests(fakeSpawn("", 1) as never);
+		const probe = await probeHardware();
+		if (probe.appleSilicon) {
+			// Unified memory: the Apple GPU is always present.
+			expect(probe.gpu?.backend).toBe("metal");
+		} else {
+			expect(probe.gpu).toBeNull();
+		}
 	});
 });

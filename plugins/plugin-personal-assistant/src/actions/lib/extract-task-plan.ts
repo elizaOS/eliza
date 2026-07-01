@@ -129,7 +129,7 @@ function buildExtractionPrompt(
     '- timeZone: IANA timezone like "America/Denver" when the user explicitly gives one',
     '- everyMinutes: interval in minutes for recurring tasks (e.g., 120 for "every 2 hours")',
     '- timesPerDay: number of times per day if mentioned (e.g., 4 for "four times a day")',
-    "- priority: 1-5 (1=low, 5=critical) based on urgency/importance language",
+    "- priority: 1-5 (1=critical, 2=high, 3=medium, 4-5=low) based on urgency/importance language",
     "- durationMinutes: how long the activity takes if mentioned",
     "",
     'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null}',

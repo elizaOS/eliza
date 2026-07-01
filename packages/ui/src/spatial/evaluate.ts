@@ -261,6 +261,20 @@ function buildPrimitiveNode(
       return buildSpacerSpec(props as never);
     case "image":
       return buildImageSpec(props as never);
+    case "escape": {
+      // The DOM-escape hatch: its `children` are real DOM (canvas/WebGL/chart)
+      // that can't render in a terminal, so we never recurse into them. Emit the
+      // authored `tui` spatial fallback instead, or a placeholder when absent —
+      // both wrapped in the same box so the agent/width/height box metadata
+      // survives either way.
+      const tui = (props as { tui?: ReactNode }).tui;
+      const spec = buildBoxSpec(props as never);
+      const children: SpatialNode[] =
+        tui == null
+          ? [{ type: "text", value: "[interactive view — open in app]" }]
+          : evalChildren(tui, ctx);
+      return { ...spec, direction: "column", gap: 0, children };
+    }
   }
 }
 

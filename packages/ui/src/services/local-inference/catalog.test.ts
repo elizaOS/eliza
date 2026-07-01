@@ -10,7 +10,6 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 const EXPECTED_ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
-  "eliza-1-0_8b": "eliza-1-0.8B",
   "eliza-1-2b": "eliza-1-2B",
   "eliza-1-4b": "eliza-1-4B",
   "eliza-1-9b": "eliza-1-9B",
@@ -98,7 +97,6 @@ describe("local inference catalog", () => {
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
     const expected: Record<string, number> = {
-      "eliza-1-0_8b": 131072,
       "eliza-1-2b": 131072,
       "eliza-1-4b": 131072,
       "eliza-1-9b": 131072,

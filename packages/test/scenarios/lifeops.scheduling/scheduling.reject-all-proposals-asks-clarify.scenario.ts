@@ -39,6 +39,7 @@ function checkAgentAskedForGuidance(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.reject-all-proposals-asks-clarify",
   title: "All proposed slots rejected — agent asks for guidance",
   domain: "lifeops.scheduling",

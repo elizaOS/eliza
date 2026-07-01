@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "complex-travel-reimbursement",
   title: "Assistant prepares complex travel reimbursement",
   domain: "executive.money",
@@ -30,7 +31,12 @@ export default scenario({
       name: "stage-expense-submission",
       text: "Draft the expense packet summary and questions for finance. Ask me before submitting any reimbursement or charging the corporate card.",
       plannerIncludesAny: ["owner_send_message", "approval", "OWNER_FINANCES"],
-      responseIncludesAny: ["summary", "finance", "submitting", "corporate card"],
+      responseIncludesAny: [
+        "summary",
+        "finance",
+        "submitting",
+        "corporate card",
+      ],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },
   ],

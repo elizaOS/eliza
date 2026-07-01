@@ -80,6 +80,14 @@ import {
   retryIfRetryable,
 } from "@feed/shared";
 
+function requireArrayItem<T>(items: T[], index: number, context: string): T {
+  const item = items[index];
+  if (item === undefined) {
+    throw new Error(`Missing ${context} at index ${index}`);
+  }
+  return item;
+}
+
 function buildWalletPort(): WalletPort {
   return {
     debit: ({ userId, amount, reason, description, relatedId }) =>
@@ -2144,9 +2152,13 @@ export async function executeCreateGroup(
   ]);
   await db.chatParticipant.createMany({
     data: [
-      { id: participantIds[0]!, chatId, userId: agent.userId },
+      {
+        id: requireArrayItem(participantIds, 0, "chat participant id"),
+        chatId,
+        userId: agent.userId,
+      },
       ...uniqueMemberIds.map((memberId, idx) => ({
-        id: participantIds[idx + 1]!,
+        id: requireArrayItem(participantIds, idx + 1, "chat participant id"),
         chatId,
         userId: memberId,
       })),
@@ -2161,14 +2173,14 @@ export async function executeCreateGroup(
   await db.groupMember.createMany({
     data: [
       {
-        id: memberRecordIds[0]!,
+        id: requireArrayItem(memberRecordIds, 0, "group member id"),
         groupId,
         userId: agent.userId,
         role: "owner",
         addedBy: agent.userId,
       },
       ...uniqueMemberIds.map((memberId, idx) => ({
-        id: memberRecordIds[idx + 1]!,
+        id: requireArrayItem(memberRecordIds, idx + 1, "group member id"),
         groupId,
         userId: memberId,
         role: "member" as const,
@@ -2687,12 +2699,15 @@ export async function executeGetReferrals(
   const usersMap = new Map(usersList.map((u) => [u.id, u]));
   return {
     referrals: referralsList
-      .filter((r) => r.referredUserId !== null)
+      .filter(
+        (r): r is typeof r & { referredUserId: string } =>
+          r.referredUserId !== null,
+      )
       .map((r) => {
-        const user = usersMap.get(r.referredUserId!);
+        const user = usersMap.get(r.referredUserId);
         return {
           id: r.id,
-          referredUserId: r.referredUserId!,
+          referredUserId: r.referredUserId,
           username: user?.username || null,
           displayName: user?.displayName || null,
           createdAt: r.createdAt.toISOString(),

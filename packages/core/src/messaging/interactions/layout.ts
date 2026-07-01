@@ -55,6 +55,13 @@ export interface LayoutOptions {
 	 * as needing a free-text fallback.
 	 */
 	resolveUrl?: (block: InteractionBlock) => string | undefined;
+	/**
+	 * Resolve an external URL for a `navigate` followup chip (payload is a viewId
+	 * or `/`-prefixed path). When provided, navigate chips render as link-out
+	 * buttons instead of being re-injected as a reply. Returning undefined keeps
+	 * the reply-callback behavior.
+	 */
+	resolveNavigateUrl?: (payload: string) => string | undefined;
 	/** Buttons per row before wrapping (Telegram ~8, Discord 5). Default 3. */
 	maxButtonsPerRow?: number;
 }
@@ -106,6 +113,13 @@ export function toNeutralLayout(
 		case "followups": {
 			const buttons: NeutralButton[] = [];
 			for (const o of block.options) {
+				if (o.kind === "navigate") {
+					const url = opts.resolveNavigateUrl?.(o.payload);
+					if (url) {
+						buttons.push({ label: o.label, url, style: "secondary" });
+						continue;
+					}
+				}
 				const callbackData = encodeReplyCallback(o.payload);
 				if (callbackData)
 					buttons.push({ label: o.label, callbackData, style: "secondary" });
@@ -159,4 +173,40 @@ export function toNeutralLayout(
 			return _exhaustive;
 		}
 	}
+}
+
+/**
+ * Build the canonical link-out resolvers connectors pass to {@link toNeutralLayout}
+ * so Telegram, Discord, and any other surface produce identical URLs for task,
+ * form, and navigate blocks. `appBaseUrl` is the deployment's app/dashboard
+ * origin (`ELIZA_APP_URL`, falling back to the cloud URL). Returns `undefined`
+ * resolvers when no base URL is configured, which keeps the free-text fallback.
+ */
+export function buildInteractionUrlResolver(
+	appBaseUrl: string | undefined | null,
+): Pick<LayoutOptions, "resolveUrl" | "resolveNavigateUrl"> {
+	if (!appBaseUrl) return {};
+	const base = appBaseUrl.replace(/\/+$/, "");
+	return {
+		resolveUrl: (block) => {
+			switch (block.kind) {
+				case "task":
+					return `${base}/orchestrator?taskId=${encodeURIComponent(block.threadId)}`;
+				case "form":
+					return `${base}/forms/${encodeURIComponent(block.id)}`;
+				// Secret/OAuth blocks carry their own out-of-band entry URL
+				// (the hosted secure page); defer to it via the layout fallback.
+				default:
+					return undefined;
+			}
+		},
+		resolveNavigateUrl: (payload) => {
+			if (!payload) return undefined;
+			// A `/`-prefixed path is a dashboard route; a bare token is a viewId.
+			const path = payload.startsWith("/")
+				? payload
+				: `/?view=${encodeURIComponent(payload)}`;
+			return `${base}${path}`;
+		},
+	};
 }

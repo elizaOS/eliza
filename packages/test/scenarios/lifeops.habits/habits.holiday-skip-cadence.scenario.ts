@@ -15,6 +15,7 @@ import {
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.holiday-skip-cadence",
   title: "Holiday days are skipped without breaking habit streak",
   domain: "lifeops.habits",

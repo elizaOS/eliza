@@ -14,7 +14,7 @@ import {
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -107,7 +107,16 @@ export function ConfigPageView({
     walletApiKeySaving,
     handleWalletApiKeySave,
     handleCloudLogin,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudLoginBusy: s.elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl: s.elizaCloudLoginFallbackUrl,
+    walletConfig: s.walletConfig,
+    walletApiKeySaving: s.walletApiKeySaving,
+    handleWalletApiKeySave: s.handleWalletApiKeySave,
+    handleCloudLogin: s.handleCloudLogin,
+  }));
 
   const [secretsOpen, setSecretsOpen] = useState(false);
   const manualRpcModeSelection = useRef(false);

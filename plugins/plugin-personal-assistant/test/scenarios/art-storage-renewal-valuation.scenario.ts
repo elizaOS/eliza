@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "art-storage-renewal-valuation",
   title: "Assistant reviews art storage renewal valuation",
   domain: "executive.vendor",
@@ -21,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "triage-storage-renewal",
       text: "The art storage renewal arrived. Compare valuation schedule, insurance certificate, climate-control terms, invoice amount, and notice deadline.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "SCHEDULED_TASKS"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "OWNER_FINANCES",
+        "SCHEDULED_TASKS",
+      ],
       responseIncludesAny: ["valuation", "insurance", "climate", "deadline"],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { delimiter, resolve } from "node:path";
@@ -19,6 +19,13 @@ const startupTimeoutMs = 120_000;
 const pollIntervalMs = 500;
 const testAuthSecret =
   process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret";
+const repoRoot = resolve(import.meta.dirname, "../../../..");
+const rmRecursiveScript = resolve(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const pglitePort = Number.parseInt(process.env.TEST_PGLITE_PORT || "55432", 10);
 const pgliteHost = process.env.PGLITE_HOST || "127.0.0.1";
 const pgliteDataDir =
@@ -59,6 +66,21 @@ function parsePGliteDataDir(url) {
   const dataDir = url.slice("pglite://".length);
   if (!dataDir || dataDir === "memory") return null;
   return dataDir;
+}
+
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `[worker-e2e] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
+    );
+  }
 }
 
 async function tcpOk(host, port) {
@@ -158,7 +180,7 @@ async function main() {
             `Default Worker e2e PGlite server is already running at ${pgliteHost}:${pglitePort}; stop it before running isolated tests, or set TEST_PGLITE_PERSIST=1 to reuse it.`,
           );
         }
-        rmSync(resolve(dataDir), { recursive: true, force: true });
+        rmRecursive(resolve(dataDir));
       }
 
       if (!pgliteAlreadyRunning) {
@@ -228,7 +250,7 @@ async function main() {
         [
           "run",
           "--cwd",
-          "packages/cloud-api",
+          "packages/cloud/api",
           "wrangler",
           "dev",
           "--ip",
@@ -255,7 +277,7 @@ async function main() {
 
     result = spawnSync(
       bun,
-      ["run", "--cwd", "packages/cloud-api", "test:e2e"],
+      ["run", "--cwd", "packages/cloud/api", "test:e2e"],
       {
         stdio: "inherit",
         env: workerEnv,

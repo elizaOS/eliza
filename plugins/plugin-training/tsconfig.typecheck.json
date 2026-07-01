@@ -1,0 +1,12 @@
+{
+  // Type-check only (no emit). Unlike tsconfig.build.json, this does NOT pin
+  // `rootDir` to ./src: the training CLI legitimately `typeof import()`s a
+  // cross-package helper, and rootDir is an emit-layout constraint that has no
+  // bearing on type safety. Widening rootDir to the repo root keeps every
+  // referenced file in-bounds so type-checking runs without spurious TS6059.
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../.."
+  }
+}

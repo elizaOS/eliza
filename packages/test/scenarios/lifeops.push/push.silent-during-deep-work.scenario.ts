@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.silent-during-deep-work",
   title: "Suppress low-urgency pushes during a deep-work focus block",
   domain: "lifeops.push",

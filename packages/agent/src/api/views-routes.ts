@@ -24,15 +24,19 @@ import type http from "node:http";
 import path from "node:path";
 
 import {
+  EventType,
   type IAgentRuntime,
   logger,
   type RouteRequestMeta,
   type ViewType,
 } from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
+import { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/ui/agent-surface/types";
+import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
+  getActiveViewContext,
   setActiveViewContext,
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
@@ -44,6 +48,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
   generateViewHeroSvg,
@@ -211,14 +216,17 @@ function parseHostExternalSpecifiers(url: URL): string[] {
     .filter(Boolean);
 }
 
-/** Standard capabilities every view supports even without an `interact` export. */
-const STANDARD_CAPABILITY_IDS = new Set([
-  "get-state",
-  "refresh",
-  "focus-element",
-  "get-text",
-  "click-element",
-  "fill-input",
+/**
+ * Capabilities accepted on any view without a matching declaration in
+ * `entry.capabilities` — the protocol's standard caps (get-state / refresh /
+ * focus-element / get-text / click-element / fill-input) plus the agent-surface
+ * caps the shell registry handles generically (list-elements / agent-click /
+ * agent-fill / …). Derived from the single canonical ui-side sources so the
+ * route never drifts from what the frontend actually dispatches. (#8798)
+ */
+const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
+  ...Object.values(STANDARD_CAPABILITIES),
+  ...AGENT_SURFACE_CAPABILITY_IDS,
 ]);
 
 /** Module-level map of pending interact requests awaiting a frontend result. */
@@ -233,7 +241,40 @@ export interface CurrentViewState {
   views?: string[];
   layout?: string;
   placement?: string;
+  /**
+   * Sub-section the view is focused on, when the view has addressable
+   * sub-sections (Settings = its section id, e.g. "voice"). Carried so the
+   * `current_view` provider can report the open subview and the agent can
+   * deep-link one via the VIEWS action `subview` param.
+   */
+  subview?: string;
+  /**
+   * ISO timestamp of the navigate that *switched* into this view (distinct from
+   * `updatedAt`, which also moves on same-view re-stamps). Read by the
+   * `current_view` acknowledgement provider to know a switch *just happened*.
+   */
+  switchedAt?: string;
+  /** Who initiated the switch: the agent (default) or the user clicking the UI. */
+  source?: "agent" | "user";
   updatedAt: string;
+}
+
+/**
+ * A view switch is treated as "just happened" for this long after navigate, so
+ * the acknowledgement provider only references it on the turn(s) immediately
+ * following the switch and never re-acknowledges a stale switch forever.
+ */
+export const VIEW_SWITCH_FRESH_MS = 15_000;
+
+/** True when `state` reflects a switch within {@link VIEW_SWITCH_FRESH_MS}. */
+export function isViewSwitchFresh(
+  state: CurrentViewState | null,
+  now: number = Date.now(),
+): boolean {
+  if (!state?.switchedAt) return false;
+  const t = Date.parse(state.switchedAt);
+  if (Number.isNaN(t)) return false;
+  return now - t <= VIEW_SWITCH_FRESH_MS;
 }
 
 let currentViewState: CurrentViewState | null = null;
@@ -365,12 +406,14 @@ export async function handleViewsRoutes(
 
   // ── GET /api/views ────────────────────────────────────────────────────────
   if (method === "GET" && (pathname === PREFIX || pathname === `${PREFIX}/`)) {
-    const developerMode =
-      ctx.developerMode ?? url.searchParams.get("developerMode") === "true";
     const platform = detectClientPlatform(req);
     const dynamicAllowed = isDynamicLoadingAllowed(platform);
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const allViews = listViews({ developerMode, viewType });
+    // Return every view (all four kinds) with its `viewKind` so the client can
+    // apply the user's Settings toggles + build defaults itself. The server has
+    // no way to know whether it is talking to a dev build or which kinds the
+    // user enabled, so kind-gating is a client responsibility.
+    const allViews = listViews({ includeAllKinds: true, viewType });
     // On restricted platforms (iOS/Android store builds), only surface views
     // without a dynamic bundle URL (already in-process).
     const filtered = dynamicAllowed
@@ -386,8 +429,14 @@ export async function handleViewsRoutes(
   }
 
   // ── GET /api/views/current ───────────────────────────────────────────────
+  // `justSwitched` is a turn-scoped signal (distinct from the always-present
+  // current view): true only briefly after a navigate so the `current_view`
+  // provider can phrase the just-happened switch as an acknowledgement.
   if (method === "GET" && pathname === `${PREFIX}/current`) {
-    json(res, { currentView: currentViewState });
+    json(res, {
+      currentView: currentViewState,
+      justSwitched: isViewSwitchFresh(currentViewState),
+    });
     return true;
   }
 
@@ -603,7 +652,9 @@ export async function handleViewsRoutes(
   if (
     (method === "GET" || method === "HEAD") &&
     subResource !== "" &&
-    !["hero", "navigate", "interact"].includes(subResource)
+    !["hero", "navigate", "interact", "elements", "activate"].includes(
+      subResource,
+    )
   ) {
     const clientPlatform = detectClientPlatform(req);
     if (!isDynamicLoadingAllowed(clientPlatform)) {
@@ -769,6 +820,18 @@ export async function handleViewsRoutes(
       (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
     const action = typeof body?.action === "string" ? body.action : undefined;
+    // `source` distinguishes an agent-initiated switch (the default) from a user
+    // manually clicking a tab/tile/slash-command, which the client *reports* with
+    // `source: "user"`. A user-reported switch must NOT re-broadcast
+    // `shell:navigate:view` (the client already navigated locally) — that would
+    // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
+    const reportedSource = body?.source === "user" ? "user" : "agent";
+    const subview =
+      typeof body?.subview === "string" && body.subview.trim().length > 0
+        ? body.subview.trim()
+        : typeof body?.section === "string" && body.section.trim().length > 0
+          ? body.section.trim()
+          : undefined;
     const alwaysOnTop = body?.alwaysOnTop === true;
     const layoutViews = Array.isArray(body?.views)
       ? body.views.filter(
@@ -791,8 +854,8 @@ export async function handleViewsRoutes(
     };
 
     logger.info(
-      { src: "ViewsRoutes", viewId: id, viewPath, action },
-      `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}`,
+      { src: "ViewsRoutes", viewId: id, viewPath, action, subview },
+      `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}${subview ? ` (subview=${subview})` : ""}`,
     );
 
     const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
@@ -805,15 +868,27 @@ export async function handleViewsRoutes(
     if (isCloseNavigation) {
       clearCurrentViewState();
     } else {
+      const now = new Date().toISOString();
+      const source = reportedSource;
+      // Stamp `switchedAt` only when the view actually changes; a re-navigate to
+      // the same view should not re-trigger an acknowledgement.
+      const previousViewId = currentViewState?.viewId ?? null;
+      const viewChanged = previousViewId !== id;
+      const switchedAt = viewChanged
+        ? now
+        : (currentViewState?.switchedAt ?? now);
       currentViewState = {
         viewId: id,
         viewPath,
         viewLabel,
         viewType: resolvedViewType,
         ...(action ? { action } : {}),
+        ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
-        updatedAt: new Date().toISOString(),
+        switchedAt,
+        source,
+        updatedAt: now,
       };
       // Publish to the prompt-optimization layer so the planner upweights this
       // view's scoped actions while it is on screen.
@@ -822,19 +897,48 @@ export async function handleViewsRoutes(
         viewLabel,
         viewType: resolvedViewType,
         viewPath,
+        // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
+        ...(switchedAt ? { switchedAt } : {}),
+        ...(source ? { source } : {}),
       });
+      // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
+      // proactive decider can comment. Only on a real change (no spam on
+      // re-navigates), and fire-and-forget so it never blocks the response.
+      if (viewChanged && ctx.runtime) {
+        void ctx.runtime
+          .emitEvent(EventType.VIEW_SWITCHED, {
+            runtime: ctx.runtime,
+            source: `view-navigate:${source}`,
+            viewId: id,
+            viewLabel,
+            viewPath,
+            viewType: resolvedViewType,
+            previousViewId,
+            initiatedBy: source,
+          })
+          .catch((err) => {
+            logger.debug(
+              { src: "ViewsRoutes", err },
+              "[ViewsRoutes] VIEW_SWITCHED emit failed",
+            );
+          });
+      }
     }
 
-    ctx.broadcastWs?.({
-      type: "shell:navigate:view",
-      viewId: id,
-      viewPath,
-      viewLabel,
-      viewType: resolvedViewType,
-      ...(action ? { action } : {}),
-      ...(alwaysOnTop ? { alwaysOnTop } : {}),
-      ...layoutPayload,
-    });
+    // Skip the echo for user-reported switches (the client already navigated).
+    if (reportedSource !== "user") {
+      ctx.broadcastWs?.({
+        type: "shell:navigate:view",
+        viewId: id,
+        viewPath,
+        viewLabel,
+        viewType: resolvedViewType,
+        ...(action ? { action } : {}),
+        ...(subview ? { subview } : {}),
+        ...(alwaysOnTop ? { alwaysOnTop } : {}),
+        ...layoutPayload,
+      });
+    }
 
     json(res, {
       ok: true,
@@ -842,6 +946,7 @@ export async function handleViewsRoutes(
       viewPath,
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
+      ...(subview ? { subview } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
     });
@@ -863,6 +968,79 @@ export async function handleViewsRoutes(
     const elements = normalizeActiveViewElements(body?.elements);
     const accepted = setActiveViewElements(id, elements);
     json(res, { ok: true, viewId: id, accepted, count: elements.length });
+    return true;
+  }
+
+  // ── POST /api/views/:id/activate ─────────────────────────────────────────
+  // Activate one addressable control in a view by its element id (the focused
+  // button's agent id in a spatial/TUI mount). This is the terminal host's
+  // "a focused view button was pressed" → agent path.
+  //
+  // Contract:
+  //   body: { elementId: string }
+  //   - The element is resolved against the active-view element snapshot
+  //     (reported via POST /:id/elements) for observability/context — absent
+  //     when no snapshot was reported, which is fine.
+  //   - The activation is dispatched as the STANDARD `click-element` capability
+  //     through the exact same interact path as POST /:id/interact (a
+  //     `serverInteract` handler when present, else a frontend round-trip),
+  //     reusing the established CLICK_ELEMENT semantics rather than inventing a
+  //     new dispatch.
+  //   response: { ok, viewId, elementId, element?, dispatch: <interact result> }
+  if (method === "POST" && subResource === "activate") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+
+    const elementId =
+      typeof body.elementId === "string" && body.elementId.length > 0
+        ? body.elementId
+        : null;
+    if (!elementId) {
+      error(res, "Missing elementId in activate body", 400);
+      return true;
+    }
+
+    const viewType =
+      parseViewTypeValue(body.viewType) ??
+      parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
+    if (!entry) {
+      error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+
+    // Resolve the element from the active-view snapshot for context (the planner
+    // reports it via /:id/elements). Only used when this view is the foreground
+    // active view; absent otherwise — the click still dispatches by id.
+    const active = getActiveViewContext();
+    const element =
+      active?.viewId === id
+        ? active.elements?.find((el) => el.id === elementId)
+        : undefined;
+
+    const capability = STANDARD_CAPABILITIES.CLICK_ELEMENT;
+    const params: Record<string, unknown> = { elementId, id: elementId };
+
+    logger.info(
+      { src: "ViewsRoutes", viewId: id, elementId, capability },
+      `[ViewsRoutes] Activate element "${elementId}" on view "${id}"`,
+    );
+
+    const dispatch = await dispatchViewInteract(
+      entry,
+      id,
+      capability,
+      params,
+      ctx.broadcastWs,
+    );
+
+    json(res, {
+      ok: dispatch.success,
+      viewId: id,
+      elementId,
+      ...(element ? { element } : {}),
+      dispatch,
+    });
     return true;
   }
 
@@ -1025,6 +1203,86 @@ export async function handleViewsRoutes(
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Result of dispatching a capability to a view — the union of the two interact
+ * paths (a `serverInteract` handler, or a frontend `view:interact` round-trip).
+ */
+interface ViewInteractDispatchResult {
+  requestId: string;
+  success: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+/**
+ * Dispatch a capability to a view, reusing the established interact semantics:
+ * a `serverInteract` handler when the view declares one, else a frontend
+ * `view:interact` WebSocket round-trip resolved via the pending-request map.
+ * Shared by POST /:id/activate (CLICK_ELEMENT) so activation never re-implements
+ * the dispatch.
+ */
+async function dispatchViewInteract(
+  entry: ViewRegistryEntry,
+  viewId: string,
+  capability: string,
+  params: Record<string, unknown>,
+  broadcastWs?: (payload: object) => void,
+  timeoutMs = 5_000,
+): Promise<ViewInteractDispatchResult> {
+  const requestId = randomUUID();
+
+  if (typeof entry.serverInteract === "function") {
+    try {
+      const result = await entry.serverInteract(capability, params);
+      broadcastWs?.({
+        type: "view:event",
+        viewEventType: `view:${viewId}:updated`,
+        payload: { viewId, capability },
+      });
+      return { requestId, success: resultSuccess(result), result };
+    } catch (err) {
+      logger.warn(
+        { src: "ViewsRoutes", viewId, capability, requestId, err },
+        `[ViewsRoutes] Server interaction failed for view "${viewId}"`,
+      );
+      return {
+        requestId,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
+  broadcastWs?.({
+    type: "view:interact",
+    viewId,
+    viewType: entry.viewType,
+    capability,
+    params,
+    requestId,
+  });
+  try {
+    const result = (await resultPromise) as ViewInteractResult;
+    return {
+      requestId,
+      success: result.success,
+      result: result.result,
+      ...(result.error ? { error: result.error } : {}),
+    };
+  } catch (err) {
+    logger.warn(
+      { src: "ViewsRoutes", viewId, capability, requestId, err },
+      `[ViewsRoutes] Interact timed out for view "${viewId}"`,
+    );
+    return {
+      requestId,
+      success: false,
+      error: `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+    };
+  }
+}
 
 function resultSuccess(result: unknown): boolean {
   if (!result || typeof result !== "object" || Array.isArray(result)) {

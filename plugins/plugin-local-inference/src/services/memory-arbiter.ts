@@ -46,7 +46,7 @@
  *   arbiter.registerCapability({
  *     capability: "vision-describe",
  *     residentRole: "vision",
- *     load: async (modelKey) => loadQwen3VL(modelKey),
+ *     load: async (modelKey) => loadVisionModel(modelKey),
  *     unload: async (handle) => handle.dispose(),
  *     run: async (handle, req) => handle.describe(req.imageBytes),
  *   });
@@ -56,13 +56,13 @@
  *
  *   ```ts
  *   const result = await arbiter.requestVisionDescribe({
- *     modelKey: "qwen3-vl-4b",
+ *     modelKey: "gemma-vl-4b",
  *     imageBytes: pixels,
  *   });
  *   ```
  *
  * The arbiter handles:
- *   1. Acquiring (or reusing) the handle for `qwen3-vl-4b`.
+ *   1. Acquiring (or reusing) the handle for `gemma-vl-4b`.
  *   2. If a different capability holds the active model and we need to
  *      swap, evicting it first.
  *   3. Running the request.
@@ -108,8 +108,10 @@ export type ArbiterCapability =
 	| "embedding"
 	| "vision-describe"
 	| "image-gen"
-	| "transcribe"
-	| "speak";
+	| "transcribe";
+
+/** Identifies the arbiter as the registry's eviction-decision owner (#8809 AC#2). */
+const MEMORY_ARBITER_EVICTION_OWNER = "memory-arbiter";
 
 /**
  * Map a capability to the resident-role bucket the existing
@@ -126,7 +128,6 @@ const CAPABILITY_ROLE: Readonly<Record<ArbiterCapability, ResidentModelRole>> =
 		// GPU-heavy weights with similar lifecycles.
 		"image-gen": "vision",
 		transcribe: "asr",
-		speak: "tts",
 	};
 
 /** The opaque handle returned by `acquire`. Callers MUST `release` it. */
@@ -256,6 +257,20 @@ export interface MemoryArbiterOptions {
 	 * Production wiring passes `os.totalmem()/MB - ramHeadroomReserveMb()`.
 	 */
 	budgetMb?: () => number | null;
+	/**
+	 * Resident footprint (MB) the arbiter does NOT own in its `resident` map
+	 * but which still consumes the host budget — the text-target and embedding
+	 * weights loaded by `LocalInferenceEngine` on its own
+	 * `SharedResourceRegistry` (#8809 M10b). Without this hook the arbiter's
+	 * `residentFootprintMb()` sees only vision/image-gen and the proactive
+	 * `evictToFit` path never trips (the two dominant resident consumers are
+	 * invisible to it). Production wiring (service.ts) reads the engine's
+	 * `text-target` + `embedding` resident estimates. These weights are owned by
+	 * the engine and are never the arbiter's eviction target — they are pure
+	 * budget accounting, exactly like the pinned text-target in the resident map.
+	 * Defaults to 0 (no external footprint known).
+	 */
+	externalFootprintMb?: () => number;
 }
 
 /**
@@ -270,6 +285,7 @@ export class MemoryArbiter {
 	private readonly log?: MemoryArbiterOptions["logger"];
 	private readonly now: () => number;
 	private readonly budgetMb: () => number | null;
+	private readonly externalFootprintMb: () => number;
 
 	private readonly capabilities = new Map<
 		ArbiterCapability,
@@ -310,6 +326,7 @@ export class MemoryArbiter {
 		this.log = opts.logger;
 		this.now = opts.now ?? (() => Date.now());
 		this.budgetMb = opts.budgetMb ?? (() => null);
+		this.externalFootprintMb = opts.externalFootprintMb ?? (() => 0);
 	}
 
 	/** Begin observing memory pressure. Idempotent. */
@@ -328,6 +345,9 @@ export class MemoryArbiter {
 				);
 			});
 		});
+		// This arbiter is now the single eviction-decision owner for the shared
+		// registry; the simpler MemoryMonitor poll defers to it (#8809 AC#2).
+		this.registry.claimEvictionOwnership(MEMORY_ARBITER_EVICTION_OWNER);
 	}
 
 	/** Stop observing pressure. Does NOT evict resident handles. */
@@ -337,6 +357,7 @@ export class MemoryArbiter {
 			this.pressureUnsubscribe = null;
 		}
 		this.pressureSource?.stop();
+		this.registry.releaseEvictionOwnership(MEMORY_ARBITER_EVICTION_OWNER);
 	}
 
 	/** Tear down: stop pressure observation and unload every resident handle. */
@@ -386,11 +407,7 @@ export class MemoryArbiter {
 		}
 		this.capabilities.set(
 			registration.capability,
-			registration as unknown as CapabilityRegistration<
-				unknown,
-				unknown,
-				unknown
-			>,
+			registration as CapabilityRegistration<unknown, unknown, unknown>,
 		);
 	}
 
@@ -422,6 +439,44 @@ export class MemoryArbiter {
 
 	currentPressureLevel(): MemoryPressureLevel {
 		return this.currentPressure;
+	}
+
+	/**
+	 * Predictive warm-load. Unlike `acquire`, preload never creates pressure to
+	 * make itself happen: it only loads when the system is nominal and the
+	 * configured budget proves the incoming resident footprint fits without
+	 * evicting anything. Returns `false` when the guard declines the preload.
+	 */
+	async preload(
+		capability: ArbiterCapability,
+		modelKey: string,
+	): Promise<boolean> {
+		const registration = this.capabilities.get(capability);
+		if (!registration) {
+			throw new Error(
+				`[memory-arbiter] no capability registered for "${capability}"`,
+			);
+		}
+		if (this.shuttingDown || this.currentPressure !== "nominal") {
+			return false;
+		}
+		const key = this.residentKey(capability, modelKey);
+		const existing = this.resident.get(key);
+		if (existing) {
+			existing.lastUsedAt = this.now();
+			return true;
+		}
+		const incomingMb = registration.estimatedMb ?? 0;
+		const budget = this.budgetMb();
+		if (budget === null || budget <= 0 || incomingMb <= 0) {
+			return false;
+		}
+		if (this.residentFootprintMb() + incomingMb > budget) {
+			return false;
+		}
+		const entry = await this.loadOrReuse(registration, modelKey);
+		entry.lastUsedAt = this.now();
+		return true;
 	}
 
 	/**
@@ -684,17 +739,26 @@ export class MemoryArbiter {
 		if (budget === null || budget <= 0) return;
 		if (incomingMb <= 0) return;
 
-		const residentMb = (): number => {
-			let sum = 0;
-			for (const e of this.resident.values()) sum += e.estimatedMb;
-			return sum;
-		};
-
-		while (residentMb() + incomingMb > budget) {
+		while (this.residentFootprintMb() + incomingMb > budget) {
 			const candidate = this.lruEvictionCandidate();
 			if (!candidate) break;
 			await this.evictEntry(candidate, "fit");
 		}
+	}
+
+	/**
+	 * Total resident footprint counted against the budget: the arbiter's own
+	 * resident handles PLUS the engine-owned text-target + embedding weights
+	 * reported via `externalFootprintMb` (#8809 M10b). The external term is what
+	 * makes `evictToFit` actually fire — without it the two dominant resident
+	 * consumers (text, embedding) are invisible and the fit path is dead.
+	 */
+	private residentFootprintMb(): number {
+		let sum = 0;
+		for (const e of this.resident.values()) sum += e.estimatedMb;
+		const external = this.externalFootprintMb();
+		if (Number.isFinite(external) && external > 0) sum += external;
+		return sum;
 	}
 
 	/**
@@ -811,27 +875,6 @@ export class MemoryArbiter {
 		return this.enqueueRequest("transcribe", req.modelKey, req.payload);
 	}
 
-	requestSpeak<TRequest, TResult>(req: {
-		modelKey: string;
-		payload: TRequest;
-	}): Promise<TResult> {
-		return this.enqueueRequest("speak", req.modelKey, req.payload);
-	}
-
-	/**
-	 * Alias for {@link requestSpeak} that matches the `requestTextToSpeech`
-	 * naming used by `provider.ts`'s `ModelType.TEXT_TO_SPEECH` handler and
-	 * by external WS5 callers that don't import the `ArbiterCapability` type.
-	 * Resolves through the same `"speak"` capability + queue — the two names
-	 * are interchangeable. Mirrors the `requestVisionDescribe` ergonomic.
-	 */
-	requestTextToSpeech<TRequest, TResult>(req: {
-		modelKey: string;
-		payload: TRequest;
-	}): Promise<TResult> {
-		return this.enqueueRequest("speak", req.modelKey, req.payload);
-	}
-
 	private async enqueueRequest<TRequest, TResult>(
 		capability: ArbiterCapability,
 		modelKey: string,
@@ -918,58 +961,6 @@ export class MemoryArbiter {
 		ttlMs?: number,
 	): void {
 		this.visionCache.set(hash, entry, ttlMs);
-	}
-
-	// ---------------------------------------------------------------------
-	// ASR transcript cache passthroughs.
-	//
-	// Re-transcribing the same audio is a frequent test/dev pattern (the
-	// dashboard's "play the WAV back" view, the streaming-audio handler
-	// flushing duplicate frames at segment boundaries). The cache is
-	// content-hashed by `services/asr/hash.ts`, with a hard cap so a long
-	// session can't memory-leak. Default TTL is 1 hour; entries are
-	// evicted on touch when stale.
-	// ---------------------------------------------------------------------
-
-	private readonly asrTranscriptCache = new Map<
-		string,
-		{ text: string; expiresAt: number }
-	>();
-	private static readonly ASR_TRANSCRIPT_CACHE_MAX = 256;
-	private static readonly ASR_TRANSCRIPT_DEFAULT_TTL_MS = 60 * 60 * 1000;
-
-	getCachedAsrTranscript(
-		hash: string,
-	): { text: string; live?: boolean } | null {
-		const entry = this.asrTranscriptCache.get(hash);
-		if (!entry) return null;
-		if (entry.expiresAt <= this.now()) {
-			this.asrTranscriptCache.delete(hash);
-			return null;
-		}
-		// Touch for LRU-ish ordering on Map iteration.
-		this.asrTranscriptCache.delete(hash);
-		this.asrTranscriptCache.set(hash, entry);
-		return { text: entry.text, live: true };
-	}
-
-	setCachedAsrTranscript(
-		hash: string,
-		entry: { text: string },
-		ttlMs?: number,
-	): void {
-		const ttl = ttlMs ?? MemoryArbiter.ASR_TRANSCRIPT_DEFAULT_TTL_MS;
-		this.asrTranscriptCache.set(hash, {
-			text: entry.text,
-			expiresAt: this.now() + ttl,
-		});
-		while (
-			this.asrTranscriptCache.size > MemoryArbiter.ASR_TRANSCRIPT_CACHE_MAX
-		) {
-			const oldest = this.asrTranscriptCache.keys().next().value;
-			if (oldest === undefined) break;
-			this.asrTranscriptCache.delete(oldest);
-		}
 	}
 }
 

@@ -15,6 +15,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { isSystemInactivityApp } from "@elizaos/plugin-health";
 import {
   type ActivityEventRow,
   listActivityEvents,
@@ -24,7 +25,6 @@ import {
   redactWindowTitle,
   resolveRedactorConfigFromEnv,
 } from "./redactor.js";
-import { isSystemInactivityApp } from "@elizaos/plugin-health";
 
 export interface ActivityAppBreakdown {
   bundleId: string;
@@ -39,6 +39,13 @@ export interface ActivityReport {
   untilMs: number;
   totalMs: number;
   apps: ActivityAppBreakdown[];
+}
+
+export interface ActivityForegroundApp {
+  bundleId: string;
+  appName: string;
+  observedAtMs: number;
+  activeMs: number;
 }
 
 export interface ActivityReportOptions {
@@ -162,6 +169,44 @@ export async function getActivityReportBetween(
   const intervals = intervalsFromEvents(events, sinceMs, untilMs);
   const { apps, totalMs } = aggregateByApp(intervals, redactor, options.limit);
   return { sinceMs, untilMs, totalMs, apps };
+}
+
+export async function getLatestForegroundActivity(
+  runtime: IAgentRuntime,
+  agentId: string,
+  options: {
+    sinceMs: number;
+    untilMs: number;
+  },
+): Promise<ActivityForegroundApp | null> {
+  const sinceMs = Math.max(0, Math.trunc(options.sinceMs));
+  const untilMs = Math.max(sinceMs, Math.trunc(options.untilMs));
+  const events = await listActivityEvents(
+    runtime,
+    agentId,
+    new Date(sinceMs).toISOString(),
+  );
+
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    const observedAtMs = Date.parse(event.observedAt);
+    if (!Number.isFinite(observedAtMs) || observedAtMs > untilMs) continue;
+    if (isSystemInactivityApp(event)) {
+      return null;
+    }
+    if (event.eventKind === "deactivate") {
+      return null;
+    }
+    return {
+      bundleId: event.bundleId,
+      appName: event.appName,
+      observedAtMs,
+      activeMs: Math.max(0, untilMs - observedAtMs),
+    };
+  }
+
+  return null;
 }
 
 export async function getActivityReport(

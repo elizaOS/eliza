@@ -202,11 +202,20 @@ export function ResizableHandle({
       const containerSize =
         direction === "horizontal" ? containerRect.width : containerRect.height;
 
+      let pendingSizes: Array<[index: number, size: number]> | null = null;
+      let rafId: number | null = null;
+
+      const flush = () => {
+        rafId = null;
+        if (pendingSizes) {
+          setPanelSizes(pendingSizes);
+          pendingSizes = null;
+        }
+      };
+
       const handleMouseMove = (moveEvent: MouseEvent) => {
         const currentPos =
           direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY;
-        const _containerStart =
-          direction === "horizontal" ? containerRect.left : containerRect.top;
         const delta = currentPos - startPos;
         const deltaPercent = (delta / containerSize) * 100;
 
@@ -222,15 +231,27 @@ export function ResizableHandle({
         // Ensure total is 100%
         const total = newLeftSize + newRightSize;
         if (total > 0) {
-          setPanelSizes([
+          pendingSizes = [
             [leftId, (newLeftSize / total) * 100],
             [rightId, (newRightSize / total) * 100],
-          ]);
+          ];
+          if (rafId === null) {
+            rafId = requestAnimationFrame(flush);
+          }
         }
       };
 
       const handleMouseUp = () => {
         setIsDragging(false);
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        // Commit the final position even if the last frame hasn't flushed.
+        if (pendingSizes) {
+          setPanelSizes(pendingSizes);
+          pendingSizes = null;
+        }
         document.removeEventListener("mousemove", handleMouseMove);
         document.removeEventListener("mouseup", handleMouseUp);
       };

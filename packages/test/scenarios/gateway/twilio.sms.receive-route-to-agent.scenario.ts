@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "twilio.sms.receive-route-to-agent",
   title: "Incoming Twilio SMS routes to the user's agent",
   domain: "gateway",

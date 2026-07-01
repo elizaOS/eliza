@@ -10,7 +10,6 @@ import type {
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -21,11 +20,15 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
+  formatBytes,
   groupByBucket,
 } from "./hub-utils";
-
-const formatBytes = (bytes: number): string =>
-  formatByteSize(bytes, { unknownLabel: "—" });
+import {
+  catalogRuntimeClass,
+  runtimeClassBadge,
+  runtimeClassDescription,
+  runtimeClassUnavailableReason,
+} from "./runtime-class-ui";
 
 interface ModelHubViewProps {
   catalog: CatalogModel[];
@@ -139,6 +142,9 @@ function ModelListRow({
   const failed = download?.state === "failed";
   const isActive = active.modelId === model.id && active.status !== "error";
   const activating = active.modelId === model.id && active.status === "loading";
+  const runtimeClass = catalogRuntimeClass(model);
+  const unavailableReason = runtimeClassUnavailableReason(runtimeClass);
+  const notRunnable = unavailableReason !== null;
   const modelMeta = [
     model.params,
     model.quant,
@@ -169,6 +175,12 @@ function ModelListRow({
               {displayModelName(model)}
             </div>
             <span
+              className="shrink-0 rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] leading-none text-muted"
+              title={runtimeClassDescription(runtimeClass)}
+            >
+              {runtimeClassBadge(runtimeClass)}
+            </span>
+            <span
               className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${FIT_STYLES[fit]}`}
               title={fitLabel(fit)}
               role="img"
@@ -197,6 +209,16 @@ function ModelListRow({
                   : ""}
               </span>
             ) : null}
+            {notRunnable ? (
+              <span
+                className="text-warn"
+                title={unavailableReason ?? undefined}
+              >
+                {t("modelhub.notRunnable", {
+                  defaultValue: "Not runnable on this platform",
+                })}
+              </span>
+            ) : null}
           </div>
           {download && downloading ? (
             <div className="mt-1.5">
@@ -219,7 +241,8 @@ function ModelListRow({
               size="sm"
               className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onDownload(model.id)}
-              disabled={busy || fit === "wontfit"}
+              disabled={busy || fit === "wontfit" || notRunnable}
+              title={unavailableReason ?? undefined}
             >
               {t("modelhub.download", { defaultValue: "Download" })}
             </Button>
@@ -240,7 +263,8 @@ function ModelListRow({
               size="sm"
               className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onActivate(model.id)}
-              disabled={busy || activating}
+              disabled={busy || activating || notRunnable}
+              title={unavailableReason ?? undefined}
             >
               {activating
                 ? t("modelhub.activating", { defaultValue: "Activating..." })

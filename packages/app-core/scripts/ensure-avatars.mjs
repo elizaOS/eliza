@@ -2,16 +2,18 @@
 /**
  * Ensure avatar assets (VRMs, animations, backgrounds) are present in the app.
  *
- * On a fresh clone, the companion plugin's public/vrms/ and animations/
- * may be empty or contain only Git LFS pointers.  This script clones the
+ * On a fresh clone, the app's public/vrms/ and public/animations/ may be
+ * empty or contain only Git LFS pointers.  This script clones the
  * elizaos/avatars repository (org-owned) into a temp directory and copies
- * the assets into eliza/plugins/plugin-companion/public/.
+ * the assets into the app public dir (apps/app/public/) — the same target
+ * the sibling process-vrms.mjs writes and the static file server serves
+ * /vrms and /animations from.
  *
  * Run automatically via the `postinstall` hook, or manually:
  *   node scripts/ensure-avatars.mjs
  *   node scripts/ensure-avatars.mjs --force   # re-download even if present
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -31,7 +33,13 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
-const PUBLIC = join(ROOT, "eliza", "plugins", "app-companion", "public");
+const cleanupHelperScript = join(
+  ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+const PUBLIC = join(ROOT, "apps", "app", "public");
 const VRMS_DIR = join(PUBLIC, "vrms");
 const ANIMATIONS_DIR = join(PUBLIC, "animations");
 const BUNDLED_VRM_SOURCE_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -87,6 +95,13 @@ function gitAvailable() {
   } catch {
     return false;
   }
+}
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
 }
 
 /** Count files matching an extension in a directory (non-recursive). */
@@ -212,7 +227,7 @@ export function runEnsureAvatars({
   try {
     // Clean up any previous failed attempt
     if (existsSync(tmpDir)) {
-      rmSync(tmpDir, { recursive: true, force: true });
+      removePathRecursive(tmpDir);
     }
 
     // Clone and checkout pinned commit for reproducibility.
@@ -236,7 +251,7 @@ export function runEnsureAvatars({
 
     const avatarVrms = join(tmpDir, "vrms");
     if (existsSync(avatarVrms) && !useLocalVrms) {
-      rmSync(VRMS_DIR, { recursive: true, force: true });
+      removePathRecursive(VRMS_DIR);
       mkdirSync(VRMS_DIR, { recursive: true });
       mkdirSync(join(VRMS_DIR, "previews"), { recursive: true });
       mkdirSync(join(VRMS_DIR, "backgrounds"), { recursive: true });
@@ -269,7 +284,7 @@ export function runEnsureAvatars({
 
     const avatarAnims = join(tmpDir, "animations");
     if (existsSync(avatarAnims)) {
-      rmSync(ANIMATIONS_DIR, { recursive: true, force: true });
+      removePathRecursive(ANIMATIONS_DIR);
       mkdirSync(ANIMATIONS_DIR, { recursive: true });
       copyPathIfExists(
         join(avatarAnims, "idle.glb"),
@@ -311,13 +326,13 @@ export function runEnsureAvatars({
     const message = err instanceof Error ? err.message : String(err);
     logError(`${TAG} Failed to clone avatar assets: ${message}`);
     logError(
-      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ packages/app/public/vrms/ && cp -r /tmp/avatars/animations/ packages/app/public/animations/`,
+      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ apps/app/public/vrms/ && cp -r /tmp/avatars/animations/ apps/app/public/animations/`,
     );
     return { cloned: false, reason: "clone-failed", error: message };
   } finally {
     try {
       if (existsSync(tmpDir)) {
-        rmSync(tmpDir, { recursive: true, force: true });
+        removePathRecursive(tmpDir);
       }
     } catch {
       // Ignore cleanup errors

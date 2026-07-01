@@ -19,8 +19,8 @@
 # What this does:
 #   1. Normalises the version to 2.0.0-alpha.{N}
 #   2. Updates package.json: pins @elizaos/agent, @elizaos/core,
-#      @elizaos/app-core, @elizaos/app-core, @elizaos/prompts,
-#      @elizaos/sweagent-root to the target version
+#      @elizaos/app-core, @elizaos/app-core, @elizaos/prompts to the
+#      target version
 #   3. Checks if @elizaos/core at that version ships dist/node/index.node.js
 #      (the native node binding needed for production)
 #   4. If core is broken at that version, finds the latest working version
@@ -111,7 +111,6 @@ ELIZAOS_PACKAGES=(
   "@elizaos/app-core"
   "@elizaos/app-core"
   "@elizaos/prompts"
-  "@elizaos/sweagent-root"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

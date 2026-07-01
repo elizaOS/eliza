@@ -17,7 +17,7 @@ const connectedStatus: DeviceBridgeStatus = {
         cpuCores: 6,
         gpu: { backend: "metal", available: true, totalVramGb: 4 },
       },
-      loadedPath: "/models/eliza-1-0_8b.gguf",
+      loadedPath: "/models/eliza-1-2b.gguf",
       connectedSince: baseConnectedSince,
       score: 100,
       activeRequests: 0,
@@ -34,7 +34,7 @@ const connectedStatus: DeviceBridgeStatus = {
     cpuCores: 6,
     gpu: { backend: "metal", available: true, totalVramGb: 4 },
   },
-  loadedPath: "/models/eliza-1-0_8b.gguf",
+  loadedPath: "/models/eliza-1-2b.gguf",
   connectedSince: baseConnectedSince,
 };
 

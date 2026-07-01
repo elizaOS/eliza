@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { PluginVisual } from "./PluginVisual";
 
@@ -35,7 +36,7 @@ export interface PluginCardProps {
   notInstalledLabel: string;
 }
 
-export function PluginCard({
+export const PluginCard = memo(function PluginCard({
   plugin: p,
   allowCustomOrder,
   pluginSettingsOpen,
@@ -53,7 +54,7 @@ export function PluginCard({
   loadFailedLabel,
   notInstalledLabel,
 }: PluginCardProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   const toggleControl = useAgentElement<HTMLButtonElement>({
     id: `plugin-card-${p.id}-toggle`,
@@ -123,7 +124,9 @@ export function PluginCard({
       ? p.loadError || inactiveLabel
       : toggleHealth === "attention"
         ? needsConfig
-          ? t("pluginsview.NeedsConfig", { defaultValue: "Needs configuration" })
+          ? t("pluginsview.NeedsConfig", {
+              defaultValue: "Needs configuration",
+            })
           : p.enabled
             ? inactiveLabel
             : undefined
@@ -162,9 +165,7 @@ export function PluginCard({
         hasParams ? "cursor-pointer" : ""
       } ${
         isOpen ? "bg-accent/10" : "hover:bg-bg-hover"
-      } ${isDragging ? "opacity-30" : ""} ${
-        isDragOver ? "ring-2 ring-accent/60" : ""
-      }`}
+      } ${isDragging ? "opacity-30" : ""} ${isDragOver ? " " : ""}`}
       data-plugin-id={p.id}
     >
       <PluginVisual plugin={p} />
@@ -217,4 +218,4 @@ export function PluginCard({
       )}
     </li>
   );
-}
+});

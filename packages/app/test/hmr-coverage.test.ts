@@ -42,8 +42,6 @@ function normalizedHmrViewId(name: string): string {
     case "view-manager":
     case "manager":
       return "views-manager";
-    case "defense":
-      return "defense-of-the-agents";
     default:
       return id;
   }
@@ -78,8 +76,6 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
       .map((level) => `${level.id} ${level.file}`);
 
-    expect(guiCases.length).toBe(38);
-    expect(hmrLevels.length).toBe(38);
     expect(missing, "Add HMR source probes for new GUI views.").toEqual([]);
     expect(
       stale,

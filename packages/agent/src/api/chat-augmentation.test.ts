@@ -70,8 +70,17 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
 
   it("bounds and aborts LLM query recovery before the real chat turn", async () => {
     const message = makeMessage();
+    // The corpus returns a candidate that falls BELOW the relevance threshold:
+    // documents exist, so a better recovered query is worth attempting. (This is
+    // the only case the recovery call should fire.)
     const documents = {
-      searchDocuments: vi.fn().mockResolvedValue([]),
+      searchDocuments: vi.fn().mockResolvedValue([
+        {
+          content: { text: "loosely related context" },
+          similarity: 0.05,
+          metadata: {},
+        },
+      ]),
     };
     let recoverySignal: AbortSignal | undefined;
     const useModel = vi.fn((_modelType, params) => {
@@ -92,7 +101,7 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     );
 
     expect(result).toBe(message);
-    expect(documents.searchDocuments).toHaveBeenCalledTimes(2);
+    expect(documents.searchDocuments).toHaveBeenCalledTimes(1);
     expect(useModel).toHaveBeenCalledWith(
       "TEXT_LARGE",
       expect.objectContaining({
@@ -103,5 +112,65 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
       }),
     );
     expect(recoverySignal?.aborted).toBe(true);
+  });
+
+  it("skips LLM query recovery when the corpus returns no candidates at all", async () => {
+    const message = makeMessage();
+    // No raw candidates at all (no documents indexed, or embeddings never clear
+    // retrieval). A recovered query would match nothing either, so the recovery
+    // model call is pure per-turn waste — it must NOT fire.
+    const documents = {
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const useModel = vi.fn();
+    const runtime = makeRuntime(documents, useModel);
+
+    const result = await maybeAugmentChatMessageWithDocuments(
+      runtime,
+      message,
+      {
+        lookupTimeoutMs: 10,
+        recoveryTimeoutMs: 10,
+      },
+    );
+
+    expect(result).toBe(message);
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("skips the embedding doc search entirely when the corpus has zero fragments", async () => {
+    const message = makeMessage();
+    // Empty corpus (the common cloud-agent case): the query embed + fragment
+    // search is pure per-turn latency for guaranteed-zero matches. A cheap
+    // fragment count must short-circuit BEFORE searchDocuments embeds anything.
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(0),
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const useModel = vi.fn();
+    const runtime = makeRuntime(documents, useModel);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(result).toBe(message);
+    expect(documents.countMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ tableName: "document_fragments" }),
+    );
+    expect(documents.searchDocuments).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("still runs the document search when the corpus has fragments", async () => {
+    const message = makeMessage();
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(3),
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const runtime = makeRuntime(documents);
+
+    await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(documents.countMemories).toHaveBeenCalledTimes(1);
+    expect(documents.searchDocuments).toHaveBeenCalled();
   });
 });

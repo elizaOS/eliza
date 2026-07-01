@@ -31,17 +31,34 @@ export class PcmRingBuffer {
 	}
 
 	write(pcm: Float32Array): void {
-		let dropped = 0;
-		for (let i = 0; i < pcm.length; i++) {
-			this.buf[this.writePos] = pcm[i];
-			this.writePos = (this.writePos + 1) % this.capacity;
-			if (this.filled < this.capacity) {
-				this.filled++;
+		const n = pcm.length;
+		if (n === 0) return;
+		// Samples lost to overwrite: everything past capacity once we account for
+		// what's already buffered. Matches the per-sample loop's drop accounting.
+		const dropped = Math.max(0, this.filled + n - this.capacity);
+
+		if (n >= this.capacity) {
+			// The incoming chunk alone fills (or overfills) the ring — only its last
+			// `capacity` samples survive. Bulk-copy them and reset to a full buffer.
+			this.buf.set(pcm.subarray(n - this.capacity, n), 0);
+			this.readPos = 0;
+			this.writePos = 0;
+			this.filled = this.capacity;
+		} else {
+			// Up to two contiguous bulk copies (one before the wrap, one after).
+			const firstSpan = Math.min(n, this.capacity - this.writePos);
+			this.buf.set(pcm.subarray(0, firstSpan), this.writePos);
+			if (n > firstSpan) this.buf.set(pcm.subarray(firstSpan, n), 0);
+			this.writePos = (this.writePos + n) % this.capacity;
+			if (dropped > 0) {
+				// Buffer overran: the read cursor chases the write cursor.
+				this.readPos = (this.readPos + dropped) % this.capacity;
+				this.filled = this.capacity;
 			} else {
-				this.readPos = (this.readPos + 1) % this.capacity;
-				dropped++;
+				this.filled += n;
 			}
 		}
+
 		if (dropped > 0 && this.onOverflow) {
 			this.onOverflow(dropped);
 		}
@@ -54,11 +71,12 @@ export class PcmRingBuffer {
 
 	flushToSink(): number {
 		if (this.filled === 0) return 0;
-		const out = new Float32Array(this.filled);
-		for (let i = 0; i < this.filled; i++) {
-			out[i] = this.buf[(this.readPos + i) % this.capacity];
-		}
 		const n = this.filled;
+		const out = new Float32Array(n);
+		// Read `n` samples from readPos with at most one wrap — two bulk copies.
+		const firstSpan = Math.min(n, this.capacity - this.readPos);
+		out.set(this.buf.subarray(this.readPos, this.readPos + firstSpan), 0);
+		if (n > firstSpan) out.set(this.buf.subarray(0, n - firstSpan), firstSpan);
 		this.readPos = this.writePos;
 		this.filled = 0;
 		this.sink.write(out, this.sampleRate);

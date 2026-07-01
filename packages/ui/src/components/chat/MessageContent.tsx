@@ -1,6 +1,6 @@
-import { stripAssistantStageDirections } from "@elizaos/shared";
 import {
   type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -11,90 +11,96 @@ import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
-import type { JsonSchemaObject } from "../../config/config-catalog";
-import type { PatchOp, UiSpec } from "../../config/ui-spec";
+import type { UiSpec } from "../../config/ui-spec";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isDesktopPlatform, isNative } from "../../platform";
 import {
   createMobileSignalsPermissionsRegistry,
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
+import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
-import { useApp } from "../../state/useApp";
-import type { ConfigUiHint } from "../../types";
-import { PermissionCard } from "../composites/chat/permission-card";
 import {
   createClientPermissionsRegistry,
   type PermissionCardPayload,
-  parsePermissionRequestFromText,
 } from "../composites/chat/permission-card.helpers";
+import { renderPermissionCardFromPayload } from "../composites/chat/permission-card.render";
 import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
-import { paramsToSchema } from "../pages/plugin-list-utils";
 import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
 import { MessageAttachments } from "./MessageAttachments";
+import {
+  buildInlinePluginConfigModel,
+  isSafeNormalizedPluginId,
+  normalizePluginId,
+  parseSegments,
+  sensitiveRequestStatusLabel,
+  splitInlineCode,
+} from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
-import type { FormResultValue } from "./widgets/form-request";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
-import {
-  getInlineWidget,
-  getInlineWidgets,
-  type InlineWidgetContext,
-} from "./widgets/inline-registry";
-
-/** Reject prototype-pollution keys that should never be traversed or rendered. */
-const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
-const SAFE_PLUGIN_ID_RE = /^[\w-]+$/;
-
-function createSafeRecord(): Record<string, unknown> {
-  return Object.create(null) as Record<string, unknown>;
-}
-
-function sanitizePatchValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizePatchValue(item));
-  }
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  const safe = createSafeRecord();
-  for (const [key, nestedValue] of Object.entries(
-    value as Record<string, unknown>,
-  )) {
-    if (BLOCKED_IDS.has(key)) continue;
-    safe[key] = sanitizePatchValue(nestedValue);
-  }
-  return safe;
-}
-
-function isSafeNormalizedPluginId(id: string): boolean {
-  return !BLOCKED_IDS.has(id) && SAFE_PLUGIN_ID_RE.test(id);
-}
+import { getInlineWidget } from "./widgets/inline-registry";
+import { useInlineWidgetContext } from "./widgets/use-inline-widget-context";
 
 interface MessageContentProps {
   message: ConversationMessage;
   analysisMode?: boolean;
 }
 
-// ── Segment types ───────────────────────────────────────────────────
+/**
+ * Render a text run, wrapping any inline `` `code` `` spans in the CodeBlock
+ * inline primitive so they keep their place in the sentence. Returns the raw
+ * string unchanged when there is no backticked span (the common case).
+ */
+/**
+ * An OAuth authorizationUrl is an agent/cloud-supplied field that flows into
+ * window.open(). A hosted consent screen is always https, so require https and
+ * reject anything else — a `javascript:`/`data:` value would otherwise execute
+ * in the opened window. `new URL()` also normalizes away control-char scheme
+ * obfuscation (e.g. `java\tscript:`).
+ */
+function isHttpsAuthorizationUrl(url: unknown): url is string {
+  if (typeof url !== "string" || url.length === 0) return false;
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
-type Segment =
-  | { kind: "text"; text: string }
-  | { kind: "config"; pluginId: string }
-  | { kind: "ui-spec"; spec: UiSpec; raw: string }
-  // Any registry-driven inline widget (choice/followups/form/task/plugin).
-  | { kind: "widget"; widgetKind: string; data: unknown }
-  | { kind: "permission"; payload: PermissionCardPayload }
-  | { kind: "analysis-xml"; tag: string; content: string };
+function renderInlineText(text: string): ReactNode {
+  if (!text.includes("`")) return text;
+  const parts = splitInlineCode(text);
+  if (parts.length === 1 && parts[0].kind === "text") return text;
+  // Key by the part's character offset in the source run (not the array index)
+  // so keys stay stable across re-renders and don't trip noArrayIndexKey.
+  let offset = 0;
+  return parts.map((part) => {
+    const content = part.kind === "code" ? part.code : part.text;
+    const key = `${part.kind}:${offset}`;
+    offset += content.length;
+    return part.kind === "code" ? (
+      <CodeBlock
+        key={key}
+        variant="inline"
+        value={part.code}
+        data-testid="inline-code"
+      />
+    ) : (
+      <span key={key}>{part.text}</span>
+    );
+  });
+}
 
 /**
  * Render a plain-text message body. When the message is a user-typed slash
  * command (e.g. `/imagine a cat`), the leading `/command` token is rendered in
  * bold so it reads as a command in the transcript — matching the inline
- * autocomplete the composer shows while typing.
+ * autocomplete the composer shows while typing. Inline `` `code` `` spans render
+ * in the inline code primitive while staying in the flow of the sentence.
  */
 function MessageTextBody({
   text,
@@ -114,430 +120,22 @@ function MessageTextBody({
           >
             {slash.command}
           </span>
-          {slash.rest}
+          {renderInlineText(slash.rest)}
         </>
       ) : (
-        text
+        renderInlineText(text)
       )}
     </div>
   );
 }
 
-// ── Detection ───────────────────────────────────────────────────────
-
-const CONFIG_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
-const FENCED_JSON_RE = /```(?:json)?\s*\n([\s\S]*?)```/g;
-
-const HIDDEN_TAG_BLOCK_RE =
-  /<(think|analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
-
-/**
- * Strip trailing partial hidden tags at the end of a streaming text chunk.
- * During streaming, the buffer may end mid-tag (e.g. `"Hello<thi"`,
- * `"Hello</respon"`, or just `"Hello<"`).  These fragments are not
- * user-facing content and must be hidden from both the display and voice
- * pipelines.
- */
-const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
-
-function normalizeDisplayText(text: string): string {
-  // Bound input length to keep the regex passes linear in adversarial cases.
-  const MAX_DISPLAY_LEN = 200_000;
-  let normalized =
-    text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
-
-  // Hide hidden reasoning/tool blocks from chat bubbles.
-  normalized = normalized.replace(HIDDEN_TAG_BLOCK_RE, " ");
-
-  // During streaming, a chunk may end mid-tag (e.g. "<thi").
-  // Strip any unterminated opening or closing tag at the very end so the
-  // user never sees hidden-tag fragments while tokens arrive.
-  normalized = normalized.replace(TRAILING_PARTIAL_TAG_RE, "");
-
-  normalized = stripAssistantStageDirections(normalized);
-  return normalized.trim();
-}
-
-function tryParse(s: string): unknown {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
-
-function isUiSpec(obj: unknown): obj is UiSpec {
-  if (!obj || typeof obj !== "object") return false;
-  const c = obj as Record<string, unknown>;
-  return (
-    typeof c.root === "string" &&
-    typeof c.elements === "object" &&
-    c.elements !== null
-  );
-}
-
-// ── JSONL patch support (Chat Mode) ─────────────────────────────────
-
-/**
- * Quick pre-check: does this line look like a JSON patch object?
- * Handles both compact `{"op":` and spaced `{ "op":` formats.
- */
-function looksLikePatch(trimmed: string): boolean {
-  if (!trimmed.startsWith("{")) return false;
-  return trimmed.includes('"op"') && trimmed.includes('"path"');
-}
-
-/** Try to parse a single line as an RFC 6902 JSON Patch operation. */
-function tryParsePatch(line: string): PatchOp | null {
-  const t = line.trim();
-  if (!looksLikePatch(t)) return null;
-  try {
-    const obj = JSON.parse(t) as Record<string, unknown>;
-    if (typeof obj.op === "string" && typeof obj.path === "string")
-      return obj as PatchOp;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Apply a list of RFC 6902 patches to build a UiSpec.
- *
- * Only handles the paths the catalog emits:
- *   /root              → spec.root
- *   /elements/<id>     → spec.elements[id]
- *   /state/<key>       → spec.state[key]
- *   /state             → spec.state (whole object)
- */
-function compilePatches(patches: PatchOp[]): UiSpec | null {
-  const spec: {
-    root?: string;
-    elements: Record<string, unknown>;
-    state: Record<string, unknown>;
-  } = { elements: {}, state: createSafeRecord() };
-
-  for (const patch of patches) {
-    if (patch.op !== "add" && patch.op !== "replace") continue;
-    const { path, value } = patch as {
-      op: string;
-      path: string;
-      value: unknown;
-    };
-    const parts = path.split("/").filter(Boolean);
-    if (parts.length === 0) continue;
-
-    if (parts[0] === "root" && parts.length === 1) {
-      spec.root = value as string;
-    } else if (parts[0] === "elements" && parts.length === 2) {
-      spec.elements[parts[1]] = value;
-    } else if (parts[0] === "state" && parts.length === 1) {
-      const nextState = sanitizePatchValue(value);
-      spec.state =
-        nextState && typeof nextState === "object" && !Array.isArray(nextState)
-          ? (nextState as Record<string, unknown>)
-          : createSafeRecord();
-    } else if (parts[0] === "state" && parts.length >= 2) {
-      // Nested state path: /state/key or /state/key/subkey
-      let cursor = spec.state;
-      let blockedPath = false;
-      for (let i = 1; i < parts.length - 1; i++) {
-        const k = parts[i];
-        if (BLOCKED_IDS.has(k)) {
-          blockedPath = true;
-          break;
-        }
-        if (
-          !cursor[k] ||
-          typeof cursor[k] !== "object" ||
-          Array.isArray(cursor[k])
-        ) {
-          cursor[k] = createSafeRecord();
-        }
-        cursor = cursor[k] as Record<string, unknown>;
-      }
-      if (blockedPath) continue;
-      const leaf = parts[parts.length - 1];
-      if (BLOCKED_IDS.has(leaf)) continue;
-      cursor[leaf] = sanitizePatchValue(value);
-    }
-  }
-
-  return isUiSpec(spec) ? spec : null;
-}
-
-/**
- * Scan `text` for blocks of consecutive JSONL patch lines and return
- * their character regions plus the compiled UiSpec.
- *
- * A patch block is a run of lines where each non-empty line parses as a
- * valid PatchOp. A single empty line between patch lines is allowed.
- */
-function findPatchRegions(
-  text: string,
-): Array<{ start: number; end: number; spec: UiSpec; raw: string }> {
-  const results: Array<{
-    start: number;
-    end: number;
-    spec: UiSpec;
-    raw: string;
-  }> = [];
-  const lines = text.split("\n");
-
-  let blockStart = -1;
-  let blockEnd = 0;
-  let patches: PatchOp[] = [];
-  let rawLines: string[] = [];
-  let pos = 0;
-
-  const flush = () => {
-    if (patches.length >= 1) {
-      const spec = compilePatches(patches);
-      if (spec) {
-        results.push({
-          start: blockStart,
-          end: blockEnd,
-          spec,
-          raw: rawLines.join("\n"),
-        });
-      }
-    }
-    blockStart = -1;
-    patches = [];
-    rawLines = [];
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // +1 for the newline that split() consumed (except the very last line)
-    const lineLen = line.length + (i < lines.length - 1 ? 1 : 0);
-    const trimmed = line.trim();
-
-    if (looksLikePatch(trimmed)) {
-      const patch = tryParsePatch(trimmed);
-      if (patch) {
-        if (blockStart === -1) blockStart = pos;
-        patches.push(patch);
-        rawLines.push(line);
-        blockEnd = pos + lineLen;
-        pos += lineLen;
-        continue;
-      }
-    }
-
-    // Empty line: peek ahead to see if the next non-empty line is a patch
-    if (trimmed.length === 0 && blockStart !== -1) {
-      const nextPatch = lines.slice(i + 1).find((l) => l.trim().length > 0);
-      if (nextPatch && tryParsePatch(nextPatch) !== null) {
-        // Allow the gap and keep going
-        pos += lineLen;
-        continue;
-      }
-    }
-
-    // Non-patch content — flush any open block
-    if (blockStart !== -1) flush();
-    pos += lineLen;
-  }
-
-  if (blockStart !== -1) flush();
-  return results;
-}
-
-function parseSegments(text: string, analysisMode: boolean): Segment[] {
-  // If analysis mode is enabled, we parse the raw text to extract XML blocks,
-  // otherwise we use the normalized text which strips them.
-  const targetText = analysisMode ? text : normalizeDisplayText(text);
-  if (!targetText) return [{ kind: "text", text: "" }];
-
-  const permissionRequest = analysisMode
-    ? null
-    : parsePermissionRequestFromText(targetText);
-  if (permissionRequest) {
-    const segments: Segment[] = [];
-    if (permissionRequest.display.trim()) {
-      segments.push({ kind: "text", text: permissionRequest.display });
-    }
-    segments.push({ kind: "permission", payload: permissionRequest.payload });
-    return segments;
-  }
-
-  // Build a list of match regions sorted by position
-  const regions: Array<{ start: number; end: number; segment: Segment }> = [];
-
-  if (analysisMode) {
-    const XML_RE =
-      /<(thought|analysis|reasoning|tool_calls?|tools?|action|providers?|response|text)\b[^>]*>([\s\S]*?)(?:<\/\1>|$)/gi;
-    let m: RegExpExecArray | null = XML_RE.exec(targetText);
-    while (m !== null) {
-      regions.push({
-        start: m.index,
-        end: m.index + m[0].length,
-        segment: {
-          kind: "analysis-xml",
-          tag: m[1].toLowerCase(),
-          content: m[2],
-        },
-      });
-      m = XML_RE.exec(targetText);
-    }
-  }
-
-  // 1. Find [CONFIG:pluginId] markers
-  CONFIG_RE.lastIndex = 0;
-  let m: RegExpExecArray | null = CONFIG_RE.exec(targetText);
-  while (m !== null) {
-    regions.push({
-      start: m.index,
-      end: m.index + m[0].length,
-      segment: { kind: "config", pluginId: m[1] },
-    });
-    m = CONFIG_RE.exec(targetText);
-  }
-
-  // 1b. Registry-driven inline widgets (choice/followups/form/task and any
-  // plugin-registered marker). Each widget owns its parsing semantics; we only
-  // collect the regions and tag them with the widget kind for render dispatch.
-  for (const widget of getInlineWidgets()) {
-    for (const match of widget.parse(targetText)) {
-      regions.push({
-        start: match.start,
-        end: match.end,
-        segment: {
-          kind: "widget",
-          widgetKind: widget.kind,
-          data: match.data,
-        },
-      });
-    }
-  }
-
-  // 2. Find fenced JSON that is a UiSpec (Generate Mode / legacy format)
-  FENCED_JSON_RE.lastIndex = 0;
-  m = FENCED_JSON_RE.exec(targetText);
-  while (m !== null) {
-    const json = m[1].trim();
-    const parsed = tryParse(json);
-    if (parsed && isUiSpec(parsed)) {
-      regions.push({
-        start: m.index,
-        end: m.index + m[0].length,
-        segment: { kind: "ui-spec", spec: parsed, raw: json },
-      });
-    }
-    m = FENCED_JSON_RE.exec(targetText);
-  }
-
-  // 3. Find inline JSONL patch blocks (Chat Mode)
-  for (const patch of findPatchRegions(targetText)) {
-    // Skip if this region overlaps with an already-found fenced block
-    const overlaps = regions.some(
-      (r) => patch.start < r.end && patch.end > r.start,
-    );
-    if (!overlaps) {
-      regions.push({
-        start: patch.start,
-        end: patch.end,
-        segment: { kind: "ui-spec", spec: patch.spec, raw: patch.raw },
-      });
-    }
-  }
-
-  // No special content found — return plain text
-  if (regions.length === 0) {
-    return [{ kind: "text", text: targetText }];
-  }
-
-  // Sort by start position, then interleave with text segments
-  regions.sort((a, b) => a.start - b.start);
-  const segments: Segment[] = [];
-  let cursor = 0;
-
-  for (const r of regions) {
-    // Skip overlapping regions
-    if (r.start < cursor) continue;
-
-    // Push preceding text
-    if (r.start > cursor) {
-      const t = targetText.slice(cursor, r.start);
-      if (t.trim()) segments.push({ kind: "text", text: t });
-    }
-    segments.push(r.segment);
-    cursor = r.end;
-  }
-
-  // Trailing text
-  if (cursor < targetText.length) {
-    const t = targetText.slice(cursor);
-    if (t.trim()) segments.push({ kind: "text", text: t });
-  }
-
-  return segments;
-}
-
 // ── InlinePluginConfig ──────────────────────────────────────────────
 
-/** Normalize plugin ID: strip @scope/plugin- prefix so both "discord" and "@elizaos/plugin-discord" resolve. */
-function normalizePluginId(id: string): string {
-  return id.replace(/^@[^/]+\/plugin-/, "");
-}
-
-function buildInlinePluginConfigModel(
-  plugin: PluginInfo | null,
-  values: Record<string, unknown>,
-): {
-  hasConfigurableParams: boolean;
-  hints: Record<string, ConfigUiHint>;
-  mergedValues: Record<string, unknown>;
-  schema: JsonSchemaObject | null;
-  setKeys: Set<string>;
-} {
-  const pluginParams = plugin?.parameters ?? [];
-  const hasConfigurableParams = pluginParams.length > 0;
-  if (!hasConfigurableParams || !plugin?.id) {
-    return {
-      hasConfigurableParams: false,
-      hints: {},
-      mergedValues: values,
-      schema: null,
-      setKeys: new Set<string>(),
-    };
-  }
-
-  const auto = paramsToSchema(pluginParams, plugin.id);
-  if (plugin.configUiHints) {
-    for (const [key, serverHint] of Object.entries(plugin.configUiHints)) {
-      auto.hints[key] = { ...auto.hints[key], ...serverHint };
-    }
-  }
-
-  const initialValues: Record<string, unknown> = {};
-  const setKeys = new Set<string>();
-  for (const param of pluginParams) {
-    if (param.isSet) {
-      setKeys.add(param.key);
-    }
-    if (param.isSet && !param.sensitive && param.currentValue != null) {
-      initialValues[param.key] = param.currentValue;
-    }
-  }
-
-  for (const [key, value] of Object.entries(values)) {
-    if (value != null && value !== "") {
-      setKeys.add(key);
-    }
-  }
-
-  return {
-    hasConfigurableParams: true,
-    hints: auto.hints,
-    mergedValues: { ...initialValues, ...values },
-    schema: auto.schema as JsonSchemaObject,
-    setKeys,
-  };
-}
-
-function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
+export function InlinePluginConfig({
+  pluginId: rawPluginId,
+}: {
+  pluginId: string;
+}) {
   const pluginId = normalizePluginId(rawPluginId);
   const [plugin, setPlugin] = useState<PluginInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -549,7 +147,11 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
   const [dismissed, setDismissed] = useState(false);
   const mountedRef = useRef(true);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { setActionNotice, loadPlugins, t } = useApp();
+  const { setActionNotice, loadPlugins, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    loadPlugins: s.loadPlugins,
+    t: s.t,
+  }));
 
   // Track mount state — reset to true on each mount (needed for StrictMode
   // which unmounts/remounts and would leave the ref false otherwise).
@@ -841,9 +443,17 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
 
 // ── UiSpec block ────────────────────────────────────────────────────
 
-function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
-  const { t } = useApp();
-  const { sendActionMessage } = useApp();
+export function MessageUiSpecBlock({
+  spec,
+  raw,
+}: {
+  spec: UiSpec;
+  raw: string;
+}) {
+  const { t, sendActionMessage } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    sendActionMessage: s.sendActionMessage,
+  }));
   const [showRaw, setShowRaw] = useState(false);
 
   const handleAction = useCallback(
@@ -941,26 +551,7 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
   );
 }
 
-function sensitiveRequestStatusLabel(
-  status: NonNullable<ConversationMessage["secretRequest"]>["status"],
-): string {
-  switch (status) {
-    case "saved":
-    case "submitted":
-    case "fulfilled":
-      return "Saved";
-    case "expired":
-      return "Expired";
-    case "cancelled":
-      return "Cancelled";
-    case "failed":
-      return "Failed";
-    default:
-      return "Pending";
-  }
-}
-
-function SensitiveRequestBlock({
+export function SensitiveRequestBlock({
   request,
 }: {
   request: NonNullable<ConversationMessage["secretRequest"]>;
@@ -988,13 +579,14 @@ function SensitiveRequestBlock({
   const canStartOAuth =
     status === "pending" &&
     request.form?.kind === "oauth" &&
-    typeof request.form.authorizationUrl === "string" &&
-    request.form.authorizationUrl.length > 0;
+    isHttpsAuthorizationUrl(request.form.authorizationUrl);
 
   const canSubmit = fields.every((field) => {
     if (!field.required) return true;
     return (values[field.name] ?? "").trim().length > 0;
   });
+
+  const tunnel = request.delivery?.tunnel;
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -1003,14 +595,32 @@ function SensitiveRequestBlock({
       setSaving(true);
       setError(null);
       try {
-        const secrets: Record<string, string> = {};
-        for (const field of fields) {
-          const value = values[field.name];
-          if (value != null && value !== "") {
-            secrets[field.name] = value;
+        if (tunnel) {
+          // Tunnel path (#10317): route each submitted value to the waiting
+          // child via the one-shot CredentialTunnelService. MUTUALLY EXCLUSIVE
+          // with updateSecrets — a tunnel-routed value is never written to the
+          // long-term agent secret store.
+          for (const field of fields) {
+            const value = values[field.name];
+            if (value != null && value !== "") {
+              await client.tunnelCredential({
+                credentialScopeId: tunnel.credentialScopeId,
+                childSessionId: tunnel.childSessionId,
+                key: field.name,
+                value,
+              });
+            }
           }
+        } else {
+          const secrets: Record<string, string> = {};
+          for (const field of fields) {
+            const value = values[field.name];
+            if (value != null && value !== "") {
+              secrets[field.name] = value;
+            }
+          }
+          await client.updateSecrets(secrets);
         }
-        await client.updateSecrets(secrets);
         setValues({});
         setStatus("saved");
       } catch (caught) {
@@ -1022,7 +632,7 @@ function SensitiveRequestBlock({
         setSaving(false);
       }
     },
-    [canCollectSecret, canSubmit, fields, values],
+    [canCollectSecret, canSubmit, fields, tunnel, values],
   );
 
   return (
@@ -1049,6 +659,64 @@ function SensitiveRequestBlock({
         <form className="space-y-3" onSubmit={handleSubmit}>
           {fields.map((field) => {
             const label = field.label ?? field.name;
+            const isUpload = field.input === "image" || field.input === "file";
+            if (isUpload) {
+              const accept =
+                field.mimeTypes && field.mimeTypes.length > 0
+                  ? field.mimeTypes.join(",")
+                  : field.input === "image"
+                    ? "image/*"
+                    : undefined;
+              const hasValue = Boolean(values[field.name]);
+              return (
+                <label key={field.name} className="block text-xs space-y-1">
+                  <span className="font-medium">{label}</span>
+                  <input
+                    aria-label={label}
+                    data-testid={`sensitive-request-file-${field.name}`}
+                    className="w-full border border-border bg-bg px-2 py-1.5 text-sm"
+                    type="file"
+                    accept={accept}
+                    // Mobile: prefer the rear camera for image capture (2FA QR/seed).
+                    capture={
+                      field.input === "image" ? "environment" : undefined
+                    }
+                    required={field.required && !hasValue}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      if (!file) {
+                        setValues((previous) => {
+                          const next = { ...previous };
+                          delete next[field.name];
+                          return next;
+                        });
+                        return;
+                      }
+                      if (field.maxBytes && file.size > field.maxBytes) {
+                        setError(
+                          `${label} is too large (max ${Math.round(
+                            field.maxBytes / 1024,
+                          )} KB).`,
+                        );
+                        event.currentTarget.value = "";
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setError(null);
+                        setValues((previous) => ({
+                          ...previous,
+                          [field.name]: String(reader.result ?? ""),
+                        }));
+                      };
+                      reader.onerror = () =>
+                        setError(`Could not read ${label}.`);
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+              );
+            }
             return (
               <label key={field.name} className="block text-xs space-y-1">
                 <span className="font-medium">{label}</span>
@@ -1085,7 +753,12 @@ function SensitiveRequestBlock({
           authorizing={authorizing}
           onStart={() => {
             const url = request.form?.authorizationUrl;
-            if (!url) return;
+            // Re-validate at the sink (defense-in-depth): only an https consent
+            // URL may reach window.open.
+            if (!isHttpsAuthorizationUrl(url)) {
+              setError("Invalid authorization URL.");
+              return;
+            }
             try {
               // SECURITY: we never embed the authorizationUrl in chat text.
               // It is only opened in a popup. We deliberately do NOT pass
@@ -1132,6 +805,57 @@ function SensitiveRequestBlock({
   );
 }
 
+export function MessagePermissionCard({
+  payload,
+}: {
+  payload: PermissionCardPayload;
+}) {
+  const { sendActionMessage } = useAppSelectorShallow((s) => ({
+    sendActionMessage: s.sendActionMessage,
+  }));
+
+  const permissionRegistry = useMemo(
+    () =>
+      isNative && !isDesktopPlatform()
+        ? createMobileSignalsPermissionsRegistry(undefined, client)
+        : createClientPermissionsRegistry(client),
+    [],
+  );
+
+  const handlePermissionFallback = useCallback(
+    (feature: string, permission: string) => {
+      void sendActionMessage(
+        `__permission_card__:use_fallback feature=${feature} permission=${permission}`,
+      );
+    },
+    [sendActionMessage],
+  );
+
+  const handlePermissionGranted = useCallback(
+    (feature: string, permission: string) => {
+      void sendActionMessage(
+        `__permission_card__:granted feature=${feature} permission=${permission}`,
+      );
+    },
+    [sendActionMessage],
+  );
+
+  return renderPermissionCardFromPayload(payload, {
+    registry: permissionRegistry,
+    onOpenSettings: async (permission) => {
+      if (isNative && !isDesktopPlatform()) {
+        await openMobilePermissionSettings(permission);
+        return;
+      }
+      await client.openPermissionSettings(permission);
+    },
+    onFallback: ({ feature, permission }) =>
+      handlePermissionFallback(feature, permission),
+    onGranted: () =>
+      handlePermissionGranted(payload.feature, payload.permission),
+  });
+}
+
 function OAuthRequestPanel({
   form,
   authorizing,
@@ -1174,8 +898,13 @@ export function MessageContent({
   analysisMode = false,
 }: MessageContentProps) {
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
-  const app = useApp();
-  const { sendActionMessage } = app;
+  const { sendActionMessage, setTab, handleChatRetry } = useAppSelectorShallow(
+    (s) => ({
+      sendActionMessage: s.sendActionMessage,
+      setTab: s.setTab,
+      handleChatRetry: s.handleChatRetry,
+    }),
+  );
   // Composer prefill for followup `prompt` chips. Outside the chat provider,
   // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
@@ -1196,85 +925,18 @@ export function MessageContent({
     }
   }, [message.text, analysisMode]);
 
-  const handleChoice = useCallback(
-    (value: string) => {
-      void sendActionMessage(value);
-    },
-    [sendActionMessage],
-  );
-
-  // Followup `navigate` chip: deliver the passive view-switch SUGGESTION as the
-  // same `eliza:navigate:view` event the VIEWS action uses. A `/`-prefixed
-  // payload is a viewPath; anything else is treated as a viewId.
-  const handleNavigate = useCallback((payload: string) => {
-    if (typeof window === "undefined") return;
-    const detail = payload.startsWith("/")
-      ? { viewPath: payload }
-      : { viewId: payload };
-    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
-  }, []);
-
-  // Followup `prompt` chip: prefill the composer (falls back to send inside the
-  // widget when no composer is mounted).
-  const handlePrompt = useCallback(
-    (payload: string) => {
-      setChatInput(payload);
-    },
-    [setChatInput],
-  );
-
-  // Generic in-chat form submit: send the structured result back as a message
-  // through the existing action-message pipeline.
-  const handleFormSubmit = useCallback(
-    (formId: string, values: Record<string, FormResultValue>) => {
-      void sendActionMessage(
-        `[form:submit ${formId}] ${JSON.stringify(values)}`,
-      );
-    },
-    [sendActionMessage],
-  );
-
-  // Handlers handed to every inline widget at render. Self-contained widgets
-  // (the task card) ignore them; interactive ones drive the chat surface.
-  const inlineWidgetCtx = useMemo<InlineWidgetContext>(
-    () => ({
-      sendAction: handleChoice,
-      navigate: handleNavigate,
-      prefillComposer: handlePrompt,
-      submitForm: handleFormSubmit,
-    }),
-    [handleChoice, handleNavigate, handlePrompt, handleFormSubmit],
-  );
-
-  const permissionRegistry = useMemo(
-    () =>
-      isNative && !isDesktopPlatform()
-        ? createMobileSignalsPermissionsRegistry(undefined, client)
-        : createClientPermissionsRegistry(client),
-    [],
-  );
-
-  const handlePermissionFallback = useCallback(
-    (feature: string, permission: string) => {
-      void sendActionMessage(
-        `__permission_card__:use_fallback feature=${feature} permission=${permission}`,
-      );
-    },
-    [sendActionMessage],
-  );
-
-  const handlePermissionGranted = useCallback(
-    (feature: string, permission: string) => {
-      void sendActionMessage(
-        `__permission_card__:granted feature=${feature} permission=${permission}`,
-      );
-    },
-    [sendActionMessage],
+  // Handlers handed to every inline widget at render: the SAME shared contract
+  // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS
+  // chip / FORM submit behaves identically on both. Self-contained widgets (the
+  // task card) ignore them; interactive ones drive the chat surface.
+  const inlineWidgetCtx = useInlineWidgetContext(
+    sendActionMessage,
+    setChatInput,
   );
 
   const handleOpenSettings = useCallback(() => {
-    app.setTab?.("settings");
-  }, [app.setTab]);
+    setTab?.("settings");
+  }, [setTab]);
 
   const handleDownloadDefaultLocalModel = useCallback(async () => {
     const modelId = message.localInference?.modelId;
@@ -1367,6 +1029,33 @@ export function MessageContent({
     );
   }
 
+  // Transient server failures (the agent was rate-limited or the provider had a
+  // hiccup) render the graceful message plus a one-tap Retry that resends the
+  // preceding user turn, so a stalled turn isn't a dead end the user has to
+  // retype. `no_provider`/`insufficient_credits` are excluded — a retry can't
+  // fix those (they have their own Settings / billing affordances).
+  if (
+    message.failureKind === "rate_limited" ||
+    message.failureKind === "provider_issue"
+  ) {
+    return (
+      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
+        <div className="text-muted whitespace-pre-wrap mb-2">
+          {message.text}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            if (message.id) handleChatRetry(message.id);
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   // Fast path: single plain-text segment (most messages)
   if (segments.length === 1 && segments[0].kind === "text") {
     return (
@@ -1394,16 +1083,18 @@ export function MessageContent({
           const baseKey =
             seg.kind === "text"
               ? `text:${seg.text.slice(0, 80)}`
-              : seg.kind === "config"
-                ? `config:${seg.pluginId}`
-                : seg.kind === "widget"
-                  ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
-                    `widget:${seg.widgetKind}`)
-                  : seg.kind === "permission"
-                    ? `permission:${seg.payload.feature}`
-                    : seg.kind === "analysis-xml"
-                      ? `analysis:${seg.tag}`
-                      : `ui:${seg.raw.slice(0, 80)}`;
+              : seg.kind === "code"
+                ? `code:${seg.code.slice(0, 80)}`
+                : seg.kind === "config"
+                  ? `config:${seg.pluginId}`
+                  : seg.kind === "widget"
+                    ? (getInlineWidget(seg.widgetKind)?.keyFor?.(seg.data) ??
+                      `widget:${seg.widgetKind}`)
+                    : seg.kind === "permission"
+                      ? `permission:${seg.payload.feature}`
+                      : seg.kind === "analysis-xml"
+                        ? `analysis:${seg.tag}`
+                        : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1413,6 +1104,18 @@ export function MessageContent({
                   key={segmentKey}
                   text={seg.text}
                   boldSlashCommand={message.role === "user"}
+                />
+              );
+            case "code":
+              return (
+                <CodeBlock
+                  key={segmentKey}
+                  className="my-2"
+                  value={seg.code}
+                  wrap
+                  copyable
+                  data-testid="code-block"
+                  {...(seg.lang ? { "data-lang": seg.lang } : {})}
                 />
               );
             case "analysis-xml":
@@ -1438,7 +1141,11 @@ export function MessageContent({
               );
             case "ui-spec":
               return (
-                <UiSpecBlock key={segmentKey} spec={seg.spec} raw={seg.raw} />
+                <MessageUiSpecBlock
+                  key={segmentKey}
+                  spec={seg.spec}
+                  raw={seg.raw}
+                />
               );
             case "widget": {
               const widget = getInlineWidget(seg.widgetKind);
@@ -1448,31 +1155,7 @@ export function MessageContent({
             }
             case "permission":
               return (
-                <PermissionCard
-                  key={segmentKey}
-                  permission={seg.payload.permission}
-                  reason={seg.payload.reason}
-                  feature={seg.payload.feature}
-                  fallbackOffered={seg.payload.fallbackOffered}
-                  fallbackLabel={seg.payload.fallbackLabel}
-                  registry={permissionRegistry}
-                  onOpenSettings={async (permission) => {
-                    if (isNative && !isDesktopPlatform()) {
-                      await openMobilePermissionSettings(permission);
-                      return;
-                    }
-                    await client.openPermissionSettings(permission);
-                  }}
-                  onFallback={({ feature, permission }) =>
-                    handlePermissionFallback(feature, permission)
-                  }
-                  onGranted={() =>
-                    handlePermissionGranted(
-                      seg.payload.feature,
-                      seg.payload.permission,
-                    )
-                  }
-                />
+                <MessagePermissionCard key={segmentKey} payload={seg.payload} />
               );
             default:
               return null;

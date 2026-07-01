@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.book-hotel-with-loyalty-number",
   title: "Hotel booking attaches the user's loyalty number from profile",
   domain: "lifeops.travel",

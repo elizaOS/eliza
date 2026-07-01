@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HandlerCallback, IAgentRuntime, Memory } from "../../types";
+import { createMockRuntime } from "../../testing/mock-runtime";
+import type { HandlerCallback, Memory } from "../../types";
 import { ModelType } from "../../types";
 import { wrapSingleTurnVisibleCallback } from "../message";
 
 describe("action callback voice rewriting", () => {
 	it("rewrites action callback text through TEXT_SMALL and delivers parsed natural language", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
-		const runtime = {
+		const runtime = createMockRuntime({
 			agentId: "agent",
 			character: {
 				name: "Example",
@@ -29,7 +30,7 @@ describe("action callback voice rewriting", () => {
 					});
 				},
 			),
-		} as unknown as IAgentRuntime;
+		});
 		const message = {
 			id: "message",
 			roomId: "room",
@@ -53,12 +54,12 @@ describe("action callback voice rewriting", () => {
 
 	it("does not rewrite passive reply callbacks", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
-		const runtime = {
+		const runtime = createMockRuntime({
 			agentId: "agent",
 			character: { name: "Example" },
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 			useModel: vi.fn(),
-		} as unknown as IAgentRuntime;
+		});
 		const message = {
 			id: "message",
 			roomId: "room",

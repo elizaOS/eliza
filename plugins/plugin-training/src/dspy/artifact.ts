@@ -19,6 +19,15 @@ export type DspyArtifactTask =
   | "action_planner"
   | "response"
   | "media_description"
+  | "view_context"
+  | "calendar_extract"
+  | "schedule_plan"
+  | "reminder_dispatch"
+  | "inbox_triage"
+  | "meeting_prep"
+  | "morning_brief"
+  | "health_checkin"
+  | "screentime_recap"
   | "action_descriptions"
   | "autonomy";
 

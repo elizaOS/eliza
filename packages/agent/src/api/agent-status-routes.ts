@@ -1,7 +1,5 @@
 /**
  * Agent self-status and ERC-8004 registry inline routes.
- *
- * Extracted from server.ts to reduce file size.
  */
 
 import type http from "node:http";
@@ -21,7 +19,7 @@ interface RegistryServiceStatic {
   defaultCapabilitiesHash: () => string;
 }
 
-interface ElizaMakerRegistryService {
+interface AgentRegistryService {
   getStatus(): Promise<Record<string, unknown>>;
   register(options: {
     name: string;
@@ -39,19 +37,11 @@ interface ElizaMakerRegistryService {
   getChainId(): Promise<number>;
 }
 
-const ELIZAMAKER_REGISTRY_MODULE: string = "@elizaos/plugin-elizamaker";
-
-async function getElizaMakerRegistryServiceIfAvailable(): Promise<ElizaMakerRegistryService | null> {
-  try {
-    const loaded = (await import(
-      /* @vite-ignore */ ELIZAMAKER_REGISTRY_MODULE
-    )) as {
-      getElizaMakerRegistryService?: () => ElizaMakerRegistryService | null;
-    };
-    return loaded.getElizaMakerRegistryService?.() ?? null;
-  } catch {
-    return null;
-  }
+// The on-chain ERC-8004 registry backend was provided by an external plugin
+// that is no longer bundled, so this resolver always reports the service as
+// unavailable and the registry routes degrade to "not configured" / 503.
+function getRegistryServiceIfAvailable(): AgentRegistryService | null {
+  return null;
 }
 
 interface AwarenessRegistryLike {
@@ -291,7 +281,7 @@ export async function handleAgentStatusRoutes(
 
   if (!pathname.startsWith("/api/registry")) return false;
 
-  const registryService = await getElizaMakerRegistryServiceIfAvailable();
+  const registryService = getRegistryServiceIfAvailable();
 
   if (method === "GET" && pathname === "/api/registry/status") {
     if (!registryService) {

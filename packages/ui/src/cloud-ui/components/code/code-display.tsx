@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 import { cn } from "../../lib/utils";
 import { SyntaxHighlighter } from "./prism-light";
@@ -43,7 +44,15 @@ const elizaCodeTheme = {
   important: { color: "#569CD6", fontWeight: "bold" },
 };
 
-export function CodeDisplay({
+const codeCustomStyle = {
+  margin: 0,
+  padding: "16px",
+  background: "transparent",
+  fontSize: "13px",
+  lineHeight: "1.6",
+};
+
+export const CodeDisplay = memo(function CodeDisplay({
   code,
   language = "bash",
   className,
@@ -59,13 +68,7 @@ export function CodeDisplay({
         <SyntaxHighlighter
           language={language}
           style={elizaCodeTheme}
-          customStyle={{
-            margin: 0,
-            padding: "16px",
-            background: "transparent",
-            fontSize: "13px",
-            lineHeight: "1.6",
-          }}
+          customStyle={codeCustomStyle}
           wrapLongLines={false}
           showLineNumbers={false}
           PreTag="div"
@@ -75,4 +78,4 @@ export function CodeDisplay({
       </div>
     </div>
   );
-}
+});

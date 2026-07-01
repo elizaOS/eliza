@@ -73,10 +73,13 @@ function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
   return (ctx.runtime?.getService?.(WORKFLOW_SERVICE_TYPE) as WorkflowService | null) ?? null;
 }
 
+function isCatalogLike(value: unknown): value is CatalogLike {
+  return isRecord(value) && typeof value.listGroups === 'function';
+}
+
 function getConnectorTargetCatalog(ctx: WorkflowRouteContext): CatalogLike | null {
   const raw = ctx.runtime?.getService?.('connector_target_catalog');
-  const candidate = raw as unknown as CatalogLike | undefined;
-  return candidate && typeof candidate.listGroups === 'function' ? candidate : null;
+  return isCatalogLike(raw) ? raw : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -247,6 +250,33 @@ async function handleGet(
   sendJson(ctx, 200, await service.getWorkflow(id));
 }
 
+async function handleListRevisions(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  const url = new URL(`http://x${ctx.req.url ?? ''}`);
+  const rawLimit = url.searchParams.get('limit');
+  const limit = Math.min(Math.max(1, Number(rawLimit) || 20), 50);
+  const [workflow, revisions] = await Promise.all([
+    service.getWorkflow(id),
+    service.listWorkflowRevisions(id, limit),
+  ]);
+  sendJson(ctx, 200, {
+    currentVersionId: workflow.versionId,
+    revisions,
+  });
+}
+
+async function handleRestoreRevision(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string,
+  versionId: string
+): Promise<void> {
+  sendJson(ctx, 200, await service.restoreWorkflowRevision(id, versionId));
+}
+
 async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
   const body = await readJsonBody(ctx.req, ctx.res);
   if (!isRecord(body)) {
@@ -392,6 +422,17 @@ async function handleListExecutions(
   sendJson(ctx, 200, { executions: response.data });
 }
 
+async function handleEvaluationSamples(
+  ctx: WorkflowRouteContext,
+  service: WorkflowService,
+  id: string
+): Promise<void> {
+  const url = new URL(`http://x${ctx.req.url ?? ''}`);
+  const rawLimit = url.searchParams.get('limit');
+  const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
+  sendJson(ctx, 200, await service.getWorkflowEvaluationSuite(id, limit));
+}
+
 async function handleRunWorkflow(
   ctx: WorkflowRouteContext,
   service: WorkflowService,
@@ -466,6 +507,23 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       await handleGet(ctx, service, id);
       return;
     }
+    if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/revisions`) {
+      await handleListRevisions(ctx, service, id);
+      return;
+    }
+    if (
+      id &&
+      method === 'POST' &&
+      path.startsWith(`/workflows/${encodeURIComponent(id)}/revisions/`)
+    ) {
+      const prefix = `/workflows/${encodeURIComponent(id)}/revisions/`;
+      const suffix = path.slice(prefix.length);
+      const versionId = suffix.endsWith('/restore') ? suffix.slice(0, -'/restore'.length) : '';
+      if (versionId) {
+        await handleRestoreRevision(ctx, service, id, decodeURIComponent(versionId));
+        return;
+      }
+    }
     if (id && method === 'PUT' && path === `/workflows/${encodeURIComponent(id)}`) {
       await handleWrite(ctx, service, id);
       return;
@@ -485,6 +543,14 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/run`) {
       await handleRunWorkflow(ctx, service, id);
+      return;
+    }
+    if (
+      id &&
+      method === 'GET' &&
+      path === `/workflows/${encodeURIComponent(id)}/evaluation-samples`
+    ) {
+      await handleEvaluationSamples(ctx, service, id);
       return;
     }
     if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/executions`) {

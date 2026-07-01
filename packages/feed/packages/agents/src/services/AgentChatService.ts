@@ -34,50 +34,13 @@ import { checkUserInput, logger } from "@feed/shared";
 import { v4 as uuidv4 } from "uuid";
 import { getEventBus } from "../communication/EventBus";
 import { AuthorizationError } from "../errors";
+import type {
+  CoordinatorDispatchParams,
+  CoordinatorDispatchResult,
+} from "../plugins/plugin-user-core/src/actions/dispatch-types";
 import { generateSnowflakeId } from "../shared/snowflake";
-import { agentService } from "./AgentService";
+import { agentService, type UserWithConfig } from "./AgentService";
 import { notifyTeamChatMessage } from "./team-chat-notifications";
-
-// =============================================================================
-// Types
-// =============================================================================
-
-/** Minimal broadcast function signature matching broadcastChatMessage from @feed/api */
-export type BroadcastFn = (
-  chatId: string,
-  message: {
-    id: string;
-    content: string;
-    chatId: string;
-    senderId: string;
-    type?: string;
-    createdAt: string;
-    metadata?: MessageMetadata | null;
-  },
-) => Promise<void>;
-
-export interface CoordinatorDispatchParams {
-  agentId: string;
-  ownerId: string;
-  /** The command/instruction to send to the agent */
-  message: string;
-  teamChatId: string;
-  ownerName?: string;
-  ownerUsername?: string;
-  /** Injected from route layer — avoids importing @feed/api in packages/agents */
-  broadcastFn: BroadcastFn;
-}
-
-export interface CoordinatorDispatchResult {
-  success: boolean;
-  response: string;
-  agentId: string;
-  agentUsername?: string;
-  actionsExecuted: number;
-  isLLMFailure: boolean;
-  /** Set on ownership / not-found failures */
-  error?: string;
-}
 
 // =============================================================================
 // Decision + Summary Templates
@@ -305,7 +268,7 @@ export async function dispatchAgentChat(
   }
 
   // --- Ownership verification (with fuzzy name fallback) ---
-  let agentWithConfig;
+  let agentWithConfig: UserWithConfig | null = null;
   let resolvedAgentId = agentId;
   try {
     agentWithConfig = await agentService.getAgentWithConfig(agentId, ownerId);
@@ -526,7 +489,9 @@ export async function dispatchAgentChat(
       state = await runtime.composeState(elizaMessage, agentProviders, true);
     } else {
       // Subsequent iterations: reuse state, skip redundant DB queries
-      state = lastState!;
+      state =
+        lastState ??
+        (await runtime.composeState(elizaMessage, agentProviders, true));
     }
 
     state.values = {
@@ -554,7 +519,7 @@ export async function dispatchAgentChat(
       ...state.data,
       // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
       actionResults:
-        traceActionResults as unknown as typeof state.data.actionResults,
+        traceActionResults as typeof state.data.actionResults,
     };
     state.values = {
       ...state.values,
@@ -632,13 +597,15 @@ export async function dispatchAgentChat(
     state.data = {
       ...state.data,
       actionParams,
+      broadcastFn,
+      dispatchAgentChat,
     };
 
     // Persist actionParams to stateCache so processActions' internal
     // composeState() preserves them (it re-composes from cache, discarding
     // any local state.data modifications).
     const stateCache = (
-      runtime as unknown as {
+      runtime as {
         stateCache?: Map<
           string,
           {
@@ -652,7 +619,12 @@ export async function dispatchAgentChat(
     if (stateCache && elizaMessage.id) {
       const cached = stateCache.get(elizaMessage.id);
       if (cached) {
-        cached.data = { ...cached.data, actionParams };
+        cached.data = {
+          ...cached.data,
+          actionParams,
+          broadcastFn,
+          dispatchAgentChat,
+        };
       }
     }
 
@@ -747,7 +719,7 @@ export async function dispatchAgentChat(
       // Fallback: check stateCache if callback didn't fire
       if (!actionResult) {
         const cachedState = (
-          runtime as unknown as { stateCache?: Map<string, unknown> }
+          runtime as { stateCache?: Map<string, unknown> }
         ).stateCache?.get(`${elizaMessage.id}_action_results`) as
           | {
               values?: {
@@ -841,7 +813,7 @@ export async function dispatchAgentChat(
       ...summaryState.data,
       // Cast: Feed ActionTraceResult is a superset of elizaos ActionResult
       actionResults:
-        traceActionResults as unknown as typeof summaryState.data.actionResults,
+        traceActionResults as typeof summaryState.data.actionResults,
     };
 
     const summaryPrompt = composePromptFromState({

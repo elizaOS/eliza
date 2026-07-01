@@ -61,6 +61,10 @@ import {
 // TTS in-process through the fused `eliza_inference_tts_*` ABI.
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
+  isAospEnabled,
+  resolveAospElizaInferenceLibPath,
+} from "./aosp-llama-paths.js";
+import {
   type AospFfiPointerHelpers,
   type AospFusedLlmSymbols,
   type AospFusedStreamingLlmBinding,
@@ -68,10 +72,6 @@ import {
   createAospStreamingLlmBinding,
   streamGenerate,
 } from "./aosp-llama-streaming.js";
-import {
-  isAospEnabled,
-  resolveAospElizaInferenceLibPath,
-} from "./aosp-llama-paths.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
@@ -239,6 +239,14 @@ export async function activateAospLocalInferenceModel(args: {
       path: args.modelPath,
       loadedAt,
     });
+    // Eagerly stage the on-device Kokoro voice when a local chat model is
+    // selected/activated, so the first spoken reply already uses the neural
+    // voice instead of the platform "android voice". Background + idempotent
+    // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
+    ensureKokoroTtsAssetsInBackground(
+      resolveBundleRootFromModelPath(args.modelPath),
+      tierSlugFromModelName(path.basename(args.modelPath)),
+    );
     return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
   } catch (err) {
     writeAospActiveModelState({
@@ -335,18 +343,19 @@ function normalizeChatRole(
  * and leave legacy `prompt` unset; without this bridge the native loader sees
  * an empty string and `eliza_inference_tokenize` returns zero tokens.
  *
- * The Eliza-1 bundle is a qwen3.5-family model (catalog tokenizerFamily
- * "qwen35"), so we render the qwen ChatML template
- * (`<|im_start|>role\n…<|im_end|>`) with a trailing `<|im_start|>assistant`
- * generation marker. The generate path MUST tokenize this with
- * parse_special=true so the role markers become real control tokens instead of
- * literal text the model parrots back (which is what produced replies like
- * "|im_start| user …"), and stops on `<|im_end|>`. If a non-qwen GGUF is ever
- * served through this path the template has to become family-aware (or call the
- * model's baked chat template).
+ * The Eliza-1 bundle is a Gemma 4 model, so we render the Gemma turn template
+ * (`<start_of_turn>role\n…<end_of_turn>`) with a trailing
+ * `<start_of_turn>model` generation marker. The generate path MUST tokenize
+ * this with parse_special=true so the turn delimiters become real control
+ * tokens instead of literal text the model parrots back, and stops on
+ * `<end_of_turn>`.
  */
-const QWEN_IM_START = "<|im_start|>";
-const QWEN_IM_END = "<|im_end|>";
+const GEMMA_START_OF_TURN = "<start_of_turn>";
+const GEMMA_END_OF_TURN = "<end_of_turn>";
+
+function gemmaRole(role: "system" | "user" | "assistant" | "tool"): string {
+  return role === "assistant" ? "model" : role;
+}
 
 export function flattenGenerateTextParamsForAospPrompt(
   params: GenerateTextParams,
@@ -355,8 +364,11 @@ export function flattenGenerateTextParamsForAospPrompt(
     return params.prompt;
   }
 
-  const chatmlBlock = (role: string, content: string) =>
-    `${QWEN_IM_START}${role}\n${content}${QWEN_IM_END}`;
+  const gemmaBlock = (
+    role: "system" | "user" | "assistant" | "tool",
+    content: string,
+  ) =>
+    `${GEMMA_START_OF_TURN}${gemmaRole(role)}\n${content}${GEMMA_END_OF_TURN}`;
 
   const messages = params.messages ?? [];
   if (messages.length > 0) {
@@ -369,17 +381,17 @@ export function flattenGenerateTextParamsForAospPrompt(
       typeof params.system === "string" &&
       params.system
     ) {
-      blocks.push(chatmlBlock("system", params.system.trim()));
+      blocks.push(gemmaBlock("system", params.system.trim()));
     }
     for (const message of messages) {
       const content = renderMessageContent(message.content);
       if (!content) continue;
-      blocks.push(chatmlBlock(normalizeChatRole(message.role), content));
+      blocks.push(gemmaBlock(normalizeChatRole(message.role), content));
     }
     if (blocks.length > 0) {
       const lastRole = normalizeChatRole(messages[messages.length - 1]?.role);
       if (lastRole !== "assistant") {
-        blocks.push(`${QWEN_IM_START}assistant\n`);
+        blocks.push(`${GEMMA_START_OF_TURN}model\n`);
       }
       return blocks.join("\n");
     }
@@ -394,7 +406,7 @@ export function flattenGenerateTextParamsForAospPrompt(
   }
 
   if (typeof params.system === "string" && params.system.length > 0) {
-    return `${chatmlBlock("system", params.system.trim())}\n${QWEN_IM_START}assistant\n`;
+    return `${gemmaBlock("system", params.system.trim())}\n${GEMMA_START_OF_TURN}model\n`;
   }
 
   return "";
@@ -406,14 +418,14 @@ export function buildGenerateArgsFromParams(
   const args: Parameters<AospLoader["generate"]>[0] = {
     prompt: flattenGenerateTextParamsForAospPrompt(params),
   };
-  // Always stop at qwen ChatML turn boundaries. With parse_special=true the
-  // model's <|im_end|> is its EOG token (the fused stream ends the turn on it),
-  // but the text stops are a belt-and-suspenders guard against the model
-  // continuing past its turn or opening a new <|im_start|> role.
+  // Always stop at Gemma turn boundaries. With parse_special=true the model's
+  // <end_of_turn> is its EOG token (the fused stream ends the turn on it), but
+  // the text stops are a belt-and-suspenders guard against the model
+  // continuing past its turn or opening a new <start_of_turn> role.
   args.stopSequences = [
     ...(params.stopSequences ?? []),
-    QWEN_IM_END,
-    QWEN_IM_START,
+    GEMMA_END_OF_TURN,
+    GEMMA_START_OF_TURN,
   ];
   if (params.maxTokens !== undefined) {
     args.maxTokens = params.maxTokens;
@@ -578,7 +590,7 @@ function readMtpTargetMeta(bundleDir: string): {
 
 function mtpMetadataAllowsStockAutoPair(bundleDir: string): boolean {
   const meta = readMtpTargetMeta(bundleDir);
-  if (!meta || meta.publishEligible !== true) return false;
+  if (meta?.publishEligible !== true) return false;
   if (mtpDrafterIsTargetCopy(bundleDir)) return false;
   if (
     meta.drafter?.finalElizaWeights === false ||
@@ -1085,12 +1097,13 @@ const AOSP_RECOMMENDED_MODELS: Record<
   AospRecommendedModel
 > = {
   chat: {
-    // The quantized 4B is the shipped mobile minimum/default chat model;
-    // 0.8B/2B are too small for quality chat. Mirrors the capacitor bridge
-    // and the catalog FIRST_RUN_DEFAULT_MODEL_ID.
-    id: "eliza-1-4b",
+    // The quantized 2B is the shipped mobile default chat model: entry tier,
+    // fits 8 GB-class phones, downloads fast, and is the model bundled into the
+    // AOSP image. Mirrors the capacitor bridge and the catalog
+    // FIRST_RUN_DEFAULT_MODEL_ID.
+    id: "eliza-1-2b",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/4b/text/eliza-1-4b-128k.gguf",
+    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
@@ -1191,7 +1204,7 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
   const tier = path.basename(bundleRoot) || "2b";
   const stagingDir = path.join(bundleRoot, "tts.staging");
   omnivoiceTtsDownloadInflight = (async () => {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     mkdirSync(stagingDir, { recursive: true });
     for (const name of OMNIVOICE_TTS_FILES) {
       const url = `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/${name}`;
@@ -1219,11 +1232,136 @@ function ensureOmnivoiceTtsAssetsInBackground(bundleRoot: string): void {
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      rmSync(stagingDir, { recursive: true, force: true });
+      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     })
     .finally(() => {
       omnivoiceTtsDownloadInflight = null;
     });
+}
+
+// Kokoro-82M is the small/fast on-device voice (catalog policy makes the mobile
+// 2b/4b tiers Kokoro-default). Like OmniVoice it isn't always bundled into
+// the APK, so fetch the acoustic GGUF + the af_sam speaker preset into the
+// bundle's `tts/kokoro/` dir — the exact dir ElizaBionicInferenceServer.tts()
+// and the fused Kokoro loader read. The on-device voice is an ESSENTIAL feature
+// (without it the app speaks with the platform TextToSpeech — the "android
+// voice"), so unlike the general recommended-model auto-download it fetches by
+// default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
+// `af_sam.bin` lives under voice/kokoro/voices/, not the per-tier bundle.
+const KOKORO_GGUF_FILE = "kokoro-82m-v1_0-Q4_K_M.gguf";
+const KOKORO_VOICE_FILE = "af_sam.bin";
+let kokoroTtsDownloadInflight: Promise<void> | null = null;
+
+// HF bundle tier slugs, longest-first so "27b-256k" matches before "27b".
+const ELIZA1_TIER_SLUGS = ["27b-256k", "27b", "9b", "4b", "2b"] as const;
+
+// Derive the HF bundle tier slug (e.g. "2b") from a chat model id or GGUF
+// filename like "eliza-1-2b-128k.gguf". The Kokoro voice URL is
+// `bundles/<tier>/tts/kokoro/...`; the old `path.basename(bundleRoot)`
+// derivation yielded "bundle" for the on-device `<files>/eliza-1/bundle`
+// layout and 404'd every Kokoro download (the device fell back to the platform
+// "android voice"). Defaults to the entry tier "2b" so the URL stays valid.
+function tierSlugFromModelName(modelNameOrId: string): string {
+  const lower = modelNameOrId.toLowerCase();
+  for (const slug of ELIZA1_TIER_SLUGS) {
+    if (lower.includes(`eliza-1-${slug}`)) return slug;
+  }
+  return "2b";
+}
+
+// Tier slug of the currently-assigned chat bundle, for the Kokoro voice URL.
+function resolveAssignedChatTierSlug(): string {
+  try {
+    const modelsDir = resolveBundledModelsDir();
+    const assigned = readAssignedBundledModels(modelsDir);
+    const manifest = readBundledModelManifest(modelsDir);
+    const fallback = fallbackFindBundledModels(modelsDir);
+    const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
+    return chatModel ? tierSlugFromModelName(path.basename(chatModel)) : "2b";
+  } catch {
+    return "2b";
+  }
+}
+
+function ensureKokoroTtsAssetsInBackground(
+  bundleRoot: string,
+  tier: string,
+): void {
+  if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
+  if (kokoroTtsDownloadInflight) return;
+  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
+  if (existsSync(kokoroDir)) return;
+  const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
+  kokoroTtsDownloadInflight = (async () => {
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
+    mkdirSync(stagingDir, { recursive: true });
+    const downloads: Array<{ url: string; name: string }> = [
+      {
+        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/${tier}/tts/kokoro/${KOKORO_GGUF_FILE}`,
+        name: KOKORO_GGUF_FILE,
+      },
+      {
+        url: `https://huggingface.co/elizaos/eliza-1/resolve/main/voice/kokoro/voices/${KOKORO_VOICE_FILE}`,
+        name: KOKORO_VOICE_FILE,
+      },
+    ];
+    for (const { url, name } of downloads) {
+      logger.info(
+        `[aosp-local-inference] Auto-downloading Kokoro voice ${name} from ${url}`,
+      );
+      const response = await fetch(url, { redirect: "follow" });
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `Kokoro voice download failed (${name}): HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+      await pipeline(
+        Readable.fromWeb(response.body as never),
+        createWriteStream(path.join(stagingDir, name)),
+      );
+    }
+    // Atomic publish: tts/kokoro/ appears only when both files are complete.
+    renameSync(stagingDir, kokoroDir);
+    logger.info(
+      `[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`,
+    );
+  })()
+    .catch((err) => {
+      logger.warn(
+        `[aosp-local-inference] Kokoro voice auto-download failed (falling back to system TTS): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
+    })
+    .finally(() => {
+      kokoroTtsDownloadInflight = null;
+    });
+}
+
+export function removeAospGeneratedStagingDir(
+  stagingDir: string,
+  bundleRoot: string,
+): void {
+  const root = path.resolve(bundleRoot);
+  const target = path.resolve(stagingDir);
+  if (
+    !path.basename(target).endsWith(".staging") ||
+    target === root ||
+    target === process.cwd() ||
+    target === path.parse(target).root ||
+    !target.startsWith(`${root}${path.sep}`)
+  ) {
+    throw new Error(
+      `[aosp-local-inference] Refusing to remove unsafe staging directory: ${stagingDir}`,
+    );
+  }
+  rmSync(target, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
 }
 
 /**
@@ -1983,7 +2121,7 @@ type BunFfiModule = {
 
 async function loadAospVoiceFfi(): Promise<BunFfiModule> {
   const ffiSpecifier = "bun" + ":ffi";
-  const ffi = (await import(ffiSpecifier)) as unknown as BunFfiModule;
+  const ffi = (await import(ffiSpecifier)) as BunFfiModule;
   if (
     typeof ffi.dlopen !== "function" ||
     typeof ffi.ptr !== "function" ||
@@ -2011,9 +2149,14 @@ function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
   } catch {
     return null;
   }
+  // Ensure the on-device Kokoro voice is present (the mobile tiers are
+  // Kokoro-default). Without tts/kokoro/, on-device TTS has nothing to
+  // synthesize and the app falls back to the platform "android voice". This
+  // fetches in the background; the platform TTS covers replies until it lands.
+  ensureKokoroTtsAssetsInBackground(bundleRoot, resolveAssignedChatTierSlug());
   if (!existsSync(path.join(bundleRoot, "tts"))) {
-    // No neural-voice assets yet — kick off a background fetch (system TTS
-    // covers replies meanwhile) and report unavailable for now.
+    // No neural-voice assets yet — also kick off the OmniVoice fetch (larger
+    // tiers ship it) and report unavailable for now.
     ensureOmnivoiceTtsAssetsInBackground(bundleRoot);
     return null;
   }
@@ -2069,7 +2212,9 @@ function readFfiStringAndFree(
   if (!raw || raw === 0n) return "(no diagnostic)";
   let text = "(unreadable diagnostic)";
   try {
-    text = ffi.CString ? new ffi.CString(Number(raw)).toString() : "(no CString)";
+    text = ffi.CString
+      ? new ffi.CString(Number(raw)).toString()
+      : "(no CString)";
   } catch {}
   try {
     symbols.eliza_inference_free_string?.(raw);
@@ -2425,6 +2570,7 @@ interface AospFusedTextLoaderState {
   bundleRoot: string;
   modelPath: string;
   gpuLayers?: number;
+  contextSize: number | null;
   draftModelPath: string | null;
 }
 
@@ -2455,8 +2601,8 @@ function tokenizeFused(
     state.ctx,
     helpers.ptr(textBuf),
     BigInt(textLen),
-    // add_special=1, parse_special=1 — render ChatML control tokens as real
-    // control tokens (the prompt is already ChatML-formatted upstream).
+    // add_special=1, parse_special=1 — render Gemma control tokens as real
+    // control tokens (the prompt is already Gemma-formatted upstream).
     1,
     1,
     helpers.ptr(outTokensPtr),
@@ -2590,7 +2736,7 @@ function dlopenFusedTextLib(ffi: BunFfiModule, libPath: string) {
  * created lazily on the first `loadModel`, with the bundle root derived from
  * the resolved `modelPath` — so the loader can be built at boot even before
  * the model has been downloaded (the lifecycle resolves/auto-downloads the
- * GGUF, then calls `loadModel(target)`). `generate` tokenizes the ChatML
+ * GGUF, then calls `loadModel(target)`). `generate` tokenizes the Gemma
  * prompt and runs the streaming open→prefill→next→close loop.
  */
 export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> {
@@ -2678,6 +2824,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           }),
           bundleRoot,
           modelPath: args.modelPath,
+          contextSize: args.contextSize ?? null,
           draftModelPath: null,
         };
       }
@@ -2704,6 +2851,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       }
 
       state.modelPath = args.modelPath;
+      state.contextSize = args.contextSize ?? state.contextSize ?? null;
       state.draftModelPath = draftModelPath;
       if (typeof args.gpuLayers === "number") {
         state.gpuLayers = args.gpuLayers;
@@ -2757,6 +2905,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         draftMax: active.draftModelPath ? 16 : 0,
         mtpDrafterPath: active.draftModelPath,
         disableThinking: false,
+        contextSize: active.contextSize,
       };
       const result = await streamGenerate(active.binding, {
         ctx: active.ctx,

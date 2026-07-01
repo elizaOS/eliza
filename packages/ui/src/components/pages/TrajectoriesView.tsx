@@ -1,5 +1,6 @@
 import { Download, Route, Trash2, XCircle } from "lucide-react";
 import {
+  type ComponentProps,
   type ReactNode,
   useCallback,
   useEffect,
@@ -8,21 +9,23 @@ import {
   useRef,
   useState,
 } from "react";
+import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
 import type {
   TrajectoryListResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -30,7 +33,7 @@ import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { Button } from "../ui/button";
+import { Button, type ButtonProps } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +57,109 @@ const STATUS_COLORS: Record<string, string> = {
 // Source tags are decorative metadata, not status — keep them all neutral.
 const SOURCE_FG = NEUTRAL_FG;
 
+function agentSafeId(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "trajectory"
+  );
+}
+
+function AgentToolbarButton({
+  agentId,
+  agentLabel,
+  agentDescription,
+  agentGroup = "trajectories-toolbar",
+  agentStatus,
+  onActivate,
+  ...buttonProps
+}: ButtonProps & {
+  agentId: string;
+  agentLabel: string;
+  agentDescription?: string;
+  agentGroup?: string;
+  agentStatus?: string;
+  onActivate?: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label: agentLabel,
+    group: agentGroup,
+    status: agentStatus,
+    description: agentDescription,
+    onActivate,
+  });
+
+  return <Button ref={ref} {...agentProps} {...buttonProps} />;
+}
+
+function AgentDropdownMenuItem({
+  agentId,
+  agentLabel,
+  agentDescription,
+  agentGroup = "trajectories-export",
+  ...itemProps
+}: ComponentProps<typeof DropdownMenuItem> & {
+  agentId: string;
+  agentLabel: string;
+  agentDescription?: string;
+  agentGroup?: string;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
+    id: agentId,
+    role: "menu-item",
+    label: agentLabel,
+    group: agentGroup,
+    description: agentDescription,
+  });
+
+  return <DropdownMenuItem ref={ref} {...agentProps} {...itemProps} />;
+}
+
+function AgentTrajectorySidebarItem({
+  trajectory,
+  selected,
+  statusColor,
+  onSelect,
+}: {
+  trajectory: TrajectoryRecord;
+  selected: boolean;
+  statusColor: string;
+  onSelect: () => void;
+}) {
+  const title = formatTrajectoryTimestamp(trajectory.createdAt, "smart");
+  useAgentElement({
+    id: `trajectory-${agentSafeId(trajectory.id)}`,
+    role: "list-item",
+    label: `Open trajectory ${title}`,
+    group: "trajectories-list",
+    status: selected ? "active" : trajectory.status,
+    description: "Select this trajectory and open its prompt/tool timeline",
+    onActivate: onSelect,
+  });
+
+  return (
+    <TrajectorySidebarItem
+      active={selected}
+      onSelect={onSelect}
+      callCount={trajectory.llmCallCount}
+      title={title}
+      sourceLabel={formatTrajectorySourceLabel(trajectory)}
+      sourceColor={SOURCE_FG}
+      statusLabel={trajectory.status}
+      statusColor={statusColor}
+      tokenLabel={`${formatTrajectoryTokenCount(
+        trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
+        { emptyLabel: "0" },
+      )} tokens`}
+      durationLabel={formatTrajectoryDuration(trajectory.durationMs)}
+    />
+  );
+}
+
 function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
   const parts = [trajectory.source];
   if (trajectory.scenarioId) parts.push(trajectory.scenarioId);
@@ -72,7 +178,8 @@ export function TrajectoriesView({
   selectedTrajectoryId: controlledId,
   onSelectTrajectory: controlledOnSelect,
 }: TrajectoriesViewProps) {
-  const { t, setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [error, setError] = useState<string | null>(null);
 
   // Self-manage selection when no external callback is provided (standalone mode).
@@ -163,13 +270,11 @@ export function TrajectoriesView({
     });
   }, [loadTrajectories, cacheKey]);
 
-  useEffect(() => {
-    // Poll for new turns in the background instead of a manual refresh button.
-    const interval = setInterval(() => {
-      void loadTrajectories({ silent: true });
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [loadTrajectories]);
+  // Poll for new turns in the background instead of a manual refresh button.
+  // Gated on document visibility so a backgrounded window stops polling.
+  useIntervalWhenDocumentVisible(() => {
+    void loadTrajectories({ silent: true });
+  }, 15000);
 
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
@@ -371,16 +476,19 @@ export function TrajectoriesView({
     >
       <SidebarScrollRegion>
         <SidebarPanel>
-          <SidebarContent.Toolbar className="mb-3 items-center justify-between gap-2">
-            <span className="text-sm font-medium text-txt-strong">
-              {t("trajectoriesview.Entries", {
-                defaultValue: "Entries",
-              })}
-            </span>
+          <SidebarContent.Toolbar className="mb-3 items-center justify-end gap-2">
             <SidebarContent.ToolbarActions>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
+                  <AgentToolbarButton
+                    agentId="trajectories-export-open"
+                    agentLabel="Open trajectory export menu"
+                    agentDescription="Open export options for trajectory logs"
+                    agentStatus={
+                      exporting || trajectories.length === 0
+                        ? "disabled"
+                        : "ready"
+                    }
                     variant="outline"
                     size="icon"
                     type="button"
@@ -389,31 +497,55 @@ export function TrajectoriesView({
                     title={t("common.export")}
                   >
                     <Download className="h-3 w-3" />
-                  </Button>
+                  </AgentToolbarButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => handleExport("json", true)}>
+                  <AgentDropdownMenuItem
+                    agentId="trajectories-export-json-prompts"
+                    agentLabel="Export trajectories as JSON with prompts"
+                    onClick={() => handleExport("json", true)}
+                  >
                     {t("trajectoriesview.JSONWithPrompts")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
+                  </AgentDropdownMenuItem>
+                  <AgentDropdownMenuItem
+                    agentId="trajectories-export-jsonl-native"
+                    agentLabel="Export trajectories as native JSONL training data"
                     onClick={() =>
                       handleExport("jsonl", true, "eliza_native_v1")
                     }
                   >
                     {t("trajectoriesview.JSONLNativeTraining")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport("json", false)}>
+                  </AgentDropdownMenuItem>
+                  <AgentDropdownMenuItem
+                    agentId="trajectories-export-json-redacted"
+                    agentLabel="Export trajectories as redacted JSON"
+                    onClick={() => handleExport("json", false)}
+                  >
                     {t("trajectoriesview.JSONRedacted")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport("csv", false)}>
+                  </AgentDropdownMenuItem>
+                  <AgentDropdownMenuItem
+                    agentId="trajectories-export-csv-summary"
+                    agentLabel="Export trajectories as CSV summary"
+                    onClick={() => handleExport("csv", false)}
+                  >
                     {t("trajectoriesview.CSVSummaryOnly")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport("zip", true)}>
+                  </AgentDropdownMenuItem>
+                  <AgentDropdownMenuItem
+                    agentId="trajectories-export-zip-folders"
+                    agentLabel="Export trajectories as ZIP folders"
+                    onClick={() => handleExport("zip", true)}
+                  >
                     {t("trajectoriesview.ZIPFolders")}
-                  </DropdownMenuItem>
+                  </AgentDropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <ConfirmDeleteControl
+                agentId="trajectories-delete-current-open"
+                agentLabel="Delete current trajectory"
+                agentGroup="trajectories-toolbar"
+                agentDescription="Open the confirmation controls for deleting the selected trajectory"
+                confirmAgentId="trajectories-delete-current-confirm"
+                cancelAgentId="trajectories-delete-current-cancel"
                 triggerVariant="outline"
                 triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
                 confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -436,6 +568,12 @@ export function TrajectoriesView({
                 }}
               />
               <ConfirmDeleteControl
+                agentId="trajectories-clear-all-open"
+                agentLabel="Clear all trajectories"
+                agentGroup="trajectories-toolbar"
+                agentDescription="Open the confirmation controls for deleting every trajectory"
+                confirmAgentId="trajectories-clear-all-confirm"
+                cancelAgentId="trajectories-clear-all-cancel"
                 triggerVariant="outline"
                 triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
                 confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -476,27 +614,12 @@ export function TrajectoriesView({
                   STATUS_COLORS[trajectory.status] ?? STATUS_COLORS.completed;
 
                 return (
-                  <TrajectorySidebarItem
+                  <AgentTrajectorySidebarItem
                     key={trajectory.id}
-                    active={selected}
-                    onSelect={() => onSelectTrajectory?.(trajectory.id)}
-                    callCount={trajectory.llmCallCount}
-                    title={formatTrajectoryTimestamp(
-                      trajectory.createdAt,
-                      "smart",
-                    )}
-                    sourceLabel={formatTrajectorySourceLabel(trajectory)}
-                    sourceColor={SOURCE_FG}
-                    statusLabel={trajectory.status}
+                    trajectory={trajectory}
+                    selected={selected}
                     statusColor={statusColor}
-                    tokenLabel={`${formatTrajectoryTokenCount(
-                      trajectory.totalPromptTokens +
-                        trajectory.totalCompletionTokens,
-                      { emptyLabel: "0" },
-                    )} tokens`}
-                    durationLabel={formatTrajectoryDuration(
-                      trajectory.durationMs,
-                    )}
+                    onSelect={() => onSelectTrajectory?.(trajectory.id)}
                   />
                 );
               })}
@@ -513,7 +636,14 @@ export function TrajectoriesView({
                 })}
               </span>
               <div className="flex gap-1.5">
-                <Button
+                <AgentToolbarButton
+                  agentId="trajectories-page-prev"
+                  agentLabel="Previous trajectories page"
+                  agentDescription="Move to the previous page of trajectory logs"
+                  agentStatus={page === 0 ? "disabled" : "ready"}
+                  onActivate={() =>
+                    setPage((current) => Math.max(0, current - 1))
+                  }
                   variant="outline"
                   size="sm"
                   type="button"
@@ -522,8 +652,13 @@ export function TrajectoriesView({
                   disabled={page === 0}
                 >
                   {t("common.prev")}
-                </Button>
-                <Button
+                </AgentToolbarButton>
+                <AgentToolbarButton
+                  agentId="trajectories-page-next"
+                  agentLabel="Next trajectories page"
+                  agentDescription="Move to the next page of trajectory logs"
+                  agentStatus={page >= totalPages - 1 ? "disabled" : "ready"}
+                  onActivate={() => setPage((current) => current + 1)}
                   variant="outline"
                   size="sm"
                   type="button"
@@ -532,7 +667,7 @@ export function TrajectoriesView({
                   disabled={page >= totalPages - 1}
                 >
                   {t("common.next")}
-                </Button>
+                </AgentToolbarButton>
               </div>
             </div>
           )}
@@ -549,12 +684,6 @@ export function TrajectoriesView({
         contentInnerClassName="mx-auto w-full max-w-[76rem]"
         data-testid="trajectories-view"
       >
-        <ChatSearchHint
-          noun="trajectories"
-          query={searchQuery}
-          className="mb-4"
-        />
-
         {error ? (
           <PagePanel.Notice tone="danger" className="mb-4">
             {error}
@@ -564,22 +693,24 @@ export function TrajectoriesView({
         {loading && trajectories.length === 0 ? (
           <ListSkeleton rows={8} />
         ) : !loading && trajectories.length === 0 ? (
-          <PagePanel.FeatureEmpty
-            className="rounded-sm"
+          <ChatEmptyStateWithRecommendations
             icon={Route}
             title={
               hasActiveFilters
                 ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
                 : t("trajectoriesview.NoTrajectoriesYet")
             }
-            description={
-              hasActiveFilters
-                ? undefined
-                : t("trajectoriesview.EmptyHint", {
-                    defaultValue:
-                      "Run the agent and turns will show up here.",
-                  })
-            }
+            recommendations={[
+              t("trajectoriesview.RecRunAgent", {
+                defaultValue: "Run the agent so a turn shows up here",
+              }),
+              t("trajectoriesview.RecSummarize", {
+                defaultValue: "Summarize what the agent did on its last turn",
+              }),
+              t("trajectoriesview.RecExplainPipeline", {
+                defaultValue: "Explain each stage of the reasoning pipeline",
+              }),
+            ]}
           />
         ) : detailTrajectoryId ? (
           <TrajectoryDetailView trajectoryId={detailTrajectoryId} />

@@ -4,9 +4,11 @@
  * validation and aggregation contracts the service and routes depend on.
  */
 
-import type { LifeOpsCalendarEvent, LifeOpsCalendarSummary } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { CalendarServiceError } from "../src/internal/errors.js";
 import {
   buildNextCalendarEventContext,
   normalizeCalendarAttendees,
@@ -16,10 +18,12 @@ import {
   resolveCalendarEventRange,
   resolveCalendarWindow,
 } from "../src/internal/calendar-normalize.js";
+import { CalendarServiceError } from "../src/internal/errors.js";
 import { mergeAggregatedCalendarFeedEvents } from "../src/service/CalendarService.js";
 
 function makeEvent(
-  overrides: Partial<LifeOpsCalendarEvent> & Pick<LifeOpsCalendarEvent, "id" | "startAt">,
+  overrides: Partial<LifeOpsCalendarEvent> &
+    Pick<LifeOpsCalendarEvent, "id" | "startAt">,
 ): LifeOpsCalendarEvent {
   return {
     externalId: overrides.id,
@@ -151,7 +155,10 @@ describe("resolveCalendarWindow", () => {
   });
 
   it("defaults to a single local day when no bounds are given", () => {
-    const { timeMin, timeMax } = resolveCalendarWindow({ now, timeZone: "UTC" });
+    const { timeMin, timeMax } = resolveCalendarWindow({
+      now,
+      timeZone: "UTC",
+    });
     expect(timeMin).toBe("2026-03-04T00:00:00.000Z");
     expect(timeMax).toBe("2026-03-05T00:00:00.000Z");
   });

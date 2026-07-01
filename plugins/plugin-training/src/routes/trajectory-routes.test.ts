@@ -25,11 +25,15 @@ function createResponse(): MockResponse {
   const response = {
     statusCode: 200,
     headers: {},
-    setHeader(name: string, value: string | number | readonly string[]) {
+    setHeader(
+      this: MockResponse,
+      name: string,
+      value: string | number | readonly string[],
+    ) {
       this.headers[name.toLowerCase()] = value;
       return this;
     },
-    end(body?: string | Uint8Array) {
+    end(this: MockResponse, body?: string | Uint8Array) {
       this.body = body;
       return this;
     },
@@ -268,5 +272,79 @@ describe("trajectory routes", () => {
       format: ELIZA_NATIVE_TRAJECTORY_FORMAT,
       trajectoryId: "traj-1",
     });
+  });
+
+  it("delegates search to the SQL reader so matches past the first 500 rows are returned with a DB-wide total", async () => {
+    // Seed 600 list items; only one (at index 550) carries the needle.
+    // The old route re-fetched limit:500/offset:0 then filtered in memory,
+    // which could never see index 550 and reported total as the match count
+    // inside that 500-window. The fixed route passes `search` to the SQL
+    // reader, which scans every row (id/scenario_id/batch_id/metadata/
+    // steps_json) and returns the DB-wide COUNT.
+    const NEEDLE = "needle-past-500";
+    const seeded = Array.from({ length: 600 }, (_, index) => ({
+      id: `traj-${index}`,
+      agentId: "agent-1",
+      source: "live",
+      status: "completed" as const,
+      startTime: 1_700_000_000_000 + index,
+      endTime: 1_700_000_001_000 + index,
+      durationMs: 1_000,
+      llmCallCount: 1,
+      providerAccessCount: 0,
+      totalPromptTokens: 10,
+      totalCompletionTokens: 5,
+      createdAt: new Date(1_700_000_000_000 + index).toISOString(),
+      // The needle lives in the persisted step content (steps_json) of one
+      // row at index 550 — well past the legacy 500-row in-memory window.
+      searchHaystack:
+        index === 550 ? `user asked about ${NEEDLE}` : "unrelated",
+    }));
+
+    const listTrajectories = vi.fn(
+      async (options: { limit?: number; offset?: number; search?: string }) => {
+        const limit = options.limit ?? 50;
+        const offset = options.offset ?? 0;
+        const needle = options.search?.toLowerCase();
+        const matched = needle
+          ? seeded.filter((row) =>
+              `${row.id} ${row.searchHaystack}`.toLowerCase().includes(needle),
+            )
+          : seeded;
+        const page = matched
+          .slice(offset, offset + limit)
+          .map(({ searchHaystack: _ignored, ...item }) => item);
+        return { trajectories: page, total: matched.length, offset, limit };
+      },
+    );
+
+    const logger = createLogger({ listTrajectories });
+    const response = createResponse();
+
+    const request = createRequest() as http.IncomingMessage & {
+      url?: string;
+      headers: Record<string, string>;
+    };
+    request.url = `/api/trajectories?search=${NEEDLE}&limit=20&offset=0`;
+    request.headers = { host: "localhost" };
+
+    await handleTrajectoryRoute(
+      request,
+      response,
+      createRuntime(logger),
+      "/api/trajectories",
+      "GET",
+    );
+
+    const body = parseJsonResponse(response);
+    const trajectories = body.trajectories as Array<{ id: string }>;
+
+    // (1) the match that lives past index 500 IS returned
+    expect(trajectories.map((t) => t.id)).toContain("traj-550");
+    // (2) total is the true DB-wide match count, not capped at the 500-window
+    expect(body.total).toBe(1);
+    expect(listTrajectories).toHaveBeenCalledWith(
+      expect.objectContaining({ search: NEEDLE, limit: 20, offset: 0 }),
+    );
   });
 });

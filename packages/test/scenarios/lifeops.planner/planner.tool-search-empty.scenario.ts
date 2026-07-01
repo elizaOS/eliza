@@ -69,6 +69,7 @@ function checkPlannerDidNotInventATool(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "planner.tool-search-empty",
   title:
     "Planner falls back to natural-language reply when no tool matches the request",

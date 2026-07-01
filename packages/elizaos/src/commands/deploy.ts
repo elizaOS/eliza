@@ -12,6 +12,11 @@ import path from "node:path";
 import pc from "picocolors";
 import type { DeployOptions } from "../types.js";
 
+export const DEPLOY_COMMAND_DESCRIPTION =
+  "Deploy the linked Eliza Cloud app and poll until READY";
+export const DEPLOY_DRY_RUN_DESCRIPTION =
+  "Print the deployment plan without network calls";
+
 const DOMAIN_REGEX = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 const DEFAULT_API_BASE_URL = "https://api.elizacloud.ai/api/v1";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;

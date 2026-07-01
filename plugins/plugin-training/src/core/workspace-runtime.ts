@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-export function discoverWorkspaceRoot(startDir = process.cwd()): string | undefined {
+export function discoverWorkspaceRoot(
+  startDir = process.cwd(),
+): string | undefined {
   let current = resolve(startDir);
   while (true) {
     if (

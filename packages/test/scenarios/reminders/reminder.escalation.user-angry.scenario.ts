@@ -34,6 +34,7 @@ function assertApiBody(options: {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.escalation.user-angry",
   title: "User tells agent to stop; agent de-escalates without disabling",
   domain: "reminders",

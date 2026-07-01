@@ -56,7 +56,7 @@ const anthropicProxyPlugin: Plugin = {
    * {inline, shared} enables; off / unset does not.
    */
   autoEnable: {
-    shouldEnable: (env): boolean => {
+    shouldEnable: (env: Record<string, string | undefined>): boolean => {
       const raw = env.CLAUDE_MAX_PROXY_MODE;
       if (!raw) return false;
       const mode = raw.trim().toLowerCase();

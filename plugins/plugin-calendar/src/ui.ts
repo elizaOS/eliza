@@ -12,14 +12,14 @@ export {
   type CalendarSectionProps,
 } from "./components/CalendarSection.js";
 export {
-  EventEditorDrawer,
   type EventEditorDefaults,
+  EventEditorDrawer,
   type EventEditorDrawerProps,
   type EventEditorMode,
 } from "./components/EventEditorDrawer.js";
 export {
   type CalendarViewMode,
-  useCalendarWeek,
   type UseCalendarWeekOptions,
   type UseCalendarWeekResult,
+  useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";

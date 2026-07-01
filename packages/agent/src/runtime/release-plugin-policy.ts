@@ -34,12 +34,10 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/ui",
   "@elizaos/app-model-tester",
   "@elizaos/plugin-documents",
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-training",
-  "@elizaos/plugin-vincent",
 ] as const;
 
 // Plugins excluded from the baseline release that can only be installed on a

@@ -139,7 +139,7 @@ describe("profiles — resolveActiveValue", () => {
       rules: [
         {
           keyPattern: KEY,
-          scope: { kind: "app", appName: "@elizaos/plugin-companion" },
+          scope: { kind: "app", appName: "@elizaos/plugin-feed" },
           profileId: "for-app",
         },
         {
@@ -152,7 +152,7 @@ describe("profiles — resolveActiveValue", () => {
 
     expect(
       await resolveActiveValue(vault, KEY, {
-        appName: "@elizaos/plugin-companion",
+        appName: "@elizaos/plugin-feed",
       }),
     ).toBe("sk-app");
     expect(

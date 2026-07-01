@@ -17,8 +17,9 @@
  *     pulling connectors itself.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent";
-import type { IAgentRuntime } from "@elizaos/core";
+import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph/service";
+import type { IAgentRuntime, NotificationService } from "@elizaos/core";
+import { logger, ServiceType } from "@elizaos/core";
 import type { EntityResolveCandidate } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "./config.ts";
 import {
@@ -208,9 +209,10 @@ export class InboxService {
         const existing = message.id
           ? await this.repository.getBySourceMessageId(message.id)
           : null;
-        triagedMessage.entry =
-          existing ??
-          (await this.repository.storeTriage({
+        if (existing) {
+          triagedMessage.entry = existing;
+        } else {
+          const stored = await this.repository.storeTriage({
             source: message.source,
             ...(message.roomId ? { sourceRoomId: message.roomId } : {}),
             ...(message.entityId ? { sourceEntityId: message.entityId } : {}),
@@ -230,13 +232,55 @@ export class InboxService {
             ...(result.suggestedResponse
               ? { suggestedResponse: result.suggestedResponse }
               : {}),
-          }));
+          });
+          triagedMessage.entry = stored;
+          // A newly-triaged message the user needs to act on is a home-screen
+          // attention moment. Fire once per new entry (groupKey collapses) only
+          // for the act-now classifications, so the inbox doesn't spam the
+          // notification rail with every "info"/"notify" item (those stay
+          // visible in the inbox view).
+          this.notifyAttention(stored);
+        }
       }
 
       triaged.push(triagedMessage);
     }
 
     return { triaged };
+  }
+
+  /**
+   * Surface an act-now triage entry (`urgent` / `needs_reply`) on the home
+   * notification rail. Best-effort: a runtime with no NotificationService (a
+   * headless/test runtime) is a no-op. `info`/`notify`/`ignore` stay in the
+   * inbox view without pushing a notification.
+   */
+  private notifyAttention(entry: TriageEntry): void {
+    const isUrgent = entry.classification === "urgent";
+    if (!isUrgent && entry.classification !== "needs_reply") return;
+
+    const who = entry.senderName ? ` from ${entry.senderName}` : "";
+    this.runtime
+      .getService<NotificationService>(ServiceType.NOTIFICATION)
+      ?.notify({
+        title: isUrgent
+          ? `Urgent message${who}`
+          : `Message${who} needs a reply`,
+        body: entry.snippet,
+        category: "message",
+        priority: isUrgent ? "urgent" : "high",
+        source: "inbox",
+        groupKey: `inbox:${entry.id}`,
+        deepLink: entry.deepLink ?? "/inbox",
+        data: {
+          triageEntryId: entry.id,
+          classification: entry.classification,
+          channelName: entry.channelName,
+        },
+      })
+      .catch((error: unknown) => {
+        logger.debug({ src: "inbox", error }, "Triage notify failed");
+      });
   }
 
   /**

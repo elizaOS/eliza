@@ -30,43 +30,6 @@ function formatFetchProgressDetails(details: unknown): string | undefined {
 
 const MUSIC_SERVICE_NAME = "music";
 const PLAYBACK_CONTEXTS = ["media", "automation"] as const;
-const PLAYBACK_KEYWORDS = [
-  "pause",
-  "resume",
-  "unpause",
-  "skip",
-  "next",
-  "stop",
-  "queue",
-  "playback",
-  "music",
-  "audio",
-  "pausa",
-  "reanudar",
-  "saltar",
-  "detener",
-  "cola",
-  "reprendre",
-  "arrêter",
-  "suivant",
-  "warteschlange",
-  "pausieren",
-  "fortsetzen",
-  "überspringen",
-  "停止",
-  "一時停止",
-  "再開",
-  "スキップ",
-  "暂停",
-  "继续",
-  "跳过",
-  "停止",
-  "일시정지",
-  "재개",
-  "건너뛰기",
-  "중지",
-] as const;
-
 export type PlaybackControlOp = "pause" | "resume" | "skip" | "stop" | "queue";
 
 type PlaybackOp = PlaybackControlOp;
@@ -109,20 +72,6 @@ function selectedContextMatches(
   return contexts.some((context) => selected.has(context));
 }
 
-function hasPlaybackIntent(message: Memory, state: State | undefined): boolean {
-  const text = [
-    typeof message.content.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return PLAYBACK_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
-}
-
 function normalizeOp(value: unknown): PlaybackOp | null {
   if (typeof value !== "string") return null;
   const v = value.trim().toLowerCase();
@@ -157,36 +106,27 @@ function findActiveGuildId(musicService: MusicService): string | null {
 /** Supports optional `options` so callers can pass explicit `op` without message text. */
 export async function validatePlaybackControl(
   runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   state: State | undefined,
   options?: Record<string, unknown>,
 ): Promise<boolean> {
   const merged = mergedOptions(options);
-  const explicit = normalizeOp(merged.op) ?? normalizeOp(merged.subaction);
-  const text = message.content.text ?? "";
-  const inferredFromText = inferOpFromText(text);
-  const inferred = explicit ?? inferredFromText;
-  if (
-    !inferred &&
-    !(
-      selectedContextMatches(state, PLAYBACK_CONTEXTS) ||
-      hasPlaybackIntent(message, state)
-    )
-  ) {
+  const op = normalizeOp(merged.op) ?? normalizeOp(merged.subaction);
+  if (!op && !selectedContextMatches(state, PLAYBACK_CONTEXTS)) {
     return false;
   }
-  if (!inferred) return true;
+  if (!op) return true;
   const musicService = runtime.getService(MUSIC_SERVICE_NAME) as MusicService;
-  if (!musicService) return inferred === "queue";
-  if (inferred === "queue") return true;
-  if (inferred === "pause") {
+  if (!musicService) return op === "queue";
+  if (op === "queue") return true;
+  if (op === "pause") {
     const guildId = findActiveGuildId(musicService);
     if (!guildId) return false;
     return (
       musicService.getIsPlaying(guildId) && !musicService.getIsPaused(guildId)
     );
   }
-  if (inferred === "resume") {
+  if (op === "resume") {
     const guildId = findActiveGuildId(musicService);
     if (!guildId) return false;
     return musicService.getIsPaused(guildId);
@@ -384,12 +324,14 @@ async function handleQueue(
   options: Record<string, unknown>,
   callback: HandlerCallback,
 ): Promise<ActionResult> {
-  const messageText = message.content.text || "";
   const directQuery =
     typeof options.query === "string" && options.query.trim().length > 0
       ? options.query.trim()
-      : undefined;
-  const query = (directQuery || messageText).trim();
+      : typeof options.searchQuery === "string" &&
+          options.searchQuery.trim().length > 0
+        ? options.searchQuery.trim()
+        : undefined;
+  const query = (directQuery || "").trim();
   if (!query || query.length < 3) {
     const text =
       "Please tell me what song you'd like to queue (at least 3 characters).";
@@ -588,10 +530,7 @@ export const playbackOp: Action = {
   ): Promise<ActionResult | undefined> => {
     if (!callback) return failureResult("Missing callback", "Missing callback");
     const merged = mergedOptions(options);
-    const op =
-      normalizeOp(merged.op) ??
-      normalizeOp(merged.subaction) ??
-      inferOpFromText(message.content.text ?? "");
+    const op = normalizeOp(merged.op) ?? normalizeOp(merged.subaction);
     if (!op) {
       const text =
         "Could not determine playback op. Use op=pause, resume, skip, stop, or queue.";

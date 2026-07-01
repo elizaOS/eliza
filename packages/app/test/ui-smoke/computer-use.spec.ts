@@ -38,53 +38,41 @@ test("settings exposes computer use capability controls", async ({ page }) => {
 test("first-run starts with setup choices before capability settings", async ({
   page,
 }) => {
-  await seedAppStorage(page, {
-    "eliza:first-run-complete": "0",
-    "elizaos:first-run:force-fresh": "1",
-    "elizaos:active-server": "",
-  });
+  await seedAppStorage(page, { "eliza:first-run-complete": "" });
   await installDefaultAppRoutes(page);
+  // #9952: onboarding is in-chat. Boot with first-run NOT complete so the
+  // headless conductor seeds the greeting + runtime choice into the live
+  // floating ContinuousChatOverlay (installDefaultAppRoutes serves a static
+  // complete first-run; this override wins).
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ complete: false, cloudProvisioned: false }),
+    });
+  });
 
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
-  const firstRunSurface = page
-    .getByTestId("first-run-shell")
-    .or(page.getByTestId("onboarding-toast"))
-    .or(page.getByRole("form", { name: "Bootstrap token entry" }));
-  await expect(firstRunSurface).toBeVisible();
-  const bootstrapGate = page.getByRole("form", {
-    name: "Bootstrap token entry",
-  });
-  if (await bootstrapGate.isVisible()) {
-    await expect(
-      page.getByRole("switch", { name: "Enable Computer Use" }),
-    ).toHaveCount(0);
-    return;
-  }
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  const chooser = page.getByTestId("first-run-runtime-chooser");
+  await expect(chooser).toBeVisible({ timeout: 20_000 });
   await expect(
-    page
-      .getByRole("heading", { name: /Where should .* run\?/ })
-      .or(page.getByText("Let's get you started"))
-      .or(page.getByTestId("onboarding-option-cloud")),
-  ).toBeVisible();
+    chooser.getByText("Choose how Eliza should run", { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(chooser.getByTestId("first-run-chooser-cloud")).toBeVisible();
+  await expect(chooser.getByTestId("first-run-chooser-local")).toBeVisible();
   await expect(
-    page
-      .getByTestId("first-run-runtime-cloud")
-      .or(page.getByTestId("onboarding-option-cloud")),
+    chooser.getByRole("button", { name: /Advanced setup/i }),
   ).toBeVisible();
-  const localRuntime = page.getByTestId("first-run-runtime-local");
-  if (await localRuntime.count()) {
-    await expect(localRuntime).toBeVisible();
-  }
-  const remoteRuntime = page.getByTestId("first-run-runtime-remote");
-  if (await remoteRuntime.count()) {
-    await expect(remoteRuntime).toBeVisible();
-  }
-  await expect(
-    page
-      .getByRole("button", { name: /^(Connect|Start)$/ })
-      .or(page.getByTestId("onboarding-option-cloud")),
-  ).toBeVisible();
+
+  // The Computer Use capability switch must NOT be reachable before the agent
+  // exists — the in-chat onboarding gates it.
   await expect(
     page.getByRole("switch", { name: "Enable Computer Use" }),
   ).toHaveCount(0);

@@ -3,6 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/../../../../.." && pwd))"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
 ARTIFACTS_DIR="${1:-$(cd "$SCRIPT_DIR/.." && pwd)/artifacts}"
 SKIP_SIGNATURE_CHECK="${ELECTROBUN_SKIP_CODESIGN:-0}"
 REAL_XCRUN="${ELECTROBUN_REAL_XCRUN:-/usr/bin/xcrun}"
@@ -23,9 +25,13 @@ EXTRACT_DIR="$TMP_ROOT/extracted"
 DMG_STAGING_DIR="$TMP_ROOT/dmg-staging"
 TEMP_DMG_PATH=""
 
+remove_path_recursive() {
+  node "$RM_PATH_RECURSIVE" "$@"
+}
+
 cleanup() {
   if [[ -n "$TMP_ROOT" && -d "$TMP_ROOT" ]]; then
-    rm -rf "$TMP_ROOT"
+    remove_path_recursive "$TMP_ROOT"
   fi
 }
 
@@ -286,7 +292,7 @@ if [[ -z "$APP_BUNDLE_PATH" ]]; then
 fi
 
 STAGED_APP_PATH="$ARTIFACTS_DIR/$(basename "$APP_BUNDLE_PATH")"
-rm -rf "$STAGED_APP_PATH"
+remove_path_recursive "$STAGED_APP_PATH"
 ditto "$APP_BUNDLE_PATH" "$STAGED_APP_PATH"
 
 LAUNCHER_PATH="$STAGED_APP_PATH/Contents/MacOS/launcher"

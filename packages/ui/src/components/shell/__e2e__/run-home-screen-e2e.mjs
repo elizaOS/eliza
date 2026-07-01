@@ -1,21 +1,42 @@
 /**
  * Real-browser screenshot e2e for the iOS-style HomeScreen — no app server.
  * Bundles home-screen-fixture.tsx with esbuild (stubbing the data sources), loads
- * it in headless chromium, and asserts the clock / widgets / tiles render +
- * captures mobile + desktop screenshots.
+ * it in headless chromium, and asserts the Home/Launcher consolidation +
+ * captures mobile + desktop screenshots plus a mobile interaction recording.
  *
  * Run: bun run --cwd packages/ui test:home-screen-e2e
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  LAYOUT_SHIFT_OBSERVER_INIT,
+  summarizeStability,
+} from "../../../testing/layout-stability.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
 await mkdir(outDir, { recursive: true });
+const RECORDED_VIDEO_FILE = "mobile-launcher-flow.webm";
+
+async function clearGeneratedVideoArtifacts() {
+  await rm(join(outDir, RECORDED_VIDEO_FILE), { force: true });
+  for (const entry of await readdir(outDir)) {
+    if (/^page@.+\.webm$/.test(entry)) {
+      await rm(join(outDir, entry), { force: true });
+    }
+  }
+}
+
+function stripTrailingLineWhitespace(text) {
+  return text.replace(/[ \t]+$/gm, "");
+}
+
+await clearGeneratedVideoArtifacts();
 
 let failures = 0;
 function assert(cond, msg) {
@@ -28,11 +49,15 @@ function assert(cond, msg) {
 const stubResolver = {
   name: "home-stub-resolver",
   setup(b) {
-    b.onResolve({ filter: /\/api$/ }, (a) =>
-      a.importer.includes("HomeScreen")
-        ? { path: join(here, "home-screen-fixture.api-stub.ts") }
-        : undefined,
-    );
+    // HomeScreen mounts the REAL unified home-slot WidgetHost (#9143). It resolves
+    // its per-plugin widgets from the app-store plugins snapshot and renders them
+    // with injected data (seeded in home-screen-fixture.tsx). The data sources —
+    // the `client` (relationships + base URL) and `window.fetch` (lifeops routes)
+    // — are stubbed below / in the fixture; the WidgetHost + widget components
+    // themselves are NOT stubbed.
+    b.onResolve({ filter: /(\/api|\/api\/client)$/ }, () => ({
+      path: join(here, "home-screen-fixture.api-stub.ts"),
+    }));
     b.onResolve({ filter: /useActivityEvents$/ }, () => ({
       path: join(here, "home-screen-fixture.activity-stub.ts"),
     }));
@@ -41,6 +66,82 @@ const stubResolver = {
     }));
     b.onResolve({ filter: /useAvailableViews$/ }, () => ({
       path: join(here, "home-screen-fixture.views-stub.ts"),
+    }));
+    b.onResolve({ filter: /useViewCatalog$/ }, () => ({
+      path: join(here, "home-screen-fixture.catalog-stub.ts"),
+    }));
+    b.onResolve({ filter: /useViewKinds$/ }, () => ({
+      path: join(here, "home-screen-fixture.view-kinds-stub.ts"),
+    }));
+    b.onResolve({ filter: /platform-guards$/ }, () => ({
+      path: join(here, "home-screen-fixture.platform-stub.ts"),
+    }));
+    // The widget components reach the hooks barrel only for
+    // `useIntervalWhenDocumentVisible` (verified: every bare `../../../hooks`
+    // import in the widget files takes only that hook). The barrel itself drags
+    // in the whole app-state surface (@elizaos/shared, AppContext, …) which is
+    // dead weight here, so sever it at the barrel with a no-op interval hook.
+    b.onResolve({ filter: /\/hooks$/ }, () => ({
+      path: join(here, "home-screen-fixture.docvis-stub.ts"),
+    }));
+  },
+};
+
+// @elizaos/core: the WidgetHost + the (dead-in-browser) @elizaos/shared graph
+// import a wide named surface from it. Satisfy ANY named import with a no-op
+// Proxy, but override the handful the render path actually uses with sane
+// values: `isViewVisible` (gate → always visible) and `dedupeModalities`.
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy(
+          {
+            isViewVisible: () => true,
+            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+          },
+          { get: (t, p) => (p in t ? t[p] : noop) },
+        );
+      `,
+      loader: "js",
+    }));
+  },
+};
+
+// The REAL WidgetHost subtree transitively reaches server-only code (the hooks
+// barrel pulls @elizaos/logger / @elizaos/shared, which import node builtins) —
+// DEAD in the browser (never executed at render; the home widgets fetch through
+// the mocked window.fetch + the stubbed client). Stub every node builtin to a
+// no-op Proxy so the browser bundle builds; if any of it actually ran at module
+// load the page-error guard below would catch it. (Mirrors run-chat-sheet-e2e.)
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
     }));
   },
 };
@@ -53,15 +154,18 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubResolver],
+  plugins: [stubResolver, stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
+const html = stripTrailingLineWhitespace(`<!doctype html><html><head><meta charset="utf-8"><title>home screen e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}
 :root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
+<!-- Shim node-ish globals some of the dead-in-browser graph touches at module
+     init (e.g. \`process.env\`). The real code paths never execute at render. -->
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
+</head><body><div id="root"></div><script>${js}</script></body></html>`);
 const htmlPath = join(outDir, "home-screen.html");
 await writeFile(htmlPath, html);
 const url = `file://${htmlPath}`;
@@ -75,52 +179,360 @@ async function snap(p, name) {
   await p.screenshot({ path: join(outDir, file) });
   console.log(`  📸 ${file}`);
 }
+async function swipeLeft(locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing swipe target bounds");
+  const y = box.y + box.height * 0.45;
+  const startX = box.x + box.width * 0.78;
+  const endX = box.x + box.width * 0.22;
+  await locator.page().mouse.move(startX, y);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(endX, y, { steps: 8 });
+  await locator.page().mouse.up();
+}
+async function swipeRight(locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("missing swipe target bounds");
+  const y = box.y + box.height * 0.45;
+  const startX = box.x + box.width * 0.22;
+  const endX = box.x + box.width * 0.78;
+  await locator.page().mouse.move(startX, y);
+  await locator.page().mouse.down();
+  await locator.page().mouse.move(endX, y, { steps: 8 });
+  await locator.page().mouse.up();
+}
+// A left touch-swipe across an element, dispatched as real `pointerType:"touch"`
+// events (Playwright's mouse API emits mouse pointers, which grab pointer
+// capture; touch does not — matching the device the launcher pager targets).
+async function touchSwipeLeft(page, testId) {
+  await page.getByTestId(testId).evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const y = box.y + box.height * 0.4;
+    const startX = box.x + box.width * 0.82;
+    const endX = box.x + box.width * 0.14;
+    const fire = (type, x) =>
+      el.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 7,
+          pointerType: "touch",
+          isPrimary: true,
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    fire("pointerdown", startX);
+    const steps = 10;
+    for (let i = 1; i <= steps; i += 1) {
+      fire("pointermove", startX + ((endX - startX) * i) / steps);
+    }
+    fire("pointerup", endX);
+  });
+}
+
+// A STATIONARY hold past the long-press window. On the curated launcher this
+// must NOT enter edit mode (the launcher is read-only, fixed placement).
+async function longPressHold(page, tileTestId) {
+  const btn = page.getByTestId(tileTestId).locator("button").first();
+  const box = await btn.boundingBox();
+  if (!box) throw new Error(`missing tile bounds: ${tileTestId}`);
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.waitForTimeout(600); // hold past LONG_PRESS_MS (450), no movement
+  await page.mouse.up();
+}
+async function waitForSurfacePageSettled(p, pageName) {
+  await p.waitForFunction((expectedPage) => {
+    const surface = document.querySelector(
+      '[data-testid="home-launcher-surface"]',
+    );
+    const rail = document.querySelector(
+      '[data-testid="home-launcher-rail"]',
+    );
+    if (!(surface instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      return false;
+    }
+    if (surface.getAttribute("data-page") !== expectedPage) return false;
+    const surfaceRect = surface.getBoundingClientRect();
+    const railRect = rail.getBoundingClientRect();
+    const expectedLeft =
+      expectedPage === "launcher"
+        ? surfaceRect.left - surfaceRect.width
+        : surfaceRect.left;
+    const railSettled = Math.abs(railRect.left - expectedLeft) < 1;
+    const transitionsDone = rail
+      .getAnimations()
+      .every((animation) => animation.playState === "finished");
+    return railSettled && transitionsDone;
+  }, pageName);
+}
 try {
   // Mobile (Pixel-ish) — the primary target.
-  const mobile = await browser.newPage({
+  const mobileContext = await browser.newContext({
     viewport: { width: 402, height: 874 },
     deviceScaleFactor: 2,
+    recordVideo: {
+      dir: outDir,
+      size: { width: 402, height: 874 },
+    },
   });
+  const mobile = await mobileContext.newPage();
   mobile.on("pageerror", (e) => sink.errors.push(String(e)));
+  // Install the shared layout-shift PerformanceObserver BEFORE any paint, so
+  // every shift during the home settle lands in window.__ELIZA_LAYOUT_SHIFTS__
+  // (the same contract HomeScreen's dev observer + the KPI specs use). We read
+  // it after the entrance animation finishes and assert the home doesn't jump
+  // (CLS budget + no flicker flash) via the meta-tested summarizeStability.
+  await mobile.addInitScript(LAYOUT_SHIFT_OBSERVER_INIT);
   await mobile.goto(`${url}?native`);
+  await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
-  assert(await mobile.getByTestId("home-clock").isVisible(), "clock renders");
   assert(
-    await mobile.getByTestId("home-widget-activity").isVisible(),
-    "activity widget renders",
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
+      "data-page",
+    )) === "home",
+    "combined surface starts on Home",
   );
   assert(
-    await mobile.getByTestId("home-widget-messages").isVisible(),
-    "messages widget renders",
+    (await mobile.getByTestId("home-clock").count()) === 0,
+    "no clock (home kept minimal)",
   );
+  // The home mounts the REAL unified home-slot WidgetHost (#9143) — the
+  // prioritized dynamic-priority home widgets — fed by the injected mock data
+  // (seeded in the fixture). Assert the host is mounted AND that each seeded
+  // per-plugin widget card renders its populated content (each self-hides when
+  // empty, so visibility proves the data flowed through real widget components).
+  const homeWidgetHost = mobile.getByTestId("widget-host-home");
+  await mobile.waitForSelector('[data-testid="widget-host-home"]');
+  assert((await homeWidgetHost.count()) === 1, "home WidgetHost is present");
   assert(
-    (await mobile.getByText("Shipped the chat-sheet redesign").count()) > 0,
-    "activity items render",
+    (await homeWidgetHost.getAttribute("data-slot")) === "home",
+    "home WidgetHost is mounted for the home slot",
   );
-  assert(
-    (await mobile.getByText("Alex Rivera").count()) > 0,
-    "message threads render",
+  // Wait for the staggered home-enter fade-up to settle so the cards are fully
+  // opaque (and the data-driven cards have mounted + fetched) before asserting.
+  await mobile.waitForFunction(
+    () => {
+      const home = document.querySelector('[data-testid="home-screen"]');
+      if (!home) return false;
+      return !home
+        .getAnimations({ subtree: true })
+        .some((a) => a.animationName === "home-enter" && a.playState !== "finished");
+    },
+    undefined,
+    { timeout: 5000 },
   );
-  // The home pins the 4 default tiles on every platform; the AOSP fork adds the
-  // 4 native-OS surfaces (messages/phone/contacts/camera) for 8 total. With
-  // ?native set, all 8 are expected (see HomeScreen.tsx HOME_TILES).
-  for (const id of [
-    "tutorial",
-    "help",
-    "settings",
-    "views",
-    "messages",
-    "phone",
-    "contacts",
-    "camera",
-  ]) {
+  // Each per-plugin home widget renders only when its injected data is
+  // attention-worthy — visibility is the proof the REAL widget parsed the data.
+  const WIDGET_CARDS = [
+    ["chat-widget-finances-alerts", "Overdrawn"],
+    ["widget-goals-attention", "Ship the release"],
+    ["widget-notifications", "Payment failed"],
+    ["chat-widget-relationships", null],
+    ["chat-widget-calendar-upcoming", "Design review"],
+    ["widget-health-sleep", "Irregular"],
+    ["chat-widget-inbox-unread", "Alex Rivera"],
+  ];
+  for (const [testId, text] of WIDGET_CARDS) {
+    const card = homeWidgetHost.getByTestId(testId);
+    await card.first().waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+    assert((await card.count()) > 0, `home widget ${testId} renders`);
+    if (text) {
+      assert(
+        (await homeWidgetHost.getByText(text, { exact: false }).count()) > 0,
+        `home widget ${testId} shows "${text}"`,
+      );
+    }
+  }
+  // No home widget may fall back to the "Widget failed to render" boundary — an
+  // ErrorBoundary catch is invisible to the page-error guard, so assert it here.
+  {
+    const errorCards = await mobile
+      .locator('[data-testid^="widget-error-"]')
+      .allTextContents();
+    assert(
+      errorCards.length === 0,
+      `no home widget hit its error boundary (${errorCards.length})`,
+    );
+  }
+  // No general quick-access tiles anymore — Launcher is the adjacent
+  // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
+  // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
+  for (const id of ["messages", "phone", "contacts", "camera"]) {
     assert(
       await mobile.getByTestId(`home-tile-${id}`).isVisible(),
-      `tile ${id} renders (native enabled)`,
+      `native-OS tile ${id} renders (native enabled)`,
+    );
+  }
+  // The removed defaults must NOT appear, even with native enabled.
+  for (const id of ["tutorial", "help", "settings", "views"]) {
+    assert(
+      (await mobile.getByTestId(`home-tile-${id}`).count()) === 0,
+      `removed default tile ${id} is gone`,
     );
   }
   await snap(mobile, "mobile-home");
+
+  // Layout-stability lock (#9304): the home cards rank + self-hide; a ranking
+  // reorder or a card popping in must NOT jump the page. `contain: layout` on
+  // the WidgetHost + the once-only entrance fade keep the settle stable. Read
+  // the observed layout-shifts and assert the meta-tested summarizer doesn't
+  // flag the home settle (CLS under the Web-Vitals "good" budget, no flash).
+  const shifts = await mobile.evaluate(
+    () => window.__ELIZA_LAYOUT_SHIFTS__ ?? [],
+  );
+  const stability = summarizeStability(shifts, [], { maxCls: 0.1 });
+  assert(
+    !stability.flagged,
+    `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
+  );
+
+  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  await waitForSurfacePageSettled(mobile, "launcher");
+
+  // ── Curated apps page — the everyday apps render as tiles, in curated order.
+  for (const id of ["wallet", "automations", "browser", "settings"]) {
+    assert(
+      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      `curated app "${id}" renders on the launcher apps page`,
+    );
+  }
+  // ── Removed / hidden surfaces never tile: shell self-links, removed apps,
+  // wallet sub-views, and the deduped duplicate registrations.
+  for (const id of ["chat", "views", "shopify", "hyperliquid", "inventory", "triggers"]) {
+    assert(
+      (await mobile.getByTestId(`launcher-tile-${id}`).count()) === 0,
+      `"${id}" is absent from the launcher (removed/hidden/deduped)`,
+    );
+  }
+  // A single Wallet tile survives the duplicate wallet + inventory registrations.
+  assert(
+    (await mobile.getByTestId("launcher-tile-wallet").count()) === 1,
+    "duplicate wallet registrations collapse to one tile",
+  );
+
+  // ── Real image icons — curated tiles carry hero images, so each renders an
+  // <img> tile (not the glyph fallback). On device the agent serves the branded
+  // SVG at /api/views/:id/hero, resolved through the runtime API base so it
+  // loads on native (file://) shells too.
+  for (const id of ["wallet", "automations", "browser", "character"]) {
+    const img = mobile.getByTestId(`launcher-image-${id}`);
+    assert(
+      (await img.count()) === 1 && (await img.isVisible()),
+      `curated app "${id}" renders a real image icon (hero <img>, not a glyph)`,
+    );
+    const src = await img.getAttribute("src");
+    assert(
+      typeof src === "string" && src.startsWith("data:image/svg+xml"),
+      `curated app "${id}" image src is the branded hero (${String(src).slice(0, 24)}…)`,
+    );
+  }
+
+  await snap(mobile, "mobile-launcher");
+
+  // ── NO page indicator — the dots were removed (they collided with the chat
+  // composer). Navigation is swipe-only. Neither the rail indicator nor the
+  // inner Launcher dot strip may render.
+  assert(
+    (await mobile
+      .locator('[data-testid="home-launcher-indicator"]')
+      .count()) === 0,
+    "the page indicator is removed (no colliding dots)",
+  );
+  assert(
+    (await mobile.locator('[aria-label^="Page "]').count()) === 0,
+    "the inner Launcher dot strip is absent too",
+  );
+
+  // ── Real per-view images — every tile shows a branded hero IMAGE (generated
+  // client-side as a data URI when no real hero exists). A deterministic glyph
+  // may sit underneath the image as a decode fallback, but no tile may be glyph
+  // only. Each view's hero is deterministic per id, so the srcs are distinct.
+  const imageSrcs = await mobile.$$eval(
+    '[data-testid^="launcher-image-"]',
+    (imgs) =>
+      Array.from(
+        new Set(imgs.map((i) => i.getAttribute("src") ?? "")),
+      ).filter(Boolean),
+  );
+  assert(
+    imageSrcs.length >= 5,
+    `launcher tiles render varied hero images, not one placeholder (${imageSrcs.length} distinct)`,
+  );
+  assert(
+    imageSrcs.every(
+      (s) => s.startsWith("data:image/") || /^(https?:|\/api\/)/.test(s),
+    ),
+    "every tile renders a real hero image (data-URI / served), not a glyph",
+  );
+  const visualCount = await mobile.locator("[data-view-visual]").count();
+  const imageCount = await mobile
+    .locator('[data-view-visual] [data-testid^="launcher-image-"]')
+    .count();
+  assert(
+    imageCount === visualCount,
+    `no tile falls back to a bare glyph-only visual (${imageCount}/${visualCount} have images)`,
+  );
+
+  // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
+  // (fixed placement, no reorder/pin/favorites dock). #3
+  await longPressHold(mobile, "launcher-tile-wallet");
+  await mobile.waitForTimeout(150);
+  assert(
+    (await mobile.getByTestId("launcher-fav-wallet").count()) === 0,
+    "a stationary long-press does NOT enter edit mode (curated launcher is read-only)",
+  );
+  // A right-swipe still returns HOME cleanly.
+  await swipeRight(mobile.getByTestId("home-launcher-launcher-page"));
+  await waitForSurfacePageSettled(mobile, "home");
+  assert(
+    (await mobile
+      .getByTestId("home-launcher-surface")
+      .getAttribute("data-page")) === "home",
+    "swipe-back from the launcher returns HOME",
+  );
+  await swipeLeft(mobile.getByTestId("home-launcher-home-page"));
+  await waitForSurfacePageSettled(mobile, "launcher");
+
+  // ── Swipe to page 2 = the Developer tools (no dots — paging is swipe-only).
+  // Developer tools live on page 2's grid; they are NOT on the apps page (page
+  // 0). Both pages are in the DOM, so scope the check to the page-0 container.
+  assert(
+    (await mobile
+      .getByTestId("launcher-page-0")
+      .getByTestId("launcher-tile-trajectories")
+      .count()) === 0,
+    "developer tool (trajectories) is not on the apps page (page 0)",
+  );
+  // Touch-swipe the INNER launcher viewport forward to the developer page. On a
+  // real device the launcher pager owns forward paging (touch does not grab
+  // pointer capture the way mouse does, so the outer home↔launcher rail does not
+  // hijack the gesture). Drive true `pointerType:"touch"` events so this matches
+  // the mobile experience, then assert the rail actually paged.
+  await touchSwipeLeft(mobile, "launcher-page-window");
+  await mobile.waitForTimeout(750);
+  const pagedOffset = await mobile
+    .getByTestId("launcher-page-rail")
+    .evaluate((el) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: m.m41, width: el.getBoundingClientRect().width / 2 };
+    });
+  assert(
+    pagedOffset.x < -pagedOffset.width * 0.5,
+    `launcher paged forward to the developer page (rail x=${Math.round(pagedOffset.x)})`,
+  );
+  for (const id of ["trajectories", "database", "runtime", "logs", "skills", "plugins"]) {
+    assert(
+      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      `developer tool "${id}" renders on the launcher developer page`,
+    );
+  }
+  await snap(mobile, "mobile-launcher-page2");
+
   // The home is a clean, action-driven dashboard: no Edit chrome, no "Pinned"
   // label (edit-dashboard is an agent action, not a button).
   assert(
@@ -131,7 +543,15 @@ try {
     (await mobile.getByText("Pinned", { exact: true }).count()) === 0,
     'no "Pinned" label',
   );
+  const mobileVideo = await mobile.video();
   await mobile.close();
+  await mobileContext.close();
+  if (mobileVideo) {
+    const videoPath = await mobileVideo.path();
+    const stableVideoPath = join(outDir, RECORDED_VIDEO_FILE);
+    await rename(videoPath, stableVideoPath);
+    console.log(`  🎥 ${stableVideoPath}`);
+  }
 
   // Desktop width
   const desktop = await browser.newPage({
@@ -139,13 +559,22 @@ try {
   });
   desktop.on("pageerror", (e) => sink.errors.push(String(e)));
   await desktop.goto(url);
+  await desktop.waitForSelector('[data-testid="home-launcher-surface"]');
   await desktop.waitForSelector('[data-testid="home-screen"]');
   await desktop.waitForTimeout(500);
+  // Off-AOSP: no pinned tiles at all — the tile grid is omitted entirely.
+  assert(
+    (await desktop.getByTestId("home-tiles").count()) === 0,
+    "no pinned tiles off-AOSP (grid omitted)",
+  );
   assert(
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
   await snap(desktop, "desktop-home");
+  await swipeLeft(desktop.getByTestId("home-launcher-home-page"));
+  await waitForSurfacePageSettled(desktop, "launcher");
+  await snap(desktop, "desktop-launcher");
   await desktop.close();
 } finally {
   await browser.close();

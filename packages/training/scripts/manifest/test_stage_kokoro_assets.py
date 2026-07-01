@@ -13,6 +13,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.manifest import stage_kokoro_assets as stage  # noqa: E402
+from scripts.manifest.eliza1_manifest import REQUIRED_KERNELS_BY_TIER  # noqa: E402
 
 
 def _sha(data: bytes) -> str:
@@ -39,11 +40,11 @@ def _write_bundle(root: Path) -> Path:
         "version": "1.0.0",
         "publishedAt": "2026-05-12T00:00:00Z",
         "lineage": {
-            "text": {"base": "Qwen/Qwen3.5-2B", "license": "apache-2.0"},
+            "text": {"base": "google/gemma-4-E2B", "license": "apache-2.0"},
             "voice": {"base": "Serveurperso/OmniVoice-GGUF", "license": "apache-2.0"},
-            "drafter": {"base": "Qwen/Qwen3.5-0.8B", "license": "apache-2.0"},
+            "drafter": {"base": "google/gemma-4-E2B", "license": "apache-2.0"},
             "vision": {
-                "base": "unsloth/Qwen3.5-2B-GGUF/mmproj-F16.gguf",
+                "base": "unsloth/gemma-4-E2B-GGUF/mmproj-F16.gguf",
                 "license": "apache-2.0",
             },
         },
@@ -82,13 +83,7 @@ def _write_bundle(root: Path) -> Path:
             ],
         },
         "kernels": {
-            "required": [
-                "turboquant_q4",
-                "qjl",
-                "polarquant",
-                "mtp",
-                "turbo3_tcq",
-            ],
+            "required": list(REQUIRED_KERNELS_BY_TIER["2b"]),
             "optional": [],
             "verifiedBackends": {
                 b: {"status": "skipped", "atCommit": "test", "report": "test"}
@@ -119,9 +114,14 @@ def test_dry_run_plans_default_kokoro_files(tmp_path: Path) -> None:
     report = stage.stage_kokoro_bundle(bundle, dry_run=True)
 
     paths = {f["bundle_path"] for f in report["files"]}
-    assert "tts/kokoro/model_q4.onnx" in paths
+    assert report["tier"] == "2b"
+    assert "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" in paths
     assert "tts/kokoro/tokenizer.json" in paths
     assert "tts/kokoro/voices/af_bella.bin" in paths
+    remotes = {f["remote_path"] for f in report["files"]}
+    assert "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" in remotes
+    assert "bundles/2b/tts/kokoro/tokenizer.json" in remotes
+    assert "bundles/2b/tts/kokoro/voices/af_bella.bin" in remotes
     assert not (bundle / "tts" / "kokoro").exists()
 
 
@@ -147,26 +147,25 @@ def test_stage_updates_manifest_evidence_license_and_checksums(
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     voice_paths = {entry["path"] for entry in manifest["files"]["voice"]}
     assert "tts/omnivoice-base-Q4_K_M.gguf" in voice_paths
-    assert "tts/kokoro/model_q4.onnx" in voice_paths
+    assert "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" in voice_paths
     assert "tts/kokoro/tokenizer.json" in voice_paths
     assert "tts/kokoro/voices/af_bella.bin" in voice_paths
-    assert "onnx-community/Kokoro-82M-v1.0-ONNX" in manifest["lineage"]["voice"]["base"]
+    assert "elizaos/eliza-1" in manifest["lineage"]["voice"]["base"]
     assert (bundle / "licenses" / "LICENSE.kokoro").is_file()
     assert (bundle / "evidence" / "kokoro-assets.json").is_file()
     assert report["checksumManifest"] == "checksums/SHA256SUMS"
     sums = (bundle / "checksums" / "SHA256SUMS").read_text()
-    assert "tts/kokoro/model_q4.onnx" in sums
+    assert "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" in sums
     assert "evidence/kokoro-assets.json" in sums
 
 
 def test_voice_remote_template_overrides_default_path(tmp_path: Path) -> None:
     """Per-voice HF repos ship the embedding at a different remote path.
 
-    Default template is `voices/{voice}.bin` (matches upstream onnx-community).
-    Per-voice staging releases ship `voice.bin` at the release-dir root
-    (rather than `voices/<voice>.bin`) — the template lets the caller override
-    the remote path even though all voices now consolidate under
-    `elizaos/eliza-1` at `voice/kokoro/voices/<voice>.bin`.
+    The default template uses the tiered `elizaos/eliza-1` bundle layout.
+    Per-voice staging releases can still ship `voice.bin` at the release-dir
+    root — the template lets the caller override the remote path while the
+    bundle path remains canonical.
     """
     bundle = _write_bundle(tmp_path)
     report = stage.stage_kokoro_bundle(
@@ -178,7 +177,7 @@ def test_voice_remote_template_overrides_default_path(tmp_path: Path) -> None:
     )
     remotes = {f["remote_path"] for f in report["files"]}
     # No base-asset remotes when include_base_assets=False.
-    assert "onnx/model_q4.onnx" not in remotes
+    assert "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" not in remotes
     assert "tokenizer.json" not in remotes
     # The voice itself was looked up at the overridden remote path.
     assert "voice.bin" in remotes
@@ -227,14 +226,14 @@ def test_kokoro_only_prunes_omnivoice_payloads_from_small_bundle(
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     voice_paths = {entry["path"] for entry in manifest["files"]["voice"]}
     assert voice_paths == {
-        "tts/kokoro/model_q4.onnx",
+        "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
         "tts/kokoro/tokenizer.json",
         "tts/kokoro/voices/af_bella.bin",
     }
     assert not (bundle / "tts" / "omnivoice-base-Q4_K_M.gguf").exists()
     assert report["removed"] == ["tts/omnivoice-base-Q4_K_M.gguf"]
     assert manifest["lineage"]["voice"]["base"].startswith(
-        "onnx-community/Kokoro-82M-v1.0-ONNX@"
+        "elizaos/eliza-1@"
     )
     sums = (bundle / "checksums" / "SHA256SUMS").read_text()
     assert "tts/omnivoice-base-Q4_K_M.gguf" not in sums

@@ -31,6 +31,20 @@ export const FINAL_CHECK_KEYS = new Map(
       "minCount",
     ],
     memoryWriteOccurred: ["type", "name", "table", "minCount"],
+    memoryExists: ["type", "name", "table", "content", "minCount", "expected"],
+    goalCountDelta: [
+      "type",
+      "name",
+      "title",
+      "titleAliases",
+      "delta",
+      "expectedStatus",
+      "expectedReviewState",
+      "expectedGroundingState",
+      "requireDescription",
+      "requireSuccessCriteria",
+      "requireSupportStrategy",
+    ],
     judgeRubric: ["type", "name", "rubric", "minimumScore"],
     gmailActionArguments: [
       "type",
@@ -63,6 +77,23 @@ export const FINAL_CHECK_KEYS = new Map(
       "expected",
       "minCount",
     ],
+    definitionCountDelta: [
+      "type",
+      "name",
+      "title",
+      "titleAliases",
+      "delta",
+      "cadenceKind",
+      "requiredSlots",
+      "requiredWeekdays",
+      "requiredWindows",
+      "requiredEveryMinutes",
+      "requiredMaxOccurrencesPerDay",
+      "expectedTimeZone",
+      "requireReminderPlan",
+      "websiteAccess",
+    ],
+    reminderIntensity: ["type", "name", "title", "titleAliases", "expected"],
   }).map(([type, keys]) => [type, new Set(keys)]),
 );
 
@@ -86,9 +117,32 @@ function validateStrictFinalCheck(check, index) {
   }
 }
 
+/** Lane assumed for any scenario that does not declare one. */
+export const DEFAULT_SCENARIO_LANE = "live-only";
+
+const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
+
+/** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
+export function scenarioLane(value) {
+  const lane = value?.lane;
+  if (lane === undefined) {
+    return DEFAULT_SCENARIO_LANE;
+  }
+  if (!SCENARIO_LANES.has(lane)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid lane "${lane}"; expected one of ${[...SCENARIO_LANES].join(", ")}`,
+    );
+  }
+  return lane;
+}
+
 export function scenario(value) {
-  if (value && typeof value === "object" && Array.isArray(value.finalChecks)) {
-    value.finalChecks.forEach(validateStrictFinalCheck);
+  if (value && typeof value === "object") {
+    if (Array.isArray(value.finalChecks)) {
+      value.finalChecks.forEach(validateStrictFinalCheck);
+    }
+    // Validate the lane eagerly so a typo fails at definition time, not in CI.
+    scenarioLane(value);
   }
   return value;
 }

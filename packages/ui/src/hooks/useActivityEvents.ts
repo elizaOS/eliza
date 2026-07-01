@@ -3,11 +3,24 @@
  * of recent entries for the chat widget rail.
  */
 
+import { activityEventToPlaintext } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { parseProactiveMessageEvent } from "../state/parsers";
 
 const RING_BUFFER_CAP = 200;
+
+export interface ActivityEventSource {
+  type: "pty-session-event" | "proactive-message" | "agent_event";
+  stream?: string;
+  data?: unknown;
+  seq?: number;
+  ts?: number;
+  runId?: string;
+  agentId?: string;
+  roomId?: string;
+  sessionKey?: string;
+}
 
 export interface ActivityEvent {
   id: string;
@@ -15,6 +28,7 @@ export interface ActivityEvent {
   eventType: string;
   sessionId?: string;
   summary: string;
+  source?: ActivityEventSource;
 }
 
 let nextEventId = 0;
@@ -24,44 +38,28 @@ function makeEventId(): string {
   return `evt-${nextEventId}-${Date.now()}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function summarizeAssistantActivityEvent(data: Record<string, unknown>): {
-  eventType: string;
-  summary: string;
-} | null {
-  if (data.type !== "agent_event" || data.stream !== "assistant") {
-    return null;
-  }
-  const payload = isRecord(data.payload) ? data.payload : null;
-  if (!payload) {
-    return null;
-  }
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
 
-  const source = typeof payload.source === "string" ? payload.source : "";
-  const text =
-    typeof payload.text === "string" ? payload.text.trim().slice(0, 120) : "";
-  if (!text) {
-    return null;
-  }
-
-  switch (source) {
-    case "lifeops-reminder":
-      return { eventType: "reminder", summary: text };
-    case "lifeops-workflow":
-      return { eventType: "workflow", summary: text };
-    case "proactive-gm":
-    case "proactive-gn":
-    case "proactive-goal-check-in":
-      return { eventType: "check-in", summary: text };
-    case "proactive-nudge":
-    case "proactive-social-overuse":
-      return { eventType: "nudge", summary: text };
-    default:
-      return null;
-  }
+function agentEventSource(data: Record<string, unknown>): ActivityEventSource {
+  return {
+    type: "agent_event",
+    stream: readString(data.stream),
+    data: data.payload ?? data.data,
+    seq: readFiniteNumber(data.seq),
+    ts: readFiniteNumber(data.ts),
+    runId: readString(data.runId),
+    agentId: readString(data.agentId),
+    roomId: readString(data.roomId),
+    sessionKey: readString(data.sessionKey),
+  };
 }
 
 /**
@@ -108,37 +106,20 @@ export function useActivityEvents() {
     const unbindPty = client.onWsEvent(
       "pty-session-event",
       (data: Record<string, unknown>) => {
-        // Validate the WS boundary instead of casting: strings stay strings,
-        // anything else becomes undefined so a malformed event can't poison the rail.
-        const str = (v: unknown): string | undefined =>
-          typeof v === "string" ? v : undefined;
-        const eventType = str(data.eventType) ?? str(data.type) ?? "";
-        const sessionId = str(data.sessionId);
-        const d = isRecord(data.data) ? data.data : undefined;
-
-        let summary = eventType;
-        if (eventType === "task_registered") {
-          summary = `Task started: ${str(d?.label) ?? sessionId ?? "unknown"}`;
-        } else if (eventType === "task_complete" || eventType === "stopped") {
-          summary = `Task ${eventType === "task_complete" ? "completed" : "stopped"}`;
-        } else if (eventType === "tool_running") {
-          const tool = str(d?.description) ?? str(d?.toolName) ?? "tool";
-          summary = `Running ${tool}`.slice(0, 80);
-        } else if (eventType === "blocked") {
-          summary = "Waiting for input";
-        } else if (eventType === "blocked_auto_resolved") {
-          summary = "Decision auto-approved";
-        } else if (eventType === "escalation") {
-          summary = "Escalated — needs attention";
-        } else if (eventType === "error") {
-          summary = "Error occurred";
-        }
+        const activity = activityEventToPlaintext(data, { maxLength: 120 });
+        if (!activity) return;
 
         pushEvent({
-          timestamp: Date.now(),
-          eventType,
-          sessionId: sessionId ?? undefined,
-          summary,
+          timestamp: readFiniteNumber(data.ts) ?? Date.now(),
+          eventType: activity.eventType,
+          sessionId: activity.sessionId,
+          summary: activity.plaintext,
+          source: {
+            type: "pty-session-event",
+            data,
+            ts: readFiniteNumber(data.ts),
+            sessionKey: readString(data.sessionId),
+          },
         });
       },
     );
@@ -154,10 +135,19 @@ export function useActivityEvents() {
         if (!parsed) return;
         const summary =
           parsed.message.text.trim().slice(0, 120) || "Proactive message";
+        const activity = activityEventToPlaintext(
+          { type: "proactive-message", message: { text: summary } },
+          { maxLength: 120 },
+        );
         pushEvent({
-          timestamp: Date.now(),
-          eventType: "proactive-message",
-          summary,
+          timestamp: readFiniteNumber(data.ts) ?? Date.now(),
+          eventType: activity?.eventType ?? "proactive-message",
+          summary: activity?.plaintext ?? summary,
+          source: {
+            type: "proactive-message",
+            data,
+            ts: readFiniteNumber(data.ts),
+          },
         });
       },
     );
@@ -165,14 +155,17 @@ export function useActivityEvents() {
     const unbindAgent = client.onWsEvent(
       "agent_event",
       (data: Record<string, unknown>) => {
-        const activity = summarizeAssistantActivityEvent(data);
+        const activity = activityEventToPlaintext(data, { maxLength: 120 });
         if (!activity) {
           return;
         }
+        const source = agentEventSource(data);
         pushEvent({
-          timestamp: Date.now(),
+          timestamp: source.ts ?? Date.now(),
           eventType: activity.eventType,
-          summary: activity.summary,
+          sessionId: activity.sessionId ?? source.sessionKey,
+          summary: activity.plaintext,
+          source,
         });
       },
     );

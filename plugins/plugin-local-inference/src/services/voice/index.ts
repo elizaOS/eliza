@@ -34,6 +34,13 @@ export {
 	type MockSnapshotSource,
 } from "./checkpoint-manager";
 export {
+	computeDiarizationErrorRate,
+	type DerOptions,
+	type DerResult,
+	type DiarizationSegment,
+	diarizationWithinBudget,
+} from "./diarization-error-rate";
+export {
 	type BuildDeterministicFn,
 	type BuildMessageDependentFn,
 	type ContextPartial,
@@ -42,6 +49,20 @@ export {
 	type FullContext,
 	mergeContext,
 } from "./eager-context-builder";
+export {
+	DEFAULT_PLAYBACK_DELAY_MS,
+	type EchoDelayEstimate,
+	type EchoDelayOptions,
+	estimateEchoDelaySamples,
+	PLATFORM_PLAYBACK_DELAY_DEFAULTS,
+	platformPlaybackDelayMs,
+	platformPlaybackDelaySamples,
+} from "./echo-delay";
+export { computeErle } from "./echo-metrics";
+export {
+	EchoReferenceBuffer,
+	type EchoReferenceBufferOptions,
+} from "./echo-reference-buffer";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -104,13 +125,13 @@ export {
 	type VoiceTurnSignal,
 } from "./eot-classifier";
 export {
-	applyQwenUserTemplate,
+	applyGemmaUserTemplate,
 	createBundledLiveKitGgmlTurnDetector,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_GGML_DIR,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_EN,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_INTL,
 	EotGgmlUnavailableError,
-	LIVEKIT_IM_END_TOKEN,
+	LIVEKIT_END_OF_TURN_TOKEN,
 	LiveKitGgmlTurnDetector,
 	type LiveKitGgmlTurnDetectorOptions,
 	turnDetectorGgufForTier,
@@ -138,6 +159,12 @@ export {
 	wordCount,
 } from "./first-line-cache";
 export {
+	bridgeDetectorToFusedWake,
+	type FusedWakeEventDetail,
+	type FusedWakeSink,
+	type FusedWakeStage,
+} from "./fused-wake-bridge";
+export {
 	type ArmedResources,
 	type TextResources,
 	VoiceLifecycle,
@@ -153,6 +180,10 @@ export {
 	pipeMicToRingBuffer,
 	resolveDesktopRecorder,
 } from "./mic-source";
+export {
+	NlmsEchoCanceller,
+	type NlmsEchoCancellerOptions,
+} from "./nlms-echo-canceller";
 export {
 	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
 	OptimisticGenerationPolicy,
@@ -260,17 +291,6 @@ export {
 	type FusedDiarizerOptions,
 } from "./speaker/diarizer-fused";
 export {
-	DIARIZER_GGML_FRAMES_PER_WINDOW,
-	DIARIZER_GGML_MIN_SAMPLES,
-	DIARIZER_GGML_NUM_CLASSES,
-	DIARIZER_GGML_SAMPLE_RATE,
-	DIARIZER_GGML_WINDOW_SAMPLES,
-	DiarizerGgml,
-	type DiarizerGgmlOptions,
-	type DiarizerGgmlOutput,
-	DiarizerGgmlUnavailableError,
-} from "./speaker/diarizer-ggml";
-export {
 	averageEmbeddings,
 	type SpeakerEncoder,
 	SpeakerEncoderUnavailableError,
@@ -279,7 +299,6 @@ export {
 	WESPEAKER_RESNET34_LM_FP32_MODEL_ID,
 	WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	WESPEAKER_SAMPLE_RATE,
-	WespeakerEncoder,
 	type WespeakerModelId,
 } from "./speaker/encoder";
 export {
@@ -290,9 +309,6 @@ export {
 	SPEAKER_GGML_EMBEDDING_DIM,
 	SPEAKER_GGML_MIN_SAMPLES,
 	SPEAKER_GGML_SAMPLE_RATE,
-	type SpeakerEncoderGgml,
-	SpeakerEncoderGgmlImpl,
-	type SpeakerEncoderGgmlOptions,
 	SpeakerEncoderGgmlUnavailableError,
 	voiceSpeakerDistance,
 } from "./speaker/encoder-ggml";
@@ -350,16 +366,15 @@ export * from "./types";
 export {
 	createSileroVadDetector,
 	createVadDetector,
+	type ExternalVadAdapter,
 	GgmlSileroVad,
 	NativeSileroVad,
-	type QwenToolkitVadAdapter,
 	type ResolvedVadProvider,
 	RmsEnergyGate,
 	type RmsEnergyGateConfig,
 	resolveSileroVadPath,
 	resolveVadProvider,
 	rms,
-	SILERO_VAD_BUNDLE_REL_PATH,
 	VadDetector,
 	type VadDetectorConfig,
 	type VadLike,
@@ -388,6 +403,11 @@ export {
 	voiceEnsembleSteadyStateMb,
 } from "./voice-budget";
 export {
+	type ArbiterPreloader,
+	VoicePreloadPredictor,
+	type VoicePreloadPredictorOptions,
+} from "./voice-preload-predictor";
+export {
 	readVoicePresetFile,
 	VOICE_PRESET_MAGIC,
 	type VoicePresetFile,
@@ -412,15 +432,6 @@ export {
 	verifyVoiceProfileArtifact,
 } from "./voice-profile-artifact";
 export {
-	DEFAULT_VOICE_SETTINGS,
-	effectiveBackendMode,
-	qualityPresetQuantizationRanking,
-	resolveVoiceSettings,
-	type VoiceBackendMode,
-	type VoiceModelQualityPreset,
-	type VoiceSettings,
-} from "./voice-settings";
-export {
 	type DrafterAbortReason,
 	type DrafterHandle,
 	type StartDrafterFn,
@@ -440,6 +451,7 @@ export {
 	OPENWAKEWORD_PLACEHOLDER_HEADS,
 	OpenWakeWordDetector,
 	resolveWakeWordModel,
+	type WakeFireInfo,
 	type WakeWordConfig,
 	type WakeWordModel,
 	type WakeWordModelPaths,

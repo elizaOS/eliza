@@ -13,6 +13,7 @@ import {
 import { seedBrowserExtensionTelemetry } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "lifeops-extension.time-tracking.per-site",
   title: "Per-site time tracking query (x.com today)",
   domain: "browser.lifeops",

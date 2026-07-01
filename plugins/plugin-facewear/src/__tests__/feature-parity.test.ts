@@ -24,6 +24,10 @@ import {
   unregisterPluginViews,
 } from "@elizaos/agent/api/views-registry";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  facewearListViewsAction,
+  facewearOpenViewAction,
+} from "../actions/view-actions.ts";
 import { viewHostRoute } from "../routes/view-host.ts";
 import { viewsRoute } from "../routes/views.ts";
 
@@ -52,34 +56,16 @@ function readAppXr(relPath: string): string {
   return readFileSync(resolve(appXrRoot, relPath), "utf8");
 }
 
-// All 26 registered XR view IDs
-const ALL_XR_VIEW_IDS = [
-  "wallet",
-  "companion",
-  "training",
-  "task-coordinator",
-  "orchestrator",
-  "views-manager",
-  "polymarket",
-  "vincent",
-  "steward",
-  "shopify",
-  "phone",
-  "contacts",
-  "messages",
-  "feed",
-  "2004scape",
-  "defense-of-the-agents",
-  "clawville",
-  "hyperliquid",
-  "hyperscape",
-  "lifeops",
-  "scape",
-  "screenshare",
-  "trajectory-logger",
-  "model-tester",
-  "smartglasses",
+const VIEW_HOST_SMOKE_IDS = [
   "facewear",
+  "smartglasses",
+  "hyphenated-view",
+] as const;
+
+const VOICE_ROUTE_SAMPLE_IDS = [
+  "facewear",
+  "smartglasses",
+  "hyphenated-view",
 ] as const;
 
 async function callViewHostRoute(input: unknown) {
@@ -95,32 +81,38 @@ describe("XR feature parity audit", () => {
     unregisterPluginViews(XR_ROUTE_TEST_PLUGIN);
   });
 
-  // 1. View registration parity — facewear has gui, tui, and xr views ──────────
-  it("axis 1 — plugin-facewear declares gui, tui, and xr views for the 'facewear' id", () => {
+  // 1. View registration parity — the 'facewear' id collapses gui+xr+tui into
+  //    one tri-modal declaration (`modalities: ["gui","xr","tui"]`) drawn from a
+  //    single spatial source, instead of three duplicate viewType declarations.
+  it("axis 1 — plugin-facewear declares one tri-modal view for the 'facewear' id", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
-    expect(source, "gui view").toContain('viewType: "gui"');
-    expect(source, "tui view").toContain('viewType: "tui"');
-    expect(source, "xr view").toContain('viewType: "xr"');
     expect(source, "facewear view id").toContain('id: "facewear"');
+    expect(source, "tri-modal facewear view").toContain(
+      'modalities: ["gui", "xr", "tui"]',
+    );
+    expect(source, "facewear path").toContain('path: "/apps/facewear"');
+    expect(source, "facewear component").toContain(
+      'componentExport: "FacewearView"',
+    );
   });
 
-  it("axis 1 — plugin-facewear declares focused Smartglasses GUI and XR views", () => {
+  it("axis 1 — plugin-facewear declares one tri-modal Smartglasses view", () => {
     const source = readFile("plugins/plugin-facewear/src/index.ts");
     expect(source, "smartglasses view id").toContain('id: "smartglasses"');
     expect(source, "smartglasses path").toContain('path: "/apps/smartglasses"');
-    expect(source, "smartglasses xr path").toContain(
-      'path: "/apps/smartglasses/xr"',
+    expect(source, "tri-modal smartglasses view").toContain(
+      'modalities: ["gui", "xr", "tui"]',
     );
-    expect(source, "shared Smartglasses component").toContain(
-      'componentExport: "SmartglassesView"',
+    expect(source, "shared Smartglasses panel component").toContain(
+      'componentExport: "SmartglassesPanelView"',
     );
   });
 
   // 2. Route infrastructure ───────────────────────────────────────────────────
 
-  it("axis 2 — the viewHostRoute returns valid HTML for every registered xr view id", async () => {
+  it("axis 2 — the viewHostRoute returns valid HTML for arbitrary xr view ids", async () => {
     const failures: string[] = [];
-    for (const id of ALL_XR_VIEW_IDS) {
+    for (const id of VIEW_HOST_SMOKE_IDS) {
       const result = await callViewHostRoute({
         params: { id },
         runtime: { port: 31337 },
@@ -229,14 +221,77 @@ describe("XR feature parity audit", () => {
     expect(missing, "missing agent actions").toEqual([]);
   });
 
-  it("axis 3 — extractViewId() knows all 26 view ids for natural-language routing", () => {
+  it("axis 3 — view actions route dynamically registered XR views", async () => {
+    await registerPluginViews({
+      name: XR_ROUTE_TEST_PLUGIN,
+      views: [
+        {
+          id: "facewear-dynamic-action-panel",
+          label: "Facewear Dynamic Action Panel",
+          viewType: "xr",
+          path: "/apps/facewear-dynamic-action-panel/xr",
+          icon: "Glasses",
+          description: "Dynamically registered facewear action target",
+          bundleUrl:
+            "https://views.example.test/facewear-dynamic-action-panel.js",
+        },
+      ],
+    } as never);
+
+    const calls = {
+      opened: [] as Array<{ connectionId: string; viewId: string }>,
+      catalogs: [] as Array<Array<{ id: string; label: string }>>,
+    };
+    const runtime = {
+      port: 31337,
+      getService: () => ({
+        getConnections: () => [{ id: "glasses-1", deviceType: "smartglasses" }],
+        hasActiveConnections: () => true,
+        openView: (connectionId: string, viewId: string) => {
+          calls.opened.push({ connectionId, viewId });
+        },
+        sendViewsCatalog: (
+          _connectionId: string,
+          views: Array<{ id: string; label: string }>,
+        ) => {
+          calls.catalogs.push(views);
+        },
+      }),
+    };
+
+    await facewearOpenViewAction.handler?.(
+      runtime as never,
+      {
+        content: { text: "open the facewear dynamic action panel in xr" },
+      } as never,
+      undefined,
+      {},
+    );
+    await facewearListViewsAction.handler?.(
+      runtime as never,
+      { content: { text: "what can i open in xr?" } } as never,
+      undefined,
+      {},
+    );
+
+    expect(calls.opened).toContainEqual({
+      connectionId: "glasses-1",
+      viewId: "facewear-dynamic-action-panel",
+    });
+    expect(calls.catalogs.at(-1)).toContainEqual(
+      expect.objectContaining({
+        id: "facewear-dynamic-action-panel",
+        label: "Facewear Dynamic Action Panel",
+      }),
+    );
     const actionsSource = readFile(
-      "plugins/plugin-facewear/src/actions/xr-view-actions.ts",
+      "plugins/plugin-facewear/src/actions/view-actions.ts",
     );
-    const missing = ALL_XR_VIEW_IDS.filter(
-      (id) => !actionsSource.includes(`"${id}"`),
-    );
-    expect(missing, "view IDs missing from extractViewId()").toEqual([]);
+    expect(actionsSource).toContain("@elizaos/agent/api/views-registry");
+    expect(actionsSource).not.toContain("const known = [");
+    expect(actionsSource).not.toContain("runtime.plugins");
+    expect(actionsSource).not.toContain("RuntimePluginWithViews");
+    expect(actionsSource).not.toContain("plugin.views");
   });
 
   // 4. Connection modes ───────────────────────────────────────────────────────
@@ -264,14 +319,7 @@ describe("XR feature parity audit", () => {
   // 5. Voice input ────────────────────────────────────────────────────────────
 
   it("axis 5 — view-host pages have voice transcript routing for INPUT, TEXTAREA, SELECT, and ARIA widgets", async () => {
-    // All 26 view-host pages share the same template — test a representative sample
-    const sampleIds: (typeof ALL_XR_VIEW_IDS)[number][] = [
-      "wallet",
-      "phone",
-      "messages",
-      "training",
-    ];
-    for (const id of sampleIds) {
+    for (const id of VOICE_ROUTE_SAMPLE_IDS) {
       const result = await callViewHostRoute({
         params: { id },
         runtime: { port: 31337 },
@@ -417,12 +465,10 @@ describe("XR feature parity audit", () => {
 
   // Cross-cutting: simulator test coverage ────────────────────────────────────
 
-  it("cross-cut — all 26 view ids are present in the all-views-crud Playwright spec", () => {
+  it("cross-cut — all-views-crud Playwright spec discovers XR views from the route", () => {
     const specSrc = readAppXr("e2e/all-views-crud.spec.ts");
-    const missing = ALL_XR_VIEW_IDS.filter(
-      (id) => !specSrc.includes(`"${id}"`),
-    );
-    expect(missing, "view IDs missing from simulator test").toEqual([]);
+    expect(specSrc).toContain("/api/xr/views");
+    expect(specSrc).not.toContain("ALL_VIEW_IDS");
   });
 
   it("cross-cut — voice-forms Playwright spec is present (voice-into-forms routing tested)", () => {

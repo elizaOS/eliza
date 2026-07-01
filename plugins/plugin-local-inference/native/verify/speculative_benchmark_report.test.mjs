@@ -15,7 +15,7 @@ test("builds the shared speculative report shape for each speculator", () => {
     const report = buildSpeculativeBenchmarkReport({
       speculator,
       verifier: "unit",
-      tier: "0_8b",
+      tier: "2b",
       specBinary: "/tmp/missing-spec-binary",
       withDrafter: { drafted: 4, accepted: 3, tokensPerSecond: 12 },
       withoutDrafter: { tokensPerSecond: 6 },
@@ -36,7 +36,7 @@ test("writes timestamped and latest report files", () => {
   const report = buildSpeculativeBenchmarkReport({
     speculator: "eagle3",
     verifier: "unit",
-    tier: "0_8b",
+    tier: "2b",
     status: "metadata-only",
   });
 

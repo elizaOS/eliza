@@ -49,7 +49,7 @@ def _fake_result(step: int = 250) -> dict:
         "tokens_per_sec": 95.0,
         "peak_vram_mb": 18432,
         "evaluated_at": "2026-05-11T00:00:00Z",
-        "registry_key": "qwen3.5-2b",
+        "registry_key": "gemma4-e2b",
     }
 
 
@@ -68,7 +68,7 @@ def test_record_to_results_store_inserts_row(tmp_path: Path) -> None:
     store = ResultsStore(db_path=db_path)
     try:
         history = store.get_history(
-            model_id="qwen3.5-2b",
+            model_id="gemma4-e2b",
             benchmark=eval_checkpoint.CHECKPOINT_EVAL_BENCHMARK_ID,
             limit=10,
         )
@@ -78,7 +78,7 @@ def test_record_to_results_store_inserts_row(tmp_path: Path) -> None:
     assert len(history) == 1
     run = history[0]
     assert run.benchmark == eval_checkpoint.CHECKPOINT_EVAL_BENCHMARK_ID
-    assert run.model_id == "qwen3.5-2b"
+    assert run.model_id == "gemma4-e2b"
     assert run.dataset_version == "eliza-native-v1@2026-05-11"
     assert run.code_commit == "deadbeef"
     # Macro-average of 0.82 and 0.74.
@@ -87,7 +87,7 @@ def test_record_to_results_store_inserts_row(tmp_path: Path) -> None:
     assert raw["step"] == 250
     assert raw["format_ok"] == 0.82
     assert raw["content_ok"] == 0.74
-    assert raw["registry_key"] == "qwen3.5-2b"
+    assert raw["registry_key"] == "gemma4-e2b"
 
 
 def test_record_to_results_store_emits_distinct_rows_per_step(tmp_path: Path) -> None:
@@ -109,7 +109,7 @@ def test_record_to_results_store_emits_distinct_rows_per_step(tmp_path: Path) ->
     store = ResultsStore(db_path=db_path)
     try:
         history = store.get_history(
-            model_id="qwen3.5-2b",
+            model_id="gemma4-e2b",
             benchmark=eval_checkpoint.CHECKPOINT_EVAL_BENCHMARK_ID,
             limit=10,
         )

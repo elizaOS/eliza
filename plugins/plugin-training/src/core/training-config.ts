@@ -10,7 +10,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
+import {
+  ALL_TRAJECTORY_TRAINING_TASKS,
+  type TrajectoryTrainingTask,
+} from "./trajectory-task-datasets.js";
 
 export type TrainingBackend = "native";
 
@@ -18,13 +21,11 @@ export const ALL_TRAINING_BACKENDS: readonly TrainingBackend[] = [
   "native",
 ] as const;
 
-export const ALL_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
-  "should_respond",
-  "context_routing",
-  "action_planner",
-  "response",
-  "media_description",
-] as const;
+// Single source of truth lives in trajectory-task-datasets.ts; re-exported
+// here under the historical name so existing config/threshold consumers keep
+// iterating the full task list (now including the LifeOps capabilities).
+export const ALL_TRAINING_TASKS: readonly TrajectoryTrainingTask[] =
+  ALL_TRAJECTORY_TRAINING_TASKS;
 
 export interface PerTaskOverride {
   threshold?: number;

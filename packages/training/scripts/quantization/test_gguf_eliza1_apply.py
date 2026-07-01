@@ -60,7 +60,7 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
     (checkpoint / "polarquant_config.json").write_text(
         json.dumps(
             {
-                "source_model": "Qwen/Qwen3.5-4B-Base",
+                "source_model": "google/gemma-4-E4B-Base",
                 "recipe": {"bits": 4, "block_size": 128, "use_qjl": True},
                 "kernel_manifest": kernel_manifest_fragment("polarquant"),
             }
@@ -70,7 +70,7 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
     (checkpoint / "qjl_config.json").write_text(
         json.dumps(
             {
-                "source_model": "Qwen/Qwen3.5-4B-Base",
+                "source_model": "google/gemma-4-E4B-Base",
                 "projection_dim_per_head": 256,
                 "kernel_manifest": kernel_manifest_fragment("qjl"),
             }
@@ -80,7 +80,7 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
     (checkpoint / "turboquant.json").write_text(
         json.dumps(
             {
-                "source_model": "Qwen/Qwen3.5-4B-Base",
+                "source_model": "google/gemma-4-E4B-Base",
                 "nbits": 4,
                 "kernel_manifest": kernel_manifest_fragment("turboquant"),
             }
@@ -90,7 +90,7 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
     (checkpoint / "fused_turboquant.json").write_text(
         json.dumps(
             {
-                "source_model": "Qwen/Qwen3.5-4B-Base",
+                "source_model": "google/gemma-4-E4B-Base",
                 "recipe": {"bits": 4, "compress_v": True, "verify": True},
                 "head_dim": 256,
                 "kernel_manifest": kernel_manifest_fragment("fused-turboquant"),

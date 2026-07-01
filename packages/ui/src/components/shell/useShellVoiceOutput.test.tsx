@@ -53,6 +53,15 @@ function userMsg(id: string, text: string): ConversationMessage {
 function assistantMsg(id: string, text: string): ConversationMessage {
   return { id, role: "assistant", text, timestamp: 2 };
 }
+function proactiveMsg(id: string, text: string): ConversationMessage {
+  return {
+    id,
+    role: "assistant",
+    text,
+    timestamp: 2,
+    source: "proactive-interaction",
+  };
+}
 
 const BASE: ShellVoiceOutputOptions = {
   conversationMessages: [],
@@ -292,5 +301,32 @@ describe("useShellVoiceOutput", () => {
     hoisted.cfg.isSpeaking = true;
     const { result } = render(BASE);
     expect(result.current.speaking).toBe(true);
+  });
+
+  // #8792: proactive interaction comments are text-only by default.
+  it("does NOT speak a proactive interaction comment outside hands-free voice mode", () => {
+    render({
+      ...BASE,
+      lastTurnVoice: false,
+      conversationMessages: [proactiveMsg("p1", "Want me to pull balances?")],
+    });
+    expect(hoisted.queueAssistantSpeech).not.toHaveBeenCalled();
+  });
+
+  it("DOES speak a proactive interaction comment while hands-free (last turn voice)", () => {
+    render({
+      ...BASE,
+      lastTurnVoice: true,
+      conversationMessages: [
+        userMsg("u1", "spoken turn"),
+        proactiveMsg("p1", "Want me to pull balances?"),
+      ],
+    });
+    expect(hoisted.queueAssistantSpeech).toHaveBeenCalledWith(
+      "p1",
+      "Want me to pull balances?",
+      true,
+      { replace: true },
+    );
   });
 });

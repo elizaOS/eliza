@@ -20,7 +20,7 @@
 // module is internal to core and not part of its public exports map, so we
 // can't import its runtime helpers from here. We type-shape the parts we
 // touch and provide a local fallback for cluster memory lookup.
-import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Room, Service, UUID } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 
 type RelationshipsPersonSummary = {
@@ -373,11 +373,15 @@ function getLifeOpsSearchService(
   runtime: IAgentRuntime,
 ): CrossChannelNativeSearchService | null {
   const service = runtime.getService("lifeops");
-  // Single-step cast: CrossChannelNativeSearchService is a plain interface
-  // (no Service base), so getService<T> generic isn't usable, but the types
-  // are non-conflicting and a single cast from Service to interface suffices.
-  return isObjectService(service)
-    ? (service as CrossChannelNativeSearchService)
+  // CrossChannelNativeSearchService = GmailSearchService & optional search
+  // methods. Validate the required getGmailSearch surface at this runtime
+  // boundary and narrow, rather than asserting across non-overlapping types.
+  if (!isObjectService(service)) {
+    return null;
+  }
+  const candidate = service as { getGmailSearch?: unknown };
+  return typeof candidate.getGmailSearch === "function"
+    ? (service as Service & CrossChannelNativeSearchService)
     : null;
 }
 

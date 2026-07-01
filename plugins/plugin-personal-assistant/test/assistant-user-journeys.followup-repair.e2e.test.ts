@@ -96,11 +96,14 @@ async function seedRepairFixtures(args: {
   runtime: AgentRuntime;
   ownerId: UUID;
   dmRoomId: UUID;
-}): Promise<{ followUpId: string }> {
+}): Promise<void> {
   const triageRepo = new InboxTriageRepository(args.runtime);
   const service = new LifeOpsService(args.runtime);
 
-  const frontier = await service.upsertRelationship({
+  // An overdue contact (last contacted 21d ago, 14d cadence) is the structural
+  // "open follow-up" signal; overdue state is derived from the runtime
+  // knowledge graph by computeOverdueFollowups, not a separate follow-up table.
+  await service.upsertRelationship({
     name: "Frontier Tower",
     primaryChannel: "telegram",
     primaryHandle: "@frontiertower_ops",
@@ -113,16 +116,6 @@ async function seedRepairFixtures(args: {
       Date.now() - 21 * 24 * 60 * 60 * 1000,
     ).toISOString(),
     metadata: { followupThresholdDays: 14 },
-  });
-
-  const followUp = await service.createFollowUp({
-    relationshipId: frontier.id,
-    dueAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    reason: "Repair the missed walkthrough and reschedule.",
-    priority: 1,
-    draft: null,
-    completedAt: null,
-    metadata: {},
   });
 
   await triageRepo.storeTriage({
@@ -164,8 +157,6 @@ async function seedRepairFixtures(args: {
     }),
     "messages",
   );
-
-  return { followUpId: followUp.id };
 }
 
 const selectedLiveProvider = await selectLifeOpsLiveProvider();
@@ -203,7 +194,6 @@ describeIf(LIVE_SUITE_ENABLED)(
     let envBackup: { restore: () => void };
     let ownerId: UUID;
     let dmRoomId: UUID;
-    let followUpId: string;
     const dispatches: Array<{ source: string; target: string; text: string }> =
       [];
 
@@ -314,12 +304,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         );
       }) as typeof runtime.sendMessageToTarget;
 
-      const seeded = await seedRepairFixtures({
+      await seedRepairFixtures({
         runtime,
         ownerId,
         dmRoomId,
       });
-      followUpId = seeded.followUpId;
     }, 240_000);
 
     afterAll(async () => {
@@ -367,7 +356,12 @@ describeIf(LIVE_SUITE_ENABLED)(
         pendingRequest,
         "Agent's queued approval must reference the Frontier Tower thread the user mentioned",
       ).toBeDefined();
-      const targetRequest = pendingRequest!;
+      if (!pendingRequest) {
+        throw new Error(
+          "Agent's queued approval did not reference the Frontier Tower thread",
+        );
+      }
+      const targetRequest = pendingRequest;
 
       const approved = await approvalQueue.approve(targetRequest.id, {
         resolvedBy: String(ownerId),
@@ -401,13 +395,6 @@ describeIf(LIVE_SUITE_ENABLED)(
         limit: 10,
       });
       expect(nonPending.length).toBeGreaterThan(0);
-
-      const service = new LifeOpsService(runtime);
-      await service.completeFollowUp(followUpId);
-      const followUps = await service.listFollowUps({ limit: 20 });
-      expect(followUps.find((entry) => entry.id === followUpId)?.status).toBe(
-        "completed",
-      );
     }, 240_000);
   },
 );

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { withMockApp } from "../../storybook/mock-providers.helpers";
+import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { StartupScreen } from "./StartupScreen";
 import { StartupShell } from "./StartupShell";
 import type { StartupShellView } from "./startup-shell-types";
@@ -23,17 +23,7 @@ export const Default: Story = {};
 // The presentational shell drives every startup state from its `view` prop,
 // so the variants below exercise each branch directly.
 function ShellStory({ view }: { view: StartupShellView }) {
-  return (
-    <StartupShell
-      view={view}
-      firstRun={
-        <div className="flex h-full w-full items-center justify-center text-center text-lg font-medium">
-          Welcome to elizaOS — let's set up your agent.
-        </div>
-      }
-      onRetry={() => {}}
-    />
-  );
+  return <StartupShell view={view} onRetry={() => {}} />;
 }
 
 export const Loading: Story = {
@@ -48,11 +38,20 @@ export const Loading: Story = {
   ),
 };
 
-export const FirstRun: Story = {
-  render: () => <ShellStory view={{ kind: "first-run" }} />,
-};
-
 export const Pairing: Story = {
+  // PairingView reads the pairing slice via useAppSelectorShallow — give it a
+  // concrete shape (an empty code, pairing enabled) so it renders the entry
+  // form. Without it the mock Proxy returns its `noop` fallback for the unset
+  // `pairingCodeInput` string, and `pairingCodeInput.trim()` throws.
+  decorators: [
+    mockApp({
+      pairingEnabled: true,
+      pairingExpiresAt: null,
+      pairingCodeInput: "",
+      pairingError: null,
+      pairingBusy: false,
+    }),
+  ],
   render: () => <ShellStory view={{ kind: "pairing" }} />,
 };
 

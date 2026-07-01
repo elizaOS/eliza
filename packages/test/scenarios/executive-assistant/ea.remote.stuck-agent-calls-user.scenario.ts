@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.remote.stuck-agent-calls-user",
   title: "Call the user for help when the assistant gets stuck",
   domain: "executive-assistant",

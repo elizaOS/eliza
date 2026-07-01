@@ -1,71 +1,75 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { discoverSideEffectAppModules } from "../vite/app-side-effect-modules.ts";
 
-const EXPECTED_SIDE_EFFECT_MODULES = [
-  "@elizaos/plugin-feed",
-  "@elizaos/plugin-scape",
-  "@elizaos/plugin-hyperscape",
-  "@elizaos/plugin-2004scape",
-  "@elizaos/plugin-defense-of-the-agents",
-  "@elizaos/plugin-clawville",
-  "@elizaos/plugin-trajectory-logger",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-waifu-imagegen-app",
-  "@elizaos/plugin-waifu-swap-app",
-  "@elizaos/plugin-wallet-ui/register",
+// The renderer side-effect app-module list is no longer hardcoded in the app
+// shell — each app plugin self-declares `elizaos.appRegister` in its own
+// package.json and the renderer build scans for it. This test pins the scan's
+// result against the real plugin tree so a regression (a dropped marker, a moved
+// entry file, a plugin added without a workspace dep) fails loudly.
+
+const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..");
+const SCAN_ROOTS = [
+  resolve(REPO_ROOT, "plugins"),
+  resolve(REPO_ROOT, "packages"),
+];
+
+// Canonical package names expected to self-declare renderer registration.
+const EXPECTED_SIDE_EFFECT_PACKAGES = [
   "@elizaos/app-model-tester",
-  "@elizaos/plugin-vector-browser/register",
-  "@elizaos/plugin-contacts/register",
-  "@elizaos/plugin-device-settings/register",
-  "@elizaos/plugin-messages/register",
-  "@elizaos/plugin-phone/register",
-  "@elizaos/plugin-task-coordinator/register",
-  "@elizaos/plugin-wifi/register",
-  "@elizaos/plugin-facewear/register",
+  "@elizaos/plugin-contacts",
+  "@elizaos/plugin-facewear",
+  "@elizaos/plugin-feed",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-messages",
+  "@elizaos/plugin-native-settings",
+  "@elizaos/plugin-phone",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
+  "@elizaos/plugin-trajectory-logger",
+  "@elizaos/plugin-vector-browser",
+  "@elizaos/plugin-wallet-ui",
+  "@elizaos/plugin-wifi",
 ] as const;
 
-describe("side-effect app module registrations", () => {
-  it("loads every side-effect app module from the app shell", () => {
-    const source = readFileSync(
-      resolve(import.meta.dirname, "plugin-registrations.ts"),
-      "utf8",
-    );
+// Imported directly by the app shell (main.tsx), not via the manifest scan.
+const FIRST_RENDER_REGISTRATION_MODULES = [
+  "@elizaos/plugin-task-coordinator/register",
+] as const;
 
-    const keys = [...source.matchAll(/key:\s*"([^"]+)"/g)].map(
-      (match) => match[1],
-    );
-    expect(keys).toEqual([...EXPECTED_SIDE_EFFECT_MODULES]);
+describe("side-effect app module registration (manifest-driven)", () => {
+  it("discovers every plugin that self-declares elizaos.appRegister", () => {
+    const discovered = discoverSideEffectAppModules(SCAN_ROOTS);
+    expect(discovered.map((m) => m.key)).toEqual([
+      ...EXPECTED_SIDE_EFFECT_PACKAGES,
+    ]);
+  });
 
-    for (const moduleId of EXPECTED_SIDE_EFFECT_MODULES) {
-      expect(source).toContain(`key: "${moduleId}"`);
-      expect(source).toContain(`load: () => import("${moduleId}")`);
+  it("resolves a real entry file for every discovered module", () => {
+    for (const module of discoverSideEffectAppModules(SCAN_ROOTS)) {
+      expect(() => readFileSync(module.entry, "utf8")).not.toThrow();
     }
   });
 
-  it("declares side-effect module plugin dependencies for packaged app builds", () => {
+  it("declares each discovered module as a workspace dependency", () => {
     const packageJson = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "..", "package.json"), "utf8"),
     ) as { dependencies?: Record<string, string> };
 
-    for (const moduleId of EXPECTED_SIDE_EFFECT_MODULES) {
-      const packageName = moduleId.replace(/\/register$/, "");
-      expect(packageJson.dependencies?.[packageName]).toBe("workspace:*");
+    for (const module of discoverSideEffectAppModules(SCAN_ROOTS)) {
+      expect(packageJson.dependencies?.[module.key]).toBe("workspace:*");
     }
   });
 
-  it("declares TypeScript modules for register-only side-effect imports", () => {
-    const declarations = readFileSync(
-      resolve(import.meta.dirname, "types", "side-effect-app-modules.d.ts"),
+  it("loads chat inline-widget registrations before first render", () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, "main.tsx"),
       "utf8",
     );
 
-    for (const moduleId of EXPECTED_SIDE_EFFECT_MODULES.filter((id) =>
-      id.endsWith("/register"),
-    )) {
-      expect(declarations).toContain(`declare module "${moduleId}";`);
+    for (const moduleId of FIRST_RENDER_REGISTRATION_MODULES) {
+      expect(source).toContain(`import("${moduleId}")`);
     }
   });
 });

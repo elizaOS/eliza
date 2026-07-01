@@ -15,19 +15,10 @@ import type {
   ConnectorAccountsListResponse,
   ConnectorAccountUpdateInput,
 } from "../api/client-agent";
+import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 
 export const DEFAULT_CONNECTOR_ACCOUNT_ID = "default";
-
-type ActionTone = "info" | "success" | "error";
-
-type ActionNoticeFn = (
-  text: string,
-  tone?: ActionTone,
-  ttlMs?: number,
-  once?: boolean,
-  busy?: boolean,
-) => void;
 
 export interface UseConnectorAccountsOptions {
   setActionNotice?: ActionNoticeFn;
@@ -351,7 +342,7 @@ export function useConnectorAccounts(
   );
 
   const accounts = useMemo(() => data?.accounts ?? [], [data?.accounts]);
-  const defaultAccountId = getPreferredAccountId(data);
+  const defaultAccountId = useMemo(() => getPreferredAccountId(data), [data]);
   const effectiveAccountId = selectedAccountId ?? defaultAccountId;
   const selectedAccount = useMemo(
     () => accounts.find((account) => account.id === effectiveAccountId) ?? null,

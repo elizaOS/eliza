@@ -13,10 +13,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function runtimeWithGoogleService(service: unknown): IAgentRuntime {
+function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRuntime {
+  const googleService = {
+    listGmailTriageMessages: vi.fn(async () => []),
+    searchGmailMessages: vi.fn(async () => []),
+    sendGmailReply: vi.fn(async () => ({})),
+    modifyGmailMessages: vi.fn(async () => undefined),
+    createGmailFilterForSender: vi.fn(async () => ({
+      filterId: "filter_default",
+      trashed: true,
+    })),
+    ...service,
+  };
   return {
     agentId: "agent-1",
-    getService: vi.fn((serviceType: string) => (serviceType === "google" ? service : null)),
+    getService: vi.fn((serviceType: string) => (serviceType === "google" ? googleService : null)),
   } as unknown as IAgentRuntime;
 }
 

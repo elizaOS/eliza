@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "reminder.invisalign-tray.every-10-days",
   title: "Invisalign tray swap every 10 days",
   domain: "reminders",

@@ -45,10 +45,10 @@ and the local files in this directory are thin re-exports:
 ## What stays a twin (and why)
 
 These files exist in both `packages/app-core` and `packages/ui` and are
-intentionally **not bundled:
+intentionally **not bundled**:
 
 - `catalog.ts` — server adds `contextLength`, `optimizations.requiresKernel`,
-  and MTP drafter variants that the UI public catalog does not surface.
+  and same-file MTP metadata that the UI public catalog does not surface.
 - `recommendation.ts` — server has kernel-availability filtering
   (`recommendation.test.ts` covers MTP gating) that depends on
   server-only `LocalRuntimeOptimizations.requiresKernel`.

@@ -4,7 +4,7 @@ import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
-import { BatchQueue } from "../utils/batch-queue";
+import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
 
 interface EmbeddingQueueItem {
 	memory: Memory;
@@ -17,6 +17,7 @@ interface EmbeddingQueueItem {
  * This service listens for EMBEDDING_GENERATION_REQUESTED events
  * and processes them in a queue to avoid blocking the main runtime
  */
+
 export class EmbeddingGenerationService extends Service {
 	static serviceType = "embedding-generation";
 	capabilityDescription =
@@ -84,6 +85,16 @@ export class EmbeddingGenerationService extends Service {
 		// model as other services so we do not maintain another bespoke queue + task stack here.
 		// Task system owns WHEN (repeat EMBEDDING_DRAIN tick); we own WHAT (dequeue, embed, persist).
 		// No maxSize — bottleneck is embedding I/O, not queue length.
+		//
+		// When a TEXT_EMBEDDING_BATCH model is registered (e.g. the cloud plugin),
+		// each drain embeds the whole slice in ONE round-trip instead of N — the
+		// per-turn embed burst (2-5 calls) collapses to a single POST /embeddings.
+		// `processBatch` throwing falls the WHOLE batch back to the per-item
+		// `process` path (BatchQueue.drain), so retry / onExhausted semantics and
+		// per-id write-back are preserved on any batch failure.
+		const hasBatchModel = Boolean(
+			this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH),
+		);
 		this.batchQueue = new BatchQueue<EmbeddingQueueItem>({
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			taskDescription: "Embedding generation drain",
@@ -93,6 +104,9 @@ export class EmbeddingGenerationService extends Service {
 			maxParallel: 10,
 			maxRetriesAfterFailure: 3,
 			process: (item) => this.generateEmbedding(item),
+			processBatch: hasBatchModel
+				? (items) => this.generateEmbeddingsBatch(items)
+				: undefined,
 			onExhausted: async (item, error) => {
 				await this.runtime.log({
 					entityId: this.runtime.agentId,
@@ -188,6 +202,11 @@ export class EmbeddingGenerationService extends Service {
 			return;
 		}
 
+		// Idempotency: skip a memory that already carries a vector.
+		if (memory.embedding) {
+			return;
+		}
+
 		try {
 			const startTime = Date.now();
 
@@ -206,31 +225,7 @@ export class EmbeddingGenerationService extends Service {
 				"Generated embedding",
 			);
 
-			if (memory.id) {
-				await this.runtime.updateMemory({
-					id: memory.id,
-					embedding,
-				});
-
-				await this.runtime.log({
-					entityId: this.runtime.agentId,
-					roomId: memory.roomId || this.runtime.agentId,
-					type: "embedding_event",
-					body: {
-						runId: item.runId,
-						memoryId: memory.id,
-						status: "completed",
-						duration,
-						source: "embeddingService",
-					},
-				});
-
-				await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
-					runtime: this.runtime,
-					memory: { ...memory, embedding },
-					source: "embeddingService",
-				});
-			}
+			await this.persistEmbedding(item, embedding, duration);
 		} catch (error) {
 			this.runtime.logger.error(
 				{
@@ -243,6 +238,140 @@ export class EmbeddingGenerationService extends Service {
 			);
 			throw error;
 		}
+	}
+
+	/**
+	 * Persist a generated vector to its memory and emit the completion event.
+	 * Shared by the per-item ({@link generateEmbedding}) and batched
+	 * ({@link generateEmbeddingsBatch}) paths so write-back is identical.
+	 */
+	private async persistEmbedding(
+		item: EmbeddingQueueItem,
+		embedding: number[],
+		durationMs: number,
+	): Promise<void> {
+		const { memory } = item;
+		if (!memory.id) {
+			return;
+		}
+		if (!Array.isArray(embedding) || embedding.length === 0) {
+			// An empty vector is a failed generation, not a real embedding.
+			// Persisting it would write nothing yet report success, marking the
+			// memory permanently "embedded" with no vector (silent recall gap).
+			// Throw so both callers route it through their failure path: the
+			// per-item path rethrows; the batch loop records success:false and
+			// retries. A configured zero-vector (length === dim) is intentional
+			// for text-only deployments and is left untouched.
+			throw new Error(
+				`[EmbeddingGenerationService] refusing to persist an empty embedding for memory ${memory.id}; the embedding model returned no vector`,
+			);
+		}
+		await this.runtime.updateMemory({
+			id: memory.id,
+			embedding,
+		});
+		await this.runtime.log({
+			entityId: this.runtime.agentId,
+			roomId: memory.roomId || this.runtime.agentId,
+			type: "embedding_event",
+			body: {
+				runId: item.runId,
+				memoryId: memory.id,
+				status: "completed",
+				duration: durationMs,
+				source: "embeddingService",
+			},
+		});
+		await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
+			runtime: this.runtime,
+			memory: { ...memory, embedding },
+			source: "embeddingService",
+		});
+	}
+
+	/**
+	 * Batched drain path: embed every queued text in ONE TEXT_EMBEDDING_BATCH
+	 * round-trip, then write each vector back to its own memory id.
+	 *
+	 * Returns a {@link BatchItemOutcome} per item so the queue applies its normal
+	 * retry / `onExhausted` accounting. Items with no text or an already-present
+	 * vector are skipped (counted as success — nothing to do). If the single
+	 * batch model call throws, this throws too, which makes `BatchQueue.drain`
+	 * fall the WHOLE slice back to the per-item {@link generateEmbedding} path —
+	 * preserving the per-item fallback and per-id write-back guarantees.
+	 */
+	private async generateEmbeddingsBatch(
+		items: EmbeddingQueueItem[],
+	): Promise<BatchItemOutcome<EmbeddingQueueItem>[]> {
+		// Partition: only items that actually need an embed go in the batch call.
+		const toEmbed: { item: EmbeddingQueueItem; text: string }[] = [];
+		const skipped: EmbeddingQueueItem[] = [];
+		for (const item of items) {
+			const text = item.memory.content.text;
+			if (!text || item.memory.embedding) {
+				skipped.push(item);
+			} else {
+				toEmbed.push({ item, text });
+			}
+		}
+
+		if (toEmbed.length === 0) {
+			return items.map((item) => ({ item, success: true, retryCount: 0 }));
+		}
+
+		const startTime = Date.now();
+		// A throw here propagates to BatchQueue.drain, which falls the whole batch
+		// back to per-item `process` (generateEmbedding) — the safe fallback.
+		const vectors = await this.runtime.useModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			{ texts: toEmbed.map((entry) => entry.text) },
+		);
+		const duration = Date.now() - startTime;
+
+		if (!Array.isArray(vectors) || vectors.length !== toEmbed.length) {
+			// Shape mismatch can't be mapped back to ids safely — fall the whole
+			// batch back to the per-item path.
+			throw new Error(
+				`TEXT_EMBEDDING_BATCH returned ${Array.isArray(vectors) ? vectors.length : "non-array"} vectors for ${toEmbed.length} texts`,
+			);
+		}
+
+		this.runtime.logger.debug(
+			{
+				src: "plugin:basic-capabilities:service:embedding",
+				agentId: this.runtime.agentId,
+				count: toEmbed.length,
+				durationMs: duration,
+			},
+			"Generated embeddings (batch)",
+		);
+
+		// Write each vector back to its own memory id. A single id's write-back
+		// failure is recorded against that item only — it does not poison the
+		// rest of the batch or trigger a whole-batch fallback.
+		const outcomes: BatchItemOutcome<EmbeddingQueueItem>[] = skipped.map(
+			(item) => ({ item, success: true, retryCount: 0 }),
+		);
+		for (let i = 0; i < toEmbed.length; i++) {
+			const { item } = toEmbed[i];
+			try {
+				await this.persistEmbedding(item, vectors[i], duration);
+				outcomes.push({ item, success: true, retryCount: 0 });
+			} catch (error) {
+				const err = error instanceof Error ? error : new Error(String(error));
+				this.runtime.logger.error(
+					{
+						src: "plugin:basic-capabilities:service:embedding",
+						agentId: this.runtime.agentId,
+						memoryId: item.memory.id,
+						error: err.message,
+					},
+					"Failed to persist batched embedding",
+				);
+				outcomes.push({ item, success: false, error: err, retryCount: 0 });
+			}
+		}
+		return outcomes;
 	}
 
 	async stop(): Promise<void> {
@@ -266,7 +395,13 @@ export class EmbeddingGenerationService extends Service {
 		}
 
 		const remaining = this.batchQueue.size;
-		await this.batchQueue.dispose(this.runtime, { flushHighPriority: true });
+		const fastShutdown = process.env.ELIZA_FAST_SHUTDOWN === "1";
+		if (fastShutdown) {
+			this.batchQueue.clear();
+		}
+		await this.batchQueue.dispose(this.runtime, {
+			flushHighPriority: !fastShutdown,
+		});
 
 		this.runtime.logger.info(
 			{

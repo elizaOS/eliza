@@ -1,8 +1,10 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "nanny-payroll-tax-admin",
-  title: "Assistant prepares household payroll and tax paperwork with approvals",
+  title:
+    "Assistant prepares household payroll and tax paperwork with approvals",
   domain: "executive.household",
   tags: ["lifeops", "executive-assistant", "money", "documents"],
   isolation: "per-scenario",

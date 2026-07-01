@@ -1,5 +1,5 @@
 /**
- * GoalsView — owner life-direction surface.
+ * GoalsView — the single GUI/XR data wrapper for the Goals surface.
  *
  * Data-fetching view over the single read-only goals endpoint served by the
  * personal-assistant routes (PA owns the persistence; this plugin only renders):
@@ -10,11 +10,13 @@
  * record to a `GoalItem` at the fetch boundary so the rest of the view renders
  * display-only.
  *
- * It renders one of four distinct states (loading, error, empty, populated) and
- * instruments its status-filter chips through the agent surface so the floating
- * chat can drive them. The view has no subscription, so a quiet 20s poll keeps
- * it fresh (no manual refresh control). The default fetcher reads from
- * `client.getBaseUrl()`; tests inject the fetcher seam so they stay offline.
+ * It owns the fetch state machine (loading / error / ready), the status-filter
+ * selection, and the quiet 20s background poll, then renders the one
+ * presentational {@link GoalsSpatialView} inside a {@link SpatialSurface}.
+ * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
+ * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
+ * TUI surface renders the same `GoalsSpatialView` through the terminal registry
+ * (see `register-terminal-view.tsx`).
  *
  * This plugin MUST NOT import from @elizaos/plugin-personal-assistant. The wire
  * DTOs below are declared locally to match the JSON shape PA emits
@@ -22,8 +24,8 @@
  */
 
 import { client } from "@elizaos/ui";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type { CSSProperties, ReactNode } from "react";
+
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   GOAL_STATUSES,
@@ -31,6 +33,7 @@ import {
   type GoalReviewState,
   type GoalStatus,
 } from "../../types.ts";
+import { type GoalsSnapshot, GoalsSpatialView } from "./GoalsSpatialView.tsx";
 
 // ---------------------------------------------------------------------------
 // Wire DTOs — local mirror of the JSON shape served by the PA goals route.
@@ -156,358 +159,6 @@ function mapGoal(record: GoalRecordWire): GoalItem {
   };
 }
 
-const STATUS_LABELS: Record<GoalStatus, string> = {
-  active: "Active",
-  paused: "Paused",
-  archived: "Archived",
-  satisfied: "Achieved",
-};
-
-const REVIEW_LABELS: Record<GoalReviewState, string> = {
-  idle: "Not reviewed",
-  on_track: "On track",
-  at_risk: "At risk",
-  needs_attention: "Needs attention",
-};
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Styling — light surface, CSS vars, orange accent only.
-// ---------------------------------------------------------------------------
-
-const STYLE_TAG_ID = "goals-view-styles";
-
-const GOALS_VIEW_CSS = `
-.goals-view-btn {
-  min-height: 44px;
-  min-width: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.goals-view-btn-primary {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #ffffff);
-  border: 1px solid var(--primary, #ff8a24);
-}
-.goals-view-btn-primary:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
-}
-.goals-view-btn-neutral {
-  background: transparent;
-  color: var(--foreground, #0a0a0a);
-  border: 1px solid var(--border, rgba(10, 10, 10, 0.12));
-}
-.goals-view-btn-neutral:hover {
-  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
-}
-.goals-view-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.goals-view-chip {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 16px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-  background: transparent;
-  color: var(--foreground, #0a0a0a);
-  border: 1px solid var(--border, rgba(10, 10, 10, 0.12));
-}
-.goals-view-chip:hover {
-  background: color-mix(in srgb, var(--foreground, #0a0a0a) 6%, transparent);
-}
-.goals-view-chip[aria-pressed="true"] {
-  background: var(--primary, #ff8a24);
-  color: var(--primary-foreground, #ffffff);
-  border-color: var(--primary, #ff8a24);
-}
-.goals-view-chip[aria-pressed="true"]:hover {
-  background: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
-  border-color: color-mix(in srgb, var(--primary, #ff8a24) 85%, black);
-}
-`;
-
-function useGoalsViewStyles(): void {
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_TAG_ID)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_TAG_ID;
-    style.textContent = GOALS_VIEW_CSS;
-    document.head.appendChild(style);
-  }, []);
-}
-
-const containerStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  padding: 24,
-  height: "100%",
-  boxSizing: "border-box",
-  overflowY: "auto",
-  background: "var(--background, #eef8ff)",
-  color: "var(--foreground, #0a0a0a)",
-  fontFamily: "system-ui, sans-serif",
-};
-
-const sectionStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const headerRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const h1Style: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600 };
-const h2Style: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600 };
-
-const cardStyle: CSSProperties = {
-  padding: "8px 0",
-  display: "flex",
-  flexDirection: "column",
-  gap: 8,
-};
-
-const dimStyle: CSSProperties = {
-  opacity: 0.65,
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const chipRowStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-};
-
-const listStyle: CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-};
-
-const rowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-  gap: 12,
-  padding: "10px 0",
-  borderBottom: "1px solid var(--border, rgba(10,10,10,0.08))",
-  fontSize: 14,
-};
-
-const rowMainStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  minWidth: 0,
-};
-
-const titleStyle: CSSProperties = { fontWeight: 600 };
-
-const descStyle: CSSProperties = {
-  ...dimStyle,
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  maxWidth: "100%",
-};
-
-const metaStyle: CSSProperties = {
-  ...dimStyle,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
-
-// One colored pill per row carries the review state. Red = at risk / needs
-// attention, muted green = on track, neutral gray = idle. Orange is reserved
-// for "busy", so it is never used here.
-const REVIEW_PILL_COLORS: Record<GoalReviewState, { bg: string; fg: string }> =
-  {
-    idle: { bg: "rgba(10, 10, 10, 0.06)", fg: "rgba(10, 10, 10, 0.6)" },
-    on_track: { bg: "rgba(34, 134, 73, 0.12)", fg: "#1f7a44" },
-    at_risk: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
-    needs_attention: { bg: "rgba(239, 68, 68, 0.12)", fg: "#c23b3b" },
-  };
-
-function reviewPillStyle(state: GoalReviewState): CSSProperties {
-  const { bg, fg } = REVIEW_PILL_COLORS[state];
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 600,
-    background: bg,
-    color: fg,
-    whiteSpace: "nowrap",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Agent-instrumented controls (hooks cannot run inside .map()).
-// ---------------------------------------------------------------------------
-
-function StatusChip({
-  status,
-  label,
-  active,
-  onToggle,
-}: {
-  status: GoalStatus;
-  label: string;
-  active: boolean;
-  onToggle: (status: GoalStatus) => void;
-}): ReactNode {
-  const activate = useCallback(() => onToggle(status), [status, onToggle]);
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `goals-status-${status}`,
-    role: "toggle",
-    label: `${label} status filter`,
-    group: "goals-status-filters",
-    description: `Show only ${label} goals`,
-    status: active ? "active" : "inactive",
-    onActivate: activate,
-  });
-  return (
-    // The visible label IS the accessible name (no aria-label) so command->view
-    // routing can address the chip by its status name (e.g. "Active").
-    <button
-      ref={ref}
-      type="button"
-      className="goals-view-chip"
-      onClick={activate}
-      aria-pressed={active}
-      {...agentProps}
-    >
-      {label}
-    </button>
-  );
-}
-
-function GoalsHeader(): ReactNode {
-  return (
-    <header style={headerRowStyle}>
-      <h1 style={h1Style}>Goals</h1>
-    </header>
-  );
-}
-
-function StatusFilters({
-  active,
-  onToggle,
-}: {
-  active: ReadonlySet<GoalStatus>;
-  onToggle: (status: GoalStatus) => void;
-}): ReactNode {
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: an ARIA group of filter-chip toggles, not a form fieldset
-    <div
-      role="group"
-      aria-label="Status filters"
-      style={chipRowStyle}
-      data-testid="goals-status-filters"
-    >
-      {GOAL_STATUSES.map((status) => (
-        <StatusChip
-          key={status}
-          status={status}
-          label={STATUS_LABELS[status]}
-          active={active.has(status)}
-          onToggle={onToggle}
-        />
-      ))}
-    </div>
-  );
-}
-
-function GoalRow({ goal }: { goal: GoalItem }): ReactNode {
-  const meta: string[] = [];
-  if (goal.cadenceKind) meta.push(goal.cadenceKind);
-  if (goal.target) meta.push(goal.target);
-  if (goal.linkedCount > 0) {
-    meta.push(`${goal.linkedCount} linked`);
-  }
-  return (
-    <li style={rowStyle}>
-      <span style={rowMainStyle}>
-        <span style={titleStyle}>{goal.title}</span>
-        {goal.description ? (
-          <span style={descStyle}>{goal.description}</span>
-        ) : null}
-        {meta.length > 0 ? (
-          <span style={dimStyle}>{meta.join(" · ")}</span>
-        ) : null}
-      </span>
-      <span style={metaStyle}>
-        <span style={reviewPillStyle(goal.reviewState)}>
-          {REVIEW_LABELS[goal.reviewState]}
-        </span>{" "}
-        {formatDate(goal.updatedAt)}
-      </span>
-    </li>
-  );
-}
-
-function StatusGroup({
-  status,
-  goals,
-}: {
-  status: GoalStatus;
-  goals: GoalItem[];
-}): ReactNode {
-  return (
-    <div style={cardStyle} data-testid={`goals-group-${status}`}>
-      <h2 style={h2Style}>
-        {STATUS_LABELS[status]} <span style={dimStyle}>({goals.length})</span>
-      </h2>
-      <ul style={listStyle} aria-label={`${STATUS_LABELS[status]} goals`}>
-        {goals.map((goal) => (
-          <GoalRow key={goal.id} goal={goal} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Fetch-driven state machine.
 // ---------------------------------------------------------------------------
@@ -521,25 +172,7 @@ function requestNewGoal(): void {
   client.sendChatMessage?.("Help me set a goal to head toward this quarter.");
 }
 
-// DESIGN LAW 10 — one quiet proactive line under the title. Counts the goals
-// whose last review flagged them (at_risk / needs_attention); these are the
-// only review states that call for owner attention. Returns null when nothing
-// is flagged so the line renders only on a real signal (never "0 goals").
-function reviewNudge(goals: GoalItem[]): string | null {
-  const flagged = goals.filter(
-    (goal) =>
-      goal.reviewState === "at_risk" ||
-      goal.reviewState === "needs_attention",
-  ).length;
-  if (flagged === 0) return null;
-  return flagged === 1
-    ? "1 goal needs a review."
-    : `${flagged} goals need a review.`;
-}
-
 export function GoalsView(props: GoalsViewProps = {}): ReactNode {
-  useGoalsViewStyles();
-
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [activeStatuses, setActiveStatuses] = useState<Set<GoalStatus>>(
@@ -605,109 +238,42 @@ export function GoalsView(props: GoalsViewProps = {}): ReactNode {
     });
   }, []);
 
-  // Filtering is presentation-only (the route returns the full goal set), so it
-  // derives from the ready goals + active selection. The active set is the
-  // single source of truth, so the chips and the rendered groups never disagree.
-  const groups = useMemo(() => {
-    if (state.kind !== "ready") return [];
-    return GOAL_STATUSES.map((status) => ({
-      status,
-      goals: state.goals.filter((goal) => goal.status === status),
-    })).filter((group) => {
-      if (group.goals.length === 0) return false;
-      if (activeStatuses.size === 0) return true;
-      return activeStatuses.has(group.status);
-    });
+  const onAction = useCallback(
+    (action: string) => {
+      if (action.startsWith("filter:")) {
+        const raw = action.slice("filter:".length);
+        if (KNOWN_STATUSES.has(raw)) toggleStatus(raw as GoalStatus);
+        return;
+      }
+      switch (action) {
+        case "retry":
+          load();
+          return;
+        case "new":
+          requestNewGoal();
+          return;
+      }
+    },
+    [load, toggleStatus],
+  );
+
+  const snapshot: GoalsSnapshot = useMemo(() => {
+    const activeList = Array.from(activeStatuses);
+    if (state.kind === "loading") {
+      return { status: "loading", goals: [], activeStatuses: activeList };
+    }
+    if (state.kind === "error") {
+      return {
+        status: "error",
+        goals: [],
+        activeStatuses: activeList,
+        error: state.message,
+      };
+    }
+    return { status: "ready", goals: state.goals, activeStatuses: activeList };
   }, [state, activeStatuses]);
 
-  if (state.kind === "loading") {
-    return (
-      <div style={containerStyle} data-testid="goals-loading">
-        <GoalsHeader />
-        <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
-        <div style={{ ...cardStyle, ...dimStyle }}>Loading goals…</div>
-      </div>
-    );
-  }
-
-  if (state.kind === "error") {
-    return (
-      <div style={containerStyle} data-testid="goals-error">
-        <GoalsHeader />
-        <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>Couldn’t load goals</div>
-          <div style={dimStyle}>{state.message}</div>
-          <div>
-            <button
-              type="button"
-              className="goals-view-btn goals-view-btn-primary"
-              onClick={load}
-              aria-label="Retry loading goals"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Fetched OK but no goals exist yet → honest set-a-goal affordance routed
-  // through the assistant chat. No fabricated goals.
-  if (state.goals.length === 0) {
-    return (
-      <div style={containerStyle} data-testid="goals-empty">
-        <GoalsHeader />
-        <div style={cardStyle}>
-          <div style={{ fontWeight: 600 }}>No goals yet</div>
-          <div style={dimStyle}>
-            Nothing to track yet. Ask Eliza to set a goal — tell her what you
-            want to head toward this quarter and she’ll keep you on it.
-          </div>
-          <div>
-            <button
-              type="button"
-              className="goals-view-btn goals-view-btn-primary"
-              onClick={requestNewGoal}
-              aria-label="Ask Eliza to set a goal"
-            >
-              Set a goal
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const nudge = reviewNudge(state.goals);
-
-  return (
-    <div style={containerStyle} data-testid="goals-populated">
-      <GoalsHeader />
-      {nudge ? (
-        <div style={dimStyle} data-testid="goals-review-nudge">
-          {nudge}
-        </div>
-      ) : null}
-      <StatusFilters active={activeStatuses} onToggle={toggleStatus} />
-      {groups.length > 0 ? (
-        <section style={sectionStyle} aria-label="Goals">
-          {groups.map((group) => (
-            <StatusGroup
-              key={group.status}
-              status={group.status}
-              goals={group.goals}
-            />
-          ))}
-        </section>
-      ) : (
-        <div style={{ ...cardStyle, ...dimStyle }}>
-          No goals match the selected status filters.
-        </div>
-      )}
-    </div>
-  );
+  return <GoalsSpatialView snapshot={snapshot} onAction={onAction} />;
 }
 
 export default GoalsView;

@@ -58,6 +58,19 @@ export interface VoiceCaptureTranscriptSegment {
   final: boolean;
   /** Which backend produced this segment. */
   backend: VoiceCaptureBackend;
+  /**
+   * The recorded utterance audio as a mono PCM16 WAV (RIFF header carries the
+   * sample rate) — attached ONLY to the local-inference final segment, where
+   * the WAV already exists for ASR. Absent for browser/talkmode (no PCM is
+   * exposed). Used by the transcript recorder to retain audio for playback.
+   */
+  audioWav?: Uint8Array;
+  /**
+   * Per-word timings from the fused ASR (ABI v12+), relative to this
+   * utterance's start. Empty/absent when the backend gives no timing — the
+   * player then highlights per segment.
+   */
+  words?: ReadonlyArray<{ text: string; startMs: number; endMs: number }>;
 }
 
 /**
@@ -133,7 +146,7 @@ export interface VoiceCaptureHandle {
  * True on a native mobile platform whose `TalkMode` plugin is present. On
  * Android/iOS the OS speech recognizer (exposed by TalkMode) is the real STT
  * engine — it transcribes on-device with live INTERIM results — and the
- * local-inference whisper assets are not staged on mobile, so that path 502s.
+ * local-inference ASR assets are not staged on mobile, so that path 502s.
  * `getNativePlugin` returns `{}` when the plugin is absent, hence the method
  * feature-check.
  */
@@ -156,14 +169,14 @@ async function resolveBackendKind(
   // Native mobile: the platform speech recognizer (TalkMode) is the working STT
   // path and the only one that streams interim transcripts. Prefer it ahead of
   // the local-inference probe — on mobile that probe can report ready while the
-  // whisper assets are missing, then 502 at stop() with no recoverable fallback.
+  // local ASR assets are missing, then 502 at stop() with no recoverable fallback.
   if (isNativeTalkModeCaptureAvailable()) {
     return "talkmode";
   }
   // local-inference is the default elsewhere, but it needs BOTH the client
   // mic-capture primitives AND a server that can actually transcribe. Probe the
   // server's readiness (GET /api/asr/local-inference/status) so an unconfigured
-  // box (no whisper model / native adapter) degrades to browser SpeechRecognition
+  // box (no local ASR assets / native adapter) degrades to browser SpeechRecognition
   // instead of capturing audio it can only 502 on at stop().
   if (
     (preferred === "local-inference" || preferred === undefined) &&
@@ -396,8 +409,14 @@ export function createVoiceCapture(
       }
       try {
         const wav = await current.stop();
-        const { text } = await transcribeLocalInferenceWav(wav);
-        onTranscript({ text, final: true, backend: "local-inference" });
+        const { text, words } = await transcribeLocalInferenceWav(wav);
+        onTranscript({
+          text,
+          final: true,
+          backend: "local-inference",
+          audioWav: wav,
+          words,
+        });
         setState("stopped");
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));

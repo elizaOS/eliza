@@ -9,6 +9,18 @@
  */
 
 export {
+	applyCapabilityManifest,
+	assertHostAllowed,
+	assertPathAllowed,
+	CapabilityDeadlineError,
+	type CapabilityManifest,
+	CapabilityViolationError,
+	frozenEnv,
+	isHostAllowed,
+	isPathAllowed,
+	withCapabilityGovernance,
+} from "./capability-manifest.js";
+export {
 	buildSafeExternalPrompt,
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
@@ -27,6 +39,18 @@ export {
 	scrubIncomingMessageTextForStorage,
 } from "./incoming-message-security.js";
 export {
+	cardBrand,
+	detectPii,
+	ibanValid,
+	ipv4Valid,
+	luhnValid,
+	PII_DETECTOR_BY_KIND,
+	PII_DETECTORS,
+	type PiiDetector,
+	type PiiMatch,
+	ssnValid,
+} from "./pii-detectors.js";
+export {
 	createSecretsRedactor,
 	// Pattern-based redaction
 	getDefaultRedactPatterns,
@@ -40,6 +64,14 @@ export {
 	// Secrets-based redaction
 	type SecretsRedactOptions,
 } from "./redact.js";
+export {
+	parseSecretSwapExemptValues,
+	SECRET_SWAP_ENABLED_SETTING,
+	SECRET_SWAP_EXEMPT_VALUES_SETTING,
+	type SecretSwapEntry,
+	SecretSwapSession,
+	SecretSwapUnresolvedPlaceholderError,
+} from "./secret-swap.js";
 export {
 	BLOCKED_SPAWN_ENV_KEYS,
 	BLOCKED_SPAWN_ENV_PREFIXES,

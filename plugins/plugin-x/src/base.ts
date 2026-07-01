@@ -25,6 +25,7 @@ import {
   type TwitterInteractionPayload,
 } from "./types";
 import { buildTwitterMessageMetadata, createMemorySafe } from "./utils/memory";
+import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
 /**
@@ -48,13 +49,49 @@ export function extractAnswer(text: string): string {
  * @property {string} bio - The biography of the profile.
  * @property {string[]} nicknames - An array of nicknames associated with the profile.
  */
-type TwitterProfile = {
+export type TwitterProfile = {
   id: string;
   username: string;
   screenName: string;
   bio: string;
   nicknames: string[];
 };
+
+/**
+ * Resolves the agent's known nicknames/aliases for its X account.
+ *
+ * Sources, in order:
+ *  - the `TWITTER_NICKNAMES` setting (comma-separated),
+ *  - the runtime character `name`,
+ * excluding values that simply duplicate the `@username` or screen name.
+ */
+function resolveAgentNicknames(
+  runtime: IAgentRuntime,
+  identity: { username: string; screenName: string },
+): string[] {
+  const reserved = new Set(
+    [identity.username, identity.screenName]
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0),
+  );
+
+  const candidates = [
+    ...(getSetting(runtime, "TWITTER_NICKNAMES") ?? "").split(","),
+    runtime.character?.name ?? "",
+  ];
+
+  const nicknames: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (reserved.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    nicknames.push(trimmed);
+  }
+  return nicknames;
+}
 
 type TweetWithIdentity = Tweet & {
   id: string;
@@ -416,7 +453,10 @@ export class ClientBase {
         username: profile.username, // this is the at
         screenName: profile.name ?? profile.username, // this is the human readable name
         bio: profile.biography || "",
-        nicknames: [],
+        nicknames: resolveAgentNicknames(this.runtime, {
+          username: profile.username,
+          screenName: profile.name ?? profile.username,
+        }),
       };
     } else {
       throw new Error("Failed to load profile");

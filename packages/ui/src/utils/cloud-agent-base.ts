@@ -44,14 +44,6 @@ export function normalizeDirectCloudSharedAgentApiBase(value: string): string {
   return stripTrailingSlash(url.toString());
 }
 
-export function isDirectCloudSharedAgentApiBase(value: string): boolean {
-  const normalized = normalizeDirectCloudSharedAgentApiBase(value);
-  const url = normalizeHttpUrl(normalized);
-  if (!url) return false;
-  const sharedPath = directSharedAgentPath(url.pathname);
-  return Boolean(sharedPath && !sharedPath.hasBridgeSuffix);
-}
-
 /**
  * Eliza Cloud control-plane hostnames. The bare origin (and the
  * `/api/v1/eliza/agents` collection) on any of these is NOT a per-agent base —
@@ -63,6 +55,12 @@ export const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "elizacloud.ai",
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
+  // Staging apex + API. Without these, `staging.elizacloud.ai` ends with
+  // `.elizacloud.ai` but isn't in the set, so isDedicatedCloudAgentBase
+  // mis-classifies the staging console as a per-agent subdomain (and the apex
+  // login redirect never fires on staging — so staging can't validate it).
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
 ]);
 
 /**

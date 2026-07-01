@@ -2,10 +2,16 @@
 
 This directory contains A2A (Agent-to-Agent) server implementations that expose an elizaOS agent as an HTTP server. This enables agent-to-agent communication, webhooks, and integration with other AI systems.
 
-**Uses real elizaOS runtime.**
+**Uses real elizaOS runtime backed by a real LLM provider.**
 
-- If `OPENAI_API_KEY` is set, the server will use an OpenAI-backed model (and SQL where supported).
-- If `OPENAI_API_KEY` is not set, the server runs in a deterministic “ELIZA classic” mode (no API keys required), backed by `@elizaos/plugin-inmemorydb` for ephemeral multi-turn state.
+The inference provider is chosen by which API key env var is set, in priority order:
+
+1. `OPENAI_API_KEY` → `@elizaos/plugin-openai`
+2. `OPENROUTER_API_KEY` → `@elizaos/plugin-openrouter`
+3. `ANTHROPIC_API_KEY` → `@elizaos/plugin-anthropic`
+4. `ELIZA_API_KEY` → `@elizaos/plugin-elizacloud` (Eliza Cloud)
+
+If none of these is set, the server refuses to start. Storage uses `@elizaos/plugin-sql`.
 
 ## Available Examples
 
@@ -96,10 +102,13 @@ bun run start
 
 ## Configuration
 
-Optional: OpenAI API key (enables OpenAI-backed responses):
+Set exactly one inference provider API key (first match wins, in priority order):
 
 ```bash
-export OPENAI_API_KEY=your-key
+export OPENAI_API_KEY=your-key       # or
+export OPENROUTER_API_KEY=your-key   # or
+export ANTHROPIC_API_KEY=your-key    # or
+export ELIZA_API_KEY=your-key        # Eliza Cloud
 ```
 
 Optional configuration:

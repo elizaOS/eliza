@@ -35,8 +35,9 @@ import {
 } from "react";
 import { client } from "../../api";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
+import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -170,7 +171,7 @@ export function AddAccountDialog({
   onClose,
   onCreated,
 }: AddAccountDialogProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const subscriptionAddMode = getSubscriptionAddMode(providerId);
 
   const [step, setStep] = useState<DialogStep>(
@@ -243,8 +244,18 @@ export function AddAccountDialog({
     (newSessionId: string) => {
       closeEventSource();
       const url = `/api/accounts/${providerId}/oauth/status?sessionId=${encodeURIComponent(newSessionId)}`;
-      const source = new EventSource(url);
+      const source = openEventSource(url);
       eventSourceRef.current = source;
+      if (!source) {
+        setErrorMessage(
+          t("accounts.add.oauth.sseUnreachable", {
+            defaultValue:
+              "Lost connection to the OAuth status stream. Try again.",
+          }),
+        );
+        setStep("error");
+        return;
+      }
 
       // EventSource auto-reconnects on transient network blips, which
       // is fine. But persistent failures (server gone, route 404) just

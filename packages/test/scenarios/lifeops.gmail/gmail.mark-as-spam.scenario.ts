@@ -14,6 +14,7 @@ import { judgeRubric } from "../_helpers/action-assertions.ts";
 const SPAM_TARGET = "msg-spam";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.mark-as-spam",
   title: "Mark a specific Gmail message as spam via batchModify add SPAM",
   domain: "lifeops.gmail",
@@ -66,7 +67,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        addLabelIds: "MESSAGE",
+        addLabelIds: "SPAM",
       },
     },
     {

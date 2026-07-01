@@ -63,12 +63,35 @@ export interface TrajectoryDetail {
   evaluationEvents?: UIEvaluationEvent[];
 }
 
+/**
+ * HTTP error from a trajectory route, carrying the response status so callers
+ * can distinguish a "service not mounted" surface (404/503 — the training
+ * plugin that serves `/api/trajectories*` is absent) from a genuine failure.
+ */
+export class TrajectoryHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, statusText: string, body: string) {
+    super(
+      `[trajectory-logger] ${status} ${statusText}${body ? `: ${body.slice(0, 200)}` : ""}`,
+    );
+    this.name = "TrajectoryHttpError";
+    this.status = status;
+  }
+
+  /**
+   * True when the status means the trajectory routes are not available on this
+   * surface (the provider plugin is not loaded) rather than a request failure.
+   */
+  get isUnavailable(): boolean {
+    return this.status === 404 || this.status === 503;
+  }
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
-      `[trajectory-logger] ${res.status} ${res.statusText}${body ? `: ${body.slice(0, 200)}` : ""}`,
-    );
+    throw new TrajectoryHttpError(res.status, res.statusText, body);
   }
   return (await res.json()) as T;
 }

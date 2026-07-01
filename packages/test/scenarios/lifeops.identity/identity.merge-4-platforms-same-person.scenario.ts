@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.merge-4-platforms-same-person",
   title: "Merge gmail + signal + telegram + discord handles into one entity",
   domain: "lifeops.identity",

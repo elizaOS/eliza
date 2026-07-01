@@ -1176,7 +1176,9 @@ async function seedBenchmarkCaseFixtures(
   //    is migrated against the per-case PGLite adapter. Idempotent — safe to
   //    call even when the runtime already ran plugin migrations at boot.
   try {
-    const { LifeOpsRepository } = (await import("@elizaos/plugin-personal-assistant")) as {
+    const { LifeOpsRepository } = (await import(
+      "@elizaos/plugin-personal-assistant"
+    )) as {
       LifeOpsRepository: {
         bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
       };
@@ -1194,7 +1196,9 @@ async function seedBenchmarkCaseFixtures(
   // 2) Seed a David relationship row used by relationship-flow benchmark cases.
   try {
     const now = new Date().toISOString();
-    const { LifeOpsRepository } = await import("@elizaos/plugin-personal-assistant");
+    const { LifeOpsRepository } = await import(
+      "@elizaos/plugin-personal-assistant"
+    );
     const repo = new LifeOpsRepository(runtime);
     const relationshipRepo = repo as typeof repo & {
       upsertRelationship?: (rel: Record<string, unknown>) => Promise<unknown>;
@@ -1408,7 +1412,9 @@ async function seedBenchmarkCaseFixtures(
     let lastError: unknown;
     for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
       try {
-        const approvalModule = await import("@elizaos/plugin-personal-assistant");
+        const approvalModule = await import(
+          "@elizaos/plugin-personal-assistant"
+        );
         const createApprovalQueue =
           (approvalModule as { createApprovalQueue?: unknown })
             .createApprovalQueue ??

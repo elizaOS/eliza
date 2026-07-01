@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,7 @@ import {
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
+  removeAospGeneratedStagingDir,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
@@ -68,9 +69,9 @@ describe("flattenGenerateTextParamsForAospPrompt", () => {
       }),
     ).toBe(
       [
-        "<|im_start|>system\nStage 1 instructions<|im_end|>",
-        "<|im_start|>user\nSay pixel bundle ok.<|im_end|>",
-        "<|im_start|>assistant\n",
+        "<start_of_turn>system\nStage 1 instructions<end_of_turn>",
+        "<start_of_turn>user\nSay pixel bundle ok.<end_of_turn>",
+        "<start_of_turn>model\n",
       ].join("\n"),
     );
   });
@@ -83,9 +84,9 @@ describe("flattenGenerateTextParamsForAospPrompt", () => {
       }),
     ).toBe(
       [
-        "<|im_start|>system\nYou are Eliza.<|im_end|>",
-        "<|im_start|>user\nhello<|im_end|>",
-        "<|im_start|>assistant\n",
+        "<start_of_turn>system\nYou are Eliza.<end_of_turn>",
+        "<start_of_turn>user\nhello<end_of_turn>",
+        "<start_of_turn>model\n",
       ].join("\n"),
     );
   });
@@ -114,12 +115,12 @@ describe("buildGenerateArgsFromParams", () => {
         signal: ctrl.signal,
       }),
     ).toEqual({
-      prompt: "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n",
+      prompt: "<start_of_turn>user\nhello<end_of_turn>\n<start_of_turn>model\n",
       maxTokens: 384,
       temperature: 0,
       grammar: 'root ::= "ok"',
       signal: ctrl.signal,
-      stopSequences: ["<|im_end|>", "<|im_start|>"],
+      stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     });
   });
 
@@ -170,12 +171,12 @@ describe("buildGenerateArgsFromParams", () => {
 describe("buildAospLoadModelArgs", () => {
   it("leaves bundled MTP disabled by default on stock Android", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
 
@@ -198,12 +199,12 @@ describe("buildAospLoadModelArgs", () => {
 
   it("auto-pairs a publish-eligible bundled MTP drafter on stock Android", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-auto-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
     writeFileSync(
@@ -289,12 +290,12 @@ describe("buildAospLoadModelArgs", () => {
 
   it("auto-pairs a bundled chat GGUF with its MTP drafter when explicitly enabled", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
 
@@ -324,12 +325,12 @@ describe("buildAospLoadModelArgs", () => {
 
   it("does not enable MTP when target-meta says the drafter is the target bytes", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-copy-"));
-    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
     mkdirSync(mtpDir, { recursive: true });
-    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "same-model");
     writeFileSync(drafter, "same-model");
     writeFileSync(
@@ -362,13 +363,13 @@ describe("readAssignedBundledModels", () => {
   it("prefers assigned registry models over directory scan order", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-assigned-models-"));
     const modelsDir = path.join(root, "local-inference", "models");
-    const smallBundle = path.join(modelsDir, "eliza-1-0_8b.bundle", "text");
+    const smallBundle = path.join(modelsDir, "eliza-1-2b.bundle", "text");
     const defaultBundle = path.join(modelsDir, "eliza-1-2b.bundle", "text");
     const embeddingDir = path.join(modelsDir, "bge-small-en-v1.5");
     mkdirSync(smallBundle, { recursive: true });
     mkdirSync(defaultBundle, { recursive: true });
     mkdirSync(embeddingDir, { recursive: true });
-    const smallModel = path.join(smallBundle, "eliza-1-0_8b-32k.gguf");
+    const smallModel = path.join(smallBundle, "eliza-1-2b-32k.gguf");
     const defaultModel = path.join(defaultBundle, "eliza-1-2b-32k.gguf");
     const embeddingModel = path.join(
       embeddingDir,
@@ -393,7 +394,7 @@ describe("readAssignedBundledModels", () => {
         version: 1,
         models: [
           {
-            id: "eliza-1-0_8b",
+            id: "eliza-1-2b",
             path: smallModel,
             source: "eliza-download",
           },
@@ -446,6 +447,38 @@ describe("readAssignedBundledModels", () => {
     );
 
     expect(readAssignedBundledModels(modelsDir).chat).toBe(defaultModel);
+  });
+});
+
+describe("removeAospGeneratedStagingDir", () => {
+  it("removes only generated staging directories under the active bundle", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-staging-cleanup-"));
+    const bundleRoot = path.join(root, "local-inference", "models", "2b");
+    const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
+    mkdirSync(stagingDir, { recursive: true });
+    writeFileSync(path.join(stagingDir, "partial.gguf"), "partial");
+
+    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
+
+    expect(existsSync(stagingDir)).toBe(false);
+  });
+
+  it("refuses non-staging, bundle-root, cwd, root, and escaped paths", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-staging-guard-"));
+    const bundleRoot = path.join(root, "bundle");
+    mkdirSync(bundleRoot, { recursive: true });
+
+    for (const candidate of [
+      path.join(bundleRoot, "tts"),
+      bundleRoot,
+      process.cwd(),
+      path.parse(bundleRoot).root,
+      path.join(root, "outside.staging"),
+    ]) {
+      expect(() =>
+        removeAospGeneratedStagingDir(candidate, bundleRoot),
+      ).toThrow(/Refusing to remove unsafe staging directory/);
+    }
   });
 });
 

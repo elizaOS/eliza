@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "scope_global_vs_user.frank.with_injection_attempt.008",
   title:
     "scope :: admin_global_formal_user_casual :: frank :: with_injection_attempt :: 24-turn (8)",

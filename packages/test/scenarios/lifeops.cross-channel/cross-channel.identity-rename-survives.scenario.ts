@@ -22,6 +22,7 @@ import { judgeRubric } from "../_helpers/action-assertions.ts";
 const PERSON_NAME = "Priya Rao";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.identity-rename-survives",
   title: "Display-name rename does not split canonical identity",
   domain: "lifeops.cross-channel",

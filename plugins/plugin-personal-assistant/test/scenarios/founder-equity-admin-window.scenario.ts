@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "founder-equity-admin-window",
   title: "Assistant coordinates founder equity admin window",
   domain: "executive.legal",
@@ -30,7 +31,12 @@ export default scenario({
       name: "stage-equity-signoff",
       text: "Draft the signoff checklist for counsel and tax advisor. Ask me before sending documents or authorizing any filing fee.",
       plannerIncludesAny: ["owner_send_message", "approval", "OWNER_DOCUMENTS"],
-      responseIncludesAny: ["checklist", "counsel", "tax advisor", "filing fee"],
+      responseIncludesAny: [
+        "checklist",
+        "counsel",
+        "tax advisor",
+        "filing fee",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
   ],

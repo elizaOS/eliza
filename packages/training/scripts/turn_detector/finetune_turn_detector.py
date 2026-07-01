@@ -52,7 +52,7 @@ DEFAULT_ELIZA1_REPO: Final[str] = "elizaos/eliza-1"
 # Supported teacher backends. `eliza-1-drafter` produces a GGUF LoRA
 # adapter the runtime layers onto the in-process drafter at voice
 # session start (`plugins/plugin-local-inference/src/services/voice/
-# eliza1-eot-scorer.ts`); the runtime reads P(`<|im_end|>`) directly off
+# eliza1-eot-scorer.ts`); the runtime reads P(`<end_of_turn>`) directly off
 # the live model, so the trained artifact is a LoRA adapter rather than
 # a standalone ONNX graph. `livekit` and `turnsense` retain the legacy
 # ONNX export path.
@@ -98,7 +98,7 @@ def default_revision_for_tier(tier: str) -> str:
     prefixed (``"eliza-1-4b"``) tier ids.
     """
     bare = tier[len("eliza-1-") :] if tier.startswith("eliza-1-") else tier
-    if bare in ("0_8b", "2b"):
+    if bare == "2b":
         return DEFAULT_REVISION_EN
     return DEFAULT_REVISION_INTL
 
@@ -329,7 +329,7 @@ def build_eou_prefix_corpus(
     (EOU=0). This is the signal the LiveKit detector is trained on —
     "is this transcript a complete turn vs. a mid-utterance prefix?"
     — and it matches the runtime semantics (the streaming ASR feeds
-    growing prefixes; we score P(<|im_end|>) on each one).
+    growing prefixes; we score P(<end_of_turn>) on each one).
 
     Output JSONL schema mirrors ``build_pretrain_corpus``::
 
@@ -757,11 +757,11 @@ def build_sft_corpus(
 
         {
           "prompt": "<task instruction>\\n<utterance>",
-          "completion": "<|im_end|>" | "...",
+          "completion": "<end_of_turn>" | "...",
           "label": 0 | 1,
         }
 
-    The "completion" is the LiveKit-style next-token target: ``<|im_end|>``
+    The "completion" is the Gemma next-token target: ``<end_of_turn>``
     when the user is done speaking (`label=1`), and a continuation marker
     (``"..."``) otherwise. The prompt frames the task explicitly so the
     fine-tuned head learns to score next-token EOU under the chat template.
@@ -790,12 +790,12 @@ def build_sft_corpus(
                 neg.append(record)
     half = target_pairs // 2
     chosen = pos[:half] + neg[:half]
-    instruction = "Decide if the user is done speaking. Output <|im_end|> if done, otherwise continue."
+    instruction = "Decide if the user is done speaking. Output <end_of_turn> if done, otherwise continue."
 
     written = 0
     with out_path.open("w", encoding="utf-8") as fh:
         for record in chosen:
-            completion = "<|im_end|>" if record["eou_label"] == 1 else "..."
+            completion = "<end_of_turn>" if record["eou_label"] == 1 else "..."
             fh.write(
                 json.dumps(
                     {
@@ -810,16 +810,16 @@ def build_sft_corpus(
     return out_path
 
 
-LIVEKIT_IM_END_TOKEN: Final[str] = "<|im_end|>"
+GEMMA_END_OF_TURN_TOKEN: Final[str] = "<end_of_turn>"
 
 
 def _format_livekit_prompt(tokenizer: Any, utterance: str) -> str:
     """Replicate the runtime LiveKit prompt format.
 
-    Mirrors ``formatLiveKitTurnDetectorPrompt`` in
-    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``:
+    Mirrors ``formatEotPrompt`` in
+    ``plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts``:
     apply the tokenizer's chat template for ``[{role: user, content: ...}]``,
-    then strip the trailing ``<|im_end|>`` so the model's last-position
+    then strip the trailing ``<end_of_turn>`` so the model's last-position
     next-token distribution is what the runtime scores.
     """
     templated = tokenizer.apply_chat_template(
@@ -828,7 +828,7 @@ def _format_livekit_prompt(tokenizer: Any, utterance: str) -> str:
         tokenize=False,
         add_special_tokens=False,
     )
-    ix = templated.rfind(LIVEKIT_IM_END_TOKEN)
+    ix = templated.rfind(GEMMA_END_OF_TURN_TOKEN)
     if ix >= 0:
         templated = templated[:ix]
     return templated
@@ -848,11 +848,11 @@ def build_examples(
     Returns ``(input_ids, attention_mask, labels)`` numpy arrays.
     ``labels[i] == 1`` means EOU. Text is passed through the LiveKit chat
     template (mirroring ``formatLiveKitTurnDetectorPrompt``) with the
-    trailing ``<|im_end|>`` stripped. Right-padding (``attention_mask``
+    trailing ``<end_of_turn>`` stripped. Right-padding (``attention_mask``
     indicates which positions are real) so the runtime ONNX path
     (left-truncation, single-sample batch) and our training batch path
     agree on which logit corresponds to the next-token EOU prediction —
-    we pluck ``logits[i, last_real_pos, im_end_id]``.
+    we pluck ``logits[i, last_real_pos, eot_id]``.
     """
     try:
         from transformers import AutoTokenizer  # type: ignore[import-not-found]
@@ -915,15 +915,15 @@ def build_examples(
     )
 
 
-def im_end_token_id(tokenizer: Any) -> int:
-    """Resolve the ``<|im_end|>`` token id for the LiveKit tokenizer.
+def end_of_turn_token_id(tokenizer: Any) -> int:
+    """Resolve the Gemma ``<end_of_turn>`` token id.
 
-    Matches the runtime resolver: tokenize the literal ``<|im_end|>``
+    Matches the runtime resolver: tokenize the literal ``<end_of_turn>``
     sequence with ``add_special_tokens=False`` and take the first id.
     """
-    ids = tokenizer(LIVEKIT_IM_END_TOKEN, add_special_tokens=False)["input_ids"]
+    ids = tokenizer(GEMMA_END_OF_TURN_TOKEN, add_special_tokens=False)["input_ids"]
     if not ids:
-        raise RuntimeError("tokenizer did not produce an <|im_end|> id")
+        raise RuntimeError("tokenizer did not produce an <end_of_turn> id")
     return int(ids[0])
 
 
@@ -948,13 +948,13 @@ def train_step(
     model: Any,
     batch: "tuple[Any, Any, Any]",
     optimizer: Any,
-    im_end_id: int,
+    eot_id: int,
 ) -> float:
     """One APOLLO training step on (input_ids, attention_mask, labels).
 
-    Predicts EOU as ``softmax(logits[i, last_real_pos, :])[<|im_end|>]``,
+    Predicts EOU as ``softmax(logits[i, last_real_pos, :])[<end_of_turn>]``,
     where ``last_real_pos`` is derived from ``attention_mask``. Loss is
-    binary cross-entropy with logits between that scalar (the im_end
+    binary cross-entropy with logits between that scalar (the EOT
     logit minus the log-sum-exp of all other vocab logits at that
     position) and the EOU label. This is the same quantity the runtime
     scores in ``probabilityFromOnnxOutput``.
@@ -977,14 +977,14 @@ def train_step(
     last_pos = _last_real_position(attention_mask)
     batch_idx = torch.arange(logits.size(0), device=device)
     last_logits = logits[batch_idx, last_pos]  # [batch, vocab]
-    # log p(im_end) - log p(other) = im_end_logit - logsumexp(other_logits)
-    im_end_logit = last_logits[:, im_end_id]
+    # log p(EOT) - log p(other) = eot_logit - logsumexp(other_logits)
+    eot_logit = last_logits[:, eot_id]
     other_logits = torch.cat(
-        [last_logits[:, :im_end_id], last_logits[:, im_end_id + 1 :]],
+        [last_logits[:, :eot_id], last_logits[:, eot_id + 1 :]],
         dim=1,
     )
     other_lse = torch.logsumexp(other_logits, dim=1)
-    score = im_end_logit - other_lse  # binary logit for P(EOU)
+    score = eot_logit - other_lse  # binary logit for P(EOU)
     loss = F.binary_cross_entropy_with_logits(score, labels)
     loss.backward()
     optimizer.step()
@@ -1022,7 +1022,7 @@ def _eval_loop(
     eval_input_ids: Any,
     eval_attention_mask: Any,
     eval_labels: Any,
-    im_end_id: int,
+    eot_id: int,
     batch_size: int,
     decision_threshold: float = 0.5,
 ) -> "tuple[float, float]":
@@ -1049,7 +1049,7 @@ def _eval_loop(
             batch_idx = torch.arange(logits.size(0), device=device)
             last_logits = logits[batch_idx, last_pos]
             probs = torch.softmax(last_logits.float(), dim=-1)
-            eou_p = probs[:, im_end_id]
+            eou_p = probs[:, eot_id]
             preds.extend(
                 (eou_p >= decision_threshold).cpu().numpy().astype(int).tolist()
             )
@@ -1133,7 +1133,7 @@ def train_lora(
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
     tokenizer.truncation_side = "left"
-    im_end_id = im_end_token_id(tokenizer)
+    eot_id = end_of_turn_token_id(tokenizer)
 
     input_ids, attention_mask, labels = build_examples(
         pretrain_jsonl,
@@ -1177,7 +1177,7 @@ def train_lora(
                 "f1": f1,
                 "teacher_repo": cfg.teacher_repo,
                 "teacher_revision": cfg.teacher_revision,
-                "im_end_id": im_end_id,
+                "end_of_turn_id": eot_id,
             },
             ckpt_path,
         )
@@ -1207,7 +1207,7 @@ def train_lora(
                 model=base_model,
                 batch=batch,
                 optimizer=optimizer,
-                im_end_id=im_end_id,
+                eot_id=eot_id,
             )
             step += 1
             if step % 25 == 0:
@@ -1219,7 +1219,7 @@ def train_lora(
                     eval_input_ids=eval_input_ids_t,
                     eval_attention_mask=eval_attention_mask_t,
                     eval_labels=eval_labels_t,
-                    im_end_id=im_end_id,
+                    eot_id=eot_id,
                     batch_size=batch_size,
                     decision_threshold=decision_threshold,
                 )
@@ -1258,7 +1258,7 @@ def train_lora(
             eval_input_ids=eval_input_ids_t,
             eval_attention_mask=eval_attention_mask_t,
             eval_labels=eval_labels_t,
-            im_end_id=im_end_id,
+            eot_id=eot_id,
             batch_size=batch_size,
             decision_threshold=decision_threshold,
         )
@@ -1275,7 +1275,7 @@ def train_lora(
         "last_mean_pos_score": last_mean_pos_score,
         "top_k": top_k,
         "f1_gate": cfg.f1_gate,
-        "im_end_id": im_end_id,
+        "end_of_turn_id": eot_id,
         "teacher_repo": cfg.teacher_repo,
         "teacher_revision": cfg.teacher_revision,
     }
@@ -1322,7 +1322,7 @@ def export_onnx(
     ``onnxruntime.quantization.quantize_dynamic``. Output shape is
     ``[batch, seq, vocab]`` matching the upstream LiveKit ONNX so the
     runtime's ``probabilityFromOnnxOutput`` (which extracts
-    ``softmax(logits[:, -1, :])[<|im_end|>]``) drops in.
+    ``softmax(logits[:, -1, :])[<end_of_turn>]``) drops in.
     """
     try:
         import torch

@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.x-dm.certify-core",
   title: "Certify X DM inbox reads and response drafting",
   connector: "x-dm",

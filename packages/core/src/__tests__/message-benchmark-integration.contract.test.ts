@@ -41,8 +41,9 @@ describe("message service benchmark integration contracts", () => {
 		expect(source).toContain("contentMetadata.benchmark");
 		// The planner gate consults the helper alongside Stage 1's requiresTool.
 		expect(source).toContain("isBenchmarkForcingToolCall(args.message)");
-		expect(source).toContain(
-			"messageHandler.plan.requiresTool === true || benchmarkForcingToolCall",
-		);
+		// requiresTool is still consulted (now via the named-action guard), and the
+		// benchmark signal is OR'd in so a benchmark turn forces a tool regardless.
+		expect(source).toContain("messageHandler.plan.requiresTool === true");
+		expect(source).toContain("|| benchmarkForcingToolCall");
 	});
 });

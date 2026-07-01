@@ -6,10 +6,10 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
-import deviceFilesystemPlugin from "@elizaos/plugin-device-filesystem";
 import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
+import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import shellPlugin from "@elizaos/plugin-shell";
 import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
@@ -60,6 +60,7 @@ const packageJsonPath = resolve(
 const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-app-control": appControlPlugin,
   "@elizaos/plugin-coding-tools": codingToolsPlugin,
+  "@elizaos/plugin-commands": commandsPlugin,
   "@elizaos/plugin-agent-skills": agentSkillsPlugin,
   "@elizaos/plugin-local-inference": localInferencePlugin,
   "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
@@ -73,8 +74,27 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "HOMESCREEN", "VIEWS"],
+  "@elizaos/plugin-app-control": ["APP", "BACKGROUND", "VIEWS"],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
+  "@elizaos/plugin-commands": [
+    "COMMANDS_COMMAND",
+    "COMPACT_COMMAND",
+    "CONTEXT_COMMAND",
+    "ELEVATED_COMMAND",
+    "HELP_COMMAND",
+    "MODELS_COMMAND",
+    "MODEL_COMMAND",
+    "NEW_COMMAND",
+    "QUEUE_COMMAND",
+    "REASONING_COMMAND",
+    "RESET_COMMAND",
+    "STATUS_COMMAND",
+    "THINK_COMMAND",
+    "TTS_COMMAND",
+    "USAGE_COMMAND",
+    "VERBOSE_COMMAND",
+    "WHOAMI_COMMAND",
+  ],
   "@elizaos/plugin-agent-skills": [
     "SKILL",
     "SKILL_DETAILS",
@@ -85,7 +105,12 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "SKILL_UNINSTALL",
     "USE_SKILL",
   ],
-  "@elizaos/plugin-local-inference": ["GENERATE_MEDIA", "IDENTIFY_SPEAKER"],
+  "@elizaos/plugin-local-inference": [
+    "GENERATE_MEDIA",
+    "IDENTIFY_SPEAKER",
+    "START_TRANSCRIPTION",
+    "STOP_TRANSCRIPTION",
+  ],
   "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
   "@elizaos/plugin-streaming": ["STREAM"],
@@ -104,7 +129,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "MCP_READ_RESOURCE",
     "MCP_SEARCH_ACTIONS",
   ],
-  "@elizaos/plugin-workflow": ["WORKFLOW"],
+  "@elizaos/plugin-workflow": ["EVAL_CODE", "WORKFLOW"],
   "@elizaos/plugin-github": [
     "GITHUB",
     "GITHUB_ISSUE_ASSIGN",
@@ -122,21 +147,21 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
 /** Core plugins that intentionally expose no agent actions (service/registry only). */
 const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-shell": shellPlugin,
-  "@elizaos/plugin-commands": commandsPlugin,
   "@elizaos/plugin-video": videoPlugin,
-  "@elizaos/plugin-device-filesystem": deviceFilesystemPlugin,
+  "@elizaos/plugin-native-filesystem": deviceFilesystemPlugin,
 };
 
 /**
- * Core plugin actions behind heavy UI deps that cannot be imported under node
- * (companion's VRM/Three.js stack). Verified by source instead.
+ * Core plugin actions that the keyless lane resolves from source instead of a
+ * live import: the app-control VIEWS aliases are wired in source but are not
+ * registered as top-level runtime actions in this lane, so the live action
+ * surface never exposes them. Verified by source instead.
  */
 const SOURCE_ONLY_ACTIONS: Record<string, readonly string[]> = {
   "plugins/plugin-app-control/src/actions/views.ts": [
     "CLOSE_ALL_VIEWS",
     "CLOSE_VIEW",
   ],
-  "plugins/plugin-companion/src/actions/emote.ts": ["PLAY_EMOTE"],
 };
 
 /**
@@ -151,7 +176,7 @@ const SOURCE_VERIFIED_IMPORTED_ACTIONS: Record<string, readonly string[]> = {
 
 /**
  * The stable-core keyless surface that the ratchet drives to completion: the
- * importable core plugins plus the source-only companion action. Big, volatile
+ * importable core plugins plus the source-only VIEWS aliases. Big, volatile
  * surfaces (browser, lifeops) are NOT here — their coverage is tracked by the
  * coverage registry instead, so adding a lifeops scenario never has to edit a
  * 150-entry surface list.
@@ -175,6 +200,32 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "CLOSE_VIEW",
   // New speaker-diarization action; no deterministic keyless scenario yet.
   "IDENTIFY_SPEAKER",
+  // New on-device transcription actions; no deterministic keyless scenario yet.
+  "START_TRANSCRIPTION",
+  "STOP_TRANSCRIPTION",
+  // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
+  "EVAL_CODE",
+  // plugin-commands slash-command actions (/help, /status, /models, /reset,
+  // /compact, /think, /model, /tts, …) are dispatched through the command
+  // palette, not the keyless scenario pipeline, so they have no deterministic
+  // scenario yet.
+  "COMMANDS_COMMAND",
+  "COMPACT_COMMAND",
+  "CONTEXT_COMMAND",
+  "ELEVATED_COMMAND",
+  "HELP_COMMAND",
+  "MODELS_COMMAND",
+  "MODEL_COMMAND",
+  "NEW_COMMAND",
+  "QUEUE_COMMAND",
+  "REASONING_COMMAND",
+  "RESET_COMMAND",
+  "STATUS_COMMAND",
+  "THINK_COMMAND",
+  "TTS_COMMAND",
+  "USAGE_COMMAND",
+  "VERBOSE_COMMAND",
+  "WHOAMI_COMMAND",
 ];
 
 /**
@@ -185,6 +236,7 @@ const KNOWN_UNCOVERED: readonly string[] = [
  */
 const COVERED_ACTIONS: readonly string[] = [
   "APP",
+  "BACKGROUND",
   "BROWSER_CLICK",
   "BROWSER_CLOSE",
   "BROWSER_GET",
@@ -206,13 +258,11 @@ const COVERED_ACTIONS: readonly string[] = [
   "GITHUB_NOTIFICATION_TRIAGE",
   "GITHUB_PR_LIST",
   "GITHUB_PR_REVIEW",
-  "HOMESCREEN",
   "MCP",
   "MCP_CALL_TOOL",
   "MCP_LIST_CONNECTIONS",
   "MCP_READ_RESOURCE",
   "MCP_SEARCH_ACTIONS",
-  "PLAY_EMOTE",
   "SKILL",
   "SKILL_DETAILS",
   "SKILL_INSTALL",
@@ -366,6 +416,7 @@ const APP_CONTROL_MODE_SURFACE: Record<
     "open",
     "pin",
     "remove",
+    "rollback",
     "search",
     "show",
     "split",
@@ -382,7 +433,11 @@ const APP_CONTROL_MODE_SURFACE: Record<
 // VIEWS:close/split/tile are now exercised by real scenario turns (the coverage
 // loader reports zero uncovered modes), so the known-uncovered baseline is empty.
 // Re-add a mode here only if its real scenario turn is intentionally removed.
-const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [];
+const KNOWN_UNCOVERED_APP_CONTROL_MODES: readonly string[] = [
+  // New VIEWS:rollback mode (live action schema) has no deterministic scenario
+  // turn yet; tracked here so the coverage loader stays green until one lands.
+  "VIEWS:rollback",
+];
 
 const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
   actionName: AppControlActionName;
@@ -567,7 +622,6 @@ const STRICT_LLM_ROUTED_ACTIONS: readonly string[] = [
   "MCP_LIST_CONNECTIONS",
   "MCP_READ_RESOURCE",
   "MCP_SEARCH_ACTIONS",
-  "PLAY_EMOTE",
   "SCHEDULED_TASKS",
   "SHELL",
   "SKILL",
@@ -651,9 +705,9 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["GIT_PATHOLOGY"],
     minMessageTurns: 1,
   },
-  "deterministic-media-emote-actions": {
-    actionNames: ["GENERATE_MEDIA", "PLAY_EMOTE"],
-    minMessageTurns: 3,
+  "deterministic-media-actions": {
+    actionNames: ["GENERATE_MEDIA"],
+    minMessageTurns: 2,
   },
   "deterministic-lifeops-scheduled-tasks": {
     actionNames: ["SCHEDULED_TASKS"],
@@ -697,13 +751,19 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
 const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
   "deterministic-pr-smoke":
     "single TEXT_SMALL deterministic reply smoke; it does not route an action",
+  "deterministic-inbound-attachment-actions":
+    "inbound attachment flows through the pipeline to a deterministic reply; it does not route an action (the read tool is core ATTACHMENT, unit-tested in core)",
+  "live-inbound-attachment":
+    "live-lane real-LLM counterpart of deterministic-inbound-attachment-actions; the model reads the attachment and replies in prose, routing no action",
+  "cloud-apps-read-core":
+    "live-only real-LLM trajectory exercising LIST_CLOUD_APPS against the real Cloud API (#10277); it routes via the live model, NOT a deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract and is classified here (the no-deterministic-fixture bucket). Its gating proof is the keyless bun:test suite in plugins/plugin-cloud-apps/__tests__.",
 };
 
 /**
  * Covered actions that are not yet strict natural-language routed. This
  * baseline may only shrink as actions move to STRICT_LLM_ROUTED_ACTIONS.
  */
-const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["HOMESCREEN"];
+const DIRECT_ONLY_COVERED_ACTIONS: readonly string[] = ["BACKGROUND"];
 
 function collectActionNames(plugin: Plugin): string[] {
   return sorted(
@@ -941,13 +1001,17 @@ async function messageScenarioIds(): Promise<string[]> {
   );
 }
 
+// The deterministic CI run now selects by lane (`--lane pr-deterministic`)
+// instead of a hand-maintained id list, so the "wired" set is every scenario
+// file tagged `lane: "pr-deterministic"`.
 function ciScenarioList(): string[] {
-  const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-    scripts?: Record<string, string>;
-  };
-  const script = pkg.scripts?.["test:deterministic:e2e"] ?? "";
-  const arg = script.match(/--scenario\s+(\S+)/)?.[1] ?? "";
-  return arg.split(",").filter(Boolean);
+  return scenarioFiles()
+    .filter((file) =>
+      /lane:\s*["']pr-deterministic["']/.test(
+        readFileSync(resolve(scenarioDir, file), "utf8"),
+      ),
+    )
+    .map((file) => file.replace(/\.scenario\.ts$/, ""));
 }
 
 describe("deterministic action coverage", () => {
@@ -1127,8 +1191,11 @@ describe("deterministic action coverage", () => {
         problems.push(`${id}: source file was not found`);
         continue;
       }
+      // `_helpers/strict-llm-action-fixtures.ts` re-exports the canonical
+      // template from `@elizaos/test-harness`; read that file for the fixture
+      // literals (RESPONSE_HANDLER / ACTION_PLANNER / register call).
       const fixtureSource = source.includes("registerStrictActionRouteFixtures")
-        ? `${source}\n${readFileSync(resolve(scenarioDir, "_helpers/strict-llm-action-fixtures.ts"), "utf8")}`
+        ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
         : source;
 
       const messageTurns = messageTurnCount(scenario);
@@ -1249,9 +1316,16 @@ describe("deterministic action coverage", () => {
           `${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`,
         );
       }
-      if (!wired.has(base)) {
+      // Live-only counterparts (e.g. a real-LLM twin of a deterministic
+      // scenario) live alongside their deterministic siblings but run in the
+      // credentialed live lane, not the keyless deterministic CI lane — so they
+      // are exempt from the pr-deterministic wiring requirement.
+      const isLiveOnly = /lane:\s*["']live-only["']/.test(
+        readFileSync(resolve(scenarioDir, file), "utf8"),
+      );
+      if (!isLiveOnly && !wired.has(base)) {
         problems.push(
-          `${file}: not in test:deterministic:e2e --scenario list — wire it or it never runs in CI`,
+          `${file}: missing 'lane: "pr-deterministic"' — tag it or it never runs in the deterministic CI lane`,
         );
       }
     }

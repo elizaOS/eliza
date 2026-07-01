@@ -5,7 +5,9 @@ CoreML kokoro_5s -> audio, compared against torch ground truth.
 Validates that the converted model + vocab_index.json + voices/*.json work
 together to produce intelligible speech.
 """
-import json, os, sys
+import json
+import os
+import sys
 from pathlib import Path
 import numpy as np
 import torch
@@ -50,7 +52,8 @@ def main():
     ids_list, n = ids_from_phonemes(ps, vocab)
     print(f"[tokens] n={n}")
     ids = torch.tensor([ids_list], dtype=torch.int32)
-    mask = torch.zeros(1, 128, dtype=torch.int32); mask[0, :n] = 1
+    mask = torch.zeros(1, 128, dtype=torch.int32)
+    mask[0, :n] = 1
     ref_s = torch.tensor(voice, dtype=torch.float32).view(1, 256)
     phases = torch.rand(1, 9, generator=torch.Generator().manual_seed(7), dtype=torch.float32)
     speed = torch.tensor([1.0], dtype=torch.float32)

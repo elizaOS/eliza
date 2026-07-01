@@ -23,7 +23,36 @@
  * the UI.
  */
 
+import path from "node:path";
+
 import { VoiceLifecycleError } from "./lifecycle";
+
+/**
+ * Make a directory discoverable by the Win32 DLL loader for this process by
+ * prepending it to PATH (step 6 of the standard DLL search order).
+ *
+ * The fused lib's sibling backends (`ggml*.dll`, `llama*.dll`, `mtmd.dll`) are
+ * staged NEXT TO `elizainference.dll`, but when a DLL is opened by absolute
+ * path the Win32 loader does NOT search that DLL's own directory for its
+ * dependencies — it searches the host EXE's dir, the system dirs, and PATH. So
+ * `dlopen` fails with "error code 126" (a dependent DLL could not be found)
+ * even though the siblings are right there. Linux/macOS don't need this:
+ * `stage-desktop-fused-lib.mjs` bakes a relative rpath (`$ORIGIN` /
+ * `@loader_path`) at link time so the loader resolves siblings from the lib's
+ * own dir. Idempotent; a no-op off win32 and when `dir` is already on PATH.
+ */
+function ensureWin32DllSearchDir(dir: string): void {
+	if (process.platform !== "win32" || !dir) return;
+	const current = process.env.PATH ?? "";
+	const resolved = path.resolve(dir);
+	const already = current
+		.split(path.delimiter)
+		.some((seg) => seg && path.resolve(seg) === resolved);
+	if (already) return;
+	process.env.PATH = current
+		? `${resolved}${path.delimiter}${current}`
+		: resolved;
+}
 
 /**
  * ABI version the JS binding was authored against. Must match the value
@@ -77,7 +106,47 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
  *     Kokoro just probes unsupported on it.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 11 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 13 as const;
+
+/** One transcribed word with playback-synced timing (ms from utterance start). */
+export interface AsrWordTiming {
+	text: string;
+	startMs: number;
+	endMs: number;
+}
+
+/**
+ * Recover per-word `{ text, startMs, endMs }` from a v12 timed-ASR result.
+ *
+ * The native `eliza_inference_asr_transcribe_timed` sizes the `startMs`/`endMs`
+ * arrays by splitting the transcript on ASCII whitespace — `std::isspace` in the
+ * C locale matches EXACTLY ` \t\n\v\f\r`. We must mirror that split byte-for-byte
+ * to recover the word strings: a broader Unicode `\s` split collapses NBSP /
+ * ideographic space (U+00A0, U+3000, …) that the native byte split keeps, which
+ * would make `tokens` shorter than `count` and silently zip each word's text
+ * against a DIFFERENT word's timing — a desync `validateAsrWordTimings` cannot
+ * see (it never compares text to count). `count` only falls below the true word
+ * count when the caller's `maxWords` cap is hit, in which case the trailing
+ * (untimed) words are dropped by `Math.min`.
+ */
+export function recoverAsrWords(
+	text: string,
+	count: number,
+	startMs: Int32Array,
+	endMs: Int32Array,
+): AsrWordTiming[] {
+	const tokens = text.split(/[ \t\n\v\f\r]+/).filter(Boolean);
+	const n = Math.min(count, tokens.length);
+	const words: AsrWordTiming[] = [];
+	for (let i = 0; i < n; i++) {
+		words.push({
+			text: tokens[i] as string,
+			startMs: startMs[i] ?? 0,
+			endMs: endMs[i] ?? 0,
+		});
+	}
+	return words;
+}
 
 /**
  * Pooling strategies for `embed`. Mirror `enum llama_pooling_type` and the
@@ -149,7 +218,7 @@ export type LlmStreamHandle = bigint;
 /**
  * Per-session config handed to `llmStreamOpen`. Mirrors
  * `eliza_llm_stream_config_t` in
- * `native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h` (ABI v8).
+ * `native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h` (ABI v9).
  */
 export interface LlmStreamConfig {
 	maxTokens: number;
@@ -173,7 +242,7 @@ export interface LlmStreamConfig {
 	 * path. `null`/empty disables grammar constraint.
 	 */
 	gbnfGrammar?: string | null;
-	/** Qwen3-style thinking-tag suppression passthrough (v1 no-op). */
+	/** Thinking-tag suppression passthrough (v1 no-op). */
 	disableThinking?: boolean;
 	/**
 	 * Per-load GPU offload (ABI v8). Number of model layers to place on GPU.
@@ -189,6 +258,8 @@ export interface LlmStreamConfig {
 	cacheTypeK?: string | null;
 	/** KV-cache V quant type name (ABI v8); see `cacheTypeK`. */
 	cacheTypeV?: string | null;
+	/** Runtime context window in tokens (ABI v9). `undefined`/0 uses native fallback. */
+	contextSize?: number;
 }
 
 /**
@@ -286,6 +357,23 @@ export interface ElizaInferenceFfi {
 		sampleRateHz: number;
 		maxTextBytes?: number;
 	}): string;
+
+	/* ---- ASR word timestamps (ABI v12) --------------------------- */
+
+	/** True when this build can emit per-word ASR timestamps (v12+). v11 and
+	 *  older report false — callers fall back to the text-only `asrTranscribe`. */
+	timedAsrSupported(): boolean;
+	/** Transcribe like `asrTranscribe` AND return per-word `[startMs,endMs)`
+	 *  spans (duration-proportional, char-weighted, monotonic — the honest
+	 *  single-model signal; see the v12 ABI changelog). The word texts come from
+	 *  a whitespace split of the transcript, zipped with the native timing. */
+	asrTranscribeTimed(args: {
+		ctx: ElizaInferenceContextHandle;
+		pcm: Float32Array;
+		sampleRateHz: number;
+		maxTextBytes?: number;
+		maxWords?: number;
+	}): { text: string; words: AsrWordTiming[] };
 
 	/* ---- Streaming TTS + verifier callback (ABI v2) --------------- */
 
@@ -459,9 +547,9 @@ export interface ElizaInferenceFfi {
 
 	/**
 	 * True when this build has a working streaming ASR decoder (false for
-	 * the stub / an ASR-disabled build). Callers pick the streaming path
-	 * vs the whisper.cpp interim adapter off this flag — they do not have
-	 * to open a session and catch `ELIZA_ERR_NOT_IMPLEMENTED`.
+	 * the stub / an ASR-disabled build). Callers pick the fused streaming
+	 * path vs the fused batch interim adapter off this flag — they do not
+	 * have to open a session and catch `ELIZA_ERR_NOT_IMPLEMENTED`.
 	 */
 	asrStreamSupported(): boolean;
 	/** Open a streaming ASR session. The handle is closed via `asrStreamClose`. */
@@ -588,6 +676,29 @@ export interface ElizaInferenceFfi {
 		maxTextBytes?: number;
 	}): string;
 
+	/* ---- Streaming mmproj vision describe (ABI v13) -------------- */
+
+	/**
+	 * True when this build wires token-by-token vision describe
+	 * (`eliza_inference_describe_image_stream_open`). A <=v12 / vision-off
+	 * library returns false, so the IMAGE_DESCRIPTION handler falls back to the
+	 * buffered {@link describeImage}.
+	 */
+	visionStreamSupported?(): boolean;
+	/**
+	 * Open a streaming vision-describe session: prime an `LlmStreamHandle`'s KV
+	 * with `imageBytes` (raw PNG/JPEG/WebP) + `prompt` through the mmproj at
+	 * `mmprojPath`, then PULL tokens with the existing {@link llmStreamNext} loop
+	 * and release via {@link llmStreamClose} — the same machinery as chat text.
+	 * Throws `VoiceLifecycleError` when the build lacks vision streaming.
+	 */
+	describeImageStreamOpen?(args: {
+		ctx: ElizaInferenceContextHandle;
+		imageBytes: Uint8Array;
+		mmprojPath: string;
+		prompt?: string;
+	}): LlmStreamHandle;
+
 	/* ---- Tokenizer (ABI v9) -------------------------------------- */
 
 	/**
@@ -631,7 +742,7 @@ export interface ElizaInferenceFfi {
 	/**
 	 * Single causal forward pass over `tokens` (a tokenized partial transcript)
 	 * returning the next-token softmax probability of `targetTokenId` (the
-	 * end-of-turn marker, e.g. `<|im_end|>`), plus the argmax next token and its
+	 * end-of-turn marker, e.g. `<end_of_turn>`), plus the argmax next token and its
 	 * probability. Runs on a dedicated scoring context over the loaded text
 	 * model; KV is cleared per call so scores are independent.
 	 */
@@ -754,6 +865,19 @@ interface BunFfiSymbols {
 		sampleRateHz: number,
 		outText: unknown,
 		maxTextBytes: bigint | number,
+		outErr: unknown,
+	) => number;
+	eliza_inference_asr_timestamps_supported?: () => number;
+	eliza_inference_asr_transcribe_timed?: (
+		ctx: bigint,
+		pcm: unknown,
+		nSamples: bigint | number,
+		sampleRateHz: number,
+		outText: unknown,
+		maxTextBytes: bigint | number,
+		outWordStartMs: unknown,
+		outWordEndMs: unknown,
+		ioNWords: unknown,
 		outErr: unknown,
 	) => number;
 	eliza_inference_tts_stream_supported: () => number;
@@ -936,6 +1060,21 @@ interface BunFfiSymbols {
 		maxTextBytes: bigint | number,
 		outErr: unknown,
 	) => number;
+	// Streaming mmproj vision describe (ABI v13). Optional — absent on <=v12
+	// builds (the probe then reports unsupported and IMAGE_DESCRIPTION falls back
+	// to the buffered `eliza_inference_describe_image`). `_stream_open` returns an
+	// EliLlmStream* (as a pointer/bigint) primed with the image+prompt KV; the
+	// caller drives the existing `eliza_inference_llm_stream_next` loop and frees
+	// via `eliza_inference_llm_stream_close`.
+	eliza_inference_vision_stream_supported?: () => number;
+	eliza_inference_describe_image_stream_open?: (
+		ctx: bigint,
+		imageBytes: unknown,
+		nBytes: bigint | number,
+		mmprojPath: unknown,
+		prompt: unknown,
+		outErr: unknown,
+	) => bigint;
 	// Tokenizer (ABI v9). Optional — absent on v8 builds.
 	eliza_inference_tokenize_supported?: () => number;
 	eliza_inference_tokenize?: (
@@ -1019,8 +1158,8 @@ interface BunFfiModule {
 		byteOffset?: number,
 		byteLength?: number,
 	): ArrayBuffer;
-	JSCallback: new (
-		fn: (...args: never[]) => unknown,
+	JSCallback: new <F extends (...args: never[]) => unknown>(
+		fn: F,
 		def: { args: number[]; returns: number },
 	) => BunFfiJSCallback;
 }
@@ -1063,6 +1202,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		);
 	}
 	const T = ffi.FFIType;
+
+	// Windows-only: make the fused lib's co-located backends (ggml*/llama*/mtmd
+	// .dll) resolvable before dlopen, which otherwise fails with error 126. See
+	// ensureWin32DllSearchDir for the full rationale.
+	ensureWin32DllSearchDir(path.dirname(dylibPath));
 
 	// All `char *` arguments are typed as T.ptr — Bun's `T.cstring` is a
 	// RETURN-only type for "library hands back a NUL-terminated string".
@@ -1291,6 +1435,43 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			returns: T.i32,
 		},
 	};
+	// ABI v12 — fused ASR word timestamps.
+	let timedAsrSymbolsAvailable = true;
+	const timedAsrDefs = {
+		eliza_inference_asr_timestamps_supported: { args: [], returns: T.i32 },
+		eliza_inference_asr_transcribe_timed: {
+			// ctx, pcm, n_samples, sr, out_text, max_text_bytes,
+			// out_word_start_ms, out_word_end_ms, io_n_words, out_error
+			args: [
+				T.ptr,
+				T.ptr,
+				T.usize,
+				T.i32,
+				T.ptr,
+				T.usize,
+				T.ptr,
+				T.ptr,
+				T.ptr,
+				T.ptr,
+			],
+			returns: T.i32,
+		},
+	};
+	// Streaming mmproj vision describe (ABI v13): open returns an EliLlmStream*
+	// primed with the image+prompt KV; the caller drives the existing
+	// `eliza_inference_llm_stream_next` loop. Layered on top of the v12 surface;
+	// the cascade peels it when a <=v12 library is loaded (the
+	// `visionStreamSupported()` probe then reports false and IMAGE_DESCRIPTION
+	// falls back to the buffered `eliza_inference_describe_image`).
+	let visionStreamSymbolsAvailable = true;
+	const visionStreamDefs = {
+		eliza_inference_vision_stream_supported: { args: [], returns: T.i32 },
+		eliza_inference_describe_image_stream_open: {
+			// ctx, image_bytes, n_bytes, mmproj_path, prompt, out_error -> EliLlmStream*
+			args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+			returns: T.ptr,
+		},
+	};
 	const coreDefs = {
 		eliza_inference_abi_version: { args: [], returns: T.cstring },
 		eliza_inference_create: {
@@ -1367,7 +1548,63 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
-			// Full v11 surface (v10 + the in-process end-of-turn scorer).
+			// Full v13 surface (v12 + token-by-token mmproj vision describe).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...eotDefs,
+				...timedAsrDefs,
+				...visionStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			eot: true,
+			timedAsr: true,
+			visionStream: true,
+		},
+		{
+			// Full v12 surface (v11 + the in-process ASR word-timestamp decoder);
+			// a v12 build lacks the v13 streaming-vision symbols.
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...eotDefs,
+				...timedAsrDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			eot: true,
+			timedAsr: true,
+		},
+		{
+			// Full v11 surface (v10 + the in-process end-of-turn scorer); a v11
+			// build lacks the v12 timed-ASR symbols.
 			defs: {
 				...coreDefs,
 				...referenceEncodeDefs,
@@ -1389,6 +1626,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			textModalities: true,
 			kokoro: true,
 			eot: true,
+			timedAsr: false,
 		},
 		{
 			// Full v10 surface (v9 + the in-process Kokoro block).
@@ -1573,6 +1811,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			kokoroSymbolsAvailable =
 				(attempt as { kokoro?: boolean }).kokoro ?? false;
 			eotSymbolsAvailable = (attempt as { eot?: boolean }).eot ?? false;
+			timedAsrSymbolsAvailable =
+				(attempt as { timedAsr?: boolean }).timedAsr ?? false;
+			visionStreamSymbolsAvailable =
+				(attempt as { visionStream?: boolean }).visionStream ?? false;
 			break;
 		} catch (err) {
 			lastOpenError = err;
@@ -1616,7 +1858,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "10" && !eotSymbolsAvailable) ||
+		(reported === "12" && !visionStreamSymbolsAvailable) ||
+		(reported === "11" && !timedAsrSymbolsAvailable) ||
+		(reported === "10" && !eotSymbolsAvailable && !timedAsrSymbolsAvailable) ||
 		(reported === "9" && !kokoroSymbolsAvailable && !eotSymbolsAvailable) ||
 		(reported === "8" &&
 			!kokoroSymbolsAvailable &&
@@ -1805,6 +2049,58 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			);
 		},
 
+		timedAsrSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_asr_timestamps_supported;
+			return (
+				timedAsrSymbolsAvailable && typeof probe === "function" && probe() === 1
+			);
+		},
+
+		asrTranscribeTimed({ ctx, pcm, sampleRateHz, maxTextBytes, maxWords }) {
+			const fn = loadedLib.symbols.eliza_inference_asr_transcribe_timed;
+			if (!timedAsrSymbolsAvailable || typeof fn !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_asr_transcribe_timed is not exported by this build (pre-v12)",
+				);
+			}
+			const err = makeOutErr();
+			const cap = maxTextBytes ?? 4096;
+			const wordCap = maxWords ?? 1024;
+			const outText = new Uint8Array(cap);
+			const startMs = new Int32Array(wordCap);
+			const endMs = new Int32Array(wordCap);
+			const nWords = new BigUint64Array(1);
+			nWords[0] = BigInt(wordCap);
+			const rc = fn(
+				ctx,
+				ffi.ptr(pcm),
+				BigInt(pcm.length),
+				sampleRateHz,
+				ffi.ptr(outText),
+				BigInt(cap),
+				ffi.ptr(startMs),
+				ffi.ptr(endMs),
+				ffi.ptr(nWords),
+				err.ptr,
+			);
+			if (rc < 0) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_asr_transcribe_timed rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			const nul = outText.indexOf(0, 0);
+			const len = nul >= 0 ? nul : rc;
+			const text = Buffer.from(
+				outText.buffer,
+				outText.byteOffset,
+				len,
+			).toString("utf8");
+			const words = recoverAsrWords(text, Number(nWords[0]), startMs, endMs);
+			return { text, words };
+		},
+
 		/* ---- Streaming TTS + verifier callback (ABI v2) ------------ */
 
 		ttsStreamSupported(): boolean {
@@ -1817,7 +2113,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const speakerArg = cstr(speakerPresetId);
 			// (pcm: ptr, n_samples: usize, is_final: i32, user_data: ptr) -> i32
 			const cb = new ffi.JSCallback(
-				((pcmPtr: bigint, nSamples: bigint, isFinal: number) => {
+				(pcmPtr: bigint, nSamples: bigint, isFinal: number) => {
 					const n = Number(nSamples);
 					// Bun delivers the C pointer as a bigint; copy the floats out
 					// before returning — the buffer is the library's, valid only
@@ -1828,7 +2124,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 							: new Float32Array(0);
 					const requestCancel = onChunk({ pcm, isFinal: isFinal !== 0 });
 					return requestCancel === true ? 1 : 0;
-				}) as unknown as (...args: never[]) => unknown,
+				},
 				{
 					args: [T.ptr, T.usize, T.i32, T.ptr],
 					returns: T.i32,
@@ -1964,9 +2260,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			}
 			// (ev: ptr to EliVerifierEvent, user_data: ptr) -> void
 			const cb = new ffi.JSCallback(
-				((evPtr: bigint) => {
+				(evPtr: bigint) => {
 					cbFn(readVerifierEvent(evPtr, ffi));
-				}) as unknown as (...args: never[]) => unknown,
+				},
 				{ args: [T.ptr, T.ptr], returns: T.void },
 			);
 			const rc = loadedLib.symbols.eliza_inference_set_verifier_callback(
@@ -2392,7 +2688,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const err = makeOutErr();
 			// Marshal the config struct into a Buffer. Layout matches
 			// `eliza_llm_stream_config_t` in `eliza-inference-ffi.h`
-			// (8-byte aligned, ABI v8):
+			// (8-byte aligned, ABI v9):
 			//   off  0 : i32  max_tokens
 			//   off  4 : f32  temperature
 			//   off  8 : f32  top_p
@@ -2408,8 +2704,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			//   off 60 : i32  n_gpu_layers          (ABI v8 — fills old tail pad)
 			//   off 64 : ptr  cache_type_k          (ABI v8)
 			//   off 72 : ptr  cache_type_v          (ABI v8)
-			//   sizeof = 80
-			const buf = Buffer.alloc(80);
+			//   off 80 : i32  context_size          (ABI v9)
+			//   sizeof = 88
+			const buf = Buffer.alloc(88);
 			buf.writeInt32LE(config.maxTokens, 0);
 			buf.writeFloatLE(config.temperature, 4);
 			buf.writeFloatLE(config.topP, 8);
@@ -2446,6 +2743,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			);
 			buf.writeBigUInt64LE(toPtrBigInt(cacheKArg.ptr), 64);
 			buf.writeBigUInt64LE(toPtrBigInt(cacheVArg.ptr), 72);
+			buf.writeInt32LE(config.contextSize ?? 0, 80);
 			const handle = open(ctx, ffi.ptr(buf), err.ptr);
 			if (isNullPointer(handle)) {
 				const message =
@@ -2681,6 +2979,45 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			return Buffer.from(outText.buffer, outText.byteOffset, len).toString(
 				"utf8",
 			);
+		},
+
+		/* ---- Streaming mmproj vision describe (ABI v13) ------------ */
+
+		visionStreamSupported(): boolean {
+			const probe = loadedLib.symbols.eliza_inference_vision_stream_supported;
+			return (
+				visionStreamSymbolsAvailable &&
+				typeof probe === "function" &&
+				probe() === 1
+			);
+		},
+
+		describeImageStreamOpen({ ctx, imageBytes, mmprojPath, prompt }) {
+			const open = loadedLib.symbols.eliza_inference_describe_image_stream_open;
+			if (!visionStreamSymbolsAvailable || typeof open !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_describe_image_stream_open is not exported by this build",
+				);
+			}
+			const err = makeOutErr();
+			const mmprojArg = cstr(mmprojPath);
+			const promptArg = cstr(prompt ?? null);
+			const handle = open(
+				ctx,
+				ffi.ptr(imageBytes),
+				BigInt(imageBytes.length),
+				mmprojArg.ptr,
+				promptArg.ptr,
+				err.ptr,
+			);
+			if (isNullPointer(handle)) {
+				const message =
+					takeError(err.buf) ??
+					"[ffi-bindings] eliza_inference_describe_image_stream_open returned NULL with no diagnostic";
+				throw new VoiceLifecycleError("kernel-missing", message);
+			}
+			return handle as LlmStreamHandle;
 		},
 
 		/* ---- Tokenizer (ABI v9) ------------------------------------ */
@@ -2925,7 +3262,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		if (typeof value === "bigint") return value;
 		if (typeof value === "number") return BigInt(value);
 		// Bun returns its internal pointer object that coerces to bigint.
-		return BigInt(value as unknown as number);
+		return BigInt(value as number);
 	}
 
 	/**

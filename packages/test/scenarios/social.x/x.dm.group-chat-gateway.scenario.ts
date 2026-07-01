@@ -3,6 +3,7 @@ import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 import { expectScenarioActionResultData } from "../_helpers/action-result-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "x.dm.group-chat-gateway",
   title: "Advise on an X group DM handoff",
   domain: "social.x",

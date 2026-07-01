@@ -3,6 +3,8 @@
  * (missing in published tarball). Exported for use by patch-deps.mjs and tests.
  * See docs/plugin-resolution-and-node-path.md "Bun and published package exports".
  */
+
+import { execFileSync } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -15,12 +17,28 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
 
 const ELIZA_CORE_RUNTIME_FILES = [
   "dist/index.js",
   "dist/browser/index.browser.js",
   "dist/node/index.node.js",
 ];
+
+const REPO_ROOT = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
+const CLEANUP_HELPER_SCRIPT = resolve(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, targetPath], {
+    cwd: REPO_ROOT,
+    stdio: "ignore",
+  });
+}
 
 function dedupeRealPaths(paths) {
   const seen = new Set();
@@ -113,7 +131,7 @@ export function repairElizaCoreRuntimeDist(targetPkgDir, sourcePkgDir) {
   const sourceDist = resolve(sourcePkgDir, "dist");
   const targetDist = resolve(targetPkgDir, "dist");
 
-  rmSync(targetDist, { recursive: true, force: true });
+  removePathRecursive(targetDist);
   cpSync(sourceDist, targetDist, { recursive: true });
   return true;
 }
@@ -241,7 +259,7 @@ export function pruneNestedElizaPluginCoreCopies(root, log = console.log) {
       // Fall back to the directory path when package.json cannot be read.
     }
 
-    rmSync(nestedCoreDir, { recursive: true, force: true });
+    removePathRecursive(nestedCoreDir);
     patched = true;
     log(
       `[patch-deps] Removed nested @elizaos/core from ${pluginName}; plugin imports now resolve the root core.`,

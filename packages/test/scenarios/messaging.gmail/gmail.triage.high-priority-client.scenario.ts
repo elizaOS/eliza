@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.triage.high-priority-client",
   title: "Triage flags high-priority client email",
   domain: "messaging.gmail",

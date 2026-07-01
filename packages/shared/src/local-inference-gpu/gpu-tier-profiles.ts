@@ -89,12 +89,12 @@ const RTX_3090: GpuProfile = {
   },
   mtp: {
     enabled: true,
-    drafter_tier: "eliza-1-0_8b",
+    drafter_tier: "eliza-1-2b",
     speculative_window: 5,
   },
   ctx_size_tokens: 32768,
   notes:
-    "24 GB GDDR6X. Best fit is Eliza-1 9B with 4B/2B/0.8B fallbacks. MTP enabled with the 0.8B drafter.",
+    "24 GB GDDR6X. Best fit is Eliza-1 9B with 4B/2B fallbacks. MTP enabled with the 2B drafter.",
 };
 
 const RTX_4090: GpuProfile = {

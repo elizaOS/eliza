@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.vendor-negotiation",
   title:
     "Vendor negotiation gathers contract docs, renewal data, and draft replies",

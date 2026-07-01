@@ -38,6 +38,7 @@ try:
         _score_from_orchestrator_lifecycle_json,
         _score_from_osworld_json,
         _score_from_realm_json,
+        _score_from_recall_json,
         _score_from_rlmbench_json,
         _score_from_scambench_json,
         _score_from_social_alpha_json,
@@ -90,6 +91,7 @@ except ImportError:
         _score_from_orchestrator_lifecycle_json,
         _score_from_osworld_json,
         _score_from_realm_json,
+        _score_from_recall_json,
         _score_from_rlmbench_json,
         _score_from_scambench_json,
         _score_from_social_alpha_json,
@@ -465,6 +467,28 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _contextbench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="context_bench_*.json")
+
+    def _recall_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        # recall-bench (#9956): drives the REAL @elizaos/core recall path over a
+        # labeled, document-scale corpus. No model/provider — the embedding is a
+        # deterministic in-bench function, so it is secret-free and CI-safe.
+        tier = str(extra.get("tier") or "1k").strip().lower()
+        if tier not in {"smoke", "1k", "10k"}:
+            tier = "1k"
+        _ = model
+        # `--conditions=eliza-source` resolves @elizaos/* to workspace source.
+        return [
+            "bun",
+            "--conditions=eliza-source",
+            "run.ts",
+            "--tier",
+            tier,
+            "--out",
+            str(output_dir),
+        ]
+
+    def _recall_result(output_dir: Path) -> Path:
+        return output_dir / "recall-bench-results.json"
 
     def _terminalbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         # Run module from its python project root.
@@ -980,7 +1004,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(mode, str) and mode in ("stub", "rlm", "eliza", "custom"):
             args.extend(["--mode", mode])
         else:
-            args.extend(["--mode", "stub"])  # Default to stub for testing
+            # Default to a REAL mode (#9475): "rlm" runs real RLM-plugin
+            # inference (no Eliza server needed). The orchestrator's adapter
+            # default_extra_config overrides this to the fuller "eliza" agent
+            # loop; only the bare/no-extra path falls back here. "stub" is the
+            # heuristic mock and must be requested explicitly via extra.
+            args.extend(["--mode", "rlm"])
         backend = extra.get("backend")
         if isinstance(backend, str):
             args.extend(["--backend", backend])
@@ -2322,6 +2351,25 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_contextbench_cmd,
             locate_result=_contextbench_result,
             extract_score=_score_from_contextbench_json,
+        ),
+        BenchmarkDefinition(
+            id="recall_bench",
+            display_name="RecallBench",
+            description="Precision/Recall/nDCG/latency over the real @elizaos/core memory-recall + knowledge-retrieval path (document-scale, per SearchMode, with a forced embed fail-open).",
+            cwd_rel="packages/benchmarks/recall-bench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Secret-free and CI-safe: drives the real DocumentService / "
+                    "searchMemories / FACTS path over a deterministic, committed "
+                    "labeled corpus with a deterministic in-bench embedding (no "
+                    "model/provider/credentials). 'tier' extra selects smoke/1k/10k."
+                ),
+            ),
+            build_command=_recall_cmd,
+            locate_result=_recall_result,
+            extract_score=_score_from_recall_json,
         ),
         BenchmarkDefinition(
             id="terminal_bench",

@@ -11,10 +11,24 @@ import type {
 import { Service, ServiceType } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import {
+  accountMetaFromSessionMetadata,
+  classifyAccountFailure,
+  reportCodingAccountFailure,
+} from "./coding-account-selection.js";
+import {
   dispatchParentAgentDirective,
   extractParentAgentDirective,
   parentAgentMarkerIndex,
 } from "./parent-agent-dispatch.js";
+import {
+  createRouterLoopState,
+  type RouterLoopState,
+  routerLoopTransition,
+} from "./router-loop-guard.js";
+import {
+  collectScreenshotPaths,
+  deliverScreenshots,
+} from "./screenshot-delivery.js";
 import { SsrfBlockedError, safeFetch } from "./ssrf-guard.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
@@ -34,8 +48,6 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
-const DEFAULT_ROUND_TRIP_CAP = 32;
-const DEFAULT_STATE_LOST_RESPAWN_CAP = 3;
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -130,29 +142,146 @@ function extractVerifiableUrls(
   return aliasFiltered.slice(0, limit);
 }
 
+// The augmented initial task (taskWithResolvedRoute) appends the user's verbatim
+// request after this marker, prefixed by all the injected route/swarm hints.
+// We slice the user portion out so intent/URL detection never keys on the
+// injected route hint text (which literally contains the word "URL" and a
+// route-prefix URL).
+const USER_TASK_MARKER = "--- User Task ---";
+
+function userTaskSlice(referenceText: string | undefined): string {
+  if (!referenceText) return "";
+  const idx = referenceText.lastIndexOf(USER_TASK_MARKER);
+  return idx >= 0
+    ? referenceText.slice(idx + USER_TASK_MARKER.length)
+    : referenceText;
+}
+
 function shouldVerifyCompletionUrls(
   text: string,
   referenceText?: string,
   routeVerification?: RouteUrlVerification,
 ): boolean {
   const completionUrls = collectVerifiableUrlCandidates(text);
-  const referenceUrls = referenceText
-    ? collectVerifiableUrlCandidates(referenceText)
-    : [];
-  if (completionUrls.length === 0 && referenceUrls.length === 0) {
+  // Use ONLY the user's verbatim task for intent/URL detection — never the
+  // injected route/swarm hints that the augmented initial task is wrapped in.
+  const userTask = userTaskSlice(referenceText);
+  const userTaskUrls = userTask ? collectVerifiableUrlCandidates(userTask) : [];
+  if (completionUrls.length === 0 && userTaskUrls.length === 0) {
     return false;
   }
 
-  if (referenceText && taskRequestsReachableArtifact(referenceText)) {
+  // An INPUT/consume request ("summarize / read / fetch / open / scrape this
+  // URL ...") names a SOURCE URL to read. On its own that does NOT make a URL a
+  // deliverable. It only suppresses the artifact-SHAPED-URL heuristic (branch 2),
+  // NOT an EXPLICIT deploy/share request (branch 1): a task can both read a
+  // source AND deploy an output (e.g. "read https://x, deploy a summary page,
+  // and give me the live URL") — that must still verify the claimed deployment.
+  const consumesUrl = userTask ? taskConsumesUrl(userTask) : false;
+
+  // 1) The USER explicitly requested a reachable/hosted/deployed/SHARED artifact
+  //    (deploy/host/live/serve/verify, OR "give/provide/share me the url/link")
+  //    -> verify whatever URL the completion claims. Holds in routed AND
+  //    un-routed sessions (e.g. "deploy to Vercel and give me the live URL", or
+  //    "create a landing page and give me the url"). This explicit intent is
+  //    authoritative and is NOT suppressed by also consuming a source URL.
+  if (
+    userTask &&
+    (taskRequestsReachableArtifact(userTask) ||
+      taskRequestsProvidedUrl(userTask))
+  ) {
     return true;
   }
-  return completionUrls.some((url) =>
-    isRoutedArtifactUrl(url, routeVerification),
+
+  // 2) The USER named a concrete DELIVERABLE-shaped URL (a routed hosted-app
+  //    URL like `.../apps/<slug>/`, or one that targets the session's route
+  //    mapping) -> the user pointed at a specific reachable artifact target, so
+  //    verifying it is correct. We key on the deliverable SHAPE, not on the
+  //    completion echoing it (the completion narration is often composed/
+  //    stripped before it reaches here, so an echo requirement would miss real
+  //    builds). Crucially this EXCLUDES arbitrary INPUT/source URLs such as
+  //    "summarize https://example.com/docs" or "fetch this API and report":
+  //    those are plain third-party URLs, not artifact-shaped, so they never
+  //    trigger a verify/retry.
+  //    EXCLUDES a consume request that names an `/apps/`-shaped SOURCE URL
+  //    ("summarize https://example.com/apps/foo/"): when the task consumes a
+  //    URL, an artifact-shaped path is still just a source, so it must not
+  //    verify.
+  const userNamedDeliverableUrl =
+    !consumesUrl &&
+    userTaskUrls.some(
+      (ru) =>
+        isRoutedArtifactUrl(ru, routeVerification) ||
+        routeVerification?.mappings.some((m) => ru.startsWith(m.urlPrefix)),
+    );
+  if (userNamedDeliverableUrl) {
+    return true;
+  }
+
+  // 3) The task set up an explicit deployment ROUTE and a completion URL targets
+  //    that mapping -> a real hosted deliverable, verify it. An incidental URL
+  //    in narration that does not match the mapping (e.g. an `/apps/<slug>/` URL
+  //    grepped from skill code) is ignored.
+  if (routeVerification) {
+    return completionUrls.some((url) =>
+      routeVerification.mappings.some((mapping) =>
+        url.startsWith(mapping.urlPrefix),
+      ),
+    );
+  }
+
+  // Otherwise: no reachable-artifact intent, no claimed user URL, no route — a
+  // routed-shape or input URL appearing only in narration is not a deliverable.
+  return false;
+}
+
+// True only when the TASK explicitly asked for a REACHABLE / hosted / deployed
+// artifact (or for a URL/link to one). Deliberately does NOT match generic
+// authoring verbs like `build`, `create`, `site`, `page`, or `static`: a task
+// such as "build a static site in its own folder" is a LOCAL build with no
+// reachable artifact requested, so an incidental dead `/apps/...` URL in the
+// sub-agent's exploratory narration must not trigger URL verification + a
+// glitch/retry. We key on deployment/serving/reachability words and on an
+// explicit request for a URL/link/address.
+function taskRequestsReachableArtifact(text: string): boolean {
+  // Unambiguous deployment/serving/reachability words, or an explicit request
+  // to VERIFY a target. Deliberately EXCLUDES:
+  //  - generic authoring verbs (build/create/site/page/static) so a pure local
+  //    build never over-verifies on incidental narration URLs; and
+  //  - the ambiguous nouns `url`/`link`/`address`/`endpoint`, because
+  //    "summarize this URL: https://..." / "read the link ..." are INPUT-URL
+  //    requests, not deliverable requests. A user who names a deliverable URL
+  //    target is handled by the artifact-SHAPED user-URL branch (2) instead.
+  //    Deliverable intent here means hosting/serving/reachability, e.g.
+  //    "deploy X and give me the live url" still matches via `deploy`/`live`.
+  return /\b(?:deploy|deployed|deploying|deployment|host|hosted|hosting|publish|published|publishing|serve|served|serving|preview|reachable|live|online|accessible|verify|verified|verifying|verification)\b/i.test(
+    text,
   );
 }
 
-function taskRequestsReachableArtifact(text: string): boolean {
-  return /\b(?:app|site|website|webpage|page|build|built|create|created|deploy|deployed|deployment|host|hosted|hosting|preview|publish|published|serve|served|serving|static|reachable|live|verify|verified)\b/i.test(
+// True when the user is asking the agent to PROVIDE/SHARE a URL or link back to
+// them (an output deliverable), e.g. "give me the url", "send me the link",
+// "what's the url", "share the link". This is the deliverable reading of the
+// otherwise-ambiguous `url`/`link` nouns — distinct from CONSUMING a URL
+// (see taskConsumesUrl), which `taskRequestsReachableArtifact` deliberately
+// drops. Requires a provide-verb adjacent to the url/link noun so a bare
+// mention of "url" in an input request does not match.
+function taskRequestsProvidedUrl(text: string): boolean {
+  // Only UNAMBIGUOUS provide/output verbs. Deliberately EXCLUDES `get`/`need`/
+  // `want`, which routinely introduce an INPUT URL ("get the URL <x> and
+  // summarize it") rather than requesting one back.
+  return /\b(?:give|send|share|provide|return|show|tell|what(?:'?s| is)|where(?:'?s| is))\b[^.?!\n]{0,40}\b(?:url|link|address)\b/i.test(
+    text,
+  );
+}
+
+// True when the user is asking the agent to CONSUME/read a URL as input (a
+// SOURCE), e.g. "summarize this url", "read the link", "fetch this endpoint",
+// "open https://...", "scrape the page at ...". When the task is consuming a
+// URL, no URL-based deliverable signal applies — a dead/private source URL must
+// not trigger a verify/retry.
+function taskConsumesUrl(text: string): boolean {
+  return /\b(?:summari[sz]e|summary|read|fetch|scrape|crawl|open|visit|browse|download|parse|extract|analy[sz]e|review|check|look\s+at|go\s+to|load)\b[^.?!\n]{0,40}\b(?:url|link|endpoint|page|site|address|https?:\/\/)/i.test(
     text,
   );
 }
@@ -324,67 +453,99 @@ export class SubAgentRouter extends Service {
   private acp: AcpService | null = null;
   private unsubscribe: (() => void) | undefined;
   private readonly delivered = new Set<string>();
-  private readonly roundTripCounts = new Map<string, number>();
   // Per-session accumulation of streamed child text, scanned for
   // `USE_SKILL parent-agent <json>` directives. Kept tiny (only a tail, or
   // from the marker onward) so it never grows with normal task output.
   private readonly parentAgentBuffers = new Map<string, string>();
   private readonly parentAgentDispatchCounts = new Map<string, number>();
-  private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
-  // Backstop for the cross-session "state lost -> spawn a fresh sub-agent"
-  // respawn cascade. Each respawn is a NEW session, so roundTripCounts (keyed
-  // by sessionId) never catches it. Count session_state_lost respawns per
-  // STABLE origin lineage (taskRoomId+agentType) and stop re-injecting the
-  // event past the cap. Reset on the first task_complete for that lineage so
-  // a genuinely-progressing task is never starved.
-  private readonly stateLostRespawnCounts = new Map<string, number>();
-  private readonly stateLostCapNotified = new Set<string>();
-  // Maps completion lineage key → the FIRST session id that posted a
-  // task_complete for it. When a later task_complete arrives for the
-  // same lineage from a DIFFERENT session, we absorb it: that's a
-  // retry-cascade post (orchestrator dispatched a fresh sub-agent
-  // after the first one already shipped) and the user should see one
-  // reply, not 2-3+ overlapping messages with random page sub-
-  // resources from each retry. Issue elizaOS/eliza#7967.
-  //
-  // Same-session progressive task_completes (a sub-agent reports
-  // partial progress then completion) still post both. Parallel TASKS:create
-  // subtasks from the same user message also post independently because the
-  // lineage key includes the initial task text and agent type, not just the
-  // origin message id.
-  //
-  // The map is bounded (LRU via FIFO drop) to prevent unbounded growth
-  // across long-running sessions. 1024 origin messages is well above
-  // any reasonable workload — Discord channels typically see hundreds
-  // of message-events per hour at most.
-  private readonly completionFirstPostedSession: Map<string, string> =
-    new Map();
-  // Synchronous compare-and-set: claim the lineage's completion slot for this
-  // session, or return false if another session already holds it. Re-claiming
-  // from the SAME session returns true, so same-session progressive completes
-  // still post. There must be NO await between the get and the set, so a
-  // concurrent same-lineage retry can't slip a second post past the guard. The
-  // previous design split the check and the mark across the awaited delivery
-  // loop, leaving a TOCTOU window where two retry sessions both passed the check
-  // and double-posted (eliza#7967).
-  private tryClaimCompletion(
-    completionKey: string,
-    sessionId: string,
-  ): boolean {
-    const holder = this.completionFirstPostedSession.get(completionKey);
-    if (holder !== undefined) return holder === sessionId;
-    this.completionFirstPostedSession.set(completionKey, sessionId);
-    while (this.completionFirstPostedSession.size > 1024) {
-      const oldestKey = this.completionFirstPostedSession.keys().next().value;
-      if (!oldestKey) break;
-      this.completionFirstPostedSession.delete(oldestKey);
-    }
-    return true;
+  // The two runaway-loop backstops (per-session round-trip cap + per-lineage
+  // state_lost respawn cap) and the cross-session completion-dedupe compare-
+  // and-set are consolidated into one pure, fuzz-tested reducer. Every counter
+  // lives in `loopState`; `handleEvent` drives `routerLoopTransition` once per
+  // decision point and executes the returned decision. See router-loop-guard.ts
+  // and the fuzz test (router-loop-guard.test.ts) for the invariants — no
+  // double-post, no early force-stop, no leaked session (#9960, #7967).
+  private loopState: RouterLoopState = createRouterLoopState();
+
+  // Per-root-origin spawn cap. The completion-dedupe slot above only
+  // suppresses duplicate POSTS; it does not stop the PLANNER from re-spawning a
+  // fresh sub-agent each time a (weak-model) completion comes back truncated or
+  // blocked. Observed live: ONE user request fanned out to 70 TASKS_SPAWN_AGENT
+  // calls (each emitting a "working on it" ack + a partial answer = Discord
+  // spam). The loop guard's round-trip count is per-session (a fresh spawn
+  // resets it), its state_lost count only counts session_state_lost and is
+  // cleared on every task_complete, and waitForSpawnSlot caps only SIMULTANEOUS
+  // sessions —
+  // so nothing bounds SERIAL re-spawns of one user message. These count spawns
+  // against the STABLE root origin (connector/parent message id + agent type,
+  // NOT the per-spawn instruction text — so re-spawns collapse to one key while
+  // distinct parallel TASKS:create subtasks are unaffected). FIFO bounded 1024.
+  private readonly spawnCountsForOrigin = new Map<string, number>();
+  private readonly bestResultForOrigin = new Map<
+    string,
+    { text: string; deliverable?: string }
+  >();
+
+  /** Spawns already issued for this root origin (for the per-origin cap). */
+  spawnCountForOrigin(originKey: string): number {
+    return this.spawnCountsForOrigin.get(originKey) ?? 0;
   }
+
+  /** Record a spawn against a root origin (FIFO-bounded). */
+  noteSpawnForOrigin(originKey: string): void {
+    this.spawnCountsForOrigin.set(
+      originKey,
+      (this.spawnCountsForOrigin.get(originKey) ?? 0) + 1,
+    );
+    while (this.spawnCountsForOrigin.size > 1024) {
+      const oldest = this.spawnCountsForOrigin.keys().next().value;
+      if (!oldest) break;
+      this.spawnCountsForOrigin.delete(oldest);
+    }
+  }
+
+  /** Best already-completed result for an origin, relayed instead of re-spawning. */
+  bestResultFor(
+    originKey: string,
+  ): { text: string; deliverable?: string } | undefined {
+    return this.bestResultForOrigin.get(originKey);
+  }
+
+  /** Keep the LONGEST non-empty result for an origin (full 479001600 wins over truncated 479). */
+  recordOriginResult(
+    originKey: string,
+    result: { text: string; deliverable?: string },
+  ): void {
+    const candidate = (result.deliverable ?? result.text ?? "").trim();
+    if (!candidate) return;
+    const prev = this.bestResultForOrigin.get(originKey);
+    const prevLen = (prev?.deliverable ?? prev?.text ?? "").trim().length;
+    if (prev && candidate.length <= prevLen) return;
+    this.bestResultForOrigin.set(originKey, result);
+    while (this.bestResultForOrigin.size > 1024) {
+      const oldest = this.bestResultForOrigin.keys().next().value;
+      if (!oldest) break;
+      this.bestResultForOrigin.delete(oldest);
+    }
+  }
+
+  /**
+   * The per-session round-trip count the loop guard has accumulated so far
+   * (0 when the session has not round-tripped yet). Read-only: the count is
+   * owned by the loop-guard reducer; this only exposes it so the watchdog can
+   * warn the user before a runaway session hits the force-stop cap (#8901).
+   */
+  getRoundTripCount(sessionId: string): number {
+    return this.loopState.roundTripCounts.get(sessionId) ?? 0;
+  }
+
+  /** The configured per-session round-trip cap (the runaway-loop force-stop limit). */
+  getRoundTripCap(): number {
+    return this.loopState.roundTripCap;
+  }
+
   private started = false;
-  private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
-  private stateLostRespawnCap = DEFAULT_STATE_LOST_RESPAWN_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
 
@@ -412,12 +573,13 @@ export class SubAgentRouter extends Service {
     }
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
-    if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
     const slCapRaw = readSetting(this.runtime, "ACPX_STATE_LOST_RESPAWN_CAP");
     const slParsed = slCapRaw ? Number.parseInt(slCapRaw, 10) : NaN;
-    if (Number.isFinite(slParsed) && slParsed > 0) {
-      this.stateLostRespawnCap = slParsed;
-    }
+    this.loopState = createRouterLoopState({
+      roundTripCap: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+      stateLostRespawnCap:
+        Number.isFinite(slParsed) && slParsed > 0 ? slParsed : undefined,
+    });
     // Service registration runs in parallel — when router.start() executes,
     // AcpService may not yet be registered with the runtime, so getService
     // returns null. Static `dependencies` is not enough to order startup.
@@ -482,14 +644,13 @@ export class SubAgentRouter extends Service {
     this.acp = null;
     this.started = false;
     this.delivered.clear();
-    this.roundTripCounts.clear();
     this.parentAgentBuffers.clear();
     this.parentAgentDispatchCounts.clear();
-    this.capExceededSessions.clear();
     this.verifyRetryHandedOffSessions.clear();
-    this.completionFirstPostedSession.clear();
-    this.stateLostRespawnCounts.clear();
-    this.stateLostCapNotified.clear();
+    this.loopState = createRouterLoopState({
+      roundTripCap: this.loopState.roundTripCap,
+      stateLostRespawnCap: this.loopState.stateLostRespawnCap,
+    });
   }
 
   private async handleEvent(
@@ -553,10 +714,21 @@ export class SubAgentRouter extends Service {
     // reset its state_lost respawn counter so a later genuine restart is not
     // pre-capped by an earlier transient one.
     if (event === "task_complete") {
-      const lk = respawnLineageKey(session, origin);
-      this.stateLostRespawnCounts.delete(lk);
-      this.stateLostCapNotified.delete(lk);
+      this.loopState = routerLoopTransition(this.loopState, {
+        type: "task_complete_progress",
+        lineageKey: respawnLineageKey(session, origin),
+      }).state;
     }
+
+    // The ACP session/prompt stopReason for a task_complete tells us whether the
+    // sub-agent's model finished cleanly or DEGENERATELY (truncated / blocked).
+    // Threaded into the completion metadata below so the response evaluator can
+    // relay the best partial once rather than letting the planner re-spawn the
+    // same request — the ~70x weak-model loop (issue elizaOS/eliza#8875).
+    const finishReason =
+      event === "task_complete"
+        ? normalizeFinishReason(pickPayloadString(data, "stopReason"))
+        : undefined;
 
     // Deterministic recovery for the cross-session state_lost cascade. A lost
     // session used to be re-injected into the planner so the planner would
@@ -567,47 +739,81 @@ export class SubAgentRouter extends Service {
     // and suppress the dead session's narration entirely. Bounded per stable
     // origin lineage; once the cap is exhausted, post ONE honest terminal
     // failure instead of hanging silently.
+    // Propagate a spawned account's auth / rate-limit failure to the pool so the
+    // selector stops handing out the dud account (and the readiness gate +
+    // account-health panel reflect it), instead of swallowing it and re-picking
+    // the same account next spawn. Best-effort and conservative — see
+    // classifyAccountFailure (a false positive would evict a healthy account).
+    if (event === "error") {
+      const failureKind = classifyAccountFailure(
+        pickPayloadString(data, "message"),
+      );
+      const accountMeta = accountMetaFromSessionMetadata(
+        session.metadata as Record<string, unknown> | undefined,
+      );
+      if (failureKind && accountMeta) {
+        this.log("warn", "coding account failure reported to pool", {
+          sessionId,
+          providerId: accountMeta.providerId,
+          accountId: accountMeta.accountId,
+          failureKind,
+        });
+        void reportCodingAccountFailure(
+          accountMeta,
+          failureKind,
+          Date.now(),
+          `sub-agent session ${sessionId} (${session.agentType})`,
+        );
+      }
+    }
+
     let stateLostExhausted = false;
     let stateLostRespawnCount = 0;
     if (
       event === "error" &&
       pickPayloadString(data, "failureKind") === "session_state_lost"
     ) {
-      const lineageKey = respawnLineageKey(session, origin);
-      stateLostRespawnCount =
-        (this.stateLostRespawnCounts.get(lineageKey) ?? 0) + 1;
-      this.stateLostRespawnCounts.set(lineageKey, stateLostRespawnCount);
-      while (this.stateLostRespawnCounts.size > 1024) {
-        const oldest = this.stateLostRespawnCounts.keys().next().value;
-        if (oldest === undefined) break;
-        this.stateLostRespawnCounts.delete(oldest);
-      }
-      if (stateLostRespawnCount > this.stateLostRespawnCap) {
-        // Cap exhausted: stop the dead session and report ONE honest terminal
-        // failure (deduped per lineage). Do NOT respawn again and do NOT route
-        // through the completion-claim slot (that is task_complete-only —
-        // eliza#7967); fall through to the normal delivery path below with a
-        // forced terminal narration so the user is not left with a silent hang.
+      const { state, decision } = routerLoopTransition(this.loopState, {
+        type: "state_lost",
+        lineageKey: respawnLineageKey(session, origin),
+        // A `task_complete` for this lineage claims its slot under the
+        // completion key; pass it so the reducer can suppress a teardown-race
+        // state-loss whose deliverable already posted (no false "retry?").
+        completionKey: completionLineageKey(session, origin),
+      });
+      this.loopState = state;
+      if (decision.kind === "already_terminal") {
+        // Cap exhausted and already reported once for this lineage: stop the
+        // dead session and drop silently — the user already got one honest
+        // failure (eliza#7967).
         await acp.stopSession(sessionId).catch(() => {});
-        if (this.stateLostCapNotified.has(lineageKey)) return;
-        this.stateLostCapNotified.add(lineageKey);
+        return;
+      }
+      if (decision.kind === "terminal_failure") {
+        // Cap exhausted, first time: stop the dead session and fall through to
+        // the normal delivery path below with a forced terminal narration so
+        // the user is not left with a silent hang. The completion-claim slot is
+        // task_complete-only, so an error never routes through it.
+        stateLostRespawnCount = decision.count;
+        await acp.stopSession(sessionId).catch(() => {});
         this.log(
           "warn",
           "state_lost respawn cap reached; reporting terminal failure for this origin lineage",
           {
             sessionId,
-            count: stateLostRespawnCount,
-            cap: this.stateLostRespawnCap,
+            count: decision.count,
+            cap: this.loopState.stateLostRespawnCap,
           },
         );
         stateLostExhausted = true;
-      } else {
+      } else if (decision.kind === "respawn") {
         // Under cap: recover deterministically inside the router. On success,
         // suppress the dead session's tail events and return WITHOUT posting —
         // the recovered child's task_complete becomes the only user-facing
         // message. On failure (no initialTask / spawn threw), fall through to
         // the normal error narration so the user gets an honest report instead
         // of silence.
+        stateLostRespawnCount = decision.count;
         const respawned = await this.respawnStateLost(session);
         if (respawned) {
           this.verifyRetryHandedOffSessions.add(sessionId);
@@ -617,35 +823,42 @@ export class SubAgentRouter extends Service {
       }
     }
 
-    const nextCount = (this.roundTripCounts.get(sessionId) ?? 0) + 1;
-    this.roundTripCounts.set(sessionId, nextCount);
-    // Roll the round-trip counter back when a task_complete event is
-    // suppressed downstream (verify-retry handoff, stale continuation, or
-    // cross-session completion dedupe). Those events never post a synthetic
-    // inbound, so counting them against the runaway-loop cap miscounts real
-    // round-trips and can trip the force-stop early. Only decrement if our
-    // increment is still the current value (no later event has advanced it).
+    const roundTrip = routerLoopTransition(this.loopState, {
+      type: "round_trip",
+      sessionId,
+    });
+    this.loopState = roundTrip.state;
+    const nextCount =
+      "count" in roundTrip.decision ? roundTrip.decision.count : 0;
+    const capExceeded =
+      roundTrip.decision.kind === "force_stop" ||
+      roundTrip.decision.kind === "already_capped";
+    // Roll the round-trip counter back when this event is suppressed downstream
+    // (verify-retry handoff, stale continuation, or cross-session completion
+    // dedupe). Those events never post a synthetic inbound, so counting them
+    // against the runaway-loop cap would miscount real round-trips and trip the
+    // force-stop early. The reducer only undoes the increment if it is still the
+    // current value (no later event has advanced it).
     const rollbackRoundTrip = (): void => {
-      if (this.roundTripCounts.get(sessionId) === nextCount) {
-        if (nextCount <= 1) this.roundTripCounts.delete(sessionId);
-        else this.roundTripCounts.set(sessionId, nextCount - 1);
-      }
+      this.loopState = routerLoopTransition(this.loopState, {
+        type: "rollback_round_trip",
+        sessionId,
+        expectedCount: nextCount,
+      }).state;
     };
-    const capExceeded = nextCount > this.roundTripCap;
-    if (capExceeded) {
-      if (this.capExceededSessions.has(sessionId)) {
-        this.log("debug", "round-trip cap already surfaced; suppressing", {
-          sessionId,
-          event,
-          count: nextCount,
-        });
-        return;
-      }
-      this.capExceededSessions.add(sessionId);
+    if (roundTrip.decision.kind === "already_capped") {
+      this.log("debug", "round-trip cap already surfaced; suppressing", {
+        sessionId,
+        event,
+        count: nextCount,
+      });
+      return;
+    }
+    if (roundTrip.decision.kind === "force_stop") {
       this.log("warn", "sub-agent round-trip cap exceeded; force-stopping", {
         sessionId,
         count: nextCount,
-        cap: this.roundTripCap,
+        cap: this.loopState.roundTripCap,
       });
       await acp.stopSession(sessionId).catch((err) =>
         this.log("warn", "force-stop after cap failed", {
@@ -731,9 +944,9 @@ export class SubAgentRouter extends Service {
     // name — breaking it for both the verification probe AND the user.
     const baseText = normalizeUrlsInText(
       stateLostExhausted
-        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — unrecoverable]\nThis task lost its working session ${stateLostRespawnCount} times and could not be recovered after ${this.loopState.stateLostRespawnCap} automatic restarts. Decide whether to retry the task from scratch, escalate to the user, or drop it.`
         : capExceeded
-          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+          ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.loopState.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
           : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
@@ -770,7 +983,10 @@ export class SubAgentRouter extends Service {
     // with an empty completion. Gated to a single short block so multi-KB
     // transcripts stay on the model-rendered (summarized) path.
     let deliverable: string | undefined;
-    if (event === "task_complete" && !changeSet && verifiedUrls.length === 0) {
+    // Capture the deliverable even when files changed: a "do X and report the
+    // output" task that also writes a file must still surface the output, not
+    // only the diff summary. The verifiedUrls path keeps its dedicated handling.
+    if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
@@ -811,24 +1027,62 @@ export class SubAgentRouter extends Service {
       event === "task_complete" ? completionLineageKey(session, origin) : null;
     // Atomically claim the lineage's completion slot BEFORE the awaited delivery
     // loop, so two same-lineage retry sessions completing in the same window
-    // cannot both pass the check and double-post (eliza#7967).
-    if (completionKey && !this.tryClaimCompletion(completionKey, sessionId)) {
-      this.log(
-        "debug",
-        "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
-        {
-          sessionId,
-          completionKey,
-          event,
-        },
-      );
-      rollbackRoundTrip();
-      return;
+    // cannot both pass the check and double-post (eliza#7967). The reducer's
+    // claim is a synchronous compare-and-set — there is no await between the
+    // get and the set, so the TOCTOU window is closed by construction.
+    if (completionKey) {
+      const claim = routerLoopTransition(this.loopState, {
+        type: "claim_completion",
+        completionKey,
+        sessionId,
+      });
+      this.loopState = claim.state;
+      if (claim.decision.kind === "already_claimed") {
+        this.log(
+          "debug",
+          "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
+          {
+            sessionId,
+            completionKey,
+            event,
+          },
+        );
+        rollbackRoundTrip();
+        return;
+      }
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
+    } else if (
+      event === "task_complete" &&
+      deliverable &&
+      !text.includes(deliverable)
+    ) {
+      // The captured tool output IS the answer for a "run it and report the
+      // output" task. The weak model's prose paraphrase of the same run is
+      // routinely truncated (relays "479" for a captured "479001600"), and that
+      // prose — not the metadata deliverable — is what every downstream reader
+      // consumes: the planner re-derives its reply from this narration, and
+      // Stage-1 regenerates any bare-numeric reply from it. So surface the
+      // verbatim deliverable as the narration body (the header's relay /
+      // do-not-respawn directive is preserved on the first line).
+      const firstNewline = text.indexOf("\n");
+      const header = firstNewline === -1 ? text : text.slice(0, firstNewline);
+      text = `${header}\n${deliverable}`;
     }
     if (event === "task_complete") {
+      // Remember the best (longest) result for this root origin so the spawn
+      // cap (tasks.ts) can relay it instead of re-spawning when a weak model's
+      // later completion for the SAME user request comes back truncated/blocked.
+      // Key on the connector message id only — the stable root id the router
+      // stamps onto each synthetic re-spawn inbound and that tasks.ts reads back
+      // (so record + enforce agree); a request without one simply isn't capped.
+      if (origin.parentConnectorMessageId) {
+        this.recordOriginResult(
+          `${origin.parentConnectorMessageId}\0${session.agentType}`,
+          { text, deliverable },
+        );
+      }
       const preview = (deliverable ?? text).trim().slice(0, 200);
       void getNotifier(this.runtime)
         ?.notify({
@@ -851,6 +1105,26 @@ export class SubAgentRouter extends Service {
             error: err instanceof Error ? err.message : String(err),
           });
         });
+      // #8904: forward any screenshots/artifacts the completion carries to the
+      // origin chat as photos (best-effort; missing target/paths → no-op). The
+      // connector renders Content.attachments (Telegram via sendMedia PHOTO).
+      const completionText =
+        pickPayloadString(data, "response") ??
+        pickPayloadString(data, "finalText");
+      const screenshotPaths = collectScreenshotPaths(
+        completionText,
+        session.metadata as Record<string, unknown> | undefined,
+      ).filter((p) => fs.existsSync(p));
+      const sendShots = (this.runtime as RuntimeWithSendTarget)
+        .sendMessageToTarget;
+      if (screenshotPaths.length > 0 && origin.source && sendShots) {
+        await deliverScreenshots(
+          (t, c) => sendShots(t, c),
+          { source: origin.source, roomId: origin.roomId },
+          screenshotPaths,
+          origin.label,
+        );
+      }
     }
     const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
@@ -917,7 +1191,7 @@ export class SubAgentRouter extends Service {
                 : session.status,
             subAgentAgentType: session.agentType,
             subAgentRoundTrip: nextCount,
-            subAgentRoundTripCap: this.roundTripCap,
+            subAgentRoundTripCap: this.loopState.roundTripCap,
             subAgentRoutingKind: routingKind,
             subAgentTargetRoomId: target.roomId,
             subAgentTargetRoomRole: target.roles[0],
@@ -937,6 +1211,7 @@ export class SubAgentRouter extends Service {
               ? { subAgentVerifiedUrls: verifiedUrls }
               : {}),
             ...(deliverable ? { subAgentDeliverable: deliverable } : {}),
+            ...(finishReason ? { subAgentFinishReason: finishReason } : {}),
             ...(origin.userId ? { originUserId: origin.userId } : {}),
             ...(origin.parentMessageId
               ? { originMessageId: origin.parentMessageId }
@@ -1000,7 +1275,8 @@ export class SubAgentRouter extends Service {
     }
 
     // The lineage slot was already claimed atomically before the delivery loop
-    // (tryClaimCompletion), so there is nothing to mark here. The claim suppresses
+    // (the reducer's claim_completion), so there is nothing to mark here. The
+    // claim suppresses
     // a later retry sub-agent (different sessionId) for the same parent prompt
     // (issue elizaOS/eliza#7967); same-session progressive task_completes are
     // unaffected because the claim is keyed by sessionId, and a verify-retry
@@ -1062,9 +1338,9 @@ export class SubAgentRouter extends Service {
    * unavailable or no spawn service is registered, in which case the caller
    * falls through to an honest failure post.
    *
-   * Lineage capping lives in handleEvent (stateLostRespawnCounts +
-   * stateLostRespawnCap), parallel to the verify-retry budget, so a flapping
-   * session can't respawn unbounded.
+   * Lineage capping lives in the loop-guard reducer (the state_lost respawn
+   * count + cap), parallel to the verify-retry budget, so a flapping session
+   * can't respawn unbounded.
    */
   private async respawnStateLost(session: SessionInfo): Promise<boolean> {
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
@@ -1302,20 +1578,20 @@ Do not report done until every referenced URL in the final page resolves without
 
     const nextCount = (this.parentAgentDispatchCounts.get(sessionId) ?? 0) + 1;
     this.parentAgentDispatchCounts.set(sessionId, nextCount);
-    if (nextCount > this.roundTripCap) {
+    if (nextCount > this.loopState.roundTripCap) {
       this.log(
         "warn",
         "parent-agent dispatch cap exceeded; dropping directive",
         {
           sessionId,
           count: nextCount,
-          cap: this.roundTripCap,
+          cap: this.loopState.roundTripCap,
         },
       );
       await acp
         .sendToSession(
           sessionId,
-          `parent-agent bridge: round-trip cap (${this.roundTripCap}) reached for this session; not running further USE_SKILL parent-agent requests.`,
+          `parent-agent bridge: round-trip cap (${this.loopState.roundTripCap}) reached for this session; not running further USE_SKILL parent-agent requests.`,
         )
         .catch(() => undefined);
       return;
@@ -1914,6 +2190,31 @@ function pickPayloadString(data: unknown, key: string): string | undefined {
   return v;
 }
 
+// Map the ACP `session/prompt` stopReason to a normalized LLM finish reason for
+// the completion evaluator. `max_tokens` / `max_turn_requests` mean the model
+// ran out of token / turn budget mid-answer (truncated); `refusal` is a
+// content-filter block. Both are DEGENERATE: the completion is partial, and the
+// planner re-issuing the SAME root request just truncates / blocks again — the
+// ~70x weak-model re-spawn loop (issue elizaOS/eliza#8875). Every other
+// stopReason (`end_turn`, `cancelled`, `exit`, `stopped`, `error`, …) is a clean
+// stop and keeps the existing routing (returns undefined → no signal).
+function normalizeFinishReason(
+  stopReason: string | undefined,
+): "length" | "content_filter" | undefined {
+  if (!stopReason) return undefined;
+  switch (stopReason.toLowerCase()) {
+    case "max_tokens":
+    case "max_turn_requests":
+    case "length":
+      return "length";
+    case "refusal":
+    case "content_filter":
+      return "content_filter";
+    default:
+      return undefined;
+  }
+}
+
 function stripToolTranscript(text: string): string {
   // Remove the orchestrator's OWN captured tool-output envelope blocks
   // ("[tool output: <title>]\n<output>\n[/tool output]", emitted by
@@ -1945,16 +2246,25 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
   const blocks = response.match(
     /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
   );
-  if (blocks?.length !== 1) return undefined;
-  const inner = blocks[0]
-    .replace(/^\[tool output:[^\]]*\]/, "")
-    .replace(/\[\/tool output\]$/, "")
-    .trim();
-  if (!inner) return undefined;
-  if (Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES) {
-    return undefined;
+  if (!blocks?.length) return undefined;
+  // Multi-step tool use is normal — a failed attempt then a retry (`python`
+  // not found, then `python3`), or write-a-file then run-it. The LAST
+  // non-empty block is the sub-agent's final result, so surface it verbatim:
+  // a weak coding model routinely truncates that result in its own prose
+  // (relays "479" for a captured "479001600"), and the ground-truth tool
+  // output must win over the paraphrase. A block over the size cap is a
+  // transcript dump, not a deliverable — fall back to the summarized path.
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const inner = blocks[i]
+      .replace(/^\[tool output:[^\]]*\]/, "")
+      .replace(/\[\/tool output\]$/, "")
+      .trim();
+    if (!inner) continue;
+    return Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+      ? undefined
+      : inner;
   }
-  return inner;
+  return undefined;
 }
 
 function composeNarration(
@@ -2014,7 +2324,15 @@ function composeNarration(
     // Preserve any deployed URL the sub-agent claimed so the downstream
     // reachability verification still runs.
     const urls = collectVerifiableUrlCandidates(response ?? "");
+    // A file write must not swallow the answer the user asked for: when the
+    // sub-agent captured a concrete deliverable (e.g. a script's stdout for a
+    // "run it and report the output" task), surface it ABOVE the change
+    // summary. This is the typed `[tool output: …]` envelope, not the raw
+    // transcript, so the leak/respawn problems the diff-summary path solved
+    // stay solved.
+    const capturedDeliverable = extractShortToolDeliverable(data);
     const lines = [
+      ...(capturedDeliverable ? [capturedDeliverable] : []),
       summarizeChangeSet(changeSet),
       changeSet.diffStat,
       ...urls,

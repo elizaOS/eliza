@@ -29,10 +29,34 @@ Per-test the harness:
 - injects an `eliza-test-session` cookie signed with `PLAYWRIGHT_TEST_AUTH_SECRET`
 - exposes `stack.mocks.hetzner.store` and `stack.urls.controlPlane` for assertions
 
+### Real wallet login (no DB seeding)
+
+`seedTestUser` inserts rows directly and never runs the login flow. To exercise
+the REAL login path, use `loginWithTestWallet(stack.urls.api)`
+(`src/helpers/wallet-login.ts`): it runs the genuine SIWE handshake
+(nonce → sign with a throwaway viem wallet → verify) against the booted cloud-api
+and returns a real API key for a free account. The stack runs the worker with
+`MOCK_REDIS=1` (shared in-process store), so the SIWE nonce survives between the
+two requests. `asSeededUser(login)` adapts the result to the `SeededUser` shape.
+
+The same flow is available as a dev/CI gate: `bun run cloud:login:test-wallet`
+(defaults to `https://api.elizacloud.ai`; pass `--base <url>` for a local stack).
+It exits non-zero if login or the authenticated probe fails.
+
+**The `seededUser` fixture now uses this real path for every spec.** Instead of
+inserting rows directly, it calls `loginAsSeededUser(stack.urls.api)`, which runs
+the genuine SIWE handshake and then elevates the fresh wallet account to the
+suite's privileged baseline (admin role, funded org, known verified email) via a
+direct DB update — exactly the end-state `seedTestUser` produced. So every spec
+that consumes `seededUser` authenticates with a credential the real login flow
+minted, with no other changes. `seedTestUser` is kept for specs that need extra
+secondary identities (attacker / other-user / end-user).
+
 ## Specs
 
 | File                          | Covers                                                                        |
 | ----------------------------- | ----------------------------------------------------------------------------- |
+| `tests/siwe-login.spec.ts`    | real nonce → sign → verify mints a usable key; forged sig 401s; re-login is idempotent; fixture identity is real-login-minted |
 | `tests/dashboard.spec.ts`     | seeded user reaches dashboard with test-auth session, localStorage writable   |
 | `tests/provision.spec.ts`     | create agent → cron tick → sandbox `running`, control-plane sees the sandbox  |
 | `tests/deprovision.spec.ts`   | DELETE agent → async `agent_delete` job → polls to `deleted` / 404            |

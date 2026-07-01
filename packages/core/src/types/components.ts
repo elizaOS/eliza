@@ -118,6 +118,11 @@ export interface ActionExample {
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 
+export interface MessageHandlerDeterministicToolCall {
+	name: string;
+	params?: Record<string, JsonValue>;
+}
+
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
@@ -131,7 +136,8 @@ export interface MessageHandlerPlan {
 	contextSlices?: string[];
 	candidateActions?: string[];
 	parentActionHints?: string[];
-	[key: string]: JsonValue | undefined;
+	deterministicToolCall?: MessageHandlerDeterministicToolCall;
+	[key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined;
 }
 
 export interface MessageHandlerExtractedRelationship {
@@ -150,6 +156,13 @@ export interface MessageHandlerExtract {
 	 * Drives the "addressed" relationship edge from speaker → target.
 	 */
 	addressedTo?: string[];
+	/**
+	 * Short, normalized topic labels for the current message (1-5, lowercase,
+	 * trimmed, deduped). Maintained per-channel as an LRU by
+	 * `ChannelTopicsService` and surfaced back into Stage-1 routing via the
+	 * `CHANNEL_TOPICS` provider. Empty / omitted means "no salient topic".
+	 */
+	topics?: string[];
 }
 
 export interface MessageHandlerResult {
@@ -294,6 +307,25 @@ export interface Action {
 
 	/** Optional tags for categorization */
 	tags?: string[];
+
+	/**
+	 * When true, this action is "private": it may only be selected and executed
+	 * by the agent inside its own autonomous loop, never in direct response to a
+	 * user request. The planner does not expose private actions on user-driven
+	 * turns, and the executor rejects them on user-driven turns as a
+	 * defense-in-depth backstop (so a hallucinated tool call cannot bypass the
+	 * exposure gate).
+	 *
+	 * A turn is considered autonomous when the triggering message carries
+	 * `content.metadata.isAutonomous === true` (the marker the autonomy service
+	 * stamps on its self-prompts). This lets an agent reserve self-initiated
+	 * capabilities — e.g. minting a coin, opening a position, or kicking off a
+	 * long-running plan — for its own decision loop, so they cannot be triggered
+	 * on demand by a user.
+	 *
+	 * Default: false (the action is available on both user and autonomous turns).
+	 */
+	private?: boolean;
 
 	/**
 	 * One-line routing hint surfaced to the planner. Replaces hand-written

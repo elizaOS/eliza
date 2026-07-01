@@ -1,6 +1,11 @@
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { ControlPlaneStore, type Job, type Sandbox } from "./store";
+import {
+  ControlPlaneStore,
+  type ImportedMessage,
+  type Job,
+  type Sandbox,
+} from "./store";
 
 type DatabaseJob = {
   id: string;
@@ -118,9 +123,23 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   store.setHotPoolTarget(hotPoolSize);
 
   const app = new Hono();
+  const runtimeState = {
+    memories: [] as Array<{ role: string; text: string; timestamp: number }>,
+    config: {} as Record<string, unknown>,
+    workspaceFiles: {} as Record<string, string>,
+  };
 
   app.use("*", async (c, next) => {
     if (c.req.path === "/health") return next();
+    if (
+      c.req.path === "/api/health" ||
+      c.req.path === "/api/snapshot" ||
+      c.req.path === "/api/restore"
+    ) {
+      return next();
+    }
+    // Mock production app URLs are externally reachable, unlike control-plane APIs.
+    if (c.req.path.startsWith("/mock/apps/")) return next();
     // Admin endpoints use their own token, validated per-route.
     if (c.req.path.startsWith("/api/v1/admin/")) return next();
     // Compat endpoints are public stubs.
@@ -159,6 +178,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return value;
   }
 
+  function appUrl(origin: string, containerId: string): string {
+    return `${origin}/mock/apps/${encodeURIComponent(containerId)}`;
+  }
+
   async function processDbBackedJobs(
     databaseUrl: string,
     origin: string,
@@ -171,11 +194,15 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   }> {
     const [
       { agentSandboxesRepository },
+      { appsRepository },
+      { containersRepository },
       { jobsRepository },
       { runWithCloudBindingsAsync },
       { JOB_TYPES },
     ] = await Promise.all([
       import("@elizaos/cloud-shared/db/repositories/agent-sandboxes.ts"),
+      import("@elizaos/cloud-shared/db/repositories/apps.ts"),
+      import("@elizaos/cloud-shared/db/repositories/containers.ts"),
       import("@elizaos/cloud-shared/db/repositories/jobs.ts"),
       import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
       import("@elizaos/cloud-shared/lib/services/provisioning-job-types.ts"),
@@ -204,6 +231,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         const sleepJobs = await claim(JOB_TYPES.AGENT_SLEEP);
         const wakeJobs = await claim(JOB_TYPES.AGENT_WAKE);
         const snapshotJobs = await claim(JOB_TYPES.AGENT_SNAPSHOT);
+        const appDeployJobs = await claim(JOB_TYPES.APP_DEPLOY);
 
         for (const job of [
           ...provisionJobs,
@@ -213,9 +241,58 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
           ...sleepJobs,
           ...wakeJobs,
           ...snapshotJobs,
+          ...appDeployJobs,
         ]) {
           result.claimed += 1;
           try {
+            if (job.type === JOB_TYPES.APP_DEPLOY) {
+              const appId = readJobString(job, "appId");
+              const appRow = await appsRepository.findById(appId);
+              if (!appRow) {
+                throw new Error(`App not found for APP_DEPLOY: ${appId}`);
+              }
+
+              const container = await containersRepository.create({
+                name: `app-${appId.replace(/-/g, "").slice(0, 12)}`,
+                project_name: appId,
+                organization_id: appRow.organization_id,
+                user_id: appRow.created_by_user_id,
+                image_tag:
+                  process.env.APP_DEFAULT_IMAGE ??
+                  "ghcr.io/elizaos/eliza:e2e-app",
+                port: 3000,
+                environment_vars: {},
+                metadata: { appId, mockDeployed: true },
+                status: "running",
+                last_deployed_at: now(),
+              });
+
+              const productionUrl = appUrl(origin, container.id);
+              await appsRepository.update(appId, {
+                metadata: {
+                  ...((appRow.metadata as Record<string, unknown> | null) ??
+                    {}),
+                  containerId: container.id,
+                },
+                deployment_status: "deployed",
+                production_url: productionUrl,
+                last_deployed_at: now(),
+              });
+              await containersRepository.update(
+                container.id,
+                appRow.organization_id,
+                {
+                  load_balancer_url: productionUrl,
+                },
+              );
+              await jobsRepository.updateStatus(job.id, "completed", {
+                result: { appId, containerId: container.id, productionUrl },
+                completed_at: now(),
+              });
+              result.succeeded += 1;
+              continue;
+            }
+
             if (job.type === JOB_TYPES.AGENT_DELETE) {
               const agentId = readJobString(job, "agentId");
               const organizationId = readJobString(job, "organizationId");
@@ -490,6 +567,23 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app.get("/health", (c) =>
     c.json({ success: true, service: "control-plane-mock" }),
   );
+  app.get("/api/health", (c) =>
+    c.json({ success: true, status: "ok", ready: true }),
+  );
+  app.post("/api/snapshot", (c) => c.json(runtimeState));
+  app.post("/api/restore", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as Partial<
+      typeof runtimeState
+    > | null;
+    runtimeState.memories = Array.isArray(body?.memories) ? body.memories : [];
+    runtimeState.config =
+      body?.config && typeof body.config === "object" ? body.config : {};
+    runtimeState.workspaceFiles =
+      body?.workspaceFiles && typeof body.workspaceFiles === "object"
+        ? body.workspaceFiles
+        : {};
+    return c.json({ success: true });
+  });
 
   app.post("/jobs", async (c) => {
     const auth = requireForwardedAuth(c);
@@ -561,7 +655,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const parsed =
       rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
     const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
-    const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
+    const databaseUrl =
+      c.req.header("x-eliza-cloud-database-url")?.trim() ??
+      process.env.DATABASE_URL;
     const result = databaseUrl
       ? await processDbBackedJobs(databaseUrl, new URL(c.req.url).origin, limit)
       : await tick(limit);
@@ -819,6 +915,47 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         timestamp: now().toISOString(),
       },
     });
+  });
+
+  app.get("/mock/apps/:containerId", async (c) => {
+    await latency();
+    const containerId = c.req.param("containerId");
+    const databaseUrl =
+      c.req.header("x-eliza-cloud-database-url")?.trim() ??
+      process.env.DATABASE_URL;
+    if (databaseUrl) {
+      const [{ containersRepository }, { runWithCloudBindingsAsync }] =
+        await Promise.all([
+          import("@elizaos/cloud-shared/db/repositories/containers.ts"),
+          import("@elizaos/cloud-shared/lib/runtime/cloud-bindings.ts"),
+        ]);
+      const rows = await runWithCloudBindingsAsync(
+        { DATABASE_URL: databaseUrl },
+        () => containersRepository.listForAdminInfrastructure(500),
+      );
+      const row = rows.find((candidate) => candidate.id === containerId);
+      if (row && row.status !== "deleted") {
+        return c.json({
+          success: true,
+          appId: row.project_name,
+          containerId,
+          status: row.status,
+          runtime: "mock-app-container",
+        });
+      }
+    }
+
+    const container = store.getContainer(containerId);
+    if (container && container.status !== "deleted") {
+      return c.json({
+        success: true,
+        appId: container.projectName,
+        containerId,
+        status: container.status,
+        runtime: "mock-app-container",
+      });
+    }
+    return c.json({ success: false, error: "App container not found" }, 404);
   });
 
   // ── JSON-RPC bridge + SSE ────────────────────────────────────────────
@@ -1098,6 +1235,79 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       },
     });
   });
+
+  // ── Dedicated-agent conversation surface (handoff import target) ───────
+  // A provisioned dedicated agent advertises its base as
+  // `<origin>/api/compat/agents/<sandboxId>`; the shared→personal handoff then
+  // POSTs the copied transcript to `<base>/api/conversations/:convId/import`
+  // and (after switching) reads it back at `<base>/api/conversations/:convId/
+  // messages`. These mock the agent-side primitives — a silent, idempotent
+  // bulk-insert with no inference (mirrors agent/src/api/conversation-routes.ts)
+  // — so the success handoff is reachable + assertable in e2e.
+  const normalizeImportMessages = (raw: unknown): ImportedMessage[] => {
+    if (!Array.isArray(raw)) return [];
+    const out: ImportedMessage[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== "object") continue;
+      const rec = entry as Record<string, unknown>;
+      const role =
+        rec.role === "assistant"
+          ? "assistant"
+          : rec.role === "user"
+            ? "user"
+            : null;
+      const rawText =
+        typeof rec.text === "string"
+          ? rec.text
+          : typeof rec.content === "string"
+            ? rec.content
+            : "";
+      const text = rawText.trim();
+      if (!role || !text) continue;
+      out.push({
+        role,
+        text,
+        ...(typeof rec.timestamp === "number" && Number.isFinite(rec.timestamp)
+          ? { timestamp: rec.timestamp }
+          : {}),
+      });
+    }
+    return out;
+  };
+
+  app.post(
+    "/api/compat/agents/:id/api/conversations/:convId/import",
+    async (c) => {
+      await latency();
+      const sandboxId = c.req.param("id");
+      const conversationId = decodeURIComponent(c.req.param("convId"));
+      const body = (await c.req.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!body || !Array.isArray(body.messages)) {
+        return c.json({ error: "Body must include a `messages` array" }, 400);
+      }
+      const messages = normalizeImportMessages(body.messages);
+      const result = store.importConversation(
+        sandboxId,
+        conversationId,
+        messages,
+      );
+      return c.json(result);
+    },
+  );
+
+  app.get(
+    "/api/compat/agents/:id/api/conversations/:convId/messages",
+    async (c) => {
+      await latency();
+      const sandboxId = c.req.param("id");
+      const conversationId = decodeURIComponent(c.req.param("convId"));
+      const messages = store.getConversation(sandboxId, conversationId);
+      return c.json({ messages });
+    },
+  );
 
   async function hetznerFetch(
     path: string,

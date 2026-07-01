@@ -33,13 +33,6 @@ try:
 except ImportError:
     pass
 
-# Optional: EVM bridge — only loaded when benchmarks.evm is on sys.path.
-try:
-    from eliza_adapter.evm import ElizaBridgeEVMExplorer  # noqa: F401
-    __all__.append("ElizaBridgeEVMExplorer")
-except ImportError:
-    pass
-
 # Optional: Experience bridge — only loaded when elizaos_experience_bench is on sys.path.
 try:
     from eliza_adapter.experience import (  # noqa: F401

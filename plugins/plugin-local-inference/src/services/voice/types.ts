@@ -3,13 +3,12 @@ export interface TextToken {
 	text: string;
 	/**
 	 * Text-model vocabulary token id, when the producer knows it. ASR
-	 * (fused Qwen3-ASR) and the text backbone share the Qwen2 BPE 151 936
-	 * vocab + merges (AGENTS.md §1), so an ASR-emitted token id is the same
-	 * id the text model would assign — a downstream in-process handoff can
-	 * inject `id` directly into the text KV cache without detokenize →
+	 * (fused Gemma ASR) and the text backbone share the Gemma tokenizer, so an
+	 * ASR-emitted token id is the same id the text model would assign — a
+	 * downstream in-process handoff can inject `id` directly into the text KV
+	 * cache without detokenize →
 	 * retokenize. Absent for producers that only have surface text (the
-	 * whisper.cpp interim adapter — a different tokenizer; the word-chunk
-	 * approximation in `splitTranscriptToTokens`).
+	 * word-chunk approximation in `splitTranscriptToTokens`).
 	 */
 	id?: number;
 }
@@ -259,8 +258,8 @@ export interface VoiceTurnMetadata {
  * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
  * the turn controller / speculative-on-pause path, and the overlapped
  * `VoicePipeline` (`voice/pipeline.ts`). The `StreamingTranscriber` below
- * is the single ASR contract; the two adapters (fused Qwen3-ASR via
- * libelizainference, interim whisper.cpp) implement it in
+ * is the single ASR contract; the two fused adapters (fused Gemma ASR
+ * streaming and fused batch, both via libelizainference) implement it in
  * `voice/transcriber.ts`. It consumes the canonical `PcmFrame` (defined
  * below in the audio front-end section) off a `MicSource` and is gated by
  * the `VadEvent` stream. The `VoicePipeline` drives the same contract as a
@@ -285,9 +284,9 @@ export interface TranscriptUpdate {
 	turn?: VoiceTurnMetadata;
 	/**
 	 * Text-model token ids for `partial`, when the backend can supply them
-	 * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
-	 * whisper.cpp interim adapter (different tokenizer — re-tokenization is
-	 * the LLM stage's job there).
+	 * cheaply (fused Gemma ASR shares the text vocabulary). Absent when the
+	 * decoder reports surface text only (re-tokenization is the LLM stage's
+	 * job there).
 	 */
 	tokens?: number[];
 	/**
@@ -408,9 +407,9 @@ export interface VerifierStreamEvent {
 //      decides "is there acoustic activity right now". A rising edge wakes
 //      the response pipeline (KV-prefill, drafter preload, first-filler
 //      pre-generation) speculatively.
-//   2. The Silero VAD GGUF (via silero-vad-cpp FFI) is the *authoritative*
-//      speech/no-speech signal. It gates ASR (skip silent frames) and
-//      drives turn-taking.
+//   2. The fused Silero VAD (via the `libelizainference` native VAD ABI) is
+//      the *authoritative* speech/no-speech signal. It gates ASR (skip silent
+//      frames) and drives turn-taking.
 //
 // Both run on every mic frame. The RMS gate never substitutes for Silero —
 // if the native VAD runtime is unavailable that is a hard "VAD unavailable"
@@ -679,11 +678,11 @@ export type VoiceSchedulerTelemetryListener = (
 
 // ---------------------------------------------------------------------------
 // Shared interfaces extracted here to break circular dependencies between
-// vad.ts ↔ vad-ggml.ts, wake-word.ts ↔ wake-word-ggml.ts, and
-// transcriber.ts ↔ openvino-whisper-asr.ts.
+// vad.ts and its consumers, and wake-word.ts ↔ wake-word-ggml.ts.
 // ---------------------------------------------------------------------------
 
-/** Minimal VAD model contract consumed by SileroVadGgml and qwen-toolkit adapter. */
+/** Minimal VAD model contract consumed by the fused `GgmlSileroVad` and the
+ *  optional injected external adapter. */
 export interface VadLike {
 	readonly windowSamples: number;
 	readonly sampleRate: number;
@@ -698,6 +697,3 @@ export interface WakeWordModel {
 	scoreFrame(frame: Float32Array): Promise<number>;
 	reset(): void;
 }
-
-/** Streaming PCM decoder function type consumed by OpenVinoWhisperAsr. */
-export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;

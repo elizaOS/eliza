@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  buildSetupError,
   ChannelType,
   ContentType,
   createMessageMemory,
@@ -22,6 +23,8 @@ import {
   type RouteResponse,
   resolveStateDir,
   Service,
+  type SetupState,
+  type SetupStatusResponse,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -1173,26 +1176,6 @@ function getConnectorConfig(setupService: ConnectorSetupService): ConnectorConfi
   return {};
 }
 
-// ── Shared setup contract types ─────────────────────────────────────────
-// Mirror of @elizaos/app-core/api/setup-contract — kept inline here so this
-// plugin doesn't take a dependency on app-core just for the type definitions.
-
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
-interface SetupStatusResponse<TDetail = unknown> {
-  connector: string;
-  state: SetupState;
-  detail?: TDetail;
-}
-
-interface SetupErrorResponse {
-  error: { code: string; message: string };
-}
-
-function setupErrorBody(code: string, message: string): SetupErrorResponse {
-  return { error: { code, message } };
-}
-
 interface DiscordServiceStatusShape {
   available: boolean;
   connected: boolean;
@@ -1228,7 +1211,7 @@ function buildDiscordStatusResponse(
       },
     };
   }
-  const detail = service.getStatus() as unknown as DiscordServiceStatusShape;
+  const detail = service.getStatus() as DiscordServiceStatusShape;
   const state: SetupState = detail.authenticated
     ? "paired"
     : detail.lastError
@@ -1260,12 +1243,12 @@ async function handleDiscordStart(
   if (!service) {
     res
       .status(503)
-      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
+      .json(buildSetupError("service_unavailable", "discord-local service not registered"));
     return;
   }
 
   try {
-    const detail = (await service.authorize()) as unknown as DiscordServiceStatusShape;
+    const detail = (await service.authorize()) as DiscordServiceStatusShape;
     const state: SetupState = detail.authenticated
       ? "paired"
       : detail.lastError
@@ -1280,7 +1263,7 @@ async function handleDiscordStart(
     res
       .status(500)
       .json(
-        setupErrorBody(
+        buildSetupError(
           "internal_error",
           `failed to authorize discord-local: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -1299,7 +1282,7 @@ async function handleDiscordCancel(
   if (!service) {
     res
       .status(503)
-      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
+      .json(buildSetupError("service_unavailable", "discord-local service not registered"));
     return;
   }
 
@@ -1312,7 +1295,7 @@ async function handleDiscordCancel(
     res
       .status(500)
       .json(
-        setupErrorBody(
+        buildSetupError(
           "internal_error",
           `failed to disconnect discord-local: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -1331,7 +1314,7 @@ async function handleDiscordGuilds(
   if (!service) {
     res
       .status(503)
-      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
+      .json(buildSetupError("service_unavailable", "discord-local service not registered"));
     return;
   }
 
@@ -1342,7 +1325,7 @@ async function handleDiscordGuilds(
     res
       .status(500)
       .json(
-        setupErrorBody(
+        buildSetupError(
           "internal_error",
           `failed to list discord-local guilds: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -1361,14 +1344,14 @@ async function handleDiscordChannels(
   if (!service) {
     res
       .status(503)
-      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
+      .json(buildSetupError("service_unavailable", "discord-local service not registered"));
     return;
   }
 
   const url = new URL(req.url ?? "/api/discord/channels", "http://localhost");
   const guildId = url.searchParams.get("guildId")?.trim() ?? "";
   if (!guildId) {
-    res.status(400).json(setupErrorBody("bad_request", "guildId is required"));
+    res.status(400).json(buildSetupError("bad_request", "guildId is required"));
     return;
   }
 
@@ -1379,7 +1362,7 @@ async function handleDiscordChannels(
     res
       .status(500)
       .json(
-        setupErrorBody(
+        buildSetupError(
           "internal_error",
           `failed to list discord-local channels: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -1398,13 +1381,13 @@ async function handleDiscordSubscriptions(
   if (!service) {
     res
       .status(503)
-      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
+      .json(buildSetupError("service_unavailable", "discord-local service not registered"));
     return;
   }
 
   const body = req.body;
   if (!body) {
-    res.status(400).json(setupErrorBody("bad_request", "request body is required"));
+    res.status(400).json(buildSetupError("bad_request", "request body is required"));
     return;
   }
 
@@ -1450,7 +1433,7 @@ async function handleDiscordSubscriptions(
     res
       .status(500)
       .json(
-        setupErrorBody(
+        buildSetupError(
           "internal_error",
           `failed to update discord-local subscriptions: ${error instanceof Error ? error.message : String(error)}`
         )

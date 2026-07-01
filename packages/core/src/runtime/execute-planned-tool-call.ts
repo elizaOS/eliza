@@ -2,6 +2,7 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import { getTrajectoryContext } from "../trajectory-context";
 import type {
 	Action,
 	ActionParameters,
@@ -25,6 +26,7 @@ import { runWithActionRoutingContext } from "./action-routing-context";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
+import { privateActionAllowedOnTurn } from "./private-action-gate";
 
 export interface PlannedToolCall {
 	id?: string;
@@ -228,6 +230,19 @@ export async function executePlannedToolCall(
 		const actionCallback: typeof executorCtx.callback = callback
 			? (response, actionName) => callback(response, actionName ?? action.name)
 			: undefined;
+		// Egress (#10469): this is the true execution boundary. Restore real
+		// secrets into the handler args ONLY here — the model, transcripts, logs,
+		// and trajectory upstream kept the placeholders. Fail loud if the model
+		// emitted a this-turn placeholder we cannot resolve, so a placeholder is
+		// never sent to a real command/connector/endpoint. No-op (and zero cost)
+		// when secret-swap is disabled: there is no turn session on the context.
+		const secretSwapSession = getTrajectoryContext()?.secretSwapSession;
+		if (secretSwapSession && handlerOptions.parameters !== undefined) {
+			handlerOptions.parameters = secretSwapSession.restoreInValue(
+				handlerOptions.parameters,
+				{ failOnUnresolved: true },
+			);
+		}
 		const result = await runWithActionRoutingContext(
 			{ actionName: action.name, modelClass: action.modelClass },
 			() =>
@@ -380,6 +395,13 @@ function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
+	// Private actions may only run inside the agent's own autonomous loop.
+	// The planner exposure gate already withholds them on user turns; this is a
+	// defense-in-depth backstop so a hallucinated tool call cannot run one.
+	if (!privateActionAllowedOnTurn(action, ctx.message)) {
+		return `Action ${action.name} is private and can only run in the agent's autonomous loop`;
+	}
+
 	const policyRole = resolveActionRolePolicyRole(action);
 	if (policyRole) {
 		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })

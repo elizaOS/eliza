@@ -83,9 +83,6 @@ const ciExcludedRealPaths = [
   ),
   // These surfaces are covered by dedicated workflows or upstream package
   // suites instead of Eliza's required PR real-test lane.
-  elizaWorkspacePattern(
-    "packages/app-core/test/app/first-run-companion.live.e2e.test.ts",
-  ),
   elizaWorkspacePattern("packages/benchmarks/app-eval/evaluate.real.test.ts"),
   elizaWorkspacePattern(
     "plugins/plugin-form/src/tests/json-integration.live.test.ts",
@@ -241,17 +238,15 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-task-coordinator",
-    "plugin-steward-app",
     "plugin-wallet",
   ]),
   ...getWorkspacePluginAliases(repoRoot, [
-    "plugin-companion",
     "plugin-documents",
     "plugin-personal-assistant",
+    "plugin-scheduling",
     "plugin-local-inference",
-    "plugin-shopify-ui",
+    "plugin-shopify",
     "plugin-training",
-    "plugin-vincent",
     "plugin-wallet-ui",
     "plugin-x402",
   ]),
@@ -514,11 +509,6 @@ export default defineConfig({
       "**/node_modules/**",
       ".claude/**",
       ...(hiddenElizaWorkspaceGlob ? [hiddenElizaWorkspaceGlob] : []),
-      // The default real/live lane only uses public chains. Local Anvil coverage
-      // stays out of bun run test until it is replaced with public-chain tests.
-      elizaWorkspacePattern(
-        "plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts",
-      ),
       elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
       "apps/chrome-extension/**",
       elizaWorkspacePattern("cloud/**"),

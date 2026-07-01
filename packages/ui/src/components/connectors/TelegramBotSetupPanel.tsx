@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { client } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
@@ -25,7 +25,7 @@ type TelegramStatusResponse = {
 type SetupErrorBody = { error?: { code?: string; message?: string } };
 
 export function TelegramBotSetupPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<TelegramSetupStatus>("idle");
   const [token, setToken] = useState("");
   const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
@@ -158,7 +158,7 @@ export function TelegramBotSetupPanel() {
               if (status === "error") setStatus("idle");
             }}
             placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-            className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+            className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
             onKeyDown={(e) => {
               if (e.key === "Enter") void validateAndSave();
             }}

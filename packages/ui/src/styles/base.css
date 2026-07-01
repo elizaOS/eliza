@@ -1,22 +1,23 @@
 /* Eliza — Theme System */
 
 :root {
-  --brand-blue: #1d91e8;
+  /* Legacy alias retained for old theme references, neutralized per #8796. */
+  --brand-blue: rgba(0, 0, 0, 0.6);
   --brand-orange: #ff8a24;
   --brand-black: #000000;
   --brand-white: #ffffff;
   --brand-gray: #d1d0d4;
-  --sky-0: var(--brand-blue);
-  --sky-1: var(--brand-blue);
+  --sky-0: rgba(0, 0, 0, 0.6);
+  --sky-1: rgba(0, 0, 0, 0.74);
   --sky-2: var(--brand-white);
   --eliza-orange: var(--brand-orange);
 
   /* Backgrounds */
   --bg: var(--brand-white);
-  --bg-accent: rgba(11, 53, 241, 0.08);
+  --bg-accent: rgba(0, 0, 0, 0.05);
   --bg-elevated: rgba(255, 255, 255, 0.94);
-  --bg-hover: rgba(11, 53, 241, 0.1);
-  --bg-muted: rgba(11, 53, 241, 0.12);
+  --bg-hover: rgba(0, 0, 0, 0.06);
+  --bg-muted: rgba(0, 0, 0, 0.08);
 
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
@@ -40,7 +41,7 @@
   --border-strong: rgba(0, 0, 0, 0.22);
   --border-hover: var(--brand-orange);
   --input: var(--brand-white);
-  --ring: var(--brand-blue);
+  --ring: var(--brand-orange);
 
   /* Accent */
   --accent: var(--brand-orange);
@@ -63,7 +64,7 @@
   --warn-muted: rgba(255, 88, 0, 0.72);
   --warn-subtle: rgba(255, 88, 0, 0.14);
   --danger: var(--brand-orange);
-  --info: var(--brand-blue);
+  --info: var(--muted-strong);
 
   /* Status semantic aliases */
   --status-success: var(--ok);
@@ -77,16 +78,16 @@
   --status-info: var(--muted-strong);
   --status-info-bg: rgba(0, 0, 0, 0.06);
 
-  --focus: rgba(11, 53, 241, 0.18);
+  --focus: rgba(255, 88, 0, 0.2);
   --focus-ring: none;
   --scrollbar-track: rgba(255, 255, 255, 0.3);
-  --scrollbar-thumb-start: rgba(11, 53, 241, 0.42);
-  --scrollbar-thumb-mid: rgba(11, 53, 241, 0.58);
-  --scrollbar-thumb-end: rgba(11, 53, 241, 0.66);
-  --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.56);
-  --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.7);
-  --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.78);
-  --scrollbar-thumb-edge: rgba(11, 53, 241, 0.12);
+  --scrollbar-thumb-start: rgba(0, 0, 0, 0.22);
+  --scrollbar-thumb-mid: rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb-end: rgba(0, 0, 0, 0.36);
+  --scrollbar-thumb-hover-start: rgba(0, 0, 0, 0.34);
+  --scrollbar-thumb-hover-mid: rgba(0, 0, 0, 0.44);
+  --scrollbar-thumb-hover-end: rgba(0, 0, 0, 0.52);
+  --scrollbar-thumb-edge: rgba(0, 0, 0, 0.1);
 
   /* Header */
   --header-bar-bg: rgba(255, 255, 255, 0.9);
@@ -94,7 +95,7 @@
   --section-bar-bg: var(--brand-white);
   --section-bar-fg: var(--brand-black);
   --link-color: var(--brand-black);
-  --link-hover-color: var(--brand-blue);
+  --link-hover-color: var(--brand-orange);
 
   --font-sans:
     "Poppins", "Poppins Variable", system-ui, -apple-system, "Segoe UI", Arial,
@@ -183,7 +184,7 @@
   --border-strong: rgba(255, 255, 255, 0.22);
   --border-hover: var(--brand-orange);
   --input: rgba(255, 255, 255, 0.08);
-  --ring: var(--brand-blue);
+  --ring: var(--brand-orange);
 
   --accent: var(--brand-orange);
   --accent-rgb: 255, 88, 0;
@@ -204,7 +205,7 @@
   --warn-muted: rgba(255, 88, 0, 0.7);
   --warn-subtle: rgba(255, 88, 0, 0.12);
   --danger: var(--brand-orange);
-  --info: var(--brand-blue);
+  --info: var(--muted-strong);
 
   --status-success: var(--ok);
   --status-success-bg: var(--ok-subtle);
@@ -216,15 +217,15 @@
   --status-info: var(--muted-strong);
   --status-info-bg: rgba(255, 255, 255, 0.08);
 
-  --focus: rgba(11, 53, 241, 0.18);
+  --focus: rgba(255, 88, 0, 0.22);
   --focus-ring: none;
   --scrollbar-track: transparent;
-  --scrollbar-thumb-start: rgba(11, 53, 241, 0.88);
-  --scrollbar-thumb-mid: rgba(11, 53, 241, 0.72);
-  --scrollbar-thumb-end: rgba(11, 53, 241, 0.8);
-  --scrollbar-thumb-hover-start: rgba(255, 88, 0, 0.94);
-  --scrollbar-thumb-hover-mid: rgba(255, 88, 0, 0.82);
-  --scrollbar-thumb-hover-end: rgba(255, 88, 0, 0.88);
+  --scrollbar-thumb-start: rgba(255, 255, 255, 0.32);
+  --scrollbar-thumb-mid: rgba(255, 255, 255, 0.24);
+  --scrollbar-thumb-end: rgba(255, 255, 255, 0.28);
+  --scrollbar-thumb-hover-start: rgba(255, 255, 255, 0.46);
+  --scrollbar-thumb-hover-mid: rgba(255, 255, 255, 0.38);
+  --scrollbar-thumb-hover-end: rgba(255, 255, 255, 0.42);
   --scrollbar-thumb-edge: rgba(255, 255, 255, 0.12);
 
   --header-bar-bg: var(--brand-black);
@@ -232,7 +233,7 @@
   --section-bar-bg: var(--brand-black);
   --section-bar-fg: var(--brand-white);
   --link-color: var(--text);
-  --link-hover-color: var(--brand-blue);
+  --link-hover-color: var(--brand-orange);
 
   --mono: var(--font-sans);
   --font-body: var(--font-sans);
@@ -337,6 +338,16 @@ body.platform-android [contenteditable="true"] {
   -webkit-touch-callout: default;
 }
 
+/* Chat transcripts are reading surfaces. Keep them selectable even in native
+   shells where the app body disables global selection to protect gestures. */
+body.native [data-chat-selectable="true"],
+body.platform-ios [data-chat-selectable="true"],
+body.platform-android [data-chat-selectable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 /* Hide scrollbars on native shells. Mobile users don't need a visible
    scrollbar; they get a momentum scroller. */
 body.native *::-webkit-scrollbar,
@@ -357,8 +368,8 @@ body.platform-android * {
 /* ─── Brand theme variants ───────────────────────────────────────────
    Each marketing surface picks one of these by setting the class on
    <html> or <body>. Shared palette, different center of gravity:
-     .theme-cloud   eliza cloud   black + white, blue/orange as accents
-     .theme-os      elizaOS       blue primary, white text
+     .theme-cloud   eliza cloud   black + white, neutral/orange accents
+     .theme-os      elizaOS       black primary, white text
      .theme-app     eliza app     orange primary, black text on orange
    Designed for full-bleed solid-color sections and a cloud video hero. */
 
@@ -385,6 +396,7 @@ body.platform-android * {
   --ring: var(--brand-white);
 
   --accent: var(--brand-white);
+  --accent-rgb: 255, 255, 255;
   --accent-hover: var(--brand-gray);
   --accent-foreground: var(--brand-black);
   --primary: var(--brand-white);
@@ -395,19 +407,19 @@ body.platform-android * {
   --section-bar-bg: var(--brand-black);
   --section-bar-fg: var(--brand-white);
   --link-color: var(--brand-white);
-  --link-hover-color: var(--brand-blue);
+  --link-hover-color: var(--brand-gray);
 
   color-scheme: dark;
 }
 
 .theme-os {
-  --bg: var(--brand-blue);
+  --bg: var(--brand-black);
   --bg-accent: rgba(255, 255, 255, 0.08);
   --bg-elevated: rgba(255, 255, 255, 0.06);
   --bg-hover: rgba(255, 255, 255, 0.12);
   --bg-muted: rgba(255, 255, 255, 0.08);
 
-  --card: var(--brand-blue);
+  --card: var(--brand-black);
   --card-foreground: var(--brand-white);
   --surface: rgba(255, 255, 255, 0.08);
 
@@ -423,14 +435,15 @@ body.platform-android * {
   --ring: var(--brand-white);
 
   --accent: var(--brand-white);
+  --accent-rgb: 255, 255, 255;
   --accent-hover: var(--brand-gray);
-  --accent-foreground: var(--brand-blue);
+  --accent-foreground: var(--brand-black);
   --primary: var(--brand-white);
-  --primary-foreground: var(--brand-blue);
+  --primary-foreground: var(--brand-black);
 
-  --header-bar-bg: var(--brand-blue);
+  --header-bar-bg: var(--brand-black);
   --header-bar-fg: var(--brand-white);
-  --section-bar-bg: var(--brand-blue);
+  --section-bar-bg: var(--brand-black);
   --section-bar-fg: var(--brand-white);
   --link-color: var(--brand-white);
   --link-hover-color: var(--brand-orange);
@@ -461,6 +474,7 @@ body.platform-android * {
   --ring: var(--brand-black);
 
   --accent: var(--brand-black);
+  --accent-rgb: 0, 0, 0;
   --accent-hover: rgba(0, 0, 0, 0.86);
   --accent-foreground: var(--brand-white);
   --primary: var(--brand-black);
@@ -471,7 +485,7 @@ body.platform-android * {
   --section-bar-bg: var(--brand-orange);
   --section-bar-fg: var(--brand-black);
   --link-color: var(--brand-black);
-  --link-hover-color: var(--brand-blue);
+  --link-hover-color: var(--brand-orange);
 
   color-scheme: light;
 }
@@ -483,6 +497,7 @@ body.platform-android * {
   --text-strong: var(--brand-black);
   --muted: rgba(0, 0, 0, 0.7);
   --accent: var(--brand-black);
+  --accent-rgb: 0, 0, 0;
   --accent-foreground: var(--brand-white);
   color-scheme: light;
 }
@@ -494,7 +509,8 @@ body.platform-android * {
   padding: clamp(3rem, 8vw, 7rem) clamp(1.25rem, 4vw, 4rem);
 }
 .brand-section--blue {
-  background: var(--brand-blue);
+  /* Legacy class name; rendered as neutral black after the no-blue pass. */
+  background: var(--brand-black);
   color: var(--brand-white);
 }
 .brand-section--orange {
@@ -538,4 +554,26 @@ body.platform-android * {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Off-screen render skipping (content-visibility)
+   Defined here in base.css so it ships to every consumer (app styles.css,
+   cloud-ui/index.css, cloud-frontend globals.css, homepage index.css) that
+   @imports this file. Plain CSS classes: add the className to a list/table
+   row to let the browser skip layout + paint for rows scrolled out of view.
+
+   contain-intrinsic-size supplies a placeholder size for skipped rows so the
+   scrollbar stays stable; "auto <h>" lets the browser remember the real
+   measured size after a row has rendered once and fall back to <h> until then.
+
+   .cv-auto      - short list / table rows (logs, trajectories, agents tables).
+   .cv-auto-row  - taller chat-turn rows (a bubble is multi-line + padding). */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+}
+
+.cv-auto-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }

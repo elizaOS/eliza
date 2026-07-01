@@ -235,6 +235,58 @@ const mockRuntime = {
   composeState: mockComposeState,
   useModel: mockUseModel,
   processActions: mockProcessActions,
+  actions: [
+    {
+      name: "OPEN_PERP",
+      handler: async (
+        _runtime: unknown,
+        message: unknown,
+        state: unknown,
+        _options: unknown,
+        callback: (response: unknown) => Promise<unknown[]>,
+      ) => {
+        let callbackResult: unknown;
+        await mockProcessActions(
+          message,
+          ["OPEN_PERP"],
+          state,
+          async (legacyResult: unknown) => {
+            const response = Array.isArray(legacyResult)
+              ? legacyResult[0]?.content
+              : legacyResult;
+            callbackResult = response;
+            return callback(response);
+          },
+        );
+        return callbackResult;
+      },
+    },
+    {
+      name: "CHECK_PERPS",
+      handler: async (
+        _runtime: unknown,
+        message: unknown,
+        state: unknown,
+        _options: unknown,
+        callback: (response: unknown) => Promise<unknown[]>,
+      ) => {
+        let callbackResult: unknown;
+        await mockProcessActions(
+          message,
+          ["CHECK_PERPS"],
+          state,
+          async (legacyResult: unknown) => {
+            const response = Array.isArray(legacyResult)
+              ? legacyResult[0]?.content
+              : legacyResult;
+            callbackResult = response;
+            return callback(response);
+          },
+        );
+        return callbackResult;
+      },
+    },
+  ],
 };
 const mockGetRuntime = mock(async () => mockRuntime);
 const mockAgentRuntimeManager = { getRuntime: mockGetRuntime };
@@ -627,7 +679,12 @@ describe("dispatchAgentChat", () => {
       const result = await dispatchAgentChat(BASE_PARAMS);
 
       expect(MOCK_BROADCAST_FN).toHaveBeenCalledTimes(1);
-      const [calledChatId, calledMessage] = MOCK_BROADCAST_FN.mock.calls[0]!;
+      const broadcastCall = MOCK_BROADCAST_FN.mock.calls[0];
+      expect(broadcastCall).toBeDefined();
+      if (!broadcastCall) {
+        throw new Error("Expected broadcastFn to be called");
+      }
+      const [calledChatId, calledMessage] = broadcastCall;
       expect(calledChatId).toBe(TEAM_CHAT_ID);
       expect(calledMessage.chatId).toBe(TEAM_CHAT_ID);
       expect(calledMessage.senderId).toBe(AGENT_ID);

@@ -106,6 +106,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "session",
 		acceptsArgs: true,
+		requiresAuth: true,
 		args: [
 			{ name: "instructions", description: "Optional compaction instructions" },
 		],
@@ -163,7 +164,13 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "options",
 		acceptsArgs: true,
-		args: [{ name: "model", description: "provider/model or alias" }],
+		args: [
+			{
+				name: "model",
+				description: "provider/model or alias",
+				dynamicChoices: "models",
+			},
+		],
 	},
 	{
 		key: "models",
@@ -282,6 +289,16 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 			},
 		],
 	},
+	{
+		key: "transcribe",
+		nativeName: "transcribe",
+		description:
+			"Toggle long-form transcription mode (record-only; agent stays silent until an exit phrase)",
+		textAliases: ["/transcribe", "/transcription", "/dictate"],
+		scope: "both",
+		category: "media",
+		acceptsArgs: false,
+	},
 
 	// Tools commands
 	{
@@ -344,10 +361,7 @@ export function initForRuntime(agentId: string): void {
  * Providers and actions should call this before accessing commands.
  */
 export function useRuntime(agentId: string): void {
-	const store = runtimeStores.get(agentId);
-	if (store) {
-		activeStore = store;
-	}
+	activeStore = storeForRuntime(agentId);
 }
 
 /**
@@ -466,4 +480,76 @@ export function startsWithCommand(text: string): CommandDefinition | undefined {
 	}
 
 	return undefined;
+}
+
+function storeForRuntime(agentId?: string | null): CommandStore {
+	if (!agentId) return fallbackStore;
+	return runtimeStores.get(agentId) ?? fallbackStore;
+}
+
+function getEnabledCommandsFromStore(store: CommandStore): CommandDefinition[] {
+	return store.commands.filter((cmd) => cmd.enabled !== false);
+}
+
+function getCommandsByCategoryFromStore(
+	store: CommandStore,
+	category: string,
+): CommandDefinition[] {
+	return store.commands.filter(
+		(cmd) => cmd.category === category && cmd.enabled !== false,
+	);
+}
+
+function getAliasMapForStore(
+	store: CommandStore,
+): Map<string, CommandDefinition> {
+	if (store.aliasMap) return store.aliasMap;
+
+	store.aliasMap = new Map();
+	for (const command of store.commands) {
+		if (command.enabled === false) continue;
+
+		for (const alias of command.textAliases) {
+			const normalized = alias.toLowerCase().trim();
+			if (!store.aliasMap.has(normalized)) {
+				store.aliasMap.set(normalized, command);
+			}
+		}
+	}
+	return store.aliasMap;
+}
+
+export function getCommandsForRuntime(
+	agentId?: string | null,
+): CommandDefinition[] {
+	return [...storeForRuntime(agentId).commands];
+}
+
+export function getEnabledCommandsForRuntime(
+	agentId?: string | null,
+): CommandDefinition[] {
+	return getEnabledCommandsFromStore(storeForRuntime(agentId));
+}
+
+export function getCommandsByCategoryForRuntime(
+	category: string,
+	agentId?: string | null,
+): CommandDefinition[] {
+	return getCommandsByCategoryFromStore(storeForRuntime(agentId), category);
+}
+
+export function findCommandByAliasForRuntime(
+	alias: string,
+	agentId?: string | null,
+): CommandDefinition | undefined {
+	return getAliasMapForStore(storeForRuntime(agentId)).get(
+		alias.toLowerCase().trim(),
+	);
+}
+
+export function findCommandByKeyForRuntime(
+	key: string,
+	agentId?: string | null,
+): CommandDefinition | undefined {
+	return storeForRuntime(agentId).commands.find((c) => c.key === key);
 }

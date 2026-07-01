@@ -11,6 +11,7 @@ import type {
 } from "./types/plugin";
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
+import type { ShortcutDefinition } from "./types/shortcut";
 import {
 	resolveActionContexts,
 	resolveProviderContexts,
@@ -25,6 +26,7 @@ type RuntimeEventHandler = PluginEventRegistration["handler"];
 type RuntimeEventRegistration = PluginEventRegistration;
 type RuntimeModelRegistration = PluginModelRegistration;
 type RuntimeServiceRegistration = PluginServiceRegistration;
+type RuntimeShortcut = ShortcutDefinition;
 
 type RuntimeSendHandler = (
 	runtime: unknown,
@@ -413,6 +415,7 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		events: [],
 		models: [],
 		services: [],
+		shortcuts: [],
 		sendHandlerSources: [],
 		hasAdapter: false,
 		registeredAt: Date.now(),
@@ -613,6 +616,9 @@ function removeOwnedComponents(
 	removeArrayItemsByReference(runtime.actions, ownership.actions);
 	removeArrayItemsByReference(runtime.providers, ownership.providers);
 	removeArrayItemsByReference(runtime.evaluators, ownership.evaluators);
+	for (const shortcutId of ownership.shortcuts) {
+		runtime.unregisterShortcut?.(shortcutId);
+	}
 }
 
 async function restoreAdapterIfNeeded(
@@ -742,6 +748,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerProvider.bind(runtimeWithLifecycle);
 	const originalRegisterEvaluator =
 		runtimeWithLifecycle.registerEvaluator.bind(runtimeWithLifecycle);
+	const originalRegisterShortcut =
+		runtimeWithLifecycle.registerShortcut.bind(runtimeWithLifecycle);
 	const originalRegisterModel =
 		runtimeWithLifecycle.registerModel.bind(runtimeWithLifecycle);
 	const originalRegisterEvent =
@@ -804,6 +812,13 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			pushUniqueRef(capture.ownership.evaluators, registeredEvaluator);
 		}
 	}) as typeof runtimeWithLifecycle.registerEvaluator;
+
+	runtimeWithLifecycle.registerShortcut = ((shortcut: RuntimeShortcut) => {
+		const capture = pluginRegistrationContext.getStore();
+		originalRegisterShortcut(shortcut);
+		if (!capture) return;
+		pushUniqueString(capture.ownership.shortcuts, shortcut.id);
+	}) as typeof runtimeWithLifecycle.registerShortcut;
 
 	runtimeWithLifecycle.registerModel = ((
 		modelType,
@@ -944,6 +959,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				capture.ownership.events.length > 0 ||
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
+				capture.ownership.shortcuts.length > 0 ||
 				capture.ownership.sendHandlerSources.length > 0 ||
 				capture.ownership.hasAdapter
 			) {

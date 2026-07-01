@@ -15,9 +15,10 @@ import {
 } from "../../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   hasConfiguredApiKey,
+  normalizeForWake,
   PREMADE_VOICES,
   sanitizeApiKey,
   VOICE_PROVIDERS,
@@ -27,13 +28,7 @@ import {
   CloudSourceModeToggle,
 } from "../cloud/CloudSourceControls";
 import { Button } from "../ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
 import { SettingsInput } from "../ui/settings-controls";
@@ -62,7 +57,7 @@ export function DesktopTalkModePanel() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [phrase, setPhrase] = useState(t("voiceconfigview.testPhrase"));
   const [panelState, setPanelState] = useState<{
     state: string;
@@ -264,14 +259,9 @@ export function DesktopTalkModePanel() {
     <Card className="border-border/60 bg-card/92 ">
       <CardHeader className="px-4 py-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="text-sm">
-              {t("voiceconfigview.DesktopTalkMode")}
-            </CardTitle>
-            <CardDescription className="mt-1 text-xs-tight leading-5">
-              {t("voiceconfigview.TalkModeDescription")}
-            </CardDescription>
-          </div>
+          <CardTitle className="text-sm">
+            {t("voiceconfigview.DesktopTalkMode")}
+          </CardTitle>
           <Button
             ref={refreshRef}
             variant="outline"
@@ -305,33 +295,27 @@ export function DesktopTalkModePanel() {
           </div>
         )}
 
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-xs text-muted">
-                {t("voiceconfigview.State")}
-              </div>
-              <div className="font-semibold text-txt">{panelState.state}</div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-xs text-muted">{t("common.enabled")}</div>
-              <div className="font-semibold text-txt">
-                {panelState.enabled ? t("common.yes") : t("common.no")}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-bg-hover/60 shadow-none">
-            <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-xs text-muted">
-                {t("voiceconfigview.Speaking")}
-              </div>
-              <div className="font-semibold text-txt">
-                {panelState.speaking ? t("common.yes") : t("common.no")}
-              </div>
-            </CardContent>
-          </Card>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs-tight">
+          <div>
+            <div className="text-xs text-muted">
+              {t("voiceconfigview.State")}
+            </div>
+            <div className="font-semibold text-txt">{panelState.state}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted">{t("common.enabled")}</div>
+            <div className="font-semibold text-txt">
+              {panelState.enabled ? t("common.yes") : t("common.no")}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted">
+              {t("voiceconfigview.Speaking")}
+            </div>
+            <div className="font-semibold text-txt">
+              {panelState.speaking ? t("common.yes") : t("common.no")}
+            </div>
+          </div>
         </div>
 
         <Input
@@ -509,13 +493,26 @@ function WakeWordSection({
 }: {
   serverConfig?: Partial<SwabbleConfig> | null;
 }) {
-  const { t } = useApp();
-  const [triggers, setTriggers] = useState<string[]>(["eliza"]);
+  const t = useAppSelector((s) => s.t);
+  // The wake phrase follows the character name (issue #9880): when the user
+  // renames the character in settings, the default trigger tracks it unless they
+  // have customized the trigger list themselves.
+  const characterName = useAppSelector(
+    (s) =>
+      s.characterData?.name?.trim() ||
+      s.agentStatus?.agentName?.trim() ||
+      "eliza",
+  );
+  const defaultTrigger = normalizeForWake(characterName) || "eliza";
+  const [triggers, setTriggers] = useState<string[]>([defaultTrigger]);
+  // Tracks the last name-derived trigger we applied, so a rename only replaces
+  // an unchanged default and never clobbers a user-customized phrase.
+  const autoTriggerRef = useRef(defaultTrigger);
   const [triggerInput, setTriggerInput] = useState("");
   const [postTriggerGap, setPostTriggerGap] = useState(0.45);
   const [modelSize, setModelSize] =
     useState<NonNullable<SwabbleConfig["modelSize"]>>("base");
-  const [audioLevel, setAudioLevel] = useState(0);
+  const meterRef = useRef<HTMLDivElement | null>(null);
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
@@ -528,7 +525,11 @@ function WakeWordSection({
         ]);
         const resolved = config ?? serverConfig ?? null;
         if (resolved) {
-          if (resolved.triggers?.length) setTriggers(resolved.triggers);
+          if (resolved.triggers?.length) {
+            setTriggers(resolved.triggers);
+            if (resolved.triggers.length === 1)
+              autoTriggerRef.current = resolved.triggers[0];
+          }
           if (resolved.minPostTriggerGap != null)
             setPostTriggerGap(resolved.minPostTriggerGap);
           if (resolved.modelSize) setModelSize(resolved.modelSize);
@@ -547,7 +548,13 @@ function WakeWordSection({
         handle = await getSwabblePlugin().addListener(
           "audioLevel",
           (evt: { level: number }) => {
-            setAudioLevel(evt.level);
+            // Write the meter directly to the DOM to avoid a React re-render of
+            // the whole section on every (tens-of-Hz) mic frame. Drive a
+            // compositor-only transform (scaleX) rather than `width` so the
+            // per-frame update doesn't force layout.
+            if (meterRef.current) {
+              meterRef.current.style.transform = `scaleX(${Math.min(Math.max(evt.level, 0), 1)})`;
+            }
           },
         );
       } catch {
@@ -576,6 +583,20 @@ function WakeWordSection({
       // Ignore
     }
   }, []);
+
+  // Propagate a character rename into the wake trigger, but only when the
+  // trigger is still the name-derived default — never overwrite a phrase the
+  // user typed themselves (issue #9880).
+  useEffect(() => {
+    if (
+      triggers.length === 1 &&
+      triggers[0] === autoTriggerRef.current &&
+      defaultTrigger !== autoTriggerRef.current
+    ) {
+      autoTriggerRef.current = defaultTrigger;
+      void handleTriggersChange([defaultTrigger]);
+    }
+  }, [defaultTrigger, triggers, handleTriggersChange]);
 
   const addTrigger = useCallback(
     (raw: string) => {
@@ -731,7 +752,7 @@ function WakeWordSection({
           <Input
             ref={addTriggerRef}
             type="text"
-            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none "
             placeholder={t("voiceconfigview.AddTrigger")}
             value={triggerInput}
             onChange={(e) => setTriggerInput(e.target.value)}
@@ -744,9 +765,6 @@ function WakeWordSection({
             }}
             {...addTriggerAgentProps}
           />
-        </div>
-        <div className="text-xs text-muted">
-          {t("voiceconfigview.PressEnterOrComma")}
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
@@ -776,12 +794,6 @@ function WakeWordSection({
           }
           {...gapAgentProps}
         />
-        <div className="text-xs text-muted">
-          {t("voiceconfigview.PostTriggerGapHint", {
-            defaultValue:
-              "Quiet time after the wake word before listening resumes.",
-          })}
-        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold">
@@ -805,8 +817,9 @@ function WakeWordSection({
         </span>
         <div className="h-2 w-full overflow-hidden rounded-full bg-border/70">
           <div
-            className="h-full rounded-full bg-ok transition-all duration-75"
-            style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+            ref={meterRef}
+            className="h-full w-full origin-left rounded-full bg-ok transition-transform duration-75"
+            style={{ transform: "scaleX(0)" }}
           />
         </div>
       </div>
@@ -863,7 +876,7 @@ function AsrAdvancedSection({
   onChange: (provider: AsrProvider) => void;
   defaultAsrProvider: AsrProvider;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [localStatusBusy, setLocalStatusBusy] = useState(false);
 
   // A non-empty local-inference downloads list means the model bundle isn't
@@ -892,9 +905,9 @@ function AsrAdvancedSection({
   }, [currentAsrProvider]);
 
   return (
-    <div className="rounded-sm border border-border/60 bg-card/92 p-4 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <span className="text-xs font-semibold text-muted">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted/70">
           {t("voiceconfigview.AsrProvider", {
             defaultValue: "Speech-to-text",
           })}
@@ -919,19 +932,19 @@ function AsrAdvancedSection({
         ))}
       </div>
       {currentAsrProvider === "local-inference" && localStatusBusy && (
-        <div className="rounded-sm border border-warn/35 bg-warn/10 px-3 py-2 text-xs leading-5 text-warn">
+        <p className="text-xs leading-5 text-warn">
           {t("voiceconfigview.AsrDownloading", {
             defaultValue: "Downloading local model — using cloud until ready.",
           })}
-        </div>
+        </p>
       )}
       {currentAsrProvider === "openai" && (
-        <div className="rounded-sm border border-border/40 bg-bg-hover/60 px-3 py-2 text-xs leading-5 text-muted">
+        <p className="text-xs leading-5 text-muted">
           {t("voiceconfigview.AsrUsesOpenAiKey", {
             defaultValue:
               "Uses your OpenAI API key from the Providers section.",
           })}
-        </div>
+        </p>
       )}
     </div>
   );
@@ -1012,7 +1025,11 @@ function PremadeVoiceButton({
 }
 
 export function VoiceConfigView() {
-  const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const elizaCloudVoiceProxyAvailable = useAppSelector(
+    (s) => s.elizaCloudVoiceProxyAvailable,
+  );
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
   const [swabbleServerConfig, setSwabbleServerConfig] =
     useState<Partial<SwabbleConfig> | null>(null);
@@ -1367,16 +1384,16 @@ export function VoiceConfigView() {
       )}
       {currentProvider === "edge" && (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs leading-5 text-muted">
+          <p className="py-1 text-xs leading-5 text-muted">
             {t("voiceconfigview.EdgeTTSUsesMicros")}
-          </div>
+          </p>
         </SettingsGroup>
       )}
       {currentProvider === "robot-voice" && (
         <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs leading-5 text-muted">
+          <p className="py-1 text-xs leading-5 text-muted">
             {t("voiceconfigview.SimpleVoiceUsesYo")}
-          </div>
+          </p>
         </SettingsGroup>
       )}
 
@@ -1384,10 +1401,6 @@ export function VoiceConfigView() {
         <SettingsRow
           label={t("voiceconfigview.advancedSettings", {
             defaultValue: "Advanced settings",
-          })}
-          description={t("voiceconfigview.advancedSettingsHint", {
-            defaultValue:
-              "Show ASR (speech-to-text) provider picker and per-provider overrides.",
           })}
           control={<AdvancedToggle label="Advanced" />}
         />

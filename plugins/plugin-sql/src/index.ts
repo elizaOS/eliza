@@ -29,6 +29,11 @@ import {
   type PgliteSyncStatus,
   type PgliteSyncTableStatus,
 } from "./pglite/manager";
+import {
+  getActivePgliteManager,
+  getOrCreatePgliteManagerForAgent,
+  type PgliteManagerCache,
+} from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 import { resolvePgliteDir } from "./utils";
@@ -60,8 +65,7 @@ export type { DrizzleDatabase } from "./types";
 
 const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
-interface GlobalSingletons {
-  pgLiteClientManager?: PGliteClientManager;
+interface GlobalSingletons extends PgliteManagerCache<PGliteClientManager> {
   postgresConnectionManager?: PostgresConnectionManager;
 }
 
@@ -80,14 +84,6 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 }
 
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
-
-function shouldReusePgliteManager(manager: PGliteClientManager | undefined): boolean {
-  if (!manager) {
-    return false;
-  }
-
-  return !manager.isShuttingDown();
-}
 
 function shouldReusePostgresManager(
   manager: PostgresConnectionManager | undefined
@@ -137,18 +133,16 @@ export function createDatabaseAdapter(
 
   const dataDir = resolvePgliteDir(config.dataDir);
 
-  if (dataDir && !dataDir.includes("://")) {
+  // `:memory:` is PGlite's in-memory sentinel, not a real path. On Windows the
+  // reserved `:` makes mkdirSync throw (on POSIX it silently creates a junk
+  // `:memory:` directory), so skip directory creation for it and for URLs.
+  if (dataDir && !dataDir.includes("://") && dataDir !== ":memory:") {
     mkdirSync(dataDir, { recursive: true });
   }
 
-  if (!shouldReusePgliteManager(globalSingletons.pgLiteClientManager)) {
-    globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir, agentId });
-  }
-
-  const manager = globalSingletons.pgLiteClientManager;
-  if (!manager) {
-    throw new Error("[plugin-sql] pgLiteClientManager not initialized before adapter creation");
-  }
+  const manager = getOrCreatePgliteManagerForAgent(globalSingletons, dataDir, agentId, () => {
+    return new PGliteClientManager({ dataDir, agentId });
+  });
 
   return new PgliteDatabaseAdapter(agentId, manager);
 }
@@ -248,7 +242,7 @@ export function getPgliteSyncStatus(): {
   tables: PgliteSyncTableStatus;
   synced: string[];
 } {
-  const manager = globalSingletons.pgLiteClientManager;
+  const manager = getActivePgliteManager(globalSingletons);
   if (!manager) {
     return { status: "disabled", error: null, tables: {}, synced: [] };
   }

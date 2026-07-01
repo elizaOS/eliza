@@ -36,6 +36,7 @@ import {
   type WalletExportResult,
   type WhitelistStatus,
 } from "../api";
+import { isApiError } from "../api/client-types-core";
 import type { PromptOptions } from "../components/ui/confirm-dialog";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import {
@@ -64,6 +65,8 @@ interface WalletStateParams {
   agentName: string | undefined;
   /** Current character draft name (from characterDraft?.name) */
   characterName: string | undefined;
+  /** Hydrate capability flags from the running backend config. */
+  hydrateServerConfig?: boolean;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -73,6 +76,7 @@ export function useWalletState({
   promptModal,
   agentName,
   characterName,
+  hydrateServerConfig = true,
 }: WalletStateParams) {
   // ── Feature toggles ────────────────────────────────────────────────
   const [walletEnabled, setWalletEnabledRaw] = useState(loadWalletEnabled);
@@ -108,6 +112,7 @@ export function useWalletState({
   // Server config (written by TOGGLE_CAPABILITY agent action) wins on
   // first load; localStorage remains a fallback for offline / stale.
   useEffect(() => {
+    if (!hydrateServerConfig) return;
     let cancelled = false;
     void client
       .getConfig()
@@ -132,7 +137,7 @@ export function useWalletState({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hydrateServerConfig]);
 
   // ── Wallet / Inventory ─────────────────────────────────────────────
   const [walletAddresses, setWalletAddresses] =
@@ -315,9 +320,17 @@ export function useWalletState({
       const n = await client.getWalletNfts();
       setWalletNfts(n);
     } catch (err) {
-      setWalletError(
-        `Failed to fetch NFTs: ${err instanceof Error ? err.message : "network error"}`,
-      );
+      // A 404 means no NFT route is mounted on this surface (the always-loaded
+      // plugin-wallet returns an empty set; only opt-in plugins fetch NFTs) —
+      // treat it as "no NFTs", not a failure, so a missing route never paints
+      // the shared wallet error banner.
+      if (isApiError(err) && err.status === 404) {
+        setWalletNfts({ evm: [], solana: null });
+      } else {
+        setWalletError(
+          `Failed to fetch NFTs: ${err instanceof Error ? err.message : "network error"}`,
+        );
+      }
     }
     setWalletNftsLoading(false);
   }, []);

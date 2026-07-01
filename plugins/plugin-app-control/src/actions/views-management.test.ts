@@ -28,6 +28,10 @@ const coreMock = vi.hoisted(() => ({
 		TEXT_SMALL: "TEXT_SMALL",
 	},
 	resolveServerOnlyPort: vi.fn(() => 3456),
+	// @elizaos/shared re-exports formatError (as errorMessage) from @elizaos/core,
+	// and app-control imports @elizaos/shared at module load — the mock must carry it.
+	formatError: (error: unknown): string =>
+		error instanceof Error ? error.message : String(error),
 	spawnWithTrajectoryLink: vi.fn(
 		async (
 			_runtime: unknown,
@@ -45,7 +49,13 @@ const coreMock = vi.hoisted(() => ({
 	hasOwnerAccess: vi.fn(async () => true),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+	};
+});
 
 type RuntimeTask = {
 	id: string;
@@ -395,7 +405,30 @@ describe("view management actions", () => {
 		}
 	});
 
-	it("requires confirmation before deleting a view and unloads the plugin after yes", async () => {
+	it("requires a structured target before deleting a view", async () => {
+		const repo = createRepoFixture();
+		try {
+			const { runtime } = createRuntime();
+			const callback = vi.fn();
+
+			const result = await runViewsDelete({
+				runtime: runtime as never,
+				message: message("delete the remote ledger view") as never,
+				views: [view()],
+				callback,
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(false);
+			expect(result.text).toContain("structured view");
+			expect(runtime.createTask).not.toHaveBeenCalled();
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+		} finally {
+			repo.cleanup();
+		}
+	});
+
+	it("requires structured confirmation before deleting a view and unloads the plugin after confirm=true", async () => {
 		const repo = createRepoFixture();
 		try {
 			const { runtime, tasks } = createRuntime();
@@ -430,6 +463,20 @@ describe("view management actions", () => {
 			);
 			expect(globalThis.fetch).not.toHaveBeenCalled();
 
+			const textOnlyReply = await runViewsDelete({
+				runtime: runtime as never,
+				message: message("yes") as never,
+				views: [view()],
+				callback,
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(textOnlyReply.success).toBe(false);
+			expect(textOnlyReply.text).toContain("confirm=true");
+			expect(runtime.deleteTask).not.toHaveBeenCalled();
+			expect(tasks).toHaveLength(1);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+
 			vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 				ok: true,
 				status: 200,
@@ -442,7 +489,8 @@ describe("view management actions", () => {
 
 			const second = await runViewsDelete({
 				runtime: runtime as never,
-				message: message("yes") as never,
+				message: message("sí") as never,
+				options: { confirm: true },
 				views: [view()],
 				callback,
 				repoRoot: repo.repoRoot,
@@ -467,6 +515,50 @@ describe("view management actions", () => {
 		} finally {
 			repo.cleanup();
 		}
+	});
+
+	it("owner-gates the follow-up delete confirmation turn for a non-owner (#10471)", async () => {
+		// A pending delete-confirm task exists in this room. A non-owner replying
+		// with a structured confirm must NOT be able to confirm someone else's
+		// destructive delete — validate must funnel the follow-up turn through the
+		// owner gate, exactly like the first destructive turn.
+		const { runtime } = createRuntime({
+			tasks: [
+				{
+					id: "task-1",
+					metadata: {
+						roomId: "room-1",
+						viewId: "remote-ledger",
+						viewLabel: "Remote Ledger",
+						pluginName: "@local/plugin-ledger",
+					},
+				},
+			],
+		});
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: ownerCheck,
+		});
+
+		await expect(
+			action.validate?.(runtime as never, message("yes") as never, undefined, {
+				confirm: true,
+			}),
+		).resolves.toBe(false);
+		// The gate was actually reached (not rejected for some earlier reason).
+		expect(ownerCheck).toHaveBeenCalledTimes(1);
+
+		// A structured cancel from a non-owner is gated the same way.
+		await expect(
+			action.validate?.(runtime as never, message("no") as never, undefined, {
+				confirm: false,
+			}),
+		).resolves.toBe(false);
+		expect(ownerCheck).toHaveBeenCalledTimes(2);
 	});
 
 	it("reports failure (not 'Deleted') when the plugin uninstall fails", async () => {
@@ -494,7 +586,8 @@ describe("view management actions", () => {
 
 			const second = await runViewsDelete({
 				runtime: runtime as never,
-				message: message("yes") as never,
+				message: message("confirmo") as never,
+				options: { confirm: true },
 				views: [view()],
 				callback,
 				repoRoot: repo.repoRoot,
@@ -1376,6 +1469,64 @@ describe("view management actions", () => {
 		expect(ownerCheck).toHaveBeenCalledTimes(3);
 	});
 
+	it("owner-gates the rollback sub-mode like other mutating modes (#8915)", async () => {
+		const { runtime } = createRuntime();
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: ownerCheck,
+		});
+
+		// Explicit action=rollback is owner-gated.
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("rollback") as never,
+				undefined,
+				{ action: "rollback" },
+			),
+		).resolves.toBe(false);
+		// Natural-language rollback phrasing is owner-gated too.
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("roll back the remote ledger plugin") as never,
+			),
+		).resolves.toBe(false);
+		expect(ownerCheck).toHaveBeenCalledTimes(2);
+	});
+
+	it("routes action=rollback to the rollback handler and reports no snapshot when none recorded (#8915)", async () => {
+		// No snapshot tasks recorded -> rollback short-circuits before any git/fetch,
+		// proving the dispatcher wired the rollback sub-mode in.
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("rollback the remote ledger plugin") as never,
+			undefined,
+			{ action: "rollback" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text?.toLowerCase()).toContain("no pre-edit snapshot");
+		// rollback never touched git/fetch when there's nothing to roll back.
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+		expect(runtime.getTasks).toHaveBeenCalled();
+	});
+
 	it("includes explicit TUI view type and always-on-top false in window navigation payloads", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -1560,7 +1711,7 @@ describe("view management actions", () => {
 				undefined,
 				{
 					action: "delete",
-					confirm: "true",
+					confirm: true,
 					view: "remote-ledger",
 				},
 				callback,
@@ -1657,7 +1808,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("close all views") as never,
 			undefined,
-			{ action: "delete", mode: "delete", confirm: "yes" },
+			{ action: "delete", mode: "delete", confirm: true },
 			callback,
 		);
 
@@ -1702,7 +1853,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("close the calendar view") as never,
 			undefined,
-			{ action: "delete", mode: "delete", view: "calendar", confirm: "yes" },
+			{ action: "delete", mode: "delete", view: "calendar", confirm: true },
 			callback,
 		);
 
@@ -1743,6 +1894,12 @@ describe("view management actions", () => {
 						path: "/calendar",
 						tags: ["calendar", "calender"],
 					}),
+					view({
+						id: "chat",
+						label: "Chat",
+						path: "/chat",
+						tags: ["chat", "home"],
+					}),
 				]),
 				getCurrentView: vi.fn(async () => null),
 			},
@@ -1769,6 +1926,13 @@ describe("view management actions", () => {
 			undefined,
 			callback,
 		);
+		const homeResult = await action.handler(
+			runtime as never,
+			message(composedViewPrompt("go home")) as never,
+			undefined,
+			{ action: "show", mode: "simple" },
+			callback,
+		);
 
 		expect(notesResult?.success).toBe(true);
 		expect(notesResult?.values).toMatchObject({
@@ -1780,12 +1944,21 @@ describe("view management actions", () => {
 			mode: "show",
 			viewId: "calendar",
 		});
+		expect(homeResult?.success).toBe(true);
+		expect(homeResult?.values).toMatchObject({
+			mode: "show",
+			viewId: "chat",
+		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/calendar/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
 	});

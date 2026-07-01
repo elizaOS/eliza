@@ -851,7 +851,7 @@ const traderBehavior: ArchetypeBehavior = (
   const reasoning = `Analyzing ${market?.question || "markets"}. Price: YES=${market?.yesPrice.toFixed(2)}, NO=${market?.noPrice.toFixed(2)}. Looking for edge...`;
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt:
       "You are a disciplined trader focused on profitable opportunities.",
     userPrompt: `Balance: $${state.agentBalances.get(agentId)?.toFixed(2)}. Markets available: ${state.markets.length}. Analyze and decide.`,
@@ -871,7 +871,7 @@ const traderBehavior: ArchetypeBehavior = (
     action.reasoning = `Found value in ${isBuy} at ${isBuy === "YES" ? market.yesPrice : market.noPrice}`;
 
     llmCalls.push({
-      model: "Qwen/Qwen3-4B",
+      model: "google/gemma-4-E4B-it",
       systemPrompt: "You are executing a trade.",
       userPrompt: `Execute trade on ${market.question}`,
       response: JSON.stringify({
@@ -926,7 +926,7 @@ const socialButterflyBehavior: ArchetypeBehavior = (
     action.reasoning = "Building my network - gotta know everyone!";
 
     llmCalls.push({
-      model: "Qwen/Qwen3-4B",
+      model: "google/gemma-4-E4B-it",
       systemPrompt: "You are a social butterfly who loves making connections.",
       userPrompt: `You see a ${targetArchetype} agent. Write a friendly DM.`,
       response: `Hey friend! Love what youre doing. Lets chat!`,
@@ -975,7 +975,7 @@ const scammerBehavior: ArchetypeBehavior = (
   );
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt:
       "You are looking for opportunities to profit through... creative means.",
     userPrompt: `Current targets available: ${potentialVictims.map(([_, a]) => a).join(", ")}`,
@@ -1000,7 +1000,7 @@ const scammerBehavior: ArchetypeBehavior = (
     action.reasoning = "Spreading misinformation to influence their trades";
 
     llmCalls.push({
-      model: "Qwen/Qwen3-4B",
+      model: "google/gemma-4-E4B-it",
       systemPrompt: "Craft a convincing but misleading message.",
       userPrompt: "Write a message to convince someone to make a bad trade.",
       response: action.parameters.message as string,
@@ -1038,7 +1038,7 @@ const degenBehavior: ArchetypeBehavior = (
   const balance = state.agentBalances.get(agentId) || 0;
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt: "You are a degen trader. YOLO is your mantra.",
     userPrompt: `Balance: $${balance.toFixed(2)}. FOMO is real. What do?`,
     response: "APE IN! No time for analysis!",
@@ -1096,7 +1096,7 @@ const researcherBehavior: ArchetypeBehavior = (
   const market = state.markets[0];
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt:
       "You are a thorough researcher. Analyze all available data before acting.",
     userPrompt: `Analyze market: ${market?.question}. Current prices: YES=${market?.yesPrice}, NO=${market?.noPrice}. Volume: ${market?.volume}`,
@@ -1108,7 +1108,7 @@ const researcherBehavior: ArchetypeBehavior = (
   });
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt: "Cross-reference your analysis.",
     userPrompt: "Validate your previous analysis against historical patterns.",
     response:
@@ -1153,7 +1153,7 @@ const goodyTwoshoesBehavior: ArchetypeBehavior = (
   const llmCalls: LLMCall[] = [];
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt: "You are honest and helpful. You share information freely.",
     userPrompt: "How can you help the community today?",
     response:
@@ -1205,7 +1205,7 @@ const liarBehavior: ArchetypeBehavior = (
   const llmCalls: LLMCall[] = [];
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt: "You create believable false narratives.",
     userPrompt: "What misinformation can spread confusion today?",
     response: "Crafting a story that sounds credible but is false...",
@@ -1244,7 +1244,7 @@ const infoTraderBehavior: ArchetypeBehavior = (
   const llmCalls: LLMCall[] = [];
 
   llmCalls.push({
-    model: "Qwen/Qwen3-4B",
+    model: "google/gemma-4-E4B-it",
     systemPrompt:
       "You trade based on information gathered from social channels.",
     userPrompt: `Scan ${state.posts.length} recent posts and ${state.directMessages.filter((dm) => dm.toId === agentId).length} DMs for alpha.`,

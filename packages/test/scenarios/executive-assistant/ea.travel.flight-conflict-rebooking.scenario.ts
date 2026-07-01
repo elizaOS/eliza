@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.travel.flight-conflict-rebooking",
   title: "Detect a flight conflict and propose rebooking",
   domain: "executive-assistant",

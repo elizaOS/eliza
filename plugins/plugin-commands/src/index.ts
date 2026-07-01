@@ -29,24 +29,34 @@ import {
 	type ProviderResult,
 	type State,
 } from "@elizaos/core";
+// Deterministic command action layer (#8790): handlers, dispatch, settings,
+// and the registered *_COMMAND actions.
+import { commandActions, commandShortcuts } from "./actions";
 import { detectCommand, hasCommand, normalizeCommandBody } from "./parser";
 import {
 	findCommandByAlias,
 	findCommandByKey,
 	getCommandsByCategory,
 	getEnabledCommands,
+	getEnabledCommandsForRuntime,
 	initForRuntime,
 	registerCommand,
 	unregisterCommand,
-	useRuntime,
 } from "./registry";
 import type { CommandContext, CommandDefinition, CommandResult } from "./types";
 
 // Connector-neutral command catalog (getConnectorCommands / ConnectorCommand)
 // + settings-section resolution (resolveSettingsSection).
+export * from "./actions";
+// The documented ConnectorCommandBridge contract + shared auth-gating helpers
+// every communication connector implements (#8790).
+export * from "./connector-bridge";
 export * from "./connector-catalog";
+export * from "./navigation-commands";
 export * from "./parser";
 export * from "./registry";
+// Canonical serialization (serializeCommand / commandVisibleForSurface).
+export * from "./serialize";
 export * from "./settings-sections";
 // Re-export everything
 export * from "./types";
@@ -72,12 +82,9 @@ export const commandRegistryProvider: Provider = {
 		message: Memory,
 		_state: State,
 	): Promise<ProviderResult> {
-		// Scope to the correct runtime's command store
-		useRuntime(runtime.agentId);
-
 		const text = message.content.text ?? "";
 		const isCommand = hasCommand(text);
-		const commands = getEnabledCommands();
+		const commands = getEnabledCommandsForRuntime(runtime.agentId);
 
 		if (isCommand) {
 			// Full command context for command messages — helps the LLM select
@@ -164,6 +171,17 @@ export const commandsPlugin: Plugin = {
 	description: "Chat command system with /help, /status, /reset, etc.",
 
 	providers: [commandRegistryProvider],
+
+	// Deterministic agent-target command handlers (#8790). Each action's
+	// validate() is strictly slash-only, so they never intercept conversational
+	// messages. The pre-LLM shortcut gate dispatches these before inference; the
+	// actions are also registered so the planner can route to them as a fallback.
+	actions: commandActions,
+
+	// Slash-command shortcuts (#8791): the pre-LLM gate matches these explicit
+	// aliases and fires the matching *_COMMAND action deterministically, before
+	// any model call, identically on every surface.
+	shortcuts: commandShortcuts,
 
 	// Self-declared auto-enable: activate when features.commands is enabled.
 	autoEnable: {

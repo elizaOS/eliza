@@ -6,7 +6,7 @@
  * adapter/target registries.
  */
 
-import { type LucideIcon, type LucideProps, Puzzle } from "lucide-react";
+import { type LucideIcon, type LucideProps, Puzzle, Save } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -23,23 +23,52 @@ import {
   type FocusConnectorEventDetail,
   readPendingFocusConnector,
 } from "../../events";
-import { useApp } from "../../state";
-import { BlueBubblesStatusPanel } from "../connectors/BlueBubblesStatusPanel";
-import { DiscordLocalConnectorPanel } from "../connectors/DiscordLocalConnectorPanel";
-import { IMessageStatusPanel } from "../connectors/IMessageStatusPanel";
-import { SignalQrOverlay } from "../connectors/SignalQrOverlay";
-import { TelegramAccountConnectorPanel } from "../connectors/TelegramAccountConnectorPanel";
-import { WhatsAppQrOverlay } from "../connectors/WhatsAppQrOverlay";
+import { useAppSelector } from "../../state";
+import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
+import type { ConnectorMode } from "../connectors/ConnectorModeSelector.helpers";
+import { useConnectorMode } from "../connectors/ConnectorModeSelector.hooks";
+import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
+import { hasConnectorSetupPanel } from "../connectors/ConnectorSetupPanel.helpers";
 import { getBrandIcon } from "../conversations/brand-icons";
+import {
+  PluginConfigForm,
+  TelegramPluginConfig,
+} from "../pages/PluginConfigForm";
 import {
   ALWAYS_ON_PLUGIN_IDS,
   iconImageSource,
   resolveIcon,
 } from "../pages/plugin-list-utils";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 type ConnectorStatusTone = "ok" | "warn" | "off";
+
+/**
+ * Whether Settings → Connectors should render the generic plugin-config (env
+ * credential) form for the selected connector mode.
+ *
+ * The form is shown ONLY for a `local-config` mode whose setup target is the
+ * plugin itself and that actually declares parameters. Every other mode kind —
+ * `local-setup` (iMessage Full-Disk-Access status, Signal/WhatsApp QR pairing,
+ * Discord/Telegram desktop panels), `plugin-managed` account lists, and
+ * `cloud-managed` gateways — keeps its dedicated {@link ConnectorSetupPanel}
+ * surface. Gating on the mode KIND rather than the incidental
+ * "this plugin declares parameters" is what keeps those dedicated panels
+ * reachable instead of being overwritten by a raw env form.
+ */
+export function shouldRenderConnectorConfigForm(args: {
+  managementMode: ConnectorMode["managementMode"];
+  hasParameters: boolean;
+  setupTargetsPlugin: boolean;
+}): boolean {
+  return (
+    args.managementMode === "local-config" &&
+    args.hasParameters &&
+    args.setupTargetsPlugin
+  );
+}
 
 function statusTone(plugin: PluginInfo): ConnectorStatusTone {
   if (!plugin.enabled) return "off";
@@ -69,49 +98,149 @@ function connectorIcon(plugin: PluginInfo): LucideIcon {
   const icon = resolveIcon(plugin);
   const imageSrc = typeof icon === "string" ? iconImageSource(icon) : undefined;
   const Inner = typeof icon === "string" || !icon ? null : icon;
-  return forwardRef<SVGSVGElement, LucideProps>(
-    function ConnectorMedallionIcon({ className }) {
-      if (Brand) return <Brand className={className} />;
-      if (imageSrc)
-        return (
-          <img
-            src={imageSrc}
-            alt=""
-            className="h-[18px] w-[18px] shrink-0 rounded-sm object-contain"
-          />
-        );
-      const IconComponent = Inner;
-      if (IconComponent) return <IconComponent className={className} />;
-      return <Puzzle className={className} aria-hidden />;
-    },
-  );
+  return forwardRef<SVGSVGElement, LucideProps>(function ConnectorMedallionIcon(
+    { className },
+    ref,
+  ) {
+    if (Brand) return <Brand className={className} />;
+    if (imageSrc)
+      return (
+        <img
+          src={imageSrc}
+          alt=""
+          className="h-[18px] w-[18px] shrink-0 rounded-sm object-contain"
+        />
+      );
+    const IconComponent = Inner;
+    if (IconComponent) return <IconComponent ref={ref} className={className} />;
+    return <Puzzle ref={ref} className={className} aria-hidden />;
+  });
 }
 
 function ConnectorBody({ plugin }: { plugin: PluginInfo }) {
-  const { t } = useApp();
-  switch (plugin.id) {
-    case "telegram":
-      return <TelegramAccountConnectorPanel />;
-    case "discord":
-      return <DiscordLocalConnectorPanel />;
-    case "imessage":
-      return <IMessageStatusPanel />;
-    case "bluebubbles":
-      return <BlueBubblesStatusPanel />;
-    case "signal":
-      return <SignalQrOverlay />;
-    case "whatsapp":
-      return <WhatsAppQrOverlay />;
-    default:
-      return (
+  const t = useAppSelector((s) => s.t);
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const handlePluginConfigSave = useAppSelector(
+    (s) => s.handlePluginConfigSave,
+  );
+  const pluginSaving = useAppSelector((s) => s.pluginSaving);
+  const pluginSaveSuccess = useAppSelector((s) => s.pluginSaveSuccess);
+  const [pluginConfigs, setPluginConfigs] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
+  const setupPluginId = connectorMode.setupPluginId;
+  const setupPanel =
+    setupPluginId && hasConnectorSetupPanel(setupPluginId) ? (
+      <ConnectorSetupPanel pluginId={setupPluginId} />
+    ) : null;
+  const selectedMode = connectorMode.modes.find(
+    (mode) => mode.id === connectorMode.selectedMode,
+  );
+  const showPluginConfig = shouldRenderConnectorConfigForm({
+    managementMode: selectedMode?.managementMode,
+    hasParameters: plugin.parameters.length > 0,
+    setupTargetsPlugin: setupPluginId === plugin.id,
+  });
+  const pendingConfig = pluginConfigs[plugin.id] ?? {};
+  const hasPendingConfig = Object.keys(pendingConfig).length > 0;
+  const isSaving = pluginSaving.has(plugin.id);
+  const didSave = pluginSaveSuccess.has(plugin.id);
+
+  const handleParamChange = useCallback(
+    (pluginId: string, paramKey: string, value: string) => {
+      setPluginConfigs((prev) => ({
+        ...prev,
+        [pluginId]: { ...prev[pluginId], [paramKey]: value },
+      }));
+    },
+    [],
+  );
+
+  const handleSave = useCallback(async () => {
+    await handlePluginConfigSave(plugin.id, pendingConfig);
+    setPluginConfigs((prev) => {
+      const next = { ...prev };
+      delete next[plugin.id];
+      return next;
+    });
+  }, [handlePluginConfigSave, pendingConfig, plugin.id]);
+
+  return (
+    <div className="space-y-4">
+      {connectorMode.modes.length > 1 ? (
+        <ConnectorModeSelector
+          connectorId={plugin.id}
+          selectedMode={connectorMode.selectedMode}
+          onModeChange={connectorMode.setSelectedMode}
+          elizaCloudConnected={elizaCloudConnected}
+        />
+      ) : null}
+
+      {showPluginConfig ? (
+        <div className="space-y-3">
+          {plugin.id === "telegram" ? (
+            <TelegramPluginConfig
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={handleParamChange}
+            />
+          ) : (
+            <PluginConfigForm
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={handleParamChange}
+            />
+          )}
+          {/* Co-render the live setup/status panel (e.g. Telegram bot-token
+              validation + identity) directly under the env-config form, matching
+              the canonical /connectors surface (plugin-view-connectors.tsx) where
+              the panel sits between the form and the save action. Without this, a
+              `local-config` connector that also has a setup panel (telegram bot
+              mode) showed the raw-token form only. `setupPanel` is already
+              null-gated to `setupPluginId`, so it is a no-op otherwise. */}
+          {setupPanel}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 gap-1.5 rounded-sm px-4 text-xs-tight font-semibold"
+              onClick={() => {
+                void handleSave();
+              }}
+              disabled={!hasPendingConfig || isSaving}
+            >
+              <Save className="h-3.5 w-3.5" aria-hidden="true" />
+              {isSaving
+                ? t("common.saving", { defaultValue: "Saving..." })
+                : didSave
+                  ? t("pluginsview.Saved", { defaultValue: "Saved" })
+                  : t("pluginsview.SaveSettings", {
+                      defaultValue: "Save settings",
+                    })}
+            </Button>
+            {plugin.id === "discord" ? (
+              <span className="text-xs-tight text-muted">
+                {t("settings.sections.connectors.discordAppIdHint", {
+                  defaultValue:
+                    "Application ID is optional; it is auto-resolved from the bot token when possible.",
+                })}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : setupPanel ? (
+        setupPanel
+      ) : (
         <div className="text-xs-tight text-muted">
           {t("settings.sections.connectors.ownSetupSurface", {
             defaultValue: "{{name}} uses its own setup surface.",
             name: plugin.name,
           })}
         </div>
-      );
-  }
+      )}
+    </div>
+  );
 }
 
 function ConnectorEnableSwitch({
@@ -123,7 +252,7 @@ function ConnectorEnableSwitch({
   busy: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const label = plugin.enabled
     ? t("settings.sections.connectors.disable", {
         defaultValue: "Disable {{name}}",
@@ -169,10 +298,7 @@ function ConnectorRow({
   const icon = useMemo(() => connectorIcon(plugin), [plugin]);
 
   return (
-    <details
-      className="group overflow-hidden rounded-lg border border-border bg-card transition-colors hover:bg-surface open:bg-card open:hover:bg-card"
-      data-connector={plugin.id}
-    >
+    <details className="group" data-connector={plugin.id}>
       <summary className="cursor-pointer select-none list-none">
         <SettingsRow
           icon={icon}
@@ -194,7 +320,7 @@ function ConnectorRow({
           }
         />
       </summary>
-      <div className="border-t border-border/60 px-4 py-3">
+      <div className="pb-3 pl-[30px]">
         <ConnectorBody plugin={plugin} />
       </div>
     </details>
@@ -202,7 +328,9 @@ function ConnectorRow({
 }
 
 export function ConnectorsSection() {
-  const { plugins, handlePluginToggle, t } = useApp();
+  const plugins = useAppSelector((s) => s.plugins);
+  const handlePluginToggle = useAppSelector((s) => s.handlePluginToggle);
+  const t = useAppSelector((s) => s.t);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(
     new Set(),
@@ -284,7 +412,7 @@ export function ConnectorsSection() {
           defaultValue: "Connectors",
         })}
       >
-        <div ref={containerRef} className="flex flex-col gap-2">
+        <div ref={containerRef} className="flex flex-col">
           {connectorPlugins.map((plugin) => {
             const isBusy = togglingPlugins.has(plugin.id);
             return (

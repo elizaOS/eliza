@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.draft.no-silent-fallback",
   title: "Do not invent a Gmail reply draft from vague intent",
   domain: "messaging.gmail",

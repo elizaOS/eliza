@@ -5,6 +5,8 @@
  * implemented in cloud-routes.ts and cloud-connection.ts.
  */
 
+import { formatError } from "@elizaos/core";
+
 /** Classify an error as a fetch/AbortSignal timeout. */
 export function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -19,7 +21,4 @@ export function isRedirectResponse(response: Response): boolean {
 }
 
 /** Extract a human-readable message from an unknown caught value. */
-export function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
+export const errorMessage = formatError;

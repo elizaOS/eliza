@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createMockRuntime } from "../../../testing/mock-runtime";
 import type {
 	ActionResult,
 	IAgentRuntime,
 	Memory,
 } from "../../../types/index.ts";
-import { messageAction } from "./message.ts";
+import { inferOp, messageAction } from "./message.ts";
 
 function mockConnector(
 	source: string,
@@ -249,7 +250,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 			});
 		}
 		const sent = { called: false };
-		const runtime = {
+		const runtime = createMockRuntime({
 			agentId: "00000000-0000-0000-0000-000000000001",
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			getService: (type: string) =>
@@ -283,7 +284,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
 			},
 			createMemory: async () => undefined,
-		} as unknown as IAgentRuntime;
+		});
 		return { runtime, sent };
 	}
 
@@ -337,5 +338,35 @@ describe("MESSAGE op=send owner-binding gate", () => {
 		const result = await send(runtime);
 		expect(result.success).toBe(true);
 		expect(sent.called).toBe(true);
+	});
+});
+
+describe("inferOp is i18n-safe (#10471)", () => {
+	it("routes by the planner-emitted action enum (+ aliases)", () => {
+		expect(inferOp({ action: "delete" })).toBe("delete");
+		expect(inferOp({ action: "triage" })).toBe("triage");
+		expect(inferOp({ action: "list_connections" })).toBe("list_connections");
+	});
+
+	it("honors structured params without text inference", () => {
+		expect(inferOp({ draftId: "d1", sendAt: "2026-01-01T00:00:00Z" })).toBe(
+			"schedule_draft_send",
+		);
+		expect(inferOp({ draftId: "d1" })).toBe("send_draft");
+		expect(inferOp({ manageOperation: "archive" })).toBe("manage");
+		expect(inferOp({ query: "vitalik" })).toBe("search");
+		expect(inferOp({ emoji: "❤️" })).toBe("react");
+	});
+
+	it("does NOT infer the op from natural-language text in any language", () => {
+		// Previously English regexes (e.g. /\b(delete|remove|unsend)\b/) picked the
+		// op from message text — invisible to non-English users and now removed.
+		// With no structured signal the op defaults to the safe `send`; the real
+		// op comes from the planner's `action` enum, which it emits in any language.
+		expect(inferOp({})).toBe("send");
+		// A `text`-like field is not a recognized structured param and must be
+		// ignored by routing.
+		expect(inferOp({ text: "delete that message" })).toBe("send");
+		expect(inferOp({ text: "そのメッセージを削除して" })).toBe("send");
 	});
 });

@@ -36,7 +36,7 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
     // Cast: LegacyRouteHandler receives RouteRequest/RouteResponse at the type
     // level, but the elizaOS runtime passes raw Node.js http objects at
     // runtime. Access the underlying Node.js API via these casts.
-    const httpReq = req as unknown as http.IncomingMessage;
+    const httpReq = req as http.IncomingMessage;
     const httpRes = res as unknown as http.ServerResponse;
     const url = new URL(
       httpReq.url ?? "/",
@@ -80,6 +80,7 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   // Orchestrator durable-task surface
   { type: "GET", path: "/api/orchestrator/status" },
   { type: "GET", path: "/api/orchestrator/accounts" },
+  { type: "GET", path: "/api/orchestrator/accounts/readiness" },
   { type: "GET", path: "/api/orchestrator/rooms" },
   { type: "POST", path: "/api/orchestrator/pause-all" },
   { type: "POST", path: "/api/orchestrator/resume-all" },

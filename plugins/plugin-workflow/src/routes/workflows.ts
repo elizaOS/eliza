@@ -44,8 +44,12 @@ async function listWorkflows(
 ): Promise<void> {
   try {
     const userId = req.query?.userId as string | undefined;
+    const q = req.query?.q as string | undefined;
     const service = getService(runtime);
-    const workflows = await service.listWorkflows(userId);
+    // `?q=` performs a ranked free-text search; otherwise list all (#8913).
+    const workflows = q?.trim()
+      ? await service.searchWorkflows(q, userId)
+      : await service.listWorkflows(userId);
     res.json({ success: true, data: workflows });
   } catch (error) {
     res.status(500).json({

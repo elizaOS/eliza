@@ -1,4 +1,4 @@
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
@@ -13,7 +13,8 @@ import { Button } from "../ui/button";
  * sole consumer for now.
  */
 export function ActionBanner() {
-  const { actionBanner, dismissActionBanner } = useApp();
+  const actionBanner = useAppSelector((s) => s.actionBanner);
+  const dismissActionBanner = useAppSelector((s) => s.dismissActionBanner);
 
   if (!actionBanner) return null;
 

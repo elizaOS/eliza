@@ -13,7 +13,7 @@ import { client } from "../../api";
 import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { openExternalUrl } from "../../utils";
 import { ChatSearchHint } from "../composites/chat-search-hint";
@@ -67,6 +67,9 @@ function PluginListView({
     pluginSettingsOpen = new Set<string>(),
     pluginSaving,
     pluginSaveSuccess,
+    isLoadingPlugins = false,
+    pluginsLoadError = null,
+    pluginsLoaded = false,
     loadPlugins,
     ensurePluginsLoaded = async () => {
       await loadPlugins();
@@ -76,7 +79,24 @@ function PluginListView({
     setActionNotice,
     setState,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    plugins: s.plugins,
+    pluginStatusFilter: s.pluginStatusFilter,
+    pluginSearch: s.pluginSearch,
+    pluginSettingsOpen: s.pluginSettingsOpen,
+    pluginSaving: s.pluginSaving,
+    pluginSaveSuccess: s.pluginSaveSuccess,
+    isLoadingPlugins: s.isLoadingPlugins,
+    pluginsLoadError: s.pluginsLoadError,
+    pluginsLoaded: s.pluginsLoaded,
+    loadPlugins: s.loadPlugins,
+    ensurePluginsLoaded: s.ensurePluginsLoaded,
+    handlePluginToggle: s.handlePluginToggle,
+    handlePluginConfigSave: s.handlePluginConfigSave,
+    setActionNotice: s.setActionNotice,
+    setState: s.setState,
+    t: s.t,
+  }));
 
   // The floating chat composer is this view's search box. While Plugins is the
   // active view it takes over the composer (placeholder + live draft) and feeds
@@ -344,7 +364,7 @@ function PluginListView({
           className={`h-8 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
             isActive
               ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
-              : "border-border/50 bg-card/50 text-muted backdrop-blur-sm hover:border-accent/40 hover:text-txt"
+              : "border-border/50 bg-card/50 text-muted hover:border-accent/40 hover:text-txt"
           }`}
           onClick={() => setSubgroupFilter(tag.id)}
         >
@@ -920,9 +940,9 @@ function PluginListView({
    * labels between grids). Used when the "All" filter chip is active so the
    * single pane keeps section context without a nav sidebar.
    */
-  const renderGroupedPlugins = (plugins: PluginInfo[]) => {
+  const groupedVisiblePlugins = useMemo(() => {
     const groupMap = new Map<string, PluginInfo[]>();
-    for (const plugin of plugins) {
+    for (const plugin of visiblePlugins) {
       const groupId = subgroupForPlugin(plugin);
       const bucket = groupMap.get(groupId);
       if (bucket) bucket.push(plugin);
@@ -937,24 +957,27 @@ function PluginListView({
       )
         orderedGroups.push(id as (typeof SUBGROUP_DISPLAY_ORDER)[number]);
     }
+    return orderedGroups.map((groupId) => ({
+      groupId,
+      plugins: groupMap.get(groupId) ?? [],
+    }));
+  }, [visiblePlugins]);
 
-    return (
-      <div className="space-y-8">
-        {orderedGroups.map((groupId) => {
-          const groupPlugins = groupMap.get(groupId) ?? [];
-          if (groupPlugins.length === 0) return null;
-          return (
-            <section key={groupId}>
-              <h3 className="mb-3 text-sm font-medium text-txt-strong">
-                {SUBGROUP_LABELS[groupId] ?? groupId}
-              </h3>
-              {renderPluginGrid(groupPlugins)}
-            </section>
-          );
-        })}
-      </div>
-    );
-  };
+  const renderGroupedPlugins = () => (
+    <div className="space-y-6">
+      {groupedVisiblePlugins.map(({ groupId, plugins: groupPlugins }) => {
+        if (groupPlugins.length === 0) return null;
+        return (
+          <section key={groupId}>
+            <h3 className="mb-3 text-sm font-medium text-txt-strong">
+              {SUBGROUP_LABELS[groupId] ?? groupId}
+            </h3>
+            {renderPluginGrid(groupPlugins)}
+          </section>
+        );
+      })}
+    </div>
+  );
 
   // Resolve the plugin whose settings dialog is currently open.
   // Exclude ai-provider plugins — those are configured in Settings.
@@ -1319,7 +1342,42 @@ function PluginListView({
               </PagePanel.Notice>
             )}
 
-            {sorted.length === 0 ? (
+            {sorted.length === 0 && isLoadingPlugins ? (
+              <PagePanel.Loading
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                heading={t("pluginsview.LoadingTitle", {
+                  defaultValue: "Loading {{label}}…",
+                  label: label.toLowerCase(),
+                })}
+              />
+            ) : sorted.length === 0 && pluginsLoadError ? (
+              <PagePanel.Empty
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                description={t("pluginsview.LoadFailedDesc", {
+                  defaultValue:
+                    "Couldn't load {{label}}: {{error}}. Check your connection and try again.",
+                  label: resultLabel,
+                  error: pluginsLoadError,
+                })}
+                title={t("pluginsview.LoadFailedTitle", {
+                  defaultValue: "Couldn't load {{label}}",
+                  label: label.toLowerCase(),
+                })}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void loadPlugins();
+                    }}
+                  >
+                    {t("pluginsview.Retry", { defaultValue: "Retry" })}
+                  </Button>
+                }
+              />
+            ) : sorted.length === 0 && pluginsLoaded ? (
               <PagePanel.Empty
                 variant="surface"
                 className="min-h-[18rem] rounded-lg px-5 py-10"
@@ -1329,6 +1387,15 @@ function PluginListView({
                 })}
                 title={t("pluginsview.NoneAvailableTitle", {
                   defaultValue: "No {{label}} available",
+                  label: label.toLowerCase(),
+                })}
+              />
+            ) : sorted.length === 0 ? (
+              <PagePanel.Loading
+                variant="surface"
+                className="min-h-[18rem] rounded-lg px-5 py-10"
+                heading={t("pluginsview.LoadingTitle", {
+                  defaultValue: "Loading {{label}}…",
                   label: label.toLowerCase(),
                 })}
               />
@@ -1351,7 +1418,7 @@ function PluginListView({
                 })}
               />
             ) : isAllFilter && !pluginSearch.trim() ? (
-              renderGroupedPlugins(visiblePlugins)
+              renderGroupedPlugins()
             ) : (
               renderPluginGrid(visiblePlugins)
             )}

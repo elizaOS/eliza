@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "comment": "Reviewed-but-kept-separate type-duplication findings for type-duplication-audit.mjs (#10195, #10201). The candidate-finder excludes these so re-runs stay low-noise. Use `name` to suppress a whole same-name cluster, `pairKey` (the exact 'a.file#a.name <=> b.file#b.name' key from reports/type-duplication.json) for one subset/near-duplicate pair, or `memberKey` (the 'a|b|c' value key) for one literal-set cluster. Every entry needs a written `reason`. Triage guidance: packages/scripts/type-duplication-triage.md.",
+  "entries": [
+    {
+      "name": "CredentialProviderResult",
+      "reason": "Intentional decoupling, not drift. Each connector plugin inlines this 3-line union to avoid a compile-time dependency on @elizaos/plugin-workflow; the runtime duck-types the credential-provider service (only the serviceType string + resolve() shape matter). See the comment in plugins/plugin-slack/src/workflow-credential-provider.ts. #10201."
+    },
+    {
+      "name": "ScheduledTask",
+      "reason": "Frozen contract-type copies mandated by the LifeOps/health architecture rule (root CLAUDE.md): plugin-health and plugin-personal-assistant contribute ScheduledTask via local contract-types and must NOT import plugin-scheduling internals. Consolidating would violate that boundary. #10201."
+    },
+    {
+      "name": "AgentListItemDto",
+      "reason": "Cloud-API DTO mirrored from the live Cloud API schema. @elizaos/cloud-sdk owns it ('DTOs mirrored from the Cloud API … do not hand-edit' — packages/cloud/sdk/AGENTS.md); packages/ui and plugin-elizacloud carry vendored copies of the SDK. Representative of the whole types.cloud-api.ts family — the fix is generation/vendoring discipline, not a hand-merge. #10201."
+    }
+  ]
+}

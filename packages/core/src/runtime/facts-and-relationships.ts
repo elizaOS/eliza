@@ -2,6 +2,8 @@ import {
 	buildFactKeywordsForStorage,
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
+import { logger } from "../logger";
+import { isMobilePlatform } from "../runtime-env";
 import type {
 	MessageHandlerExtract,
 	MessageHandlerExtractedRelationship,
@@ -130,6 +132,23 @@ export async function runFactsAndRelationshipsStage(
 	args: FactsAndRelationshipsRunArgs,
 ): Promise<FactsAndRelationshipsRunResult> {
 	const { runtime, message, extract } = args;
+	// On mobile (single on-device GPU context, single-threaded agent) the facts
+	// stage is another blocking TEXT_LARGE generation that serializes on the
+	// same engine as the reply and is awaited before endTrajectory, stalling the
+	// next turn. Skip it on android/ios — the on-device knowledge-graph value at
+	// the 2B tier doesn't justify the per-turn latency. Desktop/server keep it.
+	if (isMobilePlatform()) {
+		return {
+			parsed: {
+				facts: [],
+				relationships: [],
+				thought: "skipped on mobile",
+			},
+			messages: [],
+			tools: [],
+			written: { facts: 0, relationships: 0 },
+		};
+	}
 	if (isSyntheticMemory(message)) {
 		return {
 			parsed: {
@@ -350,7 +369,15 @@ async function searchSimilarFacts(
 			.sort((left, right) => right.relevance - left.relevance)
 			.slice(0, 8)
 			.map((entry) => entry.memory);
-	} catch {
+	} catch (error) {
+		// Failing to load existing facts disables dedup for this turn, which
+		// risks duplicate facts in the knowledge graph. Degrade to no dedup, but
+		// surface the read failure so a broken `getMemories` pipeline is visible.
+		logger.warn(
+			`[FactsAndRelationships] searchSimilarFacts read failed; skipping fact dedup: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
 		return [];
 	}
 }
@@ -371,7 +398,15 @@ async function fetchExistingRelationships(
 			limit: 16,
 		});
 		return Array.isArray(results) ? results : [];
-	} catch {
+	} catch (error) {
+		// Failing to load existing relationships disables dedup for this turn,
+		// risking duplicate relationships. Degrade to no dedup, but surface the
+		// read failure so a broken `getRelationships` pipeline is visible.
+		logger.warn(
+			`[FactsAndRelationships] fetchExistingRelationships read failed; skipping relationship dedup: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
 		return [];
 	}
 }

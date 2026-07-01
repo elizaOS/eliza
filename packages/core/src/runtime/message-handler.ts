@@ -5,11 +5,8 @@ import type {
 	MessageHandlerResult,
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
-import { parseJsonObject } from "./json-output";
-import {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "./stage1-honesty-detector";
+import { normalizeTopics } from "./builtin-field-evaluators";
+import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
 
 export type V5MessageHandlerOutput = MessageHandlerResult;
 
@@ -69,37 +66,9 @@ export function parseMessageHandlerOutput(
 
 	const extract = parseExtract(parsed);
 
-	// Stage-1 honesty suppression for the planning path (elizaOS/eliza#7620).
-	// When the model routes to a non-simple context OR populates candidate
-	// actions, the planner stage will produce the user-facing message and the
-	// Stage-1 `replyText` is intended to be a brief acknowledgement. Some
-	// safety-tuned hosted models (Cerebras-served `gpt-oss-120b`,
-	// `qwen-3-235b-a22b-instruct-2507`) still emit a prompt-contract violation
-	// here even with the system-prompt rules in place: a refusal, a
-	// training-metadata/knowledge-cutoff leak, or a fabricated-moderation claim.
-	// We blank the reply when it matches any of these and route through planning
-	// for non-refusal honesty violations, so the user sees a fresh planner
-	// message instead. The simple path still preserves plain refusals: the model
-	// may legitimately decline unsafe requests there.
-	const nonSimpleContexts = contexts.filter(
-		(context) => context !== SIMPLE_CONTEXT_ID,
-	);
-	const forceHonestyPlanning =
-		processMessage === "RESPOND" &&
-		looksLikeNonRefusalStage1HonestyViolation(replyRaw);
-	const planningPath =
-		nonSimpleContexts.length > 0 ||
-		candidateActions.length > 0 ||
-		forceHonestyPlanning;
-	const reply =
-		planningPath && looksLikeStage1HonestyViolation(replyRaw) ? "" : replyRaw;
-
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
-		contexts:
-			forceHonestyPlanning && nonSimpleContexts.length === 0
-				? ["general"]
-				: contexts,
-		reply,
+		contexts,
+		reply: replyRaw,
 	};
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;
@@ -111,12 +80,6 @@ export function parseMessageHandlerOutput(
 		thought: "",
 		...(extract ? { extract } : {}),
 	};
-}
-
-function stripJsonStructuralJunkReply(value: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) return "";
-	return /^[\s{}[\]":,]+$/.test(trimmed) ? "" : trimmed;
 }
 
 function normalizeStringHints(raw: unknown, maxItems: number): string[] {
@@ -180,10 +143,12 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
 				.filter((entry): entry is string => entry.length > 0)
 		: [];
+	const topics = normalizeTopics(source.topics);
 	if (
 		facts.length === 0 &&
 		relationships.length === 0 &&
-		addressedTo.length === 0
+		addressedTo.length === 0 &&
+		topics.length === 0
 	) {
 		return undefined;
 	}
@@ -191,11 +156,13 @@ function parseExtract(raw: unknown): MessageHandlerExtract | undefined {
 	if (facts.length > 0) result.facts = facts;
 	if (relationships.length > 0) result.relationships = relationships;
 	if (addressedTo.length > 0) result.addressedTo = addressedTo;
+	if (topics.length > 0) result.topics = topics;
 	return result;
 }
 
 export function routeMessageHandlerOutput(
 	output: V5MessageHandlerOutput,
+	options?: { suppressToolPromotion?: boolean },
 ): MessageHandlerRoute {
 	const processMessage = output.processMessage;
 	if (processMessage === "IGNORE") {
@@ -236,10 +203,15 @@ export function routeMessageHandlerOutput(
 	// routing layer.
 	const candidateActionsRequestPlanning =
 		hasCandidateActions && output.plan.requiresTool !== false;
-	if (
+	// #9874 item 1: when the caller has identified this turn as bot-to-bot
+	// crosstalk addressed to a non-owner bot, do NOT promote a simple-path turn
+	// into forced tool planning. The agent is overhearing talk it was not asked
+	// to act on; forcing a tool fabricates a phantom task (the false-ack seed).
+	// The Stage-1 simple reply still ships via the final_reply branch below.
+	const promotionRequested =
 		(requiresTool || candidateActionsRequestPlanning) &&
-		nonSimpleContexts.length === 0
-	) {
+		nonSimpleContexts.length === 0;
+	if (promotionRequested && !options?.suppressToolPromotion) {
 		return {
 			type: "planning_needed",
 			output,

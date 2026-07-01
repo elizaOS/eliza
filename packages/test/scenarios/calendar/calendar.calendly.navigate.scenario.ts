@@ -4,6 +4,7 @@ import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 const THIRD_PARTY_CALENDLY_URL = "https://calendly.com/alex/intro";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.calendly.navigate",
   title: "Agent hands back a third-party Calendly booking link",
   domain: "calendar",

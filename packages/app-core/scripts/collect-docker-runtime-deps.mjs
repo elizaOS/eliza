@@ -60,27 +60,22 @@ const LINKED_WORKSPACE_PACKAGES = [
   "packages/agent",
   "packages/core",
   "packages/contracts",
-  "packages/cloud-routing",
+  "packages/cloud/routing",
   "packages/app-core",
-  "packages/cloud-sdk",
+  "packages/cloud/sdk",
   "packages/shared",
   "packages/skills",
   "packages/vault",
-  // Imported by packages/agent/src/services/remote-plugin-bridge.ts
-  // ("@elizaos/plugin-worker-runtime/error"). The custom-character boot path
-  // goes through remote-plugin-bridge, so without this the container crashes
-  // with ERR_MODULE_NOT_FOUND on plugin-worker-runtime/dist/index.js whenever
-  // an injected character (ELIZA_AGENT_CHARACTER_JSON) is loaded.
+  // Compatibility package for remote workers that still import the historical
+  // @elizaos/plugin-worker-runtime entrypoint. It wraps
+  // @elizaos/plugin-remote-manifest/worker-runtime but still needs a linked
+  // workspace package in Docker images.
   "packages/plugin-worker-runtime",
-  "plugins/plugin-companion",
-  "plugins/plugin-elizamaker",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
-  "plugins/plugin-steward-app",
   "plugins/plugin-task-coordinator",
   "plugins/plugin-training",
-  "plugins/plugin-shopify-ui",
-  "plugins/plugin-vincent",
+  "plugins/plugin-shopify",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",

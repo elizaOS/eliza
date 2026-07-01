@@ -3,6 +3,7 @@
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
   cleanup,
+  configure,
   fireEvent,
   render,
   screen,
@@ -10,6 +11,14 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// This is a large multi-step integration view test (7 waitFor gates, each
+// awaiting a controlled-input re-render or an async client round-trip). RTL's
+// 1s default async timeout is too tight when the Plugin/Client Tests lanes run
+// the workspace at full concurrency on a saturated runner — the controlled
+// edits do land, just slower than 1s, which intermittently fails the value
+// assertions. Give the async utilities headroom; the assertions stay strict.
+configure({ asyncUtilTimeout: 5000 });
 
 // Resolve the actual react entry the runtime uses so the mock deduplicates the
 // React instance regardless of the installed version (the bun store layout and
@@ -58,6 +67,16 @@ const uiExtensionMocks = vi.hoisted(() => ({
   registerDetailExtension: vi.fn(),
 }));
 
+// Single shared app-state ref so the legacy `useApp` API and the per-slice
+// `useAppSelector` reads the migrated view now uses both resolve to the same
+// value.
+const fineTuningAppState = vi.hoisted(() => ({
+  handleRestart: vi.fn(),
+  setActionNotice: vi.fn(),
+  t: (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key,
+}));
+
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
   Button: ({
@@ -73,13 +92,52 @@ vi.mock("@elizaos/ui", () => ({
   parsePositiveFloat: (value: string) => Number.parseFloat(value),
   parsePositiveInteger: (value: string) => Number.parseInt(value, 10),
   registerDetailExtension: uiExtensionMocks.registerDetailExtension,
-  useApp: () => ({
-    handleRestart: vi.fn(),
-    setActionNotice: vi.fn(),
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
-  }),
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
   useIntervalWhenDocumentVisible: vi.fn(),
+}));
+
+vi.mock("@elizaos/ui/api", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("@elizaos/ui/api/index", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("../../../../packages/ui/src/api/index.ts", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("@elizaos/ui/components", () => ({
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+    React.createElement("button", { type: "button", ...props }, children),
+  registerDetailExtension: uiExtensionMocks.registerDetailExtension,
+}));
+
+// FineTuningView reads useApp/useAppSelector from @elizaos/ui/state (not the
+// root barrel); mock that subpath too or the real store runs and `t` yields
+// raw i18n keys instead of resolved labels.
+vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("@elizaos/ui/state/index", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("../../../../packages/ui/src/state/index.ts", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
 }));
 
 // FineTuningView imports these runtime helpers from @elizaos/ui subpaths (not the
@@ -123,11 +181,7 @@ vi.mock("./fine-tuning-panels.js", () => ({
 import { DEFAULT_ELIZA1_HF_DATASET_FILES } from "../core/huggingface-dataset-ingest.js";
 import type { TrainingAnalysisIndex } from "../core/training-analysis-index.js";
 import { buildTrainingReadinessReportPayload } from "../core/training-readiness-report.js";
-import {
-  FineTuningDetailExtension,
-  FineTuningTuiView,
-  FineTuningView,
-} from "./FineTuningView";
+import { FineTuningDetailExtension, FineTuningView } from "./FineTuningView";
 import { interact } from "./FineTuningView.interact";
 
 const sampleStatus = {
@@ -304,7 +358,7 @@ const sampleAnalysisIndex = {
           schema: "eliza_benchmark_matrix_artifact",
           modelStats: [
             {
-              modelId: "eliza-1-0_8b-trained",
+              modelId: "eliza-1-2b-trained",
               averageScore: 0.72,
             },
           ],
@@ -312,7 +366,7 @@ const sampleAnalysisIndex = {
         payload: {
           comparisons: [
             {
-              tier: "0_8b",
+              tier: "2b",
               benchmark: "eliza_harness_action_selection",
               baseScore: 0.4,
               trainedScore: 0.5,
@@ -328,7 +382,7 @@ const sampleAnalysisIndex = {
         kind: "model",
         title: "model",
         path: "/tmp/model.json",
-        summary: { model: "eliza-1-0_8b-trained" },
+        summary: { model: "eliza-1-2b-trained" },
         payload: {},
       },
     ],
@@ -364,7 +418,7 @@ const sampleReadinessReport = {
             includeBenchmarkMatrix: true,
             actionBenchmarkPairs: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 base: { variant: "base" },
                 trained: { variant: "trained" },
               },
@@ -459,8 +513,8 @@ const sampleEliza1BundleStage = {
   exitCode: 0,
   plan: {
     repoId: "elizaos/eliza-1",
-    tier: "0_8b",
-    bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+    tier: "2b",
+    bundleDir: "/tmp/eliza-1-bundles/eliza-1-2b.bundle",
     fileCount: 72,
     plannedBytes: 1_960_000_000,
     apply: false,
@@ -478,8 +532,8 @@ const sampleEliza1BundleStage = {
     ],
     exitCode: 0,
     repoId: "elizaos/eliza-1",
-    tier: "0_8b",
-    bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+    tier: "2b",
+    bundleDir: "/tmp/eliza-1-bundles/eliza-1-2b.bundle",
     fileCount: 72,
     plannedBytes: 1_960_000_000,
     maxBytes: 8_589_934_592,
@@ -587,17 +641,17 @@ const sampleCollectionRun = {
         actionBenchmark: { benchmark: "eliza_harness_action_selection" },
         actionBenchmarkPair: null,
         actionBenchmarkPairs: [
-          { tier: "0_8b" },
+          { tier: "2b" },
           { tier: "2b" },
           { tier: "4b" },
           { tier: "9b" },
           { tier: "27b" },
         ],
-        benchmarkVsCerebras: { tiers: "0_8b,2b,4b,9b,27b" },
+        benchmarkVsCerebras: { tiers: "2b,2b,4b,9b,27b" },
         benchmarkMatrix: {},
       },
       training: {
-        eliza1BundleStage: { tier: "0_8b" },
+        eliza1BundleStage: { tier: "2b" },
       },
     },
     analysis: {
@@ -758,29 +812,29 @@ const sampleCollectionRun = {
         models: 2,
         modelInventory: [
           {
-            title: "eliza-1-0_8b-base",
-            path: "/tmp/eliza1_model_registry/0_8b-base-model-manifest.json",
+            title: "eliza-1-2b-base",
+            path: "/tmp/eliza1_model_registry/2b-base-model-manifest.json",
             schema: "eliza1_model_registry_entry",
-            model: "eliza-1-0_8b-base",
-            tier: "0_8b",
+            model: "eliza-1-2b-base",
+            tier: "2b",
             variant: "base",
-            outputPath: "hf://elizaos/eliza-1-0_8b-base",
+            outputPath: "hf://elizaos/eliza-1-2b-base",
             baseModel: null,
-            repoId: "elizaos/eliza-1-0_8b-base",
+            repoId: "elizaos/eliza-1-2b-base",
             baseEvalScore: null,
             trainedEvalScore: null,
             evalImprovementPercent: null,
           },
           {
-            title: "eliza-1-0_8b-trained",
-            path: "/tmp/eliza1_model_registry/0_8b-trained-model-manifest.json",
+            title: "eliza-1-2b-trained",
+            path: "/tmp/eliza1_model_registry/2b-trained-model-manifest.json",
             schema: "eliza1_model_registry_entry",
-            model: "eliza-1-0_8b-trained",
-            tier: "0_8b",
+            model: "eliza-1-2b-trained",
+            tier: "2b",
             variant: "trained",
-            outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-            baseModel: "eliza-1-0_8b-base",
-            repoId: "elizaos/eliza-1-0_8b-trained",
+            outputPath: "hf://elizaos/eliza-1-2b-trained",
+            baseModel: "eliza-1-2b-base",
+            repoId: "elizaos/eliza-1-2b-trained",
             baseEvalScore: 0.4,
             trainedEvalScore: 0.5,
             evalImprovementPercent: 25,
@@ -794,10 +848,10 @@ const sampleCollectionRun = {
         benchmarkMatrices: 1,
         comparisonInventory: [
           {
-            title: "Eval comparison: eliza-1-0_8b-base vs eliza-1-0_8b-trained",
+            title: "Eval comparison: eliza-1-2b-base vs eliza-1-2b-trained",
             path: "/tmp/eval/eval-comparison.json",
-            baseModel: "eliza-1-0_8b-base",
-            trainedModel: "eliza-1-0_8b-trained",
+            baseModel: "eliza-1-2b-base",
+            trainedModel: "eliza-1-2b-trained",
             backend: "cpu",
             baseScore: 0.4,
             trainedScore: 0.5,
@@ -840,10 +894,10 @@ const sampleCollectionRun = {
         actionBenchmarkMatrixSources: 2,
         benchmarkRows: 3,
         benchmarkComparisons: 1,
-        tiers: ["0_8b"],
+        tiers: ["2b"],
         comparisonInventory: [
           {
-            tier: "0_8b",
+            tier: "2b",
             benchmark: "eliza_harness_action_selection",
             baseScore: 0.4,
             trainedScore: 0.5,
@@ -856,7 +910,7 @@ const sampleCollectionRun = {
         ],
         improvementComparisons: [
           {
-            tier: "0_8b",
+            tier: "2b",
             benchmark: "eliza_harness_action_selection",
             baseScore: 0.4,
             trainedScore: 0.5,
@@ -866,8 +920,8 @@ const sampleCollectionRun = {
           },
         ],
         baselineProgress: {
-          tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
-          establishedTiers: ["0_8b"],
+          tierOrder: ["2b", "2b", "4b", "9b", "27b"],
+          establishedTiers: ["2b"],
           remainingTiers: ["2b", "4b", "9b", "27b"],
           nextTier: "2b",
           smallestTierEstablished: true,
@@ -875,9 +929,9 @@ const sampleCollectionRun = {
         },
         caseSamples: [
           {
-            tier: "0_8b",
+            tier: "2b",
             variant: "trained",
-            modelId: "eliza-1-0_8b-trained",
+            modelId: "eliza-1-2b-trained",
             benchmark: "eliza_harness_action_selection",
             score: 0.5,
             caseId: "message-route",
@@ -1029,7 +1083,7 @@ const sampleCollectionHistory = {
             task: "response",
             input: "hf history input",
             output: "hf history output",
-            model: "eliza-1-0_8b-base",
+            model: "eliza-1-2b-base",
           },
         ],
         feed: [
@@ -1080,8 +1134,8 @@ const sampleCollectionHistory = {
         },
         {
           category: "model",
-          title: "eliza-1-0_8b-trained",
-          path: "/tmp/training-collection/models/0_8b-trained.json",
+          title: "eliza-1-2b-trained",
+          path: "/tmp/training-collection/models/2b-trained.json",
           schema: "eliza1_model_registry_entry",
         },
       ],
@@ -1090,15 +1144,15 @@ const sampleCollectionHistory = {
         models: 2,
         modelInventory: [
           {
-            title: "eliza-1-0_8b-trained",
-            path: "/tmp/training-collection/models/0_8b-trained.json",
+            title: "eliza-1-2b-trained",
+            path: "/tmp/training-collection/models/2b-trained.json",
             schema: "eliza1_model_registry_entry",
-            model: "eliza-1-0_8b-trained",
-            tier: "0_8b",
+            model: "eliza-1-2b-trained",
+            tier: "2b",
             variant: "trained",
-            outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-            baseModel: "eliza-1-0_8b-base",
-            repoId: "elizaos/eliza-1-0_8b-trained",
+            outputPath: "hf://elizaos/eliza-1-2b-trained",
+            baseModel: "eliza-1-2b-base",
+            repoId: "elizaos/eliza-1-2b-trained",
             baseEvalScore: 0.4,
             trainedEvalScore: 0.5,
             evalImprovementPercent: 25,
@@ -1109,10 +1163,10 @@ const sampleCollectionHistory = {
         actionBenchmarkPairs: 1,
         benchmarkComparisons: 1,
         caseSamples: 1,
-        tiers: ["0_8b"],
+        tiers: ["2b"],
         baselineProgress: {
-          tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
-          establishedTiers: ["0_8b"],
+          tierOrder: ["2b", "2b", "4b", "9b", "27b"],
+          establishedTiers: ["2b"],
           remainingTiers: ["2b", "4b", "9b", "27b"],
           nextTier: "2b",
           smallestTierEstablished: true,
@@ -1126,10 +1180,10 @@ const sampleCollectionHistory = {
         benchmarkMatrices: 1,
         comparisonInventory: [
           {
-            title: "Eval comparison: eliza-1-0_8b-base vs eliza-1-0_8b-trained",
+            title: "Eval comparison: eliza-1-2b-base vs eliza-1-2b-trained",
             path: "/tmp/eval/eval-comparison.json",
-            baseModel: "eliza-1-0_8b-base",
-            trainedModel: "eliza-1-0_8b-trained",
+            baseModel: "eliza-1-2b-base",
+            trainedModel: "eliza-1-2b-trained",
             backend: "cpu",
             baseScore: 0.4,
             trainedScore: 0.5,
@@ -1172,11 +1226,11 @@ const sampleCollectionHistory = {
           comparisons: 1,
           scoredComparisons: 1,
           caseSamples: 1,
-          tiers: ["0_8b"],
+          tiers: ["2b"],
           allEliza1TiersCovered: false,
           tierCoverage: [
             {
-              tier: "0_8b",
+              tier: "2b",
               hasBase: true,
               hasTrained: true,
               hasReference: true,
@@ -1221,6 +1275,36 @@ function emptyAnalysisIndex(): TrainingAnalysisIndex {
         artifacts: 0,
       },
       artifacts: [],
+      coverage: {
+        dataSources: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+        },
+        readableSamples: {
+          huggingFace: 0,
+          feed: 0,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+          total: 0,
+        },
+        evals: { artifacts: 0, comparisons: 0, scoredComparisons: 0 },
+        benchmarks: {
+          matrices: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+          caseSamples: 0,
+          tiers: [],
+          allEliza1TiersCovered: false,
+          tierCoverage: [],
+        },
+        models: { artifacts: 0, stagedBundles: 0, inventory: [] },
+      },
     },
   };
 }
@@ -1291,7 +1375,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("FineTuningTuiView", () => {
+describe("FineTuningView + terminal training capabilities", () => {
   it("registers and renders the fine-tuning app detail dashboard", async () => {
     mockState();
 
@@ -1321,7 +1405,7 @@ describe("FineTuningTuiView", () => {
     expect(
       await screen.findByText("all_eliza1_tiers_benchmark:missing"),
     ).toBeTruthy();
-    expect(await screen.findByText(/established 0_8b \/ next 2b/)).toBeTruthy();
+    expect(await screen.findByText(/established 2b \/ next 2b/)).toBeTruthy();
     expect(await screen.findByText("2b, 4b, 9b, 27b")).toBeTruthy();
     expect(trainingClient.listTrainingCollections).toHaveBeenCalledWith({
       limit: 3,
@@ -1334,7 +1418,7 @@ describe("FineTuningTuiView", () => {
       expect(trainingClient.runTrainingCollection).toHaveBeenCalledWith(
         expect.objectContaining({
           actionBenchmarkPairs: expect.arrayContaining([
-            expect.objectContaining({ tier: "0_8b" }),
+            expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "27b" }),
           ]),
         }),
@@ -1432,11 +1516,11 @@ describe("FineTuningTuiView", () => {
       ),
     ).toBeTruthy();
     expect(
-      await screen.findByText("/tmp/eliza-1-bundles/eliza-1-0_8b.bundle"),
+      await screen.findByText("/tmp/eliza-1-bundles/eliza-1-2b.bundle"),
     ).toBeTruthy();
     expect(trainingClient.stageEliza1Bundle).toHaveBeenCalledWith({
       repoId: "elizaos/eliza-1",
-      tier: "0_8b",
+      tier: "2b",
       localDir: "/tmp/eliza-1-bundles",
       outputDir: undefined,
       maxBytes: 8_589_934_592,
@@ -1450,7 +1534,7 @@ describe("FineTuningTuiView", () => {
     );
     expect(openExternalUrl).toHaveBeenCalledWith("file:///tmp/eliza-stage");
     expect(openExternalUrl).toHaveBeenCalledWith(
-      "file:///tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+      "file:///tmp/eliza-1-bundles/eliza-1-2b.bundle",
     );
   });
 
@@ -1518,8 +1602,8 @@ describe("FineTuningTuiView", () => {
       artifact: {
         schema: "eliza_eval_comparison_artifact",
         models: {
-          base: "eliza-1-0_8b-base",
-          trained: "eliza-1-0_8b-trained",
+          base: "eliza-1-2b-base",
+          trained: "eliza-1-2b-trained",
           backend: "cpu",
         },
         metrics: {
@@ -1552,7 +1636,7 @@ describe("FineTuningTuiView", () => {
     expect(await screen.findByText("Eval metrics")).toBeTruthy();
     expect(
       await screen.findByText(
-        /eliza-1-0_8b-base -> eliza-1-0_8b-trained backend:cpu base:0.4 trained:0.6 improvement:50% delta:0.2 prompts:12 latency:120ms->145ms/,
+        /eliza-1-2b-base -> eliza-1-2b-trained backend:cpu base:0.4 trained:0.6 improvement:50% delta:0.2 prompts:12 latency:120ms->145ms/,
       ),
     ).toBeTruthy();
     fireEvent.click(await screen.findByText("Open eval artifact"));
@@ -1567,8 +1651,8 @@ describe("FineTuningTuiView", () => {
     expect(openExternalUrl).toHaveBeenCalledWith("file:///tmp/eval-comparison");
     expect(trainingClient.runTrainingLocalEvalComparison).toHaveBeenCalledWith({
       manifestPath: undefined,
-      model: "eliza-1-0_8b-base",
-      trainedModelPath: "eliza-1-0_8b-trained",
+      model: "eliza-1-2b-base",
+      trainedModelPath: "eliza-1-2b-trained",
       backend: "cpu",
       outputDir: undefined,
       dryRun: true,
@@ -1609,11 +1693,11 @@ describe("FineTuningTuiView", () => {
       runsPerCase: 1,
       outputDir: undefined,
       provider: "local-llama-cpp",
-      modelId: "eliza-1-0_8b-trained",
-      runtimeModel: "eliza-1-0_8b-trained",
+      modelId: "eliza-1-2b-trained",
+      runtimeModel: "eliza-1-2b-trained",
       baseUrl: "http://localhost:11434/v1",
       variant: "trained",
-      tier: "0_8b",
+      tier: "2b",
       benchmark: "eliza_harness_action_selection",
       datasetVersion: "eliza-native-v1",
       useMocks: false,
@@ -1639,7 +1723,7 @@ describe("FineTuningTuiView", () => {
     fireEvent.click(await screen.findByText("Open benchmark output"));
     expect(openExternalUrl).toHaveBeenCalledWith("file:///tmp/benchmark-run");
     expect(trainingClient.runTrainingBenchmarkVsCerebras).toHaveBeenCalledWith({
-      tiers: "0_8b",
+      tiers: "2b",
       benchmark: "eliza_harness_action_selection",
       variants: "both",
       maxSamples: 50,
@@ -1701,16 +1785,16 @@ describe("FineTuningTuiView", () => {
       /2026-05-18T12:00:00.000Z partial ready:5 partial:2 missing:6/,
     );
     await screen.findByText(
-      /artifacts:8 steps:9 ok\/0 failed sources hf:1 feed:1 natural:1 cases:1 comparisons:1 tiers:0_8b/,
+      /artifacts:8 steps:9 ok\/0 failed sources hf:1 feed:1 natural:1 cases:1 comparisons:1 tiers:2b/,
     );
     await screen.findByText(
-      /evals:2 eval-comparisons:1 eliza-1-0_8b-base->eliza-1-0_8b-trained improvement:25%/,
+      /evals:2 eval-comparisons:1 eliza-1-2b-base->eliza-1-2b-trained improvement:25%/,
     );
     await screen.findByText(
-      /baseline established:0_8b next:2b remaining:2b,4b,9b,27b/,
+      /baseline established:2b next:2b remaining:2b,4b,9b,27b/,
     );
     await screen.findByText(
-      /models:2 training-runs:1 inventory:1 0_8b trained eliza-1-0_8b-trained base:eliza-1-0_8b-base score:0\.4->0\.5 output:hf:\/\/elizaos\/eliza-1-0_8b-trained improvement:25%/,
+      /models:2 training-runs:1 inventory:1 2b trained eliza-1-2b-trained base:eliza-1-2b-base score:0\.4->0\.5 output:hf:\/\/elizaos\/eliza-1-2b-trained improvement:25%/,
     );
     await screen.findByText(
       /gaps: all_eliza1_tiers_benchmark:missing->terminal-training-run-collection/,
@@ -1724,7 +1808,7 @@ describe("FineTuningTuiView", () => {
       expect(trainingClient.runTrainingCollection).toHaveBeenLastCalledWith(
         expect.objectContaining({
           actionBenchmarkPairs: expect.arrayContaining([
-            expect.objectContaining({ tier: "0_8b" }),
+            expect.objectContaining({ tier: "2b" }),
             expect.objectContaining({ tier: "27b" }),
           ]),
         }),
@@ -1751,7 +1835,7 @@ describe("FineTuningTuiView", () => {
     expect(openExternalUrl).toHaveBeenCalledWith(
       "file:///tmp/training-collection/eval/eval-comparison.json",
     );
-    await screen.findByText("model:eliza-1-0_8b-trained");
+    await screen.findByText("model:eliza-1-2b-trained");
     fireEvent.click(await screen.findByText("Open summary"));
     expect(openExternalUrl).toHaveBeenCalledWith(
       "file:///tmp/training-collection/README.md",
@@ -1771,9 +1855,9 @@ describe("FineTuningTuiView", () => {
     await screen.findByText(
       /total:6 hf:1 feed:1 natural:1 scenarios:1 tests:1 jsonl:1/,
     );
-    await screen.findByText(/models:2 base:1 trained:1 tiers:0_8b/);
+    await screen.findByText(/models:2 base:1 trained:1 tiers:2b/);
     await screen.findByText("Benchmark model stats");
-    await screen.findByText(/best:eliza-1-0_8b-trained avg:0.72/);
+    await screen.findByText(/best:eliza-1-2b-trained avg:0.72/);
     await screen.findByText(
       /smallest:ready improvement:ready all-tier:missing samples:ready/,
     );
@@ -1804,18 +1888,18 @@ describe("FineTuningTuiView", () => {
     );
     await screen.findByText("Eval comparison evidence");
     await screen.findByText(
-      /eliza-1-0_8b-base -> eliza-1-0_8b-trained backend:cpu base:0.4 trained:0.5 improvement:25% latency:120ms->150ms report:\/tmp\/eval\/local_model_comparison\.json/,
+      /eliza-1-2b-base -> eliza-1-2b-trained backend:cpu base:0.4 trained:0.5 improvement:25% latency:120ms->150ms report:\/tmp\/eval\/local_model_comparison\.json/,
     );
     await screen.findByText("Baseline progression");
     await screen.findByText(
-      /order:0_8b -> 2b -> 4b -> 9b -> 27b established:0_8b next:2b remaining:2b,4b,9b,27b/,
+      /order:2b -> 2b -> 4b -> 9b -> 27b established:2b next:2b remaining:2b,4b,9b,27b/,
     );
     await screen.findByText("Benchmark case samples");
     await screen.findByText(
-      /0_8b trained message-route pass:true input:send David the update expected:MESSAGE actual:MESSAGE output:Message queued for David\./,
+      /2b trained message-route pass:true input:send David the update expected:MESSAGE actual:MESSAGE output:Message queued for David\./,
     );
     await screen.findByText(
-      /0_8b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%/,
+      /2b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%/,
     );
     expect(trainingClient.runTrainingCollection).toHaveBeenCalledWith({
       preflightOnly: false,
@@ -1871,8 +1955,8 @@ describe("FineTuningTuiView", () => {
       },
       evalComparison: {
         manifestPath: undefined,
-        model: "eliza-1-0_8b-base",
-        trainedModelPath: "eliza-1-0_8b-trained",
+        model: "eliza-1-2b-base",
+        trainedModelPath: "eliza-1-2b-trained",
         backend: "cpu",
         outputDir: undefined,
         dryRun: true,
@@ -1882,11 +1966,11 @@ describe("FineTuningTuiView", () => {
         runsPerCase: 1,
         outputDir: undefined,
         provider: "local-llama-cpp",
-        modelId: "eliza-1-0_8b-trained",
-        runtimeModel: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
+        runtimeModel: "eliza-1-2b-trained",
         baseUrl: "http://localhost:11434/v1",
         variant: "trained",
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "eliza_harness_action_selection",
         datasetVersion: "eliza-native-v1",
         useMocks: false,
@@ -1894,21 +1978,21 @@ describe("FineTuningTuiView", () => {
         dryRun: true,
       },
       actionBenchmarkPair: {
-        tier: "0_8b",
+        tier: "2b",
         base: {
-          modelId: "eliza-1-0_8b-base",
-          runtimeModel: "eliza-1-0_8b-base",
+          modelId: "eliza-1-2b-base",
+          runtimeModel: "eliza-1-2b-base",
           variant: "base",
         },
         trained: {
-          modelId: "eliza-1-0_8b-trained",
-          runtimeModel: "eliza-1-0_8b-trained",
+          modelId: "eliza-1-2b-trained",
+          runtimeModel: "eliza-1-2b-trained",
           variant: "trained",
         },
       },
       actionBenchmarkPairs: undefined,
       benchmarkVsCerebras: {
-        tiers: "0_8b",
+        tiers: "2b",
         benchmark: "eliza_harness_action_selection",
         variants: "both",
         maxSamples: 50,
@@ -1919,7 +2003,7 @@ describe("FineTuningTuiView", () => {
       },
       eliza1BundleStage: {
         repoId: "elizaos/eliza-1",
-        tier: "0_8b",
+        tier: "2b",
         localDir: "/tmp/eliza-1-bundles",
         outputDir: undefined,
         maxBytes: 8589934592,
@@ -1941,10 +2025,10 @@ describe("FineTuningTuiView", () => {
     expect(
       await screen.findByText(/huggingface:hf -> \/tmp\/hf\.json/),
     ).toBeTruthy();
-    expect((await screen.findAllByText("0_8b")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("2b")).length).toBeGreaterThan(0);
     expect(
       await screen.findByText(
-        /0_8b eliza_harness_action_selection base:0.4 trained:0.5 improvement:25%/,
+        /2b eliza_harness_action_selection base:0.4 trained:0.5 improvement:25%/,
       ),
     ).toBeTruthy();
     expect(
@@ -2007,7 +2091,7 @@ describe("FineTuningTuiView", () => {
         includeBenchmarkMatrix: true,
         actionBenchmarkPairs: [
           {
-            tier: "0_8b",
+            tier: "2b",
             base: { variant: "base" },
             trained: { variant: "trained" },
           },
@@ -2113,96 +2197,6 @@ describe("FineTuningTuiView", () => {
     );
   });
 
-  it("mounts training state and exposes TUI metadata", async () => {
-    mockState();
-
-    const { container } = render(React.createElement(FineTuningTuiView));
-
-    await screen.findByText(/trajectory-1 calls 3 reward 0.9/);
-    expect(screen.getByText(/job-1/)).toBeTruthy();
-    expect(
-      screen.getByText(/model-1 cpu active ollama eliza-model/),
-    ).toBeTruthy();
-    expect(trainingClient.listTrainingJobs).toHaveBeenCalled();
-    expect(screen.getByText(/run-benchmark-vs-cerebras/)).toBeTruthy();
-    expect(screen.getByText(/stage-eliza1-bundle/)).toBeTruthy();
-
-    const stateElement = container.querySelector("[data-view-state]");
-    expect(
-      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
-    ).toMatchObject({
-      viewType: "tui",
-      viewId: "training",
-      runtimeAvailable: true,
-      runningJobs: 1,
-      queuedJobs: 1,
-      datasetCount: 1,
-      jobCount: 1,
-      modelCount: 1,
-      trajectoryCount: 1,
-    });
-  });
-
-  it("renders the TUI body status counts (running/queued/completed/failed)", async () => {
-    mockState();
-
-    const { container } = render(React.createElement(FineTuningTuiView));
-
-    await screen.findByText(/trajectory-1 calls 3 reward 0.9/);
-
-    const statusSection = container.querySelector(
-      '[aria-label="Training status"]',
-    );
-    const lineFor = (prefix: string) =>
-      Array.from(statusSection?.querySelectorAll("div") ?? []).find(
-        (node) => node.textContent?.trim() === prefix,
-      );
-    // sampleStatus: running 1, queued 1, completed 2, failed 0.
-    expect(lineFor("runtime ready")).toBeTruthy();
-    expect(lineFor("running 1")).toBeTruthy();
-    expect(lineFor("queued 1")).toBeTruthy();
-    expect(lineFor("completed 2")).toBeTruthy();
-    expect(lineFor("failed 0")).toBeTruthy();
-  });
-
-  it("reloads training state when the TUI refresh button is clicked", async () => {
-    mockState();
-
-    render(React.createElement(FineTuningTuiView));
-
-    await screen.findByText(/trajectory-1 calls 3 reward 0.9/);
-    // Initial mount triggered one load of each source.
-    expect(trainingClient.getTrainingStatus).toHaveBeenCalledTimes(1);
-    expect(trainingClient.listTrainingTrajectories).toHaveBeenCalledTimes(1);
-    expect(trainingClient.listTrainingJobs).toHaveBeenCalledTimes(1);
-    expect(trainingClient.listTrainingModels).toHaveBeenCalledTimes(1);
-
-    // Updated data on the next load proves the click re-ran loadTrainingTuiState.
-    trainingClient.getTrainingStatus.mockResolvedValue({
-      ...sampleStatus,
-      runningJobs: 4,
-      completedJobs: 9,
-    });
-
-    fireEvent.click(screen.getByLabelText("Refresh training status"));
-
-    await waitFor(() => {
-      expect(trainingClient.getTrainingStatus).toHaveBeenCalledTimes(2);
-    });
-    expect(trainingClient.listTrainingTrajectories).toHaveBeenCalledTimes(2);
-    expect(trainingClient.listTrainingJobs).toHaveBeenCalledTimes(2);
-    expect(trainingClient.listTrainingModels).toHaveBeenCalledTimes(2);
-
-    // "running {n}" is split across text nodes; match on the div's textContent.
-    const lineMatcher =
-      (expected: string) => (_content: string, node: Element | null) =>
-        Boolean(
-          node?.tagName === "DIV" && node.textContent?.trim() === expected,
-        );
-    await screen.findByText(lineMatcher("running 4"));
-    await screen.findByText(lineMatcher("completed 9"));
-  });
-
   it("supports terminal training capabilities", async () => {
     mockState();
 
@@ -2291,7 +2285,7 @@ describe("FineTuningTuiView", () => {
     await expect(
       interact("terminal-training-ingest-hf-dataset", {
         repoId: "elizaos/eliza-1-training",
-        files: ["sft/0_8b/train.jsonl"],
+        files: ["sft/2b/train.jsonl"],
         dryRun: true,
       }),
     ).resolves.toMatchObject({
@@ -2335,7 +2329,7 @@ describe("FineTuningTuiView", () => {
 
     await expect(
       interact("terminal-training-run-benchmark-vs-cerebras", {
-        tiers: "0_8b,2b,4b,9b,27b",
+        tiers: "2b,2b,4b,9b,27b",
         benchmark: "eliza_harness_action_selection",
         maxSamples: 1,
         dryRun: true,
@@ -2350,14 +2344,14 @@ describe("FineTuningTuiView", () => {
 
     await expect(
       interact("terminal-training-stage-eliza1-bundle", {
-        tier: "0_8b",
+        tier: "2b",
         localDir: "/tmp/eliza-1-bundles",
         maxBytes: 2_000_000_000,
       }),
     ).resolves.toMatchObject({
       viewType: "tui",
       plan: {
-        bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+        bundleDir: "/tmp/eliza-1-bundles/eliza-1-2b.bundle",
         apply: false,
       },
       exitCode: 0,

@@ -23,16 +23,21 @@
       "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/contracts": ["../contracts/src/index.ts"],
       "@elizaos/vault": ["../vault/src/index.ts"],
-      "@elizaos/cloud-routing": ["../cloud-routing/src/index.ts"],
-      "@elizaos/cloud-routing/*": ["../cloud-routing/src/*"],
+      "@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
+      "@elizaos/cloud-routing/*": ["../cloud/routing/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/dist/index.d.ts"
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
       ],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
@@ -58,12 +63,17 @@
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
-      "@elizaos/plugin-app-control": [
-        "../../plugins/plugin-app-control/src/index.ts"
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/src/index.ts"
       ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
+      "@elizaos/plugin-worker-runtime": [
+        "../plugin-worker-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
-      "@elizaos/plugin-device-filesystem": [
-        "../../plugins/plugin-device-filesystem/src/index.ts"
+      "@elizaos/plugin-native-filesystem": [
+        "../../plugins/plugin-native-filesystem/src/index.ts"
       ],
       "@elizaos/plugin-github": ["../../plugins/plugin-github/src/index.ts"],
       "@elizaos/plugin-gitpathologist": [
@@ -93,8 +103,20 @@
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
+      "@elizaos/capacitor-contacts": [
+        "../../plugins/plugin-native-contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-messages": [
+        "../../plugins/plugin-native-messages/src/index.ts"
+      ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "../../plugins/plugin-native-system/src/index.ts"
       ]
     }
   },

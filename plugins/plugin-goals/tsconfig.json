@@ -35,6 +35,8 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
@@ -48,8 +50,7 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ],
-      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
+      ]
     }
   },
   "include": [
@@ -59,5 +60,10 @@
     "../../packages/agent/src/external-modules.d.ts",
     "../../packages/app-core/src/ambient-modules.d.ts"
   ],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.harness.test.ts",
+    "vitest.harness.config.ts"
+  ]
 }

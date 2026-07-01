@@ -1,4 +1,4 @@
-"""Apply TurboQuant KV-cache quantization to a fine-tuned Qwen checkpoint.
+"""Apply TurboQuant KV-cache quantization to a fine-tuned Eliza-1/Gemma checkpoint.
 
 TurboQuant
     Zandieh, Daliri, Hadian, Mirrokni. *TurboQuant: Online Random

@@ -11,6 +11,7 @@ import {
 import type { LinearService } from "../services/linear";
 import type { ListCommentsParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const listCommentsAction: Action = {
@@ -54,10 +55,7 @@ export const listCommentsAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["list", "comments", "linear", "issue"],
-      regexAlternation: "list|comments|linear|issue",
-    }),
+    validateLinearActionIntent(runtime, message, state),
 
   async handler(
     runtime: IAgentRuntime,
@@ -85,7 +83,7 @@ export const listCommentsAction: Action = {
           const errorMessage = "Please provide an issueId to list comments for.";
           await callback?.({
             text: errorMessage,
-            source: message.content.source,
+            source: getMessageSource(message),
           });
           return { text: errorMessage, success: false };
         }
@@ -97,9 +95,9 @@ export const listCommentsAction: Action = {
       const comments = await linearService.listComments(issueId, limit, accountId);
       return formatCommentResult(issueId, comments, message, callback);
     } catch (error) {
-      logger.error("Failed to list comments:", error);
+      logger.error("Failed to list comments:", formatUnknownError(error));
       const errorMessage = `Failed to list comments: ${error instanceof Error ? error.message : "Unknown error"}`;
-      await callback?.({ text: errorMessage, source: message.content.source });
+      await callback?.({ text: errorMessage, source: getMessageSource(message) });
       return { text: errorMessage, success: false };
     }
   },
@@ -113,7 +111,7 @@ async function formatCommentResult(
 ): Promise<ActionResult> {
   if (comments.length === 0) {
     const text = `No comments on issue ${issueId}.`;
-    await callback?.({ text, source: message.content.source });
+    await callback?.({ text, source: getMessageSource(message) });
     return { text, success: true, data: { issueId, comments: [] } };
   }
 
@@ -128,7 +126,7 @@ async function formatCommentResult(
   );
 
   const text = `${comments.length} comment(s) on ${issueId}:\n${lines.join("\n")}`;
-  await callback?.({ text, source: message.content.source });
+  await callback?.({ text, source: getMessageSource(message) });
   return {
     text,
     success: true,

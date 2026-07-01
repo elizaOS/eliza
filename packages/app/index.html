@@ -84,7 +84,7 @@
           return suffix.charAt(0) === '?' ? `/${suffix}` : suffix || '/';
         }
         try {
-          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://eliza.app');
+          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://app.elizacloud.ai');
           if (
             isNativeCapacitorAgentHost() &&
             url.protocol === 'http:' &&
@@ -255,49 +255,129 @@
     //   3. system prefers-color-scheme
     (() => {
       try {
-        var mode = localStorage.getItem('eliza:ui-theme-mode');
+        let mode = localStorage.getItem('eliza:ui-theme-mode');
         if (!mode) {
-          var legacy = localStorage.getItem('eliza:ui-theme') || localStorage.getItem('elizaos:ui-theme');
+          const legacy =
+            localStorage.getItem('eliza:ui-theme') ||
+            localStorage.getItem('elizaos:ui-theme');
           mode = (legacy === 'light' || legacy === 'dark') ? legacy : 'system';
         }
-        var dark = mode === 'dark' || (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        var root = document.documentElement;
+        const dark =
+          mode === 'dark' ||
+          (mode !== 'light' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+        const root = document.documentElement;
         root.classList.toggle('dark', dark);
         root.style.colorScheme = dark ? 'dark' : 'light';
         root.setAttribute('data-theme', dark ? 'dark' : 'light');
-      } catch (e) {}
+      } catch {}
     })();
   </script>
   <style>
     /* FOUC guard — runs before external CSS so we use concrete values.
-       The fallback is the brand orange (#FF5800) the StartupShell loader uses
-       (packages/ui/src/components/shell/StartupShell.tsx): until base.css
-       defines --bg, the first paint is orange in every theme, so the page
-       never flashes black/white before the loader appears. Once --bg resolves
-       the body follows the theme, and #root paints its own --bg over this
-       anyway once the app mounts. */
+       The launch surface is the home background orange (#ef5a1f —
+       DEFAULT_BACKGROUND_COLOR, the color the home ShaderBackground and the
+       StartupShell loader paint). Keep it separate from --bg: --bg resolves to
+       the light/dark theme background and can flash white/black before the
+       loader appears. */
+    :root {
+      --launch-bg: #ef5a1f;
+    }
+
+    html,
+    body,
+    #root {
+      background-color: var(--launch-bg, #ef5a1f);
+    }
+
     html, body {
       margin: 0;
       padding: 0;
-      background-color: var(--bg, #FF5800);
       color: #ffffff;
       font-family: var(--font-sans, "Poppins", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Safe area insets for notched devices */
+    /* Safe area insets for notched devices. NB: no bottom inset — the
+       full-screen app background (ShaderBackground, fixed inset-0) must reach
+       the true screen bottom so the home-indicator zone shows the same field as
+       the rest of the screen (not the more-saturated body fallback color as a
+       bright band). Components that sit at the bottom (the chat composer) clear
+       the home indicator with their own env(safe-area-inset-bottom) padding. */
     body {
       padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
       padding-left: env(safe-area-inset-left);
       padding-right: env(safe-area-inset-right);
+    }
+
+    #root {
+      min-height: 100dvh;
+      background-color: var(--launch-bg, #ef5a1f);
+    }
+
+    .eliza-preboot-shell {
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: var(--launch-bg, #ef5a1f);
+      color: #ffffff;
+    }
+
+    .eliza-preboot-shell__dots {
+      display: inline-flex;
+      gap: 0.375rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .eliza-preboot-shell__dots span {
+      width: 0.375rem;
+      height: 0.375rem;
+      border-radius: 9999px;
+      background: currentColor;
+      opacity: 0.35;
+      animation: eliza-preboot-pulse 0.9s ease-in-out infinite alternate;
+    }
+
+    .eliza-preboot-shell__dots span:nth-child(2) {
+      animation-delay: 0.12s;
+    }
+
+    .eliza-preboot-shell__dots span:nth-child(3) {
+      animation-delay: 0.24s;
+    }
+
+    @keyframes eliza-preboot-pulse {
+      from {
+        opacity: 0.28;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0.8;
+        transform: translateY(-2px);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .eliza-preboot-shell__dots span {
+        animation: none;
+      }
     }
   </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="eliza-preboot-shell" role="status" aria-live="polite" aria-label="Loading Eliza">
+      <div class="eliza-preboot-shell__dots" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  </div>
   <!-- Node polyfills — inline sync script ensures they're available before any ESM module evaluates -->
   <script>
     if (typeof globalThis.process === "undefined") {

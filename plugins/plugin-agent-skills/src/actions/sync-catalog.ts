@@ -33,11 +33,7 @@ export const syncCatalogAction = {
 		"Sync the skill catalog from the registry to discover new skills.",
 	descriptionCompressed: "Sync skill catalog from registry.",
 	parameters: [],
-	validate: createAgentSkillsActionValidator({
-		keywords: ["sync", "refresh", "update", "catalog", "skill"],
-		regex:
-			/\b(?:sync|refresh|update)\b.*\b(?:catalog|skills?)\b|\b(?:catalog|skills?)\b.*\b(?:sync|refresh|update)\b/i,
-	}),
+	validate: createAgentSkillsActionValidator(),
 
 	handler: async (
 		runtime: IAgentRuntime,

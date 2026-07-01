@@ -30,9 +30,12 @@
  */
 
 import {
+  normalizeApiBase,
   pushApiBaseToRenderer,
+  resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeSignal,
 } from "../api-base";
+import { getStartupTraceConfig } from "../startup-trace";
 
 interface ApiBaseSnapshot {
   base: string | null;
@@ -43,6 +46,35 @@ let current: ApiBaseSnapshot = { base: null, token: "" };
 
 function safeJsonForHtml(value: unknown): string {
   return JSON.stringify(value).replace(/<\//g, "<\\/");
+}
+
+function resolveStartupTraceId(): string | null {
+  return getStartupTraceConfig().sessionId;
+}
+
+function resolveCurrentExternalApiBase(): string | null {
+  const runtime = resolveDesktopRuntimeMode(process.env);
+  if (runtime.mode === "external" && runtime.externalApi.base) {
+    return runtime.externalApi.base;
+  }
+  const currentBase = normalizeApiBase(current.base ?? undefined);
+  if (!currentBase) return null;
+  try {
+    const parsed = new URL(currentBase);
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      hostname !== "localhost" &&
+      hostname !== "127.0.0.1" &&
+      hostname !== "::1" &&
+      hostname !== "[::1]"
+    ) {
+      return parsed.origin;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 /**
@@ -78,23 +110,37 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
  * apiBase and every `/api/*` call returns SPA HTML.
  */
 export function injectIntoHtml(html: string): string {
-  if (!current.base) return html;
-  const baseLiteral = safeJsonForHtml(current.base);
-  const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
-  const tokenInject = tokenLiteral
-    ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
+  const startupTraceId = resolveStartupTraceId();
+  const startupTraceInject = startupTraceId
+    ? `window.__ELIZA_STARTUP_TRACE_ID__=${safeJsonForHtml(startupTraceId)};`
     : "";
-  const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
-  // Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
-  // before any renderer JS runs, so the renderer's cloud-only branding
-  // (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only
-  // injected when explicitly cloud, so the default desktop/web behavior is
-  // unchanged.
-  const runtimeModeSignal = resolveDesktopRuntimeModeSignal(process.env);
-  const runtimeModeInject = runtimeModeSignal
-    ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
-    : "";
-  const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${tokenInject}${bootConfigInject}</script>`;
+  if (!current.base && !startupTraceInject) return html;
+
+  let apiBaseInject = "";
+  if (current.base) {
+    const baseLiteral = safeJsonForHtml(current.base);
+    const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
+    const tokenInject = tokenLiteral
+      ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
+      : "";
+    const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+    // Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
+    // before any renderer JS runs, so the renderer's cloud-only branding
+    // (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only
+    // injected when explicitly cloud, so the default desktop/web behavior is
+    // unchanged.
+    const runtimeModeSignal = resolveDesktopRuntimeModeSignal(process.env);
+    const runtimeModeInject = runtimeModeSignal
+      ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
+      : "";
+    const externalApiBase = resolveCurrentExternalApiBase();
+    const externalApiBaseInject = externalApiBase
+      ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
+      : "";
+    apiBaseInject = `window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${externalApiBaseInject}${tokenInject}${bootConfigInject}`;
+  }
+
+  const script = `<script>${startupTraceInject}${apiBaseInject}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${script}</head>`);
   }
@@ -112,7 +158,12 @@ export function injectIntoHtml(html: string): string {
  */
 export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
   if (!current.base) return;
-  pushApiBaseToRenderer(win, current.base, current.token || undefined);
+  pushApiBaseToRenderer(
+    win,
+    current.base,
+    current.token || undefined,
+    resolveCurrentExternalApiBase(),
+  );
 }
 
 /**

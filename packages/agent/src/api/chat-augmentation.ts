@@ -15,11 +15,14 @@
 import crypto from "node:crypto";
 
 import type {
+  AccessContext,
   AgentRuntime,
   Content,
   createMessageMemory,
+  Memory,
   UUID,
 } from "@elizaos/core";
+import { buildAccessContext, parseJSONObjectFromText } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {
@@ -83,6 +86,13 @@ const MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 30_000;
 const MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 30_000;
 const CHAT_DOCUMENTS_RECOVERY_MODEL = "TEXT_LARGE";
 
+// Sentinel requester id for an unresolved/unauthenticated chat turn. It is the
+// nil UUID — guaranteed to be neither the agent nor any real owner — so the
+// scope-read filter resolves it to a least-privileged USER and strips every
+// non-global fragment rather than failing open.
+const UNRESOLVED_REQUESTER_ENTITY_ID =
+  "00000000-0000-0000-0000-000000000000" as UUID;
+
 export interface ChatDocumentAugmentationOptions {
   signal?: AbortSignal;
   lookupTimeoutMs?: number;
@@ -130,31 +140,6 @@ function resolveRecoveryTimeoutMs(explicit?: number): number {
     DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
     MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
   );
-}
-
-function parseJsonObjectFromModelText(
-  text: string,
-): Record<string, unknown> | null {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const parseCandidate = (
-    candidate: string,
-  ): Record<string, unknown> | null => {
-    try {
-      const parsed = JSON.parse(candidate);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
-    } catch {
-      return null;
-    }
-  };
-  const direct = parseCandidate(trimmed);
-  if (direct) return direct;
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  return parseCandidate(trimmed.slice(start, end + 1));
 }
 
 async function withOptionalTimeout<T>(
@@ -213,7 +198,72 @@ export async function maybeAugmentChatMessageWithDocuments(
   const documents = await getDocumentsService(runtime);
   if (!documents.service) return message;
 
+  // Skip the document search entirely when the agent has no searchable corpus.
+  // `searchDocuments` embeds the user query, then searches `document_fragments`;
+  // most cloud agents run with an empty corpus, so that embed round-trip costs
+  // ~1.5s/turn (the dominant chat-latency tax) for guaranteed-zero matches — and
+  // the LLM query-recovery fallback is already gated on having documents. A cheap
+  // fragment count avoids the wasted embed. On a count error we fall through to
+  // the normal path rather than skip augmentation.
+  try {
+    const fragmentCount = await documents.service.countMemories({
+      tableName: "document_fragments",
+    });
+    if (fragmentCount === 0) return message;
+  } catch {
+    // Count failed — do not skip; let the normal search path run.
+  }
+
   const agentId = runtime.agentId as UUID;
+
+  // Build the requester's AccessContext from the ORIGINAL message — who is
+  // asking and with what role (resolved against the message's world) — BEFORE
+  // the searchMessage below coerces an empty entityId to the agentId. The
+  // worldId is carried only to resolve that role; the scope-read filter gates
+  // on metadata.scope, NOT worldId, so cross-tenant isolation still comes from
+  // filterScope / Postgres RLS, not from this gate. We ALWAYS thread a context into
+  // searchDocuments so filterByAccessContext is the enforcement layer on this
+  // path, not a redundant second copy of the service's per-document gate: the
+  // service short-circuits its own gate to allow-all whenever the search runs
+  // as the agent (which the empty-entityId coercion below forces), and the
+  // scope-read filter is what keeps owner/agent/user-private fragments out of
+  // that allow-all result. A failure to resolve a world leaves role/worldId
+  // undefined, which the filter treats as least-privileged USER, not
+  // unrestricted.
+  let accessContext: AccessContext | undefined;
+  const trimmedEntityId =
+    typeof message.entityId === "string" ? message.entityId.trim() : "";
+  if (trimmedEntityId.length > 0 && trimmedEntityId !== agentId) {
+    // A real, non-agent requester: resolve their role within the message's
+    // world so the filter can let an OWNER through and hold a USER back.
+    const requesterEntityId = trimmedEntityId as UUID;
+    try {
+      accessContext = await buildAccessContext(runtime, message as Memory);
+    } catch (error) {
+      // Fail closed: when the requester can't be resolved we still pass a
+      // minimal context pinned to their entity so the read runs as the
+      // least-privileged USER rather than dropping the gate entirely.
+      runtime.logger.warn(
+        {
+          src: "api:chat-augmentation",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Access-context resolution failed; falling back to requester-only scope",
+      );
+      accessContext = { requesterEntityId };
+    }
+  } else if (trimmedEntityId.length === 0) {
+    // No requester at all (missing/blank entityId). The searchMessage below
+    // coerces this to a self-read, which disables the service's per-document
+    // gate (it allow-alls every agent self-read). Pin the context to the nil
+    // UUID — never the agent — so actorFromAccessContext resolves to USER and
+    // the scope-read filter still strips every non-global fragment. The gate
+    // fails CLOSED here instead of surfacing private fragments to an
+    // unauthenticated turn. A genuine agent self-read (entityId === agentId)
+    // is left with no context, preserving the prior unfiltered self-read.
+    accessContext = { requesterEntityId: UNRESOLVED_REQUESTER_ENTITY_ID };
+  }
+
   const roomId =
     typeof message.roomId === "string" && message.roomId.trim().length > 0
       ? (message.roomId as UUID)
@@ -255,6 +305,8 @@ export async function maybeAugmentChatMessageWithDocuments(
             },
           },
           { roomId: scopeRoomId },
+          undefined,
+          accessContext,
         )) ?? [],
     );
     return { matches: result.value, timedOut: result.timedOut };
@@ -351,7 +403,7 @@ export async function maybeAugmentChatMessageWithDocuments(
 
       const result = await Promise.race([modelPromise, timeoutPromise]);
       const raw = typeof result === "string" ? result : "";
-      const parsed = parseJsonObjectFromModelText(raw);
+      const parsed = parseJSONObjectFromText(raw);
       if (!parsed) {
         return [];
       }
@@ -365,10 +417,9 @@ export async function maybeAugmentChatMessageWithDocuments(
           rawQueries
             .filter((value): value is string => typeof value === "string")
             .map((value) => value.trim())
-            .filter((value) => value.length > 0)
-            .slice(0, CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT),
+            .filter((value) => value.length > 0),
         ),
-      ];
+      ].slice(0, CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT);
     } catch (error) {
       runtime.logger.warn(
         {
@@ -395,11 +446,28 @@ export async function maybeAugmentChatMessageWithDocuments(
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
       .slice(0, CHAT_DOCUMENTS_LIMIT);
 
-    if (relevantMatches.length === 0) {
+    // Only spend an LLM round-trip recovering search queries when the corpus
+    // actually returned candidates that merely fell below the relevance
+    // threshold — i.e. there ARE documents and a better query might surface
+    // them. When the initial search returns NOTHING at all (no documents
+    // indexed, or — on hosts forced onto zero/low-dim embeddings, e.g. cloud
+    // agents pinned to local gte-small — nothing ever clears retrieval), the
+    // recovery call is guaranteed to match nothing too: it just burns one full
+    // generate-text round-trip on every plain-chat turn. Skip it.
+    if (relevantMatches.length === 0 && initialMatches.matches.length > 0) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
-      for (const query of recoveredQueries) {
-        const recovered = await loadMatchesAcrossScopes(query);
-        if (recovered.timedOut) return message;
+      // Run the recovered-query searches concurrently. Each is an independent
+      // embedding round-trip (~1.5s); awaiting them one at a time was the bulk
+      // of the pre-reply latency (this augmentation runs before the reply is
+      // generated). Keep the original "first non-empty result wins" preference
+      // by scanning the resolved results in query order.
+      const recoveredResults = await Promise.all(
+        recoveredQueries.map((query) => loadMatchesAcrossScopes(query)),
+      );
+      if (recoveredResults.some((recovered) => recovered.timedOut)) {
+        return message;
+      }
+      for (const recovered of recoveredResults) {
         const recoveredMatches = selectRelevantMatches(recovered.matches)
           .sort(
             (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),

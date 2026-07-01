@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.block-websites.simple",
   title: "Block X and Instagram for two hours via website blocker",
   domain: "selfcontrol",

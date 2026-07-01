@@ -19,7 +19,7 @@ export const setupFieldLabelClassName = `text-xs font-semibold uppercase trackin
 export const setupTextSupportClassName =
   "rounded-sm bg-[var(--first-run-text-support-bg)] px-3 py-2 my-2";
 const setupInputSurfaceClassName = "bg-[var(--first-run-input-bg)]";
-export const setupInputClassName = `h-12 w-full rounded-sm px-4 text-left ${setupReadableTextPrimaryClassName} transition-[border-color,background-color] duration-200 placeholder:text-[var(--first-run-text-subtle)] focus-visible:border-[var(--first-run-field-focus-border)] focus-visible:ring-0 focus-visible:ring-offset-0 ${setupInputSurfaceClassName}`;
+export const setupInputClassName = `h-12 w-full rounded-sm px-4 text-left ${setupReadableTextPrimaryClassName} transition-[border-color,background-color] duration-200 placeholder:text-[var(--first-run-text-subtle)]    ${setupInputSurfaceClassName}`;
 
 export const setupEyebrowClass = `text-center text-xs font-semibold uppercase tracking-[0.3em] ${setupReadableTextMutedClassName}`;
 export const setupTitleClass = `text-center text-xl font-light leading-[1.4] ${setupReadableTextStrongClassName}`;
@@ -27,7 +27,7 @@ export const setupDescriptionClass = `mx-auto max-w-[36ch] text-center text-sm l
 export const setupHeaderBlockClass = "mb-5 max-md:mb-4";
 export const setupFooterClass =
   "mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-4";
-export const setupSecondaryActionClass = `inline-flex min-h-touch min-w-touch items-center justify-center gap-2 rounded-sm bg-transparent px-3 py-2 text-xs-tight uppercase tracking-[0.14em] transition-[color,background-color] duration-300 hover:bg-[var(--first-run-secondary-hover-bg)] hover:text-[var(--first-run-text-strong)] active:bg-[var(--first-run-secondary-pressed-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--first-run-secondary-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50 ${setupReadableTextMutedClassName}`;
+export const setupSecondaryActionClass = `inline-flex min-h-touch min-w-touch items-center justify-center gap-2 rounded-sm bg-transparent px-3 py-2 text-xs-tight uppercase tracking-[0.14em] transition-[color,background-color] duration-300 hover:bg-[var(--first-run-secondary-hover-bg)] hover:text-[var(--first-run-text-strong)] active:bg-[var(--first-run-secondary-pressed-bg)]      disabled:pointer-events-none disabled:opacity-50 ${setupReadableTextMutedClassName}`;
 export const setupPrimaryActionClass =
   "group relative inline-flex min-h-touch items-center justify-center gap-2 overflow-hidden rounded-sm bg-[var(--first-run-accent-bg)] px-8 py-3 text-xs-tight font-semibold uppercase tracking-[0.18em] text-[var(--first-run-accent-foreground)] transition-colors duration-300 hover:bg-[var(--first-run-accent-bg-hover)] disabled:cursor-not-allowed disabled:opacity-40";
 

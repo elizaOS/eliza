@@ -10,4 +10,10 @@ export {
 } from "./anchors/anchor-registry.ts";
 export type { DispatchResult } from "./dispatch-types.ts";
 export { schedulingPlugin } from "./plugin.ts";
+export { buildSchedulingRoutes } from "./routes/plugin-routes.ts";
+export {
+  makeScheduledTasksRouteHandler,
+  SCHEDULED_TASKS_ROUTE_PATHS,
+  type SchedulingRouteContext,
+} from "./routes/scheduled-tasks.ts";
 export * from "./scheduled-task/index.ts";

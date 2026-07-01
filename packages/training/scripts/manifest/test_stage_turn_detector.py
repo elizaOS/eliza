@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
+from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -81,13 +82,21 @@ def test_stage_turn_detector_livekit_en_for_small_tiers(
     assert {c["revision"] for c in _patch_copy} == {"v1.2.2-en"}
 
 
+def test_stage_turn_detector_revision_map_matches_active_tiers() -> None:
+    active = set(ELIZA_1_TIERS)
+    assert set(stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER) == active
+    assert stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER["2b"] == "v1.2.2-en"
+    for tier in active - {"2b"}:
+        assert stage.TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER[tier] == "v0.4.1-intl"
+
+
 def test_stage_turn_detector_livekit_intl_for_desktop_tiers(
     tmp_path: Path,
     _patch_copy: list[dict[str, Any]],
 ) -> None:
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
-    for tier in ("4b", "9b", "27b"):
+    for tier in ("4b", "9b", "27b", "27b-256k"):
         _patch_copy.clear()
         report = stage.stage_turn_detector(
             tier=tier,

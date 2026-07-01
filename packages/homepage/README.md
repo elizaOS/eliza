@@ -58,6 +58,18 @@ bun run --filter eliza-app build
 
 The build copies `index.html` to `404.html` for GitHub Pages deep-link fallback. Hosts that understand `_redirects` and `_headers` can use the files in `public/` for SPA fallback and long-cache asset headers.
 
+### Canonical domains
+
+The domain map lives in `@elizaos/shared/brand` as `EXTERNAL_URLS`:
+
+| Surface | Origin |
+|---|---|
+| Marketing homepage | `https://eliza.app` |
+| Hosted Eliza web app | `https://app.elizacloud.ai` |
+| Eliza Cloud console | `https://elizacloud.ai` |
+| elizaOS downloads | `https://os.elizacloud.ai` |
+| Docs | `https://docs.elizaos.ai` |
+
 ### Public `eliza.app` DNS
 
 The shared SMS gateway homepage depends on `eliza.app` resolving to the

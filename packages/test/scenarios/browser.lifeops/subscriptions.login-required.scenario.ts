@@ -6,6 +6,7 @@ import {
 import { expectScenarioBrowserTask } from "../_helpers/browser-task-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "subscriptions.login-required",
   title: "Subscription cancellation that needs login",
   domain: "browser.lifeops",

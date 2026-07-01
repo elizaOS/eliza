@@ -109,6 +109,12 @@ export function getDeviceProfile(
   return DEVICE_REGISTRY[deviceType];
 }
 
+export function isFacewearDeviceType(
+  value: string,
+): value is FacewearDeviceType {
+  return Object.hasOwn(DEVICE_REGISTRY, value);
+}
+
 export function getAllDeviceProfiles(): FacewearDeviceProfile[] {
   return Object.values(DEVICE_REGISTRY);
 }

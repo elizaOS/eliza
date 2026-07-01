@@ -1,5 +1,4 @@
 import { serializePtyError } from "./errors.ts";
-import { TerminalRemoteService } from "./pty-service.ts";
 import type {
   JsonValue,
   PtyCommandRunParams,
@@ -7,12 +6,13 @@ import type {
   PtyKillParams,
   PtyMethod,
   PtyOutputTailParams,
-  PtyResponsePayload,
   PtyResizeParams,
+  PtyResponsePayload,
   PtyWorkerOutboundMessage,
   PtyWorkerRequestMessage,
   PtyWriteParams,
 } from "./protocol.ts";
+import { TerminalRemoteService } from "./pty-service.ts";
 
 const service = new TerminalRemoteService({
   emit: (event) => {

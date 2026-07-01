@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-form",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Eliza plugin-form: conversational forms as guardrails for guided user journeys.",
   "main": "./dist/index.js",
@@ -54,13 +54,14 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "bun run build:js && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],

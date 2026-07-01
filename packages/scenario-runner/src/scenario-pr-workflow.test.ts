@@ -6,10 +6,6 @@ const workflowPath = resolve(
   import.meta.dirname,
   "../../../.github/workflows/scenario-pr.yml",
 );
-const cloudWorkflowPath = resolve(
-  import.meta.dirname,
-  "../../../.github/workflows/cloud-tests.yml",
-);
 const rootPackagePath = resolve(import.meta.dirname, "../../../package.json");
 const scenarioRunnerPackagePath = resolve(
   import.meta.dirname,
@@ -54,7 +50,6 @@ const appPackagedRegressionPath = resolve(
 const appCoreLiveScreenshotPaths = [
   "../../app-core/test/app/memory-relationships.real.e2e.test.ts",
   "../../app-core/test/app/qa-checklist.real.e2e.test.ts",
-  "../../app-core/test/app/first-run-companion.live.e2e.test.ts",
 ].map((relativePath) => resolve(import.meta.dirname, relativePath));
 const computerUseBrowserPath = resolve(
   import.meta.dirname,
@@ -128,9 +123,9 @@ const deterministicAgentSkillsActionsScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-agent-skills-actions.scenario.ts",
 );
-const deterministicMediaEmoteActionsScenarioPath = resolve(
+const deterministicMediaActionsScenarioPath = resolve(
   import.meta.dirname,
-  "../test/scenarios/deterministic-media-emote-actions.scenario.ts",
+  "../test/scenarios/deterministic-media-actions.scenario.ts",
 );
 const deterministicScenarioReadmePath = resolve(
   import.meta.dirname,
@@ -204,8 +199,8 @@ describe("scenario PR workflow contract", () => {
       deterministicAgentSkillsActionsScenarioPath,
       "utf8",
     );
-    const deterministicMediaEmoteActionsScenario = readFileSync(
-      deterministicMediaEmoteActionsScenarioPath,
+    const deterministicMediaActionsScenario = readFileSync(
+      deterministicMediaActionsScenarioPath,
       "utf8",
     );
     const deterministicScenarioReadme = readFileSync(
@@ -256,16 +251,40 @@ describe("scenario PR workflow contract", () => {
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );
     expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
-      "bun run test:deterministic:e2e",
+      "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e",
     );
+    // The corpus lane runs the big `packages/test/scenarios` corpus filtered to
+    // the `pr-deterministic` lane, keyless, under the same strict proxy.
+    expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
+      "SCENARIO_USE_LLM_PROXY=1",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
+      "--lane pr-deterministic",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
+      "src/cli.ts run ../test/scenarios",
+    );
+    expect(
+      scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
+    ).toContain("SCENARIO_USE_LLM_PROXY=1");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
+    ).toContain("SCENARIO_LLM_PROXY_STRICT=1");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
+    ).toContain("plugins/plugin-agent-orchestrator/test/scenarios");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
+    ).toContain("--lane pr-deterministic");
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "SCENARIO_USE_LLM_PROXY=1",
     );
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "SCENARIO_LLM_PROXY_STRICT=1",
     );
+    // The deterministic lane selects by lane tag, not a hand-maintained id list.
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-generated-app-routes,deterministic-todos-actions,deterministic-streaming-actions,deterministic-xr-view-actions,deterministic-mcp-actions-routes,deterministic-workflow-actions-routes,deterministic-github-actions-routes,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions,deterministic-gitpathology-actions",
+      "--lane pr-deterministic",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
@@ -284,9 +303,6 @@ describe("scenario PR workflow contract", () => {
     );
     expect(workflow).toContain(
       "bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts",
-    );
-    expect(workflow).toContain(
-      "bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts",
     );
     expect(workflow).toContain(
       "bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts",
@@ -510,13 +526,10 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicAgentSkillsActionsScenario).toContain(
       "SKILL_UNINSTALL",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain(
-      "Deterministic media generation and companion emote actions",
+    expect(deterministicMediaActionsScenario).toContain(
+      "Deterministic media generation actions",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain(
-      "GENERATE_MEDIA_AUDIO",
-    );
-    expect(deterministicMediaEmoteActionsScenario).toContain("PLAY_EMOTE");
+    expect(deterministicMediaActionsScenario).toContain("GENERATE_MEDIA_AUDIO");
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );
@@ -561,7 +574,7 @@ describe("scenario PR workflow contract", () => {
       "../../../plugins/plugin-app-control/src/index.ts",
     );
     expect(scenarioExecutor).toContain(
-      "actions: [mod.appAction, mod.homescreenAction, mod.viewsAction]",
+      "actions: [mod.appAction, mod.backgroundAction, mod.viewsAction]",
     );
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",
@@ -585,34 +598,22 @@ describe("scenario PR workflow contract", () => {
   });
 
   it("keeps cloud Playwright CI wired to real Playwright, including visual screenshot checks", () => {
-    const workflow = readFileSync(cloudWorkflowPath, "utf8");
+    // The cloud frontend was consolidated into packages/app (the apex cutover):
+    // the cloud Playwright + visual-screenshot e2e now runs against packages/app
+    // in the scenario PR workflow, and test:cloud:playwright points at packages/app.
+    const prWorkflow = readFileSync(workflowPath, "utf8");
     const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8")) as {
       scripts?: Record<string, string>;
     };
 
-    expect(workflow).toContain("pull_request:");
-    expect(workflow).toContain("Run Playwright tests");
-    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
-    expect(workflow).toContain("project: [chromium-desktop, chromium-mobile]");
-    expect(workflow).toContain('shard: ["1/2", "2/2"]');
-    const matrixProjectExpression = ["$", "{{ matrix.project }}"].join("");
-    const matrixShardExpression = ["$", "{{ matrix.shard }}"].join("");
-    expect(workflow).toContain(
-      "bun run --cwd packages/cloud-frontend test:e2e -- --project=" +
-        matrixProjectExpression +
-        " --shard=" +
-        matrixShardExpression,
-    );
-    expect(workflow).toContain("playwright-smoke:");
-    expect(workflow).toContain("Run Playwright route smoke");
-    expect(workflow).toContain(
-      'tests/e2e/cloud-routes.spec.ts --project=chromium-desktop -g "public route renders:"',
-    );
+    expect(prWorkflow).toContain("pull_request:");
+    expect(prWorkflow).toContain("playwright install --with-deps chromium");
+    expect(prWorkflow).toContain("bun run --cwd packages/app test:e2e");
     expect(rootPackage.scripts?.["test:cloud:playwright"]).toBe(
-      "bun run --cwd packages/cloud-frontend test:e2e",
+      "bun run --cwd packages/app test:e2e",
     );
     expect(rootPackage.scripts?.["test:cloud:playwright"]).not.toBe(
-      "bun run --cwd packages/cloud-frontend test",
+      "bun run --cwd packages/cloud-frontend test:e2e",
     );
   });
 
@@ -676,10 +677,10 @@ describe("scenario PR workflow contract", () => {
       "05-views-with-pill",
       "07-wallet-view-with-pill",
       "Open RPC settings",
-      "name: /Tokens/i",
+      "name: /^Tokens$/",
       "open wallet by typing",
-      "home-tile-settings",
-      "Pinned views",
+      "home-launcher-surface",
+      "launcher-tile-settings",
       "streamRequests",
       'toHaveValue("")',
       "show me my pinned views",

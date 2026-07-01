@@ -1,18 +1,22 @@
 /**
  * Static file serving for the built React dashboard (production mode).
  *
- * Extracted from server.ts — serves packages/app/dist/ with SPA fallback,
- * caching, and API-base injection for reverse-proxy deployments.
+ * Serves packages/app/dist/ with SPA fallback, caching, and API-base
+ * injection for reverse-proxy deployments.
  */
 
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, sendJsonError } from "@elizaos/core";
+import { isTruthyEnvValue, logger, sendJsonError } from "@elizaos/core";
 import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
+
+// One-time warning when an operator opts into embedding the API token in served
+// HTML outside a cloud-provisioned container (see ELIZA_FORCE_INJECT_TOKEN below).
+let warnedForceInjectToken = false;
 
 // ---------------------------------------------------------------------------
 // MIME types
@@ -164,6 +168,34 @@ export function injectApiBaseIntoHtml(
   ]);
 }
 
+/**
+ * Decide whether to embed the API token into the served dashboard HTML, and
+ * return the token to inject (or `null`).
+ *
+ * The token is the full-capability API token, and the dashboard HTML is served
+ * pre-auth, so embedding it is a capability grant. It is injected when:
+ * - the agent runs inside a cloud-provisioned container (already behind cloud
+ *   auth, with a controlled host/origin set), or
+ * - the operator explicitly opts in with `ELIZA_FORCE_INJECT_TOKEN` — for
+ *   self-hosters who front the dashboard with their own auth gate. This MUST NOT
+ *   be enabled on a directly exposed agent port; we warn once when it is set
+ *   outside a cloud container so the risk is observable.
+ */
+export function resolveInjectedDashboardToken(): string | null {
+  const cloudProvisioned = isCloudProvisionedContainer();
+  const forceInjectToken = isTruthyEnvValue(
+    process.env.ELIZA_FORCE_INJECT_TOKEN,
+  );
+  if (forceInjectToken && !cloudProvisioned && !warnedForceInjectToken) {
+    warnedForceInjectToken = true;
+    logger.warn(
+      "[static-file-server] ELIZA_FORCE_INJECT_TOKEN is set — embedding the API token in served dashboard HTML. Ensure the dashboard is fronted by your own auth gate; do not enable this on a directly exposed agent port.",
+    );
+  }
+  if (!cloudProvisioned && !forceInjectToken) return null;
+  return resolveApiToken(process.env);
+}
+
 // ---------------------------------------------------------------------------
 // SPA serving
 // ---------------------------------------------------------------------------
@@ -257,10 +289,11 @@ export function serveStaticUi(
   // When served behind a reverse proxy that rewrites the app under a path prefix,
   // inject the API base so the UI client sends requests to the correct path prefix.
   // For cloud-provisioned containers, also inject the API token so the browser
-  // client can authenticate without requiring a pairing flow.
-  const cloudToken = isCloudProvisionedContainer()
-    ? resolveApiToken(process.env)
-    : null;
+  // client can authenticate without requiring a pairing flow. Self-hosted
+  // operators who front the UI with their own auth gate (e.g. a reverse-proxy
+  // cookie wall) can opt into the same token injection with
+  // ELIZA_FORCE_INJECT_TOKEN (see resolveInjectedDashboardToken).
+  const cloudToken = resolveInjectedDashboardToken();
   const html = injectApiBaseIntoHtml(
     uiIndexHtml,
     process.env.ELIZA_EXTERNAL_BASE_URL,

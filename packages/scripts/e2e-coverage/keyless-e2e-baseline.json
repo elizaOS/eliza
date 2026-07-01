@@ -1,0 +1,22 @@
+{
+  "$comment": "Plugins that expose an action/connector surface but have NO keyless (pr-deterministic) e2e scenario yet. This baseline is a RATCHET: it may only shrink. Add keyless coverage for a plugin and remove it here; never add a new entry to silence the gate. Regenerate the candidate set with `bun packages/scripts/e2e-coverage/check-e2e-coverage.ts --list-uncovered`.",
+  "knownUncovered": [
+    "plugin-bluebubbles",
+    "plugin-calendar",
+    "plugin-calendly",
+    "plugin-feishu",
+    "plugin-google-chat",
+    "plugin-imessage",
+    "plugin-instagram",
+    "plugin-line",
+    "plugin-matrix",
+    "plugin-native-macosalarm",
+    "plugin-signal",
+    "plugin-slack",
+    "plugin-telegram",
+    "plugin-twitch",
+    "plugin-wechat",
+    "plugin-whatsapp",
+    "plugin-x"
+  ]
+}

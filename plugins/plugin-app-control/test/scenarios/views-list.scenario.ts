@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
 	id: "views-list",
 	title: "VIEWS action list mode reports available views by name",
 	domain: "app-control",

@@ -171,6 +171,7 @@ function makeDeps(
     setChatInput: vi.fn(),
     setChatSending: vi.fn(),
     setChatFirstTokenReceived: vi.fn(),
+    setServerTurnStatus: vi.fn(),
     setChatLastUsage: vi.fn(),
     setChatPendingImages: vi.fn(),
     setConversations: (value) => {
@@ -246,10 +247,18 @@ describe("useChatSend.handleChatStop", () => {
       await started.promise;
     });
 
-    // The stream emits one token; the assistant bubble grows to that text.
+    // The stream emits one token; useChatSend coalesces token->state into one
+    // rAF-batched commit (~30fps), so advance a frame to let the parked text
+    // flush, then assert the assistant bubble grew to that text.
     act(() => {
       emitToken?.("partial reply so far");
     });
+    await act(
+      async () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        }),
+    );
     const assistantBefore = conversationMessagesRef.current.find(
       (m) => m.role === "assistant",
     );

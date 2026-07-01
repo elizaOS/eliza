@@ -43,6 +43,8 @@ function res(): RouteResponse & {
 } {
   const response = {
     headers: {} as Record<string, string>,
+    statusCode: undefined as number | undefined,
+    body: undefined as unknown,
     status(code: number) {
       this.statusCode = code;
       return this;
@@ -54,7 +56,7 @@ function res(): RouteResponse & {
       this.headers[name] = value;
     },
   };
-  return response as RouteResponse & {
+  return response as unknown as RouteResponse & {
     statusCode?: number;
     body?: unknown;
     headers: Record<string, string>;
@@ -64,12 +66,20 @@ function res(): RouteResponse & {
 function route(name: string) {
   const found = evmSignRoutes.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`missing route ${name}`);
-  return found;
+  if (!found.handler) throw new Error(`route ${name} has no handler`);
+  return { ...found, handler: found.handler };
 }
 
 describe("EVM browser signing routes", () => {
   beforeEach(() => {
     walletBackendMocks.resolveWalletBackend.mockReset();
+  });
+
+  it("does not mark browser signing routes as public", () => {
+    expect(evmSignRoutes).toHaveLength(6);
+    expect(evmSignRoutes.every((candidate) => candidate.public !== true)).toBe(
+      true,
+    );
   });
 
   it("closes the surface when the signing token is missing or too short", async () => {
@@ -88,7 +98,7 @@ describe("EVM browser signing routes", () => {
     }
   });
 
-  it("rejects bad bearer/header tokens and sets CORS headers from origin", async () => {
+  it("rejects bad bearer/header tokens without leaking a credentialed CORS origin", async () => {
     const response = res();
     await route("wallet-evm-address").handler(
       req({
@@ -101,16 +111,47 @@ describe("EVM browser signing routes", () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.body).toEqual({ error: "invalid sign token" });
-    expect(response.headers["Access-Control-Allow-Origin"]).toBe(
-      "https://dapp.example",
-    );
     expect(response.headers.Vary).toBe("Origin");
+  });
+
+  it("never reflects an arbitrary cross-origin or sends credentialed CORS", async () => {
+    const response = res();
+    await route("wallet-evm-personal-sign").handler(
+      req({
+        method: "OPTIONS",
+        origin: "https://attacker.example",
+      }),
+      response,
+      runtime("1234567890abcdef"),
+    );
+
+    expect(response.statusCode).toBe(204);
+    // ACAO must NOT echo the attacker origin, and credentials must be absent.
+    expect(response.headers["Access-Control-Allow-Origin"]).toBeUndefined();
+    expect(response.headers["Access-Control-Allow-Credentials"]).not.toBe(
+      "true",
+    );
+  });
+
+  it("allows a loopback origin without credentialed CORS", async () => {
+    const response = res();
+    await route("wallet-evm-personal-sign").handler(
+      req({ method: "OPTIONS", origin: "http://localhost:31337" }),
+      response,
+      runtime("1234567890abcdef"),
+    );
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["Access-Control-Allow-Origin"]).toBe(
+      "http://localhost:31337",
+    );
+    expect(response.headers["Access-Control-Allow-Credentials"]).toBeUndefined();
   });
 
   it("handles OPTIONS without touching wallet backends", async () => {
     const response = res();
     await route("wallet-evm-personal-sign").handler(
-      req({ method: "OPTIONS", origin: "https://dapp.example" }),
+      req({ method: "OPTIONS", origin: "http://127.0.0.1:2138" }),
       response,
       runtime("1234567890abcdef"),
     );
@@ -120,6 +161,31 @@ describe("EVM browser signing routes", () => {
     expect(response.headers["Access-Control-Allow-Methods"]).toContain(
       "OPTIONS",
     );
+    expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
+  });
+
+  it("gates every EVM signing route behind the browser signing token", async () => {
+    // These routes are public: true so the cross-origin browser signing surface
+    // can reach them, so the central session gate does NOT protect them — their
+    // own WALLET_BROWSER_SIGN_TOKEN check must. Assert each one is closed (503)
+    // before any backend work when no signing token is configured.
+    const signingRouteNames = [
+      "wallet-evm-personal-sign",
+      "wallet-evm-sign-typed-data",
+      "wallet-evm-sign-transaction",
+      "wallet-evm-send-transaction",
+    ];
+
+    for (const routeName of signingRouteNames) {
+      const response = res();
+      await route(routeName).handler(
+        req({ authorization: "Bearer caller-token", body: {} }),
+        response,
+        runtime(null),
+      );
+      expect(response.statusCode).toBe(503);
+      expect(walletBackendMocks.resolveWalletBackend).not.toHaveBeenCalled();
+    }
   });
 
   it("rejects malformed chain ids before resolving the backend", async () => {

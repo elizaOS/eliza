@@ -21,13 +21,13 @@ export function WidgetSection({
       <span className="inline-flex shrink-0 items-center justify-center text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">
         {icon}
       </span>
-      <span className="truncate text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted">
+      <span className="truncate text-[11px] leading-none font-semibold text-muted">
         {title}
       </span>
     </>
   );
   return (
-    <section data-testid={testId} className="space-y-1">
+    <section data-testid={testId} className="space-y-0.5">
       <div className="flex items-center justify-between gap-2 pr-1">
         {onTitleClick ? (
           <button

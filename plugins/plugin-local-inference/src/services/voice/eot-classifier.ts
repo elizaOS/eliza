@@ -23,7 +23,7 @@
  *     fallback for a measured turn signal.
  *
  *   `Eliza1EotClassifier` — uses the already-loaded text model to compute
- *     P(`<|im_end|>` | partial transcript). Zero additional model weights.
+ *     P(`<end_of_turn>` | partial transcript). Zero additional model weights.
  *
  *   The GGUF-backed LiveKit detector lives in `eot-classifier-ggml.ts`.
  *
@@ -34,6 +34,7 @@
  * suppress (via `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
+import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import type {
 	Eliza1EotScoreResult,
 	Eliza1EotScorerOptions,
@@ -120,136 +121,24 @@ export function turnSignalFromProbability(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Rules-of-thumb EOT classifier. The rules fire in priority order; the first
- * match wins.
+ * Rules-of-thumb EOT classifier. Delegates to the single canonical heuristic in
+ * `@elizaos/shared/voice-eot` — the SAME scorer the UI shell capture path
+ * (`packages/ui/src/voice/end-of-turn.ts`) uses, so the two surfaces can never
+ * drift. The rules fire in priority order; the first match wins:
  *
  * Priority  Signal                                       P(done)
  * --------  -------------------------------------------  -------
- *   1       Sentence-final punctuation (. ! ?)            0.95
- *   2       Question-tag words ("right?", "yeah?", "ok?") 0.85
- *   3       Short utterance (< 3 words)                   0.70
+ *   1       Trailing ellipsis ("…" / "..")               0.20
+ *   2       Sentence-final punctuation (. ! ?)            0.95
+ *   3       Question-tag words ("right?", "yeah", …)      0.85
  *   4       Trailing conjunction (and/but/or/because/…)   0.15
  *   5       Last word is a preposition or article         0.20
- *   6       No signal                                     0.50
+ *   6       Short utterance (< 3 words, no trail-off)     0.70
+ *   7       No signal                                     0.50
  */
 export class HeuristicEotClassifier implements EotClassifier {
-	/** Conjunctions that strongly suggest the user is mid-clause. */
-	private static readonly TRAILING_CONJUNCTIONS = new Set([
-		"and",
-		"but",
-		"or",
-		"nor",
-		"yet",
-		"so",
-		"because",
-		"although",
-		"though",
-		"while",
-		"whereas",
-		"if",
-		"unless",
-		"until",
-		"since",
-		"when",
-		"where",
-		"which",
-		"that",
-		"who",
-		"whom",
-		"whose",
-	]);
-
-	/** Prepositions and articles that suggest an incomplete NP follows. */
-	private static readonly TRAILING_INCOMPLETE = new Set([
-		"a",
-		"an",
-		"the",
-		"to",
-		"of",
-		"in",
-		"on",
-		"at",
-		"by",
-		"for",
-		"with",
-		"from",
-		"into",
-		"about",
-		"through",
-		"between",
-		"against",
-		"during",
-		"before",
-		"after",
-		"without",
-		"under",
-		"over",
-		"above",
-		"below",
-		"around",
-		"beside",
-		"beyond",
-		"like",
-		"near",
-		"past",
-		"via",
-	]);
-
-	/** Question-tag suffixes that end an utterance (case-insensitive). */
-	private static readonly QUESTION_TAGS = [
-		"right?",
-		"yeah?",
-		"ok?",
-		"okay?",
-		"right",
-		"yeah",
-		"correct?",
-		"correct",
-		"hm?",
-		"huh?",
-		"eh?",
-	];
-
 	score(partialTranscript: string): Promise<number> {
-		const text = partialTranscript.trim();
-		if (text.length === 0) return Promise.resolve(0.5);
-
-		// Rule 1 — sentence-final punctuation.
-		if (/[.!?]$/.test(text)) {
-			return Promise.resolve(0.95);
-		}
-
-		// Rule 2 — question-tag words at the end.
-		const lower = text.toLowerCase();
-		for (const tag of HeuristicEotClassifier.QUESTION_TAGS) {
-			if (lower.endsWith(tag)) return Promise.resolve(0.85);
-		}
-
-		// Split into words for word-level checks.
-		const words = text
-			.toLowerCase()
-			.replace(/[^a-z0-9'\s-]/gi, "")
-			.split(/\s+/)
-			.filter(Boolean);
-		if (words.length === 0) return Promise.resolve(0.5);
-
-		const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
-
-		// Rule 3 — short utterance (< 3 words) → likely complete.
-		if (words.length < 3) return Promise.resolve(0.7);
-
-		// Rule 4 — trailing conjunction → mid-clause.
-		if (HeuristicEotClassifier.TRAILING_CONJUNCTIONS.has(lastWord)) {
-			return Promise.resolve(0.15);
-		}
-
-		// Rule 5 — trailing preposition or article → incomplete NP.
-		if (HeuristicEotClassifier.TRAILING_INCOMPLETE.has(lastWord)) {
-			return Promise.resolve(0.2);
-		}
-
-		// Rule 6 — no signal.
-		return Promise.resolve(0.5);
+		return Promise.resolve(scoreEndOfTurnHeuristic(partialTranscript));
 	}
 
 	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
@@ -268,7 +157,7 @@ export class HeuristicEotClassifier implements EotClassifier {
 
 /**
  * Resolve which upstream revision a given Eliza-1 tier should bundle.
- * Mobile/small tiers (`0_8b`, `2b`) get the English-only variant;
+ * Mobile/small tiers (`2b`, the entry tier) get the English-only variant;
  * desktop/server tiers (`4b`+) get the multilingual variant.
  *
  * Accepts both bare tier ids (`"4b"`) and prefixed catalog ids
@@ -285,7 +174,7 @@ export function turnDetectorRevisionForTier(
 	const bare = tierId.startsWith("eliza-1-")
 		? tierId.slice("eliza-1-".length)
 		: tierId;
-	if (bare === "0_8b" || bare === "2b") {
+	if (bare === "2b") {
 		return LIVEKIT_TURN_DETECTOR_EN_REVISION;
 	}
 	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
@@ -407,7 +296,7 @@ export type { Eliza1EotScoreResult, Eliza1EotScorerOptions };
 /**
  * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
  * the eliza-1 drafter — same model MTP keeps warm for speculative
- * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
+ * decoding) to compute P(`<end_of_turn>` | partial transcript). Optionally
  * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
  * `packages/training/scripts/turn_detector/` for the training recipe.
  *
@@ -458,7 +347,7 @@ export const COMPOSITE_HEURISTIC_CONFIDENCE_CUTOFF = 0.6;
 
 /**
  * End-of-turn classifier that blends the fused semantic scorer
- * (P(`<|im_end|>`) over the loaded text model) with the heuristic syntactic
+ * (P(`<end_of_turn>`) over the loaded text model) with the heuristic syntactic
  * rules. The heuristic is NOT a fallback — it is a tuned co-signal: when it is
  * confident (clear punctuation / mid-clause conjunction / dangling preposition)
  * its verdict wins outright and the model pass is skipped; in the ambiguous
@@ -496,7 +385,11 @@ export class CompositeEotClassifier implements EotClassifier {
 			await this.model.score(partialTranscript);
 		const blended =
 			modelP * (1 - heuristicConfidence) + heuristicP * heuristicConfidence;
-		return { probability: clampProbability(blended), latencyMs, usedModel: true };
+		return {
+			probability: clampProbability(blended),
+			latencyMs,
+			usedModel: true,
+		};
 	}
 
 	async score(partialTranscript: string): Promise<number> {

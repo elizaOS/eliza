@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "habits.week-spanning-behavior",
   title: "Weekly habit progress respects the user's week boundary",
   domain: "lifeops.habits",

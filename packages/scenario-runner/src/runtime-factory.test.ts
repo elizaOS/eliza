@@ -25,9 +25,7 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     "SCENARIO_LLM_PROXY_STRICT",
     "ELIZA_SCENARIO_LLM_PROXY_STRICT",
   ])("can enable strict fixture mode by %s", (name) => {
-    expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(
-      true,
-    );
+    expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(true);
   });
 
   it("resolves a no-key deterministic provider config in proxy mode", () => {

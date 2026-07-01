@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from .adapters import discover_adapters
+from .artifact_guard import build_artifact_guard_report
 from .calibration_report import build_calibration_report, print_calibration_report
 from .compare_vs_random import add_compare_vs_random_parser
 from .db import (
@@ -23,6 +24,11 @@ from .db import (
 from .latest_comparability import print_comparability_report, validate_latest_comparability
 from .latest_publishability import print_publishability_report, validate_latest_publishability
 from .latest_readiness import print_readiness_report, validate_latest_readiness
+from .inventory import (
+    build_inventory_report,
+    report_to_json as inventory_report_to_json,
+    report_to_markdown as inventory_report_to_markdown,
+)
 from .random_baseline_runner import CALIBRATION_HARNESSES, SYNTHETIC_HARNESSES
 from .runner import _rebuild_latest_result_snapshots, _repair_current_compatibility_statuses, run_benchmarks
 from .matrix_validation import build_cross_matrix_report, report_to_json, report_to_markdown
@@ -139,6 +145,16 @@ def _cmd_validate_matrix(args: argparse.Namespace) -> int:
     else:
         print(report_to_markdown(report))
     return 1 if report.error_count else 0
+
+
+def _cmd_inventory(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = build_inventory_report(workspace_root.parent)
+    if args.format == "json":
+        print(inventory_report_to_json(report))
+    else:
+        print(inventory_report_to_markdown(report))
+    return 2 if report.has_gaps else 0
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -424,6 +440,13 @@ def _cmd_validate_runtime_gates(args: argparse.Namespace) -> int:
         print(report.to_json())
     else:
         print_runtime_gate_report(report)
+    return 0 if report.ok else 1
+
+
+def _cmd_verify_artifacts(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    report = build_artifact_guard_report(workspace_root)
+    print(report.to_markdown())
     return 0 if report.ok else 1
 
 
@@ -789,6 +812,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_matrix.add_argument("--extra", default=None, help="JSON object merged into every dry-run request")
     p_matrix.add_argument("--format", choices=("markdown", "json"), default="markdown")
     p_matrix.set_defaults(func=_cmd_validate_matrix)
+
+    p_inventory = sub.add_parser(
+        "inventory",
+        help="Generate the static benchmark registry/adapter/operator checklist",
+    )
+    p_inventory.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    p_inventory.set_defaults(func=_cmd_inventory)
+
+    p_verify_artifacts = sub.add_parser(
+        "verify-artifacts",
+        help="Fail if generated benchmark output (results/DBs/trajectories) is committed",
+    )
+    p_verify_artifacts.set_defaults(func=_cmd_verify_artifacts)
 
     p_run = sub.add_parser("run", help="Run one or more benchmarks idempotently")
     p_run.add_argument("--all", action="store_true", help="Run all integrated benchmarks")

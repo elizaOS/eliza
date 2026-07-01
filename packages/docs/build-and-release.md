@@ -86,7 +86,14 @@ The official Electrobun docs expect the CLI to come from the project dependency 
 
 - `apps/app/electrobun/package.json` declares `electrobun` as a dependency.
 - `scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
-- `scripts/desktop-build.mjs package` drives `bun run build -- --env=...` inside `apps/app/electrobun`, and that script invokes `bunx electrobun build` against the package-local dependency.
+- `scripts/desktop-build.mjs package` resolves `electrobun` from
+  `apps/app/electrobun/node_modules/.bin` first, then falls back to a
+  PATH/global binary and only uses `bunx` as a last resort.
+
+Why: package-local resolution keeps desktop packaging reproducible and makes CI
+logs clearer. If `bunx` is the normal path, Bun/Electrobun can silently fetch
+or materialize CLI assets during the packaging step, which looks like a hung
+build when the network is slow.
 
 We still keep two Windows-specific guards around that documented flow:
 
@@ -134,6 +141,41 @@ The local Electrobun smoke test now verifies the backend, not just the window sh
 - On Windows, `apps/app/electrobun/scripts/smoke-test-windows.ps1` now prefers the packaged `*.tar.zst` bundle and launches its `launcher.exe` directly. It only falls back to the `Eliza-Setup*.exe` installer path when no direct packaged bundle artifact is available.
 
 Why: the previous smoke test could pass while the launcher stayed open but the embedded agent backend had already crashed.
+
+## On-device build inputs: the deterministic pipeline map (#9309)
+
+Every on-device artifact assembles the **latest** of every input at build time
+and **fails loudly** if any input is stale or missing — it never falls back to a
+cached artifact. The inputs and the gate that keeps each one fresh:
+
+| Input | Where it's built | Where it's staged | Freshness gate (fails/rebuilds on stale) |
+|---|---|---|---|
+| Renderer bundle | `packages/app/dist` (`vite build`) | iOS `ios/App/App/public`; Android `assets/public`; desktop Electrobun `eliza-dist` | `eliza-renderer-build.json` build stamp + `assertStagedRendererMatchesBuild` (iOS/Android overlay+assert; desktop `assertRendererRebuiltSince`) |
+| Agent bundle | `packages/agent/dist-mobile-ios` (`build:ios-bun`, force-clean rebuild) | iOS `public/agent` | freshness vs `agent/src` + staged-copy sha256 integrity in `stageIosAgentRuntime` |
+| iOS llama.cpp MTP slice | `~/.eliza/local-inference/bin/mtp/<target>` (`build-llama-cpp-mtp.mjs`) | `LlamaCpp.xcframework` | `mtpSliceReuse`: rebuild when the fork revision changed or any fork source is newer than `CAPABILITIES.json` |
+| iOS full-Bun engine | `ElizaBunEngine.xcframework` | CocoaPods | ABI version + required-symbol + no-JIT + platform-variant validation |
+| Desktop fused `libelizainference` | `stage-desktop-fused-lib.mjs` | `dist/local-inference/lib` | `staged-fused-lib.json` provenance sidecar (rebuild on variant/platform change) + DT_NEEDED symbol verify |
+| Desktop runtime packages | each `@elizaos/*` `dist` | Electrobun bundle | marker files + `src`-newer-than-`dist` mtime check |
+
+**Reuse overrides** (all default to the safe, fail-loud behavior):
+`ELIZA_MOBILE_SKIP_WEB_BUILD` (+ `_ALLOW_STALE`), `ELIZA_IOS_REBUILD_MTP`,
+`ELIZA_MOBILE_ALLOW_STALE_AGENT_BUNDLE`, `ELIZA_DESKTOP_REBUILD_FUSED_LIB` /
+`ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST`.
+
+**Verification.** `packages/app-core/scripts/verify-ondevice-artifact.mjs`
+(`--platform ios|android|desktop`) asserts a staged artifact carries the freshly
+built renderer + required companion files; it runs in the Mobile Build Smoke CI
+lane after the iOS build. The renderer build stamp is surfaced in-app on
+`window.__ELIZA_RENDERER_BUILD__` and the iOS simulator smoke
+(`mobile-local-chat-smoke.mjs`) asserts the **installed** app's stamp equals the
+freshly built one — proving the device runs the latest UI.
+
+**Brand separation.** The shared canonical Android tree
+(`app-core/platforms/android`) is used only for the elizaOS app
+(`androidUsesAppDirFor`); whitelabel builds (or `ELIZA_ANDROID_USE_APP_DIR=1`)
+build in their own `appDir/android`. iOS and desktop have no shared tree (each
+app owns `appDir/ios` and `appDir`), so separation holds for them by
+construction.
 
 ## See also
 

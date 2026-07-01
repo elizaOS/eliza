@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-mobile-agent-bridge",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Outbound tunnel from a phone-hosted Eliza agent so a remote Mac client can reach it. See docs/reverse-direction-tunneling.md.",
   "keywords": [
     "agent",
@@ -52,7 +52,7 @@
     "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@capacitor/core": "^8.3.1",
     "rollup": "^4.60.2",
     "typescript": "^6.0.3",

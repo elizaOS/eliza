@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
@@ -29,7 +31,7 @@ def _seed_assets(bundle: Path) -> None:
     --skip-assets path has a valid starting point (no HF network)."""
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"omnivoice-base")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"omnivoice-tok")
-    _write(bundle / "tts" / "kokoro" / "model_q4.onnx", b"kokoro-model")
+    _write(bundle / "tts" / "kokoro" / "kokoro-82m-v1_0-Q4_K_M.gguf", b"kokoro-model")
     _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"kokoro-tokenizer")
     _write(bundle / "tts" / "kokoro" / "voices" / "af_bella.bin", b"kokoro-voice")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
@@ -82,7 +84,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
             else None
         ),
     )
-    bundle = tmp_path / "eliza-1-0_8b.bundle"
+    bundle = tmp_path / "eliza-1-2b.bundle"
     bundle.mkdir(parents=True)
     _seed_assets(bundle)
     recipes = _seed_recipes(tmp_path / "recipes")
@@ -91,9 +93,9 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     vision_gguf = _write(tmp_path / "src" / "mmproj.gguf", b"vision-weights")
 
     args = argparse.Namespace(
-        tier="0_8b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
+        tier="2b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=vision_gguf,
-        text_lineage_repo="Qwen/Qwen3.5-0.8B", text_lineage_rev="deadbeef",
+        text_lineage_repo="google/gemma-4-E2B", text_lineage_rev="deadbeef",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
@@ -107,16 +109,16 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert report["manifestValidation"]["publishReadyOk"] is False
 
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["id"] == "eliza-1-0_8b"
+    assert manifest["id"] == "eliza-1-2b"
     assert manifest["defaultEligible"] is False
-    assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.8B@deadbeef"
-    # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
+    assert manifest["lineage"]["text"]["base"] == "google/gemma-4-E2B@deadbeef"
+    # 2b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
     assert "drafter" in manifest["lineage"]
     assert sorted(f["ctx"] for f in manifest["files"]["text"]) == [131072, 262144]
-    assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
-    assert manifest["files"]["mtp"][0]["path"] == "mtp/drafter-0_8b.gguf"
-    assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-0_8b.gguf"
+    assert manifest["files"]["text"][0]["path"] == "text/eliza-1-2b-128k.gguf"
+    assert manifest["files"]["mtp"][0]["path"] == "mtp/drafter-2b.gguf"
+    assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-2b.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.gguf"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
@@ -130,12 +132,12 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     target_meta = json.loads((bundle / "mtp" / "target-meta.json").read_text())
     assert target_meta["status"] == "weights-staged"
     assert target_meta["mtpEnabled"] is True
-    assert target_meta["targetText"]["path"] == "text/eliza-1-0_8b-256k.gguf"
+    assert target_meta["targetText"]["path"] == "text/eliza-1-2b-256k.gguf"
     assert target_meta["targetText"]["finalElizaWeights"] is True
-    assert target_meta["drafter"]["path"] == "mtp/drafter-0_8b.gguf"
+    assert target_meta["drafter"]["path"] == "mtp/drafter-2b.gguf"
     assert target_meta["kernelCaps"]["required"]
-    assert not (bundle / "mtp" / "mtp-disabled-0_8b.release-policy.json").exists()
-    assert (bundle / "mtp" / "drafter-0_8b.gguf").is_file()
+    assert not (bundle / "mtp" / "mtp-disabled-2b.release-policy.json").exists()
+    assert (bundle / "mtp" / "drafter-2b.gguf").is_file()
 
     # wakeword lineage entry must have been dropped (no wakeword files staged).
     lineage = json.loads((bundle / "lineage.json").read_text())
@@ -149,9 +151,11 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
         }
 
 
-def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path, monkeypatch) -> None:
-    """4b ships a separate embedding artifact; if present, its lineage entry
-    must survive (the bundle stager places it before lineage)."""
+def test_stage_real_bundle_rejects_retired_qwen_embedding_artifact(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Active Gemma bundles must not carry the retired Qwen embedding artifact."""
     monkeypatch.setattr(stage, "_repo_root", lambda: tmp_path)
     bundle = tmp_path / "eliza-1-4b.bundle"
     bundle.mkdir(parents=True)
@@ -164,19 +168,13 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     args = argparse.Namespace(
         tier="4b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=vision_gguf,
-        text_lineage_repo="Qwen/Qwen3.5-4B", text_lineage_rev="cafebabe",
+        text_lineage_repo="google/gemma-4-E4B", text_lineage_rev="cafebabe",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
     )
-    report = stage.stage_real_bundle(args)
-    assert report["checksumValidation"]["ok"] is True
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B-GGUF"
-    assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
-    # 4b ships both half-context and native-context variants.
-    ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])
-    assert ctxs == [131072, 262144]
+    with pytest.raises(SystemExit, match="retired Qwen embedding artifacts"):
+        stage.stage_real_bundle(args)
 
 
 def test_remove_stale_text_variants_handles_27b_256k_bundle_names(tmp_path: Path) -> None:

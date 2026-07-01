@@ -45,6 +45,7 @@ import {
   useState,
 } from "react";
 import { client, type RegistryAppInfo } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import type { AccountsListResponse } from "../../../api/client-agent";
 import type {
   AppRunSummary,
@@ -52,7 +53,8 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
-import { useApp } from "../../../state";
+import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
+import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
 import { loadMergedCatalogApps } from "../../apps/catalog-loader";
@@ -62,6 +64,8 @@ import {
   fallbackTranslate,
   OrchestratorAccountsView,
 } from "./agent-orchestrator-accounts-view";
+import { OrchestratorRoomView } from "./agent-orchestrator-room-view";
+import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,
@@ -248,7 +252,7 @@ function ActivityItemsContent({
             type="button"
             onClick={() => onSelectEvent(event)}
             aria-label={`${openLabel}: ${event.summary}`}
-            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40   "
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
@@ -357,11 +361,21 @@ function AppRunCard({
 }
 
 function AppRunsWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const appRuns = app?.appRuns;
-  const setTab = app?.setTab ?? (() => undefined);
-  const setState = app?.setState ?? (() => undefined);
-  const t = app?.t ?? fallbackTranslate;
+  const {
+    appRuns,
+    setTab: appSetTab,
+    setState: appSetState,
+    t: appT,
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    setTab: s.setTab,
+    setState: s.setState,
+    t: s.t,
+  }));
+  const setTab = appSetTab ?? (() => undefined);
+  const setState = appSetState ?? (() => undefined);
+  const t = appT ?? fallbackTranslate;
+  const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
     Array.isArray(appRuns) ? appRuns : [],
@@ -417,7 +431,21 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   }, []);
 
   useEffect(() => {
+    if (!supportsFullAppShellRoutes(currentBaseUrl)) {
+      startTransition(() => {
+        setRuns([]);
+        setState("appRuns", []);
+      });
+      setError(null);
+      setLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
+    // The 5s poll pushes appRuns into the global AppContext, which re-renders
+    // every useApp() consumer. Only push when the run set actually changed so a
+    // steady poll doesn't bust the whole app every 5 seconds.
+    let lastAppRunsKey = "";
 
     const refreshRuns = async () => {
       try {
@@ -425,9 +453,12 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
         const nextRunsSafe = Array.isArray(nextRuns) ? nextRuns : [];
         if (cancelled) return;
         setError(null);
+        const nextKey = JSON.stringify(nextRunsSafe);
+        const changed = nextKey !== lastAppRunsKey;
+        lastAppRunsKey = nextKey;
         startTransition(() => {
           setRuns(nextRunsSafe);
-          setState("appRuns", nextRunsSafe);
+          if (changed) setState("appRuns", nextRunsSafe);
         });
       } catch (refreshError) {
         if (cancelled) return;
@@ -455,7 +486,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [setState, t]);
+  }, [currentBaseUrl, setState, t]);
 
   if (shouldHideWidget) {
     return null;
@@ -601,11 +632,19 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
 function OrchestratorActivityWidget({
   events,
   clearEvents,
+  slot,
 }: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const setState = app?.setState;
-  const setTab = app?.setTab;
+  const {
+    t: appT,
+    setState,
+    setTab,
+  } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setState: s.setState,
+    setTab: s.setTab,
+  }));
+  const t = appT ?? fallbackTranslate;
+  const nav = useWidgetNavigation();
 
   // A click navigates to the activity's origin: a sessionId routes into the
   // terminal channel (mirrors ChatView.focusTerminalSession — clear the inbox
@@ -625,6 +664,25 @@ function OrchestratorActivityWidget({
 
   if (events.length === 0) {
     return null;
+  }
+
+  // Home slot: a single compact, icon-first, whole-card-clickable tile — the
+  // latest activity event's summary as the one datum, event count as the badge.
+  // Tapping opens the Tasks tab. The sidebar keeps the full activity list.
+  if (slot === "home") {
+    const latest = events[0];
+    return (
+      <HomeWidgetCard
+        icon={<Activity />}
+        label={t("taskseventspanel.Activity", { defaultValue: "Activity" })}
+        value={latest.summary}
+        meta={relativeDuration(latest.timestamp)}
+        badge={events.length > 1 ? events.length : undefined}
+        testId="chat-widget-events"
+        ariaLabel={`Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`}
+        onActivate={() => nav.openTab("tasks")}
+      />
+    );
   }
 
   return (
@@ -662,9 +720,11 @@ function OrchestratorActivityWidget({
  * to connect more.
  */
 function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
-  const setTab = app?.setTab;
+  const { t: appT, setTab } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setTab: s.setTab,
+  }));
+  const t = appT ?? fallbackTranslate;
   const [accounts, setAccounts] = useState<AccountsListResponse | null>(null);
   const [overview, setOverview] = useState<OrchestratorAccountOverview | null>(
     null,
@@ -674,27 +734,25 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
   );
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = async () => {
-      const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
-        client.listAccounts(),
-        client.getOrchestratorAccounts(),
-        client.getOrchestratorRooms(),
-      ]);
-      if (cancelled) return;
-      if (acctRes.status === "fulfilled") setAccounts(acctRes.value);
-      if (ovRes.status === "fulfilled") setOverview(ovRes.value);
-      if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
-      setLoading(false);
-    };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+  const refresh = useCallback(async () => {
+    const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
+      client.listAccounts(),
+      client.getOrchestratorAccounts(),
+      client.getOrchestratorRooms(),
+    ]);
+    if (acctRes.status === "fulfilled") setAccounts(acctRes.value);
+    if (ovRes.status === "fulfilled") setOverview(ovRes.value);
+    if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // The widget fires three parallel calls per tick — gate the recurring poll on
+  // document visibility so a backgrounded window stops hitting the API.
+  useIntervalWhenDocumentVisible(() => void refresh(), 15_000);
 
   if (loading) return null;
 
@@ -707,6 +765,45 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
       onConnect={() => setTab?.("settings")}
     />
   );
+}
+
+/**
+ * The live room swarm: every active coding-task room and the orchestrator +
+ * sub-agents working inside it. A room-scoped sibling to the accounts widget:
+ * accounts answers "who's connected and how much have they spent", rooms answers
+ * "which agents are live in which task right now and what is each doing".
+ */
+function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
+  const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
+  const t = appT ?? fallbackTranslate;
+  const [rooms, setRooms] = useState<OrchestratorRoomRosterOverview | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await client.getOrchestratorRooms();
+      setRooms(next);
+    } catch {
+      // Leave the last good roster in place on a transient poll failure.
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // Same visibility-gated cadence as the accounts widget so a backgrounded
+  // window stops polling the orchestrator API.
+  useIntervalWhenDocumentVisible(() => void refresh(), 15_000);
+
+  if (loading) return null;
+  if ((rooms?.rooms?.length ?? 0) === 0) return null;
+
+  return <OrchestratorRoomView rooms={rooms} t={t} />;
 }
 
 export const AGENT_ORCHESTRATOR_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] =
@@ -724,6 +821,13 @@ export const AGENT_ORCHESTRATOR_PLUGIN_WIDGETS: ChatSidebarWidgetDefinition[] =
       order: 250,
       defaultEnabled: true,
       Component: OrchestratorAccountsWidget,
+    },
+    {
+      id: "agent-orchestrator.rooms",
+      pluginId: "agent-orchestrator",
+      order: 275,
+      defaultEnabled: true,
+      Component: OrchestratorRoomWidget,
     },
     {
       id: "agent-orchestrator.activity",

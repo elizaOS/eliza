@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { collectWorkspaceMaps } from "./lib/workspace-discovery.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const recursiveCleanupScript = path.join(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 const rootPkg = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
@@ -25,23 +30,24 @@ const localPackages = [
   // any per-package side effects (e.g. the app-core argon2/jose linking).
   "eliza/packages/core",
   "eliza/packages/contracts",
-  "eliza/packages/cloud-routing",
-  // @elizaos/agent's remote-plugin-bridge imports the `./error` subpath of
-  // plugin-worker-runtime eagerly at boot. Without linking it here its
-  // node_modules entry is never established, so boot crashes with
-  // "Cannot find module .../@elizaos/plugin-worker-runtime/dist/error.js".
+  "eliza/packages/cloud/routing",
+  // @elizaos/app-core's registry/index.ts eagerly re-exports
+  // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector
+  // registry out of app-core into this package). It must be linked or the agent
+  // boot crashes with "Cannot find package '@elizaos/registry' imported from
+  // .../app-core/dist/registry/index.js". Foundational, so listed up here.
+  "eliza/packages/registry",
+  // Compatibility package for remote workers that still import
+  // @elizaos/plugin-worker-runtime. Keep it linked so those historical imports
+  // resolve inside local Docker app packages.
   "eliza/packages/plugin-worker-runtime",
-  "eliza/plugins/plugin-companion",
-  "eliza/plugins/plugin-elizamaker",
   "eliza/plugins/plugin-documents",
   "eliza/plugins/plugin-personal-assistant",
-  "eliza/plugins/plugin-steward-app",
   "eliza/plugins/plugin-task-coordinator",
   "eliza/plugins/plugin-training",
-  "eliza/plugins/plugin-shopify-ui",
-  "eliza/plugins/plugin-vincent",
+  "eliza/plugins/plugin-shopify",
   "eliza/packages/app-core",
-  "eliza/packages/cloud-sdk",
+  "eliza/packages/cloud/sdk",
   "eliza/packages/shared",
   "eliza/packages/skills",
   "eliza/packages/ui",
@@ -165,6 +171,20 @@ function linkPackageTarget({ packageDir, pkg, rewroteExports, target }) {
     return;
   }
 
+  // rewroteExports === true means this package had no built dist, so its
+  // exports were rewritten from ./dist/*.js to ./src/*.ts (rewriteDistExportsToSource).
+  // The production image now starts the agent under plain `node` (no tsx loader,
+  // #8837), so importing a .ts entry at runtime throws ERR_UNKNOWN_FILE_EXTENSION
+  // on the core boot path or silently fails an app-route plugin (post-ready,
+  // swallowed → that plugin registers zero routes). Surface it loudly so a
+  // missing-dist build is visible instead of shipping a half-broken image.
+  console.warn(
+    `[link-docker] WARNING: ${pkg.name ?? "(unknown package)"} has no built dist; ` +
+      "its exports were rewritten to .ts source. The production agent starts under " +
+      "plain node (tsx removed in #8837), so this package will fail to import at " +
+      "runtime — build its dist before imaging.",
+  );
+
   fs.mkdirSync(target, { recursive: true });
   fs.writeFileSync(
     path.join(target, "package.json"),
@@ -182,6 +202,22 @@ function pathExists(filePath) {
   }
 }
 
+function removeDirectoryRecursive(filePath) {
+  try {
+    execFileSync("node", [recursiveCleanupScript, filePath], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(
+      `Failed to remove directory ${filePath}${detail ? `: ${detail}` : ""}`,
+      { cause: error },
+    );
+  }
+}
+
 function removePath(filePath) {
   try {
     const stat = fs.lstatSync(filePath);
@@ -189,7 +225,11 @@ function removePath(filePath) {
       fs.unlinkSync(filePath);
       return;
     }
-    fs.rmSync(filePath, { force: true, recursive: stat.isDirectory() });
+    if (stat.isDirectory()) {
+      removeDirectoryRecursive(filePath);
+      return;
+    }
+    fs.rmSync(filePath, { force: true });
   } catch (error) {
     if (error?.code === "ENOENT") {
       return;

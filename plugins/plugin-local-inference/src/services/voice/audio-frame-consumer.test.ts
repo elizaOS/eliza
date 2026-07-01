@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { HandleLiveVoiceAttributionOptions } from "../../runtime/voice-entity-binding";
 import {
 	type AttributionPipelineLike,
 	AudioFrameConsumer,
@@ -23,8 +24,12 @@ import {
 	type AudioFrameEvent,
 	decodeAudioFramePcm,
 	type RuntimeEventSink,
+	type SelfVoiceSimilarityResolver,
+	type TurnTranscriber,
+	type VadSegmenter,
 } from "./audio-frame-consumer";
 import type { VoiceAttributionOutput } from "./speaker/attribution-pipeline";
+import type { PcmFrame, VadEvent } from "./types";
 import { VadDetector } from "./vad";
 
 const SR = 16_000;
@@ -119,6 +124,9 @@ function makeFrame(opts: {
 function buildHarness(
 	probs: readonly number[],
 	entityId: string | null = "entity-x",
+	transcribe?: TurnTranscriber,
+	attributionOptions?: Partial<HandleLiveVoiceAttributionOptions>,
+	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver,
 ) {
 	const silero = new ScriptedSilero(probs);
 	const vad = new VadDetector(silero, {
@@ -131,19 +139,46 @@ function buildHarness(
 	const pipeline = new FakePipeline(entityId);
 	const runtime = new FakeRuntime();
 	const consumer = new AudioFrameConsumer(
-		{ vad, pipeline, runtime },
+		{
+			vad,
+			pipeline,
+			runtime,
+			...(transcribe ? { transcribe } : {}),
+			...(resolveSelfVoiceSimilarity ? { resolveSelfVoiceSimilarity } : {}),
+		},
 		{
 			source: { kind: "device", deviceId: "pixel" },
 			attributionOptions: {
 				ownerEntityId: "entity-x",
 				knownSpeakerEntityIds: ["entity-x"],
 				endOfTurnProbability: 0.95,
+				...attributionOptions,
 			},
 			preRollSeconds: 0, // deterministic buffering for assertions
 			maxTurnSeconds: 30,
 		},
 	);
 	return { consumer, pipeline, runtime, vad };
+}
+
+/** Feed one loud turn (speech then silence) and flush, so exactly one turn
+ *  finalizes. Shared by the transcript-join tests. */
+async function driveOneTurn(consumer: AudioFrameConsumer): Promise<void> {
+	let ts = 1000;
+	let idx = 0;
+	for (let i = 0; i < 40; i++) {
+		await consumer.onAudioFrame(
+			makeFrame({ amplitude: 0.6, timestamp: ts, frameIndex: idx++ }),
+		);
+		ts += 20;
+	}
+	for (let i = 0; i < 24; i++) {
+		await consumer.onAudioFrame(
+			makeFrame({ amplitude: 0.0, timestamp: ts, frameIndex: idx++ }),
+		);
+		ts += 20;
+	}
+	await consumer.flush();
 }
 
 describe("decodeAudioFramePcm", () => {
@@ -254,8 +289,8 @@ describe("AudioFrameConsumer", () => {
 		}
 		await consumer.flush();
 		expect(signal).not.toBeNull();
-		expect(signal!.agentShouldSpeak).toBe(true);
-		expect(signal!.nextSpeaker).toBe("agent");
+		expect(signal?.agentShouldSpeak).toBe(true);
+		expect(signal?.nextSpeaker).toBe("agent");
 	});
 
 	it("stamps the signal onto the attribution output turn metadata", async () => {
@@ -282,6 +317,41 @@ describe("AudioFrameConsumer", () => {
 		}
 		await consumer.flush();
 		expect(metaSignal).toBeTruthy();
+	});
+
+	it("passes live selfVoiceSimilarity into the gate and suppresses agent echo", async () => {
+		const probs = [...Array(24).fill(0.9), ...Array(12).fill(0.0)];
+		const resolveSelfVoiceSimilarity: SelfVoiceSimilarityResolver = (
+			embedding,
+			output,
+		) => {
+			expect(embedding).toBe(output.observation?.embedding);
+			expect(embedding.length).toBe(256);
+			return 0.91;
+		};
+		const { consumer } = buildHarness(
+			probs,
+			"entity-x",
+			undefined,
+			{ agentSpeaking: true },
+			resolveSelfVoiceSimilarity,
+		);
+		let signal: {
+			agentShouldSpeak: boolean | null;
+			nextSpeaker: string;
+			metadata?: { provenance?: string; selfVoiceSimilarity?: number };
+		} | null = null;
+		consumer.onTurn((t) => {
+			signal = t.signal as typeof signal;
+		});
+
+		await driveOneTurn(consumer);
+
+		expect(signal).not.toBeNull();
+		expect(signal?.agentShouldSpeak).toBe(false);
+		expect(signal?.nextSpeaker).toBe("user");
+		expect(signal?.metadata?.provenance).toBe("voice-bridge+self-voice");
+		expect(signal?.metadata?.selfVoiceSimilarity).toBeCloseTo(0.91);
 	});
 
 	it("does not segment a turn from pure silence", async () => {
@@ -339,5 +409,261 @@ describe("AudioFrameConsumer", () => {
 		for (const call of pl.calls) {
 			expect(call.pcm.length).toBeLessThanOrEqual(SR * 1 + 512);
 		}
+	});
+});
+
+describe("AudioFrameConsumer — ASR transcript join (#8786)", () => {
+	const TURN_PROBS = [...Array(24).fill(0.9), ...Array(12).fill(0.0)];
+
+	it("joins the per-turn ASR transcript onto VOICE_TURN_OBSERVED", async () => {
+		const seen: Array<{ length: number; sampleRate: number }> = [];
+		const transcribe: TurnTranscriber = (pcm, sampleRate) => {
+			seen.push({ length: pcm.length, sampleRate });
+			return "  I'm Jill  ";
+		};
+		const { consumer, runtime } = buildHarness(
+			TURN_PROBS,
+			"entity-x",
+			transcribe,
+		);
+		await driveOneTurn(consumer);
+
+		// The transcriber saw the real buffered turn PCM at 16 kHz.
+		expect(seen.length).toBe(1);
+		expect(seen[0].sampleRate).toBe(16_000);
+		expect(seen[0].length).toBeGreaterThan(SR * 0.4);
+		// VOICE_TURN_OBSERVED now carries the trimmed transcript (was "" before).
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("I'm Jill");
+	});
+
+	it("stays diarization-only (empty text) when no transcriber is wired", async () => {
+		const { consumer, runtime } = buildHarness(TURN_PROBS, "entity-x");
+		await driveOneTurn(consumer);
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("");
+	});
+
+	it("degrades to a transcript-less turn when ASR throws (turn kept)", async () => {
+		const transcribe: TurnTranscriber = () => {
+			throw new Error("asr decode failed");
+		};
+		const { consumer, runtime } = buildHarness(
+			TURN_PROBS,
+			"entity-x",
+			transcribe,
+		);
+		await driveOneTurn(consumer);
+		// The diarized turn still emits; only the transcript is dropped, counted.
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("");
+		expect(consumer.transcriptionErrors).toBe(1);
+	});
+
+	it("ignores an empty/whitespace transcript (no text stamped)", async () => {
+		const transcribe: TurnTranscriber = () => "   ";
+		const { consumer, runtime } = buildHarness(
+			TURN_PROBS,
+			"entity-x",
+			transcribe,
+		);
+		await driveOneTurn(consumer);
+		expect(runtime.emitted.length).toBe(1);
+		expect(runtime.emitted[0].payload.text).toBe("");
+	});
+});
+
+// --- echo cancellation wiring (#9455) ----------------------------------------
+
+/** VadSegmenter that just records every frame the consumer pushes downstream. */
+class RecordingVad implements VadSegmenter {
+	readonly frames: Float32Array[] = [];
+	get inSpeech(): boolean {
+		return false;
+	}
+	onVadEvent(_listener: (event: VadEvent) => void): () => void {
+		return () => {};
+	}
+	async pushFrame(frame: PcmFrame): Promise<void> {
+		this.frames.push(frame.pcm);
+	}
+	async flush(): Promise<void> {}
+	reset(): void {}
+}
+
+describe("AudioFrameConsumer — echo cancellation (#9455)", () => {
+	const SR = 16000;
+	const BLOCK = 320;
+	function farSignal(n: number, seed = 1): Float32Array {
+		const x = new Float32Array(n);
+		let s = seed >>> 0;
+		let p1 = 0;
+		let p2 = 0;
+		for (let i = 0; i < n; i++) {
+			s = (s * 1103515245 + 12345) & 0x7fffffff;
+			const w = s / 0x3fffffff - 1;
+			p1 = 0.92 * p1 + 0.08 * w;
+			p2 = 0.85 * p2 + 0.15 * p1;
+			x[i] = p2 * 3;
+		}
+		return x;
+	}
+	function echoOf(x: Float32Array): Float32Array {
+		const delay = 35;
+		const tail = 90;
+		const h = new Float32Array(delay + tail);
+		for (let k = 0; k < tail; k++)
+			h[delay + k] = Math.exp(-k / 25) * (k % 2 ? -0.6 : 0.8) * 0.22;
+		const y = new Float32Array(x.length);
+		for (let n = 0; n < x.length; n++) {
+			let acc = 0;
+			for (let k = 0; k < h.length; k++) if (n - k >= 0) acc += h[k] * x[n - k];
+			y[n] = acc;
+		}
+		return y;
+	}
+	const power = (a: Float32Array) =>
+		a.reduce((p, v) => p + v * v, 0) / Math.max(1, a.length);
+
+	function makeConsumer(vad: RecordingVad, far: Float32Array | null) {
+		return new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("e"),
+				runtime: new FakeRuntime(),
+				...(far
+					? {
+							echoReference: (ts: number, samples: number) => {
+								const off = Math.round((ts - 1000) / 20) * BLOCK;
+								return far.subarray(off, off + samples);
+							},
+						}
+					: {}),
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+	}
+
+	it("cancels the agent's echo on the mic before VAD when echoReference is wired", async () => {
+		const N = SR * 3;
+		const far = farSignal(N);
+		const echo = echoOf(far); // the agent's TTS leaking into the mic
+		const vad = new RecordingVad();
+		const consumer = makeConsumer(vad, far);
+		let ts = 1000;
+		for (let off = 0; off + BLOCK <= N; off += BLOCK) {
+			await consumer.pushDecodedFrame(echo.subarray(off, off + BLOCK), ts);
+			ts += 20;
+		}
+		// after convergence, the recorded (post-AEC) frames carry far less echo
+		// energy than the raw mic frames did.
+		const lateOut = vad.frames[vad.frames.length - 1];
+		const lateRawOff = (vad.frames.length - 1) * BLOCK;
+		const lateRaw = echo.subarray(lateRawOff, lateRawOff + BLOCK);
+		expect(power(lateOut)).toBeLessThan(power(lateRaw) * 0.1); // >10 dB
+	});
+
+	it("leaves the mic untouched when no echoReference is wired", async () => {
+		const vad = new RecordingVad();
+		const consumer = makeConsumer(vad, null);
+		const frame = farSignal(BLOCK, 7);
+		await consumer.pushDecodedFrame(frame, 1000);
+		expect(Array.from(vad.frames[0])).toEqual(Array.from(frame));
+	});
+
+	it("skips the canceller entirely while the agent is silent (#9649 fast path)", async () => {
+		// The reference provider returns far PCM while the agent plays, then null
+		// once it stops. Frames during silence must be EXACT passthrough — proving
+		// the canceller is not invoked at all (so it can't subtract a stale echo
+		// estimate against converged weights) — and must not increment the
+		// cancelled-frame counter.
+		const N = SR * 2;
+		const far = farSignal(N);
+		const echo = echoOf(far);
+		const PLAYBACK_FRAMES = 40; // agent plays for the first 40 frames, then stops
+		const vad = new RecordingVad();
+		const consumer = new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("skip"),
+				runtime: new FakeRuntime(),
+				echoReference: (ts: number, samples: number) => {
+					const idx = Math.round((ts - 1000) / 20);
+					if (idx >= PLAYBACK_FRAMES) return null; // agent silent
+					const off = idx * BLOCK;
+					return far.subarray(off, off + samples);
+				},
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+
+		// Mic carries echo while the agent plays, then pure (distinct) near speech.
+		const nearSilentEra = farSignal(N, 555);
+		let ts = 1000;
+		let frameIdx = 0;
+		const silentInputs: Float32Array[] = [];
+		for (let off = 0; off + BLOCK <= N; off += BLOCK, frameIdx++) {
+			const mic =
+				frameIdx < PLAYBACK_FRAMES
+					? echo.subarray(off, off + BLOCK)
+					: nearSilentEra.subarray(off, off + BLOCK);
+			if (frameIdx >= PLAYBACK_FRAMES) silentInputs.push(mic);
+			await consumer.pushDecodedFrame(mic, ts);
+			ts += 20;
+		}
+
+		// Only the playback frames were cancelled; silent frames took the fast path.
+		expect(consumer.echoFramesCancelled).toBe(PLAYBACK_FRAMES);
+
+		// Every silent-era frame is bit-identical to its input (no canceller touch).
+		const silentOutputs = vad.frames.slice(PLAYBACK_FRAMES);
+		expect(silentOutputs.length).toBe(silentInputs.length);
+		for (let i = 0; i < silentOutputs.length; i++) {
+			expect(Array.from(silentOutputs[i])).toEqual(Array.from(silentInputs[i]));
+		}
+	});
+
+	it("clears stale far-end state before playback resumes after silence", async () => {
+		const PLAYBACK_FRAMES = 40;
+		const SILENT_FRAMES = 5;
+		const restartFrame = PLAYBACK_FRAMES + SILENT_FRAMES;
+		const totalFrames = restartFrame + 1;
+		const N = totalFrames * BLOCK;
+		const far = farSignal(N);
+		const echo = echoOf(far);
+		const zeroReference = new Float32Array(BLOCK);
+		const zeroMic = new Float32Array(BLOCK);
+		const vad = new RecordingVad();
+		const consumer = new AudioFrameConsumer(
+			{
+				vad,
+				pipeline: new FakePipeline("restart"),
+				runtime: new FakeRuntime(),
+				echoReference: (ts: number, samples: number) => {
+					const idx = Math.round((ts - 1000) / 20);
+					if (idx < PLAYBACK_FRAMES) {
+						const off = idx * BLOCK;
+						return far.subarray(off, off + samples);
+					}
+					if (idx < restartFrame) return null;
+					return zeroReference.subarray(0, samples);
+				},
+			},
+			{ source: { kind: "device", deviceId: "pixel" }, preRollSeconds: 0 },
+		);
+
+		let ts = 1000;
+		for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+			const off = frameIdx * BLOCK;
+			const mic =
+				frameIdx < PLAYBACK_FRAMES ? echo.subarray(off, off + BLOCK) : zeroMic;
+			await consumer.pushDecodedFrame(mic, ts);
+			ts += 20;
+		}
+
+		// The post-silence non-empty reference frame should not inherit any
+		// stale far-end samples from the previous playback burst.
+		expect(consumer.echoFramesCancelled).toBe(PLAYBACK_FRAMES + 1);
+		expect(Array.from(vad.frames[restartFrame])).toEqual(Array.from(zeroMic));
 	});
 });

@@ -5,28 +5,11 @@ import {
   seedAppStorage,
 } from "./helpers";
 
-type TuiCommandEvent = {
-  viewId: string;
-  command: string;
-};
-
 test.describe("shared terminal plugin view command contract", () => {
   test("posts the selected capability and renders semantic output", async ({
     page,
   }) => {
     const interactRequests: unknown[] = [];
-
-    await page.addInitScript(() => {
-      const target = window as Window & {
-        __feedTuiCommandEvents?: TuiCommandEvent[];
-      };
-      target.__feedTuiCommandEvents = [];
-      window.addEventListener("eliza:tui-command", (event) => {
-        target.__feedTuiCommandEvents?.push(
-          (event as CustomEvent<TuiCommandEvent>).detail,
-        );
-      });
-    });
 
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
@@ -48,23 +31,20 @@ test.describe("shared terminal plugin view command contract", () => {
       });
     });
 
-    await openAppPath(page, "/feed/tui");
+    await openAppPath(page, "/feed");
+    await expect(page.getByText("Spawn agent")).toBeVisible();
 
-    const tuiRoot = page.locator("[data-view-state]").first();
-    await expect(tuiRoot).toBeVisible();
-    await expect
-      .poll(async () =>
-        JSON.parse((await tuiRoot.getAttribute("data-view-state")) ?? "{}"),
-      )
-      .toMatchObject({
-        viewType: "tui",
-        viewId: "feed",
-        commandCount: 4,
+    const response = await page.evaluate(async () => {
+      const result = await fetch("/api/views/feed/interact?viewType=tui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          capability: "refresh-agent-status",
+          timeoutMs: 5000,
+        }),
       });
-
-    await page
-      .locator('[data-terminal-command="refresh-agent-status"]')
-      .click();
+      return result.json();
+    });
 
     await expect
       .poll(() => interactRequests)
@@ -74,24 +54,11 @@ test.describe("shared terminal plugin view command contract", () => {
           timeoutMs: 5000,
         },
       ]);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            (
-              window as Window & {
-                __feedTuiCommandEvents?: TuiCommandEvent[];
-              }
-            ).__feedTuiCommandEvents ?? [],
-        ),
-      )
-      .toEqual([{ viewId: "feed", command: "refresh-agent-status" }]);
-
-    const output = page.locator('[data-terminal-output="ok"]').last();
-    await expect(output).toContainText("$ refresh-agent-status");
-    await expect(output).toContainText(
-      /"capability":\s*"refresh-agent-status"/,
-    );
-    await expect(output).toContainText(/"source":\s*"ui-smoke"/);
+    expect(response).toMatchObject({
+      ok: true,
+      viewId: "feed",
+      capability: "refresh-agent-status",
+      source: "ui-smoke",
+    });
   });
 });

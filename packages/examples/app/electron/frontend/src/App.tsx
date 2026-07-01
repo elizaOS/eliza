@@ -34,8 +34,7 @@ export function App(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>("");
   const [busy, setBusy] = useState<boolean>(false);
-  const [effectiveMode, setEffectiveMode] =
-    useState<ProviderMode>("elizaClassic");
+  const [effectiveMode, setEffectiveMode] = useState<ProviderMode>("openai");
 
   useEffect(() => {
     saveConfig(config);
@@ -141,12 +140,12 @@ export function App(): React.JSX.Element {
             >
               {(
                 [
-                  "elizaClassic",
                   "openai",
                   "anthropic",
+                  "openrouter",
+                  "elizacloud",
                   "gemini",
                   "groq",
-                  "openrouter",
                   "ollama",
                   "xai",
                 ] as const
@@ -399,6 +398,60 @@ export function App(): React.JSX.Element {
                 onChange={(e) =>
                   setConfig((c) =>
                     updateProvider(c, { openrouterLargeModel: e.target.value }),
+                  )
+                }
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {mode === "elizacloud" ? (
+          <div className="grid">
+            <label className="label">
+              Eliza Cloud API key
+              <input
+                className="input"
+                value={config.provider.elizacloudApiKey}
+                placeholder="eliza_..."
+                onChange={(e) =>
+                  setConfig((c) =>
+                    updateProvider(c, { elizacloudApiKey: e.target.value }),
+                  )
+                }
+              />
+            </label>
+            <label className="label">
+              Base URL
+              <input
+                className="input"
+                value={config.provider.elizacloudBaseUrl}
+                onChange={(e) =>
+                  setConfig((c) =>
+                    updateProvider(c, { elizacloudBaseUrl: e.target.value }),
+                  )
+                }
+              />
+            </label>
+            <label className="label">
+              Small model
+              <input
+                className="input"
+                value={config.provider.elizacloudSmallModel}
+                onChange={(e) =>
+                  setConfig((c) =>
+                    updateProvider(c, { elizacloudSmallModel: e.target.value }),
+                  )
+                }
+              />
+            </label>
+            <label className="label">
+              Large model
+              <input
+                className="input"
+                value={config.provider.elizacloudLargeModel}
+                onChange={(e) =>
+                  setConfig((c) =>
+                    updateProvider(c, { elizacloudLargeModel: e.target.value }),
                   )
                 }
               />

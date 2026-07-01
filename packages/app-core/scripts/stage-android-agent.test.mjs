@@ -1,10 +1,28 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { __testables } from "./lib/stage-android-agent.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 function withEnv(values, fn) {
   const prior = {};
@@ -36,7 +54,7 @@ test("riscv64 Bun artifact path resolves from the ELIZA_BUN_RISCV64_FILE env", (
     );
     assert.equal(resolved, artifact);
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    removePathRecursive(tmp);
   }
 });
 

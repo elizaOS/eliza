@@ -8,12 +8,16 @@
  * added each package is recorded so `resolvePlugins` (`plugin-resolver.ts`)
  * can explain optional load failures (config vs env vs feature flag).
  *
- * Extracted from eliza.ts to reduce file size.
- *
  * @module plugin-collector
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
+import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
+  type: "json",
+};
+import providerPluginMap from "@elizaos/registry/first-party/provider-plugin-map.json" with {
+  type: "json",
+};
 import {
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -154,56 +158,23 @@ function isStoreBuildVariant(): boolean {
   return raw?.toLowerCase() === "store";
 }
 
-/** Maps Eliza channel names to plugin package names. */
-export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
-  bluebubbles: "@elizaos/plugin-bluebubbles",
-  discord: "@elizaos/plugin-discord",
-  discordLocal: "@elizaos/plugin-discord-local",
-  telegram: "@elizaos/plugin-telegram",
-  slack: "@elizaos/plugin-slack",
-  x: "@elizaos/plugin-x",
-  // Backward-compat alias: legacy "twitter" channel resolves to plugin-x.
-  twitter: "@elizaos/plugin-x",
-  // Internal connector built from src/plugins/whatsapp (not an npm package).
-  whatsapp: "@elizaos/plugin-whatsapp",
-  // Internal connector built from src/plugins/signal (not an npm package).
-  signal: "@elizaos/plugin-signal",
-  imessage: "@elizaos/plugin-imessage",
-  farcaster: "@elizaos/plugin-farcaster",
-  lens: "@elizaos/plugin-lens",
-  msteams: "@elizaos/plugin-msteams",
-  feishu: "@elizaos/plugin-feishu",
-  matrix: "@elizaos/plugin-matrix",
-  nostr: "@elizaos/plugin-nostr",
-  blooio: "@elizaos/plugin-blooio",
-  twitch: "@elizaos/plugin-twitch",
-  mattermost: "@elizaos/plugin-mattermost",
-  googlechat: "@elizaos/plugin-google-chat",
-};
+/**
+ * Maps Eliza channel names to plugin package names. Derived at registry build
+ * time from each connector entry's `channels` (e.g. x -> ["x", "twitter"]); see
+ * packages/registry/src/first-party. To add/rename a channel, edit the owning
+ * connector's registry-entry.json `channels` and regenerate — not this list.
+ */
+export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
+  channelPluginMap;
 
-/** Maps environment variable names to model-provider plugin packages. */
-export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
-  ANTHROPIC_API_KEY: "@elizaos/plugin-anthropic",
-  OPENAI_API_KEY: "@elizaos/plugin-openai",
-  GEMINI_API_KEY: "@elizaos/plugin-google-genai",
-  GOOGLE_API_KEY: "@elizaos/plugin-google-genai",
-  GOOGLE_GENERATIVE_AI_API_KEY: "@elizaos/plugin-google-genai",
-  GROQ_API_KEY: "@elizaos/plugin-groq",
-  XAI_API_KEY: "@elizaos/plugin-xai",
-  OPENROUTER_API_KEY: "@elizaos/plugin-openrouter",
-  DEEPSEEK_API_KEY: "@elizaos/plugin-deepseek",
-  MISTRAL_API_KEY: "@elizaos/plugin-mistral",
-  TOGETHER_API_KEY: "@elizaos/plugin-together",
-  AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
-  AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
-  OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
-  NEARAI_API_KEY: "@elizaos/plugin-nearai",
-  ZAI_API_KEY: "@elizaos/plugin-zai",
-  Z_AI_API_KEY: "@elizaos/plugin-zai",
-  // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled
-  ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
-  ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
-};
+/**
+ * Maps environment variable names to model-provider plugin packages. Derived at
+ * registry build time from config fields marked `autoEnableProvider`; see
+ * packages/registry/src/first-party. To add or rename a provider env key, edit
+ * the owning registry entry and regenerate — not this list.
+ */
+export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> =
+  providerPluginMap;
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-ollama",
@@ -281,9 +252,9 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   "browser-bridge": "@elizaos/plugin-browser",
   browserBridge: "@elizaos/plugin-browser",
   /** Native Polymarket app runtime plugin. */
-  polymarket: "@elizaos/plugin-polymarket-app",
-  "app-polymarket": "@elizaos/plugin-polymarket-app",
-  appPolymarket: "@elizaos/plugin-polymarket-app",
+  polymarket: "@elizaos/plugin-polymarket",
+  "app-polymarket": "@elizaos/plugin-polymarket",
+  appPolymarket: "@elizaos/plugin-polymarket",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/plugin-personal-assistant",

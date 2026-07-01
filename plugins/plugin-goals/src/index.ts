@@ -1,7 +1,8 @@
-export { ownerAlarmsAction } from "./actions/alarms.ts";
+// Side-effect: register the unified goals view for terminal rendering in a
+// Node agent host (DOM-guarded; no-op in browser/mobile).
+import "./register.ts";
+
 export { ownerGoalsAction } from "./actions/goals.ts";
-export { ownerRemindersAction } from "./actions/reminders.ts";
-export { ownerRoutinesAction } from "./actions/routines.ts";
 // View export — re-exported so host applications can pre-render the view
 // without going through the dynamic bundle loader.
 export { GoalsView } from "./components/goals/GoalsView.tsx";

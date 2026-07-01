@@ -11,7 +11,6 @@
  * bodies — none of which fit the same-origin JSON-only typed `api<T>` client.
  */
 
-import { getApiBaseUrl } from "@elizaos/cloud-shared/lib/config/client-env";
 import {
   type ApiEndpoint,
   type EndpointParameter,
@@ -35,7 +34,7 @@ import {
   XCircleIcon,
   XIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CodeDisplay } from "../../cloud-ui/components/code/code-display";
 import { ApiParameterSelect as CustomSelect } from "../../cloud-ui/components/docs/api-parameter-select";
 import { useAudioRecorder } from "../../cloud-ui/components/voice/use-audio-recorder";
@@ -87,6 +86,14 @@ interface AudioResponseData {
   message?: string;
 }
 
+function getApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return "http://localhost:3000";
+  }
+
+  return window.location.origin;
+}
+
 export function ApiTester({
   endpoint,
   authToken,
@@ -101,6 +108,22 @@ export function ApiTester({
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
   const audioRecorder = useAudioRecorder();
+
+  const recordingPreviewBlob = recordedAudio ?? audioRecorder.audioBlob;
+  const recordingPreviewUrl = useMemo(
+    () =>
+      recordingPreviewBlob
+        ? URL.createObjectURL(recordingPreviewBlob)
+        : undefined,
+    [recordingPreviewBlob],
+  );
+  useEffect(() => {
+    return () => {
+      if (recordingPreviewUrl) {
+        URL.revokeObjectURL(recordingPreviewUrl);
+      }
+    };
+  }, [recordingPreviewUrl]);
 
   const initializeParameters = useCallback(() => {
     if (!endpoint) return;
@@ -719,13 +742,7 @@ export function ApiTester({
                         <audio
                           controls
                           className="h-10"
-                          src={
-                            recordedAudio
-                              ? URL.createObjectURL(recordedAudio)
-                              : audioRecorder.audioBlob
-                                ? URL.createObjectURL(audioRecorder.audioBlob)
-                                : undefined
-                          }
+                          src={recordingPreviewUrl}
                         >
                           <track kind="captions" />
                         </audio>
@@ -968,8 +985,8 @@ export function ApiTester({
                         className={cn(
                           "rounded-sm px-2.5 py-1 text-xs font-medium",
                           response.success
-                            ? "bg-green-500/10 text-green-600 ring-1 ring-inset ring-green-500/30 dark:text-green-300"
-                            : "bg-red-500/10 text-red-600 ring-1 ring-inset ring-red-500/30 dark:text-red-300",
+                            ? "bg-green-500/10 text-green-600    dark:text-green-300"
+                            : "bg-red-500/10 text-red-600    dark:text-red-300",
                         )}
                       >
                         {response.status} {response.statusText}

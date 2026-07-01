@@ -11,20 +11,8 @@
  * instant — the embedding warmup's spirit, via the path voice already uses.
  * Nothing in the voice engine is touched.
  *
- * BEHAVIOR CHANGE (PR #8175): warmup now fires for **both** local and cloud
- * setups. Previously, warmup was gated on `localInferenceActive` and was
- * suppressed for cloud-configured users. The gate has been removed.
- *
- * Impact for cloud users: at every desktop boot, two tiny API calls (one
- * silent WAV for STT, one empty-string TTS) will be dispatched through the
- * runtime's model router to whichever cloud voice provider is configured
- * (e.g. ElevenLabs, Eliza Cloud TTS). These calls are billable if the
- * provider charges per-request. They are intentionally small (~100 ms WAV for
- * STT, empty string for TTS) and non-blocking (fire-and-forget). Failures are
- * non-fatal and logged at WARN level.
- *
- * To suppress warmup entirely (both local and cloud) set:
- *   ELIZA_SKIP_LOCAL_VOICE_WARMUP=1
+ * Warmup is skipped for mobile, hot-reload respawns, explicit cloud-only
+ * desktop runtimes, and ELIZA_SKIP_LOCAL_VOICE_WARMUP=1.
  */
 
 /** Minimal runtime surface we need — avoids importing the heavy AgentRuntime. */
@@ -37,6 +25,8 @@ export interface VoiceWarmupGate {
   mobile: boolean;
   /** ELIZA_SKIP_LOCAL_VOICE_WARMUP is set. */
   skipEnv: boolean;
+  /** The runtime is explicitly cloud-only, so voice loads on first real use. */
+  cloudOnly?: boolean;
   /**
    * Dev hot-reload respawn (not a cold boot). Each hot-reload spawns a fresh
    * API child that re-runs the whole boot tail; warming voice every bounce
@@ -46,17 +36,13 @@ export interface VoiceWarmupGate {
    * loads on first real use. Cold boot still warms.
    */
   hotReload?: boolean;
-  /**
-   * @deprecated No longer used — warmup fires for both local and cloud.
-   * Kept for API compatibility; callers may still pass it.
-   */
-  localInferenceActive?: boolean;
 }
 
 /** Pure policy: should we warm voice models in the background? */
 export function shouldWarmupVoice(gate: VoiceWarmupGate): boolean {
   if (gate.mobile) return false;
   if (gate.skipEnv) return false;
+  if (gate.cloudOnly) return false;
   if (gate.hotReload) return false;
   return true;
 }
@@ -100,6 +86,11 @@ type LogSink = {
 };
 
 const noopLog: LogSink = { info: () => {}, warn: () => {} };
+
+function isMissingModelHandlerError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("No handler found for delegate type");
+}
 
 /**
  * Retry a warmup call up to `maxRetries` times when the error message
@@ -147,8 +138,9 @@ export async function warmVoiceModels(
     );
     log.info("[eliza] Voice TTS model: ready");
   } catch (err) {
-    log.warn(
-      `[eliza] Voice TTS warmup failed (will load on first use): ${
+    const logMethod = isMissingModelHandlerError(err) ? log.info : log.warn;
+    logMethod(
+      `[eliza] Voice TTS warmup skipped (will load on first use): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -164,8 +156,9 @@ export async function warmVoiceModels(
     );
     log.info("[eliza] Voice STT model: ready");
   } catch (err) {
-    log.warn(
-      `[eliza] Voice STT warmup failed (will load on first use): ${
+    const logMethod = isMissingModelHandlerError(err) ? log.info : log.warn;
+    logMethod(
+      `[eliza] Voice STT warmup skipped (will load on first use): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

@@ -1,16 +1,15 @@
+import { isViewVisible } from "@elizaos/core";
 import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-// Importing the cloud settings barrel registers the Cloud group + the cloud
-// settings sections (side effect), then exposes the extra-group list the
-// grouping below reads — so the cloud sections render whenever Settings mounts.
-import { listExtraSettingsGroups } from "../../cloud/settings";
+import { listExtraSettingsGroups } from "../../cloud/settings/cloud-settings-group";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../state";
-import { PagePanel } from "../composites/page-panel";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
+import { useAppSelectorShallow } from "../../state";
+import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   SettingsGroup,
   SettingsRow,
@@ -20,13 +19,14 @@ import {
   getAllSettingsSections,
   readSettingsHashSection,
   replaceSettingsHash,
-  SECTION_HUE_MEDALLION_CLASS,
+  SECTION_TONE_ICON_CLASS,
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
   type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
+import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -90,7 +90,7 @@ function sectionChip(
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent ring-1 ring-accent/20">
+    <span className="inline-flex items-center rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent  ">
       {children}
     </span>
   );
@@ -130,7 +130,7 @@ function SettingsNavItem({
     return (
       <SettingsRow
         icon={Icon}
-        iconClassName={SECTION_HUE_MEDALLION_CLASS[section.hue]}
+        iconClassName={SECTION_TONE_ICON_CLASS[section.tone]}
         label={label}
         onClick={() => onSelect(section.id)}
         buttonRef={ref}
@@ -149,22 +149,17 @@ function SettingsNavItem({
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
-        active
-          ? "bg-accent/12 font-medium text-accent"
-          : "text-txt hover:bg-surface",
+        active ? "font-medium text-accent" : "text-txt hover:bg-surface",
       )}
       {...agentProps}
     >
-      <span
+      <Icon
         className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-          active
-            ? "bg-accent/15 text-accent"
-            : SECTION_HUE_MEDALLION_CLASS[section.hue],
+          "h-4 w-4 shrink-0",
+          active ? "text-accent" : SECTION_TONE_ICON_CLASS[section.tone],
         )}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-      </span>
+        aria-hidden
+      />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {chip ? <Chip>{chip}</Chip> : null}
     </button>
@@ -184,7 +179,7 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
       ref={ref}
       type="button"
       onClick={onBack}
-      className="-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className="-mx-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:text-accent   "
       {...agentProps}
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -209,28 +204,75 @@ function SettingsSectionContent({
   return (
     <div id={section.id}>
       {onBack ? (
-        <div className="mb-4">
+        <div className="mb-1.5">
           <SectionBackButton onBack={onBack} />
         </div>
       ) : null}
-      <div className="mb-4 flex items-center gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-md",
-            SECTION_HUE_MEDALLION_CLASS[section.hue],
-          )}
-        >
-          <Icon className="h-5 w-5" aria-hidden />
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight text-txt-strong">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Icon className="h-5 w-5 shrink-0 text-muted/80" aria-hidden />
+        <h1 className="text-lg font-semibold tracking-tight text-txt-strong">
           {title}
         </h1>
       </div>
-      <PagePanel variant="section">
-        <div className={cn("p-4 sm:p-5", section.bodyClassName)}>
+      {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+      <div className={section.bodyClassName}>
+        <ErrorBoundary
+          key={section.id}
+          fallback={(error, reset) => (
+            <SettingsSectionFallback
+              title={title}
+              error={error}
+              onRetry={reset}
+              t={t}
+            />
+          )}
+        >
           <Component />
-        </div>
-      </PagePanel>
+        </ErrorBoundary>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Inline per-section error fallback. A section that throws on mount/render must
+ * degrade to this card — never blank the whole shell — so the settings nav rail
+ * and every other section stay interactive. Uses the settings `warn` token
+ * vocabulary for visual consistency with the rest of the surface.
+ */
+function SettingsSectionFallback({
+  title,
+  error,
+  onRetry,
+  t,
+}: {
+  title: string;
+  error: Error;
+  onRetry: () => void;
+  t: Translate;
+}) {
+  return (
+    <div
+      role="alert"
+      data-testid="settings-section-error"
+      className="flex flex-col items-start gap-2 rounded-md border border-warn/30 bg-warn/12 p-4 text-left"
+    >
+      <p className="text-sm font-semibold text-warn">
+        {t("settings.sectionFailed", {
+          defaultValue: "{{title}} failed to load",
+          title,
+        })}
+      </p>
+      <p className="text-xs-tight text-muted max-w-prose break-words">
+        {error.message}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent   "
+      >
+        {t("settings.sectionRetry", { defaultValue: "Retry" })}
+      </button>
     </div>
   );
 }
@@ -248,7 +290,7 @@ function MobileHub({
 }) {
   return (
     <div className="w-full pb-32">
-      <h1 className="mb-5 text-2xl font-semibold tracking-tight text-txt-strong">
+      <h1 className="mb-4 min-h-10 pl-12 text-2xl font-semibold tracking-tight text-txt-strong">
         {t("nav.settings", { defaultValue: "Settings" })}
       </h1>
       <SettingsStack>
@@ -291,7 +333,7 @@ function DesktopLayout({
     <div className="flex w-full gap-7 pb-32">
       <nav className="w-60 shrink-0" aria-label="Settings sections">
         <div className="sticky top-2 space-y-5">
-          <h1 className="px-2.5 text-lg font-semibold tracking-tight text-txt-strong">
+          <h1 className="min-h-8 px-2.5 pl-12 text-lg font-semibold tracking-tight text-txt-strong">
             {t("nav.settings", { defaultValue: "Settings" })}
           </h1>
           {grouped.map(({ group, label, items }) => (
@@ -333,8 +375,23 @@ export function SettingsView({
   onClose?: () => void;
   initialSection?: string;
 } = {}) {
-  const { t, loadPlugins, walletEnabled } = useApp();
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const { t, loadPlugins, walletEnabled } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    loadPlugins: s.loadPlugins,
+    walletEnabled: s.walletEnabled,
+  }));
+  // The two-pane (rail + detail) layout needs real horizontal room. A plain
+  // `min-width: 1024px` check sends a landscape phone (≈900px wide, but with
+  // ample horizontal space) to the single-column hub, and can push a narrow
+  // portrait tablet into the cramped two-pane. Combine width with orientation:
+  // two-pane when the viewport is genuinely wide (≥1024, any orientation, e.g. a
+  // portrait desktop monitor) OR when it is landscape and at least tablet-wide.
+  const isWide = useMediaQuery("(min-width: 1024px)");
+  const isWideLandscape = useMediaQuery(
+    "(min-width: 768px) and (orientation: landscape)",
+  );
+  const isTwoPane = isWide || isWideLandscape;
+  const enabledKinds = useEnabledViewKinds();
   const [activeSection, setActiveSection] = useState<string | null>(
     () => initialSection ?? readSettingsHashSection(),
   );
@@ -342,9 +399,11 @@ export function SettingsView({
   const visibleSections = useMemo(() => {
     return getAllSettingsSections().filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
+      if (!isViewVisible(section, enabledKinds)) return false;
+      if (section.hideOnCloud && isAndroidCloudBuild()) return false;
       return true;
     });
-  }, [walletEnabled]);
+  }, [walletEnabled, enabledKinds]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
@@ -403,7 +462,7 @@ export function SettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout inModal={inModal}>
         <div data-testid="settings-shell">
-          {isDesktop ? (
+          {isTwoPane ? (
             <DesktopLayout
               grouped={grouped}
               t={t}

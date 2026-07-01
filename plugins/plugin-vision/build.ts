@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
-
 /**
- * Build script using bun build
- * Uses Bun.build for bundling
+ * Build script for @elizaos/plugin-vision (Node ESM main + CJS workers).
+ * Orchestration lives in the shared driver (plugins/plugin-build.ts); this
+ * lists only what differs.
+ *
+ * Note: `build:native` (native/yolo.cpp/build.mjs) is a separate script and is
+ * NOT part of this `build` step.
  */
-
-import { $ } from "bun";
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+import { buildPlugin } from "../plugin-build";
 
 const NODE_BUILTINS = [
   "fs",
@@ -26,92 +27,60 @@ const NODE_BUILTINS = [
   "node:url",
 ] as const;
 
-async function build() {
-  console.log("🏗️  Building package...");
+// Externalize plugin-computeruse even though it is NOT a package.json
+// dependency: plugin-vision dynamically imports its OCR seam
+// (`@elizaos/plugin-computeruse/mobile/ocr-provider`) at boot via a
+// best-effort import. It MUST stay external so the registry singleton is the
+// one runtime instance computeruse reads — bundling a copy would split the
+// registry and the registration would be invisible to computeruse.
+const OPTIONAL_PEERS = ["@elizaos/plugin-computeruse"] as const;
 
-  // Clean dist directory
-  await $`rm -rf dist`;
+// Worker-only externals (sharp's native/optional transitive deps). The main
+// entrypoints never reference these, so folding them into the single shared
+// external set leaves the main bundle byte-identical while keeping the worker
+// bundles externalizing them exactly as before.
+const WORKER_EXTRAS = [
+  "@mapbox/node-pre-gyp",
+  "mock-aws-s3",
+  "aws-sdk",
+  "nock",
+] as const;
 
-  const external = await externalsFromPackageJson("./package.json", {
-    extra: NODE_BUILTINS,
-  });
-
-  // Build main package
-  console.log("📦 Building main package...");
-  const mainResult = await Bun.build({
-    entrypoints: ["./src/index.ts"],
-    outdir: "./dist",
-    target: "node",
-    format: "esm",
-    splitting: false,
-    sourcemap: "external",
-    external,
-    naming: "[dir]/[name].[ext]",
-  });
-
-  if (!mainResult.success) {
-    console.error("❌ Main build failed:");
-    for (const message of mainResult.logs) {
-      console.error(message);
-    }
-    process.exit(1);
-  }
-
-  console.log(`✅ Built ${mainResult.outputs.length} main files`);
-
-  // Check if workers exist before building them
-  const { existsSync, readdirSync } = await import("node:fs");
-  const workersDir = "src/workers";
-  if (existsSync(workersDir)) {
-    const files = readdirSync(workersDir);
-    const workerFiles = files.filter((f) => f.endsWith(".ts"));
-    if (workerFiles.length > 0) {
-      console.log("👷 Building workers...");
-      const workersResult = await Bun.build({
-        entrypoints: [
-          "./src/workers/screen-capture-worker.ts",
-          "./src/workers/ocr-worker.ts",
-        ],
-        outdir: "./dist/workers",
-        target: "node",
-        format: "cjs", // Workers need CommonJS format
-        splitting: false,
-        sourcemap: true,
-        external: [
-          ...external,
-          "@mapbox/node-pre-gyp",
-          "mock-aws-s3",
-          "aws-sdk",
-          "nock",
-        ],
-        naming: "[name].[ext]",
-      });
-
-      if (!workersResult.success) {
-        console.error("❌ Workers build failed:");
-        for (const message of workersResult.logs) {
-          console.error(message);
-        }
-        process.exit(1);
-      }
-
-      console.log(`✅ Built ${workersResult.outputs.length} worker files`);
-    }
-  }
-
-  // Generate TypeScript declarations
-  console.log("📝 Generating TypeScript declarations...");
-  const dtsResult = await $`tsc --project tsconfig.build.json`.nothrow();
-  if (dtsResult.exitCode !== 0) {
-    console.warn("⚠️ TypeScript declarations had warnings (non-blocking)");
-  } else {
-    console.log("✅ TypeScript declarations generated");
-  }
-
-  console.log("✅ Build complete!");
-}
-
-build().catch((error) => {
-  console.error(error);
-  process.exit(1);
+await buildPlugin({
+  name: "@elizaos/plugin-vision",
+  clean: true,
+  externals: "auto",
+  externalsOptions: {
+    extra: [...NODE_BUILTINS, ...OPTIONAL_PEERS, ...WORKER_EXTRAS],
+  },
+  targets: [
+    {
+      // index.ts is the package entry; som.ts is also a published subpath
+      // (`@elizaos/plugin-vision/som`, #9170 M9) consumed by computeruse's
+      // detect_elements/grounding, so emit it as its own dist entrypoint.
+      label: "Node",
+      entry: ["./src/index.ts", "./src/som.ts"],
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      splitting: false,
+      sourcemap: "external",
+      naming: { entry: "[dir]/[name].[ext]" },
+    },
+    {
+      // Workers need CommonJS format.
+      label: "Workers",
+      entry: [
+        "./src/workers/screen-capture-worker.ts",
+        "./src/workers/ocr-worker.ts",
+      ],
+      outSubdir: "workers",
+      target: "node",
+      format: "cjs",
+      splitting: false,
+      sourcemap: "linked",
+      naming: { entry: "[name].[ext]" },
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
 });

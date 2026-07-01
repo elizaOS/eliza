@@ -1,6 +1,17 @@
 import z from "zod";
 
-export const CloudCodingAgentSchema = z.enum(["claude", "codex", "opencode"]);
+// `elizaos` = the elizaOS-owned coding sub-agent (eliza-code, runtime +
+// plugin-coding-tools + orchestrator). It resolves to the `eliza-code-acp` bin
+// in plugin-agent-orchestrator and is a drop-in for opencode on the same model.
+// Accepting it here lets a Cloud coding-container request explicitly select
+// eliza-code once the runner image ships the bin (issue #10059). The default
+// stays `claude` — the image must contain the agent before it becomes default.
+export const CloudCodingAgentSchema = z.enum([
+  "claude",
+  "codex",
+  "opencode",
+  "elizaos",
+]);
 
 export const CloudCodingContainerStatusSchema = z.enum([
   "requested",

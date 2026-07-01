@@ -202,9 +202,14 @@ export const MODEL_TOKEN_LIMITS: Record<string, number> = {
   "gpt-3.5-turbo": 16385,
   "gpt-3.5-turbo-16k": 16385,
 
-  // Current Strategy Models - INPUT CONTEXT LIMITS (output is separate!)
-  // Unsloth Qwen3 models - all have 128K context (critical requirement)
-  "unsloth/Qwen3-4B-128K": 131072, // 4B params, 128K context (8GB VRAM min) - DEFAULT
+  // Current Feed strategy models - INPUT CONTEXT LIMITS (output is separate!)
+  "google/gemma-4-E2B-it": 131072, // Gemma 4 E2B, 128K context
+  "google/gemma-4-E4B-it": 131072, // Gemma 4 E4B, 128K context - DEFAULT
+  "google/gemma-4-12B-it": 262144, // Gemma 4 12B, 256K context
+  "google/gemma-4-31B-it": 262144, // Gemma 4 31B, 256K context
+
+  // Legacy strategy models retained for old run metadata
+  "unsloth/Qwen3-4B-128K": 131072, // 4B params, 128K context
   "unsloth/Qwen3-8B-128K": 131072, // 8B params, 128K context (16GB VRAM min)
   "unsloth/Qwen3-14B-128K": 131072, // 14B params, 128K context (24GB VRAM min)
   "unsloth/Qwen3-32B-128K": 131072, // 32B params, 128K context (48GB VRAM min)

@@ -23,10 +23,12 @@ function makeClientWithTransport(
 
 function installDesktopRpc(
   request: Record<string, (params?: unknown) => Promise<unknown>>,
+  globals: Record<string, unknown> = {},
 ) {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
+      ...globals,
       __ELIZA_ELECTROBUN_RPC__: {
         request,
         onMessage: vi.fn(),
@@ -83,6 +85,32 @@ describe("ElizaClient desktop status RPC fallback", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it("skips local desktop status RPC for a configured external API base", async () => {
+    const getAgentStatus = vi.fn(async () => ({
+      state: "error",
+      agentName: "wrong-local-agent",
+    }));
+    installDesktopRpc(
+      { getAgentStatus },
+      { __ELIZA_DESKTOP_EXTERNAL_API_BASE__: "http://agent.example:31337" },
+    );
+    const { client, request } = makeClientWithTransport({
+      "/api/status": { state: "running", agentName: "Cloud Eliza" },
+    });
+
+    await expect(client.getStatus()).resolves.toEqual({
+      state: "running",
+      agentName: "Cloud Eliza",
+    });
+
+    expect(getAgentStatus).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledWith(
+      "http://agent.example:31337/api/status",
+      expect.any(Object),
+      { timeoutMs: 10_000 },
+    );
+  });
+
   it("uses desktop boot progress when available", async () => {
     const progress = {
       state: "running",
@@ -120,13 +148,13 @@ describe("ElizaClient desktop status RPC fallback", () => {
       getRuntimeSnapshot: vi.fn(() => new Promise(() => undefined)),
     });
     const { client, request } = makeClientWithTransport({
-      "/api/agent/self-status": { state: "running", model: "eliza-1-0_8b" },
+      "/api/agent/self-status": { state: "running", model: "eliza-1-2b" },
       "/api/runtime?depth=1&maxArrayLength=2": { ok: true },
     });
 
     await expect(client.getAgentSelfStatus()).resolves.toEqual({
       state: "running",
-      model: "eliza-1-0_8b",
+      model: "eliza-1-2b",
     });
     await expect(
       client.getRuntimeSnapshot({ depth: 1, maxArrayLength: 2 }),

@@ -5,7 +5,7 @@
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node"],
@@ -26,6 +26,8 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
@@ -43,15 +45,10 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ],
-      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
+      ]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",

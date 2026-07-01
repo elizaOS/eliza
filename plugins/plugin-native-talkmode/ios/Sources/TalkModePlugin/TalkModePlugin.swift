@@ -354,26 +354,19 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
             lastTranscript = trimmed
         }
 
-        notifyListeners("transcript", data: [
-            "transcript": trimmed,
-            "isFinal": isFinal
-        ])
+        notifyListeners("transcript", data: TalkModeBridgeContract.transcriptPayload(
+            transcript: trimmed,
+            isFinal: isFinal
+        ))
     }
 
     /// Determines whether detected speech should interrupt current TTS playback.
     /// Filters out echo where the mic picks up our own TTS output.
     private func shouldInterrupt(with transcript: String) -> Bool {
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 3 else { return false }
-
-        // Echo detection: if the transcript is a substring of the text being spoken,
-        // it's likely the microphone picking up the TTS output, not user speech.
-        if let spoken = lastSpokenText?.lowercased() {
-            let probe = trimmed.lowercased()
-            if spoken.contains(probe) { return false }
-        }
-
-        return true
+        return TalkModeBridgeContract.shouldInterruptSpeech(
+            transcript: transcript,
+            lastSpokenText: lastSpokenText
+        )
     }
 
     // MARK: - Silence Detection
@@ -417,10 +410,10 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         setState("processing", "Processing")
         stopRecognition()
 
-        notifyListeners("transcript", data: [
-            "transcript": transcript,
-            "isFinal": true
-        ])
+        notifyListeners("transcript", data: TalkModeBridgeContract.transcriptPayload(
+            transcript: transcript,
+            isFinal: true
+        ))
     }
 
     // MARK: - TTS Orchestration
@@ -1166,10 +1159,22 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         @unknown default: speechStatus = "prompt"
         }
 
-        return [
-            "microphone": micStatus,
-            "speechRecognition": speechStatus
-        ]
+        // TalkModeBridgeContract.permissionPayload defines the canonical shape
+        // ([String: Any] for parity with the other payloads + their tests). A
+        // Capacitor JSObject is [String: any JSValue], so bridge the contract's
+        // String fields explicitly rather than returning [String: Any] directly
+        // (Any does not conform to JSValue — the implicit conversion fails to
+        // type-check).
+        var result = JSObject()
+        for (key, value) in TalkModeBridgeContract.permissionPayload(
+            microphone: micStatus,
+            speechRecognition: speechStatus
+        ) {
+            if let stringValue = value as? String {
+                result[key] = stringValue
+            }
+        }
+        return result
     }
 
     // MARK: - Audio Session
@@ -1192,12 +1197,12 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         state = newState
         statusText = newStatusText
 
-        notifyListeners("stateChange", data: [
-            "state": newState,
-            "previousState": previousState,
-            "statusText": newStatusText,
-            "usingSystemTts": usedSystemTts
-        ])
+        notifyListeners("stateChange", data: TalkModeBridgeContract.statePayload(
+            state: newState,
+            previousState: previousState,
+            statusText: newStatusText,
+            usingSystemTts: usedSystemTts
+        ))
     }
 
     private func emitError(code: String, message: String, recoverable: Bool) {

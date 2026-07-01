@@ -12,12 +12,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "../api";
+import { type ChatTurnStatus, client } from "../api";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
+import {
+  FIRST_RUN_ACTION_PREFIX,
+  tryHandleFirstRunAction,
+} from "../first-run/first-run-action-channel";
 import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
@@ -42,13 +46,15 @@ import {
   loadAgentProfileRegistry,
   setActiveProfileId,
 } from "./agent-profiles";
+import { publishAppValue, seedAppValue } from "./app-store";
 import {
   ChatComposerCtx,
   ChatInputRefCtx,
   clearAllChatDrafts,
   useChatComposerDraftPersistence,
 } from "./ChatComposerContext.hooks";
-import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext.hooks";
+import { ChatTurnStatusCtx } from "./ChatTurnStatusContext.hooks";
+import { ConversationMessagesCtx } from "./ConversationMessagesContext.hooks";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext.hooks";
 import {
@@ -57,6 +63,7 @@ import {
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
+import { isTrustedRestoreApiBaseUrl } from "./startup-phase-restore";
 import { useTranslation } from "./TranslationContext.hooks";
 import { TranslationProvider } from "./TranslationProvider";
 import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
@@ -139,18 +146,11 @@ function AppProviderInner({
   // --- Display preferences (extracted to useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
-    state: {
-      uiTheme,
-      uiThemeMode,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
-    },
+    state: { uiTheme, uiThemeMode, backgroundConfig, canUndoBackground },
     setUiTheme,
     setUiThemeMode,
-    setCompanionVrmPowerMode,
-    setCompanionAnimateWhenHidden,
-    setCompanionHalfFramerateMode,
+    setBackgroundConfig,
+    undoBackgroundConfig,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -301,9 +301,6 @@ function AppProviderInner({
       activeConversationId,
       companionMessageCutoffTs,
       conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
       ptySessions,
       unreadConversations,
       chatPendingImages,
@@ -336,7 +333,6 @@ function AppProviderInner({
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     autonomousStoreRef,
     autonomousEventsRef,
     autonomousLatestEventIdRef,
@@ -344,6 +340,12 @@ function AppProviderInner({
     autonomousReplayInFlightRef,
     addUnread,
   } = chatState;
+  // Live server-reported phase of the in-flight assistant turn (rich status
+  // indicator, #8813). Held outside the giant AppContext value (in its own
+  // ChatTurnStatusCtx, like conversationMessages) so the per-status-event
+  // updates re-render only the chat surfaces, not all ~135 useApp() subscribers.
+  const [serverTurnStatus, setServerTurnStatus] =
+    useState<ChatTurnStatus | null>(null);
   const _chatComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   // addUnread / removeUnread wrappers for old setUnreadConversations patterns.
   // Read current unreadConversations through a ref so this callback stays
@@ -410,6 +412,9 @@ function AppProviderInner({
     setPluginAdvancedOpen,
     pluginSaving,
     pluginSaveSuccess,
+    isLoadingPlugins,
+    pluginsLoadError,
+    pluginsLoaded,
     loadPlugins,
     ensurePluginsLoaded,
     handlePluginToggle,
@@ -551,7 +556,9 @@ function AppProviderInner({
   } = characterHook;
 
   // elizaCloud* state, refs, and callbacks are now provided by useCloudState (cloudHook above).
-  const shellState = useAppShellState();
+  const shellState = useAppShellState({
+    syncServerFavorites: firstRunComplete,
+  });
   const {
     state: {
       ownerName,
@@ -897,7 +904,6 @@ function AppProviderInner({
       activeGamePostMessagePayload,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,
@@ -944,7 +950,7 @@ function AppProviderInner({
   const forceLocalBootstrapRef = forceLocalBootstrapRefFromHook;
   // exportBusyRef and importBusyRef are now managed inside useExportImportState (exportImportHook)
   // walletApiKeySavingRef is now managed inside useWalletState (walletHook)
-  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef, handleCloudLoginRef
+  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef
   // are now managed inside useCloudState (cloudHook)
 
   // --- Confirm Modal ---
@@ -958,6 +964,7 @@ function AppProviderInner({
     promptModal,
     agentName: agentStatus?.agentName,
     characterName: characterDraft?.name,
+    hydrateServerConfig: firstRunComplete,
   });
   const {
     state: {
@@ -1129,6 +1136,8 @@ function AppProviderInner({
     appendAutonomousEvent,
     loadConversations,
     loadConversationMessages,
+    loadConversationMessagesAround,
+    prefetchConversationMessages,
     getBscTradePreflight,
     getBscTradeQuote,
     getBscTradeTxStatus,
@@ -1171,7 +1180,6 @@ function AppProviderInner({
   const chatCallbacks = useChatCallbacks({
     t,
     uiLanguage,
-    uiShellMode,
     tab,
     agentStatus,
     chatInput,
@@ -1183,6 +1191,7 @@ function AppProviderInner({
     setChatInput,
     setChatSending,
     setChatFirstTokenReceived,
+    setServerTurnStatus,
     setChatLastUsage,
     setChatPendingImages,
     setConversations,
@@ -1202,7 +1211,6 @@ function AppProviderInner({
     chatSendNonceRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
-    companionStaleConversationRefreshRef,
     lifecycleAction,
     beginLifecycleAction,
     finishLifecycleAction,
@@ -1218,6 +1226,7 @@ function AppProviderInner({
     resetBackendConnection,
     loadConversations,
     loadConversationMessages,
+    prefetchConversationMessages,
     loadPlugins,
     elizaCloudEnabled,
     elizaCloudConnected,
@@ -1236,6 +1245,7 @@ function AppProviderInner({
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
+    firstRunComplete,
     firstRunCompletionCommittedRef,
     setFirstRunUiRevealNonce,
     setFirstRunLoading,
@@ -1286,7 +1296,7 @@ function AppProviderInner({
     handleNewConversation,
     sendChatText,
     handleChatSend,
-    sendActionMessage,
+    sendActionMessage: rawSendActionMessage,
     handleChatStop,
     handleChatRetry,
     handleChatEdit,
@@ -1296,6 +1306,25 @@ function AppProviderInner({
     handleRenameConversation,
     suggestConversationTitle,
   } = chatCallbacks;
+
+  // In-chat first-run interception: a first-run-scoped choice pick (reserved
+  // `__first_run__:` prefix) is consumed by the active onboarding conductor and
+  // MUST NOT reach the server. Every other value falls through to the real
+  // send funnel unchanged, so normal chat (including during/after onboarding)
+  // is unaffected. Widgets stay 100% display-only — both InlineWidgetText and
+  // MessageContent route picks through this single `sendActionMessage`.
+  const sendActionMessage = useCallback(
+    (text: string): Promise<void> => {
+      if (
+        text.startsWith(FIRST_RUN_ACTION_PREFIX) &&
+        tryHandleFirstRunAction(text)
+      ) {
+        return Promise.resolve();
+      }
+      return rawSendActionMessage(text);
+    },
+    [rawSendActionMessage],
+  );
 
   useEffect(() => {
     triggerRestartRef.current = triggerRestart;
@@ -1364,7 +1393,6 @@ function AppProviderInner({
   // ── First-run callbacks (extracted to useFirstRunCallbacks) ──────
   const firstRunCallbacks = useFirstRunCallbacks({
     firstRun,
-    setActiveOverlayApp,
     setSetupStep,
     setFirstRunMode,
     setFirstRunActiveGuide,
@@ -1400,13 +1428,11 @@ function AppProviderInner({
     client,
   });
   const {
-    handleFirstRunNext,
     handleFirstRunBack,
     handleFirstRunJumpToStep,
     goToFirstRunStep,
     handleFirstRunRemoteConnect,
     handleFirstRunUseLocalBackend,
-    handleCloudFirstRunFinish,
     applyDetectedProviders,
     completeFirstRun,
   } = firstRunCallbacks;
@@ -1542,8 +1568,6 @@ function AppProviderInner({
         appRuns: setAppRuns,
         activeGameRunId: setActiveGameRunId,
         gameOverlayEnabled: setGameOverlayEnabled,
-        companionAppRunning: (v: boolean) =>
-          setActiveOverlayApp(v ? "@elizaos/plugin-companion" : null),
         activeOverlayApp: setActiveOverlayApp,
         activeInboxChat: setActiveInboxChat,
         activeTerminalSessionId: setActiveTerminalSessionId,
@@ -1708,6 +1732,17 @@ function AppProviderInner({
       );
       if (!profile) return;
 
+      // The profile registry is persisted in localStorage, so a tampered/
+      // attacker-written profile could point a "remote" agent at an untrusted
+      // host. Refuse to switch to (and dial / send the bearer token to) such a
+      // profile — same trust gate the boot-restore path uses.
+      if (
+        profile.kind === "remote" &&
+        !isTrustedRestoreApiBaseUrl(profile.apiBase)
+      ) {
+        return;
+      }
+
       setActiveProfileId(profileId);
 
       // Conversation ids are per-account, so saved drafts from the old
@@ -1802,29 +1837,6 @@ function AppProviderInner({
 
   // Cloud auth-rejected effect is now inside useCloudState.
 
-  const companionSceneConfig = useMemo(
-    () => ({
-      selectedVrmIndex,
-      customVrmUrl,
-      customWorldUrl,
-      uiTheme,
-      tab,
-      companionVrmPowerMode,
-      companionHalfFramerateMode,
-      companionAnimateWhenHidden,
-    }),
-    [
-      selectedVrmIndex,
-      customVrmUrl,
-      customWorldUrl,
-      uiTheme,
-      tab,
-      companionVrmPowerMode,
-      companionHalfFramerateMode,
-      companionAnimateWhenHidden,
-    ],
-  );
-
   // chatInput/chatSending/chatPendingImages live in ChatComposerContext so that
   // keystrokes don't cascade through AppContext to all subscribers.
   const composerValue = useMemo(
@@ -1848,14 +1860,63 @@ function AppProviderInner({
   // cascade through AppContext to all subscribers.
   const ptySessionsValue = useMemo(() => ({ ptySessions }), [ptySessions]);
 
-  // The AppContext value is memoized and does NOT include chatInput/chatSending/
-  // chatPendingImages (in ChatComposerCtx) or ptySessions (in PtySessionsCtx).
-  // autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId are also
-  // excluded — they update on every heartbeat WS event but no component reads them
-  // directly from useApp(). Excluding them prevents heartbeat events from re-rendering
-  // all AppContext subscribers (CompanionViewOverlay, App, etc.).
-  // NOTE: this dep array must stay in sync with the fields in the value object.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // conversationMessages lives in ConversationMessagesContext so per-token
+  // streaming updates re-render only the chat surfaces (ChatView + the shell
+  // controller behind ContinuousChatOverlay) instead of cascading through
+  // AppContext to all ~135 useApp() subscribers.
+  const removeConversationMessage = useCallback(
+    (messageId: string) => {
+      setConversationMessages((prev) =>
+        prev.filter((message) => message.id !== messageId),
+      );
+    },
+    [setConversationMessages],
+  );
+  const conversationMessagesValue = useMemo(
+    () => ({
+      conversationMessages,
+      removeConversationMessage,
+      setConversationMessages,
+    }),
+    [conversationMessages, removeConversationMessage, setConversationMessages],
+  );
+
+  // Live assistant-turn status (rich status indicator) lives in its own context
+  // for the same isolation reason as conversationMessages above. setServerTurnStatus
+  // is a stable useState setter, so the value identity only changes when the
+  // status itself changes.
+  const chatTurnStatusValue = useMemo(
+    () => ({ serverTurnStatus, setServerTurnStatus }),
+    [serverTurnStatus],
+  );
+
+  // High-write-frequency state is exposed through narrow fresh contexts below.
+  // AppContext keeps stale compatibility copies for older consumers, but they
+  // intentionally stay out of the dependency list so per-keystroke/per-token/
+  // per-poll updates do not fan out to every AppContext subscriber.
+  const appContextHotCompatibility = useRef<
+    Pick<
+      AppState,
+      | "autonomousEvents"
+      | "autonomousLatestEventId"
+      | "autonomousRunHealthByRunId"
+      | "chatInput"
+      | "chatPendingImages"
+      | "chatSending"
+      | "conversationMessages"
+      | "ptySessions"
+    >
+  >({
+    autonomousEvents: [],
+    autonomousLatestEventId: null,
+    autonomousRunHealthByRunId: {},
+    chatInput: "",
+    chatPendingImages: [],
+    chatSending: false,
+    conversationMessages: [],
+    ptySessions: [],
+  }).current;
+
   const value: AppContextValue = useMemo(
     () => ({
       // Translations
@@ -1866,9 +1927,8 @@ function AppProviderInner({
       uiLanguage,
       uiTheme,
       uiThemeMode,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
+      backgroundConfig,
+      canUndoBackground,
       connected,
       agentStatus,
       firstRunComplete,
@@ -1893,9 +1953,6 @@ function AppProviderInner({
       pairingCodeInput,
       pairingError,
       pairingBusy,
-      // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
-      chatInput,
-      chatSending,
       chatFirstTokenReceived,
       chatLastUsage,
       chatAvatarVisible,
@@ -1904,11 +1961,7 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
-      ptySessions,
+      ...appContextHotCompatibility,
       unreadConversations,
       triggers,
       triggersLoaded,
@@ -1925,6 +1978,9 @@ function AppProviderInner({
       pluginAdvancedOpen,
       pluginSaving,
       pluginSaveSuccess,
+      isLoadingPlugins,
+      pluginsLoadError,
+      pluginsLoaded,
       skills,
       skillsSubTab,
       skillCreateFormOpen,
@@ -2123,7 +2179,6 @@ function AppProviderInner({
       mcpHeaderInputs,
       droppedFiles,
       shareIngestNotice,
-      chatPendingImages,
       analysisMode,
       setAnalysisMode,
       appRuns,
@@ -2135,7 +2190,6 @@ function AppProviderInner({
       activeGamePostMessageAuth,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,
@@ -2158,9 +2212,8 @@ function AppProviderInner({
       setUiLanguage,
       setUiTheme,
       setUiThemeMode,
-      setCompanionVrmPowerMode,
-      setCompanionAnimateWhenHidden,
-      setCompanionHalfFramerateMode,
+      setBackgroundConfig,
+      undoBackgroundConfig,
       handleStart,
       handleStop,
 
@@ -2189,6 +2242,7 @@ function AppProviderInner({
       handleNewConversation,
       setChatPendingImages,
       handleSelectConversation,
+      loadConversationMessagesAround,
       handleDeleteConversation,
       handleRenameConversation,
       suggestConversationTitle,
@@ -2256,7 +2310,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunNext,
       handleFirstRunBack,
       handleFirstRunJumpToStep,
       goToFirstRunStep,
@@ -2266,7 +2319,6 @@ function AppProviderInner({
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
-      handleCloudFirstRunFinish,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2287,9 +2339,8 @@ function AppProviderInner({
       uiLanguage,
       uiTheme,
       uiThemeMode,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
+      backgroundConfig,
+      canUndoBackground,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2321,10 +2372,17 @@ function AppProviderInner({
       conversations,
       activeConversationId,
       companionMessageCutoffTs,
-      conversationMessages,
-      autonomousEvents,
-      autonomousLatestEventId,
-      autonomousRunHealthByRunId,
+      appContextHotCompatibility,
+      // NOTE: conversationMessages intentionally EXCLUDED — it gets a new array
+      // reference on every streamed token. Provided fresh via
+      // ConversationMessagesCtx (useConversationMessages()); the copy left in the
+      // value object is stale and unread.
+      // NOTE: autonomousEvents/autonomousLatestEventId/autonomousRunHealthByRunId
+      // intentionally EXCLUDED — they update on every heartbeat/agent/proactive WS
+      // event but no component reads them from useApp() (readers use the *Ref handles
+      // off useChatState). A stale copy remains in the value object purely to satisfy
+      // the AppContextValue type; excluding them from deps stops the heartbeat stream
+      // from re-rendering all AppContext subscribers.
       // NOTE: ptySessions intentionally EXCLUDED — provided fresh via PtySessionsCtx.
       unreadConversations,
       triggers,
@@ -2342,6 +2400,9 @@ function AppProviderInner({
       pluginAdvancedOpen,
       pluginSaving,
       pluginSaveSuccess,
+      isLoadingPlugins,
+      pluginsLoadError,
+      pluginsLoaded,
       skills,
       skillsSubTab,
       skillCreateFormOpen,
@@ -2548,7 +2609,6 @@ function AppProviderInner({
       activeGamePostMessageAuth,
       activeGameSession,
       gameOverlayEnabled,
-      companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
       activeTerminalSessionId,
@@ -2571,9 +2631,8 @@ function AppProviderInner({
       setUiLanguage,
       setUiTheme,
       setUiThemeMode,
-      setCompanionVrmPowerMode,
-      setCompanionAnimateWhenHidden,
-      setCompanionHalfFramerateMode,
+      setBackgroundConfig,
+      undoBackgroundConfig,
       handleStart,
       handleStop,
       handleRestart,
@@ -2598,6 +2657,7 @@ function AppProviderInner({
       handleStartDraftConversation,
       handleNewConversation,
       handleSelectConversation,
+      loadConversationMessagesAround,
       handleDeleteConversation,
       handleRenameConversation,
       suggestConversationTitle,
@@ -2665,7 +2725,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunNext,
       handleFirstRunBack,
       handleFirstRunJumpToStep,
       goToFirstRunStep,
@@ -2675,7 +2734,6 @@ function AppProviderInner({
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
-      handleCloudFirstRunFinish,
       loadUpdateStatus,
       handleChannelChange,
       checkExtensionStatus,
@@ -2687,15 +2745,22 @@ function AppProviderInner({
       setActionNotice,
       setState,
       copyToClipboard,
-      chatPendingImages,
       setChatPendingImages,
-      chatSending,
-      ptySessions, // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
-      chatInput,
       analysisMode,
       setAnalysisMode,
     ],
   );
+
+  // Mirror the context value into the external selector store so useAppSelector
+  // consumers get field-level subscriptions (re-render only on the slice they
+  // read) instead of re-rendering on every context change. seedAppValue keeps
+  // the snapshot fresh during this render (the provider renders before its
+  // children, so no null-window); publishAppValue notifies subscribers from a
+  // commit-time effect (never a setState-during-render).
+  seedAppValue(value);
+  useEffect(() => {
+    publishAppValue(value);
+  }, [value]);
 
   const bootConfig = getBootConfig();
   const bootConfigValue = useMemo(
@@ -2713,19 +2778,21 @@ function AppProviderInner({
   return (
     <AppBootContext.Provider value={bootConfigValue}>
       <BrandingContext.Provider value={mergedBranding}>
-        <CompanionSceneConfigCtx.Provider value={companionSceneConfig}>
-          <PtySessionsCtx.Provider value={ptySessionsValue}>
-            <ChatInputRefCtx.Provider value={chatInputRef}>
-              <ChatComposerCtx.Provider value={composerValue}>
-                <AppContext.Provider value={value}>
-                  {children}
-                  <ConfirmDialog {...modalProps} />
-                  <PromptDialog {...promptModalProps} />
-                </AppContext.Provider>
-              </ChatComposerCtx.Provider>
-            </ChatInputRefCtx.Provider>
-          </PtySessionsCtx.Provider>
-        </CompanionSceneConfigCtx.Provider>
+        <PtySessionsCtx.Provider value={ptySessionsValue}>
+          <ConversationMessagesCtx.Provider value={conversationMessagesValue}>
+            <ChatTurnStatusCtx.Provider value={chatTurnStatusValue}>
+              <ChatInputRefCtx.Provider value={chatInputRef}>
+                <ChatComposerCtx.Provider value={composerValue}>
+                  <AppContext.Provider value={value}>
+                    {children}
+                    <ConfirmDialog {...modalProps} />
+                    <PromptDialog {...promptModalProps} />
+                  </AppContext.Provider>
+                </ChatComposerCtx.Provider>
+              </ChatInputRefCtx.Provider>
+            </ChatTurnStatusCtx.Provider>
+          </ConversationMessagesCtx.Provider>
+        </PtySessionsCtx.Provider>
       </BrandingContext.Provider>
     </AppBootContext.Provider>
   );

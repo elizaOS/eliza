@@ -95,6 +95,15 @@ public class ElizaAgentService extends Service {
 
     private static final int AGENT_PORT = 31337;
     private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
+
+    /**
+     * Abstract-namespace AF_UNIX socket the in-process bionic GPU inference
+     * server ({@link ElizaBionicInferenceServer}) binds, and the musl agent's
+     * BionicHostLoader connects to. Abstract namespace (no filesystem path)
+     * avoids SELinux file-label issues under the priv_app domain. The musl
+     * agent reaches it as {@code Bun.connect({unix:"\0" + name})}.
+     */
+    static final String BIONIC_INFERENCE_SOCKET_NAME = "eliza_bionic_infer_v1";
     private static final String LOCAL_AGENT_BASE_URL = "http://127.0.0.1:" + AGENT_PORT;
     private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
     private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
@@ -152,6 +161,8 @@ public class ElizaAgentService extends Service {
     private Thread stdoutPump;
     private Thread stderrPump;
     private WatchdogThread watchdog;
+    /** In-process bionic GPU inference host; non-null only when delegating. */
+    private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private Thread startWorker;
     private volatile boolean shuttingDown;
     private volatile boolean detachedAgentMode;
@@ -643,6 +654,10 @@ public class ElizaAgentService extends Service {
             watchdog.interrupt();
             watchdog = null;
         }
+        if (bionicInferenceServer != null) {
+            bionicInferenceServer.stop();
+            bionicInferenceServer = null;
+        }
         stopAgentProcess();
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
@@ -1100,7 +1115,56 @@ public class ElizaAgentService extends Service {
 
     // ── Process lifecycle ────────────────────────────────────────────────
 
+    /**
+     * Start the in-process bionic inference host whenever the fused native lib
+     * AND a local voice bundle (kokoro) are present — independent of the LLM
+     * runtime mode and of whether the agent process spawns fresh or adopts a
+     * surviving one.
+     *
+     * <p>Previously the host was started ONLY inside {@link #startAgentProcess()}'s
+     * fresh-spawn {@code delegateToBionicHost} block, so after a process restart
+     * that adopts a surviving agent (or when the agent runs cloud-routed) the
+     * host never bound its abstract UDS, and {@code TalkMode}'s local Kokoro TTS
+     * silently fell back to the system (Google) TTS. The voice host serves Kokoro
+     * from {@code libelizainference} + the staged bundle and needs no LLM, so its
+     * lifecycle is decoupled from agent inference here.
+     *
+     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and never throws
+     * (it logs + returns on lib-load / socket-bind failure), so this is purely
+     * additive: worst case the host stays down and TalkMode falls back to system
+     * TTS exactly as before — it cannot affect agent startup.
+     */
+    private synchronized void ensureBionicVoiceHost() {
+        if (bionicInferenceServer != null) {
+            return;
+        }
+        File fusedLib = new File(nativeLibraryDir(), "libelizainference.so");
+        if (!fusedLib.isFile()) {
+            return;
+        }
+        File kokoroVoice = new File(getFilesDir(), "eliza-1/bundle/tts/kokoro");
+        if (!kokoroVoice.isDirectory()) {
+            return;
+        }
+        try {
+            String defaultBundleDir =
+                new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
+            ElizaBionicInferenceServer host =
+                new ElizaBionicInferenceServer(BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir);
+            host.start();
+            bionicInferenceServer = host;
+            Log.i(TAG, "ensureBionicVoiceHost: local voice host started"
+                + " (kokoro bundle present, independent of LLM mode)");
+        } catch (Throwable t) {
+            Log.w(TAG, "ensureBionicVoiceHost: could not start local voice host", t);
+        }
+    }
+
     private void requestAgentStart(boolean restartFirst) {
+        // Bring up the local-voice (Kokoro TTS) bionic host on every service
+        // start, before the agent-already-running guards below — so it binds
+        // even when the agent is adopted rather than freshly spawned.
+        ensureBionicVoiceHost();
         synchronized (processLock) {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
@@ -1305,6 +1369,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
+            agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
@@ -1378,10 +1443,11 @@ public class ElizaAgentService extends Service {
             // (tryBuildAospFusedTextLoader) and aosp-llama-paths.ts
             // (isAospEnabled reads ELIZA_LOCAL_LLAMA).
             // This is required, not optional: the eliza-1 model tiers are
-            // qwen35-arch + QJL/PolarQuant/TBQ-quantized, and the stock
-            // llama-cpp-capacitor JNI lib cannot load those GGUFs at all
-            // (`context->loadModel() returned false`). The fused
-            // libelizainference.so carries the kernels + qwen35 arch and is
+            // Gemma-4-arch GGUFs (TurboQuant-quantized; stock f16/q8_0 KV — the
+            // legacy QJL/PolarQuant/TBQ KV kernels are retired post-#9033), and
+            // the stock llama-cpp-capacitor JNI lib cannot load those GGUFs at
+            // all (`context->loadModel() returned false`). The fused
+            // libelizainference.so carries the kernels + Gemma arch and is
             // the SOLE text/voice native library the bun agent loads.
             //
             // This was previously gated on `BuildConfig.AOSP_BUILD &&
@@ -1402,13 +1468,51 @@ public class ElizaAgentService extends Service {
             File abiFusedInference = new File(abiDir, "libelizainference.so");
             File abiLibllama = new File(abiDir, "libllama.so");
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
-            File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
             File abiGgmlVulkan = new File(abiDir, "libggml-vulkan.so");
             boolean fusedInferenceBundled = abiFusedInference.isFile();
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
-            if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
+            // When the dynamic-Vulkan fused lib is staged (libelizainference.so +
+            // libggml-vulkan.so), the GPU is only reachable from THIS bionic app
+            // process — the musl agent's ld can't load libvulkan's HIDL closure
+            // (project_android_gpu_vulkan_wall). So instead of pointing the musl
+            // agent at the bun:ffi AOSP loader (ELIZA_LOCAL_LLAMA=1 → the wall),
+            // delegate inference over an abstract-namespace UDS to the in-process
+            // ElizaBionicInferenceServer, which runs libelizainference on the Mali
+            // GPU. The musl agent never tries to load the native lib itself.
+            boolean delegateToBionicHost = fusedInferenceBundled && abiGgmlVulkan.isFile();
+            if (delegateToBionicHost) {
+                agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
+                agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
+                // The bionic host reloads the model per call (the fork's Vulkan
+                // backend corrupts shared GPU weights on reuse), so even a
+                // token-capped post-turn reflection runs ~40-60s — past the
+                // 30s default post-delivery side-effect timeout. That reflection
+                // is non-blocking background work (the reply is already
+                // delivered), so give it room to finish and persist instead of
+                // logging a spurious timeout every turn. Don't clobber an
+                // explicit operator override.
+                if (!agentEnv.containsKey("ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS")) {
+                    agentEnv.put("ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS", "120000");
+                }
+                Log.i(TAG, "agent/" + abiDir.getName()
+                    + "/libggml-vulkan.so present; delegating inference to the in-process"
+                    + " bionic Vulkan host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
+                    + "\" (NOT taking the musl bun:ffi AOSP path)");
+                // Stand up the in-process GPU inference server BEFORE the agent
+                // spawns so the abstract socket is already bound when the agent's
+                // BionicHostLoader first connects. Idempotent across restarts.
+                if (bionicInferenceServer == null) {
+                    String defaultBundleDir =
+                        new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
+                    bionicInferenceServer =
+                        new ElizaBionicInferenceServer(BIONIC_INFERENCE_SOCKET_NAME, defaultBundleDir);
+                }
+                bionicInferenceServer.start();
+            }
+            if (!delegateToBionicHost && nativeLlamaBundled
+                    && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 String bundledLib = fusedInferenceBundled
                     ? "libelizainference.so"
@@ -1423,7 +1527,10 @@ public class ElizaAgentService extends Service {
                 // this a Vulkan-capable build still runs entirely on CPU. CPU-
                 // only builds (riscv64, or arm64 without the Vulkan backend) ship
                 // no libggml-vulkan.so, so they correctly stay on CPU.
-                if (abiGgmlVulkan.isFile()
+                // Skipped when delegating: the GPU offload happens in the bionic
+                // host, not the musl bun:ffi path (which can't reach Vulkan).
+                if (!delegateToBionicHost
+                        && abiGgmlVulkan.isFile()
                         && !env.containsKey("ELIZA_AOSP_LLAMA_USE_GPU")
                         && !env.containsKey("ELIZA_LLAMA_N_GPU_LAYERS")) {
                     agentEnv.put("ELIZA_AOSP_LLAMA_USE_GPU", "true");
@@ -1444,33 +1551,12 @@ public class ElizaAgentService extends Service {
                     // cache priming.
                     agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
                 }
-                if (abiSpeculativeShim.isFile()
-                        && !env.containsKey("ELIZA_SPEC_TYPE")
-                        && !env.containsKey("ELIZA_SPECULATIVE_TYPE")) {
-                    // Prefer the in-process MTP path when the bundled
-                    // llama.cpp fork supports it. This is intentionally not
-                    // required: current mobile Eliza-1 bundles ship MTP
-                    // drafter GGUFs, and the adapter falls back to MTP when
-                    // the target model lacks NextN/MTP tensors.
-                    agentEnv.put("ELIZA_SPEC_TYPE", "mtp");
-                    Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; preferring MTP speculative decode with MTP fallback");
-                }
-                if (abiSpeculativeShim.isFile() && brandedAospBuild && !env.containsKey("ELIZA_MTP")) {
-                    agentEnv.put("ELIZA_MTP", "1");
-                    Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present on branded AOSP build; enabling in-process MTP (ELIZA_MTP=1)");
-                } else if (abiSpeculativeShim.isFile() && !brandedAospBuild) {
-                    // Ship the speculative shim in stock APKs so explicit
-                    // ELIZA_MTP diagnostics still work, but do not make
-                    // MTP the default merely because the .so is present.
-                    // Pixel APK validation showed the current 2B drafter path
-                    // is functional but slower than target-only decode for
-                    // short chat turns, so stock Android stays target-only
-                    // until benchmark gating or a faster drafter path lands.
-                    Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; leaving MTP opt-in for stock APK");
-                }
+                // MTP (multi-token / speculative decode) is compiled into the
+                // single fused libelizainference.so (the eliza_mtp::Engine over
+                // common/speculative.cpp, exported as eliza_inference_llm_mtp_supported).
+                // It is controlled in-process by ELIZA_BIONIC_MTP and the FFI
+                // capability probe — NOT by a separate speculative-shim .so (that
+                // shim is retired and never staged). No env wiring needed here.
                 if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {
                     File debugLog = new File(agentStateDir(), "aosp-llama-debug.log");
                     agentEnv.put("ELIZA_AOSP_LLAMA_DEBUG_LOG", debugLog.getAbsolutePath());
@@ -1503,7 +1589,7 @@ public class ElizaAgentService extends Service {
 
                 // Keep decode chunks bounded for stock APK runs while avoiding
                 // unnecessary multi-chunk prompt prefill. Pixel validation on
-                // eliza-1-0_8b showed 256-token chunks reduce native prefill
+                // eliza-1-2b showed 256-token chunks reduce native prefill
                 // time versus the older 64-token default, without blocking
                 // health/startup probes because the HTTP server binds after
                 // model prewarm. Branded AOSP keeps the historical 512-token
@@ -2060,8 +2146,8 @@ public class ElizaAgentService extends Service {
         Thread probe = new Thread(() -> {
             long deadline = launchStartedAtMs + STARTUP_HEALTH_GRACE_MS;
             while (!shuttingDown && System.currentTimeMillis() < deadline) {
-                ProbeResult result = probeHealth();
-                if (result == ProbeResult.OK) {
+                ElizaAgentWatchdogPolicy.ProbeResult result = probeHealth();
+                if (result == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                     restartAttempts = 0;
                     synchronized (processLock) {
                         if (!detachedAgentMode || detachedLaunchStartedAtMs != launchStartedAtMs) {
@@ -2113,7 +2199,7 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private ProbeResult probeHealth() {
+    private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(HEALTH_URL);
@@ -2130,14 +2216,14 @@ public class ElizaAgentService extends Service {
                 String body = readResponseBody(conn);
                 if (!isReadyHealthBody(body)) {
                     Log.w(TAG, "Agent health endpoint responded before ready: " + compactForLog(body));
-                    return ProbeResult.DEAD;
+                    return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
                 }
-                return ProbeResult.OK;
+                return ElizaAgentWatchdogPolicy.ProbeResult.OK;
             }
             // Non-2xx: agent process is up but not healthy/authenticated.
             // Treat as DEAD so strikes accumulate — this is a crash or
             // readiness signal, not a busy signal.
-            return ProbeResult.DEAD;
+            return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
         } catch (IOException error) {
             // HTTP request failed (timeout / connect refused / read
             // interrupt). If the direct child process is still alive the
@@ -2150,9 +2236,9 @@ public class ElizaAgentService extends Service {
                 current = agentProcess;
             }
             if (current != null && current.isAlive()) {
-                return ProbeResult.BUSY;
+                return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
-            return ProbeResult.DEAD;
+            return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -2193,17 +2279,7 @@ public class ElizaAgentService extends Service {
     }
 
     private static boolean isReadyHealthBody(String body) {
-        if (body == null || body.trim().isEmpty()) return false;
-        try {
-            JSONObject json = new JSONObject(body);
-            if (!json.optBoolean("ready", false)) return false;
-            String runtime = json.optString("runtime", "");
-            if (!runtime.isEmpty() && !"ok".equals(runtime)) return false;
-            String agentState = json.optString("agentState", "");
-            return agentState.isEmpty() || "running".equals(agentState);
-        } catch (JSONException error) {
-            return false;
-        }
+        return ElizaAgentWatchdogPolicy.isReadyHealthBody(body);
     }
 
     private static String compactForLog(String value) {
@@ -2215,15 +2291,17 @@ public class ElizaAgentService extends Service {
 
     private void scheduleRestart() {
         if (shuttingDown) return;
-        if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+        ElizaAgentWatchdogPolicy.RestartDecision decision =
+            ElizaAgentWatchdogPolicy.nextRestart(restartAttempts, MAX_RESTART_ATTEMPTS);
+        if (!decision.allowed) {
             Log.e(TAG, "Agent crashed " + restartAttempts + " times — giving up. Service stopping.");
             currentStatus = "fatal";
             updateNotification();
             stopSelf();
             return;
         }
-        long backoffMs = 1000L * (1L << restartAttempts);
-        restartAttempts++;
+        long backoffMs = decision.delayMs;
+        restartAttempts = decision.nextRestartAttempts;
         Log.w(TAG, "Restarting agent in " + backoffMs + "ms (attempt " + restartAttempts + "/" + MAX_RESTART_ATTEMPTS + ").");
         new Thread(() -> {
             try {
@@ -2270,23 +2348,31 @@ public class ElizaAgentService extends Service {
                 }
                 if (current == null) {
                     if (detachedAgentMode) {
-                        ProbeResult probe = probeHealth();
-                        if (probe == ProbeResult.OK) {
+                        ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+                        ElizaAgentWatchdogPolicy.HealthDecision decision =
+                            ElizaAgentWatchdogPolicy.evaluateHealthProbe(
+                                probe,
+                                unhealthyTicks,
+                                HEALTH_FAIL_STRIKES
+                            );
+                        if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                             if (unhealthyTicks > 0) {
                                 Log.i(TAG, "Detached agent health restored.");
                             }
-                            unhealthyTicks = 0;
-                            restartAttempts = 0;
+                            unhealthyTicks = decision.unhealthyTicks;
+                            if (decision.resetRestartAttempts) {
+                                restartAttempts = 0;
+                            }
                             if (!"running".equals(currentStatus)) {
                                 currentStatus = "running";
                                 updateNotification();
                             }
-                        } else if (probe == ProbeResult.DEAD) {
-                            unhealthyTicks++;
+                        } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.DEAD) {
+                            unhealthyTicks = decision.unhealthyTicks;
                             Log.w(TAG, "Detached agent health probe failed ("
-                                + unhealthyTicks + " consecutive).");
-                            if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
-                                unhealthyTicks = 0;
+                                + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
+                                + " consecutive).");
+                            if (decision.restartRequired) {
                                 scheduleRestart();
                             }
                         }
@@ -2309,13 +2395,19 @@ public class ElizaAgentService extends Service {
                     continue;
                 }
 
-                ProbeResult probe = probeHealth();
-                if (probe == ProbeResult.OK) {
+                ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+                ElizaAgentWatchdogPolicy.HealthDecision decision =
+                    ElizaAgentWatchdogPolicy.evaluateHealthProbe(
+                        probe,
+                        unhealthyTicks,
+                        HEALTH_FAIL_STRIKES
+                    );
+                if (probe == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                     if (unhealthyTicks > 0) {
                         Log.i(TAG, "Agent health restored.");
                     }
-                    unhealthyTicks = 0;
-                    if (restartAttempts > 0) {
+                    unhealthyTicks = decision.unhealthyTicks;
+                    if (decision.resetRestartAttempts && restartAttempts > 0) {
                         // Reset backoff once the agent has been healthy for a tick.
                         restartAttempts = 0;
                     }
@@ -2323,7 +2415,7 @@ public class ElizaAgentService extends Service {
                         currentStatus = "running";
                         updateNotification();
                     }
-                } else if (probe == ProbeResult.BUSY) {
+                } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
                     // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
                     // bun process is still alive. The most likely cause is
                     // synchronous work inside the JS event loop — typically
@@ -2337,10 +2429,11 @@ public class ElizaAgentService extends Service {
                     // ProbeResult.DEAD: process is dead, OR /api/health
                     // did not return 2xx with ready=true. Only here do we
                     // accumulate strikes toward a force-restart.
-                    unhealthyTicks++;
-                    Log.w(TAG, "Agent health probe failed (" + unhealthyTicks + " consecutive).");
-                    if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
-                        unhealthyTicks = 0;
+                    unhealthyTicks = decision.unhealthyTicks;
+                    Log.w(TAG, "Agent health probe failed ("
+                        + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)
+                        + " consecutive).");
+                    if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
                         stopAgentProcess();
                         scheduleRestart();
@@ -2349,24 +2442,6 @@ public class ElizaAgentService extends Service {
             }
         }
 
-    }
-
-    /**
-     * Outcome of a single watchdog health probe. The watchdog uses these
-     * to decide whether to count a strike toward force-restart:
-     *   OK   → process is healthy, reset strike counter.
-     *   BUSY → process is alive but the HTTP listener didn't answer in
-     *          HEALTH_TIMEOUT_MS. Typically means bun is synchronously
-     *          inside a native FFI call (llama_decode on a long prompt).
-     *          No strike.
-     *   DEAD → process is dead, OR the HTTP server did not return 2xx
-     *          with ready=true, OR a hard connection failure (port
-     *          closed). Count a strike.
-     */
-    private enum ProbeResult {
-        OK,
-        BUSY,
-        DEAD,
     }
 
     // ── Notification helpers ─────────────────────────────────────────────

@@ -6,13 +6,22 @@
 "use client";
 
 import { LogViewer } from "@elizaos/ui/cloud-ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface DockerLogsViewerProps {
   sandboxId: string; // agent_sandbox.id (UUID)
   containerName: string; // for display
   nodeId: string; // node identifier
+}
+
+function getLineClass(line: string): string {
+  const l = line.toLowerCase();
+  if (l.includes("error") || l.includes("fatal") || l.includes("panic"))
+    return "text-red-400 border-l-red-500";
+  if (l.includes("warn")) return "text-yellow-400 border-l-yellow-500";
+  if (l.includes("info")) return "text-white/70 border-l-white/40";
+  return "text-neutral-300 border-l-neutral-700";
 }
 
 interface LogsState {
@@ -76,9 +85,14 @@ export function DockerLogsViewer({
     fetchLogs();
   }, [fetchLogs]);
 
-  const filteredLines = logsState.lines.filter(
-    (line) =>
-      !searchQuery || line.toLowerCase().includes(searchQuery.toLowerCase()),
+  const filteredLines = useMemo(
+    () =>
+      logsState.lines.filter(
+        (line) =>
+          !searchQuery ||
+          line.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [logsState.lines, searchQuery],
   );
 
   const downloadLogs = () => {
@@ -96,15 +110,6 @@ export function DockerLogsViewer({
   const copyAllLogs = async () => {
     await navigator.clipboard.writeText(logsState.raw);
     toast.success("Logs copied to clipboard");
-  };
-
-  const getLineClass = (line: string): string => {
-    const l = line.toLowerCase();
-    if (l.includes("error") || l.includes("fatal") || l.includes("panic"))
-      return "text-red-400 border-l-red-500";
-    if (l.includes("warn")) return "text-yellow-400 border-l-yellow-500";
-    if (l.includes("info")) return "text-white/70 border-l-white/40";
-    return "text-neutral-300 border-l-neutral-700";
   };
 
   return (

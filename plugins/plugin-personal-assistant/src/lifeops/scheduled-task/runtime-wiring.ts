@@ -8,62 +8,53 @@
  */
 
 import crypto from "node:crypto";
-import { getAgentEventService } from "@elizaos/agent";
+import { createLocalAgentBackup, getAgentEventService } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
-import { type IAgentRuntime, ServiceType, logger } from "@elizaos/core";
-import { getChannelRegistry } from "../channels/index.js";
-import type { DispatchResult } from "../connectors/contract.js";
-
-import { createGlobalPauseStore } from "../global-pause/store.js";
-import {
-  ownerFactsToView,
-  resolveOwnerFactStore,
-} from "../owner/fact-store.js";
-import {
-  createAnchorRegistry,
-  getAnchorRegistry,
-  registerAnchorRegistry,
-  registerAppLifeOpsAnchors,
-} from "@elizaos/plugin-scheduling";
-import { LifeOpsRepository } from "../repository.js";
-import { getSendPolicyRegistry } from "../send-policy/index.js";
-import { getActivitySignalBus } from "../signals/bus.js";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createConsolidationRegistry,
-  registerFallbackAnchors,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import type {
-  ScheduledTaskDispatcher,
-  ScheduledTaskDispatchRecord,
-} from "@elizaos/plugin-scheduling";
-import {
-  createScheduledTaskRunner,
-  type ScheduledTaskRunnerHandle,
-  type ScheduledTaskStore,
-} from "@elizaos/plugin-scheduling";
-import type { ScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
+import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
   OwnerFactsView,
   ScheduledTask,
+  ScheduledTaskDispatcher,
+  ScheduledTaskDispatchRecord,
   ScheduledTaskFilter,
   ScheduledTaskLogEntry,
+  ScheduledTaskLogStore,
   SubjectStoreView,
   TaskExecutionProfile,
 } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  getAnchorRegistry,
+  registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  registerFallbackAnchors,
+  registerScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerDepsBundle,
+  type ScheduledTaskRunnerHandle,
+  type ScheduledTaskStore,
+} from "@elizaos/plugin-scheduling";
+import { getChannelRegistry } from "../channels/index.js";
+import type { DispatchResult } from "../connectors/contract.js";
+import { resolveDefaultTimeZone } from "../defaults.js";
+import { resolveGlobalPauseStore } from "../global-pause/store.js";
+import {
+  ownerFactsToView,
+  resolveOwnerFactStore,
+} from "../owner/fact-store.js";
+import { LifeOpsRepository } from "../repository.js";
+import { preferEffectiveMergedState } from "../schedule-state.js";
+import { getSendPolicyRegistry } from "../send-policy/index.js";
+import { getActivitySignalBus } from "../signals/bus.js";
 
 interface RepositoryBackedStores {
   store: ScheduledTaskStore;
@@ -148,7 +139,37 @@ function defaultOwnerFactsProvider(
 ): () => Promise<OwnerFactsView> {
   return async () => {
     const store = resolveOwnerFactStore(runtime);
-    return ownerFactsToView(await store.read());
+    const view = ownerFactsToView(await store.read());
+    const timezone = view.timezone ?? resolveDefaultTimeZone();
+    try {
+      const repo = new LifeOpsRepository(runtime);
+      const [local, cloud] = await Promise.all([
+        repo.getScheduleMergedState(runtime.agentId, "local", timezone),
+        repo.getScheduleMergedState(runtime.agentId, "cloud", timezone),
+      ]);
+      const effective = preferEffectiveMergedState({
+        now: new Date(),
+        local,
+        cloud,
+      });
+      const sampleCount = effective?.baseline?.sampleCount;
+      if (typeof sampleCount === "number" && Number.isFinite(sampleCount)) {
+        view.personalBaseline = {
+          sampleCount,
+          windowDays: effective?.baseline?.windowDays,
+        };
+      }
+    } catch (error) {
+      logger.warn(
+        {
+          src: "lifeops:scheduled-task:runtime-wiring",
+          agentId: runtime.agentId,
+          error,
+        },
+        "Failed to project schedule baseline sample count into owner facts; baseline-dependent gates will deny until it is available.",
+      );
+    }
+    return view;
   };
 }
 
@@ -233,6 +254,14 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";
+
+function isLocalAgentBackupDispatch(
+  record: ScheduledTaskDispatchRecord,
+): boolean {
+  return record.metadata?.systemOperation === LOCAL_AGENT_BACKUP_OPERATION;
+}
+
 function deniedDecisionToDispatchResult(
   decision: Awaited<
     ReturnType<
@@ -266,6 +295,28 @@ export function createProductionScheduledTaskDispatcher(opts: {
     async dispatch(
       record: ScheduledTaskDispatchRecord,
     ): Promise<DispatchResult> {
+      if (isLocalAgentBackupDispatch(record)) {
+        const backup = await createLocalAgentBackup(
+          opts.runtime,
+          {} as Parameters<typeof createLocalAgentBackup>[1],
+        );
+        logger.info(
+          {
+            src: "lifeops:scheduled-task",
+            agentId: opts.runtime.agentId,
+            taskId: record.taskId,
+            fileName: backup.fileName,
+            stateSha256: backup.stateSha256,
+            sizeBytes: backup.sizeBytes,
+          },
+          "[lifeops-scheduled-task] Local agent backup completed",
+        );
+        return {
+          ok: true,
+          messageId: `agent-backup:${backup.fileName}`,
+        };
+      }
+
       const registry = getChannelRegistry(opts.runtime);
       const channel = registry?.get(record.channelKey) ?? null;
       if (!channel?.send) {
@@ -404,9 +455,17 @@ export interface CreateRuntimeRunnerOptions {
   now?: () => Date;
 }
 
-export function createRuntimeScheduledTaskRunner(
+/**
+ * Build the production deps bundle PA injects into `@elizaos/plugin-scheduling`'s
+ * runner host. This is the LifeOps-specific wiring — DB-backed store/log,
+ * production dispatcher, owner-facts / channel-keys / host-capability probes,
+ * and PA's anchor registry. The generic registries (gates, completion-checks,
+ * ladders, consolidation) are built here too so the spine's runner host uses the
+ * built-in set rather than rebuilding them.
+ */
+function buildLifeOpsRunnerDeps(
   opts: CreateRuntimeRunnerOptions,
-): ScheduledTaskRunnerHandle {
+): ScheduledTaskRunnerDepsBundle {
   const stores = makeRepositoryBackedStores(opts.runtime, opts.agentId);
 
   const gates = createTaskGateRegistry();
@@ -426,7 +485,7 @@ export function createRuntimeScheduledTaskRunner(
   // still inject overrides via the options bag. The diagnostic shims warn-once
   // on missing wiring so silent always-allow / always-false defaults are gone.
   const globalPause: GlobalPauseView =
-    opts.globalPause ?? createGlobalPauseStore(opts.runtime);
+    opts.globalPause ?? resolveGlobalPauseStore(opts.runtime);
   const activity: ActivitySignalBusView =
     opts.activity ??
     getActivitySignalBus(opts.runtime) ??
@@ -434,8 +493,7 @@ export function createRuntimeScheduledTaskRunner(
   const subjectStore: SubjectStoreView =
     opts.subjectStore ?? makeMissingSubjectStoreView(opts.runtime);
 
-  return createScheduledTaskRunner({
-    agentId: opts.agentId,
+  return {
     store: stores.store,
     logStore: stores.logStore,
     gates,
@@ -447,7 +505,6 @@ export function createRuntimeScheduledTaskRunner(
     globalPause,
     activity,
     subjectStore,
-    now: opts.now,
     channelKeys: () => {
       const registry = getChannelRegistry(opts.runtime);
       if (!registry) return new Set();
@@ -462,5 +519,46 @@ export function createRuntimeScheduledTaskRunner(
     dispatcher: createProductionScheduledTaskDispatcher({
       runtime: opts.runtime,
     }),
+  };
+}
+
+export function createRuntimeScheduledTaskRunner(
+  opts: CreateRuntimeRunnerOptions,
+): ScheduledTaskRunnerHandle {
+  const deps = buildLifeOpsRunnerDeps(opts);
+  return createScheduledTaskRunner({
+    agentId: opts.agentId,
+    store: deps.store,
+    logStore: deps.logStore,
+    gates: deps.gates ?? createTaskGateRegistry(),
+    completionChecks: deps.completionChecks ?? createCompletionCheckRegistry(),
+    ladders: deps.ladders ?? createEscalationLadderRegistry(),
+    anchors: deps.anchors ?? resolveRuntimeAnchorRegistry(opts.runtime),
+    consolidation: deps.consolidation ?? createConsolidationRegistry(),
+    ownerFacts: deps.ownerFacts,
+    globalPause: deps.globalPause,
+    activity: deps.activity,
+    subjectStore: deps.subjectStore,
+    ...(opts.now ? { now: opts.now } : {}),
+    ...(deps.channelKeys ? { channelKeys: deps.channelKeys } : {}),
+    ...(deps.hostCapabilities
+      ? { hostCapabilities: deps.hostCapabilities }
+      : {}),
+    dispatcher: deps.dispatcher,
   });
+}
+
+/**
+ * Register PA's production deps as the runner host's injected deps provider on
+ * `@elizaos/plugin-scheduling`. Called during PA `init`. First-wins: the spine
+ * keeps this provider once set, so PA rows land in `app_lifeops` via the
+ * injected repository-backed store even though the runner service itself lives
+ * in `@elizaos/plugin-scheduling`.
+ */
+export function registerLifeOpsScheduledTaskRunnerDeps(
+  runtime: IAgentRuntime,
+): void {
+  registerScheduledTaskRunnerDeps(runtime, (rt, agentId) =>
+    buildLifeOpsRunnerDeps({ runtime: rt, agentId }),
+  );
 }

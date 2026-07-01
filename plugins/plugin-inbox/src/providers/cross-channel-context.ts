@@ -16,7 +16,7 @@
  *   - or no cross-channel entries exist for that sender.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,

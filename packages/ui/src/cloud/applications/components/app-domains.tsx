@@ -47,6 +47,8 @@ import {
 } from "../../../components/ui/tooltip";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
+import { BuyDomainCard } from "./BuyDomainCard";
 
 interface DomainInfo {
   id: string;
@@ -178,6 +180,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
     const primaryDomain = domains.find((d) => d.isPrimary);
     if (primaryDomain?.customDomain && !primaryDomain.customDomainVerified) {
       pollIntervalRef.current = setInterval(() => {
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState !== "visible"
+        )
+          return;
         checkDomainStatus(primaryDomain.customDomain ?? "", true);
       }, 15000);
 
@@ -495,7 +502,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-black/30 border-white/10 focus:border-[#FF5800]/50 rounded-sm placeholder:text-neutral-600"
+                          className="flex-1 bg-black/30 border-white/10  rounded-sm placeholder:text-neutral-600"
                         />
                         <div className="flex gap-2">
                           <Button
@@ -553,6 +560,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
           )}
         </div>
+
+        {/* Buy a domain through Cloudflare (#10246) */}
+        {primaryDomain && !hasCustomDomain && !isLoading && (
+          <BuyDomainCard appId={appId} onPurchased={fetchDomains} />
+        )}
 
         {/* DNS Configuration Panel */}
         <AnimatePresence>
@@ -739,6 +751,14 @@ function DomainCard({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => {
+                    // Native studio: open the verified domain in the system
+                    // browser (WebView target="_blank" is unreliable). No-op on
+                    // web — the anchor opens a new tab as before.
+                    if (openExternalUrlOnNative(url)) {
+                      e.preventDefault();
+                    }
+                  }}
                   className="inline-flex items-center justify-center h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/10 rounded-sm transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />
@@ -947,7 +967,7 @@ function DnsConfigPanel({
           {lastChecked && (
             <span className="text-xs text-neutral-500 hidden sm:block">
               {t("cloud.appDomains.lastChecked", {
-                time: lastChecked.toLocaleTimeString(),
+                time: lastChecked.toLocaleTimeString("en-US"),
                 defaultValue: "Last checked: {{time}}",
               })}
             </span>

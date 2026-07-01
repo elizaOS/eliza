@@ -1,7 +1,7 @@
 "use client";
 
 import { StewardLogin, useAuth } from "@stwd/react";
-import { AlertTriangle, CheckCircle2, Loader2, Shield } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
@@ -183,11 +183,13 @@ function AuthorizeAuthenticatedContent({
         );
       }
 
-      window.location.href = buildAppAuthorizeCompletionRedirect({
-        code,
-        redirectUri,
-        state,
-      });
+      window.location.assign(
+        buildAppAuthorizeCompletionRedirect({
+          code,
+          redirectUri,
+          state,
+        }),
+      );
     } catch (err) {
       const message =
         err instanceof Error
@@ -203,10 +205,12 @@ function AuthorizeAuthenticatedContent({
       router.push("/");
       return;
     }
-    window.location.href = buildAppAuthorizeCancelRedirect({
-      redirectUri,
-      state,
-    });
+    window.location.assign(
+      buildAppAuthorizeCancelRedirect({
+        redirectUri,
+        state,
+      }),
+    );
   }, [redirectUri, state, router]);
 
   // Render.
@@ -247,7 +251,10 @@ function AuthorizeAuthenticatedContent({
   return (
     <Frame>
       <AppHeader appInfo={appInfo} />
-      <PermissionsList />
+      <p className="max-w-sm text-center text-sm text-white/60">
+        Connect {appInfo.name} to your Eliza Cloud account. AI features may use
+        your cloud credit balance.
+      </p>
 
       {error && (
         <div className="rounded-sm border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
@@ -267,11 +274,6 @@ function AuthorizeAuthenticatedContent({
           providersReady={providersReady}
         />
       )}
-
-      <p className="text-center text-xs text-white/40">
-        By continuing, you agree to share your account information with this
-        app.
-      </p>
     </Frame>
   );
 }
@@ -309,7 +311,7 @@ function Frame({ children }: { children: React.ReactNode }) {
     <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md backdrop-blur-sm bg-black/60">
+        <BrandCard className="w-full max-w-md bg-black/85">
           <CornerBrackets size="md" className="opacity-50" />
           <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
             {children}
@@ -351,27 +353,6 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
   );
 }
 
-function PermissionsList() {
-  return (
-    <div className="space-y-3 p-4 rounded-sm bg-white/5 border border-white/10 w-full">
-      <div className="flex items-center gap-2 text-white/80">
-        <Shield className="h-4 w-4 text-[#FF5800]" />
-        <span className="text-sm font-medium">This app wants to:</span>
-      </div>
-      <ul className="space-y-2 text-sm text-white/60 ml-6">
-        <li className="flex items-center gap-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-[#FF5800]" />
-          Access your Eliza Cloud account
-        </li>
-        <li className="flex items-center gap-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-[#FF5800]" />
-          Use AI features paid for from your cloud credit balance
-        </li>
-      </ul>
-    </div>
-  );
-}
-
 function SignedInActions({
   appName,
   onAuthorize,
@@ -382,17 +363,11 @@ function SignedInActions({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex w-full flex-col gap-3">
-      <div className="flex items-center justify-center gap-2 rounded-sm border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
-        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-        <span>Signed in</span>
-      </div>
+    <div className="flex w-full flex-col items-center gap-3">
       <BrandButton onClick={onAuthorize} className="w-full">
         Authorize {appName}
       </BrandButton>
-      <BrandButton variant="ghost" onClick={onCancel} className="w-full">
-        Cancel
-      </BrandButton>
+      <InlineCancelButton onCancel={onCancel} />
     </div>
   );
 }
@@ -405,7 +380,7 @@ function SignedOutActions({
   providersReady: boolean;
 }) {
   return (
-    <div className="flex w-full flex-col gap-4">
+    <div className="flex w-full flex-col items-center gap-4">
       {providersReady ? (
         <StewardLogin
           variant="inline"
@@ -419,9 +394,19 @@ function SignedOutActions({
           <p className="text-sm text-white/60">Loading sign-in options...</p>
         </div>
       )}
-      <BrandButton variant="ghost" onClick={onCancel} className="w-full">
-        Cancel
-      </BrandButton>
+      <InlineCancelButton onCancel={onCancel} />
     </div>
+  );
+}
+
+function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCancel}
+      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
+    >
+      Cancel
+    </button>
   );
 }

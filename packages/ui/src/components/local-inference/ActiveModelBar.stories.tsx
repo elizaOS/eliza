@@ -8,9 +8,9 @@ import { ActiveModelBar } from "./ActiveModelBar";
 
 const installed: InstalledModel[] = [
   {
-    id: "eliza-1-0_8b",
-    displayName: "Eliza-1 0.8B",
-    path: "/models/eliza-1-0_8b.gguf",
+    id: "eliza-1-2b",
+    displayName: "Eliza-1 2B",
+    path: "/models/eliza-1-2b.gguf",
     sizeBytes: 820_000_000,
     installedAt: new Date().toISOString(),
     lastUsedAt: new Date().toISOString(),
@@ -19,7 +19,7 @@ const installed: InstalledModel[] = [
 ];
 
 const readyActive: ActiveModelState = {
-  modelId: "eliza-1-0_8b",
+  modelId: "eliza-1-2b",
   loadedAt: new Date().toISOString(),
   status: "ready",
 };
@@ -53,14 +53,14 @@ export const Ready: Story = {};
 
 export const Loading: Story = {
   args: {
-    active: { modelId: "eliza-1-0_8b", loadedAt: null, status: "loading" },
+    active: { modelId: "eliza-1-2b", loadedAt: null, status: "loading" },
   },
 };
 
 export const ErrorState: Story = {
   args: {
     active: {
-      modelId: "eliza-1-0_8b",
+      modelId: "eliza-1-2b",
       loadedAt: null,
       status: "error",
       error: "Out of memory",

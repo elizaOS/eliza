@@ -14,14 +14,6 @@ export const UI_E2E_SUITES = [
     recordEnv: { ELIZA_UI_SMOKE_FORCE_STUB: "1" },
   },
   {
-    name: "cloud-frontend",
-    displayName: "Cloud frontend",
-    configDir: "packages/cloud-frontend",
-    script: "test:e2e",
-    coverage:
-      "Runs cloud login/session, dashboard routes, settings, API key, billing, route coverage, visual pages, screenshots, traces, and videos.",
-  },
-  {
     name: "cloud-e2e",
     displayName: "Cloud full-stack mock e2e",
     configDir: "packages/test/cloud-e2e",
@@ -40,7 +32,7 @@ export const UI_E2E_SUITES = [
   {
     name: "os-homepage",
     displayName: "OS homepage",
-    configDir: "packages/os-homepage",
+    configDir: "packages/os/homepage",
     script: "test:e2e",
     coverage:
       "Runs OS homepage routes, checkout/preorder flows, link resilience, mobile/desktop screenshots, traces, and videos.",
@@ -62,6 +54,14 @@ export const UI_E2E_SUITES = [
       "Runs the shared agent-surface fixture in Chromium, drives fill/click/focus capability bridge interactions, and records screenshots.",
   },
   {
+    name: "ui-launcher",
+    displayName: "Launcher view launcher",
+    configDir: "packages/ui",
+    script: "test:launcher-e2e",
+    coverage:
+      "Runs the Launcher launcher fixture in Chromium, asserts tiles + image tiles render, captures desktop/mobile rest + edit screenshots, drives tap-launch/long-press-edit/favorite/page-nav with a recorded video, and asserts the view-interaction telemetry stream fired.",
+  },
+  {
     name: "app-xr",
     displayName: "Facewear XR app",
     configDir: "plugins/plugin-facewear/app-xr",
@@ -76,6 +76,32 @@ export const UI_E2E_SUITES = [
     script: "test",
     coverage:
       "Runs the standalone Feed DAG visualizer browser e2e with screenshots, traces, and videos.",
+  },
+  {
+    name: "android-emu",
+    displayName: "Android emulator app capture",
+    configDir: "packages/app",
+    command: ["node", "scripts/e2e-recordings/capture-android-emu.mjs"],
+    checkCommand: [
+      "node",
+      "scripts/e2e-recordings/capture-android-emu.mjs",
+      "--check",
+    ],
+    coverage:
+      "Boots or reuses an Android emulator, starts the deterministic host agent, drives the real Capacitor onboarding flow, and writes emulator screenshot, screenrecord, logcat, and capture logs to issue evidence.",
+  },
+  {
+    name: "ios-sim",
+    displayName: "iOS simulator app capture",
+    configDir: "packages/app",
+    command: ["node", "scripts/e2e-recordings/capture-ios-sim.mjs"],
+    checkCommand: [
+      "node",
+      "scripts/e2e-recordings/capture-ios-sim.mjs",
+      "--check",
+    ],
+    coverage:
+      "Boots or reuses an iOS Simulator, starts the deterministic host agent, drives first-run onboarding, and writes simulator screenshots, recordVideo output, smoke result JSON, and capture logs to issue evidence.",
   },
 ];
 

@@ -86,6 +86,88 @@ const MEDIA_FILE_NAME = /^[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
 
 const MEDIA_URL_PREFIX = "/api/media/";
 
+/**
+ * MIME types that are safe to render inline in a browser context. Everything
+ * else — notably `image/svg+xml`, `text/html`, and unknown/active types — is
+ * served with `Content-Disposition: attachment` so it can never execute script
+ * on the dashboard origin (stored-XSS defence). SVG is deliberately excluded:
+ * it is an XML document that can carry `<script>` and event handlers.
+ */
+export function isInlineSafeMime(mime: string): boolean {
+  const m = (mime.split(";")[0] ?? "").trim().toLowerCase();
+  if (m === "image/svg+xml") return false;
+  return (
+    (m.startsWith("image/") && m !== "image/svg+xml") ||
+    m.startsWith("audio/") ||
+    m.startsWith("video/") ||
+    m === "application/pdf"
+  );
+}
+
+/**
+ * Sniff the leading bytes for active XML/HTML markup. Returns the TRUE dangerous
+ * mime when the content is SVG or HTML, else null. Used to reconcile a declared
+ * "safe image" mime against bytes that are really markup, so the store records
+ * (and later serves) the truthful, attachment-served type — defence in depth on
+ * top of the strict extension map and the nosniff header.
+ */
+export function sniffMarkupMime(buffer: Buffer): string | null {
+  // Skip a leading UTF-8 BOM / whitespace before peeking at the first token.
+  let i = 0;
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xef &&
+    buffer[1] === 0xbb &&
+    buffer[2] === 0xbf
+  ) {
+    i = 3;
+  }
+  while (i < buffer.length && i < 64) {
+    const c = buffer[i];
+    if (c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  const head = buffer
+    .subarray(i, Math.min(buffer.length, i + 512))
+    .toString("utf8")
+    .toLowerCase();
+  if (
+    head.startsWith("<svg") ||
+    (head.startsWith("<?xml") && head.includes("<svg"))
+  ) {
+    return "image/svg+xml";
+  }
+  if (head.startsWith("<!doctype html") || head.startsWith("<html")) {
+    return "text/html";
+  }
+  return null;
+}
+
+/**
+ * Build the security headers for a served media response. Always sets
+ * `X-Content-Type-Options: nosniff` (so a mislabelled image is never sniffed to
+ * HTML) and a fully-sandboxed CSP (applies when the URL is navigated to as a
+ * document). Inline-safe types render inline; everything else (SVG, HTML,
+ * unknown/active) is forced to download so it cannot execute on this origin.
+ */
+function mediaSecurityHeaders(
+  fileName: string,
+  contentType: string,
+): Record<string, string> {
+  const disposition = isInlineSafeMime(contentType)
+    ? "inline"
+    : `attachment; filename="${fileName}"`;
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": disposition,
+    "Content-Security-Policy":
+      "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  };
+}
+
 let cachedMediaDir: string | null = null;
 
 function mediaDir(): string {
@@ -204,14 +286,80 @@ export function persistMediaBytes(
   buffer: Buffer,
   mimeType: string,
 ): PersistedMedia {
+  // Reconcile a declared "safe image" mime against bytes that are really active
+  // markup (SVG/HTML), so the store records the truthful type and the serve path
+  // forces an attachment download instead of inline rendering. Truthful active
+  // types declared up front are left as-is (still served as attachments).
+  let effectiveMime = mimeType;
+  if (isInlineSafeMime(mimeType)) {
+    const sniffed = sniffMarkupMime(buffer);
+    if (sniffed) {
+      logger.warn(
+        `[media-store] declared ${mimeType} but content sniffed as ${sniffed}; storing as ${sniffed} (served as download)`,
+      );
+      effectiveMime = sniffed;
+    }
+  }
   const hash = crypto.createHash("sha256").update(buffer).digest("hex");
-  const fileName = `${hash}.${extForMime(mimeType)}`;
+  const fileName = `${hash}.${extForMime(effectiveMime)}`;
   const filePath = path.join(mediaDir(), fileName);
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, buffer);
     maybeEvict();
   }
   return { url: `${MEDIA_URL_PREFIX}${fileName}`, hash, fileName };
+}
+
+/**
+ * Read a stored media file's raw bytes by its `<sha256>.<ext>` name, or null if
+ * absent/unreadable. Path-traversal-safe (the resolved path must stay in the
+ * store dir). Used by agent backup/export to bundle referenced media bytes.
+ */
+export function readStoredMediaBytes(fileName: string): Buffer | null {
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir()) return null;
+  try {
+    return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write raw bytes to a stored media file by its `<sha256>.<ext>` name (the name
+ * is the content hash, so this is idempotent). Path-traversal-safe. Used by
+ * agent restore/import to rehydrate the content-addressed media store.
+ */
+export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir()) return false;
+  try {
+    fs.mkdirSync(mediaDir(), { recursive: true });
+    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Content-integrity check for a stored media file: the store is content-addressed
+ * (`<sha256>.<ext>`, the sha256 of the bytes — see how filenames are minted
+ * above), so the bytes MUST hash back to the name. Returns true only when
+ * `fileName` is a strict content-addressed name AND `sha256(bytes)` equals its
+ * 64-hex hash. Used at the restore/import boundary (#9963) to reject corrupt or
+ * tampered backup media instead of silently writing bytes under a hash that
+ * doesn't match their content — which would poison the dedup/capability
+ * invariant the whole store relies on.
+ */
+export function storedMediaContentMatchesName(
+  fileName: string,
+  bytes: Buffer,
+): boolean {
+  if (!MEDIA_FILE_NAME.test(fileName)) return false;
+  const expected = fileName.slice(0, 64);
+  const actual = crypto.createHash("sha256").update(bytes).digest("hex");
+  return actual === expected;
 }
 
 const DATA_URL_RE = /^data:([^;,]*)(;base64)?,([\s\S]*)$/;
@@ -299,6 +447,69 @@ function mimeForFile(fileName: string): string {
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
 
+export interface MediaFileInfo {
+  fileName: string;
+  url: string;
+  hash: string;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+}
+
+/**
+ * List every stored media file with derived metadata (size, mime, mtime) for
+ * the Files surface. Read-only directory scan; never throws (returns [] on
+ * failure). Metadata is derived (no separate index), matching the
+ * content-addressed model — original filenames aren't retained here.
+ */
+export function listMediaFiles(): MediaFileInfo[] {
+  const out: MediaFileInfo[] = [];
+  try {
+    const dir = mediaDir();
+    for (const name of fs.readdirSync(dir)) {
+      if (!MEDIA_FILE_NAME.test(name)) continue;
+      try {
+        const stat = fs.statSync(path.join(dir, name));
+        if (!stat.isFile()) continue;
+        out.push({
+          fileName: name,
+          url: `${MEDIA_URL_PREFIX}${name}`,
+          hash: name.split(".")[0] ?? name,
+          mimeType: mimeForFile(name),
+          size: stat.size,
+          createdAt: stat.mtimeMs,
+        });
+      } catch {
+        // file vanished mid-scan — skip
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `[media-store] list failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Delete a stored media file by its strict content-addressed name. Returns true
+ * when removed. Validates the name + dir to defend against traversal.
+ */
+export function deleteMediaFile(fileName: string): boolean {
+  if (!MEDIA_FILE_NAME.test(fileName)) return false;
+  try {
+    const dir = mediaDir();
+    const filePath = path.join(dir, fileName);
+    if (path.dirname(filePath) !== dir) return false;
+    fs.unlinkSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Touch-on-serve → LRU: bump the file's mtime when it's served so eviction
 // (oldest-mtime-first) keeps frequently-viewed media and drops the truly cold
 // files. Throttled per file so a burst of range requests doesn't thrash the fs.
@@ -321,6 +532,7 @@ interface ResolvedMediaFile {
   filePath: string;
   size: number;
   contentType: string;
+  name: string;
 }
 
 /**
@@ -349,7 +561,7 @@ function resolveMediaFile(
     return { error: 404 };
   }
   touchOnServe(filePath);
-  return { filePath, size: stat.size, contentType: mimeForFile(name) };
+  return { filePath, size: stat.size, contentType: mimeForFile(name), name };
 }
 
 /**
@@ -385,6 +597,7 @@ export function handleMediaRouteRequest(
     "Content-Type": resolved.contentType,
     "Cache-Control": "public, max-age=31536000, immutable",
     "Content-Length": String(resolved.size),
+    ...mediaSecurityHeaders(resolved.name, resolved.contentType),
   };
   if (method === "HEAD") return { status: 200, headers };
   return { status: 200, headers, body: fs.readFileSync(resolved.filePath) };
@@ -419,6 +632,7 @@ export function serveMediaFile(
     "Content-Type": contentType,
     "Cache-Control": "public, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
+    ...mediaSecurityHeaders(resolved.name, contentType),
   };
 
   const range = req.headers.range;

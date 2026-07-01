@@ -24,6 +24,7 @@ import {
 const PERSON_NAME = "Priya Rao";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.same-person-email-and-telegram",
   title: "Same person on Email + Telegram dedupes to one canonical identity",
   domain: "lifeops.cross-channel",

@@ -7,7 +7,7 @@ function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
   const now = new Date().toISOString();
   return {
     jobId: "job-1",
-    modelId: "eliza-1-0_8b",
+    modelId: "eliza-1-2b",
     state: "downloading",
     received: 410_000_000,
     total: 820_000_000,

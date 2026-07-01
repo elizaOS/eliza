@@ -1,0 +1,19 @@
+{
+  "package": "elizaos-plugin-quantumscan",
+  "repository": "github:quantumscan-io/elizaos-plugin-quantumscan",
+  "kind": "plugin",
+  "description": "Post-quantum cryptography (PQC) vulnerability scanner for GitHub, GitLab, and Bitbucket repositories. Detects ECDSA, RSA, DH, AES-128, and other quantum-vulnerable algorithms. Returns risk scores and NIST FIPS 203/204/205 migration targets.",
+  "homepage": "https://quantumscan.io",
+  "version": "1.0.2",
+  "tags": [
+    "security",
+    "pqc",
+    "post-quantum",
+    "cryptography",
+    "blockchain",
+    "nist",
+    "cbom",
+    "vulnerability-scanner",
+    "quantum-computing"
+  ]
+}

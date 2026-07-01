@@ -58,6 +58,14 @@ export const ModelType = {
 	RESPONSE_HANDLER: "RESPONSE_HANDLER",
 	ACTION_PLANNER: "ACTION_PLANNER",
 	TEXT_EMBEDDING: "TEXT_EMBEDDING",
+	/**
+	 * Batch text embedding: one model call embeds N texts in a single request.
+	 * Providers that support a batched embeddings endpoint (e.g. `input: string[]`)
+	 * register this so callers that have many texts ready (the embedding-drain
+	 * service) avoid N serial single-text round-trips. Falls back to N×
+	 * {@link ModelType.TEXT_EMBEDDING} when a provider does not register it.
+	 */
+	TEXT_EMBEDDING_BATCH: "TEXT_EMBEDDING_BATCH",
 	TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
 	TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
 	TEXT_REASONING_SMALL: "REASONING_SMALL",
@@ -473,6 +481,15 @@ export interface GenerateTextParams {
 	 */
 	prompt?: string;
 	maxTokens?: number;
+	/**
+	 * When true, the adapter must avoid applying the runtime's normal default
+	 * output cap and instead use the provider/model maximum. Most hosted adapters
+	 * do this by omitting the max-tokens field; APIs that require a value (or
+	 * local backends that would otherwise fall back to a small default) send a
+	 * model/provider max instead. Scoped opt-in (e.g. direct-channel Stage 1):
+	 * when unset, adapters keep their default cap so other callers stay bounded.
+	 */
+	omitMaxTokens?: boolean;
 	minTokens?: number;
 	temperature?: number;
 	topP?: number;
@@ -531,6 +548,12 @@ export interface GenerateTextParams {
 	 * every provider.
 	 */
 	providerOptions?: Record<string, JsonValue | object | undefined>;
+	/**
+	 * Provider model id for this single generation call. Adapters that support
+	 * per-call model selection should prefer this over their slot default; other
+	 * adapters may ignore it.
+	 */
+	model?: string;
 	/**
 	 * Per-request cancellation. Honoured by adapters that wire it into their
 	 * underlying transport (e.g. local llama backends forward to
@@ -698,6 +721,48 @@ export interface TextStreamResult {
 }
 
 /**
+ * Result of a streaming text-to-speech request. Lets a caller play audio as it
+ * is synthesized instead of waiting for the whole clip. Returned by a
+ * TEXT_TO_SPEECH handler when `TextToSpeechParams.audioStream` is true; the
+ * buffered `Uint8Array`/`Buffer` shape is still returned otherwise.
+ *
+ * @example
+ * ```typescript
+ * const result = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
+ *   text: "hello", audioStream: true,
+ * }) as AudioStreamResult;
+ * for await (const chunk of result.audioStream) sink.write(chunk);
+ * const full = await result.bytes; // complete audio after the stream ends
+ * ```
+ */
+export interface AudioStreamResult {
+	/** Async iterable of audio byte chunks as they are synthesized. */
+	audioStream: AsyncIterable<Uint8Array>;
+	/** Resolves to the complete concatenated audio after streaming finishes. */
+	bytes: Promise<Uint8Array>;
+	/** MIME type of the audio (e.g. "audio/mpeg", "audio/wav", "audio/pcm"). */
+	mimeType: string;
+}
+
+/**
+ * Duck-types an {@link AudioStreamResult} off a model result so consumers can
+ * branch between the streamed and buffered TTS shapes.
+ */
+export function isAudioStreamResult(
+	value: unknown,
+): value is AudioStreamResult {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"audioStream" in value &&
+		"bytes" in value &&
+		"mimeType" in value &&
+		typeof (value as AudioStreamResult).audioStream?.[Symbol.asyncIterator] ===
+			"function"
+	);
+}
+
+/**
  * Options for the simplified generateText API.
  * Extends GenerateTextParams with additional configuration for character context.
  */
@@ -724,10 +789,32 @@ export interface GenerateTextOptions {
  */
 export interface GenerateTextResult {
 	text: string;
+	/**
+	 * Raw assistant content as returned by some provider adapters: either a flat
+	 * string or an array of content parts (e.g. Anthropic/OpenAI v5 message
+	 * parts). Normalized to `text` by `getV5ModelText`/`extractGenerateTextContentText`.
+	 */
+	content?: string | GenerateTextContentPart[];
+	/**
+	 * Some provider adapters surface the assistant message under `response`
+	 * instead of `text`. Normalized away by the same helpers.
+	 */
+	response?: string;
 	usage?: TokenUsage;
 	finishReason?: string;
 	toolCalls?: ToolCall[];
 	providerMetadata?: Record<string, JsonValue | object | undefined>;
+}
+
+/**
+ * A single content part within a {@link GenerateTextResult.content} array, as
+ * returned by chat-completion provider adapters (text/output_text parts carry
+ * their string under `text`; some carry it under `content`).
+ */
+export interface GenerateTextContentPart {
+	type?: string;
+	text?: string;
+	content?: string;
 }
 
 /**
@@ -756,6 +843,13 @@ export interface TextEmbeddingParams {
 }
 
 /**
+ * Parameters for batch text embedding models — embed many texts in one call.
+ */
+export interface BatchTextEmbeddingParams {
+	texts: string[];
+}
+
+/**
  * Parameters for image generation models
  */
 export interface ImageGenerationParams {
@@ -770,6 +864,14 @@ export interface ImageGenerationParams {
 export interface ImageDescriptionParams {
 	imageUrl: string;
 	prompt?: string;
+	signal?: AbortSignal;
+	/**
+	 * Explicit opt-in token-by-token streaming of the generated description.
+	 * Hidden preprocessing calls must leave this false/undefined so ambient chat
+	 * streaming callbacks are not exposed to the user.
+	 */
+	stream?: boolean;
+	onStreamChunk?: StreamChunkCallback;
 }
 export interface ImageDescriptionResult {
 	title: string;
@@ -786,6 +888,12 @@ export interface TranscriptionParams {
 	audioUrl: string;
 	prompt?: string;
 	signal?: AbortSignal;
+	/**
+	 * Reserved for incremental ASR providers. Current first-party local handlers
+	 * are buffered and ignore this field.
+	 */
+	stream?: boolean;
+	onStreamChunk?: StreamChunkCallback;
 }
 
 /**
@@ -796,6 +904,20 @@ export interface TextToSpeechParams {
 	voice?: string;
 	speed?: number;
 	signal?: AbortSignal;
+	/**
+	 * Explicit opt-in for streamed audio: when true, the handler MAY return an
+	 * {@link AudioStreamResult} (audio chunks as they synthesize) instead of the
+	 * full buffer, so playback can start before the whole clip is ready.
+	 * Handlers without streaming support ignore it and return the buffered shape.
+	 *
+	 * This is intentionally a DISTINCT flag from the generic `stream` (which
+	 * `AgentRuntime.useModel` auto-injects from an ambient text-streaming
+	 * context): a TTS call made inside a streaming reply turn (e.g. the
+	 * GENERATE_MEDIA action) must keep returning bytes unless the caller
+	 * explicitly consumes a stream. Only callers that handle `AudioStreamResult`
+	 * set `audioStream: true`.
+	 */
+	audioStream?: boolean;
 }
 
 /**
@@ -1086,6 +1208,7 @@ export interface ModelParamsMap {
 	[ModelType.TEXT_REASONING_SMALL]: GenerateTextParams;
 	[ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
 	[ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
+	[ModelType.TEXT_EMBEDDING_BATCH]: BatchTextEmbeddingParams;
 	[ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
 	[ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
 	[ModelType.IMAGE]: ImageGenerationParams;
@@ -1120,6 +1243,7 @@ export interface ModelResultMap {
 	[ModelType.TEXT_REASONING_SMALL]: string;
 	[ModelType.TEXT_REASONING_LARGE]: string;
 	[ModelType.TEXT_EMBEDDING]: number[];
+	[ModelType.TEXT_EMBEDDING_BATCH]: number[][];
 	[ModelType.TEXT_TOKENIZER_ENCODE]: number[];
 	[ModelType.TEXT_TOKENIZER_DECODE]: string;
 	[ModelType.IMAGE]: ImageGenerationResult[];
@@ -1157,12 +1281,20 @@ export type StreamableModelType =
 	| typeof ModelType.TEXT_COMPLETION;
 
 /**
- * Result type for plugin model handlers - includes TextStreamResult for streamable models
+ * Model types whose handlers may return a streamed-audio result.
+ */
+export type StreamableAudioModelType = typeof ModelType.TEXT_TO_SPEECH;
+
+/**
+ * Result type for plugin model handlers — includes TextStreamResult for
+ * streamable text models and AudioStreamResult for streamable audio (TTS).
  */
 export type PluginModelResult<K extends keyof ModelResultMap> =
 	K extends StreamableModelType
 		? ModelResultMap[K] | TextStreamResult
-		: ModelResultMap[K];
+		: K extends StreamableAudioModelType
+			? ModelResultMap[K] | AudioStreamResult
+			: ModelResultMap[K];
 
 /**
  * Type guard to check if a model type supports streaming.

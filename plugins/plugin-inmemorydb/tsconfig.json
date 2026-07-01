@@ -11,7 +11,7 @@
     "noEmit": true,
     "types": ["node"],
     "skipLibCheck": true,
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "allowImportingTsExtensions": true

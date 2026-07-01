@@ -37,8 +37,10 @@ export {
 export {
   type AgentSession,
   cleanupExpiredSessions,
+  configureAgentSessionStore,
   createAgentSession,
   getSessionDuration,
+  RedisSessionStore,
   type SessionStore,
   setSessionStore,
   verifyAgentCredentials,

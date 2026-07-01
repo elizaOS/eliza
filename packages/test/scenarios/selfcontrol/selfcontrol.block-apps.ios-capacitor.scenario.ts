@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.block-apps.ios-capacitor",
   title: "iPhone companion block request routes through blocker planning",
   domain: "selfcontrol",

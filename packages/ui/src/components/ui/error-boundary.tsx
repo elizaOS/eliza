@@ -9,6 +9,12 @@ export interface ErrorBoundaryProps {
   errorLabel?: string;
   /** Label for the retry button (default: "Try Again") */
   retryLabel?: string;
+  /**
+   * Invoked once when a render throw is caught, with the error + React's
+   * componentStack. Lets a wrapper (e.g. ViewErrorBoundary) fire crash
+   * telemetry without re-implementing the boundary. Best-effort.
+   */
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
 
 interface ErrorBoundaryState {
@@ -28,8 +34,14 @@ export class ErrorBoundary extends React.Component<
     return { error };
   }
 
-  componentDidCatch(_error: Error, _errorInfo: React.ErrorInfo) {
-    // error captured in state via getDerivedStateFromError; fallback UI is rendered
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // error captured in state via getDerivedStateFromError; fallback UI is rendered.
+    // Surface it to an optional observer (crash telemetry) without throwing.
+    try {
+      this.props.onError?.(error, errorInfo);
+    } catch {
+      // never let a telemetry hook mask the original crash
+    }
   }
 
   resetErrorBoundary = () => {

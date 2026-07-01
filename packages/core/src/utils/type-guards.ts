@@ -45,12 +45,7 @@ export function isPlainObject(
 		return false;
 	}
 
-	// Check for Buffer (Node.js specific)
-	if (typeof Buffer !== "undefined" && Buffer.isBuffer(value)) {
-		return false;
-	}
-
-	// If it's a custom class instance, it's not a plain object
+	// Anything else (custom class instances, Buffer, etc.) is not a plain object.
 	return false;
 }
 

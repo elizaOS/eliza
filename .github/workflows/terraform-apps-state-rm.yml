@@ -46,7 +46,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TF_DIR: packages/cloud-infra/cloud/terraform/hetzner/apps-data-plane
+  TF_DIR: packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane
   TF_VERSION: "1.10.5"
 
 jobs:

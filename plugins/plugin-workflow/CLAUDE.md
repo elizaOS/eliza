@@ -12,14 +12,14 @@ Adds workflow automation capabilities to an Eliza agent. Given a natural-languag
 
 | Name | Description |
 |---|---|
-| `WORKFLOW` | Umbrella action for all workflow lifecycle ops. Dispatches on `action` parameter: `create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions`. Requires `minRole: OWNER`. Active in contexts `automation`, `tasks`, `agent_internal`. |
+| `WORKFLOW` | Umbrella action for all workflow lifecycle ops. Dispatches on `action` parameter: `create`, `modify`, `activate`, `deactivate`, `toggle_active`, `delete`, `executions`. Requires `minRole: OWNER`. Active in contexts `general`, `automation`, `tasks`, `agent_internal`. |
 
 ### Providers
 
 | Name | Description |
 |---|---|
 | `workflow_status` | Lists each user's workflows with last execution status. Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `turn`. |
-| `ACTIVE_WORKFLOWS` | Lists active/inactive workflows for LLM context (IDs, names, node counts). Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `agent`. |
+| `ACTIVE_WORKFLOWS` | Lists active/inactive workflows for LLM context (IDs, names, node counts), or searches the user's workflows when the current message is workflow-related. Contexts: `general`, `automation`, `tasks`, `connectors`. `minRole: ADMIN`. Cache scope: `turn`. |
 | `PENDING_WORKFLOW_DRAFT` | Surfaces an in-flight draft so the agent routes confirmation/cancellation messages to `WORKFLOW` instead of `REPLY`. Contexts: `automation`, `connectors`. `minRole: ADMIN`. Cache scope: `conversation`. |
 
 ### Services
@@ -137,6 +137,17 @@ The Smithers execution runtime also reads these optional environment variables (
 | `SMITHERS_DB_URL` | — | Connection string when `SMITHERS_DB_PROVIDER=postgres`. |
 | `SMITHERS_DB_DATA_DIR` | — | Data directory for SQLite storage. |
 | `ELIZA_SMITHERS_RUN_PAYLOAD` | `{}` | JSON payload injected into Smithers worker runs. |
+| `BUN_BIN` | `bun` | Bun executable fallback for Node-hosted dev/test processes; Smithers workers still run under Bun for `bun:sqlite`. |
+
+Workflow generation/repair model calls also read optional primitive settings or env vars:
+
+| Setting / env var | Default | Description |
+|---|---|---|
+| `WORKFLOW_LLM_PROVIDER` / `WORKFLOW_MODEL_PROVIDER` / `WORKFLOW_TEST_PROVIDER` | inferred | Provider intent for workflow generation, repair, and action-copy LLM calls. `cerebras` is mapped to the registered `openai` provider because Cerebras is served through the OpenAI-compatible plugin. |
+| `WORKFLOW_LLM_MODEL` / `WORKFLOW_MODEL` / `WORKFLOW_TEST_MODEL` | `gpt-oss-120b` in Cerebras mode | Per-workflow model hint attached to generation/repair calls and `providerOptions.workflow`. |
+| `WORKFLOW_LLM_RUNTIME_PROVIDER` / `WORKFLOW_MODEL_RUNTIME_PROVIDER` | `openai` when provider is `cerebras` | Override the registered runtime provider name used as the third `runtime.useModel()` argument. |
+
+Cerebras mode is inferred from `ELIZA_PROVIDER=cerebras`, an `OPENAI_BASE_URL` on `cerebras.ai`, or a standalone `CEREBRAS_API_KEY` with no OpenAI key/base URL. The OpenAI plugin then reads `CEREBRAS_MODEL` / `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL`.
 
 ## How to extend
 
@@ -173,7 +184,50 @@ Node definitions live in `src/data/defaultNodes.json`. Add new entries and updat
 - **Nested settings read-path.** `runtime.getSetting()` only surfaces primitive values. Nested objects like `character.settings.workflows.credentials` must be read directly from `runtime.character.settings?.workflows`.
 - **`TRIGGER` action is separate.** Trigger CRUD (cron schedules, promoting a task to a workflow) lives in the agent-internal `TRIGGER` action, not here. `WORKFLOW_DISPATCH` service bridges the two: trigger tasks call `runtime.getService("WORKFLOW_DISPATCH").execute(workflowId)`.
 - **Idempotency keys.** `WorkflowDispatchOptions.idempotencyKey` prevents duplicate executions when the same trigger fires concurrently.
-- **Smithers orchestrator.** Workflow node execution delegates to `smithers-orchestrator@0.22.0` (see `src/services/smithers-runtime.ts`). The `effect` and `quickjs-emscripten` packages support the orchestrator's functional pipeline and sandboxed JS evaluation respectively.
+- **Smithers orchestrator.** Workflow node execution delegates to `smithers-orchestrator@0.22.0` (see `src/services/smithers-runtime.ts`). The `effect` and `quickjs-emscripten` packages support the orchestrator's functional pipeline and sandboxed JS evaluation respectively. Failed delegated nodes are echoed before Smithers' wrapper error so execution diagnostics retain the original node error.
+- **Workflow eval kits.** `WORKFLOW eval_samples` and `/api/workflow/workflows/:id/evaluation-samples` return compact JSONL cases plus Smithers eval, GEPA optimize, observability, and metrics command hints. Keep `jsonl` pure so it can be written directly to the returned `optimizer.caseFile`.
 - **Drizzle ORM.** The plugin manages its own Postgres schema via Drizzle. Tables are exported from `src/db/schema.ts` and registered on the plugin's `schema` field.
 - **validateAndRepair retry loop.** Generation and modification both run up to 3 LLM-retry passes via `validateAndRepair` + `fixWorkflowErrors` to correct typeVersion hallucinations, missing credential blocks, and invalid output references before deploy.
 - **Auto-enable.** `auto-enable.ts` (referenced by `elizaos.plugin.autoEnableModule` in `package.json`) returns `false` only when `config.workflow.enabled === false`. Default is enabled.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — agent behavior / app plugin:**
+- A **live-LLM** scenario trajectory showing the behavior end to end and asserting the **outcome**, not just that routing/an action was selected (see #9970).
+- The artifacts the behavior creates — memories, knowledge, scheduled-task rows, relationships, documents, outputs — inspected after the run.
+- Backend `[ClassName]` logs of the action/service/runner firing, plus error/edge/permission paths.
+- The empty-state and adversarial-input behavior, not just one happy scenario.
+<!-- END: evidence-and-e2e-mandate -->

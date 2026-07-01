@@ -77,6 +77,10 @@ export const modelTesterPlugin: Plugin = {
     "UI applet routes for end-to-end Eliza-1 text, embedding, speech, transcription, VAD, and vision probes.",
   routes: modelTesterRoutes,
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // ModelTesterView spatial source. `modalities` is a plain literal here
+    // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "model-tester",
       label: "Model Tester",
@@ -85,36 +89,9 @@ export const modelTesterPlugin: Plugin = {
         "End-to-end probes for Eliza-1 text, voice, audio, and vision models",
       icon: "TestTube2",
       path: "/model-tester",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "ModelTesterAppView",
-      tags: ["developer", "models", "testing"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "model-tester",
-      label: "Model Tester XR",
-      description:
-        "End-to-end probes for Eliza-1 text, voice, audio, and vision models",
-      icon: "TestTube2",
-      path: "/model-tester",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ModelTesterAppView",
-      tags: ["developer", "models", "testing"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "model-tester",
-      label: "Model Tester TUI",
-      description:
-        "Terminal probes for Eliza-1 text, voice, audio, and vision models",
-      icon: "TestTube2",
-      path: "/model-tester/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ModelTesterTuiView",
+      componentExport: "ModelTesterView",
       capabilities: [
         { id: "get-status", description: "Return model probe readiness" },
         { id: "run-text-small", description: "Run the TEXT_SMALL probe" },
@@ -122,7 +99,7 @@ export const modelTesterPlugin: Plugin = {
         { id: "run-vision", description: "Run the vision description probe" },
         { id: "run-vad", description: "Run the voice activity probe" },
       ],
-      tags: ["developer", "models", "testing", "terminal"],
+      tags: ["developer", "models", "testing"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

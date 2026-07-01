@@ -410,12 +410,16 @@ function finalActionLedgerCheck(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "deterministic-lifeops-scheduled-tasks",
+  lane: "pr-deterministic",
   title: "Deterministic LifeOps ScheduledTask action execution",
   domain: "lifeops",
   tags: ["pr", "deterministic", "zero-cost", "lifeops", "scheduled-tasks"],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-personal-assistant"],
+    plugins: [
+      "@elizaos/plugin-scheduling",
+      "@elizaos/plugin-personal-assistant",
+    ],
   },
   seed: [
     {

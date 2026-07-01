@@ -17,6 +17,7 @@ import { deleteIssueAction } from "./deleteIssue";
 import { getActivityAction } from "./getActivity";
 import { getIssueAction } from "./getIssue";
 import { listCommentsAction } from "./listComments";
+import { getMessageSource } from "./message-source";
 import { searchIssuesAction } from "./searchIssues";
 import { handleUpdateComment } from "./updateComment";
 import { handleUpdateIssue } from "./updateIssue";
@@ -229,7 +230,7 @@ export const linearAction: Action = {
     if (!route) {
       const ops = ALL_OPS.join(", ");
       const text = `LINEAR could not determine the operation. Specify one of: ${ops}.`;
-      await callback?.({ text, source: message.content?.source });
+      await callback?.({ text, source: getMessageSource(message) });
       return {
         success: false,
         text,

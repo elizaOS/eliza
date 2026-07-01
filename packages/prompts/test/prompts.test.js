@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import fc from "fast-check";
-import { compressPromptDescription } from "../scripts/prompt-compression.js";
 import * as prompts from "../src/index.ts";
+import { compressPromptDescription } from "../src/prompt-compression.ts";
 
 const exportedPrompts = Object.fromEntries(Object.entries(prompts));
 const __dirname = dirname(fileURLToPath(import.meta.url));

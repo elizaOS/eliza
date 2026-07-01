@@ -18,7 +18,6 @@ import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
 import { isNavAllowed } from "../navigation/nav-lock";
 import {
   loadLastNativeTab,
-  normalizeUiShellMode,
   type ShellView,
   saveLastNativeTab,
   saveUiShellMode,
@@ -98,39 +97,19 @@ export function useNavigationState(deps: NavigationStateDeps) {
   // ── Shell mode toggles ──────────────────────────────────────────────
 
   const setUiShellMode = useCallback(
-    (mode: UiShellMode) => {
-      const nextMode = normalizeUiShellMode(mode);
-      if (nextMode === "companion") {
-        setTab("companion");
-        return;
-      }
+    (_mode: UiShellMode) => {
       setTab(lastNativeTab);
     },
     [lastNativeTab, setTab],
   );
 
   useEffect(() => {
-    // Remember all tabs except companion (which is now an app overlay, not a nav tab).
-    if (tab === "companion") {
-      return;
-    }
     setLastNativeTabState((prev) => (prev === tab ? prev : tab));
   }, [tab]);
 
-  const switchUiShellMode = useCallback(
-    (mode: UiShellMode) => {
-      const nextMode = normalizeUiShellMode(mode);
-      if (nextMode === uiShellMode) {
-        return;
-      }
-      if (nextMode === "native") {
-        setTab(lastNativeTab);
-        return;
-      }
-      setTab("companion");
-    },
-    [lastNativeTab, setTab, uiShellMode],
-  );
+  const switchUiShellMode = useCallback((_mode: UiShellMode) => {
+    // Only one shell mode remains ("native"); nothing to switch.
+  }, []);
 
   const switchShellView = useCallback(
     (view: ShellView) => {

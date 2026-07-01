@@ -204,8 +204,8 @@ describe("handleVoiceTurnObserved", () => {
     // plugin barrel (it drags the @elizaos/agent server graph into the e2e
     // lane). Together they prove the registered handler IS this handler.
     const { personalAssistantPlugin } = await import("../../plugin.js");
-    expect(personalAssistantPlugin.events?.[EventType.VOICE_TURN_OBSERVED]).toContain(
-      handleVoiceTurnObserved,
-    );
+    expect(
+      personalAssistantPlugin.events?.[EventType.VOICE_TURN_OBSERVED],
+    ).toContain(handleVoiceTurnObserved);
   });
 });

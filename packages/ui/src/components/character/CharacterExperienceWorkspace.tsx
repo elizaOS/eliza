@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
@@ -444,7 +444,7 @@ function ExperienceGraphNode({
       type="button"
       aria-label={`Select experience: ${nodeLabel}`}
       data-testid={`experience-graph-node-${experience.id}`}
-      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125 focus-visible:ring-2 focus-visible:ring-accent"
+      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125  "
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
@@ -472,7 +472,7 @@ function ExperienceGraphNode({
   );
 }
 
-function ExperienceGraphPanel({
+const ExperienceGraphPanel = memo(function ExperienceGraphPanel({
   experiences,
   selectedExperienceId,
   onSelectExperience,
@@ -481,11 +481,21 @@ function ExperienceGraphPanel({
   selectedExperienceId: string | null;
   onSelectExperience: (experienceId: string) => void;
 }) {
-  const graphExperiences = experiences.slice(0, 24);
-  const links = buildLocalGraphLinks(graphExperiences);
-  const positions = buildGraphPositions(graphExperiences);
-  const connectedIds = new Set(
-    links.flatMap((link) => [link.sourceId, link.targetId]),
+  const graphExperiences = useMemo(
+    () => experiences.slice(0, 24),
+    [experiences],
+  );
+  const links = useMemo(
+    () => buildLocalGraphLinks(graphExperiences),
+    [graphExperiences],
+  );
+  const positions = useMemo(
+    () => buildGraphPositions(graphExperiences),
+    [graphExperiences],
+  );
+  const connectedIds = useMemo(
+    () => new Set(links.flatMap((link) => [link.sourceId, link.targetId])),
+    [links],
   );
 
   return (
@@ -531,9 +541,9 @@ function ExperienceGraphPanel({
       ))}
     </div>
   );
-}
+});
 
-function ExperienceQueueRow({
+const ExperienceQueueRow = memo(function ExperienceQueueRow({
   experience,
   isSelected,
   onSelect,
@@ -592,7 +602,7 @@ function ExperienceQueueRow({
       </div>
     </button>
   );
-}
+});
 
 function RelatedExperienceButton({
   experience,

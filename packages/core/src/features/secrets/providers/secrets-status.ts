@@ -179,21 +179,12 @@ export const secretsInfoProvider: Provider = {
 
 	get: async (
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state?: State,
 	): Promise<ProviderResult> => {
 		const secretsService =
 			runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
 		if (!secretsService) {
-			return { text: "" };
-		}
-
-		const text = message.content.text?.toLowerCase() ?? "";
-
-		// Check if message is about secrets
-		const isAboutSecrets =
-			/\b(secret|key|token|credential|api|password|configure)\b/i.test(text);
-		if (!isAboutSecrets) {
 			return { text: "" };
 		}
 

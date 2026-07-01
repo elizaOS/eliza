@@ -10,8 +10,8 @@
     "dist"
   ],
   "scripts": {
-    "clean": "rm -rf dist",
-    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc --noCheck -p tsconfig.build.json",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "build": "node ../scripts/rm-path-recursive.mjs dist tsconfig.build.tsbuildinfo && tsc --noCheck -p tsconfig.build.json",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bun test src/ --pass-with-no-tests",
     "lint": "bunx @biomejs/biome check src",
@@ -20,9 +20,7 @@
     "format:fix": "bunx @biomejs/biome format --write src"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-remote-manifest": "workspace:*",
-    "@elizaos/security": "workspace:*"
+    "@elizaos/plugin-remote-manifest": "workspace:*"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { type Component, type Entity, logger, type UUID } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { componentTable, entityTable, participantTable } from "../schema/index";
@@ -101,11 +102,14 @@ export class EntityStore implements Store {
     return this.ctx.withRetry(async () => {
       try {
         return await this.db.transaction(async (tx) => {
-          const normalizedEntities = entities.map((entity) => ({
-            ...entity,
-            names: this.normalizeNames(entity.names),
-            metadata: entity.metadata || {},
-          }));
+          const normalizedEntities: (typeof entityTable.$inferInsert)[] = entities.map(
+            (entity) => ({
+              id: entity.id ?? randomUUID(),
+              agentId: entity.agentId,
+              names: this.normalizeNames(entity.names),
+              metadata: entity.metadata || {},
+            })
+          );
 
           await tx.insert(entityTable).values(normalizedEntities).onConflictDoNothing();
           return true;

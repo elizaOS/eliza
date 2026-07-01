@@ -10,6 +10,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const LIST_TASK_ACTIONS = ["LIFE", "LIST_TASKS"];
 
 export default scenario({
+  lane: "live-only",
   id: "cross.long-context.stays-on-task-after-10-turns",
   title: "Agent pivots back to a task-listing action after 10 turns of chat",
   domain: "cross-cutting",

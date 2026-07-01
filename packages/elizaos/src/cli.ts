@@ -5,8 +5,11 @@ import { Command } from "commander";
 import {
   capabilityRouterConnect,
   create,
+  DEPLOY_COMMAND_DESCRIPTION,
+  DEPLOY_DRY_RUN_DESCRIPTION,
   deploy,
   info,
+  migrateAgent,
   registerPluginsCommand,
   submitPluginToRegistry,
   upgrade,
@@ -92,12 +95,45 @@ program
 
 program
   .command("deploy")
-  .description("Print the Eliza Cloud deployment plan for this project")
+  .description(DEPLOY_COMMAND_DESCRIPTION)
   .option("--app-id <id>", "Eliza Cloud app UUID to include in the plan")
   .option("--domain <host>", "Custom domain to include in the plan")
-  .option("--dry-run", "Accepted for compatibility; deploy is always a preview")
+  .option("--dry-run", DEPLOY_DRY_RUN_DESCRIPTION)
   .option("--verbose", "Echo resolved deploy inputs to stderr")
   .action(deploy);
+
+program
+  .command("migrate-agent")
+  .description(
+    "Migrate a file-based OpenClaw agent (SOUL/IDENTITY/memory) onto Eliza",
+  )
+  .requiredOption("--from <home>", "OpenClaw agent home, e.g. ~/.moltbot")
+  .requiredOption("--agent-id <slug>", "Agent slug, e.g. sol")
+  .option("--out <file>", "Write an encrypted .eliza-agent archive")
+  .option("--password <pw>", "Archive encryption password (min 8 chars)")
+  .option(
+    "--memory-days <n>",
+    "Days of daily logs to seed verbatim (default 14)",
+  )
+  .option(
+    "--no-firewall",
+    "Include USER/personal knowledge (owner-local only!)",
+  )
+  .option(
+    "--current-context <text>",
+    "Live-context block for the system prompt",
+  )
+  .option(
+    "--emit-character <file>",
+    "Emit character JSON (sovereign-local path)",
+  )
+  .option(
+    "--emit-memories <file>",
+    "Emit memories JSONL (sovereign-local path)",
+  )
+  .option("--dry-run", "Print the plan, write nothing")
+  .option("-j, --json", "Output the plan as JSON")
+  .action(migrateAgent);
 
 registerPluginsCommand(program);
 

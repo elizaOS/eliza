@@ -1,70 +1,128 @@
 /**
  * Typed constants for eliza:* custom events dispatched across the app.
  *
- * Using these constants instead of raw strings prevents typo-driven drift
- * between producers (main.tsx, bridge, components) and consumers (AppContext,
- * EmotePicker, ChatView, etc.).
+ * The cross-platform event names + detail payloads + dispatch helpers live in
+ * `@elizaos/shared/events` (the single source of truth, also consumed by the
+ * server). This module re-exports them and adds the UI-only events that have no
+ * server producer (focus-connector, voice-control, tutorial chat-control, and
+ * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions
+ * here widen the shared unions with those UI-only events, so the local
+ * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
 
-// ── App lifecycle ────────────────────────────────────────────────────────
-export const COMMAND_PALETTE_EVENT = "eliza:command-palette" as const;
-export const EMOTE_PICKER_EVENT = "eliza:emote-picker" as const;
-export const STOP_EMOTE_EVENT = "eliza:stop-emote" as const;
+import type {
+  ElizaDocumentEventName as SharedDocumentEventName,
+  ElizaWindowEventName as SharedWindowEventName,
+} from "@elizaos/shared/events";
 
-// ── Agent / bridge ───────────────────────────────────────────────────────
-export const AGENT_READY_EVENT = "eliza:agent-ready" as const;
-export const BRIDGE_READY_EVENT = "eliza:bridge-ready" as const;
-export const SHARE_TARGET_EVENT = "eliza:share-target" as const;
-export const TRAY_ACTION_EVENT = "eliza:tray-action" as const;
+export {
+  // Agent / bridge
+  AGENT_READY_EVENT,
+  APP_EMOTE_EVENT,
+  APP_PAUSE_EVENT,
+  // App state
+  APP_RESUME_EVENT,
+  type AppEmoteEventDetail,
+  BRIDGE_READY_EVENT,
+  CHAT_AVATAR_VOICE_EVENT,
+  type ChatAvatarVoiceEventDetail,
+  // App lifecycle
+  COMMAND_PALETTE_EVENT,
+  CONNECT_EVENT,
+  // Shared dispatch helpers
+  dispatchAppEmoteEvent,
+  dispatchElizaCloudStatusUpdated,
+  ELIZA_CLOUD_STATUS_UPDATED_EVENT,
+  type ElizaCloudStatusUpdatedDetail,
+  EMOTE_PICKER_EVENT,
+  FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
+  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  NETWORK_STATUS_CHANGE_EVENT,
+  type NetworkStatusChangeDetail,
+  // Sidebar sync
+  SELF_STATUS_SYNC_EVENT,
+  SHARE_TARGET_EVENT,
+  STOP_EMOTE_EVENT,
+  TRAY_ACTION_EVENT,
+  // Voice / config
+  VOICE_CONFIG_UPDATED_EVENT,
+  // Avatar / VRM
+  VRM_TELEPORT_COMPLETE_EVENT,
+} from "@elizaos/shared/events";
 
-// ── App state ────────────────────────────────────────────────────────────
-export const APP_RESUME_EVENT = "eliza:app-resume" as const;
-export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
-export const CONNECT_EVENT = "eliza:connect" as const;
+// ── UI-only events (no server producer) ──────────────────────────────────
+
 export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
-export const NETWORK_STATUS_CHANGE_EVENT =
-  "eliza:network-status-change" as const;
-export const MOBILE_RUNTIME_MODE_CHANGED_EVENT =
-  "eliza:mobile-runtime-mode-changed" as const;
 const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";
-
-/** Detail payload for {@link NETWORK_STATUS_CHANGE_EVENT}. */
-export interface NetworkStatusChangeDetail {
-  /** `true` when the device reports a usable network interface. */
-  connected: boolean;
-}
-
-// ── Voice / config ───────────────────────────────────────────────────────
-export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
-export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
-export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
-/** After `/api/cloud/status` — chat voice reloads config so cloud-backed TTS mode matches the server snapshot. */
-export const ELIZA_CLOUD_STATUS_UPDATED_EVENT =
-  "eliza:cloud-status-updated" as const;
-export interface ElizaCloudStatusUpdatedDetail {
-  /** Same as cloud status `connected` (auth or API key on server). */
-  connected: boolean;
-  /** True only when Eliza Cloud inference is the active connection. */
-  enabled: boolean;
-  /** Server reports a persisted Eliza Cloud API key. */
-  hasPersistedApiKey: boolean;
-  /** True only when cloud voice/chat routing should actively use the proxy. */
-  cloudVoiceProxyAvailable: boolean;
-}
 
 export interface FocusConnectorEventDetail {
   connectorId: string;
 }
 
-// ── Avatar / VRM ─────────────────────────────────────────────────────────
-export const VRM_TELEPORT_COMPLETE_EVENT =
-  "eliza:vrm-teleport-complete" as const;
-/** FirstRunShell dispatches this after queuing a post-teleport voice preview; FirstRunWizard echoes {@link VRM_TELEPORT_COMPLETE_EVENT} when VRM is off. */
-export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
-  "eliza:first-run-voice-preview-await-teleport" as const;
+/**
+ * A server-side agent action (START/STOP_TRANSCRIPTION) drives the shell's
+ * transcription capture through this event: the `voice-control` agent-event
+ * stream is re-dispatched here, and {@link useShellController} toggles the mic
+ * accordingly. Keeps the agent→shell command decoupled (same pattern as the
+ * tutorial/slash navigation events).
+ */
+export const VOICE_CONTROL_EVENT = "eliza:voice-control" as const;
+export interface VoiceControlEventDetail {
+  command: "start" | "stop";
+}
 
-// ── Sidebar sync ─────────────────────────────────────────────────────────
-export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
+/** Dispatch a transcription start/stop command to the shell. */
+export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(VOICE_CONTROL_EVENT, { detail }));
+}
+
+// ── Shared → dedicated cloud-agent handoff ───────────────────────────────
+/**
+ * First-run provisions a personal cloud agent and lands the user in chat on the
+ * shared REST adapter while the dedicated container boots; a background
+ * supervisor then copies the conversation into the container and swaps the live
+ * client over. That swap used to be silent (`.catch(() => {})`). This event is
+ * the typed seam onto which the handoff's lifecycle is surfaced so chat-state /
+ * a progress indicator can render it instead of the user seeing nothing.
+ */
+export const CLOUD_HANDOFF_PHASE_EVENT = "eliza:cloud-handoff-phase" as const;
+
+/**
+ * `migrating` — personal container is provisioning; user is on the shared
+ * adapter. `switched` — conversation copied and the live client moved to the
+ * dedicated container (`switched-empty` when there was nothing to copy yet).
+ * `timed-out` / `failed` — the container never became ready (or an I/O step
+ * threw); the user safely stays on the working shared adapter. Mirrors
+ * `ConversationHandoffStatus` plus the `migrating` in-flight phase.
+ */
+export type CloudHandoffPhase =
+  | "migrating"
+  | "switched"
+  | "switched-empty"
+  | "timed-out"
+  | "failed";
+
+export interface CloudHandoffPhaseDetail {
+  agentId: string;
+  phase: CloudHandoffPhase;
+  /** Messages copied into the dedicated container on `switched`. */
+  imported?: number;
+  /** Error message on `failed`. */
+  error?: string;
+}
+
+/**
+ * Re-run a `timed-out`/`failed` shared→dedicated handoff for `agentId`. The
+ * failure surface (banner) dispatches this when the user asks to retry; the
+ * handoff runner that armed the retry re-invokes the (idempotent) supervisor,
+ * so a transient container-boot failure isn't a silent permanent fallback.
+ */
+export const CLOUD_HANDOFF_RETRY_EVENT = "eliza:cloud-handoff-retry" as const;
+
+export interface CloudHandoffRetryDetail {
+  agentId: string;
+}
 
 // ── Tutorial ─────────────────────────────────────────────────────────────
 /**
@@ -76,6 +134,9 @@ export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
  */
 export const TUTORIAL_CHAT_CONTROL_EVENT =
   "eliza:tutorial:chat-control" as const;
+export const CHAT_PREFILL_EVENT = "eliza:chat:prefill" as const;
+/** Open the keyword message-search panel (fired by the chat search affordance). */
+export const CHAT_MESSAGE_SEARCH_EVENT = "eliza:chat:message-search" as const;
 
 export interface TutorialChatControlDetail {
   /**
@@ -91,6 +152,12 @@ export interface TutorialChatControlDetail {
   text?: string;
 }
 
+export interface ChatPrefillEventDetail {
+  text: string;
+  /** Select the inserted draft after focusing the composer. Defaults to false. */
+  select?: boolean;
+}
+
 /** Dispatch a tutorial chat-control instruction to the overlay. */
 export function dispatchTutorialChatControl(
   detail: TutorialChatControlDetail,
@@ -101,43 +168,25 @@ export function dispatchTutorialChatControl(
   );
 }
 
-export interface AppEmoteEventDetail {
-  emoteId: string;
-  path: string;
-  duration: number;
-  loop: boolean;
-  showOverlay?: boolean;
+/** Dispatch a request to open the floating chat and prefill its composer. */
+export function dispatchChatPrefill(detail: ChatPrefillEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_PREFILL_EVENT, { detail }));
 }
 
-export interface ChatAvatarVoiceEventDetail {
-  mouthOpen: number;
-  isSpeaking: boolean;
-}
+// ── Event-name unions (shared base widened with the UI-only events) ───────
 
 export type ElizaDocumentEventName =
-  | typeof COMMAND_PALETTE_EVENT
-  | typeof EMOTE_PICKER_EVENT
-  | typeof STOP_EMOTE_EVENT
-  | typeof AGENT_READY_EVENT
-  | typeof BRIDGE_READY_EVENT
-  | typeof SHARE_TARGET_EVENT
-  | typeof TRAY_ACTION_EVENT
-  | typeof APP_RESUME_EVENT
-  | typeof APP_PAUSE_EVENT
-  | typeof CONNECT_EVENT
-  | typeof FOCUS_CONNECTOR_EVENT
-  | typeof NETWORK_STATUS_CHANGE_EVENT
-  | typeof MOBILE_RUNTIME_MODE_CHANGED_EVENT;
+  | SharedDocumentEventName
+  | typeof FOCUS_CONNECTOR_EVENT;
 
 export type ElizaWindowEventName =
-  | typeof VOICE_CONFIG_UPDATED_EVENT
-  | typeof CHAT_AVATAR_VOICE_EVENT
-  | typeof APP_EMOTE_EVENT
-  | typeof ELIZA_CLOUD_STATUS_UPDATED_EVENT
-  | typeof VRM_TELEPORT_COMPLETE_EVENT
-  | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
-  | typeof SELF_STATUS_SYNC_EVENT
-  | typeof TUTORIAL_CHAT_CONTROL_EVENT;
+  | SharedWindowEventName
+  | typeof VOICE_CONTROL_EVENT
+  | typeof TUTORIAL_CHAT_CONTROL_EVENT
+  | typeof CHAT_PREFILL_EVENT
+  | typeof CLOUD_HANDOFF_PHASE_EVENT
+  | typeof CLOUD_HANDOFF_RETRY_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 
@@ -160,15 +209,22 @@ export function dispatchWindowEvent(
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
-/** Dispatch a normalized app-wide emote event on `window`. */
-export function dispatchAppEmoteEvent(detail: AppEmoteEventDetail): void {
-  dispatchWindowEvent(APP_EMOTE_EVENT, detail);
+/**
+ * Surface a shared→dedicated handoff phase. Replaces the silent
+ * `startCloudAgentHandoff(...).catch(() => {})` discard so the typed
+ * {@link ConversationHandoffResult} reaches the UI.
+ */
+export function dispatchCloudHandoffPhase(
+  detail: CloudHandoffPhaseDetail,
+): void {
+  dispatchWindowEvent(CLOUD_HANDOFF_PHASE_EVENT, detail);
 }
 
-export function dispatchElizaCloudStatusUpdated(
-  detail: ElizaCloudStatusUpdatedDetail,
+/** Ask the armed handoff runner to retry a failed shared→dedicated handoff. */
+export function dispatchCloudHandoffRetry(
+  detail: CloudHandoffRetryDetail,
 ): void {
-  dispatchWindowEvent(ELIZA_CLOUD_STATUS_UPDATED_EVENT, detail);
+  dispatchWindowEvent(CLOUD_HANDOFF_RETRY_EVENT, detail);
 }
 
 export function readPendingFocusConnector(): string | null {

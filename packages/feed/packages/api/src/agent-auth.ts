@@ -7,6 +7,7 @@
  */
 
 import { logger } from "@feed/shared";
+import { ensureRedisReady, getRedisClient } from "./redis/client";
 
 /**
  * Agent session information
@@ -26,8 +27,21 @@ export interface SessionStore {
   delete(key: string): Promise<void>;
 }
 
-// In-memory session storage (default fallback)
-const agentSessions = new Map<string, AgentSession>();
+// In-memory session storage (default fallback).
+//
+// Backed by `globalThis` so the session map is a true singleton across module
+// instances. This matters because `@feed/api` is bundled per-route in Next dev
+// (transpilePackages) and reloaded on HMR — a plain module-level Map would give
+// each route its own copy, so a session minted by /api/agents/auth would be
+// invisible to /api/posts. The Redis store (below) is preferred in production
+// (multi-replica safe); this is the single-process fallback.
+const SESSION_MAP_GLOBAL_KEY = "__feedAgentSessions";
+const globalScope = globalThis as typeof globalThis & {
+  [SESSION_MAP_GLOBAL_KEY]?: Map<string, AgentSession>;
+};
+const agentSessions: Map<string, AgentSession> =
+  globalScope[SESSION_MAP_GLOBAL_KEY] ??
+  (globalScope[SESSION_MAP_GLOBAL_KEY] = new Map<string, AgentSession>());
 
 // Session duration: 24 hours
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
@@ -61,6 +75,47 @@ const inMemoryStore: SessionStore = {
     agentSessions.delete(key.replace(SESSION_PREFIX, ""));
   },
 };
+
+/**
+ * Redis-backed session store. Preferred in production: agent sessions survive
+ * across web replicas (an agent authenticated on one instance is recognized on
+ * any other) and across process restarts. Keys carry their own TTL so expired
+ * sessions are evicted automatically.
+ */
+export class RedisSessionStore implements SessionStore {
+  async get(key: string): Promise<string | null> {
+    const client = getRedisClient();
+    if (!client) return null;
+    return client.get(key);
+  }
+  async set(key: string, value: string, ttlMs: number): Promise<void> {
+    const client = getRedisClient();
+    if (!client) return;
+    await client.set(key, value, "EX", Math.max(1, Math.ceil(ttlMs / 1000)));
+  }
+  async delete(key: string): Promise<void> {
+    const client = getRedisClient();
+    if (!client) return;
+    await client.del(key);
+  }
+}
+
+/**
+ * Wire the agent session store to Redis when Redis is configured, so agent
+ * sessions are shared across replicas. Falls back to the globalThis-backed
+ * in-memory store when Redis is unavailable. Call once at server startup.
+ */
+export async function configureAgentSessionStore(): Promise<void> {
+  const client = await ensureRedisReady();
+  if (client) {
+    setSessionStore(new RedisSessionStore());
+    logger.info(
+      "Agent session store backed by Redis (multi-replica safe)",
+      undefined,
+      "AgentAuth",
+    );
+  }
+}
 
 /**
  * Get the current session store

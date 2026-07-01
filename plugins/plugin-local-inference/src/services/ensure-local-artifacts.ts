@@ -12,7 +12,7 @@
  *     settings UI / a CLI.
  *
  * Today every Eliza-1 tier ships every component (text + voice + asr +
- * embedding + mtp drafter + cache) as one HuggingFace bundle. The
+ * embedding + embedded-draft-head MTP metadata + cache) as one HuggingFace bundle. The
  * orchestrator picks a tier per artifact kind (always the same tier today —
  * tier resolution is centralised on the recommender) and triggers parallel
  * `service.startDownload(modelId)` calls per kind. The downloader is
@@ -146,7 +146,7 @@ function tierFromCatalogId(id: string): Eliza1Tier | null {
 	return slug;
 }
 
-/** "0_8b" → "eliza-1-0_8b" — inverse of {@link tierFromCatalogId}. */
+/** "2b" → "eliza-1-2b" — inverse of {@link tierFromCatalogId}. */
 function catalogIdFromTier(tier: Eliza1Tier): string {
 	return `eliza-1-${tier}`;
 }

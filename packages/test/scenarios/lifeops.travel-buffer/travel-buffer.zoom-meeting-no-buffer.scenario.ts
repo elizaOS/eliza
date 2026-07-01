@@ -35,6 +35,7 @@ function checkVirtualNoBuffer(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "travel-buffer.zoom-meeting-no-buffer",
   title: "Zoom / virtual meeting skips the auto travel buffer",
   domain: "lifeops.travel-buffer",

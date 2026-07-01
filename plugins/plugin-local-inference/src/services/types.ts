@@ -15,6 +15,8 @@ export {
 	type CatalogQuantizationMatrix,
 	type CatalogQuantizationVariant,
 	type CpuFeatureProbe,
+	classifyCatalogModelRuntimeClass,
+	classifyInstalledModelRuntimeClass,
 	type DownloadEvent,
 	type DownloadJob,
 	type DownloadState,
@@ -38,9 +40,11 @@ export {
 	type ModelHubSnapshot,
 	type OpenVinoDeviceKind,
 	type OpenVinoHardwareProbe,
+	type RuntimeClass,
 	TEXT_GENERATION_SLOTS,
 	type TextGenerationSlot,
 	type TokenizerFamily,
+	withRuntimeClass,
 } from "@elizaos/shared";
 
 /** RAM requirements for a model bundle. */

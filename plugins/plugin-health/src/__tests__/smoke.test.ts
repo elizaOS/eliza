@@ -23,6 +23,7 @@
  * package build, not by this smoke test.
  */
 import { describe, expect, it } from "vitest";
+import * as healthActionExports from "../actions/index.js";
 import type {
   AnchorContribution,
   AnchorRegistry,
@@ -133,6 +134,11 @@ function makeStateRecord(
 describe("plugin-health smoke (W1-B)", () => {
   it("does not register host-adapted owner actions directly", () => {
     expect(healthPlugin.actions ?? []).toEqual([]);
+  });
+
+  it("does not export removed scaffold owner actions", () => {
+    expect("ownerHealthAction" in healthActionExports).toBe(false);
+    expect("ownerScreentimeAction" in healthActionExports).toBe(false);
   });
 
   it("registers 6 connectors, 4 anchors, 8 bus families", () => {

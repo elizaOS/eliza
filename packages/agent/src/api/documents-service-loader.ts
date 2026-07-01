@@ -1,4 +1,10 @@
-import type { AgentRuntime, Memory, Service, UUID } from "@elizaos/core";
+import type {
+  AccessContext,
+  AgentRuntime,
+  Memory,
+  Service,
+  UUID,
+} from "@elizaos/core";
 
 // Canonical union types for the documents service surface.
 // Plugin packages (e.g. @elizaos/plugin-documents) re-export these so route
@@ -54,6 +60,7 @@ export interface DocumentsServiceLike {
     message: Memory,
     scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
     searchMode?: DocumentSearchMode,
+    accessContext?: AccessContext,
   ): Promise<
     Array<{
       id: UUID;
@@ -92,9 +99,6 @@ export interface DocumentsServiceLike {
   deleteMemory(memoryId: UUID): Promise<void>;
 }
 
-/** Alias kept for backwards-compatible plugin imports. */
-export type DocumentServiceLike = DocumentsServiceLike;
-
 export type DocumentsLoadFailReason =
   | "timeout"
   | "runtime_unavailable"
@@ -115,9 +119,6 @@ export function getDocumentsServiceTimeoutMs(): number {
   if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(parsed, MAX_TIMEOUT_MS);
 }
-
-/** Alias kept for backwards-compatible plugin imports. */
-export const getDocumentsTimeoutMs = getDocumentsServiceTimeoutMs;
 
 export async function getDocumentsService(
   runtime: AgentRuntime | null,

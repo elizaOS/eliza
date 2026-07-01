@@ -56,10 +56,10 @@ try {
   const p = await browser.newPage({ viewport: { width: 1180, height: 820 } });
   p.on("pageerror", (e) => sink.errors.push(String(e)));
   await p.goto(url);
-  await p.waitForSelector('[data-testid="chat-ambient-background"]');
+  await p.waitForSelector('[data-testid="app-background-shader"]');
   await p.waitForTimeout(400);
   assert(
-    (await p.locator('[data-testid="chat-ambient-background"]').count()) === 1,
+    (await p.locator('[data-testid="app-background-shader"]').count()) === 1,
     "ambient background mounts",
   );
 
@@ -77,7 +77,7 @@ try {
   rm.on("pageerror", (e) => sink.errors.push(String(e)));
   await rm.emulateMedia({ reducedMotion: "reduce" });
   await rm.goto(url);
-  await rm.waitForSelector('[data-testid="chat-ambient-background"]');
+  await rm.waitForSelector('[data-testid="app-background-shader"]');
   await rm.waitForTimeout(500);
   await snap(rm, "reduced-motion-still");
   await rm.close();

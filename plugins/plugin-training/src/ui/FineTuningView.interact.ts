@@ -2,8 +2,11 @@
 // that file exports only React components and stays Fast-Refresh-compatible
 // (Vite would full-reload a component file that also exports a plain function).
 // The view bundle re-exports `interact` via ./training-view-bundle.ts.
-import { client } from "@elizaos/ui";
-import type { StartTrainingOptions } from "@elizaos/ui/api";
+import {
+  client,
+  type StartTrainingOptions,
+  type WriteBenchmarkMatrixFromArtifactsOptions,
+} from "@elizaos/ui/api";
 import { elizaOneActionBenchmarkPairs } from "../core/eliza1-benchmark-recipe.js";
 import {
   loadTrainingTuiState,
@@ -426,7 +429,7 @@ export async function interact(
           params?.benchmarkMatrix &&
           typeof params.benchmarkMatrix === "object" &&
           !Array.isArray(params.benchmarkMatrix)
-            ? params.benchmarkMatrix
+            ? (params.benchmarkMatrix as WriteBenchmarkMatrixFromArtifactsOptions)
             : undefined,
       })),
     };

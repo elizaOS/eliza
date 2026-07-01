@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "household-insurance-renewal-gap",
   title: "Assistant finds household insurance renewal gap",
   domain: "executive.household",
@@ -21,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "triage-renewal-gap",
       text: "Check whether any household insurance policy is about to lapse. Pull renewal invoices, broker contacts, coverage changes, payment status, and grace periods.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "SCHEDULED_TASKS"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "OWNER_FINANCES",
+        "SCHEDULED_TASKS",
+      ],
       responseIncludesAny: ["lapse", "broker", "coverage", "grace"],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },

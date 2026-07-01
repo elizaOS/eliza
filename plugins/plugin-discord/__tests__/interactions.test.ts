@@ -58,4 +58,20 @@ describe("renderDiscordInteractions", () => {
 		} as Content);
 		expect(out.components.length).toBeLessThanOrEqual(5);
 	});
+
+	it("renders a navigate followup as a link button via resolveNavigateUrl (#8908)", () => {
+		const out = renderDiscordInteractions(
+			{
+				text: "Done.\n[FOLLOWUPS id=f1]\nnavigate:/orchestrator=Open tasks\nreply:thanks=Thanks\n[/FOLLOWUPS]",
+			} as Content,
+			{ resolveNavigateUrl: (p) => `https://app.test${p}` },
+		);
+		const buttons = out.components.flatMap((row) => row.components);
+		const nav = buttons.find((b) => b.label === "Open tasks");
+		const reply = buttons.find((b) => b.label === "Thanks");
+		expect(nav?.style).toBe(5); // Link
+		expect(nav?.url).toBe("https://app.test/orchestrator");
+		expect(reply?.url).toBeUndefined();
+		expect(reply?.custom_id).toBeTruthy();
+	});
 });

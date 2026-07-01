@@ -327,6 +327,24 @@ function deliverableFromMetadata(message: Memory): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
+// A DEGENERATE completion is one the sub-agent's model could not finish cleanly:
+// `length` (ran out of token / turn budget mid-answer — truncated) or
+// `content_filter` (refused / blocked). The ACP `stopReason` is normalized to
+// one of these by the router (subAgentFinishReason metadata) before it reaches
+// here. Re-spawning the SAME root request on a degenerate completion just
+// truncates/blocks again — the ~70x weak-model re-spawn loop (issue
+// elizaOS/eliza#8875). We relay the best partial once instead.
+const DEGENERATE_FINISH_REASONS = new Set(["length", "content_filter"]);
+
+function finishReasonFromMetadata(message: Memory): string | undefined {
+  const value = textOf(metadataRecord(message)?.subAgentFinishReason);
+  return value.length > 0 ? value : undefined;
+}
+
+function isDegenerateFinishReason(reason: string | undefined): boolean {
+  return reason !== undefined && DEGENERATE_FINISH_REASONS.has(reason);
+}
+
 // Longest completion body we treat as a bare "answer value" worth relaying over
 // a planner re-spawn. Tight on purpose: a price / short sentence qualifies; a
 // multi-line build report or transcript does not and keeps the existing
@@ -512,6 +530,20 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     ) {
       return true;
     }
+    // A truncated (`length`) or content-filtered (`content_filter`) sub-agent
+    // completion is TERMINAL for the planner: the model ran out of room or was
+    // blocked mid-answer, so a fresh TASKS_SPAWN_AGENT on the SAME root request
+    // just truncates/blocks again — the ~70x weak-model re-spawn loop the cap
+    // only bounds (issue elizaOS/eliza#8875). The ACP completion's stopReason is
+    // threaded here as subAgentFinishReason. Relay the best partial once, UNLESS
+    // the plan is feeding the still-running session more input
+    // (TASKS_SEND_TO_AGENT), which is the one legitimate non-relay follow-up.
+    if (
+      isDegenerateFinishReason(finishReasonFromMetadata(message)) &&
+      !planContinuesExistingSession(messageHandler.plan)
+    ) {
+      return true;
+    }
     const hasConcreteFollowUp =
       hasStrings(messageHandler.plan.candidateActions) &&
       !hasOnlyStaleCompletionHints(messageHandler.plan.candidateActions);
@@ -539,6 +571,42 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         reply: deliverable,
         debug: [
           "verified sub-agent completion carries a captured deliverable; relaying it verbatim",
+        ],
+      };
+    }
+    // Degenerate completion (truncated / content-filtered): relay the best
+    // partial ONCE and clear the planner's candidate actions so it cannot
+    // re-spawn the same request. When there is nothing usable to relay, suppress
+    // the turn rather than loop (issue elizaOS/eliza#8875).
+    const finishReason = finishReasonFromMetadata(message);
+    if (
+      isDegenerateFinishReason(finishReason) &&
+      !planContinuesExistingSession(messageHandler.plan)
+    ) {
+      const partial = cleanCompletionReply(
+        replyPatchFromCompletion(currentReply, completionText, verifiedUrls),
+      );
+      if (partial) {
+        return {
+          ...respondIfNeeded(messageHandler),
+          requiresTool: false,
+          setContexts: [SIMPLE_CONTEXT_ID],
+          clearCandidateActions: true,
+          clearParentActionHints: true,
+          reply: partial,
+          debug: [
+            `sub-agent completion finished with stopReason=${finishReason} (truncated/blocked); relaying best partial once instead of re-spawning the same request`,
+          ],
+        };
+      }
+      return {
+        processMessage: "IGNORE",
+        requiresTool: false,
+        clearReply: true,
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        debug: [
+          `sub-agent completion finished with stopReason=${finishReason} and carried no usable partial; suppressing to avoid a re-spawn loop`,
         ],
       };
     }

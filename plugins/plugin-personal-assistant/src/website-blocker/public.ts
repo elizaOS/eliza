@@ -7,9 +7,7 @@
  * working. The BLOCK umbrella action still lives in this package.
  */
 
-// External consumers that still import `websiteBlockAction` get the canonical
-// BLOCK umbrella (mirrors `src/index.ts`).
-export { blockAction as websiteBlockAction } from "../actions/block.js";
+export { websiteBlockerProvider } from "@elizaos/plugin-blocker/providers/website-blocker";
 
 export {
   checkSenderRole,
@@ -21,14 +19,14 @@ export {
   getSelfControlStatus,
   type NativeWebsiteBlockerBackend,
   openSelfControlPermissionLocation,
-  parseSelfControlBlockRequest,
   type PermissionStatus,
+  parseSelfControlBlockRequest,
   registerNativeWebsiteBlockerBackend,
   registerWebsiteBlockerTaskWorker,
   requestSelfControlPermission,
   SELFCONTROL_ACCESS_ERROR,
-  type SelfControlBlockRequest,
   SelfControlBlockerService,
+  type SelfControlBlockRequest,
   type SelfControlElevationMethod,
   type SelfControlPermissionState,
   type SelfControlPluginConfig,
@@ -40,5 +38,7 @@ export {
   WEBSITE_BLOCKER_UNBLOCK_TASK_NAME,
   WEBSITE_BLOCKER_UNBLOCK_TASK_TAGS,
   WebsiteBlockerService,
-  websiteBlockerProvider,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/website-blocker/index";
+// External consumers that still import `websiteBlockAction` get the canonical
+// BLOCK umbrella (mirrors `src/index.ts`).
+export { blockAction as websiteBlockAction } from "../actions/block.js";

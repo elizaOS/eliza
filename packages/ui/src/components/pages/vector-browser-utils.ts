@@ -50,13 +50,13 @@ export interface VectorGraph2DLayout {
 }
 
 export const VECTOR_GRAPH_2D_PALETTE = [
-  "#6cf",
+  "#fb923c",
   "#f59e0b",
   "#10b981",
   "#ef4444",
-  "#8b5cf6",
+  "#e11d48",
   "#ec4899",
-  "#06b6d4",
+  "#78716c",
   "#84cc16",
 ];
 

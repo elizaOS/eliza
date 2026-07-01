@@ -1,4 +1,3 @@
-import { InboxUnsubscribeService } from "@elizaos/plugin-inbox";
 import type {
   EmailSubscriptionScanResult,
   EmailUnsubscribeRecord,
@@ -6,11 +5,6 @@ import type {
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
 } from "@elizaos/plugin-inbox/inbox/email-unsubscribe-types";
-import type {
-  Constructor,
-  LifeOpsServiceBase,
-  MixinClass,
-} from "./service-mixin-core.js";
 
 export interface LifeOpsEmailUnsubscribeService {
   scanEmailSubscriptions(
@@ -23,58 +17,4 @@ export interface LifeOpsEmailUnsubscribeService {
   ): Promise<EmailUnsubscribeResult>;
   listEmailUnsubscribes(limit?: number): Promise<EmailUnsubscribeRecord[]>;
   summarizeEmailUnsubscribeScan(result: EmailSubscriptionScanResult): string;
-}
-
-/**
- * Email-unsubscribe back-end moved to `@elizaos/plugin-inbox`
- * ({@link InboxUnsubscribeService}). This mixin is now a thin delegation layer:
- * it preserves the LifeOpsService method surface (the `requestUrl` argument the
- * route callers pass), but forwards to the standalone inbox service, which
- * resolves Gmail through the `@elizaos/plugin-google` runtime service and
- * persists to the same `app_inbox.life_email_unsubscribes` table.
- *
- * The two-phase confirmation gate (`requireConfirmation`) stays in the PA route
- * layer; the inbox service trusts the pre-confirmed `userAuthorization` flag.
- *
- * @internal
- */
-export function withEmailUnsubscribe<
-  TBase extends Constructor<LifeOpsServiceBase>,
->(Base: TBase): MixinClass<TBase, LifeOpsEmailUnsubscribeService> {
-  class LifeOpsEmailUnsubscribeMixin extends Base {
-    private inboxUnsubscribeService(): InboxUnsubscribeService {
-      return new InboxUnsubscribeService(this.runtime);
-    }
-
-    async scanEmailSubscriptions(
-      _requestUrl: URL,
-      request: EmailUnsubscribeScanRequest = {},
-    ): Promise<EmailSubscriptionScanResult> {
-      return this.inboxUnsubscribeService().scanEmailSubscriptions(request);
-    }
-
-    async unsubscribeEmailSender(
-      _requestUrl: URL,
-      request: EmailUnsubscribeRequest,
-    ): Promise<EmailUnsubscribeResult> {
-      return this.inboxUnsubscribeService().unsubscribeEmailSender(request);
-    }
-
-    async listEmailUnsubscribes(
-      limit = 100,
-    ): Promise<EmailUnsubscribeRecord[]> {
-      return this.inboxUnsubscribeService().listEmailUnsubscribes(limit);
-    }
-
-    summarizeEmailUnsubscribeScan(result: EmailSubscriptionScanResult): string {
-      return this.inboxUnsubscribeService().summarizeEmailUnsubscribeScan(
-        result,
-      );
-    }
-  }
-
-  return LifeOpsEmailUnsubscribeMixin as unknown as MixinClass<
-    TBase,
-    LifeOpsEmailUnsubscribeService
-  >;
 }

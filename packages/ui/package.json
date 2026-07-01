@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -27,16 +27,28 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
-    "generate:css-strings": "node ../scripts/generate-css-strings.mjs",
-    "typecheck": "bun run generate:css-strings && tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
     "test:e2e": "bun run test:slow",
     "test:agent-surface-e2e": "bun run --cwd ../.. packages/ui/src/agent-surface/__e2e__/run-e2e.mjs",
     "test:chat-sheet-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
+    "test:bottombar-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-bottombar-e2e.mjs",
+    "test:fused-wake-integration-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-fused-wake-integration-e2e.mjs",
+    "test:chat-sheet-frame-glitch-e2e": "node src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs",
+    "test:chatux-gesture-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chatux-gesture-e2e.mjs",
+    "test:conversation-swipe-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-conversation-swipe-e2e.mjs",
+    "test:chat-perf-gate": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-perf-gate.mjs",
+    "test:perf-gate-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-perf-gate-e2e.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
-    "test:onboarding-e2e": "bun run --cwd ../.. packages/ui/src/first-run/__e2e__/run-onboarding-e2e.mjs",
+    "test:tutorial-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/tutorial/__e2e__/run-tutorial-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",
+    "test:view-parity": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts registered-view-parity",
+    "test:view-screens": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./stories/view-screens-tui.config.ts && bunx playwright test --config ./stories/registered-views/registered-views.config.ts && bun stories/registered-views/build-index.mjs",
+    "test:xr-sim": "bunx playwright test --config ./stories/xr/xr-sim.config.ts",
+    "test:background-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs",
+    "test:launcher-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs",
+    "test:view-lifecycle-e2e": "bun run --cwd ../.. packages/ui/src/components/views/__e2e__/run-view-lifecycle-e2e.mjs",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
@@ -47,8 +59,14 @@
     "stories:build": "vite build --config stories/vite.config.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "build:dist:unlocked": "bun run clean && bun run generate:css-strings && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
-    "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs"
+    "audit:stories": "node test/story-gate/run-story-gate.mjs",
+    "audit:stories:build": "bun run build-storybook --output-dir storybook-static --quiet && node test/story-gate/run-story-gate.mjs",
+    "audit:stories:update-baseline": "node test/story-gate/run-story-gate.mjs --update-baseline",
+    "audit:stories:play": "node test/story-gate/play-coverage-gate.mjs",
+    "audit:stories:play:update-baseline": "node test/story-gate/play-coverage-gate.mjs --update-baseline",
+    "build:dist:unlocked": "bun run clean && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
+    "test:orchestrator-accounts-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-orchestrator-accounts-e2e.mjs",
+    "test:ftu-home-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-ftu-home-e2e.mjs"
   },
   "exports": {
     ".": {
@@ -86,6 +104,16 @@
       "types": "./dist/agent-surface/index.d.ts",
       "import": "./dist/agent-surface/index.js",
       "default": "./dist/agent-surface/index.js"
+    },
+    "./agent-surface/*": {
+      "types": "./dist/agent-surface/*.d.ts",
+      "import": "./dist/agent-surface/*.js",
+      "default": "./dist/agent-surface/*.js"
+    },
+    "./views/*": {
+      "types": "./dist/views/*.d.ts",
+      "import": "./dist/views/*.js",
+      "default": "./dist/views/*.js"
     },
     "./app-shell-registry": {
       "types": "./dist/app-shell-registry.d.ts",
@@ -145,6 +173,11 @@
       "import": "./dist/components/index.js",
       "default": "./dist/components/index.js"
     },
+    "./components/composites/page-panel": {
+      "types": "./dist/components/composites/page-panel/index.d.ts",
+      "import": "./dist/components/composites/page-panel/index.js",
+      "default": "./dist/components/composites/page-panel/index.js"
+    },
     "./components/*": {
       "types": "./dist/components/*.d.ts",
       "import": "./dist/components/*.js",
@@ -179,6 +212,11 @@
       "types": "./dist/spatial/tui/index.d.ts",
       "import": "./dist/spatial/tui/index.js",
       "default": "./dist/spatial/tui/index.js"
+    },
+    "./spatial/immersive": {
+      "types": "./dist/spatial/xr-immersive.d.ts",
+      "import": "./dist/spatial/xr-immersive.js",
+      "default": "./dist/spatial/xr-immersive.js"
     },
     "./first-run/*": {
       "types": "./dist/first-run/*.d.ts",
@@ -298,6 +336,7 @@
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-compose-refs": "^1.1.3",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-hover-card": "^1.1.15",
@@ -352,6 +391,7 @@
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
     "wagmi": "^3.6.15",
+    "webxr-polyfill": "^2.0.3",
     "ws": "^8.19.0"
   },
   "devDependencies": {
@@ -365,7 +405,6 @@
     "@storybook/react": "^10.0.0",
     "@storybook/react-vite": "^10.0.0",
     "@tailwindcss/vite": "^4.3.1",
-    "storybook": "^10.0.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -374,11 +413,20 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.184.0",
+    "@types/webxr": "^0.5.0",
     "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react-swc": "^4.3.1",
+    "esbuild": "^0.28.0",
+    "fast-check": "^4.8.0",
     "jsdom": "^29.0.0",
+    "pixelmatch": "^5.3.0",
+    "playwright": "^1.61.0",
+    "pngjs": "^7.0.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "react-plaid-link": "^4.1.1",
+    "sharp": "^0.34.5",
+    "storybook": "^10.0.0",
     "three": "^0.184.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",

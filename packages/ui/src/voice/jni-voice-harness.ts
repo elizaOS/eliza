@@ -12,15 +12,27 @@
  *   window.__jniVoice.status() → { running, framesSent, turnsObserved, abi, turns[] }
  *   window.__jniVoice.stop()   → stop capture, flush the open turn, free handles
  *
- * Install-once and inert off Android. It does not change product behavior; it
- * makes the in-process pipeline drivable + observable on a real device.
+ * Install-once and inert off Android. When started, completed PCM turns are
+ * forwarded through the local-agent bridge so the agent-side fused voice turn
+ * pipeline owns ASR/text/TTS while this harness remains observable on-device.
  */
 
 import {
   getElizaVoicePlugin,
   getTalkModePlugin,
 } from "../bridge/native-plugins";
-import { type JniAttributedTurn, JniVoicePipeline } from "./jni-voice-pipeline";
+import {
+  type JniAttributedTurn,
+  type JniCompletedPcmTurn,
+  JniVoicePipeline,
+  type JniVoicePipelineOptions,
+} from "./jni-voice-pipeline";
+
+declare global {
+  interface Window {
+    __jniVoice?: JniVoiceControl;
+  }
+}
 
 export interface JniVoiceTurnSummary {
   turnId: string;
@@ -49,6 +61,15 @@ export interface JniVoiceControl {
   isRunning(): boolean;
 }
 
+export interface JniVoiceHarnessOptions extends JniVoicePipelineOptions {
+  /**
+   * Forward completed PCM turns to the local agent voice route. Defaults true
+   * for the Android app harness; set false for tests or diagnostics that only
+   * want attribution summaries.
+   */
+  forwardCompletedPcmTurns?: boolean;
+}
+
 const MAX_RECENT = 20;
 
 let installed = false;
@@ -67,9 +88,58 @@ function recordTurn(turn: JniAttributedTurn): void {
   if (recentTurns.length > MAX_RECENT) recentTurns.shift();
 }
 
-function getPipeline(): JniVoicePipeline {
+function float32ToBase64(pcm: Float32Array): string {
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function forwardCompletedPcmTurnToLocalAgent(
+  turn: JniCompletedPcmTurn,
+): Promise<void> {
+  const res = await fetch("/api/voice/native-pcm-turn", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      turnId: turn.turnId,
+      pcm: float32ToBase64(turn.audio.pcm),
+      sampleRate: turn.audio.sampleRate,
+      signal: turn.signal,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `[JniVoiceHarness] native PCM turn handoff failed (${res.status}): ${detail}`,
+    );
+  }
+}
+
+function pipelineOptionsForHarness(
+  options: JniVoiceHarnessOptions,
+): JniVoicePipelineOptions {
+  const forward =
+    options.forwardCompletedPcmTurns !== false
+      ? forwardCompletedPcmTurnToLocalAgent
+      : undefined;
+  return {
+    ...options,
+    onCompletedPcmTurn: options.onCompletedPcmTurn ?? forward,
+  };
+}
+
+function getPipeline(options: JniVoiceHarnessOptions = {}): JniVoicePipeline {
   if (!pipeline) {
-    pipeline = new JniVoicePipeline(getTalkModePlugin(), getElizaVoicePlugin());
+    pipeline = new JniVoicePipeline(
+      getTalkModePlugin(),
+      getElizaVoicePlugin(),
+      pipelineOptionsForHarness(options),
+    );
     pipeline.onTurn(recordTurn);
   }
   return pipeline;
@@ -79,13 +149,15 @@ function getPipeline(): JniVoicePipeline {
  * Attach `window.__jniVoice`. Idempotent. Returns the control surface (also
  * usable directly from app code, not only CDP).
  */
-export function installJniVoiceHarness(): JniVoiceControl {
+export function installJniVoiceHarness(
+  options: JniVoiceHarnessOptions = {},
+): JniVoiceControl {
   const control: JniVoiceControl = {
     async start() {
-      return getPipeline().start();
+      return getPipeline(options).start();
     },
     async stop() {
-      const p = getPipeline();
+      const p = getPipeline(options);
       const framesSent = p.framesSent;
       await p.stop();
       return { stopped: true, framesSent };
@@ -117,8 +189,7 @@ export function installJniVoiceHarness(): JniVoiceControl {
   };
 
   if (!installed && typeof window !== "undefined") {
-    (window as unknown as { __jniVoice?: JniVoiceControl }).__jniVoice =
-      control;
+    window.__jniVoice = control;
     installed = true;
   }
   return control;

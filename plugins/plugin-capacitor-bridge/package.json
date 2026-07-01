@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-capacitor-bridge",
-	"version": "2.0.3-beta.14",
+	"version": "2.0.3-beta.7",
 	"description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -42,16 +42,16 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup",
+		"build": "node ../../packages/scripts/rm-path-recursive.mjs dist && bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs plugins/plugin-capacitor-bridge",
 		"check:android-manifest": "node scripts/check-android-manifest.mjs",
 		"dev": "tsup --watch",
-		"clean": "rm -rf dist .turbo node_modules",
+		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
 		"test": "vitest run --config vitest.config.ts",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsgo --noEmit"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
@@ -61,7 +61,7 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.14",
+		"@biomejs/biome": "2.5.1",
 		"@types/bun": "^1.3.12",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.5.13",

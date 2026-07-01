@@ -61,13 +61,18 @@ export interface UpdateActionPlan {
 }
 
 function whichSync(binary: string): string | null {
+  // `which` does not exist on Windows — use `where`, which lists matches one
+  // per line (take the first). Without this, every lookup throws ENOENT and is
+  // swallowed, so detectInstallMethod() always falls back to "unknown".
+  const cmd = process.platform === "win32" ? "where" : "which";
   try {
-    return execSync(`which ${binary}`, {
+    const out = execSync(`${cmd} ${binary}`, {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 5_000,
     })
       .toString()
       .trim();
+    return out.split(/\r?\n/)[0]?.trim() || null;
   } catch {
     return null;
   }
@@ -101,16 +106,17 @@ export function detectInstallMethod(): InstallMethod {
   } catch {
     resolved = elizaBin;
   }
+  // Normalize separators so the substring/prefix checks below match on Windows,
+  // where realpathSync returns backslash drive paths (e.g. C:\Users\…\.bun\…).
+  // Without this, bun-global is mis-detected as "unknown" on Windows.
+  const p = resolved.replace(/\\/g, "/");
 
-  if (resolved.includes("/Cellar/") || resolved.includes("/homebrew/"))
-    return "homebrew";
-  if (resolved.includes("/snap/")) return "snap";
-  if (resolved.includes("/flatpak/") || resolved.includes("ai.eliza.Eliza"))
-    return "flatpak";
-  if (resolved.startsWith("/usr/") && !resolved.includes("node_modules"))
-    return "apt";
-  if (resolved.includes("/.bun/")) return "bun-global";
-  if (resolved.includes("node_modules")) return "npm-global";
+  if (p.includes("/Cellar/") || p.includes("/homebrew/")) return "homebrew";
+  if (p.includes("/snap/")) return "snap";
+  if (p.includes("/flatpak/") || p.includes("ai.eliza.Eliza")) return "flatpak";
+  if (p.startsWith("/usr/") && !p.includes("node_modules")) return "apt";
+  if (p.includes("/.bun/")) return "bun-global";
+  if (p.includes("node_modules")) return "npm-global";
 
   return "unknown";
 }
@@ -263,8 +269,13 @@ function runCommand(
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       stdio: ["inherit", "inherit", "pipe"],
-      // shell:true removed — all update commands are safe to run directly.
-      // The apt case uses sh -c explicitly, so no shell wrapper is needed.
+      // The global launcher is a `.cmd` shim on Windows (npm.cmd / bun.cmd),
+      // which Node cannot spawn without a shell (ENOENT) — every npm-global
+      // auto-update would fail. Route through the shell on win32 so the shim
+      // resolves. Update args are static/internal (e.g. `install -g <spec>`),
+      // so there is no injection surface; the Linux apt case uses an explicit
+      // `sh -c` and is unaffected.
+      shell: process.platform === "win32",
     });
 
     let stderr = "";

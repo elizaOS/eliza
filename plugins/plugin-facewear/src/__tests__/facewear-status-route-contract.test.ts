@@ -2,8 +2,9 @@
 // facewearStatusRoute handler runs over a REAL FacewearService (whose runtime
 // returns realistically-shaped XR + smartglasses services), and the JSON body is
 // asserted to match the exact { connected, devices:[{id,kind,deviceType}] } DTO
-// that FacewearView / FacewearXrView parse from fetch("/api/facewear/status").
-// This pins the producer (route) and the consumer (view parser) to one shape.
+// that the FacewearView wrapper parses from
+// fetch("/api/facewear/status"). This pins the producer (route) and the consumer
+// (view parser) to one shape.
 
 import type { Route } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -15,8 +16,8 @@ import {
 import { SMARTGLASSES_SERVICE_NAME } from "../services/smartglasses-service.ts";
 import { XR_SERVICE_TYPE } from "../services/xr-session-service.ts";
 
-// The DTO the FacewearView component parses (mirrors FacewearStatusResponse +
-// ConnectedDevice in src/ui/FacewearView.tsx).
+// The DTO the FacewearView wrapper parses (mirrors FacewearStatusResponse +
+// ConnectedDevice in src/components/facewear-profiles.ts).
 interface ConnectedDeviceDTO {
   id: string;
   kind: "xr" | "smartglasses";

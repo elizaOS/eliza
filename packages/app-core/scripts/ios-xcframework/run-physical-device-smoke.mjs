@@ -21,12 +21,14 @@
  *   - libelizainference voice ABI symbols resolve, unless explicitly disabled
  *     with --skip-voice-abi for diagnosis.
  *
- * No model weights are bundled here, so this does not claim text/voice
- * numerical generation. It is the device-runtime gate that must pass before a
- * real Eliza-1 bundle smoke can run.
+ * No model weights are bundled by default. When --benchmark-model is supplied,
+ * the smoke also bundles that GGUF and records real physical-device text
+ * throughput plus memory/thermal telemetry for CPU and Metal. Voice and
+ * first-audio latency remain out of scope until the mobile voice runtime is
+ * wired to real OmniVoice assets instead of the current fail-closed ABI shim.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -38,6 +40,12 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const APP_DIR = path.join(REPO_ROOT, "packages", "app");
 const XCFRAMEWORK_BUILD_SCRIPT = path.join(__dirname, "build-xcframework.mjs");
+const RECURSIVE_CLEANUP_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const LLAMA_SYMBOLS = [
   "llama_init_context",
@@ -196,9 +204,13 @@ function parseArgs(argv) {
         args.xcodebuildArgs.push(next());
         break;
       case "--help":
+        printHelp();
+        process.exit(0);
+        break;
       case "-h":
         printHelp();
         process.exit(0);
+        break;
       default:
         throw new Error(`Unknown argument: ${a}`);
     }
@@ -1049,7 +1061,9 @@ function extractBenchmarkResults(text) {
   const results = [];
   const re = /ELIZA_IOS_TPS_RESULT\s+(\{[^\n]+\})/g;
   let match;
-  while ((match = re.exec(text)) !== null) {
+  while (true) {
+    match = re.exec(text);
+    if (match === null) break;
     try {
       results.push(JSON.parse(match[1]));
     } catch {
@@ -1437,7 +1451,7 @@ char * eliza_ios_text_benchmark_run(const char * model_path, const char * mode) 
     const int use_cpu = mode && strcmp(mode, "cpu") == 0;
     const char * ctx_params_cpu = "{\\"n_ctx\\":512,\\"n_batch\\":512,\\"n_ubatch\\":128,\\"no_gpu_devices\\":true,\\"n_gpu_layers\\":0,\\"flash_attn\\":false,\\"use_mmap\\":true,\\"n_threads\\":4}";
     const char * ctx_params_metal = "{\\"n_ctx\\":512,\\"n_batch\\":512,\\"n_ubatch\\":128,\\"n_gpu_layers\\":999,\\"flash_attn\\":true,\\"use_mmap\\":true,\\"n_threads\\":4}";
-    const char * completion_params = "{\\"n_predict\\":32,\\"temperature\\":0,\\"seed\\":42,\\"top_k\\":1,\\"n_threads\\":4,\\"stop\\":[\\"<|im_end|>\\"]}";
+    const char * completion_params = "{\\"n_predict\\":32,\\"temperature\\":0,\\"seed\\":42,\\"top_k\\":1,\\"n_threads\\":4,\\"stop\\":[\\"<end_of_turn>\\"]}";
     const char * prompt = "You are Eliza. Write one short benchmark sentence.";
     int64_t ctx = llama_init_context(model_path, use_cpu ? ctx_params_cpu : ctx_params_metal);
     if (ctx <= 0) {
@@ -1468,6 +1482,55 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
   private let kernelSymbols: [String] = ${swiftArray(KERNEL_SYMBOLS)}
   private let voiceSymbols: [String] = ${swiftArray(voiceSymbols)}
   private let benchmarkResourceName = ${jsString(benchmarkResourceName)}
+
+  private func thermalStateName() -> String {
+    switch ProcessInfo.processInfo.thermalState {
+    case .nominal:
+      return "nominal"
+    case .fair:
+      return "fair"
+    case .serious:
+      return "serious"
+    case .critical:
+      return "critical"
+    @unknown default:
+      return "unknown"
+    }
+  }
+
+  private func memoryFootprintBytes() -> Int64? {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.stride / MemoryLayout<integer_t>.stride)
+    let result = withUnsafeMutablePointer(to: &info) { pointer in
+      pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+        task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), rebound, &count)
+      }
+    }
+    guard result == KERN_SUCCESS else {
+      return nil
+    }
+    return Int64(info.phys_footprint)
+  }
+
+  private func addBenchmarkTelemetry(
+    to report: inout [String: Any],
+    memoryBeforeBytes: Int64?,
+    memoryAfterBytes: Int64?,
+    thermalStateBefore: String,
+    thermalStateAfter: String
+  ) {
+    report["thermal_state_before"] = thermalStateBefore
+    report["thermal_state_after"] = thermalStateAfter
+    if let memoryBeforeBytes {
+      report["memory_footprint_before_bytes"] = memoryBeforeBytes
+    }
+    if let memoryAfterBytes {
+      report["memory_footprint_after_bytes"] = memoryAfterBytes
+    }
+    if let memoryBeforeBytes, let memoryAfterBytes {
+      report["memory_footprint_delta_bytes"] = memoryAfterBytes - memoryBeforeBytes
+    }
+  }
 
   func testMetalDeviceIsAvailableOnPhysicalIos() throws {
     XCTAssertNil(ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"], "This smoke must run on physical iOS hardware, not a simulator.")
@@ -1517,11 +1580,15 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
     )
 
     for mode in ["cpu", "metal"] {
+      let memoryBeforeBytes = memoryFootprintBytes()
+      let thermalStateBefore = thermalStateName()
       let ptr = modelURL.path.withCString { cPath in
         mode.withCString { cMode in
           eliza_ios_text_benchmark_run(cPath, cMode)
         }
       }
+      let memoryAfterBytes = memoryFootprintBytes()
+      let thermalStateAfter = thermalStateName()
       let raw = try XCTUnwrap(ptr, "eliza_ios_text_benchmark_run returned null for \\(mode)")
       defer { eliza_ios_ffi_abi_smoke_free(raw) }
 
@@ -1530,7 +1597,7 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
       let jsonObject = try JSONSerialization.jsonObject(with: data)
       let json = try XCTUnwrap(jsonObject as? [String: Any], "Benchmark result is not a JSON object for \\(mode): \\(text)")
       if let error = json["error"] as? String {
-        let report: [String: Any] = [
+        var report: [String: Any] = [
           "mode": mode,
           "model": benchmarkResourceName,
           "error": error,
@@ -1540,6 +1607,13 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
           "prompt_per_second": 0,
           "predicted_per_second": 0
         ]
+        addBenchmarkTelemetry(
+          to: &report,
+          memoryBeforeBytes: memoryBeforeBytes,
+          memoryAfterBytes: memoryAfterBytes,
+          thermalStateBefore: thermalStateBefore,
+          thermalStateAfter: thermalStateAfter
+        )
         let reportData = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
         print("ELIZA_IOS_TPS_RESULT " + String(data: reportData, encoding: .utf8)!)
         XCTFail("llama_completion failed for \\(mode): \\(error)")
@@ -1555,7 +1629,7 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
       XCTAssertGreaterThan(predictedPerSecond, 0, "predicted_per_second must be positive for \\(mode)")
       XCTAssertGreaterThan(predicted, 0, "tokens_predicted must be positive for \\(mode)")
 
-      let report: [String: Any] = [
+      var report: [String: Any] = [
         "mode": mode,
         "model": benchmarkResourceName,
         "tokens_predicted": predicted,
@@ -1563,6 +1637,13 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
         "prompt_per_second": promptPerSecond,
         "predicted_per_second": predictedPerSecond
       ]
+      addBenchmarkTelemetry(
+        to: &report,
+        memoryBeforeBytes: memoryBeforeBytes,
+        memoryAfterBytes: memoryAfterBytes,
+        thermalStateBefore: thermalStateBefore,
+        thermalStateAfter: thermalStateAfter
+      )
       let reportData = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
       print("ELIZA_IOS_TPS_RESULT " + String(data: reportData, encoding: .utf8)!)
     }
@@ -1637,6 +1718,20 @@ function writeReport(reportPath, report) {
     path.resolve(reportPath),
     `${JSON.stringify(report, null, 2)}\n`,
   );
+}
+
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(detail || error?.message || String(error), {
+      cause: error,
+    });
+  }
 }
 
 function hasXcodebuildArg(args, flag) {
@@ -1753,7 +1848,7 @@ async function main() {
     };
     writeReport(args.report, report);
     if (tempDir && !args.keepTemp) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      removeDirectoryRecursive(tempDir);
     }
     process.stderr.write(`${report.error}\n`);
     process.exit(signal === "SIGINT" ? 130 : 143);
@@ -1933,7 +2028,7 @@ async function main() {
     process.off("SIGINT", signalHandler);
     process.off("SIGTERM", signalHandler);
     if (tempDir && !args.keepTemp) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      removeDirectoryRecursive(tempDir);
     } else if (tempDir) {
       console.log(`[ios-smoke] kept temp package at ${tempDir}`);
     }

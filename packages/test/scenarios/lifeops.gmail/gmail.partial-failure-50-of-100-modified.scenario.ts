@@ -50,6 +50,7 @@ function checkPartialReported(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.partial-failure-50-of-100-modified",
   title: "Gmail batchModify partial failure reported honestly",
   domain: "lifeops.gmail",

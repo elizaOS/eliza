@@ -1,13 +1,12 @@
+import type { TranslateFn } from "../../types";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
-
-type Translator = (key: string, options?: Record<string, unknown>) => string;
 
 export function DesktopWorkspaceDisplay({
   diagnosticsText,
   t,
 }: {
   diagnosticsText: string;
-  t: Translator;
+  t: TranslateFn;
 }) {
   return (
     <SettingsGroup

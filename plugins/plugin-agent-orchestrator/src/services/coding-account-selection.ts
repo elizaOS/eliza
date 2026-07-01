@@ -165,6 +165,135 @@ export async function selectCodingAccount(
   return { selection, meta: toMeta(selection) };
 }
 
+/**
+ * Per-agent-type readiness verdict: how many healthy pooled accounts back this
+ * coding agent vs. how many the requested posture needs.
+ */
+export interface CodingProviderReadiness {
+  agentType: string;
+  total: number;
+  enabled: number;
+  healthy: number;
+  required: number;
+  ok: boolean;
+}
+
+/** The pool's readiness for live coding work, with loud-failure detail. */
+export interface CodingAccountReadiness {
+  ready: boolean;
+  /** True when ≥2 healthy accounts per provider are required (local rotation). */
+  rotation: boolean;
+  /** Healthy accounts required per agent type (1 normally, 2 for rotation). */
+  required: number;
+  providers: CodingProviderReadiness[];
+  /** Human-readable reasons the pool is not ready (empty when ready). */
+  problems: string[];
+}
+
+/** The agent types the live multi-account orchestrator depends on. */
+export const READINESS_REQUIRED_AGENT_TYPES = ["claude", "codex"] as const;
+
+/**
+ * Pure: assess whether the account pool has enough healthy accounts to run the
+ * multi-account coding orchestrator. The orchestrator's per-spawn
+ * `selectCodingAccount` silently falls back to single-account when the pool is
+ * thin (the correct runtime behavior — a degraded pool must not hard-fail a
+ * spawn). This function is the loud counterpart: a CI/ops gate that asserts
+ * ≥1 healthy Codex AND ≥1 healthy Claude (≥2 each with `rotation`) so a
+ * misconfigured pool is caught explicitly instead of degrading invisibly.
+ */
+export function assessCodingAccountReadiness(
+  availability: Record<string, CodingProviderAvailability[]>,
+  opts: { rotation?: boolean; agentTypes?: readonly string[] } = {},
+): CodingAccountReadiness {
+  const rotation = opts.rotation ?? false;
+  const required = rotation ? 2 : 1;
+  const agentTypes = opts.agentTypes ?? READINESS_REQUIRED_AGENT_TYPES;
+  const providers: CodingProviderReadiness[] = [];
+  const problems: string[] = [];
+  for (const agentType of agentTypes) {
+    const rows = availability[agentType] ?? [];
+    const total = rows.reduce((sum, r) => sum + r.total, 0);
+    const enabled = rows.reduce((sum, r) => sum + r.enabled, 0);
+    const healthy = rows.reduce((sum, r) => sum + r.healthy, 0);
+    const ok = healthy >= required;
+    providers.push({ agentType, total, enabled, healthy, required, ok });
+    if (!ok) {
+      problems.push(
+        `${agentType}: ${healthy} healthy account(s), need >= ${required}` +
+          (total === 0 ? " (none connected)" : ` (${total} connected)`),
+      );
+    }
+  }
+  return {
+    ready: problems.length === 0,
+    rotation,
+    required,
+    providers,
+    problems,
+  };
+}
+
+export type CodingAccountFailureKind = "rate-limited" | "needs-reauth";
+
+/** Default cool-off applied to a rate-limited account (15 min). */
+export const RATE_LIMIT_COOLOFF_MS = 15 * 60_000;
+
+// Conservative classifiers: require an UNAMBIGUOUS provider auth/quota signal,
+// never a bare "api key" / "login" token (those appear in ordinary build
+// output). A false positive evicts a HEALTHY account from the pool, so the bar
+// is intentionally high.
+const RATE_LIMIT_RE =
+  /\b429\b|rate[\s-]?limit(?:ed|ing)?|too many requests|quota (?:exceeded|exhausted)|usage limit reached/i;
+const NEEDS_REAUTH_RE =
+  /\b401\b|\b403\b|unauthorized|invalid_grant|authentication failed|token (?:has )?expired|expired token|invalid token|please (?:re-?authenticate|log ?in again)/i;
+
+/**
+ * Pure: classify a sub-agent error message as a pooled-account failure, or null
+ * when it is an ordinary task error. Rate-limit is checked first (a 429 is a
+ * cool-off, not a credential problem).
+ */
+export function classifyAccountFailure(
+  text: string | undefined | null,
+): CodingAccountFailureKind | null {
+  if (!text) return null;
+  if (RATE_LIMIT_RE.test(text)) return "rate-limited";
+  if (NEEDS_REAUTH_RE.test(text)) return "needs-reauth";
+  return null;
+}
+
+/**
+ * Best-effort: tell the pool a spawned account hit a rate-limit / needs reauth
+ * so the selector stops handing it out (and the readiness gate + account-health
+ * panel reflect it) instead of the failure being swallowed and the same dud
+ * account re-selected. No-op when no bridge or no account; never throws.
+ */
+export async function reportCodingAccountFailure(
+  meta: CodingAccountMeta | null,
+  kind: CodingAccountFailureKind,
+  nowMs: number,
+  detail?: string,
+): Promise<void> {
+  if (!meta) return;
+  const bridge = getCodingAccountBridge();
+  if (!bridge) return;
+  try {
+    if (kind === "rate-limited") {
+      await bridge.markRateLimited(
+        meta.providerId,
+        meta.accountId,
+        nowMs + RATE_LIMIT_COOLOFF_MS,
+        detail,
+      );
+    } else {
+      await bridge.markNeedsReauth(meta.providerId, meta.accountId, detail);
+    }
+  } catch {
+    // Pool feedback is best-effort — a failure to record must not break the
+    // error path that is already surfacing the underlying problem.
+  }
+}
+
 /** Read the account descriptor previously stamped onto a session's metadata. */
 export function accountMetaFromSessionMetadata(
   metadata: Record<string, unknown> | undefined,

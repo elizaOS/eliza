@@ -1,0 +1,9 @@
+{
+  "package": "plugin-agentscoin",
+  "repository": "github:axiosdevs/plugin-agentscoin",
+  "kind": "plugin",
+  "description": "Give your elizaOS agent an AgentsCoin wallet: create wallet, mine AGENT, check balance, send.",
+  "homepage": "https://agents-coin.com",
+  "version": "0.1.0",
+  "tags": ["crypto", "wallet", "ai-agents", "agentic-payments", "evm", "mcp"]
+}

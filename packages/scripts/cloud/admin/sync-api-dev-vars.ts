@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getLocalPGliteDatabaseUrl } from "../../../cloud-shared/src/db/database-url";
+import { getLocalPGliteDatabaseUrl } from "../../../cloud/shared/src/db/database-url";
 import {
   generateJwtSigningKeys,
   isPlaceholderValue,
@@ -10,8 +10,8 @@ import {
 } from "./local-dev-helpers";
 
 const repoRoot = path.resolve(import.meta.dir, "..", "..", "..", "..");
-const cloudRoot = path.join(repoRoot, "packages", "cloud-shared");
-const apiDir = path.join(repoRoot, "packages", "cloud-api");
+const cloudRoot = path.join(repoRoot, "packages", "cloud", "shared");
+const apiDir = path.join(repoRoot, "packages", "cloud", "api");
 const outputPath = path.join(apiDir, ".dev.vars");
 const envExamplePath = path.join(cloudRoot, ".env.example");
 const localAppUrl =
@@ -276,5 +276,5 @@ const content = [
 writeFileSync(outputPath, content, "utf8");
 
 console.log(
-  `[sync-api-dev-vars] wrote packages/cloud-api/.dev.vars (${entries.length} keys)`,
+  `[sync-api-dev-vars] wrote packages/cloud/api/.dev.vars (${entries.length} keys)`,
 );

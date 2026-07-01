@@ -20,7 +20,7 @@ import {
   getInstalledApps,
   startAppBlock,
   stopAppBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/app-blocker/index";
 import { formatPromptSection } from "./lib/prompt-format.js";
 
 const ACTION_NAME = "BLOCK";

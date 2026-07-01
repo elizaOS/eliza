@@ -96,36 +96,15 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe("I'm sorry, but I can't help with that.");
 	});
 
-	it("vetoes complete-direct-reply promotion for cutoff leaks with weak candidates", () => {
-		const handler = messageHandlerFromFieldResult(
-			{
-				shouldRespond: "RESPOND",
-				contexts: ["general"],
-				candidateActionNames: ["SEARCH"],
-				replyText:
-					"As of my training data, the latest stable version was Node 22.",
-				intents: [],
-				facts: [],
-				addressedTo: [],
-			},
-			undefined,
-			{ actions: REAL_ACTIONS },
-		);
-
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.contexts).toEqual(["general"]);
-		expect(handler.plan.reply).toBe("");
-		expect(handler.plan.candidateActions).toEqual(["SEARCH"]);
-	});
-
-	it("forces planning for simple-path non-refusal honesty violations", () => {
+	it("keeps the simple path for explanatory gerunds that are substantive answers", () => {
+		const replyText =
+			"Checking accounts are bank accounts designed for frequent deposits and withdrawals.";
 		const handler = messageHandlerFromFieldResult(
 			{
 				shouldRespond: "RESPOND",
 				contexts: ["simple"],
 				candidateActionNames: [],
-				replyText: "The system automatically blocks such content.",
+				replyText,
 				intents: [],
 				facts: [],
 				addressedTo: [],
@@ -134,10 +113,10 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			{ actions: REAL_ACTIONS },
 		);
 
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.contexts).toEqual(["general"]);
-		expect(handler.plan.reply).toBe("");
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.reply).toBe(replyText);
 	});
 
 	it("still promotes to planning when candidateActions contains AT LEAST ONE real action even with simple context", () => {
@@ -638,31 +617,13 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
 	});
 
-	it("promotes current market-data requests to search even when Stage 1 underclaims browsing", () => {
-		const handler = messageHandlerFromFieldResult(
-			{
-				shouldRespond: "RESPOND",
-				contexts: ["simple"],
-				candidateActionNames: [],
-				replyText: "I don't have the ability to look up live market data here.",
-				intents: [],
-				facts: [],
-				addressedTo: [],
-			},
-			undefined,
-			{
-				actions: REAL_ACTIONS,
-				messageText:
-					"What is the current Bitcoin price in USD right now? Use web or market data if available.",
-			},
-		);
-
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.contexts).toEqual(["general"]);
-		expect(handler.plan.candidateActions).toEqual(["SEARCH"]);
-		expect(handler.plan.reply).toBe("");
-	});
+	// (removed) "promotes current market-data requests to search even when Stage 1
+	// underclaims browsing" — that promotion depended on the honesty/refusal
+	// detector vetoing the underclaiming reply as a non-complete direct reply and
+	// force-planning the turn. With the honesty detectors removed (#10471), an
+	// underclaiming "I can't look that up" reply is taken at face value on the
+	// direct path; web-lookup routing now relies on the model emitting a
+	// WEB_SEARCH candidate itself.
 
 	it("infers TASKS for direct app-build requests without explicit sub-agent wording", () => {
 		const handler = messageHandlerFromFieldResult(

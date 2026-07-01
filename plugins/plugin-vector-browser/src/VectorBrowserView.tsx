@@ -28,7 +28,8 @@ import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
 import { getBootConfig } from "@elizaos/ui/config";
 import { useRenderGuard } from "@elizaos/ui/hooks";
 import { WorkspaceLayout } from "@elizaos/ui/layouts";
-import { useApp } from "@elizaos/ui/state";
+import { Escape } from "@elizaos/ui/spatial";
+import { useAppSelector } from "@elizaos/ui/state";
 import { Clock3, Database, Hash, Layers3 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -40,18 +41,34 @@ import {
   useState,
 } from "react";
 import type * as Three from "three";
+import {
+  type VectorBrowserSnapshot,
+  VectorBrowserSpatialView,
+} from "./VectorBrowserSpatialView.tsx";
 
 type VectorBrowserRuntime = {
   THREE: typeof Three;
   createVectorBrowserRenderer: () => Promise<Three.WebGLRenderer>;
 };
 
+// Derive the boot-config type from getBootConfig's return rather than importing
+// the `AppBootConfig` type name: it is re-exported from @elizaos/ui/config only
+// through a multi-hop `export *` chain that tsgo does not resolve as a type
+// member, while the value export (getBootConfig) resolves fine. ReturnType is
+// the same type and immune to the chain quirk.
+type AppBootConfig = ReturnType<typeof getBootConfig>;
+
+type VectorBrowserBootConfig = AppBootConfig & {
+  companionVectorBrowser?: VectorBrowserRuntime;
+};
+
 function resolveConfiguredVectorBrowserRuntime(): VectorBrowserRuntime | null {
-  const runtime = getBootConfig().companionVectorBrowser;
+  const runtime = (getBootConfig() as VectorBrowserBootConfig)
+    .companionVectorBrowser;
   if (!runtime) {
     return null;
   }
-  return runtime as VectorBrowserRuntime;
+  return runtime;
 }
 
 let defaultVectorBrowserRuntimePromise: Promise<VectorBrowserRuntime> | null =
@@ -143,7 +160,7 @@ function VectorGraph({
   memories: MemoryRecord[];
   onSelect: (mem: MemoryRecord) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -388,7 +405,7 @@ export function VectorGraph3D({
   onSelect: (mem: MemoryRecord) => void;
   createRenderer?: () => Promise<Three.WebGLRenderer>;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Three.WebGLRenderer | null>(null);
   const sceneRef = useRef<Three.Scene | null>(null);
@@ -848,13 +865,13 @@ export function VectorGraph3D({
 
   if (rendererUnavailable) {
     return (
-      <div className="border border-border bg-card px-4 py-10 text-center">
+      <div className="px-4 py-10 text-center">
         <div className="text-sm text-txt">
           {t("vectorbrowserview.RendererUnavailable", {
-            defaultValue: "3D view unavailable in this environment.",
+            defaultValue: "Unavailable",
           })}
         </div>
-        <div className="mt-2 text-xs text-muted">
+        <div className="sr-only mt-2 text-xs text-muted">
           {t("vectorbrowserview.RendererUnavailableDescription", {
             defaultValue:
               "The current runtime could not initialize a renderer.",
@@ -879,7 +896,7 @@ export function VectorGraph3D({
       {/* Tooltip */}
       {hoveredMem && tooltipPos && (
         <div
-          className="absolute pointer-events-none bg-card/95 text-txt backdrop-blur-sm border border-border/30 rounded-sm text-xs-tight px-3 py-2 max-w-[300px] z-10"
+          className="pointer-events-none absolute z-10 max-w-[300px] bg-bg/95 px-3 py-2 text-txt text-xs-tight backdrop-blur-sm"
           style={{
             left: tooltipPos.x + 15,
             top: tooltipPos.y + 15,
@@ -888,7 +905,7 @@ export function VectorGraph3D({
         >
           <div className="font-medium mb-1 truncate">
             {hoveredMem.type && hoveredMem.type !== "undefined" && (
-              <span className="px-1.5 py-0.5 bg-accent/30 text-accent mr-2 text-2xs">
+              <span className="mr-2 px-1.5 py-0.5 text-2xs text-accent">
                 {hoveredMem.type}
               </span>
             )}
@@ -922,17 +939,17 @@ export function VectorGraph3D({
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────
+// ── Rich GUI/XR surface (the Escape child) ─────────────────────────────
 
-export function VectorBrowserView({
+export function VectorBrowserRichView({
   leftNav,
   contentHeader,
 }: {
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
 }) {
-  useRenderGuard("VectorBrowserView");
-  const { t } = useApp();
+  useRenderGuard("VectorBrowserRichView");
+  const t = useAppSelector((s) => s.t);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState("");
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
@@ -1368,7 +1385,7 @@ export function VectorBrowserView({
                 tableSelect.ref.current = node as HTMLButtonElement | null;
               }}
               {...tableSelect.agentProps}
-              className="h-9 w-full rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+              className="h-9 w-full border-border bg-transparent px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
             >
               <SelectValue />
             </SelectTrigger>
@@ -1382,17 +1399,17 @@ export function VectorBrowserView({
           </Select>
         )}
 
-        <div className="inline-flex w-full rounded-sm border border-border/50 bg-card/40 p-0.5 md:w-auto">
+        <div className="inline-flex w-full gap-1 md:w-auto">
           <Button
             ref={listTab.ref}
             {...listTab.agentProps}
             aria-current={viewMode === "list" ? "true" : undefined}
             variant="ghost"
             size="sm"
-            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
+            className={`h-auto min-h-[1.75rem] flex-1 px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
               viewMode === "list"
-                ? "border-accent/45 bg-accent/16 text-txt-strong "
-                : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
+                ? "text-accent "
+                : "text-muted-strong hover:text-txt"
             }`}
             onClick={() => setViewMode("list")}
           >
@@ -1404,10 +1421,10 @@ export function VectorBrowserView({
             aria-current={viewMode === "graph" ? "true" : undefined}
             variant="ghost"
             size="sm"
-            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
+            className={`h-auto min-h-[1.75rem] flex-1 px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
               viewMode === "graph"
-                ? "border-accent/45 bg-accent/16 text-txt-strong "
-                : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
+                ? "text-accent "
+                : "text-muted-strong hover:text-txt"
             }`}
             onClick={() => setViewMode("graph")}
           >
@@ -1419,10 +1436,10 @@ export function VectorBrowserView({
             aria-current={viewMode === "3d" ? "true" : undefined}
             variant="ghost"
             size="sm"
-            className={`h-auto min-h-[1.75rem] flex-1 rounded-sm border px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
+            className={`h-auto min-h-[1.75rem] flex-1 px-3 py-1 text-xs font-medium transition-all duration-300 md:flex-none ${
               viewMode === "3d"
-                ? "border-accent/45 bg-accent/16 text-txt-strong "
-                : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
+                ? "text-accent "
+                : "text-muted-strong hover:text-txt"
             }`}
             onClick={() => setViewMode("3d")}
           >
@@ -1441,7 +1458,7 @@ export function VectorBrowserView({
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+            className="h-10 min-w-0 flex-1 border-border/60 bg-transparent px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
           />
           <Button
             ref={searchButton.ref}
@@ -1487,17 +1504,17 @@ export function VectorBrowserView({
   const masterList = (
     <div className="flex flex-col gap-1.5">
       {loading ? (
-        <div className="rounded-sm border border-border/35 bg-bg/35 px-4 py-10 text-center text-sm text-muted">
+        <div className="px-4 py-10 text-center text-sm text-muted">
           {t("vectorbrowserview.LoadingMemories")}
         </div>
       ) : memories.length === 0 ? (
-        <div className="rounded-sm border border-border/35 bg-bg/35 px-4 py-10 text-center text-sm text-muted">
+        <div className="px-4 py-10 text-center text-sm text-muted">
           {search
             ? t("vectorbrowserview.NoRecordsMatchSearchQuery", {
-                defaultValue: "No records match your search query.",
+                defaultValue: "None",
               })
             : t("vectorbrowserview.NoMemoryRecordsDetected", {
-                defaultValue: "No memory records detected in the database.",
+                defaultValue: "None",
               })}
         </div>
       ) : (
@@ -1509,13 +1526,11 @@ export function VectorBrowserView({
               type="button"
               key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
               onClick={() => openDetail(mem)}
-              className={`flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left transition-colors ${
-                isActive
-                  ? "bg-accent/12 text-txt"
-                  : "hover:bg-bg-hover"
+              className={`flex w-full items-center gap-3 px-2 py-2 text-left transition-colors ${
+                isActive ? "bg-accent/12 text-txt" : "hover:bg-bg-hover"
               }`}
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-bg-muted/55 text-xs font-semibold uppercase text-muted">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold uppercase text-muted">
                 {mem.type && mem.type !== "undefined"
                   ? mem.type.slice(0, 1)
                   : "M"}
@@ -1526,13 +1541,13 @@ export function VectorBrowserView({
                 </span>
                 <span className="mt-1 flex flex-wrap gap-1.5 text-2xs text-muted">
                   {mem.embedding ? (
-                    <span className="inline-flex items-center gap-1 rounded-sm bg-bg-muted/55 px-1.5 py-0.5">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5">
                       <Layers3 className="h-3 w-3" aria-hidden />
                       {mem.embedding.length}D
                     </span>
                   ) : null}
                   {createdLabel ? (
-                    <span className="inline-flex items-center gap-1 rounded-sm bg-bg-muted/55 px-1.5 py-0.5">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5">
                       <Clock3 className="h-3 w-3" aria-hidden />
                       {createdLabel}
                     </span>
@@ -1588,7 +1603,7 @@ export function VectorBrowserView({
             />
           )}
         </PagePanel>
-        <div className="max-h-[42vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
+        <div className="max-h-[42vh] min-h-[14rem] overflow-auto">
           <MemoryDetailPanel memory={selectedMemory} />
         </div>
       </>
@@ -1606,7 +1621,7 @@ export function VectorBrowserView({
             />
           )}
         </PagePanel>
-        <div className="max-h-[42vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
+        <div className="max-h-[42vh] min-h-[14rem] overflow-auto">
           <MemoryDetailPanel memory={selectedMemory} />
         </div>
       </>
@@ -1625,7 +1640,7 @@ export function VectorBrowserView({
             })}
           </Button>
         </div>
-        <div className="max-h-[70vh] min-h-[14rem] overflow-auto rounded-sm border border-border/40 bg-card/45">
+        <div className="max-h-[70vh] min-h-[14rem] overflow-auto">
           <MemoryDetailPanel memory={selectedMemory} />
         </div>
       </>
@@ -1638,11 +1653,11 @@ export function VectorBrowserView({
     <WorkspaceLayout contentHeader={contentHeader} contentPadding={false}>
       {isConnectionError ? (
         <div className="flex flex-1 items-center justify-center p-6">
-          <div className="rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center ">
+          <div className="px-8 py-10 text-center">
             <div className="text-base font-semibold text-txt">
               {t("databaseview.DatabaseNotAvailab")}
             </div>
-            <div className="mt-2 max-w-sm text-sm text-muted">
+            <div className="sr-only mt-2 max-w-sm text-sm text-muted">
               {t("vectorbrowserview.StartTheAgentToB")}
             </div>
             <Button
@@ -1665,13 +1680,49 @@ export function VectorBrowserView({
           {summaryHeader}
           {toolbar}
           {error ? (
-            <div className="rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
-              {error}
-            </div>
+            <div className="px-1 py-2 text-sm text-danger">{error}</div>
           ) : null}
           {mainSection}
         </div>
       )}
     </WorkspaceLayout>
+  );
+}
+
+// ── Adaptive view (the single componentExport) ─────────────────────────
+
+/**
+ * Terminal-safe summary shown when this view is evaluated on the TUI surface.
+ * The rich three.js/canvas surface can't run in a terminal, so the wrapper's
+ * `Escape` fallback degrades to the spatial summary. Live terminal stats come
+ * from the dedicated terminal registration (`register-terminal-view.tsx`), which
+ * a host can update via `setVectorBrowserTerminalSnapshot`; here the wrapper
+ * fallback carries the zeroed default + the "renders in GUI/XR" note.
+ */
+const TUI_FALLBACK_SNAPSHOT: VectorBrowserSnapshot = {
+  vectorCount: 0,
+  withEmbeddings: 0,
+  dimension: 0,
+  typeCount: 0,
+  points: [],
+};
+
+/**
+ * The single adaptive vector-browser view (`componentExport`).
+ *
+ * GUI/XR render the full rich {@link VectorBrowserRichView} (three.js 3D point
+ * cloud + 2D canvas projection + list/detail) as the {@link Escape} DOM child;
+ * TUI renders the spatial {@link VectorBrowserSpatialView} summary fallback. One
+ * registered component, no separate rich-DOM app — `SpatialSurface` auto-detects
+ * GUI vs XR.
+ */
+export function VectorBrowserView(props: {
+  leftNav?: ReactNode;
+  contentHeader?: ReactNode;
+}) {
+  return (
+    <Escape tui={<VectorBrowserSpatialView snapshot={TUI_FALLBACK_SNAPSHOT} />}>
+      <VectorBrowserRichView {...props} />
+    </Escape>
   );
 }

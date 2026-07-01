@@ -37,6 +37,12 @@ export const STANDARD_CAPABILITIES = {
   FOCUS_ELEMENT: "focus-element",
   /** Returns the visible text content of the view container. */
   GET_TEXT: "get-text",
+  /** Clicks an element by CSS selector or name attribute. Dispatched generically
+   *  by DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
+  CLICK_ELEMENT: "click-element",
+  /** Sets the value of an input by selector/name. Dispatched generically by
+   *  DynamicViewLoader / ShellViewAgentSurface for every loaded view. */
+  FILL_INPUT: "fill-input",
 } as const;
 
 export type StandardCapability =

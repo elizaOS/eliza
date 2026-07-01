@@ -2,7 +2,10 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { trainingStateRoot } from "./training-config.js";
-import { defaultBunCommand, resolveWorkspaceRoot } from "./workspace-runtime.js";
+import {
+  defaultBunCommand,
+  resolveWorkspaceRoot,
+} from "./workspace-runtime.js";
 
 export type ActionBenchmarkMatrixVariant = "reference" | "base" | "trained";
 
@@ -101,7 +104,10 @@ function modelListUrl(baseUrl: string): string {
   return `${normalized}/models`;
 }
 
-function localModelIdMatches(availableId: string, requestedId: string): boolean {
+function localModelIdMatches(
+  availableId: string,
+  requestedId: string,
+): boolean {
   return (
     availableId === requestedId ||
     availableId === `${requestedId}:latest` ||
@@ -126,8 +132,8 @@ async function localModelIds(baseUrl: string): Promise<string[]> {
   return data
     .map((item) =>
       item && typeof item === "object"
-        ? (item as { id?: unknown; name?: unknown }).id ??
-          (item as { id?: unknown; name?: unknown }).name
+        ? ((item as { id?: unknown; name?: unknown }).id ??
+          (item as { id?: unknown; name?: unknown }).name)
         : item,
     )
     .filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -175,17 +181,22 @@ function matrixSourceForReport(
   };
 }
 
-function dryRunCaseSample(options: ActionBenchmarkRunOptions, trajectoryDir: string) {
-  const tier = stringSetting(options.tier) ?? "0_8b";
+function dryRunCaseSample(
+  options: ActionBenchmarkRunOptions,
+  trajectoryDir: string,
+) {
+  const tier = stringSetting(options.tier) ?? "2b";
   const variant = stringSetting(options.variant) ?? "trained";
-  const modelId = stringSetting(options.modelId) ?? stringSetting(options.runtimeModel);
+  const modelId =
+    stringSetting(options.modelId) ?? stringSetting(options.runtimeModel);
   return {
     caseId: `dry-run-${tier}-${variant}-action-selection`,
     prompt: "Can you check my calendar?",
     expectedAction: "CHECK_RUNTIME",
     actualAction: null,
     pass: false,
-    response: "Dry-run benchmark provenance sample; no model inference executed.",
+    response:
+      "Dry-run benchmark provenance sample; no model inference executed.",
     latencyMs: 0,
     trajectoryPath: join(
       trajectoryDir,

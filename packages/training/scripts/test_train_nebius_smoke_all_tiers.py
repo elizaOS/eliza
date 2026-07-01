@@ -48,11 +48,11 @@ def _parse_train_local(argv: list[str]):
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
+    ap.add_argument("--model", default="google/gemma-4-E2B")
     ap.add_argument("--train-file", default="train.jsonl")
     ap.add_argument("--val-file", default="val.jsonl")
     ap.add_argument("--out-dir", default="checkpoints")
-    ap.add_argument("--run-name", default="qwen35-eliza-native")
+    ap.add_argument("--run-name", default="gemma4-eliza-native")
     ap.add_argument("--max-samples", type=int, default=0)
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument("--max-steps", type=int, default=0)
@@ -210,7 +210,8 @@ def test_smoke_all_help_lists_tiers():
     assert "TIERS" in out, f"help output missing TIERS doc:\n{out}"
     assert "SMOKE_MAX_STEPS" in out
     assert "SMOKE_DATA_DIR" in out
-    assert "0_8b" in out and "27b" in out
+    assert "2b" in out and "27b" in out
+    assert "0_8b" not in out
 
 
 # ---------- run_pipeline.py end-to-end skip-everything smoke ----------------
@@ -274,7 +275,7 @@ def test_run_pipeline_skip_everything_exits_clean(tmp_path: Path):
     # the working dir so the relative paths in run_pipeline.py resolve.
     cmd = [
         sys.executable, str(SCRIPTS / "run_pipeline.py"),
-        "--registry-key", "qwen3.5-0.8b",
+        "--registry-key", "gemma4-e2b",
         "--run-name", "smoke-preflight-fixture",
         "--max-steps", "1",
         "--eval-mode", "smoke",

@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "cross-platform.group-chat-gateway",
   title: "Create a real Discord group handoff room",
   domain: "messaging.cross-platform",

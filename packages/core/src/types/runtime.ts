@@ -61,6 +61,7 @@ import type {
 	SearchCategoryRegistration,
 } from "./search";
 import type { Service, ServiceTypeName } from "./service";
+import type { ShortcutDefinition } from "./shortcut";
 import type { State } from "./state";
 import type { Task, TaskWorker } from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";
@@ -126,6 +127,15 @@ export type PostConnectorCapability =
 	| "read_feed"
 	| "search_posts"
 	| (string & {});
+
+/** Options for bounded runtime shutdown. */
+export interface RuntimeStopOptions {
+	/**
+	 * Skip waiting for unresolved service starts and cap service teardown. Intended
+	 * for signal handlers, reset/restart paths, and development shutdown.
+	 */
+	fast?: boolean;
+}
 
 export const ConnectorAccountPurpose = {
 	MESSAGING: "messaging",
@@ -711,6 +721,9 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	registerAction(action: Action): void;
 	unregisterAction(name: string): boolean;
+	registerShortcut(shortcut: ShortcutDefinition): void;
+	registerShortcuts(shortcuts: readonly ShortcutDefinition[]): void;
+	unregisterShortcut(id: string): void;
 	registerEvaluator(evaluator: RegisteredEvaluator): void;
 	unregisterEvaluator(name: string): boolean;
 	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void;
@@ -813,6 +826,14 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		includeList?: string[],
 		onlyInclude?: boolean,
 		skipCache?: boolean,
+		/**
+		 * When set, REUSE cached provider results for the requested set and re-run
+		 * only the named providers (plus any not yet cached for this message.id).
+		 * The full requested set still drives the rendered text/order. Used to
+		 * refresh only the providers that changed mid-turn (e.g. RECENT_MESSAGES
+		 * after an early reply) instead of recomposing everything.
+		 */
+		refreshProviders?: string[] | null,
 	): Promise<State>;
 
 	/**
@@ -1033,7 +1054,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	/** Resolved `OPTIMIZATION_DIR` (see `getOptimizationRootDir`). */
 	getOptimizationDir(): string;
 
-	stop(): Promise<void>;
+	stop(options?: RuntimeStopOptions): Promise<void>;
 
 	addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 

@@ -21,18 +21,20 @@ function tokenMatches(expected: string, provided: string): boolean {
 }
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+const MAX_BACKUP_BODY_BYTES = 128 * 1024 * 1024; // 128 MB
 
 import path from "node:path";
-import { handleCloudPairRoute } from "@elizaos/app-core/api/cloud-pair-route";
 import {
   type AgentRuntime,
   type IAgentRuntime,
   isStreamingDestinationConfigured,
   logger,
+  NotificationService,
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
   type Route,
   readRequestBody,
+  ServiceType,
   sendJson,
   sendJsonError,
   stringToUuid,
@@ -40,6 +42,7 @@ import {
 } from "@elizaos/core";
 import type {
   AppManagerLike,
+  AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
@@ -56,6 +59,7 @@ import {
 } from "@elizaos/shared/runtime-env";
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
+import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
 // imported via module-scope top-level await, which forced both plugins to
@@ -69,12 +73,24 @@ type X402PluginModule = typeof import("@elizaos/plugin-x402");
 let browserPluginModule: BrowserPluginModule | null = null;
 let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
-let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
+let x402PluginModulePromise: Promise<X402PluginModule | null> | null = null;
+
+// Vite 7's import-analysis eagerly resolves string-literal dynamic imports even
+// when a `@vite-ignore` comment is present, throwing "Failed to resolve entry"
+// for the optional plugins below whose dist isn't built in the unit Plugin
+// Tests lane (any spec that transitively transforms this file then fails to
+// collect). Funnel optional plugin loads through a variable specifier so the
+// analyzer leaves them as pure runtime imports — the host resolves them from
+// node_modules on demand. Mirrors the variable-specifier bundle loader further
+// down this file.
+function importOptionalPlugin<T = unknown>(specifier: string): Promise<T> {
+  return import(/* @vite-ignore */ specifier) as Promise<T>;
+}
 
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
-  browserPluginModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-browser"
+  browserPluginModulePromise ??= importOptionalPlugin<BrowserPluginModule>(
+    "@elizaos/plugin-browser",
   ).then((browser) => {
     browserPluginModule = browser;
     return browser;
@@ -82,28 +98,69 @@ async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   return browserPluginModulePromise;
 }
 
-async function getX402Plugin(): Promise<X402PluginModule> {
+// On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
+// (scripts/mobile-stubs/null-plugin.cjs): the module imports fine but its
+// workspace functions are absent, so calling one throws an uncaught TypeError
+// that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
+// The browser workspace is desktop-only, so resolve the plugin only when it
+// really implements the requested method and let callers serve an empty payload
+// otherwise.
+async function resolveDesktopBrowserPlugin(
+  method: keyof BrowserPluginModule,
+): Promise<BrowserPluginModule | null> {
+  if (isMobilePlatform()) return null;
+  const browserPlugin = await getBrowserPlugin();
+  if ((browserPlugin as { __mobileStub?: boolean }).__mobileStub) return null;
+  return typeof browserPlugin[method] === "function" ? browserPlugin : null;
+}
+
+function getBrowserWorkspacePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserWorkspaceSnapshot");
+}
+
+function getBrowserBridgePlugin(): Promise<BrowserPluginModule | null> {
+  return resolveDesktopBrowserPlugin("getBrowserBridgeCompanionPackageStatus");
+}
+
+const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
+  extensionPath: null,
+  chromeBuildPath: null,
+  chromePackagePath: null,
+  safariWebExtensionPath: null,
+  safariAppPath: null,
+  safariPackagePath: null,
+  releaseManifest: null,
+} satisfies ReturnType<
+  BrowserPluginModule["getBrowserBridgeCompanionPackageStatus"]
+>;
+
+async function getX402Plugin(): Promise<X402PluginModule | null> {
   if (x402PluginModule) return x402PluginModule;
-  x402PluginModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-x402"
-  ).then((x402) => {
-    x402PluginModule = x402;
-    return x402;
-  });
+  // x402 is desktop/cloud-only; on mobile it is not in the agent bundle, so the
+  // "optional" dynamic import REJECTS (no node_modules). Treat a missing module
+  // as "no x402" instead of letting the rejection crash API-server startup —
+  // `importOptionalPlugin` is named optional but does not itself swallow.
+  x402PluginModulePromise ??= importOptionalPlugin<X402PluginModule>(
+    "@elizaos/plugin-x402",
+  )
+    .then((x402) => {
+      x402PluginModule = x402;
+      return x402;
+    })
+    .catch(() => null);
   return x402PluginModulePromise;
 }
 
 const optionalPluginImports = {
-  capacitor: () =>
-    import(/* @vite-ignore */ "@elizaos/plugin-capacitor-bridge"),
-  computerUse: () => import(/* @vite-ignore */ "@elizaos/plugin-computeruse"),
-  cloud: () => import(/* @vite-ignore */ "@elizaos/plugin-elizacloud"),
-  imessage: () => import(/* @vite-ignore */ "@elizaos/plugin-imessage"),
-  mcp: () => import(/* @vite-ignore */ "@elizaos/plugin-mcp"),
-  signal: () => import(/* @vite-ignore */ "@elizaos/plugin-signal"),
-  streaming: () => import(/* @vite-ignore */ "@elizaos/plugin-streaming"),
-  whatsapp: () => import(/* @vite-ignore */ "@elizaos/plugin-whatsapp"),
-  workflow: () => import(/* @vite-ignore */ "@elizaos/plugin-workflow"),
+  capacitor: () => importOptionalPlugin("@elizaos/plugin-capacitor-bridge"),
+  computerUse: () => importOptionalPlugin("@elizaos/plugin-computeruse"),
+  cloud: () => importOptionalPlugin("@elizaos/plugin-elizacloud"),
+  imessage: () => importOptionalPlugin("@elizaos/plugin-imessage"),
+  mcp: () => importOptionalPlugin("@elizaos/plugin-mcp"),
+  signal: () => importOptionalPlugin("@elizaos/plugin-signal"),
+  streaming: () => importOptionalPlugin("@elizaos/plugin-streaming"),
+  whatsapp: () => importOptionalPlugin("@elizaos/plugin-whatsapp"),
+  workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
 
 type LocalInferenceServerApi = {
@@ -182,7 +239,30 @@ function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
 async function getOptionalPluginApi<T>(
   key: keyof typeof optionalPluginImports,
 ): Promise<T> {
-  return (await optionalPluginImports[key]()) as T;
+  try {
+    return (await optionalPluginImports[key]()) as T;
+  } catch (err) {
+    // The plugin is optional and not in this bundle (on mobile, many
+    // desktop/cloud plugins — cloud, whatsapp, wallet-adjacent, mcp,
+    // streaming, … — are excluded). Its dynamic import REJECTS with a
+    // ResolveMessage; without this catch that rejection propagates to the
+    // top-level request handler as a 500 on EVERY renderer poll of the
+    // plugin's routes. Return a Proxy of no-op handlers so route-dispatch
+    // blocks (`if (await handleX(...)) return;`) fall through to the normal
+    // 404/fallback instead of erroring. On desktop/server the import succeeds,
+    // so this branch never runs there.
+    logger.debug(
+      `[eliza-api] optional plugin '${key}' unavailable in this bundle: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return new Proxy(
+      {},
+      {
+        get: () => () => false,
+      },
+    ) as T;
+  }
 }
 type BrowserBridgeKind = BrowserPluginModule["BROWSER_BRIDGE_KINDS"][number];
 type BrowserBridgePackagePathTarget =
@@ -222,7 +302,23 @@ let walletApiPromise:
   | Promise<typeof import("@elizaos/plugin-wallet")>
   | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
-  walletApiPromise ??= import(/* @vite-ignore */ "@elizaos/plugin-wallet");
+  walletApiPromise ??= importOptionalPlugin<
+    typeof import("@elizaos/plugin-wallet")
+  >("@elizaos/plugin-wallet").catch((err) => {
+    // plugin-wallet is desktop/cloud-only; on mobile it is not in the bundle so
+    // this import REJECTS. Cache a no-op proxy so /api/wallet/* falls through to
+    // 404 instead of 500ing on every renderer poll. Desktop imports succeed, so
+    // this never runs there.
+    logger.debug(
+      `[eliza-api] plugin-wallet unavailable in this bundle: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return new Proxy(
+      {},
+      { get: () => () => false },
+    ) as typeof import("@elizaos/plugin-wallet");
+  });
   return walletApiPromise;
 }
 
@@ -233,14 +329,14 @@ function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
 }
 
 let pluginRegistryApiPromise:
-  | Promise<typeof import("@elizaos/plugin-registry")>
+  | Promise<typeof import("@elizaos/plugin-registry/api/plugin-routes")>
   | undefined;
 
 function getPluginRegistryApi(): Promise<
-  typeof import("@elizaos/plugin-registry")
+  typeof import("@elizaos/plugin-registry/api/plugin-routes")
 > {
   pluginRegistryApiPromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-registry"
+    /* @vite-ignore */ "@elizaos/plugin-registry/api/plugin-routes"
   );
   return pluginRegistryApiPromise;
 }
@@ -282,6 +378,14 @@ import {
   subscribeAuditFeed,
 } from "../security/audit-log.ts";
 import {
+  type AgentBackupStateData,
+  createAgentSnapshot,
+  createLocalAgentBackup,
+  listLocalAgentBackups,
+  restoreAgentSnapshot,
+  restoreLocalAgentBackup,
+} from "../services/agent-backup.ts";
+import {
   AgentExportError,
   estimateExportSize,
   exportAgent,
@@ -295,6 +399,12 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.ts";
+import {
+  PROACTIVE_INTERACTION_SOURCE,
+  type ProactiveOffer,
+  registerProactiveInteractionDecider,
+} from "../services/proactive-interaction-decider.ts";
+import { ProactiveInteractionGate } from "../services/proactive-interaction-gate.ts";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -316,6 +426,7 @@ import {
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
+import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
@@ -326,6 +437,7 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
+import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,
@@ -350,6 +462,7 @@ import {
   handleFirstRunRoutes,
   handleHealthRoutes,
   handleInboxAndCloudRelayRouteGroup,
+  handleInteractionsRoutes,
   handleLifeOpsRuntimePluginRoute,
   handleMemoryRoutes,
   handleMiscRoutes,
@@ -370,9 +483,11 @@ import {
   isPublicRuntimePluginRoute,
   registerBuiltinViews,
   tryHandleHonoRuntimeRoute,
+  tryHandleLifeOpsInboxFallbackLazy,
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
+import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -389,15 +504,13 @@ import {
   parseEventCursor,
   selectReplayEvents,
 } from "./ws-event-replay.ts";
+import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
 export {
   executeFallbackParsedActions,
   type FallbackParsedAction,
-  inferBalanceChainFromText,
-  isBalanceIntent,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
-  shouldForceCheckBalanceFallback,
 } from "./binance-skill-helpers.ts";
 
 type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
@@ -721,6 +834,43 @@ const readBody = (req: http.IncomingMessage): Promise<string> =>
     (value) => value ?? "",
   );
 
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
+  if (!isJsonRecord(value)) return false;
+  return (
+    Array.isArray(value.memories) &&
+    isJsonRecord(value.config) &&
+    isJsonRecord(value.workspaceFiles) &&
+    isJsonRecord(value.manifest)
+  );
+}
+
+async function readBackupJsonBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<unknown | null> {
+  try {
+    const raw = await readRequestBody(req, {
+      maxBytes: MAX_BACKUP_BODY_BYTES,
+    });
+    if (!raw) {
+      error(res, "Request body is required", 400);
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch (err) {
+    error(
+      res,
+      err instanceof Error ? err.message : "Invalid backup request body",
+      400,
+    );
+    return null;
+  }
+}
+
 let activeTerminalRunCount = 0;
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -1008,9 +1158,11 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
     json(res, {
-      status: browserPlugin.getBrowserBridgeCompanionPackageStatus(),
+      status: browserPlugin
+        ? browserPlugin.getBrowserBridgeCompanionPackageStatus()
+        : EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS,
     });
     return true;
   }
@@ -1025,7 +1177,11 @@ async function handleBuiltinOptionalRoutes(
         res,
       )) ?? null;
     if (!body) return true;
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
     if (!target) {
       error(res, "Invalid browser bridge package target", 400);
@@ -1044,7 +1200,11 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && packageBuildMatch) {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const browser = parseBrowserBridgeKind(browserPlugin, packageBuildMatch[1]);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
@@ -1060,7 +1220,11 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
   );
   if (method === "POST" && packageManagerMatch) {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserBridgePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser bridge is not available on this platform", 503);
+      return true;
+    }
     const browser = parseBrowserBridgeKind(
       browserPlugin,
       packageManagerMatch[1],
@@ -1074,17 +1238,25 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (pathname === "/api/browser-workspace" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      json(res, { mode: "web", tabs: [] });
+      return true;
+    }
     json(res, await browserPlugin.getBrowserWorkspaceSnapshot());
     return true;
   }
 
   if (pathname === "/api/browser-workspace/command" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
     const body =
       (await readJsonBody<BrowserWorkspaceCommand>(req, res)) ?? null;
     if (!body?.subaction) {
       error(res, "subaction is required", 400);
+      return true;
+    }
+    if (!browserPlugin) {
+      error(res, "Browser workspace is not available on this platform", 503);
       return true;
     }
     json(res, await browserPlugin.executeBrowserWorkspaceCommand(body));
@@ -1092,13 +1264,21 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      json(res, { tabs: [] });
+      return true;
+    }
     json(res, { tabs: await browserPlugin.listBrowserWorkspaceTabs() });
     return true;
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
+    const browserPlugin = await getBrowserWorkspacePlugin();
+    if (!browserPlugin) {
+      error(res, "Browser workspace is not available on this platform", 503);
+      return true;
+    }
     const body =
       (await readJsonBody<{
         url?: string;
@@ -1121,33 +1301,34 @@ async function handleBuiltinOptionalRoutes(
   const tabId = decodeURIComponent(tabMatch[1]).trim();
   const action = tabMatch[2] ?? null;
 
+  const browserPlugin = await getBrowserWorkspacePlugin();
+  if (!browserPlugin) {
+    error(res, "Browser workspace is not available on this platform", 503);
+    return true;
+  }
+
   if (!action && method === "DELETE") {
-    const browserPlugin = await getBrowserPlugin();
     const closed = await browserPlugin.closeBrowserWorkspaceTab(tabId);
     json(res, { closed }, closed ? 200 : 404);
     return true;
   }
 
   if (action === "show" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, { tab: await browserPlugin.showBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "hide" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, { tab: await browserPlugin.hideBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "snapshot" && method === "GET") {
-    const browserPlugin = await getBrowserPlugin();
     json(res, await browserPlugin.snapshotBrowserWorkspaceTab(tabId));
     return true;
   }
 
   if (action === "navigate" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
       null;
@@ -1165,7 +1346,6 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (action === "eval" && method === "POST") {
-    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
       null;
@@ -1432,8 +1612,6 @@ function buildPluginEvmDiagnosticEntry(
 import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
 
 export {
-  hasUsableWalletFallbackParams,
-  inferWalletExecutionFallback,
   resolveWalletExportRejection,
   type WalletExportRejection,
 } from "./server-helpers-wallet.ts";
@@ -1533,6 +1711,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
+  isTrustedLocalRequest as _isTrustedLocalRequest,
   isWaifuChatAuthorized as _isWaifuChatAuthorized,
   isWebSocketAuthorized as _isWebSocketAuthorized,
   normalizePairingCode as _normalizePairingCode,
@@ -1563,6 +1742,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isWaifuChatAuthorized = _isWaifuChatAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1627,6 +1807,7 @@ import {
 } from "./server-autonomy-helpers.ts";
 import {
   getPtyConsoleBridge,
+  getPtyService,
   wireCodingAgentChatBridge,
   wireCodingAgentSwarmSynthesis,
   wireCodingAgentWsBridge,
@@ -1646,6 +1827,63 @@ export {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
 } from "./server-helpers-swarm.ts";
+
+// One process-wide governance gate shared across runtime (re)registrations, so a
+// restart doesn't reset the proactive-comment cooldowns/caps (#8792).
+const proactiveInteractionGate = new ProactiveInteractionGate();
+
+function proactiveNotificationGroupKey(offer: ProactiveOffer): string {
+  if (offer.groupKey) return offer.groupKey;
+  const basis = (offer.deepLink || offer.title || offer.text)
+    .toLowerCase()
+    .replace(/[^a-z0-9:/._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+  return `proactive-interaction:${basis || "general"}`;
+}
+
+async function notifyProactiveInteraction(
+  rt: IAgentRuntime,
+  offer: ProactiveOffer,
+): Promise<void> {
+  const service = rt.getService(ServiceType.NOTIFICATION);
+  if (!(service instanceof NotificationService)) {
+    logger.debug(
+      "[proactive-interaction] notification service unavailable; suppressing notify-lane offer",
+    );
+    return;
+  }
+
+  const title = offer.title?.trim() || offer.text;
+  await service.notify({
+    title,
+    body: title === offer.text ? undefined : offer.text,
+    category: "agent",
+    priority: "low",
+    source: PROACTIVE_INTERACTION_SOURCE,
+    deepLink: offer.deepLink,
+    groupKey: proactiveNotificationGroupKey(offer),
+    data: { kind: "proactive-interaction" },
+  });
+}
+
+/**
+ * Wire the proactive-interaction decider (#8792): subscribe to VIEW_SWITCHED and
+ * route an admitted, model-judged offer into chat suggestions or low-priority
+ * notifications. No-ops when disabled by config/kill-switch.
+ */
+function wireProactiveInteractionDecider(
+  rt: IAgentRuntime,
+  state: ServerState,
+): void {
+  registerProactiveInteractionDecider(rt, {
+    gate: proactiveInteractionGate,
+    route: (text) =>
+      routeProactiveText(state, text, PROACTIVE_INTERACTION_SOURCE),
+    notify: (offer) => notifyProactiveInteraction(rt, offer),
+    shouldSuppress: () => state.activeChatTurnCount > 0,
+  });
+}
 
 async function handleRequest(
   req: http.IncomingMessage,
@@ -1668,9 +1906,16 @@ async function handleRequest(
   let handleCloudStatusRoutes = async (_args: unknown): Promise<boolean> =>
     false;
   if (
-    pathname === "/api/first-run/status" ||
-    pathname.startsWith("/api/cloud") ||
-    pathname.startsWith("/api/coding-agents")
+    // plugin-elizacloud is desktop/cloud-only; on mobile its dynamic import
+    // does not resolve and the resulting await stalls the whole request (the
+    // /api/cloud, /api/coding-agents, and cloud-first-run paths then hang).
+    // Skip the import on mobile — the default no-op cloud helpers above keep
+    // isCloudProvisioned=false (correct for a local mobile agent) and let the
+    // request fall through to its normal handler/404.
+    !isMobilePlatform() &&
+    (pathname === "/api/first-run/status" ||
+      pathname.startsWith("/api/cloud") ||
+      pathname.startsWith("/api/coding-agents"))
   ) {
     const cloudApi = await getOptionalPluginApi<{
       isCloudProvisionedContainer: () => boolean;
@@ -1822,9 +2067,18 @@ async function handleRequest(
   // and wedging the dashboard at "Connecting to backend…". The route is a
   // cloud-SSO handoff that a local on-device agent never legitimately serves,
   // so skipping it when unavailable is safe.
+  // Dynamic import (matching the account-pool / vault-mirror seams in this
+  // package) so agent never *statically* imports @elizaos/app-core: the static
+  // import was what produced the circular re-export init-order `undefined`
+  // above, and it is the build-time edge that puts @elizaos/app-core <->
+  // @elizaos/agent in a Turbo dependency cycle (#9626). `.catch(() => null)`
+  // keeps the on-device path graceful when app-core isn't present at all.
+  const cloudPairMod = await import(
+    /* @vite-ignore */ "@elizaos/app-core/api/cloud-pair-route"
+  ).catch(() => null);
   if (
-    typeof handleCloudPairRoute === "function" &&
-    (await handleCloudPairRoute(req, res))
+    typeof cloudPairMod?.handleCloudPairRoute === "function" &&
+    (await cloudPairMod.handleCloudPairRoute(req, res))
   ) {
     return;
   }
@@ -1864,6 +2118,129 @@ async function handleRequest(
   if (method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/backups") {
+    if (!state.runtime) {
+      error(res, "Runtime not ready", 503);
+      return;
+    }
+    try {
+      const backups = await listLocalAgentBackups(state.runtime.agentId);
+      json(res, { backups });
+    } catch (err) {
+      logger.error(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[agent-backup] Local backup list failed",
+      );
+      error(
+        res,
+        err instanceof Error ? err.message : "Backup list failed",
+        500,
+      );
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/backups") {
+    if (!state.runtime) {
+      error(res, "Runtime not ready", 503);
+      return;
+    }
+    try {
+      const backup = await createLocalAgentBackup(state.runtime, state.config);
+      json(res, { backup });
+    } catch (err) {
+      logger.error(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[agent-backup] Local backup failed",
+      );
+      error(res, err instanceof Error ? err.message : "Backup failed", 500);
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/backups/restore") {
+    if (!state.runtime) {
+      error(res, "Runtime not ready", 503);
+      return;
+    }
+    const body = await readBackupJsonBody(req, res);
+    if (!body) return;
+    const bodyRecord = isJsonRecord(body) ? body : null;
+    const fileName =
+      typeof bodyRecord?.fileName === "string" ? bodyRecord.fileName : null;
+    if (!fileName) {
+      error(res, "fileName is required", 400);
+      return;
+    }
+    try {
+      const result = await restoreLocalAgentBackup(state.runtime, fileName);
+      json(res, result);
+    } catch (err) {
+      logger.error(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[agent-backup] Local backup restore failed",
+      );
+      error(
+        res,
+        err instanceof Error ? err.message : "Backup restore failed",
+        500,
+      );
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/snapshot") {
+    if (!state.runtime) {
+      error(res, "Runtime not ready", 503);
+      return;
+    }
+    try {
+      const snapshot = await createAgentSnapshot(state.runtime, state.config);
+      json(res, snapshot);
+    } catch (err) {
+      logger.error(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[agent-backup] Snapshot failed",
+      );
+      error(res, err instanceof Error ? err.message : "Snapshot failed", 500);
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/restore") {
+    if (!state.runtime) {
+      error(res, "Runtime not ready", 503);
+      return;
+    }
+    const body = await readBackupJsonBody(req, res);
+    if (!body) return;
+    if (!isAgentBackupStateData(body)) {
+      error(res, "Invalid backup snapshot payload", 400);
+      return;
+    }
+    try {
+      const result = await restoreAgentSnapshot(state.runtime, body);
+      json(res, result);
+    } catch (err) {
+      logger.error(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[agent-backup] Restore failed",
+      );
+      error(res, err instanceof Error ? err.message : "Restore failed", 500);
+    }
     return;
   }
 
@@ -1925,7 +2302,13 @@ async function handleRequest(
   ) {
     return;
   }
-  if (pathname.startsWith("/api/computer-use/")) {
+  // Computer-use is a desktop/cloud-only plugin; on mobile it is not in the
+  // agent bundle, so importing it here would REJECT (`Cannot find module
+  // '@elizaos/plugin-computeruse'`) and surface as a 500 on every renderer poll
+  // of /api/computer-use/approvals. Skip the import path on mobile and let the
+  // request fall through to handleMobileOptionalRoutes, which serves the inert
+  // {mode:"off",…} approval snapshot.
+  if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
     const { handleComputerUseRoutes } = await getOptionalPluginApi<{
       handleComputerUseRoutes: (
         req: http.IncomingMessage,
@@ -2578,10 +2961,13 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
   // Prefer the local wallet implementation during desktop startup. The
-  // steward-app bridge can pull browser/UI-only dependencies into the agent
-  // process and must not block local assistant boot.
+  // wallet route owner must not pull browser/UI-only dependencies into the
+  // agent process or block local assistant boot.
   // ═══════════════════════════════════════════════════════════════════════
-  if (pathname.startsWith("/api/wallet/")) {
+  // plugin-wallet is desktop/cloud-only; on mobile its import does not resolve
+  // and the await stalls /api/wallet/* requests. Skip on mobile → fall through
+  // to 404 (the mobile agent has no EVM/Solana wallet surface anyway).
+  if (!isMobilePlatform() && pathname.startsWith("/api/wallet/")) {
     const { handleWalletRoutes } = await getWalletApi();
     const {
       deriveSolanaAddress,
@@ -2919,8 +3305,8 @@ async function handleRequest(
   // by handleAgentStatusRoutes above.
 
   // ═══════════════════════════════════════════════════════════════════════
-  // BSC trade routes and wallet trade execute — now handled by
-  // @elizaos/plugin-steward-app plugin routes. See plugins/plugin-steward-app/src/plugin.ts.
+  // BSC trade routes and wallet trade execute are handled by registered wallet
+  // plugin routes when the relevant backend is installed.
   // ═══════════════════════════════════════════════════════════════════════
 
   if (
@@ -3021,6 +3407,9 @@ async function handleRequest(
     const appManager = ctx?.getAppManager
       ? await ctx.getAppManager()
       : (state.appManager as AppManagerLike);
+    const appActorRole: AppsRouteActorRole = isAuthorized(req)
+      ? "OWNER"
+      : "GUEST";
     if (
       await handleAppsRoutes({
         req,
@@ -3064,6 +3453,7 @@ async function handleRequest(
               runtime && typeof runtime === "object"
                 ? (runtime as IAgentRuntime)
                 : null,
+              installPluginDirect,
             ),
           stop: (pluginManager, name, runId, runtime) =>
             appManager.stop(
@@ -3086,10 +3476,12 @@ async function handleRequest(
         json,
         error,
         runtime: state.runtime,
+        actorRole: appActorRole,
         favoriteApps: {
           read: () => readFavoriteAppsFromConfig(state.config),
           write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
         } satisfies FavoriteAppsStore,
+        installPluginDirect,
       })
     ) {
       return;
@@ -3131,6 +3523,21 @@ async function handleRequest(
   // ── Prompt suggestions (/api/suggestions) ─────────────────────────────────
   if (
     await handleSuggestionsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── Interaction reporting (/api/interactions/shortcut) ────────────────────
+  if (
+    await handleInteractionsRoutes({
       req,
       res,
       method,
@@ -3263,9 +3670,9 @@ async function handleRequest(
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
       hostContext: {
-        config: state.config as unknown as Record<string, unknown>,
+        config: state.config as Record<string, unknown>,
         saveConfig: (nextConfig) => {
-          state.config = nextConfig as unknown as ElizaConfig;
+          state.config = nextConfig as ElizaConfig;
           saveElizaConfig(state.config);
         },
         restartRuntime,
@@ -3301,6 +3708,37 @@ async function handleRequest(
     return;
   }
 
+  // ── LifeOps inbox compatibility fallback ────────────────────────────────
+  // The inbox view is bundled independently from the PA-owned inbox cache
+  // route. When PA is absent, serve an empty wire payload instead of a 404 loop.
+  if (
+    await tryHandleLifeOpsInboxFallbackLazy({
+      pathname,
+      method,
+      url,
+      res,
+    })
+  ) {
+    return;
+  }
+
+  // ── Trajectory read fallback ────────────────────────────────────────────
+  // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
+  // when no plugin owns the route (mobile / training disabled), so the realtime
+  // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
+  // plugin routes above, so plugin-training's richer route wins when present.
+  if (
+    await tryHandleTrajectoryFallback({
+      pathname,
+      method,
+      url,
+      runtime: state.runtime,
+      res,
+    })
+  ) {
+    return;
+  }
+
   // ── Hono adapter for runtime.routes with `routeHandler` (new shape) ─────
   // Covers any plugin route registered via the new return-shape RouteHandler
   // contract. Legacy Express-shaped `handler` routes are still served by
@@ -3311,6 +3749,7 @@ async function handleRequest(
       res,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
+      isTrustedLocal: () => isTrustedLocalRequest(req),
     })
   ) {
     return;
@@ -3517,6 +3956,7 @@ export async function startApiServer(opts?: {
     chatConnectionPromise: null,
     adminEntityId: null,
     conversations: new Map(),
+    activeChatTurnCount: 0,
     conversationRestorePromise: null,
     deletedConversationIds,
     cloudManager: null,
@@ -3530,6 +3970,7 @@ export async function startApiServer(opts?: {
     broadcastWsToClientId: null,
     broadcastWsToConversation: null,
     activeConversationId: null,
+    deliveryDedupe: createDeliveryDedupeState(),
     permissionStates: {},
     shellEnabled: config.features?.shellEnabled !== false,
     agentAutomationMode: resolveAgentAutomationModeFromConfig(config),
@@ -4030,11 +4471,6 @@ export async function startApiServer(opts?: {
       }
     })();
 
-    // ERC-8004 RegistryService + DropService construction has moved into
-    // elizaMakerPlugin.init() in @elizaos/plugin-elizamaker. The plugin reads
-    // the live services via getElizaMakerRegistryService() /
-    // getElizaMakerDropService() in this package.
-
     // ── Connector health monitoring ──────────────────────────────────────────
     if (state.runtime && state.config.connectors) {
       try {
@@ -4298,6 +4734,13 @@ export async function startApiServer(opts?: {
 
   // ── WebSocket Server ─────────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  // A server-level 'error' with no listener crashes the process. Abrupt client
+  // disconnects (RST during/after the upgrade handshake) surface here.
+  wss.on("error", (err: unknown) => {
+    logger.warn(
+      `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
+    );
+  });
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
   /**
@@ -4363,6 +4806,17 @@ export async function startApiServer(opts?: {
 
   // Handle upgrade requests for WebSocket
   server.on("upgrade", (request, socket, head) => {
+    // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
+    // a WebSocket — and its error handler — exists. Unhandled, it crashes the
+    // process. Attach a no-op-ish guard for the whole upgrade window.
+    socket.on("error", (err: unknown) => {
+      logger.warn(
+        `[eliza-api] WS upgrade socket error: ${err instanceof Error ? err.message : err}`,
+      );
+      try {
+        socket.destroy();
+      } catch {}
+    });
     try {
       const wsUrl = new URL(
         request.url ?? "/",
@@ -4377,6 +4831,15 @@ export async function startApiServer(opts?: {
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+        // Attach an 'error' listener IMMEDIATELY — before emit('connection')
+        // runs the (long) connection handler that only attaches its own error
+        // listener near the end. A client that RSTs in that window otherwise
+        // emits an unhandled 'error' on the ws and crashes the process.
+        ws.on("error", (err: unknown) => {
+          logger.warn(
+            `[eliza-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
+          );
+        });
         wss.emit("connection", ws, request);
       });
     } catch (err) {
@@ -4389,6 +4852,7 @@ export async function startApiServer(opts?: {
 
   // Handle WebSocket connections
   wss.on("connection", (ws: WebSocket, request: http.IncomingMessage) => {
+    let wsClientId: string | null = null;
     let wsUrl: URL;
     try {
       wsUrl = new URL(
@@ -4396,7 +4860,10 @@ export async function startApiServer(opts?: {
         `http://${request.headers.host ?? "localhost"}`,
       );
       const clientId = normalizeWsClientId(wsUrl.searchParams.get("clientId"));
-      if (clientId) wsClientIds.set(ws, clientId);
+      if (clientId) {
+        wsClientId = clientId;
+        wsClientIds.set(ws, clientId);
+      }
     } catch {
       // Ignore malformed WS URL metadata; auth/path were already validated.
       wsUrl = new URL("ws://localhost/ws");
@@ -4458,6 +4925,31 @@ export async function startApiServer(opts?: {
       activateAuthenticatedConnection();
     }
 
+    const currentClientOwnsPtySession = (sessionId: string): boolean => {
+      const service = getPtyService(state);
+      const session = service
+        ?.listSessions?.()
+        .find((candidate) => candidate.sessionId === sessionId);
+      if (!session?.ownerClientId) return true;
+      return Boolean(wsClientId && session.ownerClientId === wsClientId);
+    };
+
+    const stopOwnedPtySessions = (reason: string): void => {
+      if (!wsClientId) return;
+      const service = getPtyService(state);
+      if (!service?.listSessions || !service.stopSession) return;
+      const owned = service
+        .listSessions()
+        .filter((session) => session.ownerClientId === wsClientId);
+      for (const session of owned) {
+        void service.stopSession(session.sessionId).catch((err) => {
+          logger.warn(
+            `[eliza-api] failed to stop PTY session ${session.sessionId} on ${reason}: ${err instanceof Error ? err.message : err}`,
+          );
+        });
+      }
+    };
+
     ws.on("message", async (data: unknown) => {
       try {
         const msg = JSON.parse(String(data));
@@ -4501,6 +4993,12 @@ export async function startApiServer(opts?: {
         ) {
           const bridge = getPtyConsoleBridge(state);
           if (bridge) {
+            if (!currentClientOwnsPtySession(msg.sessionId)) {
+              logger.warn(
+                `[eliza-api] pty-subscribe rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
+              );
+              return;
+            }
             let subs = wsClientPtySubscriptions.get(ws);
             if (!subs) {
               subs = new Map();
@@ -4554,6 +5052,10 @@ export async function startApiServer(opts?: {
             logger.warn(
               `[eliza-api] pty-input rejected: client not subscribed to session ${msg.sessionId}`,
             );
+          } else if (!currentClientOwnsPtySession(msg.sessionId)) {
+            logger.warn(
+              `[eliza-api] pty-input rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
+            );
           } else if (msg.data.length > 4096) {
             logger.warn(
               `[eliza-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
@@ -4576,6 +5078,10 @@ export async function startApiServer(opts?: {
           if (!subs?.has(msg.sessionId)) {
             logger.warn(
               `[eliza-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
+            );
+          } else if (!currentClientOwnsPtySession(msg.sessionId)) {
+            logger.warn(
+              `[eliza-api] pty-resize rejected: client ${wsClientId ?? "unknown"} does not own session ${msg.sessionId}`,
             );
           } else {
             const bridge = getPtyConsoleBridge(state);
@@ -4634,6 +5140,7 @@ export async function startApiServer(opts?: {
         for (const unsub of subs.values()) unsub();
         subs.clear();
       }
+      stopOwnedPtySessions("websocket close");
       addLog("info", "WebSocket client disconnected", "websocket", [
         "server",
         "websocket",
@@ -4652,6 +5159,7 @@ export async function startApiServer(opts?: {
         for (const unsub of subs.values()) unsub();
         subs.clear();
       }
+      stopOwnedPtySessions("websocket error");
     });
   });
 
@@ -4894,17 +5402,20 @@ export async function startApiServer(opts?: {
       logger.warn("[api] Character overlay restore failed:", err);
     });
     registerClientChatSendHandler(opts.runtime, state);
+    wireProactiveInteractionDecider(opts.runtime, state);
   }
 
   const assertX402RoutesValid = async (
     rt: AgentRuntime | null | undefined,
   ): Promise<void> => {
-    if (!rt?.routes?.length) return;
+    if (!rt || !runtimeRoutesNeedX402Validation(rt.routes)) return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
         : undefined;
-    const { validateX402Startup } = await getX402Plugin();
+    const x402 = await getX402Plugin();
+    if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
+    const { validateX402Startup } = x402;
     const result = validateX402Startup(rt.routes as Route[], rt.character, {
       agentId,
     });
@@ -4970,6 +5481,7 @@ export async function startApiServer(opts?: {
 
     // Re-register client_chat send handler on the new runtime
     registerClientChatSendHandler(rt, state);
+    wireProactiveInteractionDecider(rt, state);
 
     // Wire coding-agent bridges (event-driven via getServiceLoadPromise)
     void wireCoordinatorBridgesWhenReady(state, {

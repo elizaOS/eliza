@@ -1,147 +1,134 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  runWorkflowWithSmithers,
-  type SmithersExecutionPlan,
-  type SmithersWorkflowRunOptions,
-} from '../../src/services/smithers-runtime';
-import type { WorkflowDefinition, WorkflowExecution, WorkflowNode } from '../../src/types/index';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-type RunNode = SmithersWorkflowRunOptions['runNode'];
-type NodeInput = Parameters<RunNode>[1];
+const CASE_TIMEOUT_MS = 45_000;
+const fixturePath = fileURLToPath(new URL('../fixtures/smithers-runtime-case.ts', import.meta.url));
+const pluginRoot = fileURLToPath(new URL('../..', import.meta.url));
 
-interface RunDataEntry {
-  data: { main: Array<Array<{ json: Record<string, unknown> }>> };
+interface CaseRunResult {
+  stdout: string;
+  stderr: string;
+  result: Record<string, unknown>;
 }
 
-function node(name: string, extra: Partial<WorkflowNode> = {}): WorkflowNode {
-  return { name, type: 'test.node', typeVersion: 1, position: [0, 0], parameters: {}, ...extra };
+function buildChildEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) {
+    const normalized = key.toUpperCase();
+    if (
+      normalized === 'NODE_V8_COVERAGE' ||
+      normalized === 'BUN_TEST' ||
+      normalized.startsWith('BUN_TEST_') ||
+      normalized.startsWith('VITEST') ||
+      normalized.startsWith('NYC_') ||
+      normalized.includes('COVERAGE')
+    ) {
+      delete env[key];
+    }
+  }
+  return env;
 }
 
-function pendingExecution(workflowId: string): WorkflowExecution {
-  return {
-    id: `exec-${workflowId}`,
-    finished: false,
-    mode: 'manual',
-    startedAt: new Date().toISOString(),
-    workflowId,
-    status: 'running',
-  };
-}
-
-function run(
-  id: string,
-  nodes: WorkflowNode[],
-  plan: SmithersExecutionPlan,
-  runNode: RunNode
-): Promise<WorkflowExecution> {
-  // Unique id per invocation: the Smithers run is keyed by (workflow, runId) in a
-  // persistent SQLite file, so a fixed id would short-circuit as "already run" on
-  // re-invocation. Production uses a fresh randomUUID executionId per run.
-  const uid = `${id}-${Math.random().toString(36).slice(2, 10)}`;
-  const workflow: WorkflowDefinition = { id: uid, name: uid, nodes, connections: {} };
-  return runWorkflowWithSmithers({
-    workflow,
-    executionId: `run-${uid}`,
-    pending: pendingExecution(uid),
-    mode: 'manual',
-    triggerData: {},
-    plan,
-    runNode,
+async function runCase(caseName: string): Promise<CaseRunResult> {
+  const tempDir = await mkdtemp(join(tmpdir(), 'smithers-runtime-case-'));
+  const resultPath = join(tempDir, `${caseName}.json`);
+  const proc = spawn(process.env.BUN_BIN || 'bun', ['run', fixturePath, caseName], {
+    cwd: pluginRoot,
+    env: { ...buildChildEnv(), SMITHERS_RUNTIME_CASE_OUTPUT: resultPath },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let stdout = '';
+  let stderr = '';
+  let timedOut = false;
+  proc.stdout.setEncoding('utf8');
+  proc.stderr.setEncoding('utf8');
+  proc.stdout.on('data', (chunk: string) => {
+    stdout += chunk;
+  });
+  proc.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    proc.kill('SIGKILL');
+  }, CASE_TIMEOUT_MS);
+
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    proc.on('error', reject);
+    proc.on('close', (code) => resolve(code ?? 1));
+  }).finally(() => clearTimeout(timeout));
+
+  if (timedOut) {
+    await rm(tempDir, { force: true, recursive: true });
+    throw new Error(
+      `Smithers runtime case "${caseName}" timed out.\nstdout:\n${stdout}\nstderr:\n${stderr}`
+    );
+  }
+  if (exitCode !== 0) {
+    await rm(tempDir, { force: true, recursive: true });
+    throw new Error(
+      `Smithers runtime case "${caseName}" failed with exit ${exitCode}.\nstdout:\n${stdout}\nstderr:\n${stderr}`
+    );
+  }
+
+  const resultJson = await readFile(resultPath, 'utf8').catch(() => '');
+  if (!resultJson) {
+    await rm(tempDir, { force: true, recursive: true });
+    throw new Error(
+      `Smithers runtime case "${caseName}" did not report a result.\nstdout:\n${stdout}\nstderr:\n${stderr}`
+    );
+  }
+  await rm(tempDir, { force: true, recursive: true });
+
+  return {
+    stdout,
+    stderr,
+    result: JSON.parse(resultJson) as Record<string, unknown>,
+  };
 }
 
 describe('runWorkflowWithSmithers (in-process Smithers engine)', () => {
   it('runs independent nodes as a parallel level and routes data through the DAG', async () => {
-    const calls: string[] = [];
-    const inputs = new Map<string, NodeInput>();
-    const nodes = [node('trigger'), node('A'), node('B'), node('C')];
-    const plan: SmithersExecutionPlan = {
-      enabledNodes: nodes,
-      startNodes: ['trigger'],
-      incoming: {
-        A: [{ source: 'trigger', sourceOutputIndex: 0, destinationInputIndex: 0 }],
-        B: [{ source: 'trigger', sourceOutputIndex: 0, destinationInputIndex: 0 }],
-        C: [
-          { source: 'A', sourceOutputIndex: 0, destinationInputIndex: 0 },
-          { source: 'B', sourceOutputIndex: 0, destinationInputIndex: 1 },
-        ],
-      },
-    };
-    const runNode: RunNode = async (n, inputData) => {
-      calls.push(n.name);
-      inputs.set(n.name, inputData);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return [[{ json: { node: n.name } }]];
-    };
-
-    const result = await run('wf-fanout', nodes, plan, runNode);
+    const { result } = await runCase('fanout');
 
     expect(result.status).toBe('success');
     expect(result.finished).toBe(true);
-    expect([...calls].sort()).toEqual(['A', 'B', 'C', 'trigger']);
-    expect(result.data?.resultData?.lastNodeExecuted).toBe('C');
-    // C merges output 0 of A into input 0 and output 0 of B into input 1.
-    const cInput = inputs.get('C');
-    expect(cInput?.[0]?.[0]?.json).toEqual({ node: 'A' });
-    expect(cInput?.[1]?.[0]?.json).toEqual({ node: 'B' });
+    expect(result.calls).toEqual(['A', 'B', 'C', 'trigger']);
+    expect(result.lastNodeExecuted).toBe('C');
+    expect(result.cInput0).toEqual({ node: 'A' });
+    expect(result.cInput1).toEqual({ node: 'B' });
+    expect(result.engine).toMatchObject({
+      provider: 'smithers',
+      nodes: 4,
+      levels: 3,
+      maxConcurrency: 2,
+    });
   }, 60_000);
 
   it('retries a node according to its n8n retryOnFail / maxTries settings', async () => {
-    let attempts = 0;
-    const nodes = [
-      node('trigger'),
-      node('R', { retryOnFail: true, maxTries: 3, waitBetweenTries: 1 }),
-    ];
-    const plan: SmithersExecutionPlan = {
-      enabledNodes: nodes,
-      startNodes: ['trigger'],
-      incoming: { R: [{ source: 'trigger', sourceOutputIndex: 0, destinationInputIndex: 0 }] },
-    };
-    const runNode: RunNode = async (n) => {
-      if (n.name === 'R') {
-        attempts += 1;
-        if (attempts < 2) throw new Error('transient');
-      }
-      return [[{ json: { node: n.name } }]];
-    };
+    const { result } = await runCase('retry');
 
-    const result = await run('wf-retry', nodes, plan, runNode);
-
-    expect(attempts).toBe(2);
+    expect(result.attempts).toBe(2);
     expect(result.status).toBe('success');
+    expect(result.retries).toBe(1);
   }, 60_000);
 
   it('continues and emits an error item when a node sets continueOnFail', async () => {
-    const nodes = [node('trigger'), node('F', { continueOnFail: true })];
-    const plan: SmithersExecutionPlan = {
-      enabledNodes: nodes,
-      startNodes: ['trigger'],
-      incoming: { F: [{ source: 'trigger', sourceOutputIndex: 0, destinationInputIndex: 0 }] },
-    };
-    const runNode: RunNode = async (n) => {
-      if (n.name === 'F') throw new Error('boom');
-      return [[{ json: { node: n.name } }]];
-    };
-
-    const result = await run('wf-continue', nodes, plan, runNode);
+    const { result } = await runCase('continue');
 
     expect(result.status).toBe('success');
-    const fRun = result.data?.resultData?.runData?.F as RunDataEntry[] | undefined;
-    expect(fRun?.[0]?.data.main[0][0].json.error).toBe('boom');
+    expect(result.errorItem).toBe('boom');
   }, 60_000);
 
   it('fails the run when a node throws without retry or continueOnFail', async () => {
-    const nodes = [node('trigger'), node('X')];
-    const plan: SmithersExecutionPlan = {
-      enabledNodes: nodes,
-      startNodes: ['trigger'],
-      incoming: { X: [{ source: 'trigger', sourceOutputIndex: 0, destinationInputIndex: 0 }] },
-    };
-    const runNode: RunNode = async (n) => {
-      if (n.name === 'X') throw new Error('fatal');
-      return [[{ json: { node: n.name } }]];
-    };
+    const { result } = await runCase('fail');
 
-    await expect(run('wf-fail', nodes, plan, runNode)).rejects.toThrow();
+    expect(result.threw).toBe(true);
+    expect(String(result.message)).toContain('fatal');
   }, 60_000);
 });

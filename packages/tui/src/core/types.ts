@@ -139,9 +139,6 @@ export interface OverlayHandle {
 /**
  * Internal overlay entry for the overlay stack.
  */
-/**
- * Entry in the overlay stack.
- */
 export interface OverlayEntry {
   component: Component;
   options?: OverlayOptions;

@@ -17,12 +17,49 @@ function createRuntime() {
 
 afterEach(() => {
   vi.doUnmock("ai");
-  vi.doUnmock("../providers");
+  vi.doUnmock("../providers/anthropic");
   vi.clearAllMocks();
   vi.resetModules();
 });
 
 describe("Anthropic native text plumbing", () => {
+  it("uses generateText for streaming tool requests so tool-only responses are preserved", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "",
+      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      finishReason: "tool-calls",
+      usage: { inputTokens: 7, outputTokens: 2 },
+    }));
+    const streamText = vi.fn();
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText,
+    }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({
+        modelId: modelName,
+      }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    const tools = {
+      lookup: { description: "Lookup", inputSchema: { type: "object" } },
+    };
+    const result = (await handleTextSmall(createRuntime(), {
+      prompt: "use the tool",
+      stream: true,
+      tools,
+    } as never)) as Record<string, unknown>;
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(streamText).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      text: "",
+      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      finishReason: "tool-calls",
+    });
+  }, 60_000);
+
   it("preserves prompt segment cache metadata and returns cache usage with native tools", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",
@@ -39,8 +76,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -64,7 +101,7 @@ describe("Anthropic native text plumbing", () => {
       providerOptions?: Record<string, unknown>;
       tools?: unknown;
     };
-    expect(call.tools).toBe(tools);
+    expect(call.tools).toEqual(tools);
     expect(call.messages[0].content).toEqual([
       {
         type: "text",
@@ -91,6 +128,29 @@ describe("Anthropic native text plumbing", () => {
       },
     });
   }, 60_000);
+
+  it("honors a per-call model override before Anthropic slot defaults", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
+    }));
+
+    const { handleTextLarge } = await import("../models/text");
+    await handleTextLarge(createRuntime(), {
+      prompt: "use the workflow model",
+      model: " claude-workflow ",
+    });
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect((call.model as { modelId?: unknown }).modelId).toBe("claude-workflow");
+  });
 
   it("normalizes AI SDK v6 usage shape (inputTokenDetails) into recorder cache fields and emits providerMetadata.modelName", async () => {
     // Regression for audit F14 + F16: the AI SDK v6 LanguageModelUsage uses
@@ -127,8 +187,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -164,8 +224,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -197,8 +257,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleActionPlanner } = await import("../models/text");
@@ -245,7 +305,7 @@ describe("Anthropic native text plumbing", () => {
     expect(JSON.stringify(call.messages[0].content)).not.toContain("planner_stage");
     expect(call.messages.find((message) => message.role === "assistant")).toBeDefined();
     expect(call.messages.find((message) => message.role === "tool")).toBeDefined();
-    expect(call.tools).toBe(tools);
+    expect(call.tools).toEqual(tools);
   }, 60_000);
 
   it("emits cache metadata on planned stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
@@ -258,8 +318,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     // Runtime with NO ANTHROPIC_PROMPT_CACHE_TTL setting: cache metadata must still fire.
@@ -319,8 +379,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -366,8 +426,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const runtime1h = {
@@ -414,8 +474,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -451,8 +511,8 @@ describe("Anthropic native text plumbing", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleTextSmall } = await import("../models/text");
@@ -544,8 +604,8 @@ describe("Anthropic model defaults", () => {
       generateText,
       streamText: vi.fn(),
     }));
-    vi.doMock("../providers", () => ({
-      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
     }));
 
     const { handleActionPlanner } = await import("../models/text");
@@ -627,6 +687,6 @@ describe("Anthropic model defaults", () => {
     );
 
     // Tools still reach the wire.
-    expect(call.tools).toBe(tools);
+    expect(call.tools).toEqual(tools);
   }, 60_000);
 });

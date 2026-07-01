@@ -30,28 +30,45 @@ import {
 import * as viemChains from "viem/chains";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 
-interface JsonResponse {
-  setHeader?: (name: string, value: string) => void;
-}
-
 class EvmSignInputError extends Error {}
 
 function routeErrorStatus(error: unknown): number {
   return error instanceof EvmSignInputError ? 400 : 500;
 }
 
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname
+      .replace(/^\[|\]$/g, "")
+      .toLowerCase();
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
-  const origin = (req.headers?.origin as string | undefined) ?? "*";
-  const r = res as unknown as JsonResponse;
-  r.setHeader?.("Access-Control-Allow-Origin", origin);
-  r.setHeader?.("Vary", "Origin");
-  r.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
-  r.setHeader?.(
+  // Only reflect a loopback Origin; never echo an arbitrary cross-origin
+  // attacker origin and never combine it with credentialed CORS. These are
+  // signing endpoints — a reflected Origin + Access-Control-Allow-Credentials
+  // would be a credential-leak vector (#9948).
+  const origin = req.headers?.origin as string | undefined;
+  if (origin && isLoopbackOrigin(origin)) {
+    res.setHeader?.("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader?.("Vary", "Origin");
+  res.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader?.(
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-Wallet-Sign-Token",
   );
-  r.setHeader?.("Access-Control-Allow-Credentials", "true");
-  r.setHeader?.("Access-Control-Max-Age", "600");
+  res.setHeader?.("Access-Control-Max-Age", "600");
 }
 
 function readSignToken(runtime: IAgentRuntime): string | null {
@@ -78,7 +95,7 @@ function authorize(
   runtime: IAgentRuntime,
 ): boolean {
   setCorsHeaders(req, res);
-  if ((req as unknown as { method?: string }).method === "OPTIONS") {
+  if (req.method === "OPTIONS") {
     res.status(204).json({});
     return false;
   }
@@ -305,42 +322,36 @@ export const evmSignRoutes: Route[] = [
   {
     type: "GET",
     path: "/wallet/evm/address",
-    public: true,
     name: "wallet-evm-address",
     handler: addressHandler,
   },
   {
     type: "POST",
     path: "/wallet/evm/address",
-    public: true,
     name: "wallet-evm-address-post",
     handler: addressHandler,
   },
   {
     type: "POST",
     path: "/wallet/evm/personal-sign",
-    public: true,
     name: "wallet-evm-personal-sign",
     handler: personalSignHandler,
   },
   {
     type: "POST",
     path: "/wallet/evm/sign-typed-data",
-    public: true,
     name: "wallet-evm-sign-typed-data",
     handler: signTypedDataHandler,
   },
   {
     type: "POST",
     path: "/wallet/evm/sign-transaction",
-    public: true,
     name: "wallet-evm-sign-transaction",
     handler: signTransactionHandler,
   },
   {
     type: "POST",
     path: "/wallet/evm/send-transaction",
-    public: true,
     name: "wallet-evm-send-transaction",
     handler: sendTransactionHandler,
   },

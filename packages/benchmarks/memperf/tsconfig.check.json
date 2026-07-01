@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "customConditions": ["eliza-source"],
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node", "bun"]
+  },
+  "include": ["memperf-kpi.ts", "co-residency.test.ts", "metric-schema.test.ts"]
+}

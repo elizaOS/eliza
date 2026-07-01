@@ -1,0 +1,92 @@
+name: Keyless Harness E2E
+
+# Issue #8801 — zero-cost E2E sweep. Routes the connector / mock-LLM loops
+# through the deterministic in-process LLM proxy + recorded fixtures and runs
+# the corpus on EVERY pull request with NO API keys and NO secrets.
+#
+# The substrate lives in packages/test/mocks: `createDeterministicLlmProxyPlugin`
+# (helpers/llm-proxy-plugin.ts) registers high-priority deterministic text +
+# embedding model handlers, and the payment/connector mocks (scripts/start-mocks.ts)
+# serve recorded fixtures. The harness suite (test/mocks/__tests__/**) exercises
+# both with zero credentials, so it is required-but-fast and never gated on a
+# secret — every provider key below is explicitly blanked to prove the loops
+# stay green without one.
+#
+# This is intentionally a NEW, additive lane (not an edit to the load-bearing
+# scenario-pr / test workflows) so a change here can never red-X the broader PR
+# gate. It runs in seconds: install with scripts skipped, then the central
+# vitest config plus a small set of per-plugin harness adoption proofs.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch: {}
+
+concurrency:
+  group: keyless-harness-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24"
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  # Keyless guarantee: the deterministic harness must pass with every provider
+  # credential absent. Blanking them here proves the mock-LLM loops never reach
+  # a live provider.
+  ELIZA_LIVE_TEST: "0"
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  GROQ_API_KEY: ""
+  OPENROUTER_API_KEY: ""
+  GOOGLE_GENERATIVE_AI_API_KEY: ""
+  XAI_API_KEY: ""
+  NVIDIA_API_KEY: ""
+  CEREBRAS_API_KEY: ""
+  ELIZAOS_CLOUD_API_KEY: ""
+
+jobs:
+  keyless-harness:
+    name: Deterministic mock-LLM connector loops (no secret)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # Deterministic mock-LLM proxy + recorded payment/connector fixtures.
+      # test/mocks/__tests__/** drives both with zero credentials.
+      - name: Keyless harness e2e (mock-LLM + recorded fixtures)
+        working-directory: packages
+        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/
+
+      # Issue #8801 follow-up: the central harness proves the substrate, but the
+      # per-plugin adoption proofs are excluded from default vitest runs. Keep a
+      # representative model-provider and connector harness in this keyless PR
+      # lane so those proofs cannot drift while still avoiding live provider
+      # credentials.
+      - name: Per-plugin keyless harness adoption proofs
+        run: |
+          bun run --cwd plugins/plugin-anthropic test:harness
+          bun run --cwd plugins/plugin-discord test:harness

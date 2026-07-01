@@ -1,4 +1,5 @@
 export { ContactsAppView } from "./components/ContactsAppView";
+export { ContactsView } from "./components/ContactsView";
 export {
   CONTACTS_APP_NAME,
   contactsApp,

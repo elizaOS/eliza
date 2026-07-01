@@ -81,7 +81,6 @@ export {
   OpenApiViewer,
 } from "./components/docs";
 export * from "./components/icons";
-export * from "./components/image-gen";
 export * from "./components/layout";
 export * from "./components/log-viewer";
 export * from "./components/monetization";

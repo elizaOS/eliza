@@ -8,7 +8,11 @@ import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import {
+  type ScenarioDefinition,
+  type ScenarioLane,
+  scenarioLane,
+} from "@elizaos/scenario-runner/schema";
 import ts from "typescript";
 
 async function walk(dir: string, out: string[]): Promise<void> {
@@ -45,6 +49,8 @@ export interface ScenarioMetadata {
   id: string;
   status?: string;
   title?: string;
+  /** CI lane as declared in the file; absent means the default lane. */
+  lane?: string;
   edgeVariant?: string;
   baseScenarioId?: string;
 }
@@ -366,6 +372,7 @@ export async function loadScenarioMetadataFile(
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
+    lane: getStaticStringProperty(objectLiteral, "lane"),
   };
 }
 
@@ -400,6 +407,7 @@ export async function loadAllScenarios(
   filter?: Set<string>,
   fileGlobs?: readonly string[],
   includeExpanded = shouldExpandScenarioEdges(),
+  lane?: ScenarioLane,
 ): Promise<LoadedScenario[]> {
   const files = await discoverScenarios(root);
   const loaded: LoadedScenario[] = [];
@@ -411,6 +419,7 @@ export async function loadAllScenarios(
       }
     }
     const result = await loadScenarioFile(file);
+    if (lane && scenarioLane(result.scenario) !== lane) continue;
     const expanded = includeExpanded
       ? expandScenarioDefinition(file, result.scenario)
       : [];
@@ -429,6 +438,7 @@ export async function listScenarioMetadata(
   filter?: Set<string>,
   fileGlobs?: readonly string[],
   includeExpanded = shouldExpandScenarioEdges(),
+  laneFilter?: string,
 ): Promise<ScenarioMetadata[]> {
   const files = await discoverScenarios(root);
   const loaded: ScenarioMetadata[] = [];
@@ -440,6 +450,7 @@ export async function listScenarioMetadata(
       }
     }
     const result = await loadScenarioMetadataFile(file);
+    if (laneFilter && result.lane !== laneFilter) continue;
     if (result.status === "pending" && !includePending) continue;
     const candidates = [
       result,

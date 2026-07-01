@@ -39,7 +39,7 @@
  * The ABI-independent `launch.sh` is the packaged production launcher;
  * `agent-bundle.js` is produced by `bun run --cwd packages/agent build:mobile`.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -49,6 +49,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(__dirname, "..", "..");
 const ELIZA_REPO_ROOT = path.resolve(APP_CORE_ROOT, "..", "..");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  ELIZA_REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const BUN_VERSION = "1.3.14";
 // Bun 1.3.13 had a segfault during inference on Cuttlefish at peak
@@ -301,6 +307,13 @@ function run(command, args, { cwd } = {}) {
       resolve();
     });
     child.on("error", reject);
+  });
+}
+
+function removePathRecursiveSync(targetPath) {
+  execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, targetPath], {
+    cwd: ELIZA_REPO_ROOT,
+    stdio: "ignore",
   });
 }
 
@@ -589,7 +602,7 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   }
   if (fs.existsSync(bunPath)) fs.unlinkSync(bunPath);
   fs.renameSync(extractedBun, bunPath);
-  fs.rmSync(extractedDir, { recursive: true, force: true });
+  removePathRecursiveSync(extractedDir);
   fs.rmSync(zipPath, { force: true });
   fs.chmodSync(bunPath, 0o755);
   if (expectedRiscv64Sha256) {
@@ -645,7 +658,7 @@ async function ensureAlpineApkExtracted({ cacheDir, alpineArch, log }) {
     return extractDir;
   }
   fs.mkdirSync(archCache, { recursive: true });
-  fs.rmSync(extractDir, { recursive: true, force: true });
+  removePathRecursiveSync(extractDir);
   fs.mkdirSync(extractDir, { recursive: true });
   for (const { pkg, file } of APK_PACKAGES) {
     const apkPath = path.join(archCache, file);
@@ -926,6 +939,7 @@ export async function stageAndroidAgentRuntime({
   spikeDir,
   cacheDir,
   bunChannel: preferredBunChannel,
+  objective = false,
   log = console.log,
 } = {}) {
   if (!androidDir)
@@ -959,7 +973,7 @@ export async function stageAndroidAgentRuntime({
   let stagedCount = 0;
   const stagedFiles = [];
   const riscv64Artifact = {
-    required: true,
+    required: objective,
     filename: RISCV64_BUN_ARTIFACT_FILENAME,
     sha256: riscv64BunSha256(),
     source: riscv64BunArtifactSource(),
@@ -976,10 +990,18 @@ export async function stageAndroidAgentRuntime({
     if (bunArch === "riscv64") {
       const riscvFile = riscv64BunFilePath();
       const riscvUrl = riscv64BunUrl();
-      const optional = process.env.ELIZA_BUN_RISCV64_OPTIONAL === "1";
-      if (!riscvFile && !riscvUrl && optional) {
+      // riscv64 is fail-closed ONLY for objective AOSP/chip builds (they ship
+      // riscv64 and must prove it). A stock arm64 phone build skips the slice
+      // when no artifact is configured instead of aborting — upstream Bun has
+      // no riscv64-linux-musl release, so a plain `build:android` would
+      // otherwise demand a binary it never packages. ELIZA_BUN_RISCV64_OPTIONAL=1
+      // still force-skips even for objective builds (native-lib iteration). A
+      // genuine riscv64 build supplies ELIZA_BUN_RISCV64_FILE/_URL, so the slice
+      // stages either way — the skip only fires when there is no artifact at all.
+      const forceSkip = process.env.ELIZA_BUN_RISCV64_OPTIONAL === "1";
+      if (!riscvFile && !riscvUrl && (!objective || forceSkip)) {
         tlog(
-          `Skipping optional ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
+          `Skipping ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
             `(upstream Bun has no riscv64-linux-musl release). Build with ` +
             `packages/app-core/scripts/bun-riscv64/build.sh and re-run for AOSP/chip evidence.`,
         );

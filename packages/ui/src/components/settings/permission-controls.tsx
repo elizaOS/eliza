@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import type { PermissionStatus, PluginInfo } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
 import { Switch } from "../ui/switch";
@@ -95,7 +95,7 @@ export function PermissionRow({
   shellEnabled: boolean;
   onToggleShell?: (enabled: boolean) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const action = getPermissionAction(t, def.id, status, canRequest, platform);
   const badge = getPermissionBadge(t, def.id, status, platform);
   const name = translateWithFallback(t, def.nameKey, def.name);
@@ -216,7 +216,7 @@ export function CapabilityToggle({
   permissionsGranted: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const enabled = plugin?.enabled ?? false;
   const available = plugin !== null;
   const canEnable = permissionsGranted && available;

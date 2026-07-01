@@ -1,8 +1,9 @@
-import dns from "node:dns";
+import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import zlib from "node:zlib";
+import { isMobilePlatform } from "@elizaos/shared";
 
 /**
  * Public resolvers the on-device agent dials directly. Android/iOS expose no
@@ -16,11 +17,6 @@ import zlib from "node:zlib";
 const MOBILE_DNS_SERVERS = ["1.1.1.1", "8.8.8.8"] as const;
 
 let configured = false;
-
-function isMobilePlatform(): boolean {
-  const platform = process.env.ELIZA_PLATFORM?.toLowerCase();
-  return platform === "android" || platform === "ios";
-}
 
 /** A real external hostname needing resolution (not an IP literal or loopback). */
 function needsResolution(hostname: string): boolean {
@@ -122,7 +118,12 @@ export function configureMobileDnsIfNeeded(): void {
           family?: number,
         ) => {
           if (err) reject(err);
-          else resolve(options?.all ? address : { address, family });
+          else
+            resolve(
+              (options?.all ? address : { address, family }) as
+                | LookupAddress[]
+                | LookupAddress,
+            );
         },
       );
     })) as typeof dns.promises.lookup;

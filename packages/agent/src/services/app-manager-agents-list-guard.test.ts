@@ -5,7 +5,7 @@ describe("shouldRestoreAgentsListAfterAppLaunch", () => {
   it("restores when an app populates agents.list for a preset-backed agent", () => {
     expect(
       shouldRestoreAgentsListAfterAppLaunch(undefined, [
-        { name: "Hyperscape Explorer" },
+        { name: "Sample Explorer" },
       ]),
     ).toBe(true);
   });
@@ -14,7 +14,7 @@ describe("shouldRestoreAgentsListAfterAppLaunch", () => {
     expect(
       shouldRestoreAgentsListAfterAppLaunch(
         [{ name: "Chen", system: "original" }],
-        [{ name: "Hyperscape Explorer" }],
+        [{ name: "Sample Explorer" }],
       ),
     ).toBe(true);
   });
@@ -23,7 +23,7 @@ describe("shouldRestoreAgentsListAfterAppLaunch", () => {
     expect(
       shouldRestoreAgentsListAfterAppLaunch(
         [{ name: "Chen" }],
-        [{ name: "Chen" }, { name: "Hyperscape Explorer" }],
+        [{ name: "Chen" }, { name: "Sample Explorer" }],
       ),
     ).toBe(false);
   });

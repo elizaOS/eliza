@@ -112,7 +112,7 @@ export function resolveStreamingEnabled(): boolean {
  * a caller cancel OR the timeout — `requestRaw` honors only a single signal, so
  * merge them here.
  */
-function buildStreamAbortSignal(
+export function buildStreamAbortSignal(
   abortSignal: AbortSignal | undefined,
   timeoutMs: number | undefined
 ): AbortSignal | undefined {
@@ -348,6 +348,18 @@ function isReasoningModel(modelName: string): boolean {
   return REASONING_MODEL_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+/**
+ * True when the Cloud gateway routes this model to Cerebras (the gpt-oss
+ * family). Cerebras's OpenAI-compatible endpoint rejects
+ * `response_format: { type: "json_schema", ... }` with a 400, so structured
+ * output for these models must fall back to `{ type: "json_object" }`.
+ * Mirrors plugin-openai's `isCerebrasMode` json_object scrub, detected by
+ * model name here because one Cloud key serves many providers.
+ */
+function isCerebrasServedModel(modelName: string): boolean {
+  return modelName.toLowerCase().includes("gpt-oss");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -509,7 +521,7 @@ export function normalizeNativeTools(tools: unknown): unknown[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeNativeToolChoice(toolChoice: unknown): unknown {
+export function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   if (!toolChoice) {
     return undefined;
   }
@@ -523,7 +535,17 @@ function normalizeNativeToolChoice(toolChoice: unknown): unknown {
 
   const choice = asRecord(toolChoice);
   if (choice.type === "function") {
-    return toolChoice;
+    const functionChoice = recordAt(choice, "function");
+    const toolName = firstString(functionChoice.name, choice.name, choice.toolName);
+    return toolName
+      ? {
+          type: "function",
+          function: {
+            ...functionChoice,
+            name: toolName,
+          },
+        }
+      : undefined;
   }
   if (choice.type === "tool") {
     const toolName = firstString(choice.toolName, choice.name);
@@ -535,9 +557,15 @@ function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   return toolName ? { type: "function", function: { name: toolName } } : toolChoice;
 }
 
-function buildNativeResponseFormat(responseSchema: unknown): unknown {
+function buildNativeResponseFormat(responseSchema: unknown, modelName: string): unknown {
   if (!responseSchema) {
     return undefined;
+  }
+
+  // Cerebras-served models (gpt-oss) 400 on `response_format: json_schema`, so
+  // emit `json_object` and rely on the schema embedded in the prompt body.
+  if (isCerebrasServedModel(modelName)) {
+    return { type: "json_object" };
   }
 
   const schemaRecord = asRecord(responseSchema);
@@ -653,15 +681,33 @@ function buildNativeRequestBody(
   const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions) : undefined;
   const tools = normalizeNativeTools(params.tools);
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
-  const responseFormat = buildNativeResponseFormat(params.responseSchema);
+  const responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
   const requestBody: Record<string, unknown> = {
     model: modelName,
     messages: buildNativeMessages(params, promptText, systemPrompt),
-    max_tokens: params.maxTokens ?? 8192,
   };
+  // Omit the cap entirely when the caller opted out (direct-channel Stage-1):
+  // a hardcoded max_tokens 400s on a model whose real limit differs. Every other
+  // caller keeps the 8192 default so it stays bounded.
+  if (!params.omitMaxTokens) {
+    requestBody.max_tokens = params.maxTokens ?? 8192;
+  }
 
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
+  }
+  // cerebras gpt-oss runs a hidden-reasoning pass before answering even when the
+  // caller wants none — measured ~4s/call vs ~0.7s with reasoning suppressed. The
+  // runtime signals "don't reason" via providerOptions.eliza.thinking="off" (e.g.
+  // the Stage-1 RESPONSE_HANDLER formatting call), but resolveNativeProviderOptions
+  // drops the eliza block, so it never reached the wire. Honor it as cerebras's
+  // reasoning_effort:"low". Cerebras-gated (the plugin's isReasoningModel does NOT
+  // match gpt-oss); other providers ignore the field.
+  if (
+    isCerebrasServedModel(modelName) &&
+    recordAt(asRecord(params.providerOptions), "eliza").thinking === "off"
+  ) {
+    requestBody.reasoning_effort = "low";
   }
   if (tools) {
     requestBody.tools = tools;
@@ -924,8 +970,10 @@ async function generateTextWithModel(
   const requestBody: Record<string, unknown> = {
     model: modelName,
     input,
-    max_output_tokens: params.maxTokens ?? 8192,
   };
+  if (!params.omitMaxTokens) {
+    requestBody.max_output_tokens = params.maxTokens ?? 8192;
+  }
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
@@ -1175,10 +1223,18 @@ export async function* parseOpenAiSseStream(
     const tail = handle(buffer);
     if (tail && tail !== "DONE") yield tail;
   } finally {
+    // cancel() (not just releaseLock()) tears down the underlying connection,
+    // so an EARLY consumer break (runtime abort / turn-supersede / a downstream
+    // throw closes this generator via .return()) stops the upstream generation
+    // instead of letting it run to its natural end and bill tokens nobody reads.
+    // On natural completion the stream is already done, so this is a no-op; it
+    // also releases the lock. Not threading the abort signal into the fetch on
+    // purpose — cancel() gets the teardown without rejecting an in-flight read
+    // with AbortError and changing the runtime's quiet-stop semantics.
     try {
-      reader.releaseLock();
+      await reader.cancel();
     } catch {
-      // Reader already released by an upstream cancel — nothing to do.
+      // Reader already cancelled/released by an upstream abort — nothing to do.
     }
   }
 }
@@ -1187,6 +1243,31 @@ interface StreamingToolCallAcc {
   id?: string;
   name?: string;
   args: string;
+}
+
+/**
+ * True when `value` is one complete, self-contained JSON object (it parses and
+ * is a plain object — not an array or scalar). Used to recognise Cerebras's
+ * final aggregated tool-call frame, which re-sends the whole arguments object
+ * rather than the next incremental fragment.
+ *
+ * Parsing (not brace-counting) is load-bearing: a proper prefix of a single
+ * JSON object never itself parses as complete — the outer `{` stays open even
+ * when an inner `}` arrives mid-stream (e.g. `{"a":{"b":1}`) — so this only
+ * becomes true once the WHOLE object has arrived, which is exactly the resend
+ * boundary. A brace counter would be fooled by that inner close.
+ */
+function isCompleteJsonObject(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return (
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Fold one SSE `delta.tool_calls[]` array into the per-index accumulator. */
@@ -1204,9 +1285,38 @@ export function accumulateToolCallDeltas(
     const fn = recordAt(d, "function");
     const name = firstString(fn.name);
     if (name) cur.name = name;
-    if (typeof fn.arguments === "string") cur.args += fn.arguments;
+    if (typeof fn.arguments === "string") {
+      // Cerebras streams the tool-call arguments incrementally, then emits a
+      // FINAL aggregated frame that re-sends the COMPLETE arguments object
+      // (re-carrying id + name). Blindly appending that re-send doubles the
+      // JSON (`{…}{…}`); downstream parsing can only recover when both copies
+      // are byte-identical, and the cloud character ("lowercase naturally")
+      // makes the copies diverge on casing — dead-ending terse replies. When
+      // the accumulated args AND the incoming fragment are each a complete,
+      // self-contained object the incoming is the authoritative full copy:
+      // replace rather than concatenate.
+      if (isCompleteJsonObject(cur.args) && isCompleteJsonObject(fn.arguments)) {
+        cur.args = fn.arguments;
+      } else {
+        cur.args += fn.arguments;
+      }
+    }
     acc.set(index, cur);
   }
+}
+
+/**
+ * Accumulated arguments of the lowest-index streamed tool call. The Stage-1
+ * RESPONSE_HANDLER reply forces a single HANDLE_RESPONSE call (index 0), so this
+ * is the reply envelope (`{"shouldRespond":...,"replyText":...}`) as it grows.
+ * Returns "" before any call has appeared in the stream.
+ */
+export function lowestIndexToolCallArgs(acc: Map<number, StreamingToolCallAcc>): string {
+  let lowest: number | undefined;
+  for (const index of acc.keys()) {
+    if (lowest === undefined || index < lowest) lowest = index;
+  }
+  return lowest === undefined ? "" : (acc.get(lowest)?.args ?? "");
 }
 
 /** Materialize accumulated tool-call deltas into the buffered-path shape. */
@@ -1377,6 +1487,19 @@ export async function streamNativeChatCompletion(
   const finishD = deferred<string | undefined>();
   const toolCallsD = deferred<NativeToolCall[]>();
 
+  // Stage-1 RESPONSE_HANDLER forces `tool_choice:"required"`, so Cerebras returns
+  // the whole reply envelope (incl. `replyText`) as tool-call ARGUMENT deltas —
+  // never `delta.content`. Surface those into the textStream so the runtime's
+  // ResponseSkeletonStreamExtractor can emit `replyText` token-by-token (it
+  // filters to the visible reply span, so control fields never leak to the UI).
+  // Gated to the structured reply path (`streamStructured`, the only caller that
+  // reaches the streaming branch); planner/other native calls keep args buffered.
+  // `streamedReplyArgs` tracks what we've already surfaced so the Cerebras final
+  // aggregated re-send (which replaces the accumulator) is not re-emitted twice.
+  const streamReplyToolArgs =
+    (params as { streamStructured?: boolean }).streamStructured === true;
+  let streamedReplyArgs = "";
+
   async function* generate(): AsyncGenerator<string> {
     try {
       for await (const frame of parseOpenAiSseStream(body)) {
@@ -1398,6 +1521,23 @@ export async function streamNativeChatCompletion(
         }
         if (delta.tool_calls) {
           accumulateToolCallDeltas(toolAcc, delta.tool_calls);
+          if (streamReplyToolArgs) {
+            const replyArgs = lowestIndexToolCallArgs(toolAcc);
+            if (
+              replyArgs.length > streamedReplyArgs.length &&
+              replyArgs.startsWith(streamedReplyArgs)
+            ) {
+              const suffix = replyArgs.slice(streamedReplyArgs.length);
+              streamedReplyArgs = replyArgs;
+              accumulated += suffix;
+              yield suffix;
+            } else if (replyArgs && replyArgs !== streamedReplyArgs) {
+              // Aggregated re-send replaced the accumulator (possibly with a
+              // case-divergent copy); the incremental preview is already on the
+              // wire — advance the cursor without re-streaming a duplicate.
+              streamedReplyArgs = replyArgs;
+            }
+          }
         }
         const fr = firstString(choice.finish_reason);
         if (fr) finishReason = fr;

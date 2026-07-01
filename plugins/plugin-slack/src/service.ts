@@ -14,6 +14,7 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   type Room,
+  resolveAttachmentBytes,
   Service,
   stringToUuid,
   type TargetInfo,
@@ -382,9 +383,9 @@ export class SlackService extends Service implements ISlackService {
   private channelCache: Map<string, SlackChannel> = new Map();
   private isConnected = false;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.character = runtime.character;
+    this.character = this.runtime.character;
     this.settings = this.loadSettings();
 
     // Parse allowed channel IDs for the legacy/default account path.
@@ -596,42 +597,48 @@ export class SlackService extends Service implements ISlackService {
           serviceInstance.listConnectorRooms(withContextAccount(context)),
         listServers: (context) =>
           serviceInstance.listConnectorServers(withContextAccount(context)),
-        fetchMessages: (context, params) =>
+        fetchMessages: (context, params: ConnectorFetchMessagesParams) =>
           serviceInstance.fetchConnectorMessages(withContextAccount(context), {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        searchMessages: (context, params) =>
+        searchMessages: (context, params: ConnectorSearchMessagesParams) =>
           serviceInstance.searchConnectorMessages(withContextAccount(context), {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        reactHandler: (handlerRuntime, params) =>
+        reactHandler: (
+          handlerRuntime,
+          params: ConnectorMessageMutationParams,
+        ) =>
           serviceInstance.reactConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        editHandler: (handlerRuntime, params) =>
+        editHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
           serviceInstance.editConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        deleteHandler: (handlerRuntime, params) =>
+        deleteHandler: (
+          handlerRuntime,
+          params: ConnectorMessageMutationParams,
+        ) =>
           serviceInstance.deleteConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
               ? { accountId: normalizedAccountId }
               : {}),
           }),
-        pinHandler: (handlerRuntime, params) =>
+        pinHandler: (handlerRuntime, params: ConnectorMessageMutationParams) =>
           serviceInstance.pinConnectorMessage(handlerRuntime, {
             ...params,
             ...(normalizedAccountId && !params.accountId
@@ -1956,8 +1963,13 @@ export class SlackService extends Service implements ISlackService {
     }
 
     const text = typeof content.text === "string" ? content.text.trim() : "";
-    if (!text) {
-      throw new Error("Slack SendHandler requires non-empty text content.");
+    const outboundAttachments = Array.isArray(content.attachments)
+      ? content.attachments.filter((media) => Boolean(media?.url))
+      : [];
+    if (!text && outboundAttachments.length === 0) {
+      throw new Error(
+        "Slack SendHandler requires non-empty text or at least one attachment.",
+      );
     }
 
     let channelId = target.channelId;
@@ -1996,20 +2008,82 @@ export class SlackService extends Service implements ISlackService {
       );
     }
 
-    await this.sendMessage(
-      channelId,
-      text,
-      {
+    if (text) {
+      await this.sendMessage(
+        channelId,
+        text,
+        {
+          threadTs,
+          replyBroadcast: undefined,
+          unfurlLinks: undefined,
+          unfurlMedia: undefined,
+          mrkdwn: undefined,
+          attachments: undefined,
+          blocks: undefined,
+        },
+        accountId,
+      );
+    }
+
+    if (outboundAttachments.length > 0) {
+      await this.sendOutboundAttachments(
+        channelId,
+        outboundAttachments,
         threadTs,
-        replyBroadcast: undefined,
-        unfurlLinks: undefined,
-        unfurlMedia: undefined,
-        mrkdwn: undefined,
-        attachments: undefined,
-        blocks: undefined,
-      },
-      accountId,
-    );
+        accountId,
+      );
+    }
+  }
+
+  /**
+   * Fetch an attachment's bytes through the SSRF-guarded media fetcher. Wrapped
+   * as an instance method so it can be stubbed in unit tests without mocking the
+   * whole runtime/network stack.
+   */
+  protected async fetchAttachmentBytes(
+    url: string,
+  ): Promise<{ buffer: Buffer; fileName?: string; contentType?: string }> {
+    return resolveAttachmentBytes(url);
+  }
+
+  /**
+   * Upload agent-generated `Media` attachments to a Slack channel (#8876).
+   * Slack's API takes file BYTES (not a URL), so each attachment is fetched
+   * through the SSRF-guarded fetcher and uploaded via {@link uploadFile}. Each
+   * upload is isolated in try/catch so a single unreachable/oversized URL logs a
+   * warning and never drops the rest of the reply (the text already went out).
+   */
+  private async sendOutboundAttachments(
+    channelId: string,
+    attachments: Media[],
+    threadTs: string | undefined,
+    accountId: string | null,
+  ): Promise<void> {
+    for (const media of attachments) {
+      if (!media.url) continue;
+      try {
+        const { buffer, fileName } = await this.fetchAttachmentBytes(media.url);
+        const filename =
+          media.filename ?? media.title ?? fileName ?? "attachment";
+        await this.uploadFile(
+          channelId,
+          buffer,
+          filename,
+          { title: media.title, threadTs },
+          accountId,
+        );
+      } catch (error) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            url: media.url,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to send Slack outbound attachment; skipping",
+        );
+      }
+    }
   }
 
   async resolveConnectorTargets(

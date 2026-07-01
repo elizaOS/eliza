@@ -216,6 +216,7 @@ function loadScenarioMetadataFile(file) {
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
+    lane: getStaticStringProperty(objectLiteral, "lane"),
   };
 }
 
@@ -511,6 +512,7 @@ function scenarioCatalogHtml() {
       ["includePendingScenarios", "Including pending"],
       ["pluginLifeopsScenarios", "plugin-personal-assistant"],
       ["pluginAppControlScenarios", "plugin-app-control"],
+      ["pluginAgentOrchestratorScenarios", "plugin-agent-orchestrator"],
       ["scenarioRunnerScenarios", "scenario-runner tests"],
       ["allScenarios", "Unified catalog"],
     ];
@@ -521,6 +523,7 @@ function scenarioCatalogHtml() {
         ["Include pending", s.includePendingScenarioCount || 0],
         ["plugin-personal-assistant", s.pluginLifeopsCount || 0],
         ["plugin-app-control", s.pluginAppControlCount || 0],
+        ["plugin-agent-orchestrator", s.pluginAgentOrchestratorCount || 0],
         ["runner tests", s.scenarioRunnerCount || 0],
         ["All catalog entries", s.allScenarioCount || 0],
         ["Covered default", (s.coveredDefaultCount || 0) + "/" + (s.defaultScenarioCount || 0)],
@@ -613,6 +616,7 @@ function renderMarkdown(summary, runArtifacts = []) {
     `With pending included: ${summary.includePendingScenarioCount}`,
     `plugin-personal-assistant scenarios: ${summary.pluginLifeopsCount}`,
     `plugin-app-control scenarios: ${summary.pluginAppControlCount}`,
+    `plugin-agent-orchestrator scenarios: ${summary.pluginAgentOrchestratorCount}`,
     `scenario-runner test scenarios: ${summary.scenarioRunnerCount}`,
     `Unified scenario catalog entries: ${summary.allScenarioCount}`,
     "",
@@ -680,6 +684,9 @@ function main() {
   const pluginAppControlIds = listScenarioMetadata(
     "plugins/plugin-app-control/test/scenarios",
   ).map((metadata) => metadata.id);
+  const pluginAgentOrchestratorIds = listScenarioMetadata(
+    "plugins/plugin-agent-orchestrator/test/scenarios",
+  ).map((metadata) => metadata.id);
   const scenarioRunnerIds = listScenarioMetadata(
     "packages/scenario-runner/test/scenarios",
   ).map((metadata) => metadata.id);
@@ -694,10 +701,30 @@ function main() {
       pluginAppControlIds,
     ),
     ...scopedScenarioRows(
+      "plugins/plugin-agent-orchestrator/test/scenarios",
+      pluginAgentOrchestratorIds,
+    ),
+    ...scopedScenarioRows(
       "packages/scenario-runner/test/scenarios",
       scenarioRunnerIds,
     ),
   ].sort();
+
+  // Every scenario must declare a `lane` ("pr-deterministic" | "live-only") so
+  // the deterministic PR lane selects by tag, not a hand-maintained list. (#8801)
+  const VALID_LANES = new Set(["pr-deterministic", "live-only"]);
+  const laneScanRoots = [
+    "packages/test/scenarios",
+    "plugins/plugin-personal-assistant/test/scenarios",
+    "plugins/plugin-app-control/test/scenarios",
+    "plugins/plugin-agent-orchestrator/test/scenarios",
+    "packages/scenario-runner/test/scenarios",
+  ];
+  const untaggedLaneScenarios = laneScanRoots
+    .flatMap((root) => listScenarioMetadata(root, { includePending: true }))
+    .filter((metadata) => !VALID_LANES.has(metadata.lane))
+    .map((metadata) => toPosixPath(path.relative(REPO_ROOT, metadata.file)))
+    .sort();
 
   const covered = new Set();
   const coverageGlobs = [
@@ -720,10 +747,12 @@ function main() {
     includePendingScenarioCount: includePendingIds.length,
     pluginLifeopsCount: pluginLifeopsIds.length,
     pluginAppControlCount: pluginAppControlIds.length,
+    pluginAgentOrchestratorCount: pluginAgentOrchestratorIds.length,
     scenarioRunnerCount: scenarioRunnerIds.length,
     allScenarioCount: allScenarioRows.length,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
     missingDefaultIds,
+    untaggedLaneScenarios,
   };
 
   writeList(options.reportDir, "packages-test-default.txt", defaultIds);
@@ -738,6 +767,11 @@ function main() {
     pluginLifeopsIds,
   );
   writeList(options.reportDir, "plugin-app-control.txt", pluginAppControlIds);
+  writeList(
+    options.reportDir,
+    "plugin-agent-orchestrator.txt",
+    pluginAgentOrchestratorIds,
+  );
   writeList(options.reportDir, "scenario-runner-test.txt", scenarioRunnerIds);
   writeList(options.reportDir, "all-scenarios.txt", allScenarioRows);
   writeFileSync(
@@ -755,6 +789,7 @@ function main() {
     includePendingScenarios: includePendingIds,
     pluginLifeopsScenarios: pluginLifeopsIds,
     pluginAppControlScenarios: pluginAppControlIds,
+    pluginAgentOrchestratorScenarios: pluginAgentOrchestratorIds,
     scenarioRunnerScenarios: scenarioRunnerIds,
     allScenarios: allScenarioRows.map((row) => {
       const [scope, ...idParts] = row.split("\t");
@@ -779,10 +814,18 @@ function main() {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     process.stdout.write(
-      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}\n`,
+      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
     );
+    if (summary.untaggedLaneScenarios.length > 0) {
+      process.stderr.write(
+        `[scenario-catalog] ${summary.untaggedLaneScenarios.length} scenario(s) missing a 'lane' tag (pr-deterministic | live-only):\n  ${summary.untaggedLaneScenarios.join("\n  ")}\n`,
+      );
+    }
   }
-  return options.failOnMissing && summary.missingDefaultIds.length > 0 ? 1 : 0;
+  const hasFailures =
+    summary.missingDefaultIds.length > 0 ||
+    summary.untaggedLaneScenarios.length > 0;
+  return options.failOnMissing && hasFailures ? 1 : 0;
 }
 
 try {

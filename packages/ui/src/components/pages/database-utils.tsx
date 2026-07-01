@@ -1,5 +1,5 @@
 import type { ColumnInfo } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
@@ -78,7 +78,7 @@ export function CellPopover({
   value: string;
   onClose: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   return (
     <Dialog
@@ -99,6 +99,24 @@ export function CellPopover({
   );
 }
 
+export function buildResultsGridRowKey(
+  columns: string[],
+  row: Record<string, unknown>,
+  rowIndex: number,
+  columnMeta?: Map<string, ColumnInfo>,
+): string | number {
+  const primaryKeyCols = columns.filter(
+    (col) => columnMeta?.get(col)?.isPrimaryKey,
+  );
+  if (!primaryKeyCols.length) return rowIndex;
+
+  const values = primaryKeyCols.map((col) => row[col]);
+  if (values.some((value) => value === null || value === undefined)) {
+    return rowIndex;
+  }
+  return values.map((value) => `${typeof value}:${String(value)}`).join("|");
+}
+
 export function ResultsGrid({
   columns,
   rows,
@@ -116,14 +134,14 @@ export function ResultsGrid({
   onSort?: (col: string) => void;
   onCellClick?: (value: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   return (
     <div
-      className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-sm "
+      className="overflow-auto border border-border/40 bg-card/95 rounded-sm "
       style={{ maxHeight: "calc(100vh - 340px)" }}
     >
       <table className="w-full border-collapse text-xs font-mono">
-        <thead className="sticky top-0 z-10 backdrop-blur-xl bg-bg/80 border-b border-border/40 ">
+        <thead className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
           <tr>
             {/* Row number column */}
             <th className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
@@ -170,49 +188,52 @@ export function ResultsGrid({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <tr
-              key={JSON.stringify(row)}
-              className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
-            >
-              <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
-                {i + 1}
-              </td>
-              {columns.map((col) => {
-                const raw = row[col];
-                const display = formatCell(raw);
-                const isNull = raw === null || raw === undefined;
-                const isExpandable = display.length > 40 && !!onCellClick;
-                return (
-                  <td
-                    key={col}
-                    className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
-                    title={display}
-                    onClick={() => {
-                      if (isExpandable) onCellClick(display);
-                    }}
-                    onKeyDown={(e) => {
-                      if (!isExpandable) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onCellClick(display);
-                      }
-                    }}
-                    role={isExpandable ? "button" : undefined}
-                    tabIndex={isExpandable ? 0 : undefined}
-                  >
-                    {isNull ? (
-                      <span className="text-muted italic opacity-50">
-                        {t("databaseview.NULL")}
-                      </span>
-                    ) : (
-                      <span className="text-txt">{display}</span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+          {rows.map((row, i) => {
+            const rowKey = buildResultsGridRowKey(columns, row, i, columnMeta);
+            return (
+              <tr
+                key={rowKey}
+                className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
+              >
+                <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
+                  {i + 1}
+                </td>
+                {columns.map((col) => {
+                  const raw = row[col];
+                  const display = formatCell(raw);
+                  const isNull = raw === null || raw === undefined;
+                  const isExpandable = display.length > 40 && !!onCellClick;
+                  return (
+                    <td
+                      key={col}
+                      className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
+                      title={display}
+                      onClick={() => {
+                        if (isExpandable) onCellClick(display);
+                      }}
+                      onKeyDown={(e) => {
+                        if (!isExpandable) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onCellClick(display);
+                        }
+                      }}
+                      role={isExpandable ? "button" : undefined}
+                      tabIndex={isExpandable ? 0 : undefined}
+                    >
+                      {isNull ? (
+                        <span className="text-muted italic opacity-50">
+                          {t("databaseview.NULL")}
+                        </span>
+                      ) : (
+                        <span className="text-txt">{display}</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -232,17 +253,17 @@ export function PaginationBar({
   onPrev: () => void;
   onNext: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const start = offset + 1;
   const end = Math.min(offset + limit, total);
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-card/60 backdrop-blur-md rounded-b-2xl text-xs-tight text-muted">
+    <div className="flex items-center justify-between px-4 py-2.5 bg-card/95 rounded-b-2xl text-xs-tight text-muted">
       <span className="font-medium">
         {t("databaseview.RowCountSummary", {
-          count: total.toLocaleString(),
+          count: total.toLocaleString("en-US"),
           rowLabel:
             total === 1
               ? t("databaseview.row")
@@ -262,7 +283,7 @@ export function PaginationBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
           disabled={!hasPrev}
           onClick={onPrev}
         >
@@ -271,7 +292,7 @@ export function PaginationBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
+          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
           disabled={!hasNext}
           onClick={onNext}
         >

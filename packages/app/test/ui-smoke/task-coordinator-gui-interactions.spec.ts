@@ -357,20 +357,25 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
   await expect(page.getByText("Refactor sidebar density")).toHaveCount(0);
 
-  await page
-    .getByRole("button", { name: /Audit task coordinator GUI/ })
-    .click();
+  // Rows are spatial primitives: the thread title is a label, not a button.
+  // Opening the detail goes through the row's "Open" affordance, addressed by
+  // its stable spatial agent id.
+  await page.locator('[data-agent-id="open-task-smoke-1"]').click();
   await expect.poll(() => recorder.detailRequests()).toContain("task-smoke-1");
   await expect(page.getByText("Search filters task threads")).toBeVisible();
   await expect(page.getByText("Gauss")).toBeVisible();
-  await expect(page.getByText("codex (local)")).toBeVisible();
+  // The spatial detail renders the session framework + workspace, not the
+  // legacy rich panel's combined "framework (provider)" string.
+  await expect(page.getByText("codex", { exact: true })).toBeVisible();
   await expect(page.getByText("Task coordinator coverage patch")).toBeVisible();
-  await expect(page.getByText("Choose the next GUI debt")).toBeVisible();
+  // The spatial detail surfaces resolved decisions (decision + reasoning); the
+  // pending-decision queue the legacy panel showed is not part of this surface.
+  await expect(
+    page.getByText("The GUI debt is explicit and bounded."),
+  ).toBeVisible();
+  await expect(page.getByText("continue", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Loaded task coordinator fixtures"),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Summarize the task coordinator interaction risks."),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Delete", exact: true }).click();
@@ -378,9 +383,7 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
-  await page
-    .getByRole("button", { name: /Audit task coordinator GUI/ })
-    .click();
+  await page.locator('[data-agent-id="open-task-smoke-1"]').click();
   await expect(page.getByRole("button", { name: "Reopen" })).toBeVisible();
 
   await page.getByRole("button", { name: "Reopen", exact: true }).click();
@@ -388,8 +391,6 @@ test("task coordinator GUI searches, opens detail, shows operational state, and 
 
   await openAppPath(page, "/task-coordinator");
   await expect(page.getByText("Audit task coordinator GUI")).toBeVisible();
-  await page
-    .getByRole("button", { name: /Audit task coordinator GUI/ })
-    .click();
+  await page.locator('[data-agent-id="open-task-smoke-1"]').click();
   await expect(page.getByRole("button", { name: "Delete" })).toBeVisible();
 });

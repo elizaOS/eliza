@@ -23,12 +23,7 @@ import {
 	type User,
 } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
-import {
-	type ChannelDebouncer,
-	createChannelDebouncer,
-	createMessageDebouncer,
-	type MessageDebouncer,
-} from "./debouncer";
+import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
@@ -64,7 +59,6 @@ export interface DiscordServiceInternals {
 	character: DiscordService["character"];
 	messageManager: DiscordService["messageManager"];
 	voiceManager: DiscordService["voiceManager"];
-	messageDebouncer: MessageDebouncer | undefined;
 	channelDebouncer: ChannelDebouncer | undefined;
 	discordSettings: {
 		shouldIgnoreBotMessages: boolean;
@@ -106,7 +100,6 @@ export interface DiscordServiceInternals {
  */
 interface EventListenerConfig {
 	listenCids: string[];
-	debounceMs: number;
 	channelDebounceMs: number;
 	responseCooldownMs: number;
 	recentContextTtlMs: number;
@@ -132,17 +125,6 @@ function parseEventListenerConfig(
 						.map((s) => s.trim())
 						.filter((s) => s.length > 0)
 				: [];
-
-	const debounceMsSetting = service.runtime.getSetting("DISCORD_DEBOUNCE_MS") as
-		| string
-		| number
-		| undefined;
-	const debounceMs =
-		typeof debounceMsSetting === "number"
-			? debounceMsSetting
-			: typeof debounceMsSetting === "string" && debounceMsSetting.trim()
-				? Number.parseInt(debounceMsSetting, 10) || 400
-				: 400;
 
 	const channelDebounceMsSetting = service.runtime.getSetting(
 		"DISCORD_CHANNEL_DEBOUNCE_MS",
@@ -185,7 +167,6 @@ function parseEventListenerConfig(
 
 	return {
 		listenCids,
-		debounceMs,
 		channelDebounceMs,
 		responseCooldownMs,
 		recentContextTtlMs,
@@ -200,13 +181,11 @@ function parseEventListenerConfig(
  * instance (they must be destroyed on stop).
  */
 export function setupDiscordEventListeners(service: DiscordServiceInternals): {
-	messageDebouncer: MessageDebouncer;
 	channelDebouncer: ChannelDebouncer;
 } {
 	const accountId = service.accountId ?? "default";
 	const {
 		listenCids,
-		debounceMs,
 		channelDebounceMs,
 		responseCooldownMs,
 		recentContextTtlMs,
@@ -215,62 +194,9 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
 		service.runtime.getSetting(key),
 	);
-	const effectiveDebounceMs = messageCoalesce.enabled
-		? messageCoalesce.windowMs
-		: debounceMs;
 	const effectiveChannelDebounceMs = messageCoalesce.enabled
 		? messageCoalesce.windowMs
 		: channelDebounceMs;
-
-	// ── Message debouncer ──────────────────────────────────────────────
-	const messageDebouncer = createMessageDebouncer(
-		(messages) => {
-			if (!service.messageManager || messages.length === 0) {
-				return;
-			}
-
-			const anchor = messages[0];
-			if (messageCoalesce.enabled) {
-				const combined = makeCoalescedDiscordMessage(
-					messages,
-					anchor,
-					messageCoalesce,
-				);
-				if (messages.length > 1) {
-					service.runtime.logger.info(
-						{
-							src: "plugin:discord",
-							agentId: service.runtime.agentId,
-							channelId: messages[0]?.channel?.id,
-							messageIds: messages.map((message) => message.id),
-							count: messages.length,
-							path: "messageDebouncer",
-						},
-						"Coalesced inbound Discord messages",
-					);
-				}
-				void service.messageManager.handleMessage(combined as Message);
-				return;
-			}
-
-			if (messages.length === 1) {
-				void service.messageManager.handleMessage(anchor);
-				return;
-			}
-
-			const combinedText = messages
-				.map((message) => message.content)
-				.join("\n");
-			const combined = Object.create(anchor, {
-				content: { value: combinedText, writable: true, enumerable: true },
-			});
-			void service.messageManager.handleMessage(combined as Message);
-		},
-		effectiveDebounceMs,
-		{
-			maxBatch: messageCoalesce.enabled ? messageCoalesce.maxBatch : undefined,
-		},
-	);
 
 	// ── Channel debouncer ──────────────────────────────────────────────
 	const channelDebouncer = createChannelDebouncer(
@@ -359,8 +285,51 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		},
 	);
 
-	service.messageDebouncer = messageDebouncer;
 	service.channelDebouncer = channelDebouncer;
+
+	// ── Per-DM-channel serialization ───────────────────────────────────
+	// discord.js invokes the messageCreate listener WITHOUT awaiting it, so N
+	// rapid DMs from one author would otherwise launch N concurrent
+	// handleMessage runs → interleaved / out-of-order / duplicate replies. (The
+	// removed message-debouncer used to serialize per author as a side effect of
+	// batching.) DMs are now dispatched directly, so we chain each DM channel's
+	// handleMessage calls through a promise tail: a given DM channel is processed
+	// strictly in order, one message at a time, and nothing is dropped. Guild
+	// channels are unaffected — they still route through the channel debouncer.
+	const dmChannelQueues = new Map<string, Promise<void>>();
+	const dispatchDmInOrder = (
+		channelId: string,
+		message: Message,
+	): Promise<void> => {
+		// Start only after the prior message on this channel settles — success OR
+		// failure (a failed turn must never stall the queue).
+		const prior = dmChannelQueues.get(channelId) ?? Promise.resolve();
+		const run = prior
+			.catch(() => undefined)
+			.then(() => {
+				// Re-read at dispatch time: the manager can be torn down between
+				// enqueue and this deferred run (service stop). If it's gone, skip
+				// rather than throw.
+				const manager = service.messageManager;
+				if (!manager) {
+					return;
+				}
+				return manager.handleMessage(message);
+			});
+		dmChannelQueues.set(channelId, run);
+		// Once this settles and nothing newer is queued behind it, drop the map
+		// entry so the map stays bounded by the number of *active* DM channels.
+		// The extra `.catch` keeps this cleanup branch from surfacing as an
+		// unhandled rejection; the awaiting caller still observes + logs failures.
+		void run
+			.catch(() => undefined)
+			.finally(() => {
+				if (dmChannelQueues.get(channelId) === run) {
+					dmChannelQueues.delete(channelId);
+				}
+			});
+		return run;
+	};
 
 	// ── messageCreate ──────────────────────────────────────────────────
 	service.client.on("messageCreate", async (message) => {
@@ -489,15 +458,20 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				channelType === DiscordChannelType.GroupDM;
 
 			if (isDm) {
-				if (service.messageDebouncer) {
-					service.messageDebouncer.enqueue(message);
-				} else {
-					await service.messageManager.handleMessage(message);
-				}
+				// DMs are 1:1 and gain nothing from channel-style debouncing.
+				// Dispatch directly, but serialize per DM channel so rapid messages
+				// from one author are handled strictly in order, one at a time, with
+				// no drop (see dispatchDmInOrder above).
+				//
+				// Intentional behavior change: the removed message-debouncer used to
+				// COALESCE rapid same-author multi-part DM text (and an
+				// attachment-then-text pair) into a single handleMessage turn. Direct
+				// dispatch no longer coalesces — each DM is its own turn. For 1:1 DMs
+				// this is acceptable and removes the debounce-window drop; ordering
+				// and no-drop are guaranteed by the per-channel queue.
+				await dispatchDmInOrder(message.channel.id, message);
 			} else if (service.channelDebouncer) {
 				service.channelDebouncer.enqueue(message);
-			} else if (service.messageDebouncer) {
-				service.messageDebouncer.enqueue(message);
 			} else {
 				await service.messageManager.handleMessage(message);
 			}
@@ -1128,5 +1102,5 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		});
 	} // end if (isAuditLogEnabled)
 
-	return { messageDebouncer, channelDebouncer };
+	return { channelDebouncer };
 }

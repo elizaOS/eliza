@@ -44,6 +44,12 @@ describe("Production Migration Scenarios", () => {
 
   describe("Scenario 1: Existing elizaOS Core Tables", () => {
     it("should block destructive migrations when camelCase columns need renaming to snake_case", async () => {
+      // Exactly one of the two outcome branches below runs, and each contributes one
+      // assertion. Combined with the two data-preservation checks at the end, every
+      // correct run makes exactly 3 assertions; expect.assertions(3) makes a silently
+      // skipped branch (e.g. the migration unexpectedly renaming columns) fail loudly.
+      expect.assertions(3);
+
       // Simulate existing production database with OLD camelCase columns
       // In production, migrations.ts handles RENAME operations BEFORE RuntimeMigrator runs.
       // RuntimeMigrator alone cannot detect renames - it sees them as DROP + ADD (destructive).
@@ -135,11 +141,9 @@ describe("Production Migration Scenarios", () => {
           SELECT column_name FROM information_schema.columns WHERE table_name = 'memories'
         `);
         const columnNames = memoryColumns.rows.map((row) => row.column_name);
-        // If camelCase columns still exist, migration was correctly blocked or skipped
-        if (columnNames.includes("agentId")) {
-          // Migration was blocked/skipped - correct behavior
-          expect(true).toBe(true);
-        }
+        // The only correct non-throw outcome is that the destructive rename was
+        // skipped, so the original camelCase "agentId" column must still be present.
+        expect(columnNames).toContain("agentId");
       } catch (error) {
         // Expected: Destructive migration should be blocked
         expect((error as Error).message).toContain("Destructive migration blocked");

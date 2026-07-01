@@ -1,3 +1,4 @@
+export * from "./ChatEmptyStateWithRecommendations";
 export * from "./chat-attachment-strip";
 export * from "./chat-bubble";
 export * from "./chat-composer";

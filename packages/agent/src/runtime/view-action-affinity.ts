@@ -44,6 +44,27 @@ export interface ActiveViewContext {
    * so the awareness block degrades gracefully to "use list-elements".
    */
   elements?: readonly ActiveViewElement[];
+  /**
+   * ISO timestamp of the most recent switch INTO this view, and who drove it.
+   * Carried from the navigate route so Stage-1 can acknowledge a just-happened
+   * switch (#8788). Absent when the view was not freshly switched.
+   */
+  switchedAt?: string;
+  source?: "agent" | "user";
+}
+
+/**
+ * A view switch is "fresh" (worth acknowledging on the immediately-following
+ * turn) for this window. Kept in lockstep with VIEW_SWITCH_FRESH_MS in
+ * `views-routes.ts`.
+ */
+export const ACTIVE_VIEW_SWITCH_FRESH_MS = 15_000;
+
+function isActiveViewSwitchFresh(view: ActiveViewContext): boolean {
+  if (!view.switchedAt) return false;
+  const at = Date.parse(view.switchedAt);
+  if (Number.isNaN(at)) return false;
+  return Date.now() - at <= ACTIVE_VIEW_SWITCH_FRESH_MS;
 }
 
 let activeView: ActiveViewContext | null = null;
@@ -86,7 +107,6 @@ export function setActiveViewElements(
  *
  * Verified action names (2026-05-31):
  *   TASKS      — plugin-agent-orchestrator tasks action (coding/orchestration)
- *   PLAY_EMOTE — plugin-companion/src/actions/emote.ts
  *   RUNTIME    — packages/agent/src/actions/runtime.ts (restart/config ops)
  *
  * Verified action names + view ids (2026-06-02) — view id from each plugin's
@@ -96,25 +116,22 @@ export function setActiveViewElements(
  * missing-plugin skip (no error). Sources:
  *   wallet      — view plugins/plugin-wallet-ui; actions plugins/plugin-wallet
  *                 (chains/evm/actions swap+transfer, chains generated specs)
- *   polymarket  — plugins/plugin-polymarket-app/src/actions.ts (POLYMARKET_STATUS)
- *   hyperliquid — plugins/plugin-hyperliquid-app/src/actions/perpetual-market.ts
- *   steward     — plugin-steward-app re-exports plugin-wallet's WALLET action
+ *   polymarket  — plugins/plugin-polymarket/src/actions.ts (POLYMARKET_STATUS)
+ *   hyperliquid — plugins/plugin-hyperliquid/src/actions/perpetual-market.ts
  *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
- *   scape       — plugins/plugin-scape/src/actions (SCAPE)
- *   2004scape   — plugins/plugin-2004scape/src/actions (RS_2004, RS_2004_INVENTORY)
  *
  * Verified action names + view ids (2026-06-18) — each LifeOps/utility view's
  * own domain actions, so they are emphasised (not just universally
  * element-controllable) when that view is the foreground surface. Names
  * confirmed registered in each plugin's actions/ source; plugin-conditional like
  * the rest (a missing-plugin skip when not loaded). Sources:
- *   calendar  — plugins/plugin-calendar/src/actions (CALENDAR, CONFLICT_DETECT)
- *   health    — plugins/plugin-health/src/actions (OWNER_HEALTH, OWNER_SCREENTIME)
- *   focus     — plugins/plugin-blocker/src/actions/block.ts (BLOCK umbrella;
+ *   calendar  — PA-registered calendar actions backed by plugin-calendar
+ *   health    — PA-registered actions built from plugin-health factories
+ *   focus     — PA-registered BLOCK umbrella backed by plugin-blocker;
  *               list_active / release are subactions of it, not standalone actions)
- *   finances  — plugins/plugin-finances/src/actions/finances (OWNER_FINANCES)
+ *   finances  — PA-registered OWNER_FINANCES backed by plugin-finances
  *   inbox     — plugins/plugin-inbox/src/actions/inbox (literal name: "INBOX")
- *   goals     — plugins/plugin-goals/src/actions (OWNER_GOALS, OWNER_ALARMS, OWNER_REMINDERS, OWNER_ROUTINES)
+ *   goals     — plugin-goals owns OWNER_GOALS; PA owns routines/reminders/alarms
  *   todos     — plugins/plugin-personal-assistant/src/actions/owner-surfaces (OWNER_TODOS)
  *   lifeops   — plugins/plugin-personal-assistant/src/actions (PERSONAL_ASSISTANT)
  *   relationships — plugins/plugin-relationships/src/actions/entity.ts
@@ -122,7 +139,6 @@ export function setActiveViewElements(
  *              relationship graph via GET /api/lifeops/{entities,relationships})
  */
 export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
-  companion: ["PLAY_EMOTE"],
   "task-coordinator": ["TASKS"],
   orchestrator: ["TASKS"],
   "trajectory-logger": ["TASKS"],
@@ -155,8 +171,6 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
     "XR_RESIZE_VIEW",
     "XR_QUERY_VISION",
   ],
-  scape: ["SCAPE"],
-  "2004scape": ["RS_2004", "RS_2004_INVENTORY"],
   calendar: ["CALENDAR", "CONFLICT_DETECT"],
   health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
   focus: ["BLOCK"],
@@ -166,6 +180,11 @@ export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
   todos: ["OWNER_TODOS"],
   lifeops: ["PERSONAL_ASSISTANT"],
   relationships: ["ENTITY"],
+  // documents — PA-registered OWNER_DOCUMENTS backed by plugin-documents routes
+  //   (umbrella action "OWNER_DOCUMENTS"; DocumentsView reads/uploads via the
+  //   docs-and-portals domain). Added so a contextual "pull up my documents"
+  //   switch upweights the domain action while the view is foreground (#8798).
+  documents: ["OWNER_DOCUMENTS"],
 };
 
 /**
@@ -202,6 +221,35 @@ export function validateViewActionMap(
 }
 
 /**
+ * Completeness sibling of {@link validateViewActionMap}: where that flags a
+ * mapped action name that no longer exists, this flags a *registered view* that
+ * has neither a VIEW_ACTION_MAP entry nor any declared `ViewCapability`. It only
+ * warns (the universal agent-surface still reaches every control), but surfaces
+ * the affinity gap so domain actions for new views are not silently unweighted.
+ * (#8798)
+ *
+ * @param registeredViewIds every view id the registry currently knows about.
+ * @param viewsWithCapabilities view ids that declare a `ViewCapability[]`.
+ */
+export function validateViewCoverage(
+  registeredViewIds: Iterable<string>,
+  viewsWithCapabilities: Iterable<string>,
+  logger?: { warn: (msg: string) => void },
+): string[] {
+  const mapped = new Set(Object.keys(VIEW_ACTION_MAP));
+  const withCaps = new Set(viewsWithCapabilities);
+  const uncovered: string[] = [];
+  for (const viewId of registeredViewIds) {
+    if (mapped.has(viewId) || withCaps.has(viewId)) continue;
+    uncovered.push(viewId);
+    logger?.warn(
+      `[eliza] view "${viewId}" has no VIEW_ACTION_MAP entry and declares no ViewCapability — its domain actions are not weighted while it is foreground (agent-surface element control still works)`,
+    );
+  }
+  return uncovered;
+}
+
+/**
  * Render a compact "Active View" awareness block for the planner. Describes the
  * surface the user is looking at and reminds the agent it can drive every
  * element through the view-interact capabilities. Exposed for the planner /
@@ -212,12 +260,21 @@ export function renderActiveViewContextBlock(view: ActiveViewContext): string {
   const lines = [
     "# Active View",
     `The user is looking at the "${view.viewLabel}" view (id: ${view.viewId}, ${view.viewType}${view.viewPath ? `, path ${view.viewPath}` : ""}).`,
+  ];
+  // Turn-scoped acknowledgement of a just-happened switch (#8788): only on the
+  // immediately-following turn (freshness decays after 15s), so it never lingers.
+  if (isActiveViewSwitchFresh(view)) {
+    lines.push(
+      `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""} — briefly acknowledge the switch in your reply before doing anything else.`,
+    );
+  }
+  lines.push(
     "You can inspect and drive everything in it through the view-interact capabilities:",
     "- list-elements — enumerate addressable controls/data (id, role, label, value, focus).",
     "- get-agent-state — read the whole view snapshot, including the focused element.",
     "- agent-click {id} / agent-fill {id,value} / agent-focus {id} / agent-scroll-to {id} — act on an element by its id.",
     "Prefer acting directly on the view over describing what the user should click.",
-  ];
+  );
   if (scoped.length > 0) {
     lines.push(
       `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,

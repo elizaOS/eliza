@@ -1,4 +1,5 @@
 import type http from "node:http";
+import net from "node:net";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
@@ -8,6 +9,11 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
+import {
+  isBlockedPrivateOrLinkLocalIp,
+  isLoopbackHost,
+  normalizeHostLike,
+} from "../security/network-policy.ts";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
@@ -393,7 +399,7 @@ function getRuntimeCapabilityRouter(
 ): ElizaCapabilityRouter {
   const router = runtime.getService?.(
     CAPABILITY_ROUTER_SERVICE_TYPE,
-  ) as unknown as ElizaCapabilityRouter | null;
+  ) as ElizaCapabilityRouter | null;
   if (!router) {
     throw new Error("Capability router service is not available.");
   }
@@ -887,6 +893,27 @@ function requireHttpUrl(value: unknown, field: string): string {
   }
   if (parsed.username || parsed.password) {
     throw new Error(`${field} must not include embedded credentials.`);
+  }
+  // SSRF guard: a remote-capability endpoint baseUrl is attacker-controlled by
+  // any authenticated caller (dedicated agents are reachable from the internet
+  // via the cloud proxy), and the router fetches it directly. Block literal
+  // private/loopback/link-local IPs and internal hostnames so it can't be aimed
+  // at cloud metadata (169.254.169.254) or internal services. Mirrors the host
+  // blocklist in runtime/custom-actions.ts. (Does not resolve DNS, so a public
+  // name pointing at a private address is not covered here.)
+  const host = normalizeHostLike(parsed.hostname);
+  if (
+    !host ||
+    host === "0.0.0.0" ||
+    host === "metadata.google.internal" ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    isLoopbackHost(host) ||
+    (net.isIP(host) !== 0 && isBlockedPrivateOrLinkLocalIp(host))
+  ) {
+    throw new Error(
+      `${field} must not target a private, loopback, link-local, or internal address.`,
+    );
   }
   parsed.hash = "";
   parsed.search = "";

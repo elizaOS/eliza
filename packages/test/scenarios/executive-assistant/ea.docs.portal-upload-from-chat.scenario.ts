@@ -10,6 +10,7 @@ import {
 } from "../_helpers/browser-task-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.docs.portal-upload-from-chat",
   title: "Upload a deck or asset to a portal from chat instructions",
   domain: "executive-assistant",

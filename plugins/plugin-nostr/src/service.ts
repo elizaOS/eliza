@@ -110,6 +110,22 @@ function getNostrTargetMetadata(target: TargetInfo): Record<string, unknown> | u
     : undefined;
 }
 
+/**
+ * Append agent-generated attachment URLs to Nostr text (#8876). Nostr has no
+ * separate attachment field — kind:1 notes and DMs carry media as URLs in the
+ * content, which clients render inline. So a generated/sent attachment becomes a
+ * URL appended to the text rather than being dropped. http(s) URLs only.
+ */
+function appendNostrAttachmentUrls(text: string, content: Content): string {
+  const urls = Array.isArray(content.attachments)
+    ? content.attachments
+        .map((media) => (typeof media?.url === "string" ? media.url.trim() : ""))
+        .filter((url) => /^https?:\/\//i.test(url))
+    : [];
+  if (urls.length === 0) return text;
+  return [text, ...urls].filter(Boolean).join("\n");
+}
+
 function clampLimit(value: number | undefined, defaultValue: number, max: number): number {
   if (!Number.isFinite(value)) {
     return defaultValue;
@@ -624,9 +640,12 @@ export class NostrService extends Service implements INostrService {
       );
     }
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = appendNostrAttachmentUrls(
+      typeof content.text === "string" ? content.text.trim() : "",
+      content
+    );
     if (!text) {
-      throw new Error("Nostr DM connector requires non-empty text content.");
+      throw new Error("Nostr DM connector requires non-empty text content or an attachment.");
     }
 
     const metadata = getNostrTargetMetadata(target);
@@ -663,9 +682,12 @@ export class NostrService extends Service implements INostrService {
       );
     }
 
-    const text = typeof content.text === "string" ? content.text.trim() : "";
+    const text = appendNostrAttachmentUrls(
+      typeof content.text === "string" ? content.text.trim() : "",
+      content
+    );
     if (!text) {
-      throw new Error("Nostr post connector requires non-empty text content.");
+      throw new Error("Nostr post connector requires non-empty text content or an attachment.");
     }
 
     const result = await this.publishNote(text);

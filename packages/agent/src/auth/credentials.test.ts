@@ -195,8 +195,15 @@ describe("applySubscriptionCredentials", () => {
 
     const providerDir = path.join(home, "auth", "openai-codex");
     const accountFile = path.join(providerDir, "personal.json");
-    expect(fs.statSync(providerDir).mode & 0o777).toBe(0o700);
-    expect(fs.statSync(accountFile).mode & 0o777).toBe(0o600);
+    expect(fs.existsSync(accountFile)).toBe(true);
+    // POSIX permission bits (0o700/0o600) are only enforced and reported on
+    // POSIX. Windows uses NTFS ACLs and `fs.chmod` there only toggles the
+    // read-only attribute, so `mode & 0o777` is not meaningful — assert the
+    // secret-grade modes only where the OS actually enforces them.
+    if (process.platform !== "win32") {
+      expect(fs.statSync(providerDir).mode & 0o777).toBe(0o700);
+      expect(fs.statSync(accountFile).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("skips malformed and provider-mismatched credential files", () => {

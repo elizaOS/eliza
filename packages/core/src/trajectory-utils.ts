@@ -1,3 +1,4 @@
+import { isTruthyEnvValue } from "./env-utils.js";
 import {
 	CONTEXT_OBJECT_TRAJECTORY_VERSION,
 	type ContextObjectTrajectoryExport,
@@ -51,6 +52,7 @@ export type TrajectoryLlmCallDetails = {
 	reasoning?: string;
 	temperature: number;
 	maxTokens: number;
+	maxTokensOmitted?: boolean;
 	/**
 	 * High-level model-call category. Prefer the canonical taxonomy in
 	 * {@link TRAJECTORY_LLM_PURPOSES}; custom strings remain accepted for
@@ -443,11 +445,6 @@ function readProcessEnv(name: string): string | undefined {
 		return undefined;
 	}
 	return process.env[name];
-}
-
-function isTruthyEnvValue(value: string | undefined): boolean {
-	const normalized = value?.trim().toLowerCase();
-	return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 export function isTrajectoryStrictModeEnabled(): boolean {

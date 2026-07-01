@@ -19,8 +19,8 @@ import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.js";
 import {
-  CalendarService,
   type CalendarHostGate,
+  CalendarService,
 } from "../src/service/index.js";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");

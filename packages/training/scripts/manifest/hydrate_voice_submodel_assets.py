@@ -9,6 +9,8 @@ and patches the local voice manifests with real ``sha256`` / ``sizeBytes``.
 Custom Eliza-only assets remain explicit gaps until their build pipelines
 produce files:
 
+* Gemma-compatible ASR model/projector GGUFs (Qwen3-ASR is retired)
+* dedicated embedding GGUFs (disabled; active bundles pool the text backbone)
 * ``voices/af_same.bin`` (Kokoro same preset)
 * ``presets/voice-preset-same.bin`` (OmniVoice same-voice preset)
 * ``hey-eliza-int8.onnx`` (trained wake-word head)
@@ -50,24 +52,6 @@ ASSETS: Final[tuple[AssetSpec, ...]] = (
         "voxceleb_resnet34_LM.onnx",
     ),
     AssetSpec(
-        "embedding",
-        "eliza-1-embedding-q8_0.gguf",
-        "Qwen/Qwen3-Embedding-0.6B-GGUF",
-        "Qwen3-Embedding-0.6B-Q8_0.gguf",
-    ),
-    AssetSpec(
-        "asr",
-        "eliza-1-asr-q8_0.gguf",
-        "ggml-org/Qwen3-ASR-1.7B-GGUF",
-        "Qwen3-ASR-1.7B-Q8_0.gguf",
-    ),
-    AssetSpec(
-        "asr",
-        "eliza-1-asr-mmproj.gguf",
-        "ggml-org/Qwen3-ASR-1.7B-GGUF",
-        "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
-    ),
-    AssetSpec(
         "diarizer",
         "pyannote-segmentation-3.0-int8.onnx",
         "onnx-community/pyannote-segmentation-3.0",
@@ -81,15 +65,15 @@ ASSETS: Final[tuple[AssetSpec, ...]] = (
     ),
     AssetSpec(
         "kokoro",
-        "kokoro-v1.0-q4.onnx",
-        "onnx-community/Kokoro-82M-v1.0-ONNX",
-        "onnx/model_q4.onnx",
+        "kokoro-82m-v1_0-Q4_K_M.gguf",
+        "elizaos/eliza-1",
+        "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
     ),
     AssetSpec(
         "kokoro",
         "voices/af_bella.bin",
-        "onnx-community/Kokoro-82M-v1.0-ONNX",
-        "voices/af_bella.bin",
+        "elizaos/eliza-1",
+        "voice/kokoro/voices/af_bella.bin",
     ),
     AssetSpec(
         "omnivoice",

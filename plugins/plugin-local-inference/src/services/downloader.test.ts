@@ -7,8 +7,29 @@ import { readAssignments } from "./assignments";
 import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
-import { listInstalledModels } from "./registry";
-import type { DownloadJob } from "./types";
+import { registryPath } from "./paths";
+import type {
+	CatalogModel,
+	DownloadJob,
+	HardwareProbe,
+	InstalledModel,
+} from "./types";
+
+/** Minimal HardwareProbe with a controllable free-disk value for preflight tests. */
+function fakeProbe(freeDiskGb: number): HardwareProbe {
+	return {
+		totalRamGb: 32,
+		freeRamGb: 16,
+		freeDiskGb,
+		gpu: null,
+		cpuCores: 8,
+		platform: "darwin",
+		arch: "arm64",
+		appleSilicon: true,
+		recommendedBucket: "mid",
+		source: "os-fallback",
+	};
+}
 
 function eliza1Manifest(overrides: {
 	ramBudgetMin?: number;
@@ -22,7 +43,6 @@ function eliza1Manifest(overrides: {
 	const textPath = "text/eliza-1-2b-128k.gguf";
 	const voicePath = "tts/voice.gguf";
 	const asrPath = "asr/asr.gguf";
-	const drafterPath = "mtp/drafter-2b.gguf";
 	const cachePath = "cache/voice-preset-default.bin";
 	const vadPath = "vad/eliza-1-vad.onnx";
 	const visionPath = "vision/mmproj-2b.gguf";
@@ -43,10 +63,14 @@ function eliza1Manifest(overrides: {
 			voice: { base: "eliza-1-voice", license: "test" },
 			asr: { base: "eliza-1-asr", license: "test" },
 			vad: { base: "eliza-1-vad", license: "test" },
-			drafter: { base: "eliza-1-drafter", license: "test" },
 			vision: { base: "eliza-1-vision", license: "test" },
 		},
 		defaultEligible: true,
+		// Downloader-mechanics fixture: MTP mode is incidental here, so this
+		// bundle is the legacy embedded-draft-head shape (no separate drafter
+		// GGUF to serve). The Gemma-4 separate-drafter contract is exercised in
+		// manifest.test.ts.
+		mtp: "embedded-draft-head",
 		files: {
 			text: [
 				{
@@ -58,12 +82,7 @@ function eliza1Manifest(overrides: {
 			voice: [{ path: voicePath, sha256: overrides.shaFor("voice") }],
 			asr: [{ path: asrPath, sha256: overrides.shaFor("asr") }],
 			vision: [{ path: visionPath, sha256: overrides.shaFor("vision") }],
-			mtp: [
-				{
-					path: drafterPath,
-					sha256: overrides.shaFor("drafter"),
-				},
-			],
+			mtp: [],
 			cache: [
 				{
 					path: cachePath,
@@ -167,6 +186,14 @@ function sha256(content: string): string {
 	return createHash("sha256").update(content).digest("hex");
 }
 
+function readOwnedRegistryModels(): InstalledModel[] {
+	if (!fs.existsSync(registryPath())) return [];
+	const parsed = JSON.parse(fs.readFileSync(registryPath(), "utf8")) as {
+		models?: InstalledModel[];
+	};
+	return parsed.models ?? [];
+}
+
 function installFetchFixture(files: Map<string, string>): void {
 	globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
 		const href =
@@ -243,7 +270,7 @@ describe("local inference downloader status", () => {
 		expect(job?.error).toBe("network reset");
 	});
 
-	it("installs Eliza-1 manifest bundles with the bundled MTP drafter", async () => {
+	it("installs Eliza-1 manifest bundles with embedded-draft-head MTP metadata", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
 		const model = findCatalogModel("eliza-1-2b");
@@ -256,14 +283,12 @@ describe("local inference downloader status", () => {
 		const voice = "GGUF voice model";
 		const asr = "GGUF ASR model";
 		const vad = "VAD model";
-		const drafter = "GGUF drafter model";
 		const cache = "voice preset";
 		const vision = "vision projector";
 		const textPath = "text/eliza-1-2b-128k.gguf";
 		const voicePath = "tts/voice.gguf";
 		const asrPath = "asr/asr.gguf";
 		const vadPath = "vad/eliza-1-vad.onnx";
-		const drafterPath = "mtp/drafter-2b.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
 		const visionPath = "vision/mmproj-2b.gguf";
 		const manifest = JSON.stringify({
@@ -276,10 +301,10 @@ describe("local inference downloader status", () => {
 				voice: { base: "eliza-1-voice", license: "test" },
 				asr: { base: "eliza-1-asr", license: "test" },
 				vad: { base: "eliza-1-vad", license: "test" },
-				drafter: { base: "eliza-1-drafter", license: "test" },
 				vision: { base: "eliza-1-vision", license: "test" },
 			},
 			defaultEligible: true,
+			mtp: "embedded-draft-head",
 			files: {
 				text: [
 					{
@@ -291,12 +316,7 @@ describe("local inference downloader status", () => {
 				voice: [{ path: voicePath, sha256: sha256(voice) }],
 				asr: [{ path: asrPath, sha256: sha256(asr) }],
 				vision: [{ path: visionPath, sha256: sha256(vision) }],
-				mtp: [
-					{
-						path: drafterPath,
-						sha256: sha256(drafter),
-					},
-				],
+				mtp: [],
 				cache: [
 					{
 						path: cachePath,
@@ -354,7 +374,6 @@ describe("local inference downloader status", () => {
 				[bundleRemotePath(model, voicePath), voice],
 				[bundleRemotePath(model, asrPath), asr],
 				[bundleRemotePath(model, vadPath), vad],
-				[bundleRemotePath(model, drafterPath), drafter],
 				[bundleRemotePath(model, cachePath), cache],
 				[bundleRemotePath(model, visionPath), vision],
 			]),
@@ -366,7 +385,7 @@ describe("local inference downloader status", () => {
 		const completed = waitForTerminal(downloader, model.id);
 		await downloader.start(model);
 		const job = await completed;
-		const installed = await listInstalledModels();
+		const installed = readOwnedRegistryModels();
 		const main = installed.find((entry) => entry.id === model.id);
 		expect(main).toBeDefined();
 		const bundleRoot = main?.bundleRoot;
@@ -389,7 +408,6 @@ describe("local inference downloader status", () => {
 		expect(fs.existsSync(path.join(bundleRoot, asrPath))).toBe(true);
 		expect(fs.existsSync(path.join(bundleRoot, vadPath))).toBe(true);
 		expect(fs.existsSync(path.join(bundleRoot, visionPath))).toBe(true);
-		expect(fs.existsSync(path.join(bundleRoot, drafterPath))).toBe(true);
 		expect(installed.some((entry) => entry.id.endsWith("-drafter"))).toBe(
 			false,
 		);
@@ -406,7 +424,6 @@ describe("local inference downloader status", () => {
 		const fetchSpy = installManifestOnlyFetch("tampered manifest");
 		const pinnedModel = {
 			...model,
-			id: "eliza-1-2b-manifest-hash-test",
 			companionModelIds: [],
 			bundleManifestSha256: sha256("expected manifest"),
 		};
@@ -415,7 +432,7 @@ describe("local inference downloader status", () => {
 		});
 		const failed = new Promise<DownloadJob>((resolve) => {
 			const unsub = downloader.subscribe((event) => {
-				if (event.job.modelId === pinnedModel.id && event.type === "failed") {
+				if (event.job.modelId === model.id && event.type === "failed") {
 					unsub();
 					resolve(event.job);
 				}
@@ -431,12 +448,12 @@ describe("local inference downloader status", () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it("restarts single-file partial downloads when a server ignores Range", async () => {
+	it("rejects custom CatalogModel specs before starting a download", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
 		const baseModel = findCatalogModel("eliza-1-2b");
 		if (!baseModel) throw new Error("missing test catalog model");
-		const model = {
+		const customSpec: CatalogModel = {
 			...baseModel,
 			id: "hf:test/partial::model.gguf",
 			displayName: "Partial Test Model",
@@ -447,28 +464,13 @@ describe("local inference downloader status", () => {
 			runtimeRole: undefined,
 		};
 
-		const body = "complete model";
-		installFetchFixture(
-			new Map([[bundleRemotePath(model, model.ggufFile), body]]),
-		);
-
-		const downloadsDir = path.join(root, "local-inference", "downloads");
-		fs.mkdirSync(downloadsDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(downloadsDir, "hf_test_partial__model.gguf.part"),
-			"stale partial",
-		);
-
 		const downloader = new Downloader();
-		const completed = waitForTerminal(downloader, model.id);
-		await downloader.start(model);
-		await completed;
+		await expect(downloader.start(customSpec)).rejects.toThrow(
+			/Custom model downloads are disabled/i,
+		);
 
-		const installed = await listInstalledModels();
-		const entry = installed.find((m) => m.id === model.id);
-		expect(entry).toBeDefined();
-		if (!entry) throw new Error("missing installed model");
-		expect(fs.readFileSync(entry.path, "utf8")).toBe(body);
+		expect(fs.existsSync(registryPath())).toBe(false);
+		expect(downloader.snapshot()).toEqual([]);
 	});
 
 	it("aborts before any weight byte when no verified backend overlaps the device", async () => {
@@ -492,7 +494,6 @@ describe("local inference downloader status", () => {
 
 		const textPath = model.ggufFile;
 		const voicePath = "tts/voice.gguf";
-		const drafterPath = "mtp/drafter-27b-256k.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
 		const visionPath = "vision/mmproj-27b-256k.gguf";
 		const manifest = JSON.stringify({
@@ -503,7 +504,6 @@ describe("local inference downloader status", () => {
 			lineage: {
 				text: { base: "eliza-1-text", license: "test" },
 				voice: { base: "eliza-1-voice", license: "test" },
-				drafter: { base: "eliza-1-drafter", license: "test" },
 				vision: { base: "eliza-1-vision", license: "test" },
 			},
 			defaultEligible: false,
@@ -518,7 +518,7 @@ describe("local inference downloader status", () => {
 				voice: [{ path: voicePath, sha256: sha256("v") }],
 				asr: [],
 				vision: [{ path: visionPath, sha256: sha256("vision") }],
-				mtp: [{ path: drafterPath, sha256: sha256("d") }],
+				mtp: [],
 				cache: [{ path: cachePath, sha256: sha256("c") }],
 			},
 			kernels: {
@@ -565,7 +565,7 @@ describe("local inference downloader status", () => {
 			([u]) => remotePathOf(u) !== bundleRemotePath(model, manifestFile),
 		);
 		expect(weightFetches).toHaveLength(0);
-		expect((await listInstalledModels()).some((m) => m.id === model.id)).toBe(
+		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
 			false,
 		);
 	});
@@ -597,7 +597,7 @@ describe("local inference downloader status", () => {
 		await downloader.start(model.id);
 		const job = await failed;
 		expect(job.error).toMatch(/needs at least 999999 MB RAM/);
-		expect((await listInstalledModels()).some((m) => m.id === model.id)).toBe(
+		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
 			false,
 		);
 	});
@@ -613,7 +613,6 @@ describe("local inference downloader status", () => {
 			voice: "GGUF voice",
 			asr: "GGUF asr",
 			vad: "VAD onnx",
-			drafter: "GGUF drafter",
 			cache: "voice preset",
 			vision: "vision projector",
 		} as const;
@@ -627,7 +626,6 @@ describe("local inference downloader status", () => {
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
-				[eliza1BundleRemotePath("mtp/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
 				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
 			]),
@@ -662,7 +660,7 @@ describe("local inference downloader status", () => {
 				.normalize(verifyCalls[0]?.textGgufPath ?? "")
 				.endsWith(path.normalize("text/eliza-1-2b-128k.gguf")),
 		).toBe(true);
-		const installed = await listInstalledModels();
+		const installed = readOwnedRegistryModels();
 		const main = installed.find((m) => m.id === model.id);
 		expect(main?.bundleVerifiedAt).toBeTruthy();
 		expect(verifyCalls[0]?.bundleRoot).toBe(main?.bundleRoot);
@@ -680,7 +678,6 @@ describe("local inference downloader status", () => {
 			voice: "GGUF voice",
 			asr: "GGUF asr",
 			vad: "VAD onnx",
-			drafter: "GGUF drafter",
 			cache: "voice preset",
 			vision: "vision projector",
 		} as const;
@@ -694,7 +691,6 @@ describe("local inference downloader status", () => {
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
-				[eliza1BundleRemotePath("mtp/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
 				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
 			]),
@@ -717,8 +713,176 @@ describe("local inference downloader status", () => {
 		await downloader.start(model.id);
 		const job = await failed;
 		expect(job.error).toMatch(/barge-in cancel test failed/);
-		expect((await listInstalledModels()).some((m) => m.id === model.id)).toBe(
+		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
 			false,
 		);
+	});
+
+	it("dedups concurrent start(sameId) onto one job (no .part write race)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		});
+		// Fire two starts for the same id concurrently. The first reserves the
+		// active slot synchronously before its first await, so the second sees it
+		// and returns the SAME job instead of racing a second write onto the .part.
+		const [a, b] = await Promise.all([
+			downloader.start(model.id),
+			downloader.start(model.id),
+		]);
+		expect(a.jobId).toBe(b.jobId);
+		expect(
+			downloader.snapshot().filter((j) => j.modelId === model.id),
+		).toHaveLength(1);
+		downloader.cancel(model.id);
+	});
+
+	it("rejects a non-GGUF (HTML) body on the single-file path", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		// Decorate a default-eligible id as a single-file (non-bundle) download so
+		// it routes through runJob's single-file path.
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		// A gated repo can answer HTTP 200 with an HTML login page.
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response("<html><body>Sign in to HuggingFace</body></html>", {
+					status: 200,
+					headers: { "content-type": "text/html" },
+				}),
+		) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		const job = await failed;
+
+		expect(job.error).toContain("not a valid GGUF");
+		// The HTML body must never be registered or left on disk as a model.
+		const finalPath = path.join(
+			root,
+			"local-inference",
+			"models",
+			"eliza-1-2b.gguf",
+		);
+		// (registry path lives elsewhere; the rejected file is removed regardless)
+		expect(fs.existsSync(finalPath)).toBe(false);
+	});
+
+	it("forwards the Eliza Cloud bearer on a single-file download when cloud-linked", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		// The product never holds a local HF token. When cloud-linked, all HF
+		// resolve traffic is routed through the cloud HF proxy and authenticated
+		// with the Eliza Cloud API key (the proxy attaches the cloud-side HF_TOKEN).
+		const savedKey = process.env.ELIZAOS_CLOUD_API_KEY;
+		process.env.ELIZAOS_CLOUD_API_KEY = "secret-token";
+
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		const ggufBody = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(60, 0)]);
+		let capturedAuth: string | undefined;
+		globalThis.fetch = vi.fn(
+			async (_url: string | URL | Request, init?: RequestInit) => {
+				const headers = (init?.headers ?? {}) as Record<string, string>;
+				capturedAuth = headers.authorization;
+				return new Response(ggufBody, {
+					status: 200,
+					headers: { "content-length": String(ggufBody.length) },
+				});
+			},
+		) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const completed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "completed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		try {
+			await downloader.start(singleFileSpec);
+			await completed;
+			expect(capturedAuth).toBe("Bearer secret-token");
+		} finally {
+			if (savedKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
+			else process.env.ELIZAOS_CLOUD_API_KEY = savedKey;
+		}
+	});
+
+	it("blocks a download that does not fit on the models volume", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// Fetch must never be called: the preflight fails before any byte.
+		const fetchSpy = vi.fn(async () => {
+			throw new Error("network must not be touched when disk is full");
+		});
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(0.05),
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === model.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(model.id);
+		const job = await failed;
+
+		expect(job.error).toContain("Not enough disk space");
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

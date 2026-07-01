@@ -2,8 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ValidatedApiKey } from "../types";
 import { assertValidApiKey, createModelName } from "../types";
 
-const DEFAULT_SMALL_MODEL = "Qwen/Qwen3.6-35B-A3B-FP8";
-const DEFAULT_LARGE_MODEL = "zai-org/GLM-5.1-FP8";
+const DEFAULT_GEMMA_MODEL = "google/gemma-4-31B-it";
+const DEFAULT_SMALL_MODEL = DEFAULT_GEMMA_MODEL;
+const DEFAULT_LARGE_MODEL = DEFAULT_GEMMA_MODEL;
 
 const DEFAULT_BASE_URL = "https://cloud-api.near.ai/v1";
 

@@ -9,6 +9,10 @@ function collectPageErrors(page: Page): string[] {
 test("get-started ignores hostile query/hash values and remains usable", async ({
   page,
 }) => {
+  // /get-started mounts live Cloud-API provisioning + a lazy WebGL shader + the
+  // external telegram-widget script; under parallel CI contention page bring-up
+  // can exceed the 30s default. The assertions are correct — give it headroom.
+  test.setTimeout(90_000);
   const errors = collectPageErrors(page);
   await page.addInitScript(() => {
     (window as Window & { __homepageXssHit?: boolean }).__homepageXssHit =
@@ -59,6 +63,9 @@ test("get-started ignores hostile query/hash values and remains usable", async (
 test("browser back and forward restore hash and query driven route views", async ({
   page,
 }) => {
+  // Same live-API + WebGL marketing surfaces as above; headroom over the 30s
+  // default for slow keyless CI bring-up.
+  test.setTimeout(90_000);
   const errors = collectPageErrors(page);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });

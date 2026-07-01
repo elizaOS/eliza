@@ -9,6 +9,15 @@
 
 import { Capacitor } from "@capacitor/core";
 
+declare global {
+  interface Window {
+    /** Set by the Electrobun desktop shell. */
+    __ELECTROBUN__?: unknown;
+    /** Set by the XR view-host (plugin-facewear / plugin-xr) inside a headset. */
+    __elizaXRContext?: unknown;
+  }
+}
+
 /** Frontend platform identifier matching the server-side AgentPlatform type. */
 export type FrontendPlatform = "ios" | "android" | "web" | "desktop";
 
@@ -21,10 +30,7 @@ export type FrontendPlatform = "ios" | "android" | "web" | "desktop";
  * 3. Default: "web".
  */
 export function getFrontendPlatform(): FrontendPlatform {
-  if (
-    typeof window !== "undefined" &&
-    (window as unknown as Record<string, unknown>).__ELECTROBUN__
-  ) {
+  if (typeof window !== "undefined" && window.__ELECTROBUN__) {
     return "desktop";
   }
   const getPlatform = (Capacitor as { getPlatform?: () => unknown })
@@ -59,10 +65,7 @@ export type ViewModality = "gui" | "tui" | "xr";
  * non-DOM host, so the React shell never reports `tui`.
  */
 export function getActiveViewModality(): ViewModality {
-  if (
-    typeof window !== "undefined" &&
-    (window as unknown as Record<string, unknown>).__elizaXRContext
-  ) {
+  if (typeof window !== "undefined" && window.__elizaXRContext) {
     return "xr";
   }
   return "gui";

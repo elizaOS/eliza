@@ -72,6 +72,10 @@ export function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
   const isDesktop = useWorkspaceLayoutDesktopMode();
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
+  const setContentRef = React.useCallback(
+    (node: HTMLElement | null) => assignRef(contentRef, node),
+    [contentRef],
+  );
   const showMobileSidebarPane = Boolean(
     sidebar && !isDesktop && mobileSidebarOpen,
   );
@@ -129,7 +133,7 @@ export function WorkspaceLayout({
         ) : null}
 
         <main
-          ref={(node) => assignRef(contentRef, node)}
+          ref={setContentRef}
           className={cn(
             "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col bg-transparent",
             showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",

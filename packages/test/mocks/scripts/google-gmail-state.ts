@@ -447,8 +447,22 @@ export interface GoogleMockState {
   gmailDrafts: Map<string, GmailMockDraft>;
   gmailHistoryId: number;
   gmailHistory: GmailHistoryRecord[];
+  gmailFaultInjection: GoogleGmailFaultInjection | null;
   googleTokens: Map<string, GoogleMockToken>;
   calendar: GoogleCalendarMockState;
+}
+
+export type GoogleGmailFaultMode =
+  | "auth_expired"
+  | "rate_limit"
+  | "server_error"
+  | "partial_failure";
+
+export interface GoogleGmailFaultInjection {
+  mode: GoogleGmailFaultMode;
+  method?: string;
+  path?: string;
+  remaining?: number;
 }
 
 interface GoogleMockToken {
@@ -584,9 +598,26 @@ export function createGoogleMockState(opts?: {
         ],
       },
     ],
+    gmailFaultInjection: null,
     googleTokens: new Map(),
     calendar: createGoogleCalendarMockState(opts),
   };
+}
+
+export function setGoogleGmailFaultInjection(
+  state: GoogleMockState,
+  fault: GoogleGmailFaultInjection | null,
+): void {
+  state.gmailFaultInjection = fault
+    ? {
+        mode: fault.mode,
+        ...(fault.method ? { method: fault.method.toUpperCase() } : {}),
+        ...(fault.path ? { path: fault.path } : {}),
+        ...(typeof fault.remaining === "number"
+          ? { remaining: Math.max(0, Math.floor(fault.remaining)) }
+          : {}),
+      }
+    : null;
 }
 
 function gmailFixtureInternalDate(
@@ -1005,7 +1036,11 @@ function jsonError(
         ? "PERMISSION_DENIED"
         : statusCode === 404
           ? "NOT_FOUND"
-          : "INVALID_ARGUMENT";
+          : statusCode === 429
+            ? "RESOURCE_EXHAUSTED"
+            : statusCode >= 500
+              ? "INTERNAL"
+              : "INVALID_ARGUMENT";
   return jsonFixture(
     {
       error: {
@@ -1015,6 +1050,77 @@ function jsonError(
       },
     },
     statusCode,
+  );
+}
+
+function gmailFaultError(mode: GoogleGmailFaultMode): DynamicFixtureResponse {
+  if (mode === "auth_expired") {
+    return jsonError(
+      401,
+      "Request had invalid authentication credentials. Expected OAuth 2 access token.",
+    );
+  }
+  if (mode === "rate_limit") {
+    return {
+      ...jsonError(429, "Quota exceeded for Gmail mock requests"),
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "1",
+      },
+    };
+  }
+  return jsonError(500, "Backend Error");
+}
+
+function readGmailFaultMode(value: string | null): GoogleGmailFaultMode | null {
+  if (
+    value === "auth_expired" ||
+    value === "rate_limit" ||
+    value === "server_error" ||
+    value === "partial_failure"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function headerOrQueryGmailFault(
+  headers: http.IncomingHttpHeaders,
+  searchParams: URLSearchParams,
+): GoogleGmailFaultMode | null {
+  return (
+    readGmailFaultMode(headerValue(headers, "x-mockoon-fault")) ??
+    readGmailFaultMode(searchParams.get("_fault"))
+  );
+}
+
+function configuredGmailFault(
+  state: GoogleMockState,
+  method: string,
+  pathname: string,
+): GoogleGmailFaultMode | null {
+  const fault = state.gmailFaultInjection;
+  if (!fault) return null;
+  if (fault.method && fault.method !== method.toUpperCase()) return null;
+  if (fault.path && fault.path !== pathname) return null;
+  if (typeof fault.remaining === "number") {
+    if (fault.remaining <= 0) return null;
+    fault.remaining -= 1;
+  }
+  return fault.mode;
+}
+
+function gmailFaultForRequest(
+  state: GoogleMockState,
+  method: string,
+  pathname: string,
+  searchParams: URLSearchParams,
+  headers: http.IncomingHttpHeaders,
+): GoogleGmailFaultMode | null {
+  if (!pathname.startsWith("/gmail/v1/users/me/")) return null;
+  return (
+    headerOrQueryGmailFault(headers, searchParams) ??
+    configuredGmailFault(state, method, pathname)
   );
 }
 
@@ -1557,6 +1663,17 @@ export function googleDynamicFixture(
     });
   }
 
+  const gmailFault = gmailFaultForRequest(
+    state,
+    method,
+    pathname,
+    searchParams,
+    headers,
+  );
+  if (gmailFault && gmailFault !== "partial_failure") {
+    return gmailFaultError(gmailFault);
+  }
+
   const authFailure = enforceGoogleAuthIfPresent(
     state,
     method,
@@ -1635,6 +1752,39 @@ export function googleDynamicFixture(
       requestBody,
       "removeLabelIds",
     );
+    if (gmailFault === "partial_failure") {
+      const acceptedIds = ids.slice(0, Math.ceil(ids.length / 2));
+      const failedIds = ids.slice(acceptedIds.length);
+      const historyId =
+        acceptedIds.length > 0
+          ? modifyGmailMessages(
+              state,
+              acceptedIds,
+              addLabelIds,
+              removeLabelIds,
+              gmailSelection,
+            )
+          : String(state.gmailHistoryId);
+      ledgerEntry.gmail = {
+        action: "messages.batchModify",
+        batchIds: ids,
+        ids: acceptedIds,
+        ...(addLabelIds ? { addLabelIds } : {}),
+        ...(removeLabelIds ? { removeLabelIds } : {}),
+        historyId,
+        ...(ledgerEntry.runId ? { runId: ledgerEntry.runId } : {}),
+      };
+      return jsonFixture(
+        {
+          partialFailure: true,
+          requestedIds: ids,
+          succeededIds: acceptedIds,
+          failedIds,
+          message: `Partially modified ${acceptedIds.length} of ${ids.length} Gmail messages`,
+        },
+        207,
+      );
+    }
     const historyId = modifyGmailMessages(
       state,
       ids,

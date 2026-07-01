@@ -1,16 +1,21 @@
 /**
- * Register the smartglasses view for terminal rendering.
+ * Register the facewear + smartglasses views for terminal rendering.
  *
  * The agent terminal mounts plugin views by id from the `@elizaos/tui` terminal
- * registry. This makes the smartglasses `viewId: "smartglasses"` declaration
- * render for real in the terminal (the unified {@link SmartglassesSpatialView})
- * rather than only navigating a GUI shell. A module-level snapshot lets a host
- * push live diagnostics; on an agent with no glasses paired it defaults to a
- * disconnected report with the next-action setup hint.
+ * registry. This makes each view's `tui` modality render for real in the
+ * terminal (the unified {@link FacewearSpatialView} / {@link
+ * SmartglassesSpatialView}) rather than only navigating a GUI shell. A
+ * module-level snapshot per view lets a host push live data; with nothing paired
+ * each defaults to a sensible empty/disconnected state.
  */
 
 import { registerSpatialTerminalView } from "@elizaos/ui/spatial/tui";
 import { createElement } from "react";
+import {
+  EMPTY_FACEWEAR_SNAPSHOT,
+  type FacewearSnapshot,
+  FacewearSpatialView,
+} from "./components/FacewearSpatialView.tsx";
 import {
   type SmartglassesSnapshot,
   SmartglassesSpatialView,
@@ -43,7 +48,7 @@ const EMPTY_REPORT: HardwareReport = {
   },
 };
 
-const EMPTY: SmartglassesSnapshot = {
+const EMPTY_SMARTGLASSES: SmartglassesSnapshot = {
   report: EMPTY_REPORT,
   micEnabled: false,
   wifiSsid: "",
@@ -54,18 +59,31 @@ const EMPTY: SmartglassesSnapshot = {
   error: null,
 };
 
-let current: SmartglassesSnapshot = EMPTY;
+let currentFacewear: FacewearSnapshot = EMPTY_FACEWEAR_SNAPSHOT;
+let currentSmartglasses: SmartglassesSnapshot = EMPTY_SMARTGLASSES;
 
-/** Update the snapshot the registered terminal view renders from. */
+/** Update the snapshot the registered facewear terminal view renders from. */
+export function setFacewearTerminalSnapshot(next: FacewearSnapshot): void {
+  currentFacewear = next;
+}
+
+/** Register the facewear terminal view; returns an unregister function. */
+export function registerFacewearTerminalView(): () => void {
+  return registerSpatialTerminalView("facewear", () =>
+    createElement(FacewearSpatialView, { snapshot: currentFacewear }),
+  );
+}
+
+/** Update the snapshot the registered smartglasses terminal view renders from. */
 export function setSmartglassesTerminalSnapshot(
   next: SmartglassesSnapshot,
 ): void {
-  current = next;
+  currentSmartglasses = next;
 }
 
 /** Register the smartglasses terminal view; returns an unregister function. */
 export function registerSmartglassesTerminalView(): () => void {
   return registerSpatialTerminalView("smartglasses", () =>
-    createElement(SmartglassesSpatialView, { snapshot: current }),
+    createElement(SmartglassesSpatialView, { snapshot: currentSmartglasses }),
   );
 }

@@ -62,7 +62,7 @@ catalogued below.
 2. **React mount is blocked behind full plugin init.** `main.tsx:2185` does
    `await initializeAppModules()` *before* `mountReactApp()` (`main.tsx:2228`).
    `initializeAppModules` (`main.tsx:499-537`) `Promise.all`-awaits companion +
-   lifeops + vincent + task-coordinator + phone + steward + training + **~10
+   lifeops + task-coordinator + phone + steward + training + **~7
    side-effect plugins** (`plugin-registrations.ts`, 20 loader entries). Nothing
    paints until all of that downloads, parses, and runs `register*()`.
 3. **three.js (330 KB brotli, 4 chunks) is on the boot-critical path.**
@@ -159,12 +159,12 @@ catalogued below.
 
 1. **Problem.** `main.tsx:2185` `await initializeAppModules()` runs to completion
    *before* `mountReactApp()` (`main.tsx:2228`). `initializeAppModules`
-   (`main.tsx:499-537`) `Promise.all`-awaits companion, lifeops, vincent,
-   task-coordinator, phone, steward, training, plus all 10 side-effect plugins
-   (`plugin-registrations.ts`: feed, scape, hyperscape, defense-of-the-agents,
-   clawville, trajectory-logger, shopify-ui, hyperliquid-app, polymarket-app,
-   wallet-ui, app-model-tester). Every one of those chunks must download + parse +
-   run `register*()` before a single pixel paints. This contradicts the
+   (`main.tsx:499-537`) `Promise.all`-awaits companion, lifeops,
+   task-coordinator, phone, steward, training, plus all 7 side-effect plugins
+   (`plugin-registrations.ts`: feed, trajectory-logger, shopify,
+   hyperliquid-app, polymarket-app, wallet-ui, app-model-tester). Every one of
+   those chunks must download + parse + run
+   `register*()` before a single pixel paints. This contradicts the
    `packages/app/CLAUDE.md` boot-sequence claim that platform init runs
    "concurrently after mount" — module init is *before* mount.
 2. **Fix sketch.** Mount React with the boot-config it can render from (branding,

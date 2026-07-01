@@ -46,6 +46,7 @@ function checkProposalRespectsPrefs(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.propose-times-respect-prefs",
   title: "Proposed slots honor 09:00-18:00 prefs + 12:00-13:00 lunch blackout",
   domain: "lifeops.calendar",

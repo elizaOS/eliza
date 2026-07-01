@@ -1,8 +1,10 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "school-incident-parent-comms",
-  title: "Assistant handles school incident communications across parent and work calendars",
+  title:
+    "Assistant handles school incident communications across parent and work calendars",
   domain: "executive.family",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging"],
   isolation: "per-scenario",

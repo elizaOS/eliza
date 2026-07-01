@@ -10,7 +10,7 @@ A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
 shell), `@elizaos/app-core`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`,
 the `eliza-app` homepage, and many plugin UI packages (`plugin-wallet-ui`,
-`plugin-companion`, `plugin-messages`, `plugin-training`, `plugin-feed`, etc.).
+`plugin-messages`, `plugin-training`, `plugin-feed`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 **peer** deps (19.2.5) — the host owns React; plugin view bundles externalise
@@ -71,10 +71,17 @@ src/
                               downloader, engine, assignments), app-updates
   storage/                    Client-side storage utilities
   terminal/                   Terminal palette + theme helpers
-  backgrounds/                Static solid background host (BackgroundHost) for the
-                              agent shell. Marketing/landing/login pages use a solid theme
-                              background directly — no animated/video background.
-  companion/                  Companion bar (desktop) — CompanionBar, push-to-talk
+  backgrounds/                The unified app background. AppBackground (mounted once at
+                              the shell root) renders the persisted BackgroundConfig as a
+                              ShaderBackground (breathing color field) or ImageBackground
+                              (cover image), shared by the home + every view. It also
+                              installs useBackgroundApplyChannel — the single subscriber to
+                              the agent's `background:apply` view event (chat → background).
+                              BackgroundHost is a separate static solid host for
+                              marketing/landing/login pages. State + undo history live in
+                              state/useDisplayPreferences + state/persistence; the
+                              /background view and the BACKGROUND action (plugin-app-control)
+                              both drive the same store.
   views/                      View event bus + interact protocol (STANDARD_CAPABILITIES)
   hooks/                      ~35 hooks (useMediaQuery, useActivityEvents, useRenderGuard, ...);
                               many more use* hooks live alongside their features
@@ -123,7 +130,7 @@ This is a library — no dev server (use the host app's). Scripts from package.j
 
 ```bash
 bun run --cwd packages/ui build               # build:dist → dist/ (locked tsc + asset copy)
-bun run --cwd packages/ui typecheck           # generate:css-strings + tsgo --noEmit
+bun run --cwd packages/ui typecheck           # tsgo --noEmit
 bun run --cwd packages/ui test                # vitest (vitest.config.ts)
 bun run --cwd packages/ui test:e2e            # slow suite (vitest.e2e.config.ts)
 bun run --cwd packages/ui test:agent-surface-e2e   # agent-surface __e2e__ runner
@@ -134,12 +141,53 @@ bun run --cwd packages/ui test:chat-ambient-e2e    # /chat ambient orange-pulse 
 bun run --cwd packages/ui lint                # biome check src
 bun run --cwd packages/ui lint:fix            # biome check --write src
 bun run --cwd packages/ui format / format:fix # biome format
-bun run --cwd packages/ui generate:css-strings # regenerate CSS-as-string modules
 bun run --cwd packages/ui stories:dev         # Vite stories (stories/vite.config.ts)
 bun run --cwd packages/ui storybook           # Storybook dev server (port 6006)
 bun run --cwd packages/ui build-storybook     # Storybook static build
 bun run --cwd packages/ui clean
 ```
+
+## Testing
+
+The UI has four complementary layers. Prefer the cheapest layer that can catch a
+given class of bug; reach for the heavier ones when behaviour or pixels matter.
+
+1. **Unit / component (`test`, vitest + jsdom).** Co-locate `*.test.tsx` with the
+   component. Render with `@testing-library/react`, drive with `user-event`,
+   assert on DOM/roles. Setup pins `TZ=UTC`; for clock/RNG-derived UI opt into
+   `test/determinism.ts` (`withFrozenClock()`, `withSeededRandom()`) so renders
+   are reproducible. Runs in CI via `test:client`.
+
+2. **Determinism lint (`audit:ui-determinism`, repo root).** A TS-AST gate that
+   fails CI on **new** render-time nondeterminism — `Date.now()`, `new Date()`,
+   `Math.random()`, `crypto.randomUUID()`, locale-defaulted `toLocale*` in a
+   component/hook render path (the root cause of flaky screenshots). It classifies
+   by execution context, so effect/handler/timer usage is fine. Existing backlog
+   is tracked in `packages/scripts/ui-determinism-baseline.json`; if a new
+   occurrence is intentional, run `audit:ui-determinism:update` and commit the
+   baseline. Wired into `ci.yaml`.
+
+3. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
+   Storybook story in headless Chromium and HARD-fails on a story that throws,
+   renders blank, or raises a pageerror; console errors + serious/critical axe
+   a11y violations are enforced once their baselines are populated. A determinism
+   shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
+   screenshot byte-stable. App-context-dependent stories are classified soft
+   `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
+   first (`build-storybook --output-dir storybook-static`), then run the gate;
+   the dedicated `.github/workflows/ui-story-gate.yml` does both on `packages/ui`
+   changes. Reusable helpers: `determinism-shim.mjs`, `log-capture.mjs`
+   (durable frontend console/network artifact), `backend-log-capture.mjs`.
+
+4. **Isolated browser e2e (`test:*-e2e`, `src/**/__e2e__/`).** esbuild-bundle a
+   fixture → headless Chromium for gesture/animation/flow coverage no jsdom can
+   reach (chat sheet detents, home screen, onboarding, agent surface). Author one
+   when a behaviour depends on real layout, pointer events, or timing.
+
+Every new story automatically gains story-gate coverage; a new interactive
+component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
+(behaviour). The live full-app visual audit lives in `packages/app`
+(`audit:app`) and `packages/cloud-frontend` (`audit:cloud`).
 
 ## Config / env vars
 
@@ -189,5 +237,56 @@ This package mostly reads config injected by the host, not raw env vars:
   barrel to avoid the collision (see comment in `index.ts`).
 - Type root `src/types/index.ts` re-exports from `@elizaos/shared/types`; keep
   shared transport/domain types there rather than redefining them here.
+- **Files / attachments.** The "Files" tab (`components/pages/FilesView.tsx`,
+  routed at `/apps/files`) lists stored files via `ElizaClient.listFiles()` /
+  `deleteFile()` (`api/client-files.ts`) and reuses `utils/download-share.ts`
+  (transport-aware download/share — web `<a download>`/`showSaveFilePicker`,
+  native Capacitor bridge) + `utils/attachment-url.ts` (scheme allowlist) +
+  `attachmentPreviewKind` in `components/chat/MessageAttachments.tsx` (image /
+  PDF / text-code preview kinds derived from mime at read time). Large pasted
+  text becomes a text attachment via `utils/image-attachment.ts`. Don't add a
+  second download path or attachment-URL guard — reuse these. See issue #8876.
 - Build/test conventions and the repo-wide architecture rules live in the root
   AGENTS.md — don't restate them; follow them.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — UI surface:**
+- Before/after **full-page** screenshots — desktop **and** mobile, portrait **and** landscape, rest **and** hover (`bun run --cwd packages/app audit:app` where applicable) — not desktop-only-happy-path (see #9950).
+- A **video walkthrough** of the whole view/flow, plus browser console + network logs showing the real request/response and state change.
+- Empty, loading, error, and permission-denied states — and fill the per-view manual-review verdict (`good`/`needs-work`/`needs-eyeball`/`broken`); no page ships `needs-work`/`broken`.
+- The backend trajectory/logs behind anything the UI triggered.
+<!-- END: evidence-and-e2e-mandate -->

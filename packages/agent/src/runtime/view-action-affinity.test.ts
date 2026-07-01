@@ -16,6 +16,7 @@ import {
   setActiveViewElements,
   VIEW_ACTION_MAP,
   validateViewActionMap,
+  validateViewCoverage,
   viewScopedActionNames,
 } from "./view-action-affinity.ts";
 
@@ -32,18 +33,18 @@ describe("view-action-affinity", () => {
   it("stores and clears the active view", () => {
     expect(getActiveViewContext()).toBeNull();
     setActiveViewContext({
-      viewId: "companion",
-      viewLabel: "Companion",
+      viewId: "wallet",
+      viewLabel: "Wallet",
       viewType: "gui",
-      viewPath: "/companion",
+      viewPath: "/wallet",
     });
-    expect(getActiveViewContext()?.viewId).toBe("companion");
+    expect(getActiveViewContext()?.viewId).toBe("wallet");
     clearActiveViewContext();
     expect(getActiveViewContext()).toBeNull();
   });
 
   it("resolves scoped action names from the map", () => {
-    expect(viewScopedActionNames("companion")).toEqual(new Set(["PLAY_EMOTE"]));
+    expect(viewScopedActionNames("training")).toEqual(new Set(["RUNTIME"]));
     expect(viewScopedActionNames("orchestrator")).toEqual(new Set(["TASKS"]));
     expect(viewScopedActionNames("a-view-with-no-actions").size).toBe(0);
     expect(viewScopedActionNames(null).size).toBe(0);
@@ -61,8 +62,6 @@ describe("view-action-affinity", () => {
       true,
     );
     expect(viewScopedActionNames("facewear").has("XR_OPEN_VIEW")).toBe(true);
-    expect(viewScopedActionNames("scape").has("SCAPE")).toBe(true);
-    expect(viewScopedActionNames("2004scape").has("RS_2004")).toBe(true);
     expect(viewScopedActionNames("steward").has("WALLET")).toBe(true);
   });
 
@@ -80,22 +79,22 @@ describe("view-action-affinity", () => {
   });
 
   it("merges view-scoped actions into the full-param set", () => {
-    const set = buildFullParamActionSet([], viewScopedActionNames("companion"));
+    const set = buildFullParamActionSet([], viewScopedActionNames("wallet"));
     // Universal actions are always present…
     expect(set.has("REPLY")).toBe(true);
     // …and the active view's scoped action is kept full.
-    expect(set.has("PLAY_EMOTE")).toBe(true);
+    expect(set.has("EVM_SWAP")).toBe(true);
   });
 
   it("flags drift when a mapped action is not registered", () => {
     const warnings: string[] = [];
-    validateViewActionMap(["REPLY", "PLAY_EMOTE"], {
+    validateViewActionMap(["REPLY", "TASKS"], {
       warn: (m) => warnings.push(m),
     });
-    // TASKS / RUNTIME are not in the registered list → should warn.
-    expect(warnings.some((w) => w.includes("TASKS"))).toBe(true);
+    // RUNTIME is mapped but not in the registered list → should warn.
     expect(warnings.some((w) => w.includes("RUNTIME"))).toBe(true);
-    expect(warnings.some((w) => w.includes("PLAY_EMOTE"))).toBe(false);
+    // TASKS IS in the registered list → should not warn for it.
+    expect(warnings.some((w) => w.includes("TASKS"))).toBe(false);
   });
 
   it("does not warn when every mapped action is registered", () => {
@@ -106,6 +105,27 @@ describe("view-action-affinity", () => {
     const warnings: string[] = [];
     validateViewActionMap([...allMapped], { warn: (m) => warnings.push(m) });
     expect(warnings).toHaveLength(0);
+  });
+
+  // ── #8798: view-coverage completeness ─────────────────────────────────────
+
+  it("documents view has a domain-action affinity entry", () => {
+    // documents was the one CONTEXT_VIEWS surface previously missing from the
+    // map; #8798 added OWNER_DOCUMENTS.
+    expect(VIEW_ACTION_MAP.documents).toContain("OWNER_DOCUMENTS");
+  });
+
+  it("validateViewCoverage warns for a registered view with no affinity and no capabilities", () => {
+    const warnings: string[] = [];
+    const uncovered = validateViewCoverage(
+      ["wallet", "screenshare", "feed"],
+      ["feed"], // feed declares ViewCapability → covered
+      { warn: (m) => warnings.push(m) },
+    );
+    // wallet is mapped, feed has capabilities → only screenshare is uncovered.
+    expect(uncovered).toEqual(["screenshare"]);
+    expect(warnings.some((w) => w.includes("screenshare"))).toBe(true);
+    expect(warnings.some((w) => w.includes("wallet"))).toBe(false);
   });
 
   it("renders an awareness block describing the active view", () => {
@@ -122,6 +142,45 @@ describe("view-action-affinity", () => {
     // The wallet view scopes actions → the block names them for the planner.
     expect(block).toContain("most relevant while on this view");
     expect(block).toContain("EVM_SWAP");
+  });
+
+  it("acknowledges a just-happened switch only while it is fresh (#8788)", () => {
+    const base = {
+      viewId: "wallet",
+      viewLabel: "Wallet",
+      viewType: "gui" as const,
+      viewPath: "/wallet",
+    };
+    // Fresh agent-initiated switch → acknowledgement line present.
+    const fresh = renderActiveViewContextBlock({
+      ...base,
+      switchedAt: new Date().toISOString(),
+      source: "agent",
+    });
+    expect(fresh).toContain("just switched into this view");
+    expect(fresh).toContain("(you navigated here)");
+
+    // Fresh user-initiated switch → acknowledged, without the "you navigated" note.
+    const userFresh = renderActiveViewContextBlock({
+      ...base,
+      switchedAt: new Date().toISOString(),
+      source: "user",
+    });
+    expect(userFresh).toContain("just switched into this view");
+    expect(userFresh).not.toContain("(you navigated here)");
+
+    // Stale switch (older than the freshness window) → no acknowledgement.
+    const stale = renderActiveViewContextBlock({
+      ...base,
+      switchedAt: new Date(Date.now() - 20_000).toISOString(),
+      source: "agent",
+    });
+    expect(stale).not.toContain("just switched into this view");
+
+    // No switchedAt (sitting on the view) → no acknowledgement.
+    expect(renderActiveViewContextBlock(base)).not.toContain(
+      "just switched into this view",
+    );
   });
 });
 
@@ -214,7 +273,11 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
         [
           "grep",
           "-hoE",
-          `name: "(${escaped.join("|")})"`,
+          // Accept both an inline `name: "X"` and an action name pulled from a
+          // hoisted const (`const ACTION_NAME = "X"` then `name: ACTION_NAME`,
+          // as plugin-documents does). The leading `name:`/`=` keeps this from
+          // matching the VIEW_ACTION_MAP arrays themselves (`["X"]`).
+          `(name:|=) "(${escaped.join("|")})"`,
           "--",
           "plugins",
           "packages/agent/src",
@@ -229,7 +292,9 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
       // git grep exits 1 (no match) → declaredNames stays empty → each
       // assertion below fails with its per-name message.
     }
-    return new Set([...out.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]));
+    return new Set(
+      [...out.matchAll(/(?:name:|=) "([^"]+)"/g)].map((m) => m[1]),
+    );
   })();
 
   it.each(names)("action %s is declared somewhere in source", (name) => {
@@ -245,8 +310,8 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     "# Available Actions",
     "- REPLY: respond to the user",
     "  parameters: { text: string }",
-    "- PLAY_EMOTE: play an avatar emote",
-    "  parameters: { emote: string, intensity: number }",
+    "- EVM_SWAP: swap tokens on an EVM chain",
+    "  parameters: { fromToken: string, amount: number }",
     "- WHATEVER: some unrelated action",
     "  parameters: { foo: string }",
     "",
@@ -256,9 +321,9 @@ describe("compactActionsForIntent with view-scoped actions", () => {
 
   it("summarizes an action's params when neither intent nor view keeps it", () => {
     const out = compactActionsForIntent(PROMPT);
-    // PLAY_EMOTE param schema is dropped for plain chat with no active view…
-    expect(out).toContain("- PLAY_EMOTE: play an avatar emote");
-    expect(out).not.toContain("emote: string, intensity: number");
+    // EVM_SWAP param schema is dropped for plain chat with no active view…
+    expect(out).toContain("- EVM_SWAP: swap tokens on an EVM chain");
+    expect(out).not.toContain("fromToken: string, amount: number");
     // …REPLY (universal) keeps its params.
     expect(out).toContain("text: string");
   });
@@ -266,10 +331,10 @@ describe("compactActionsForIntent with view-scoped actions", () => {
   it("keeps the active view's scoped action at full param detail", () => {
     const out = compactActionsForIntent(
       PROMPT,
-      viewScopedActionNames("companion"),
+      viewScopedActionNames("wallet"),
     );
-    // The companion view scopes PLAY_EMOTE → its params survive compaction.
-    expect(out).toContain("emote: string, intensity: number");
+    // The wallet view scopes EVM_SWAP → its params survive compaction.
+    expect(out).toContain("fromToken: string, amount: number");
     // The unrelated action still loses param detail.
     expect(out).not.toContain("foo: string");
   });
@@ -280,10 +345,10 @@ describe("compactActionsForIntent with view-scoped actions", () => {
   // integration contract the prompt-optimization wiring implements.
   it("end-to-end: active view weights its action AND injects awareness", () => {
     setActiveViewContext({
-      viewId: "companion",
-      viewLabel: "Companion",
+      viewId: "wallet",
+      viewLabel: "Wallet",
       viewType: "gui",
-      viewPath: "/companion",
+      viewPath: "/wallet",
     });
     const active = getActiveViewContext();
     let prompt = compactActionsForIntent(
@@ -293,8 +358,8 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     if (active && prompt.includes("# Available Actions")) {
       prompt = applyActiveViewAwareness(prompt, active);
     }
-    // Weighting: the companion view's PLAY_EMOTE keeps full params…
-    expect(prompt).toContain("emote: string, intensity: number");
+    // Weighting: the wallet view's EVM_SWAP keeps full params…
+    expect(prompt).toContain("fromToken: string, amount: number");
     // …unrelated action stays summarized…
     expect(prompt).not.toContain("foo: string");
     // …and awareness is injected once, before the action catalogue.

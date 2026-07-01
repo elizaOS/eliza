@@ -1,8 +1,10 @@
 import { existsSync, statSync } from "node:fs";
+import { filterByAccessContext } from "../../access-control/filter";
 import { createUniqueUuid } from "../../entities";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
+	type AccessContext,
 	type Content,
 	type CustomMetadata,
 	type IAgentRuntime,
@@ -23,6 +25,7 @@ import {
 	extractTextFromDocument,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
+import { embedRecallQuery } from "./recall-embed.ts";
 import type {
 	AddDocumentOptions,
 	DocumentAddedFrom,
@@ -325,6 +328,7 @@ export class DocumentService extends Service {
 	private async filterVisibleMemories(
 		memories: Memory[],
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<Memory[]> {
 		const visible: Memory[] = [];
 		for (const memory of memories) {
@@ -332,7 +336,14 @@ export class DocumentService extends Service {
 				visible.push(memory);
 			}
 		}
-		return visible;
+		// When the caller threads in an AccessContext (who is asking, in which
+		// world, with what role), apply the scope-read primitive as a second,
+		// strictly-subtractive gate. A memory must clear BOTH this and
+		// `canAccessDocument` above to be returned, so a requester can never widen
+		// their view by routing through this path. With no AccessContext the
+		// behaviour is unchanged (single-tenant byte-for-byte).
+		if (!accessContext) return visible;
+		return filterByAccessContext(visible, accessContext, this.runtime.agentId);
 	}
 
 	async getDocumentById(
@@ -867,6 +878,7 @@ export class DocumentService extends Service {
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
@@ -892,15 +904,20 @@ export class DocumentService extends Service {
 		}
 
 		if (effectiveMode === "keyword") {
-			return this._keywordSearch(queryText, filterScope, message);
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
 		}
 
 		if (effectiveMode === "vector") {
-			return this._vectorSearch(queryText, filterScope, message);
+			return this._vectorSearch(queryText, filterScope, message, accessContext);
 		}
 
 		// hybrid: vector + BM25 combined
-		return this._hybridSearch(queryText, filterScope, message);
+		return this._hybridSearch(queryText, filterScope, message, accessContext);
 	}
 
 	/** Pure vector (cosine-similarity) search — original behaviour. */
@@ -908,23 +925,39 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
-		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: queryText,
-		});
+		// Bound the recall embed and fail open to keyword/BM25 recall on a
+		// slow/unavailable embed (issue #47): a slow embed costs recall richness,
+		// never reply latency. `embedRecallQuery` caches + dedupes per turn.
+		const embedding = await embedRecallQuery(this.runtime, queryText);
+		if (!embedding) {
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
+		}
 
 		const fragments = await this.runtime.searchMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
-			query: queryText,
+			// Vector mode ranks purely by cosine: do NOT pass `query` (that triggers
+			// a runtime BM25 rerank that drops zero-keyword-overlap candidates — i.e.
+			// silently keyword-filters the semantic results this mode exists to
+			// return). `count` is the param the adapter honours (`limit` is ignored,
+			// so the pool was silently capped at the default 10).
 			...filterScope,
-			limit: 20,
+			count: 20,
 			match_threshold: 0.1,
+			accessContext,
 		});
 
 		const visibleFragments = await this.filterVisibleMemories(
 			fragments.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
 			message,
+			accessContext,
 		);
 
 		return visibleFragments
@@ -946,12 +979,14 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
 		const allFragments = await this.runtime.getMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			agentId: this.runtime.agentId,
 			...filterScope,
 			count: 1000,
+			accessContext,
 		});
 
 		const visibleFragments = await this.filterVisibleMemories(
@@ -959,6 +994,7 @@ export class DocumentService extends Service {
 				this.isDocumentFragmentMemory(fragment),
 			),
 			message,
+			accessContext,
 		);
 		const valid = visibleFragments.filter(
 			(f) => f.id !== undefined && f.content.text,
@@ -995,24 +1031,41 @@ export class DocumentService extends Service {
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		message?: Memory,
+		accessContext?: AccessContext,
 	): Promise<StoredDocument[]> {
-		const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: queryText,
-		});
+		// Bound the recall embed and fail open to keyword/BM25 recall on a
+		// slow/unavailable embed (issue #47). `_keywordSearch` is the same BM25
+		// path hybrid would otherwise blend in, so a slow embed degrades
+		// gracefully to keyword-only recall instead of blocking the reply.
+		const embedding = await embedRecallQuery(this.runtime, queryText);
+		if (!embedding) {
+			return this._keywordSearch(
+				queryText,
+				filterScope,
+				message,
+				accessContext,
+			);
+		}
 
-		// Fetch a larger candidate set so BM25 can re-rank meaningfully
+		// Fetch a larger PURE-VECTOR candidate set so the explicit BM25 blend below
+		// can re-rank meaningfully. Do NOT pass `query`: that triggers a runtime
+		// BM25 rerank that drops zero-overlap candidates *before* the blend, so the
+		// 0.6·vector + 0.4·bm25 combine never sees the semantic-only matches. And
+		// use `count` (the adapter honours it; `limit` was ignored → pool capped at
+		// the default 10, defeating "fetch a larger candidate set").
 		const candidates = await this.runtime.searchMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,
 			embedding,
-			query: queryText,
 			...filterScope,
-			limit: 40,
+			count: 40,
 			match_threshold: 0.05,
+			accessContext,
 		});
 
 		const visibleCandidates = await this.filterVisibleMemories(
 			candidates.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
 			message,
+			accessContext,
 		);
 		const valid = visibleCandidates.filter(
 			(f) => f.id !== undefined && f.content.text,
@@ -1433,9 +1486,9 @@ export class DocumentService extends Service {
 			},
 		);
 
-		for (const fragment of fragments) {
-			await this.processDocumentFragment(fragment);
-		}
+		await this.processDocumentFragmentsBatched(fragments, {
+			continueOnError: false,
+		});
 
 		return {
 			documentId: options.documentId,
@@ -1531,16 +1584,9 @@ export class DocumentService extends Service {
 			finalScope,
 		);
 
-		for (const fragment of fragments) {
-			try {
-				await this.processDocumentFragment(fragment);
-			} catch (error) {
-				logger.error(
-					{ error },
-					`DocumentService: Error processing fragment ${fragment.id} for document ${item.id}`,
-				);
-			}
-		}
+		await this.processDocumentFragmentsBatched(fragments, {
+			continueOnError: true,
+		});
 	}
 
 	private async processDocumentFragment(fragment: Memory): Promise<void> {
@@ -1551,6 +1597,134 @@ export class DocumentService extends Service {
 		} catch (error) {
 			logger.error({ error }, `Error processing fragment ${fragment.id}`);
 			throw error;
+		}
+	}
+
+	/**
+	 * Embed + persist a batch of document fragments.
+	 *
+	 * When a {@link ModelType.TEXT_EMBEDDING_BATCH} model is registered (e.g. the
+	 * cloud plugin), every fragment is embedded in ONE round-trip instead of N
+	 * serial single-text embeds, the returned vectors are written back IN ORDER
+	 * (`fragments[i].embedding = vectors[i]`), then each fragment is persisted.
+	 *
+	 * The embedded text is exactly `fragment.content.text` — the same value
+	 * {@link IAgentRuntime.addEmbeddingToMemory} embeds (see runtime.ts:
+	 * `useModel(TEXT_EMBEDDING, { text: memory.content.text })`) — so batched and
+	 * serial fragments receive byte-for-byte identical embedding input.
+	 *
+	 * Any batch failure (no batch model registered, the model call throwing, a
+	 * returned vector count that does not match the fragment count, or an empty
+	 * vector for any fragment) falls back to the existing serial per-fragment path
+	 * so no fragment is left unembedded — and none is persisted with an empty
+	 * embedding.
+	 *
+	 * @param fragments fragments to embed + persist, processed in array order.
+	 * @param options.continueOnError when true, a single fragment's persist
+	 *   failure is logged and skipped (matching the per-fragment try/catch at the
+	 *   `_internalAddDocument` call site); when false the error propagates
+	 *   (matching the `updateDocument` call site).
+	 */
+	private async processDocumentFragmentsBatched(
+		fragments: Memory[],
+		options: { continueOnError: boolean },
+	): Promise<void> {
+		if (fragments.length === 0) {
+			return;
+		}
+
+		// No batch model → keep the original serial behaviour unchanged.
+		if (!this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)) {
+			await this.processDocumentFragmentsSerial(fragments, options);
+			return;
+		}
+
+		let vectors: number[][];
+		try {
+			// Text source matches addEmbeddingToMemory exactly: memory.content.text.
+			// Document fragments are built from text chunks, so text is always a
+			// string; surface a genuinely-malformed fragment explicitly rather than
+			// silently embedding "" (the try/catch below then falls back to serial).
+			const texts = fragments.map((fragment) => {
+				const text = fragment.content.text;
+				if (typeof text !== "string") {
+					throw new Error(
+						"[DocumentService] document fragment missing text; cannot batch-embed",
+					);
+				}
+				return text;
+			});
+			vectors = await this.runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, {
+				texts,
+			});
+			if (!Array.isArray(vectors) || vectors.length !== fragments.length) {
+				// A count/shape mismatch can't be mapped back to fragments safely.
+				throw new Error(
+					`TEXT_EMBEDDING_BATCH returned ${
+						Array.isArray(vectors) ? vectors.length : "a non-array"
+					} vectors for ${fragments.length} fragments`,
+				);
+			}
+			// An empty inner vector is a failed generation, not a real embedding;
+			// persisting it would silently mark the fragment "embedded" with no
+			// vector (a recall gap) — the same case services/embedding.ts refuses in
+			// persistEmbedding. Treat it as a batch failure and fall back to serial.
+			if (
+				vectors.some((vector) => !Array.isArray(vector) || vector.length === 0)
+			) {
+				throw new Error(
+					"TEXT_EMBEDDING_BATCH returned an empty vector for at least one fragment",
+				);
+			}
+		} catch (error) {
+			logger.warn(
+				{ error },
+				"[DocumentService] Batch fragment embedding failed; falling back to serial per-fragment embedding",
+			);
+			await this.processDocumentFragmentsSerial(fragments, options);
+			return;
+		}
+
+		// Vectors are valid + count-matched. Assign in order, then persist each.
+		for (let i = 0; i < fragments.length; i++) {
+			fragments[i].embedding = vectors[i];
+		}
+
+		for (const fragment of fragments) {
+			try {
+				await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
+			} catch (error) {
+				logger.error(
+					{ error },
+					`[DocumentService] Error persisting fragment ${fragment.id}`,
+				);
+				if (!options.continueOnError) {
+					throw error;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Serial per-fragment embed + persist path. The fallback used when no
+	 * TEXT_EMBEDDING_BATCH model is registered or the batch call fails.
+	 */
+	private async processDocumentFragmentsSerial(
+		fragments: Memory[],
+		options: { continueOnError: boolean },
+	): Promise<void> {
+		for (const fragment of fragments) {
+			try {
+				await this.processDocumentFragment(fragment);
+			} catch (error) {
+				if (!options.continueOnError) {
+					throw error;
+				}
+				logger.error(
+					{ error },
+					`[DocumentService] Error processing fragment ${fragment.id} during serial fallback`,
+				);
+			}
 		}
 	}
 

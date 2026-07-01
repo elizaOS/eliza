@@ -15,12 +15,61 @@ import {
 
 export type ElizaNativeTrainingExample = ElizaNativeTrajectoryRow;
 
+/**
+ * Canonical, ordered list of trajectory training tasks. The union type and
+ * every per-task map/record in this module derive from this single list so
+ * adding a task (e.g. a LifeOps capability) is a one-line change that the
+ * compiler then forces to be handled everywhere a full record is required.
+ *
+ * The first six are the generic-runtime decision tasks; the rest are the
+ * LifeOps per-capability tasks introduced for the GEPA/trajectory optimization
+ * loop (issue #8795). They mirror `LIFEOPS_OPTIMIZED_PROMPT_TASKS` in
+ * `@elizaos/core` (kept in sync — core is the source of truth for the artifact
+ * store, this list is the source of truth for the trajectory dataset buckets).
+ */
+export const ALL_TRAJECTORY_TRAINING_TASKS = [
+  "should_respond",
+  "context_routing",
+  "action_planner",
+  "response",
+  "media_description",
+  "view_context",
+  // LifeOps per-capability tasks (#8795).
+  "calendar_extract",
+  "schedule_plan",
+  "reminder_dispatch",
+  "inbox_triage",
+  "meeting_prep",
+  "morning_brief",
+  "health_checkin",
+  "screentime_recap",
+] as const;
+
 export type TrajectoryTrainingTask =
-  | "should_respond"
-  | "context_routing"
-  | "action_planner"
-  | "response"
-  | "media_description";
+  (typeof ALL_TRAJECTORY_TRAINING_TASKS)[number];
+
+/** The LifeOps per-capability subset of {@link ALL_TRAJECTORY_TRAINING_TASKS}. */
+export const LIFEOPS_TRAINING_TASKS: readonly TrajectoryTrainingTask[] = [
+  "calendar_extract",
+  "schedule_plan",
+  "reminder_dispatch",
+  "inbox_triage",
+  "meeting_prep",
+  "morning_brief",
+  "health_checkin",
+  "screentime_recap",
+];
+
+/** Build a full per-task record by deriving an entry for every training task. */
+export function buildTaskRecord<T>(
+  make: (task: TrajectoryTrainingTask) => T,
+): Record<TrajectoryTrainingTask, T> {
+  const out = {} as Record<TrajectoryTrainingTask, T>;
+  for (const task of ALL_TRAJECTORY_TRAINING_TASKS) {
+    out[task] = make(task);
+  }
+  return out;
+}
 
 export interface TrajectoryTaskDatasetPaths {
   shouldRespondPath: string;
@@ -28,6 +77,15 @@ export interface TrajectoryTaskDatasetPaths {
   actionPlannerPath: string;
   responsePath: string;
   mediaDescriptionPath: string;
+  viewContextPath: string;
+  calendarExtractPath: string;
+  schedulePlanPath: string;
+  reminderDispatchPath: string;
+  inboxTriagePath: string;
+  meetingPrepPath: string;
+  morningBriefPath: string;
+  healthCheckinPath: string;
+  screentimeRecapPath: string;
   summaryPath: string;
 }
 
@@ -65,6 +123,15 @@ const TASK_FILE_NAMES: Record<TrajectoryTrainingTask, string> = {
   action_planner: "action_planner_trajectories.jsonl",
   response: "response_trajectories.jsonl",
   media_description: "media_description_trajectories.jsonl",
+  view_context: "view_context_trajectories.jsonl",
+  calendar_extract: "calendar_extract_trajectories.jsonl",
+  schedule_plan: "schedule_plan_trajectories.jsonl",
+  reminder_dispatch: "reminder_dispatch_trajectories.jsonl",
+  inbox_triage: "inbox_triage_trajectories.jsonl",
+  meeting_prep: "meeting_prep_trajectories.jsonl",
+  morning_brief: "morning_brief_trajectories.jsonl",
+  health_checkin: "health_checkin_trajectories.jsonl",
+  screentime_recap: "screentime_recap_trajectories.jsonl",
 };
 
 const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
@@ -86,33 +153,15 @@ interface TrajectoryTaskExtractionResult {
 }
 
 function createEmptyExampleMap(): TaskExampleMap {
-  return {
-    should_respond: [],
-    context_routing: [],
-    action_planner: [],
-    response: [],
-    media_description: [],
-  };
+  return buildTaskRecord<ElizaNativeTrainingExample[]>(() => []);
 }
 
 function createEmptyCountMap(): TaskCountMap {
-  return {
-    should_respond: 0,
-    context_routing: 0,
-    action_planner: 0,
-    response: 0,
-    media_description: 0,
-  };
+  return buildTaskRecord<number>(() => 0);
 }
 
 function createEmptyTrajectoryIdMap(): TaskTrajectoryIdMap {
-  return {
-    should_respond: new Set<string>(),
-    context_routing: new Set<string>(),
-    action_planner: new Set<string>(),
-    response: new Set<string>(),
-    media_description: new Set<string>(),
-  };
+  return buildTaskRecord<Set<string>>(() => new Set<string>());
 }
 
 function normalizeToken(value: unknown): string {
@@ -129,17 +178,18 @@ function normalizeToken(value: unknown): string {
     .replace(/_+/g, "_");
 }
 
+const TRAINING_TASK_SET = new Set<string>(ALL_TRAJECTORY_TRAINING_TASKS);
+
 function normalizeTrainingTask(value: unknown): TrajectoryTrainingTask | null {
   const normalized = normalizeToken(value);
-  if (
-    normalized === "should_respond" ||
-    normalized === "context_routing" ||
-    normalized === "action_planner" ||
-    normalized === "response" ||
-    normalized === "reply" ||
-    normalized === "media_description"
-  ) {
-    return normalized === "reply" ? "response" : normalized;
+  if (normalized === "reply") {
+    return "response";
+  }
+  // Honors an explicit `task_type` of any known training task — including the
+  // LifeOps per-capability tasks, which is how LifeOps planner/extractor
+  // trajectories bucket into their own datasets (#8795).
+  if (TRAINING_TASK_SET.has(normalized)) {
+    return normalized as TrajectoryTrainingTask;
   }
   return null;
 }
@@ -181,6 +231,19 @@ function hasMessageHandlerJsonFields(text: string): boolean {
   if (!parsed) return false;
   const candidate = getMessageHandlerCandidate(parsed);
   return Boolean(candidate);
+}
+
+/**
+ * Contextual view-selection call (the `view_context` evaluator). Its response is
+ * a `{viewId, reason?}` JSON object — `viewId` is a registered view id or the
+ * decline sentinel ("none"). We classify on the structural `viewId` string field
+ * rather than a value allowlist so the bucket survives the matcher/registry
+ * growing new views, mirroring how `hasContextRoutingFields` keys on shape.
+ */
+function hasViewContextFields(text: string): boolean {
+  const parsed = parseJsonObject(text);
+  if (!parsed) return false;
+  return typeof parsed.viewId === "string" && parsed.viewId.trim().length > 0;
 }
 
 function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
@@ -297,11 +360,30 @@ function inferTasksForCall(call: TrajectoryCallLike): TrajectoryTrainingTask[] {
   }
 
   if (
+    hints.includes("view_context") ||
+    hints.includes("view_selection") ||
+    hasViewContextFields(response)
+  ) {
+    tasks.add("view_context");
+  }
+
+  if (
     hints.includes("response") ||
     hints.includes("reply") ||
     hints.includes("message_response")
   ) {
     tasks.add("response");
+  }
+
+  // LifeOps per-capability tasks (#8795): a planner/extractor call that tags
+  // itself with a LifeOps task (via purpose / stepType / actionType / a tag, or
+  // an explicit `task_type`) buckets into that LifeOps dataset. This is the
+  // raw-trajectory counterpart of the explicit `task_type` honored on the
+  // native-row path; the two together let real LifeOps trajectories optimize.
+  for (const lifeOpsTask of LIFEOPS_TRAINING_TASKS) {
+    if (hints.includes(lifeOpsTask)) {
+      tasks.add(lifeOpsTask);
+    }
   }
 
   if (
@@ -335,6 +417,10 @@ function buildExampleForTask(
     if (!normalizeMessageHandlerJson(response)) {
       return null;
     }
+  }
+
+  if (task === "view_context" && !hasViewContextFields(response)) {
+    return null;
   }
 
   const row = buildElizaNativeTrajectoryRows([trajectory]).find(
@@ -398,6 +484,9 @@ function isNativeRowUsableForTask(
   if (task === "should_respond" || task === "context_routing") {
     return normalizeMessageHandlerJson(row.response.text) !== null;
   }
+  if (task === "view_context") {
+    return hasViewContextFields(row.response.text);
+  }
   return true;
 }
 
@@ -416,13 +505,7 @@ function collectTrajectoryExamplesByTask(
   const trajectories =
     typeof trajectoriesInput === "string" ? [] : trajectoriesInput;
   const requestedTasks = new Set<TrajectoryTrainingTask>(
-    tasks ?? [
-      "should_respond",
-      "context_routing",
-      "action_planner",
-      "response",
-      "media_description",
-    ],
+    tasks ?? ALL_TRAJECTORY_TRAINING_TASKS,
   );
   const examples = createEmptyExampleMap();
   const sourceCallCounts = createEmptyCountMap();
@@ -536,13 +619,7 @@ export async function exportTrajectoryTaskDatasets(
       ? extractElizaNativeRowsFromExportText(trajectories)
       : [];
   const { examples } = extraction;
-  const counts: Record<TrajectoryTrainingTask, number> = {
-    should_respond: examples.should_respond.length,
-    context_routing: examples.context_routing.length,
-    action_planner: examples.action_planner.length,
-    response: examples.response.length,
-    media_description: examples.media_description.length,
-  };
+  const counts = buildTaskRecord<number>((task) => examples[task].length);
 
   const paths: TrajectoryTaskDatasetPaths = {
     shouldRespondPath: join(outputDir, TASK_FILE_NAMES.should_respond),
@@ -550,6 +627,15 @@ export async function exportTrajectoryTaskDatasets(
     actionPlannerPath: join(outputDir, TASK_FILE_NAMES.action_planner),
     responsePath: join(outputDir, TASK_FILE_NAMES.response),
     mediaDescriptionPath: join(outputDir, TASK_FILE_NAMES.media_description),
+    viewContextPath: join(outputDir, TASK_FILE_NAMES.view_context),
+    calendarExtractPath: join(outputDir, TASK_FILE_NAMES.calendar_extract),
+    schedulePlanPath: join(outputDir, TASK_FILE_NAMES.schedule_plan),
+    reminderDispatchPath: join(outputDir, TASK_FILE_NAMES.reminder_dispatch),
+    inboxTriagePath: join(outputDir, TASK_FILE_NAMES.inbox_triage),
+    meetingPrepPath: join(outputDir, TASK_FILE_NAMES.meeting_prep),
+    morningBriefPath: join(outputDir, TASK_FILE_NAMES.morning_brief),
+    healthCheckinPath: join(outputDir, TASK_FILE_NAMES.health_checkin),
+    screentimeRecapPath: join(outputDir, TASK_FILE_NAMES.screentime_recap),
     summaryPath: join(outputDir, "trajectory_dataset_summary.json"),
   };
   const summary: TrajectoryTaskDatasetSummary = {
@@ -562,68 +648,26 @@ export async function exportTrajectoryTaskDatasets(
     skippedNonNativeRows: extraction.skippedNonNativeRows,
     warnings: extraction.warnings,
     counts,
-    tasks: [
-      "should_respond",
-      "context_routing",
-      "action_planner",
-      "response",
-      "media_description",
-    ].filter(
-      (task) => tasks?.includes(task as TrajectoryTrainingTask) ?? true,
-    ) as TrajectoryTrainingTask[],
-    taskMetrics: {
-      should_respond: {
-        exampleCount: counts.should_respond,
-        sourceCallCount: extraction.sourceCallCounts.should_respond,
-        sourceTrajectoryCount:
-          extraction.sourceTrajectoryIds.should_respond.size,
-      },
-      context_routing: {
-        exampleCount: counts.context_routing,
-        sourceCallCount: extraction.sourceCallCounts.context_routing,
-        sourceTrajectoryCount:
-          extraction.sourceTrajectoryIds.context_routing.size,
-      },
-      action_planner: {
-        exampleCount: counts.action_planner,
-        sourceCallCount: extraction.sourceCallCounts.action_planner,
-        sourceTrajectoryCount:
-          extraction.sourceTrajectoryIds.action_planner.size,
-      },
-      response: {
-        exampleCount: counts.response,
-        sourceCallCount: extraction.sourceCallCounts.response,
-        sourceTrajectoryCount: extraction.sourceTrajectoryIds.response.size,
-      },
-      media_description: {
-        exampleCount: counts.media_description,
-        sourceCallCount: extraction.sourceCallCounts.media_description,
-        sourceTrajectoryCount:
-          extraction.sourceTrajectoryIds.media_description.size,
-      },
-    },
+    tasks: ALL_TRAJECTORY_TRAINING_TASKS.filter(
+      (task) => tasks?.includes(task) ?? true,
+    ),
+    taskMetrics: buildTaskRecord((task) => ({
+      exampleCount: counts[task],
+      sourceCallCount: extraction.sourceCallCounts[task],
+      sourceTrajectoryCount: extraction.sourceTrajectoryIds[task].size,
+    })),
   };
 
-  await writeFile(
-    paths.shouldRespondPath,
-    `${examples.should_respond.map((example) => JSON.stringify(example)).join("\n")}${examples.should_respond.length > 0 ? "\n" : ""}`,
-  );
-  await writeFile(
-    paths.contextRoutingPath,
-    `${examples.context_routing.map((example) => JSON.stringify(example)).join("\n")}${examples.context_routing.length > 0 ? "\n" : ""}`,
-  );
-  await writeFile(
-    paths.actionPlannerPath,
-    `${examples.action_planner.map((example) => JSON.stringify(example)).join("\n")}${examples.action_planner.length > 0 ? "\n" : ""}`,
-  );
-  await writeFile(
-    paths.responsePath,
-    `${examples.response.map((example) => JSON.stringify(example)).join("\n")}${examples.response.length > 0 ? "\n" : ""}`,
-  );
-  await writeFile(
-    paths.mediaDescriptionPath,
-    `${examples.media_description.map((example) => JSON.stringify(example)).join("\n")}${examples.media_description.length > 0 ? "\n" : ""}`,
-  );
+  // Write one JSONL per task (empty file when a task had no examples), so the
+  // on-disk dataset layout always has a slot for every task — including the
+  // LifeOps capabilities. Mirrors the prior per-task writeFile behavior.
+  for (const task of ALL_TRAJECTORY_TRAINING_TASKS) {
+    const rows = examples[task];
+    await writeFile(
+      join(outputDir, TASK_FILE_NAMES[task]),
+      `${rows.map((example) => JSON.stringify(example)).join("\n")}${rows.length > 0 ? "\n" : ""}`,
+    );
+  }
 
   await writeFile(paths.summaryPath, JSON.stringify(summary, null, 2));
 

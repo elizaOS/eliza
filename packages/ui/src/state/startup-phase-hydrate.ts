@@ -14,9 +14,14 @@ import {
   client,
   type StreamEventEnvelope,
 } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
-import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
+import {
+  type AppEmoteEventDetail,
+  dispatchAppEmoteEvent,
+  dispatchVoiceControl,
+} from "../events";
 import {
   getWindowNavigationPath,
   isRouteRootPath,
@@ -153,14 +158,22 @@ export async function runHydrating(
   deps.setFirstRunLoading(false);
   if (greetConvId) void deps.requestGreetingWhenRunningRef.current(greetConvId);
 
-  void deps.loadWorkbench();
-  void deps.loadPlugins();
+  const appShellRoutesSupported = supportsFullAppShellRoutes(
+    client.getBaseUrl(),
+  );
+
+  if (appShellRoutesSupported) {
+    void deps.loadWorkbench();
+    void deps.loadPlugins();
+  }
   void deps.loadCharacter();
 
-  // Warm the apps catalog cache so the Apps tab opens with the real
-  // sections instead of the placeholder skeleton. Fire-and-forget; the
-  // Apps view also loads on its own mount as a fallback.
-  void prefetchAppsCatalog();
+  if (appShellRoutesSupported) {
+    // Warm the apps catalog cache so the Apps tab opens with the real
+    // sections instead of the placeholder skeleton. Fire-and-forget; the
+    // Apps view also loads on its own mount as a fallback.
+    void prefetchAppsCatalog();
+  }
 
   void deps.pollCloudCredits();
 
@@ -173,13 +186,15 @@ export async function runHydrating(
   // the independent wallet fetch runs in parallel. Fire-and-forget: a failure
   // here must never block or fail the boot.
   const decorateShellAfterReady = (): void => {
-    void (async () => {
-      try {
-        deps.setWalletAddresses(await client.getWalletAddresses());
-      } catch (e: unknown) {
-        warn("wallet addresses", e);
-      }
-    })();
+    if (appShellRoutesSupported) {
+      void (async () => {
+        try {
+          deps.setWalletAddresses(await client.getWalletAddresses());
+        } catch (e: unknown) {
+          warn("wallet addresses", e);
+        }
+      })();
+    }
 
     void (async () => {
       // Avatar / VRM selection — resolve from server config, then stream
@@ -254,7 +269,7 @@ export async function runHydrating(
       void deps.loadCharacter();
     } else if (isRoot) deps.setTab(resolveDefaultLandingTab());
   }
-  if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
+  if (urlTab && urlTab !== "chat") {
     deps.setTabRaw(urlTab);
     if (urlTab === "plugins") {
       void deps.loadPlugins();
@@ -301,6 +316,9 @@ export function bindReadyPhase(
   let handleVis: (() => void) | null = null;
 
   const doHydratePty = () => {
+    const baseUrl =
+      typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+    if (!supportsFullAppShellRoutes(baseUrl)) return;
     client
       .getCodingAgentStatus()
       .then((s) => {
@@ -334,6 +352,14 @@ export function bindReadyPhase(
   // the catch-all that hydrates once the agent is running if the live status
   // event was missed (e.g. status delivered via a non-WS source).
   ptyPollInterval = setInterval(() => {
+    // Skip the 5s network poll while the tab is hidden — the WS status events
+    // still hydrate on change; this interval is only the missed-event catch-all.
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible"
+    ) {
+      return;
+    }
     const running = depsRef.current?.agentRunningRef.current ?? false;
     hydrateOnRunning(running);
     if (running && depsRef.current?.hasPtySessionsRef.current) doHydratePty();
@@ -436,6 +462,10 @@ export function bindReadyPhase(
           ? data.viewType
           : undefined;
       const action = typeof data.action === "string" ? data.action : undefined;
+      const subview =
+        typeof data.subview === "string" && data.subview.length > 0
+          ? data.subview
+          : undefined;
       const alwaysOnTop = data.alwaysOnTop === true;
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
@@ -445,6 +475,7 @@ export function bindReadyPhase(
             viewLabel,
             viewType,
             action,
+            subview,
             alwaysOnTop,
           },
         }),
@@ -508,6 +539,16 @@ export function bindReadyPhase(
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
+      // The START/STOP_TRANSCRIPTION agent actions ride the "voice-control"
+      // stream; re-dispatch them to the shell as a window event (the agent→shell
+      // bridge) rather than treating them as autonomous trajectory events.
+      if (data.stream === "voice-control") {
+        const payload = data.payload as { command?: unknown } | undefined;
+        if (payload?.command === "start" || payload?.command === "stop") {
+          dispatchVoiceControl({ command: payload.command });
+        }
+        return;
+      }
       const e = parseStreamEventEnvelopeEvent(data);
       if (e) {
         depsRef.current?.appendAutonomousEvent(e);

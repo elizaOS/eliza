@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.dismiss-with-reason",
   title:
     "Dismissing a follow-up captures the user-supplied reason for future filtering",

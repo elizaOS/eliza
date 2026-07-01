@@ -22,7 +22,7 @@ interface Journal {
 
 const MIGRATIONS_DIR = path.join(
   process.cwd(),
-  "packages/cloud-shared/src/db/migrations",
+  "packages/cloud/shared/src/db/migrations",
 );
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 const ALLOWED_DUPLICATE_PREFIX_GROUPS = new Map<string, string[]>([

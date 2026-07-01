@@ -2,16 +2,16 @@
  * Live Cerebras regression test for the "spawn sub-agent" Stage-1 refusal
  * documented in elizaOS/eliza#7620.
  *
- * What was broken: Cerebras-hosted `gpt-oss-120b` and
- * `qwen-3-235b-a22b-instruct-2507` occasionally emit a refusal in Stage-1
+ * What was broken: Cerebras-hosted reasoning models occasionally emit a
+ * refusal in Stage-1
  * `replyText` ("I'm unable to spawn a sub-agent in this context. I can
  * create /tmp/foo.py directly...") even on turns whose
  * `candidateActionNames` correctly include `TASKS_SPAWN_AGENT`. The
  * refusal then ships to the user via the early-reply path and contradicts
  * the planner's subsequent action call.
  *
- * This test runs the EXACT user prompt from #7620 against both reported
- * Cerebras models across N trials and asserts:
+ * This test runs the EXACT user prompt from #7620 against representative
+ * public Cerebras reasoning models across N trials and asserts:
  *
  *   (a) After parsing through `parseMessageHandlerOutput` (which applies
  *       the refusal-suppression fix), no trial that routed to a planning
@@ -51,7 +51,7 @@ const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const STAGE_1_SYSTEM = `You are Eliza, a local-first AI assistant on elizaOS.
 
 # coding sub-agents (delegation)
-When the user explicitly asks to delegate, spawn, or fire up a coding sub-agent (or names an adapter like opencode / claude / codex / gemini / aider), the planner picks TASKS_SPAWN_AGENT. The canonical call shape (handled by the planner, not this stage) is:
+When the user explicitly asks to delegate, spawn, or fire up a coding sub-agent (or names an adapter like opencode / claude / codex), the planner picks TASKS_SPAWN_AGENT. The canonical call shape (handled by the planner, not this stage) is:
 
 PLAN_ACTIONS({
   "action": "TASKS_SPAWN_AGENT",
@@ -59,7 +59,7 @@ PLAN_ACTIONS({
   "thought": "<reasoning>"
 })
 
-Valid agentTypes: claude, codex, opencode, gemini, aider.
+Valid agentTypes: claude, codex, opencode.
 
 task: Decide shouldRespond and the plan for this message.
 
@@ -122,6 +122,15 @@ const HANDLE_RESPONSE_TOOL = {
         "facts",
         "addressedTo",
       ],
+      // Cerebras strict-grammar models diverge here: `gpt-oss-120b` tolerates a
+      // strict tool schema whose root omits `additionalProperties`, but
+      // `zai-glm-4.7` (GLM) 400s with `'additionalProperties' is required to be
+      // supplied and set to false`. Production never hits this because the
+      // OpenAI plugin runs every tool schema through `sanitizeJsonSchema` /
+      // `normalizeSchemaForCerebras` (models/text.ts), which inject this on
+      // every object node. This raw-fetch reproduction must mirror that wire
+      // contract, otherwise the GLM trials never reach the model under test.
+      additionalProperties: false,
     },
     strict: true,
   },
@@ -280,9 +289,10 @@ Sample leaked refusal: ${bucket.samples.leak ? `"${bucket.samples.leak}"` : "(no
 
 const TRIALS = Number.parseInt(process.env.CEREBRAS_REFUSAL_TRIALS ?? "20", 10);
 const TIMEOUT_MS = TRIALS * 20_000 + 30_000;
+const CEREBRAS_REFUSAL_MODELS = ["gpt-oss-120b", "zai-glm-4.7"] as const;
 
 liveDescribe("Cerebras `spawn sub-agent` Stage-1 refusal suppression — elizaOS/eliza#7620", () => {
-  for (const model of ["gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"]) {
+  for (const model of CEREBRAS_REFUSAL_MODELS) {
     it(
       `${model}: planning-path replies never leak refusal text after parsing`,
       async () => {
@@ -364,7 +374,7 @@ async function callAdversarialStage1(model: string): Promise<{ rawArgs: string }
 adversarialDescribe(
   "Cerebras adversarial — parser suppresses refusals even when prompt does not discourage them",
   () => {
-    for (const model of ["gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"]) {
+    for (const model of CEREBRAS_REFUSAL_MODELS) {
       it(
         `${model}: every wire refusal that lands on a planning context is suppressed`,
         async () => {

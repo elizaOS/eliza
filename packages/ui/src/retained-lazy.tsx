@@ -6,24 +6,33 @@ import {
   useState,
 } from "react";
 import {
+  type EvictReason,
   emitModuleCacheTelemetry,
   type ModuleCacheTelemetryEvent,
 } from "./cache-telemetry";
 import { APP_PAUSE_EVENT } from "./events";
+import {
+  getRetainedModuleMaxEntries,
+  getRetainedModuleTtlMs,
+  HEAP_PRESSURE_EVENT,
+  planModuleCacheEvictions,
+} from "./state/bounded-view-lru";
+import { installHeapPressureMonitor } from "./state/heap-pressure-monitor";
 
 type RetainedCleanup = () => void | Promise<void>;
-type EvictReason = NonNullable<ModuleCacheTelemetryEvent["reason"]>;
 
 export interface RetainedLazyModule<TProps extends object> {
   default: ComponentType<TProps>;
   cleanup?: RetainedCleanup;
 }
 
-export type RetainedLazyLoader<TProps extends object> =
-  () => Promise<RetainedLazyModule<TProps>>;
+export type RetainedLazyLoader<TProps extends object> = () => Promise<
+  RetainedLazyModule<TProps>
+>;
 
 interface RetainedModuleEntry<TProps extends object> {
   loader: RetainedLazyLoader<TProps>;
+  key?: string;
   promise: Promise<RetainedLazyModule<TProps>>;
   module: RetainedLazyModule<TProps> | null;
   refCount: number;
@@ -32,11 +41,6 @@ interface RetainedModuleEntry<TProps extends object> {
   retentionTimer: ReturnType<typeof setTimeout> | null;
 }
 
-const DEFAULT_RETAINED_MODULE_TTL_MS = 5 * 60_000;
-const LOW_MEMORY_RETAINED_MODULE_TTL_MS = 60_000;
-const DEFAULT_RETAINED_MODULE_MAX_ENTRIES = 8;
-const LOW_MEMORY_RETAINED_MODULE_MAX_ENTRIES = 3;
-
 const retainedModuleCache = new Map<
   RetainedLazyLoader<object>,
   RetainedModuleEntry<object>
@@ -44,6 +48,7 @@ const retainedModuleCache = new Map<
 
 let retainedModuleLifecycleInstalled = false;
 let pruneOnPressure: (() => void) | null = null;
+let pruneOnHeapPressure: (() => void) | null = null;
 let pruneOnVisibilityHidden: (() => void) | null = null;
 let pruneOnAppPause: (() => void) | null = null;
 
@@ -77,26 +82,6 @@ function emitRetainedTelemetry(
     ...patch,
     ...retainedCacheStats(),
   });
-}
-
-function resolveDeviceMemoryGb(): number | null {
-  if (typeof navigator === "undefined") return null;
-  const value = (navigator as { deviceMemory?: unknown }).deviceMemory;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function getRetainedModuleTtlMs(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  return memoryGb !== null && memoryGb <= 4
-    ? LOW_MEMORY_RETAINED_MODULE_TTL_MS
-    : DEFAULT_RETAINED_MODULE_TTL_MS;
-}
-
-function getRetainedModuleMaxEntries(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  return memoryGb !== null && memoryGb <= 4
-    ? LOW_MEMORY_RETAINED_MODULE_MAX_ENTRIES
-    : DEFAULT_RETAINED_MODULE_MAX_ENTRIES;
 }
 
 function scheduleIdleWork(work: () => void): void {
@@ -141,9 +126,9 @@ function cleanupEntry(
   }
   const cleanup = entry.module?.cleanup;
   entry.module = null;
-  emitRetainedTelemetry("evict", { reason });
+  emitRetainedTelemetry("evict", { key: entry.key, reason });
   runCleanup(cleanup);
-  if (cleanup) emitRetainedTelemetry("cleanup", { reason });
+  if (cleanup) emitRetainedTelemetry("cleanup", { key: entry.key, reason });
 }
 
 function armRetentionTimer(entry: RetainedModuleEntry<object>): void {
@@ -158,28 +143,18 @@ function armRetentionTimer(entry: RetainedModuleEntry<object>): void {
 export function pruneRetainedLazyModules(
   options: { force?: boolean; reason?: EvictReason } = {},
 ): void {
-  const now = Date.now();
-  const ttlMs = options.force ? 0 : getRetainedModuleTtlMs();
-  const reason = options.reason ?? (options.force ? "memorypressure" : "ttl");
-  const idleEntries = [...retainedModuleCache.values()]
-    .filter((entry) => entry.refCount === 0)
-    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-
-  for (const entry of idleEntries) {
-    if (options.force || now - entry.lastUsedAt >= ttlMs) {
-      cleanupEntry(entry, reason);
-    }
-  }
-
-  const maxEntries = options.force ? 0 : getRetainedModuleMaxEntries();
-  let retained = [...retainedModuleCache.values()].filter(
-    (entry) => entry.refCount === 0,
-  );
-  retained = retained.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-  while (retainedModuleCache.size > maxEntries && retained.length > 0) {
-    const entry = retained.shift();
-    if (!entry) break;
-    cleanupEntry(entry, options.reason ?? "lru");
+  const ttlReason =
+    options.reason ?? (options.force ? "memorypressure" : "ttl");
+  const lruReason = options.reason ?? "lru";
+  const plan = planModuleCacheEvictions([...retainedModuleCache.values()], {
+    now: Date.now(),
+    ttlMs: options.force ? 0 : getRetainedModuleTtlMs(),
+    maxEntries: options.force ? 0 : getRetainedModuleMaxEntries(),
+    force: options.force ?? false,
+    totalSize: retainedModuleCache.size,
+  });
+  for (const { entry, phase } of plan) {
+    cleanupEntry(entry, phase === "ttl" ? ttlReason : lruReason);
   }
 }
 
@@ -188,9 +163,16 @@ function installRetainedModuleLifecycle(): void {
     return;
   }
   retainedModuleLifecycleInstalled = true;
+  installHeapPressureMonitor();
   pruneOnPressure = () => {
     scheduleIdleWork(() =>
       pruneRetainedLazyModules({ force: true, reason: "memorypressure" }),
+    );
+  };
+  // Real heap-driven eviction (#10196) — see DynamicViewLoader for rationale.
+  pruneOnHeapPressure = () => {
+    scheduleIdleWork(() =>
+      pruneRetainedLazyModules({ force: true, reason: "heap-pressure" }),
     );
   };
   pruneOnVisibilityHidden = () => {
@@ -206,17 +188,20 @@ function installRetainedModuleLifecycle(): void {
     );
   };
   window.addEventListener("memorypressure", pruneOnPressure);
+  document.addEventListener(HEAP_PRESSURE_EVENT, pruneOnHeapPressure);
   document.addEventListener("visibilitychange", pruneOnVisibilityHidden);
   document.addEventListener(APP_PAUSE_EVENT, pruneOnAppPause);
 }
 
 function ensureEntry<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
+  options: { key?: string } = {},
 ): RetainedModuleEntry<TProps> {
   const existing = retainedModuleCache.get(
     loader as RetainedLazyLoader<object>,
   ) as RetainedModuleEntry<TProps> | undefined;
   if (existing) {
+    existing.key = options.key ?? existing.key;
     existing.lastUsedAt = Date.now();
     return existing;
   }
@@ -226,7 +211,7 @@ function ensureEntry<TProps extends object>(
     (module) => {
       entry.module = module;
       entry.lastUsedAt = Date.now();
-      emitRetainedTelemetry("load");
+      emitRetainedTelemetry("load", { key: entry.key });
       if (
         entry.cleanupScheduled ||
         (retainedModuleCache.get(loader as RetainedLazyLoader<object>) !==
@@ -236,7 +221,7 @@ function ensureEntry<TProps extends object>(
         const cleanup = entry.module.cleanup;
         entry.module = null;
         runCleanup(cleanup);
-        if (cleanup) emitRetainedTelemetry("cleanup");
+        if (cleanup) emitRetainedTelemetry("cleanup", { key: entry.key });
         return module;
       }
       if (entry.refCount === 0) {
@@ -252,13 +237,14 @@ function ensureEntry<TProps extends object>(
       ) {
         retainedModuleCache.delete(loader as RetainedLazyLoader<object>);
       }
-      emitRetainedTelemetry("load-error");
+      emitRetainedTelemetry("load-error", { key: entry.key });
       throw error;
     },
   );
 
   entry = {
     loader,
+    key: options.key,
     promise,
     module: null,
     refCount: 0,
@@ -275,12 +261,13 @@ function ensureEntry<TProps extends object>(
 
 export function acquireRetainedLazyModule<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
+  options: { cacheKey?: string } = {},
 ): {
   promise: Promise<RetainedLazyModule<TProps>>;
   release: () => void;
 } {
   installRetainedModuleLifecycle();
-  const entry = ensureEntry(loader);
+  const entry = ensureEntry(loader, { key: options.cacheKey });
   entry.refCount += 1;
   entry.lastUsedAt = Date.now();
   if (entry.retentionTimer) {
@@ -296,7 +283,7 @@ export function acquireRetainedLazyModule<TProps extends object>(
       released = true;
       entry.refCount = Math.max(0, entry.refCount - 1);
       entry.lastUsedAt = Date.now();
-      emitRetainedTelemetry("release");
+      emitRetainedTelemetry("release", { key: entry.key });
       if (entry.refCount !== 0) return;
       if (
         retainedModuleCache.get(loader as RetainedLazyLoader<object>) ===
@@ -314,9 +301,9 @@ export function acquireRetainedLazyModule<TProps extends object>(
 export function invalidateRetainedLazyModule<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
 ): void {
-  const entry = retainedModuleCache.get(
-    loader as RetainedLazyLoader<object>,
-  ) as RetainedModuleEntry<object> | undefined;
+  const entry = retainedModuleCache.get(loader as RetainedLazyLoader<object>) as
+    | RetainedModuleEntry<object>
+    | undefined;
   if (!entry) return;
   retainedModuleCache.delete(loader as RetainedLazyLoader<object>);
   if (entry.refCount === 0) cleanupEntry(entry, "invalidate");
@@ -324,9 +311,10 @@ export function invalidateRetainedLazyModule<TProps extends object>(
 
 export function preloadRetainedLazyModule<TProps extends object>(
   loader: RetainedLazyLoader<TProps>,
+  options: { cacheKey?: string } = {},
 ): Promise<RetainedLazyModule<TProps>> {
   installRetainedModuleLifecycle();
-  return ensureEntry(loader).promise;
+  return ensureEntry(loader, { key: options.cacheKey }).promise;
 }
 
 export function __resetRetainedLazyModulesForTests(): void {
@@ -337,6 +325,9 @@ export function __resetRetainedLazyModulesForTests(): void {
   if (typeof window !== "undefined" && pruneOnPressure) {
     window.removeEventListener("memorypressure", pruneOnPressure);
   }
+  if (typeof document !== "undefined" && pruneOnHeapPressure) {
+    document.removeEventListener(HEAP_PRESSURE_EVENT, pruneOnHeapPressure);
+  }
   if (typeof document !== "undefined" && pruneOnVisibilityHidden) {
     document.removeEventListener("visibilitychange", pruneOnVisibilityHidden);
   }
@@ -344,6 +335,7 @@ export function __resetRetainedLazyModulesForTests(): void {
     document.removeEventListener(APP_PAUSE_EVENT, pruneOnAppPause);
   }
   pruneOnPressure = null;
+  pruneOnHeapPressure = null;
   pruneOnVisibilityHidden = null;
   pruneOnAppPause = null;
   retainedModuleLifecycleInstalled = false;
@@ -351,11 +343,13 @@ export function __resetRetainedLazyModulesForTests(): void {
 
 export function RetainedLazyComponent<TProps extends object>({
   loader,
+  cacheKey,
   componentProps,
   fallback = null,
   onError,
 }: {
   loader: RetainedLazyLoader<TProps>;
+  cacheKey?: string;
   componentProps: TProps;
   fallback?: ReactNode;
   onError?: (error: Error) => ReactNode;
@@ -365,7 +359,7 @@ export function RetainedLazyComponent<TProps extends object>({
 
   useEffect(() => {
     let cancelled = false;
-    const lease = acquireRetainedLazyModule(loader);
+    const lease = acquireRetainedLazyModule(loader, { cacheKey });
     setModule(null);
     setError(null);
     void lease.promise
@@ -380,7 +374,7 @@ export function RetainedLazyComponent<TProps extends object>({
       cancelled = true;
       lease.release();
     };
-  }, [loader]);
+  }, [loader, cacheKey]);
 
   const renderedError = useMemo(
     () => (error && onError ? onError(error) : null),

@@ -1,16 +1,15 @@
-import { execSync } from "node:child_process";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
+#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-line.
+ * tsc-only (non-bundled) plugin: no Bun.build step — the shared driver cleans
+ * dist then runs `tsc --project tsconfig.json --noCheck` via the empty-targets
+ * path.
+ */
+import { buildPlugin } from "../plugin-build";
 
-const distDir = join(import.meta.dirname, "dist");
-
-// Clean
-rmSync(distDir, { recursive: true, force: true });
-
-// Build
-execSync("bunx tsc -p tsconfig.json", {
-  cwd: import.meta.dirname,
-  stdio: "inherit",
+await buildPlugin({
+  name: "@elizaos/plugin-line",
+  clean: true,
+  targets: [],
+  dtsProject: "tsconfig.json",
 });
-
-console.log("Build complete: plugin-line");

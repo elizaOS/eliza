@@ -71,13 +71,12 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
 
 const APP_HERO_REGISTRY_CACHE_TTL_MS = 30_000;
 
-const appHeroRegistryCache = new WeakMap<
-  PluginManagerLike,
-  {
-    expiresAt: number;
-    promise: Promise<Map<string, RegistryPluginInfo>>;
-  }
->();
+type AppHeroRegistryCache = {
+  expiresAt: number;
+  promise: Promise<Map<string, RegistryPluginInfo>>;
+};
+
+const appHeroRegistryCache = new WeakMap<object, AppHeroRegistryCache>();
 
 async function rewriteAppActionText(args: {
   runtime: IAgentRuntime;
@@ -359,21 +358,22 @@ type ResolvedAppHero =
   | { kind: "generated"; svg: string };
 
 function refreshAppHeroRegistry(
+  cacheOwner: object,
   pluginManager: PluginManagerLike,
 ): Promise<Map<string, RegistryPluginInfo>> {
   const now = Date.now();
-  const cached = appHeroRegistryCache.get(pluginManager);
+  const cached = appHeroRegistryCache.get(cacheOwner);
   if (cached && cached.expiresAt > now) {
     return cached.promise;
   }
 
   const promise = pluginManager.refreshRegistry().catch((error: unknown) => {
-    if (appHeroRegistryCache.get(pluginManager)?.promise === promise) {
-      appHeroRegistryCache.delete(pluginManager);
+    if (appHeroRegistryCache.get(cacheOwner)?.promise === promise) {
+      appHeroRegistryCache.delete(cacheOwner);
     }
     throw error;
   });
-  appHeroRegistryCache.set(pluginManager, {
+  appHeroRegistryCache.set(cacheOwner, {
     expiresAt: now + APP_HERO_REGISTRY_CACHE_TTL_MS,
     promise,
   });
@@ -381,10 +381,11 @@ function refreshAppHeroRegistry(
 }
 
 async function resolveAppHero(
+  cacheOwner: object,
   pluginManager: PluginManagerLike,
   slug: string,
 ): Promise<ResolvedAppHero | null> {
-  const registry = await refreshAppHeroRegistry(pluginManager);
+  const registry = await refreshAppHeroRegistry(cacheOwner, pluginManager);
   for (const entry of registry.values()) {
     const entrySlugs = new Set<string>();
     const nameSlug = packageNameToAppRouteSlug(entry.name);
@@ -452,6 +453,7 @@ export interface AppManagerLike {
     name: string,
     onProgress?: (progress: InstallProgressLike) => void,
     runtime?: unknown | null,
+    installPluginDirect?: DirectInstallPlugin,
   ) => Promise<AppLaunchResult>;
   stop: (
     pluginManager: PluginManagerLike,
@@ -497,6 +499,21 @@ export interface FavoriteAppsStore {
   write: (apps: string[]) => string[];
 }
 
+interface DirectInstallResult {
+  success: boolean;
+  pluginName: string;
+  version: string;
+  installPath: string;
+  requiresRestart: boolean;
+  error?: string;
+}
+
+type DirectInstallPlugin = (
+  pluginName: string,
+  onProgress?: (progress: InstallProgressLike) => void,
+  requestedVersion?: string,
+) => Promise<DirectInstallResult>;
+
 export interface AppsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
@@ -506,7 +523,11 @@ export interface AppsRouteContext
   parseBoundedLimit: (rawLimit: string | null, fallback?: number) => number;
   runtime: unknown | null;
   favoriteApps?: FavoriteAppsStore;
+  installPluginDirect?: DirectInstallPlugin;
+  actorRole?: AppsRouteActorRole | null;
 }
+
+export type AppsRouteActorRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
 function sanitizeFavoriteAppNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -520,6 +541,12 @@ function sanitizeFavoriteAppNames(value: unknown): string[] {
     apps.push(trimmed);
   }
   return apps;
+}
+
+function canLaunchApps(
+  actorRole: AppsRouteActorRole | null | undefined,
+): boolean {
+  return actorRole === "OWNER" || actorRole === "ADMIN";
 }
 
 function isNonAppRegistryPlugin(plugin: RegistryPluginInfo): boolean {
@@ -651,8 +678,8 @@ function resolveRunSteeringTarget(
 }
 
 function buildSteeringDisposition(
-  run: AppRunSummary,
-  subroute: string,
+  _run: AppRunSummary,
+  _subroute: string,
   upstreamStatus: number,
   upstreamBody: Record<string, unknown> | null,
 ): AppRunSteeringDisposition {
@@ -686,10 +713,6 @@ function buildSteeringDisposition(
   const success = upstreamBody?.success === true || upstreamBody?.ok === true;
   if (!success) {
     return upstreamStatus >= 500 ? "unsupported" : "rejected";
-  }
-
-  if (run.appName === "@elizaos/plugin-2004scape" && subroute === "message") {
-    return "queued";
   }
 
   return "accepted";
@@ -862,6 +885,8 @@ export async function handleAppsRoutes(
     json,
     error,
     runtime,
+    installPluginDirect,
+    actorRole,
   } = ctx;
 
   if (method === "GET" && pathname === "/api/apps") {
@@ -880,7 +905,7 @@ export async function handleAppsRoutes(
       return true;
     }
     const pluginManager = getPluginManager();
-    const resolved = await resolveAppHero(pluginManager, slug);
+    const resolved = await resolveAppHero(appManager, pluginManager, slug);
     if (!resolved) {
       error(res, `Hero image for "${slug}" is not available`, 404);
       return true;
@@ -1141,6 +1166,10 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
+      if (!canLaunchApps(actorRole)) {
+        error(res, "App launch requires OWNER or ADMIN role", 403);
+        return true;
+      }
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
       if (rawBody === null) return true;
       const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
@@ -1203,13 +1232,20 @@ export async function handleAppsRoutes(
         !result.success &&
         result.error?.includes("requires a running agent runtime")
       ) {
-        // Fall back to the direct installer which writes directly to
-        // <stateDir>/plugins/installed without depending on a plugin-manager
-        // service. The runtime plugin resolver already searches that dir.
-        const { installPlugin: installPluginDirect } = await import(
-          "@elizaos/plugin-registry"
-        );
-        result = await installPluginDirect(name, recordProgress, version);
+        // Fall back to the host-provided direct installer, which writes
+        // directly to <stateDir>/plugins/installed without depending on a
+        // plugin-manager service. The runtime plugin resolver already
+        // searches that dir.
+        result = installPluginDirect
+          ? await installPluginDirect(name, recordProgress, version)
+          : {
+              success: false as const,
+              pluginName: name,
+              version: "",
+              installPath: "",
+              requiresRestart: false,
+              error: "Direct plugin installer unavailable",
+            };
       }
       if (!result.success) {
         const failure: PostInstallAppResponse = {

@@ -12,7 +12,7 @@ import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
 import { cn } from "../../lib/utils";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -177,7 +177,7 @@ export function AccountCard({
   testBusy = false,
   refreshBusy = false,
 }: AccountCardProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const deleteModal = useModalState();
   const deleteBusy = deleteModal.state.status === "submitting";
   const confirmingDelete = deleteModal.state.status !== "closed";

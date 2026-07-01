@@ -21,10 +21,14 @@ import type {
 } from "@elizaos/core";
 import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
-import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
+import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
 import { scoreView } from "./views-search.js";
+import {
+	createPreEditSnapshot,
+	persistSnapshotRecord,
+} from "./views-snapshot.js";
 
 export interface ViewsEditInput {
 	runtime: IAgentRuntime;
@@ -348,6 +352,32 @@ export async function runViewsEdit({
 
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+
+	// Pre-edit snapshot so the edit can be rolled back (#8915). Best-effort: a
+	// failed snapshot only disables rollback for this edit, never blocks it.
+	const snapshot = await createPreEditSnapshot(workdir).catch((err) => ({
+		ok: false as const,
+		reason: err instanceof Error ? err.message : String(err),
+	}));
+	if (snapshot.ok) {
+		await persistSnapshotRecord(runtime, {
+			sha: snapshot.sha,
+			workdir,
+			pluginName: view.pluginName,
+			created: false,
+			roomId,
+			snapshotCreatedAt: new Date().toISOString(),
+		}).catch((err) => {
+			logger.warn(
+				`[plugin-app-control] VIEWS/edit failed to persist snapshot for ${view.pluginName}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		});
+	} else {
+		logger.warn(
+			`[plugin-app-control] VIEWS/edit pre-edit snapshot skipped for ${view.pluginName}: ${snapshot.reason}`,
+		);
+	}
+
 	return dispatchEditAgent({
 		runtime,
 		view,

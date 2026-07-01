@@ -15,12 +15,13 @@ on:
       - "packages/app-core/deploy/Dockerfile.ci"
       - "plugins/plugin-sql/**"
       - "plugins/plugin-elizacloud/**"
+      - "plugins/plugin-local-inference/**"
       - "packages/agent/**"
       - "packages/server/**"
       - "packages/core/**"
       - "packages/app/**"
       - "packages/app-core/**"
-      - "packages/cloud-sdk/**"
+      - "packages/cloud/sdk/**"
       - ".github/workflows/build-agent-image.yml"
       - ".dockerignore"
   release:
@@ -32,6 +33,13 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 # Default to least privilege. Override per-job where needed.
+# cancel superseded in-flight runs for the same PR to free hosted-runner
+# capacity. only cancels pull_request runs; push runs on protected branches
+# (main/develop) are never cancelled mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -56,10 +64,9 @@ jobs:
           sudo docker image prune -a -f || true
 
       - name: Install jq
-        # Required by packages/app-core/scripts/docker-ci-smoke.sh per-plugin
-        # build loop: it gates each `bun run build` on `jq -e '.scripts.build'`.
-        # Without jq, the gate silently fails and the plugin dist/ is never
-        # produced, which ships a broken image (plugin-sql index.node.js missing).
+        # Used by docker-ci-smoke's boot-KPI budget parser after the image is
+        # built. Keep it explicit so the real boot gate reports the committed
+        # budget instead of falling back to its baked-in default.
         run: sudo apt-get install -y --no-install-recommends jq
 
       - name: Setup Bun
@@ -68,7 +75,7 @@ jobs:
           bun-version: "canary"
 
       - name: Cache Bun install
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
@@ -105,103 +112,57 @@ jobs:
         run: |
           node packages/app-core/scripts/ensure-type-package-aliases.mjs
 
-      - name: Build @elizaos/core, shared, ui
-        # The per-plugin tsup `--dts` step needs @elizaos/core's
-        # `dist/*.d.ts` to exist; without this build, plugin-video's
-        # DTS pass trips `TS2307: Cannot find module '@elizaos/core'`.
-        # Build the same set docker-ci-smoke.sh builds before its
-        # per-plugin loop: contracts (required by core's
-        # tsconfig.declarations.json), core (Node-only), shared,
-        # cloud-sdk, ui. Workspace symlinks already exist from
-        # `bun install`; we just need the dist artifacts each plugin's
-        # tsup resolves through `exports`.
-        env:
-          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
-        run: |
-          # contracts and logger must build BEFORE core:
-          # packages/core/tsconfig.declarations.json maps `@elizaos/contracts` to
-          # `../contracts/dist/index.d.ts` and `@elizaos/logger` to
-          # `../logger/dist/index.d.ts`; the core declarations tsc step fails with
-          # TS2307 (src/logger.ts) if either dist is missing.
-          (cd packages/contracts && bun run build)
-          (cd packages/logger && bun run build)
-          node packages/shared/scripts/generate-keywords.mjs --target ts
-          (cd packages/core && bun run build.ts --node-only)
-          # security → plugin-remote-manifest → plugin-worker-runtime: ordered by
-          # build-time type deps; agent boot ERR_MODULE_NOT_FOUNDs without their dist.
-          # tui before ui: @elizaos/ui (workspace:* on @elizaos/tui) exposes the
-          # spatial/tui terminal renderer, and the app's `build:client` bundles it;
-          # without @elizaos/tui's dist the renderer build fails to resolve it.
-          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/tui packages/ui packages/security packages/plugin-remote-manifest packages/plugin-worker-runtime; do
-            if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
-              echo "::group::Building $pkg"
-              (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
-              echo "::endgroup::"
-            fi
-          done
-
-      - name: Build workspace plugins
-        # Dockerfile.ci copies the repo and relies on pre-built dist/ in each
-        # workspace plugin. The docker-ci-smoke script (used by the smoke
-        # workflow) is the canonical place this lives; reuse the same loop so
-        # plugin-sql, plugin-elizacloud, etc. land in the image with their
-        # built artifacts.
-        #
-        # Why we re-install each plugin's deps before the build loop:
-        # Bun's workspace install leaves per-plugin `node_modules/.bin/`
-        # empty for CLI deps that live in DEVDependencies of a workspace
-        # *peer* (tsup is declared in plugin-video's own devDeps but Bun
-        # still routes its bin symlink through the hoisted root rather
-        # than the plugin's local .bin/, and `bun run build` runs the
-        # script under bash which only consults the local .bin/). The
-        # cheapest workaround: run `bun install --no-frozen-lockfile`
-        # inside each plugin dir before the build so the local .bin/ is
-        # actually populated. Idempotent and fast — bun reuses the global
-        # store.
-        env:
-          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
-        run: |
-          for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
-            plugin-browser plugin-capacitor-bridge plugin-coding-tools \
-            plugin-commands plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
-            plugin-imessage plugin-local-inference plugin-mcp plugin-signal \
-            plugin-streaming plugin-telegram plugin-whatsapp plugin-wallet plugin-workflow \
-            plugin-x402; do
-            plugin_dir="plugins/$plugin"
-            if [[ -f "$plugin_dir/package.json" ]] && jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
-              echo "::group::Building @elizaos/$plugin"
-              (
-                cd "$plugin_dir"
-                # Ensure local node_modules/.bin/ has the dev CLIs the
-                # build script references (tsup, tsc, tsdown, etc.).
-                bun install --no-frozen-lockfile --ignore-scripts
-              )
-              (cd "$plugin_dir" && bun run build)
-              echo "::endgroup::"
-            fi
-          done
-
-      - name: Build UI
-        env:
-          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
-        run: bun run build:client
-
-      - name: Build agent workspace
-        env:
-          NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
-        run: |
-          pushd packages/agent >/dev/null
-          bun run build:docker-dist
-          popd >/dev/null
-
-      - name: Build app UI
+      - name: Build Docker workspace artifacts
+        # Let Turbo derive the build order and reuse task cache instead of
+        # hand-maintaining the core/package/plugin sequence. The explicit
+        # filters include the app, the agent entrypoint, and every dynamically
+        # loaded plugin whose dist must exist before Dockerfile.ci relinks the
+        # local workspace packages into the image.
         env:
           NODE_ENV: production
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          pushd packages/app >/dev/null
-          bun run build:web
-          popd >/dev/null
+          node packages/scripts/run-turbo.mjs run build --concurrency=8 \
+            --filter=@elizaos/app \
+            --filter=@elizaos/agent \
+            --filter=@elizaos/plugin-sql \
+            --filter=@elizaos/plugin-video \
+            --filter=@elizaos/plugin-agent-skills \
+            --filter=@elizaos/plugin-pdf \
+            --filter=@elizaos/plugin-browser \
+            --filter=@elizaos/plugin-capacitor-bridge \
+            --filter=@elizaos/plugin-coding-tools \
+            --filter=@elizaos/plugin-native-filesystem \
+            --filter=@elizaos/plugin-shell \
+            --filter=@elizaos/plugin-commands \
+            --filter=@elizaos/plugin-computeruse \
+            --filter=@elizaos/plugin-discord \
+            --filter=@elizaos/plugin-edge-tts \
+            --filter=@elizaos/plugin-elizacloud \
+            --filter=@elizaos/plugin-imessage \
+            --filter=@elizaos/plugin-local-inference \
+            --filter=@elizaos/plugin-mcp \
+            --filter=@elizaos/plugin-signal \
+            --filter=@elizaos/plugin-streaming \
+            --filter=@elizaos/plugin-telegram \
+            --filter=@elizaos/plugin-whatsapp \
+            --filter=@elizaos/plugin-wallet \
+            --filter=@elizaos/plugin-workflow \
+            --filter=@elizaos/plugin-x402
+
+      - name: Normalize plugin dist for Node ESM
+        # MUST run AFTER the Turbo build above. Some package builds still emit
+        # extensionless or directory specifiers (`./actions/index`,
+        # `./approvals`) in dist. The container loads those built `.js` files
+        # via import(), and neither tsx nor plain `node` resolves them. Apply
+        # the same rewrite the agent's own build uses to EVERY built plugin
+        # dist, last, so the dist that actually ships is Node-ESM-resolvable.
+        run: |
+          shopt -s nullglob
+          for dist in plugins/*/dist; do
+            pkg="$(dirname "$dist")"
+            node packages/scripts/rewrite-dist-relative-imports-node-esm.mjs "$pkg" || true
+          done
 
       - name: Prepare CI dockerignore
         # The root .dockerignore is tuned for `bun install` runs (excludes
@@ -290,6 +251,12 @@ jobs:
           BOOT_STABLE_WINDOW_SEC: "15"
           SMOKE_PORT: "32138"
           CONTAINER_PORT: "42138"
+          # Enforce the boot-KPI cold-readyMs budget (#8812 item 5). The budget
+          # (boot.coldReadyMs, 25000ms) carries ~5x headroom over the ~5s real
+          # cold boot, and emit_boot_kpi downgrades a breach to a warning when the
+          # runner is heavily contended, so this only fails on a genuine multi-x
+          # boot-time regression — not on transient runner load.
+          BOOT_KPI_ENFORCE: "1"
         run: bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
 
       # Push the EXACT verified image. This runs only if the boot verification

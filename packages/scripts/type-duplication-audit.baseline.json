@@ -1,0 +1,22 @@
+{
+  "schema": "eliza_type_duplication_baseline_v1",
+  "updatedAt": "2026-06-30T02:14:18.914Z",
+  "thresholds": {
+    "minProps": 3,
+    "nearDuplicateJaccard": 0.6,
+    "minLiteralMembers": 3,
+    "minSchemaProps": 3,
+    "schemaTypeKeyOverlap": 0.8
+  },
+  "filesScanned": 9930,
+  "counts": {
+    "sameName": 2231,
+    "subsets": 8174,
+    "nearDuplicates": 2624,
+    "literalSetClusters": 209,
+    "runtimeSchemaMatches": 510,
+    "weakAsUnknownAs": 81,
+    "weakAsAny": 0,
+    "weakExplicitAny": 126
+  }
+}

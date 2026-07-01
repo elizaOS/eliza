@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import CapacitorBackgroundRunner
+import ObjectiveC
 import UserNotifications
 
 @UIApplicationMain
@@ -9,9 +10,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        ElizaHomeIndicator.install()
         UNUserNotificationCenter.current().delegate = self
         BackgroundRunnerPlugin.registerBackgroundTask()
         BackgroundRunnerPlugin.handleApplicationDidFinishLaunching(launchOptions: launchOptions)
+
+        // Local-agent crash/restart supervisor — the iOS parity equivalent of
+        // Android's ElizaAgentService watchdog (issue #10197). Dormant until a
+        // local agent is running; a no-op in cloud/remote mode. See AgentWatchdog.swift.
+        AgentWatchdog.shared.bootstrap()
 
         // APNs registration is gated on a build-time Info.plist flag
         // (ELIZA_APNS_ENABLED=1). Registration does not request alert
@@ -152,4 +159,37 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         }
         completionHandler()
     }
+}
+
+/// Auto-hides the iOS home indicator (the bottom "pull" bar) so it doesn't sit
+/// over the floating chat composer. `CAPBridgeViewController` overrides
+/// `prefersHomeIndicatorAutoHidden` as non-`open`, so an app-module subclass
+/// cannot override it; instead we swizzle the getter on the Capacitor bridge
+/// controller to return `true`. iOS still reveals the indicator on the next
+/// upward swipe — it cannot be permanently removed, only auto-hidden while the
+/// app is in use. Installed once from `didFinishLaunchingWithOptions`, before
+/// the bridge view controller first appears.
+enum ElizaHomeIndicator {
+    private static var installed = false
+
+    static func install() {
+        guard !installed else { return }
+        installed = true
+        let cls = CAPBridgeViewController.self
+        guard
+            let original = class_getInstanceMethod(
+                cls,
+                #selector(getter: UIViewController.prefersHomeIndicatorAutoHidden)
+            ),
+            let replacement = class_getInstanceMethod(
+                cls,
+                #selector(getter: CAPBridgeViewController.eliza_prefersHomeIndicatorAutoHidden)
+            )
+        else { return }
+        method_exchangeImplementations(original, replacement)
+    }
+}
+
+extension CAPBridgeViewController {
+    @objc var eliza_prefersHomeIndicatorAutoHidden: Bool { true }
 }

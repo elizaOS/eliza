@@ -17,6 +17,5 @@ export default defineConfig({
 			"**/*.live.test.ts",
 			"**/*.e2e.test.ts",
 		],
-		passWithNoTests: true,
 	},
 });

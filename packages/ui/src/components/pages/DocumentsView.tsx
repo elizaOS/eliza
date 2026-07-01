@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -24,8 +25,9 @@ import type {
   DocumentScope,
   DocumentSearchResult,
 } from "../../api/client-types-chat";
+import { isApiError } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
-import { useApp } from "../../state/useApp";
+import { useAppSelector, useTranslation } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
@@ -34,7 +36,7 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
-import { ChatSearchHint } from "../composites/chat-search-hint";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
@@ -147,7 +149,7 @@ function ScopeFilterChip({
 
 /* ── Search Result Item ─────────────────────────────────────────────── */
 
-function SearchResultListItem({
+const SearchResultListItem = memo(function SearchResultListItem({
   result,
   active,
   onSelect,
@@ -156,7 +158,7 @@ function SearchResultListItem({
   active: boolean;
   onSelect: (documentId: string) => void;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const documentId = result.documentId || result.id;
   const title =
     result.documentTitle ||
@@ -204,11 +206,11 @@ function SearchResultListItem({
       </div>
     </button>
   );
-}
+});
 
 /* ── Document Card ──────────────────────────────────────────────────── */
 
-function DocumentListItem({
+const DocumentListItem = memo(function DocumentListItem({
   doc,
   active,
   onSelect,
@@ -221,7 +223,7 @@ function DocumentListItem({
   onDelete: (id: string) => void;
   deleting: boolean;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const scopeLabel =
     doc.scope === "owner-private"
       ? t("documentsview.ScopeOwner", { defaultValue: "Owner" })
@@ -305,7 +307,7 @@ function DocumentListItem({
           </div>
         </div>
       </button>
-      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
+      <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ">
         <ConfirmDeleteControl
           triggerClassName="h-7 rounded-sm border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
           confirmClassName="h-7 rounded-sm border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
@@ -317,11 +319,11 @@ function DocumentListItem({
       </span>
     </div>
   );
-}
+});
 
 /* ── Compact strip chips ────────────────────────────────────────────── */
 
-function CompactSearchChip({
+const CompactSearchChip = memo(function CompactSearchChip({
   result,
   active,
   onSelect,
@@ -330,7 +332,7 @@ function CompactSearchChip({
   active: boolean;
   onSelect: (documentId: string) => void;
 }) {
-  const { t } = useApp();
+  const { t } = useTranslation();
   const id = result.documentId || result.id;
   const title =
     result.documentTitle ||
@@ -362,7 +364,7 @@ function CompactSearchChip({
       <span className="truncate">{title}</span>
     </button>
   );
-}
+});
 
 function CompactDocChip({
   doc,
@@ -419,9 +421,11 @@ export function DocumentsView({
   selectedDocumentId?: string | null;
   showSelectorRail?: boolean;
 } = {}) {
-  const { t } = useApp();
-  const { setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const tRef = useRef(t);
   const setActionNoticeRef = useRef(setActionNotice);
+  tRef.current = t;
   setActionNoticeRef.current = setActionNotice;
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("all");
@@ -462,6 +466,10 @@ export function DocumentsView({
     string | null
   >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Set when GET /api/documents 404s — the documents plugin isn't mounted on
+  // this surface (e.g. the mobile/Android agent). Degrade to a calm
+  // "unavailable here" panel instead of a red error + Retry loop.
+  const [documentsUnavailable, setDocumentsUnavailable] = useState(false);
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
   const selectedDocId = selectedDocumentId ?? internalSelectedDocId;
@@ -490,8 +498,17 @@ export function DocumentsView({
         setCached(`documents:list:${scopeFilter}`, docsRes.documents);
         onDocumentsChange?.(docsRes.documents);
         setIsServiceLoading(false);
+        setDocumentsUnavailable(false);
         serviceRetryRef.current = 0;
       } catch (err) {
+        // A 404 means the documents plugin isn't mounted on this surface
+        // (the mobile/Android agent omits it). Treat it as "unavailable here"
+        // — a calm panel, not a red error + Retry loop.
+        if (isApiError(err) && err.status === 404) {
+          setIsServiceLoading(false);
+          setDocumentsUnavailable(true);
+          return;
+        }
         const status = (err as { status?: number }).status;
         if (status === 503) {
           setIsServiceLoading(true);
@@ -500,7 +517,7 @@ export function DocumentsView({
           const msg =
             err instanceof Error
               ? err.message
-              : t("documentsview.FailedToLoadDocumentsData", {
+              : tRef.current("documentsview.FailedToLoadDocumentsData", {
                   defaultValue: "Failed to load Knowledge data",
                 });
           setLoadError(msg);
@@ -510,7 +527,7 @@ export function DocumentsView({
         setLoading(false);
       }
     },
-    [onDocumentsChange, scopeFilter, t],
+    [onDocumentsChange, scopeFilter],
   );
 
   useEffect(() => {
@@ -1142,7 +1159,7 @@ export function DocumentsView({
   );
 
   const documentContent = (
-    <div className="order-2 flex min-w-0 flex-1 lg:order-1">
+    <div className="order-2 flex min-w-0 flex-1 md:order-1">
       <DocumentViewer
         documentId={selectedDocId}
         onUpdated={() => {
@@ -1154,15 +1171,15 @@ export function DocumentsView({
 
   const selectorRail = (
     <div
-      className={`order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 ${
+      className={`order-1 flex w-full shrink-0 flex-col gap-3 md:order-2 ${
         useCompactSelectorRail
-          ? "lg:w-[18.5rem] xl:w-[20rem]"
-          : "lg:w-[22rem] xl:w-[24rem]"
+          ? "md:w-[16rem] lg:w-[18.5rem] xl:w-[20rem]"
+          : "md:w-[18rem] lg:w-[22rem] xl:w-[24rem]"
       }`}
     >
       <PagePanel
         variant="inset"
-        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none !ring-0`}
+        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none `}
       >
         <UploadZone
           fileInputId={fileInputId}
@@ -1176,31 +1193,11 @@ export function DocumentsView({
 
       <PagePanel
         variant="inset"
-        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0 ${
+        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none  ${
           useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
         }`}
       >
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-            {isShowingSearchResults
-              ? t("documentsview.SearchResults", {
-                  defaultValue: "Search results",
-                })
-              : t("documentsview.Documents", { defaultValue: "Documents" })}
-          </div>
-          <div className="shrink-0 text-2xs text-muted">
-            {documents.length === 1
-              ? t("documentsview.DocumentCountOne", {
-                  defaultValue: "1 doc",
-                })
-              : t("documentsview.DocumentCountMany", {
-                  defaultValue: "{{count}} docs",
-                  count: documents.length,
-                })}
-          </div>
-        </div>
-        <ChatSearchHint noun="documents" query={searchQuery} className="px-1" />
-        <div className="mt-2">{scopeFilterStrip}</div>
+        <div className="px-1">{scopeFilterStrip}</div>
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
           {loading && !isShowingSearchResults && documents.length === 0 && (
@@ -1208,11 +1205,36 @@ export function DocumentsView({
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (
-            <PagePanel.Empty
-              variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
-              description={t("documentsview.UploadFilesOrImpo")}
-              title={t("documentsview.NoDocumentsYet")}
+            <ChatEmptyStateWithRecommendations
+              icon={FileText}
+              title={t("documentsview.NoDocumentsYet", {
+                defaultValue: "No documents yet",
+              })}
+              recommendations={[
+                {
+                  label: t("documentsview.RecImportUrl", {
+                    defaultValue: "Import a document from a URL",
+                  }),
+                  prompt: t("documentsview.RecImportUrlPrompt", {
+                    defaultValue:
+                      "Import a document into my knowledge base from this URL: ",
+                  }),
+                },
+                {
+                  label: t("documentsview.RecCreateNote", {
+                    defaultValue: "Create a text note",
+                  }),
+                  prompt: t("documentsview.RecCreateNotePrompt", {
+                    defaultValue:
+                      "Create a text knowledge document for me to remember: ",
+                  }),
+                },
+                {
+                  label: t("documentsview.RecWhatToAdd", {
+                    defaultValue: "What should I add to Knowledge?",
+                  }),
+                },
+              ]}
             />
           )}
 
@@ -1222,7 +1244,7 @@ export function DocumentsView({
             filteredDocuments.length === 0 && (
               <PagePanel.Empty
                 variant="inset"
-                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
                 description={t("documentsview.SearchTips", {
                   defaultValue:
                     "Try a filename, topic, or phrase from the document body.",
@@ -1236,7 +1258,7 @@ export function DocumentsView({
           {isShowingSearchResults && visibleSearchResults.length === 0 && (
             <PagePanel.Empty
               variant="inset"
-              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="min-h-[12rem] px-0 py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
               description={t("documentsview.SearchTips", {
                 defaultValue:
                   "Try a filename, topic, or phrase from the document body.",
@@ -1272,14 +1294,9 @@ export function DocumentsView({
   const compactDocumentStrip = !shouldRenderSelectorRail ? (
     <PagePanel
       variant="inset"
-      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+      className="flex shrink-0 flex-col gap-2 px-0 py-0 !rounded-none !border-0 !bg-transparent !shadow-none "
     >
-      <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <ChatSearchHint
-          noun="documents"
-          query={searchQuery}
-          className="min-w-0 flex-1"
-        />
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
@@ -1338,14 +1355,25 @@ export function DocumentsView({
       {isServiceLoading && (
         <PagePanel
           variant="inset"
-          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+          className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none "
         >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          {t("documentsview.DocumentServiceIs")}
+          {t("documentsview.DocumentServiceIs", {
+            defaultValue: "Knowledge service is initializing...",
+          })}
         </PagePanel>
       )}
 
-      {loadError && !isServiceLoading && (
+      {documentsUnavailable && !isServiceLoading && (
+        <PagePanel.Notice tone="default">
+          {t("documentsview.DocumentsUnavailableHere", {
+            defaultValue:
+              "Knowledge isn't available on this device. Manage documents from the desktop or web app.",
+          })}
+        </PagePanel.Notice>
+      )}
+
+      {loadError && !documentsUnavailable && !isServiceLoading && (
         <PagePanel.Notice
           tone="danger"
           actions={
@@ -1365,7 +1393,7 @@ export function DocumentsView({
 
       {compactDocumentStrip}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
         {documentContent}
         {shouldRenderSelectorRail ? selectorRail : null}
       </div>

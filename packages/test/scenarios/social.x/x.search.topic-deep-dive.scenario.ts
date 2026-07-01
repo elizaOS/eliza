@@ -6,6 +6,7 @@ import {
 import { seedXReadFixtures } from "../_helpers/x-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "x.search.topic-deep-dive",
   title: "Topic deep-dive search on X",
   domain: "social.x",

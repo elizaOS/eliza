@@ -18,13 +18,13 @@
  * Run:  node packages/app/test/view-screenshots/run.mjs
  */
 
-import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 const appRoot = path.resolve(here, "../..");
 
 // Resolve toolchain deps from packages/app (bun-hoisted .bun store).
@@ -38,6 +38,10 @@ const sharp = (await import(reqFromApp.resolve("sharp"))).default;
 const { VIEW_SPECS } = await import("./fixtures.ts");
 
 const OUTPUT_DIR = path.join(here, "output");
+const rmRecursiveScript = path.resolve(
+  appRoot,
+  "../scripts/rm-path-recursive.mjs",
+);
 const VIEWPORTS = [
   { id: "desktop", width: 1280, height: 900 },
   { id: "mobile", width: 390, height: 844 },
@@ -86,16 +90,30 @@ function qualityIssues(label, q) {
   return issues;
 }
 
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `failed to remove generated output directory ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main.
 // ---------------------------------------------------------------------------
 
 async function main() {
-  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+  rmRecursive(OUTPUT_DIR);
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
   console.log("[view-harness] building (vite)…");
-  await build({ configFile: path.join(here, "vite.config.mjs"), logLevel: "warn" });
+  await build({
+    configFile: path.join(here, "vite.config.mjs"),
+    logLevel: "warn",
+  });
 
   console.log("[view-harness] starting preview server…");
   const previewServer = await preview({
@@ -120,7 +138,8 @@ async function main() {
         for (const vp of VIEWPORTS) {
           const label = `${viewId}-${state}-${vp.id}`;
           const pngPath = path.join(OUTPUT_DIR, `${label}.png`);
-          const compact = viewId === "calendar" && vp.id === "mobile" ? "1" : "0";
+          const compact =
+            viewId === "calendar" && vp.id === "mobile" ? "1" : "0";
           const target = `${base}/index.html?view=${viewId}&state=${state}&compact=${compact}`;
 
           const ctx = await browser.newContext({
@@ -136,7 +155,10 @@ async function main() {
 
           let renderError = null;
           try {
-            await page.goto(target, { waitUntil: "networkidle", timeout: 30_000 });
+            await page.goto(target, {
+              waitUntil: "networkidle",
+              timeout: 30_000,
+            });
             // Wait until the entry signals ready OR records a harness error.
             await page.waitForFunction(
               () =>
@@ -205,7 +227,9 @@ async function main() {
     `\n[view-harness] captured ${captured} screenshots; ${failures.length} flagged.`,
   );
   console.log(`[view-harness] output: ${OUTPUT_DIR}`);
-  console.log(`[view-harness] contact sheet: ${path.join(OUTPUT_DIR, "contact-sheet.md")}`);
+  console.log(
+    `[view-harness] contact sheet: ${path.join(OUTPUT_DIR, "contact-sheet.md")}`,
+  );
   if (failures.length > 0) {
     console.log("\n[view-harness] FLAGGED:");
     for (const f of failures) {
@@ -242,11 +266,17 @@ function writeContactSheet(report) {
       for (const vp of ["desktop", "mobile"]) {
         const e = entries.find((x) => x.state === state && x.viewport === vp);
         if (!e) continue;
-        const ok = e.renderError ? "✗ render error" : e.dominantColorOk ? "✓" : "✗ quality";
+        const ok = e.renderError
+          ? "✗ render error"
+          : e.dominantColorOk
+            ? "✓"
+            : "✗ quality";
         lines.push(
           `- **${vp}** ${ok} — \`${path.relative(here, e.pngPath)}\` (${e.bytes}B, ${e.colorBuckets} colors)`,
         );
-        lines.push(`  - ![${view}-${state}-${vp}](${path.relative(here, e.pngPath)})`);
+        lines.push(
+          `  - ![${view}-${state}-${vp}](${path.relative(here, e.pngPath)})`,
+        );
       }
       lines.push("");
     }

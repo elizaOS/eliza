@@ -118,7 +118,7 @@ def test_abliterate_tiny_gpt2_endtoend():
     # tiny-gpt2's resolver lives at ``transformer.h``; inject a Llama-shaped
     # alias so ``_resolve_decoder_layers`` finds the layer list. (We don't
     # patch the production code to know about GPT-2 — the abliterator only
-    # ever runs on Llama/Qwen-shaped models in real use.)
+    # ever runs on Gemma/Llama-shaped decoder models in real use.)
     model.model = nn.Module()
     model.model.layers = model.transformer.h
     _shim_gpt2_for_abliteration(model)

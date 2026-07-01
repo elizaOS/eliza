@@ -8,7 +8,7 @@
  * that loads inside the XR shell) is built, present, and structurally sound.
  *
  * What is tested:
- *   - bundle.js exists for all 23 source-buildable plugins
+ *   - bundle.js exists for all 16 source-buildable plugins
  *   - bundle.js is non-empty and contains built view content
  *   - bundle.js contains the componentExport name from the manifest
  *   - bundle.js is valid JavaScript (no JSON or HTML accidentally written there)
@@ -92,8 +92,14 @@ function extractXrViews(
     }
   }
   for (const obj of objects) {
-    const viewType = obj.match(/viewType:\s*"([^"]+)"/)?.[1];
-    if (viewType !== "xr") continue;
+    // Source-level mirror of core's `getViewModalities`: a view renders on the
+    // explicit `modalities: [...]` list when present, otherwise the single
+    // `viewType` (default "gui"). The view is an XR view when "xr" is among them.
+    const modalitiesMatch = obj.match(/modalities:\s*\[([^\]]*)\]/);
+    const modalities = modalitiesMatch
+      ? [...modalitiesMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
+      : [obj.match(/viewType:\s*"([^"]+)"/)?.[1] ?? "gui"];
+    if (!modalities.includes("xr")) continue;
     const id = obj.match(/\bid:\s*"([^"]+)"/)?.[1];
     const componentExport = obj.match(/componentExport:\s*"([^"]+)"/)?.[1];
     const bundlePath = obj.match(/bundlePath:\s*"([^"]+)"/)?.[1];
@@ -104,19 +110,15 @@ function extractXrViews(
   return results;
 }
 
-// The 24 plugin manifests → (plugin directory, manifest path)
+// The 16 plugin manifests → (plugin directory, manifest path)
 const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
-  {
-    pluginDir: "plugins/plugin-companion",
-    manifestPath: "plugins/plugin-companion/src/plugin.ts",
-  },
   {
     pluginDir: "plugins/plugin-contacts",
     manifestPath: "plugins/plugin-contacts/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-hyperliquid-app",
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
+    pluginDir: "plugins/plugin-hyperliquid",
+    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-messages",
@@ -131,28 +133,16 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-phone/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-polymarket-app",
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
+    pluginDir: "plugins/plugin-polymarket",
+    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
   },
   {
-    pluginDir: "plugins/plugin-shopify-ui",
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-steward-app",
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-vincent",
-    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
+    pluginDir: "plugins/plugin-shopify",
+    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-wallet-ui",
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-2004scape",
-    manifestPath: "plugins/plugin-2004scape/src/index.ts",
   },
   {
     pluginDir: "plugins/plugin-feed",
@@ -161,22 +151,6 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   {
     pluginDir: "plugins/plugin-app-control",
     manifestPath: "plugins/plugin-app-control/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-clawville",
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-defense-of-the-agents",
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-hyperscape",
-    manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-  },
-  {
-    pluginDir: "plugins/plugin-scape",
-    manifestPath: "plugins/plugin-scape/src/index.ts",
   },
   {
     pluginDir: "plugins/plugin-screenshare",
@@ -188,7 +162,7 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   },
   {
     pluginDir: "plugins/plugin-trajectory-logger",
-    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
+    manifestPath: "plugins/plugin-trajectory-logger/src/plugin.ts",
   },
   {
     pluginDir: "plugins/plugin-training",
@@ -200,7 +174,7 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
   },
 ];
 
-describe("XR view bundle coverage — all 24 plugin bundles built and valid", () => {
+describe("XR view bundle coverage — all 16 plugin bundles built and valid", () => {
   it("declares dist/views/bundle.js for every plugin with an XR view", () => {
     const missingDeclarations: string[] = [];
     for (const { pluginDir, manifestPath } of PLUGIN_BUNDLES) {

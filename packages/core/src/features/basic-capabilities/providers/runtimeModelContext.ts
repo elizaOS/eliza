@@ -108,25 +108,29 @@ function fallbackModelString(
 function configuredModelString(
 	runtime: RuntimeWithModelHelpers,
 	modelType: ModelTypeName,
-): string {
+): string | undefined {
 	const resolved =
 		typeof runtime.resolveProviderModelString === "function"
 			? runtime.resolveProviderModelString(modelType)
-			: fallbackModelString(runtime, modelType);
-	// Subscription backends (codex) register every model slot against one
-	// underlying model configured via their own setting (CODEX_MODEL) rather
-	// than the per-slot *_MODEL keys the resolver checks — so the resolver
-	// returns the raw slot name ("TEXT_LARGE"). Only fall back to the codex
-	// model when that slot is actually served by the codex-cli adapter, so a
-	// stale CODEX_MODEL env on a non-codex backend can't mislabel the slot.
-	if (!resolved || resolved === String(modelType)) {
-		const provider = registeredProviderFor(runtime, modelType);
-		if (provider === "codex-cli") {
-			const codexModel = readSetting(runtime, "CODEX_MODEL");
-			if (codexModel) return codexModel;
-		}
+			: undefined;
+	if (resolved && resolved !== String(modelType)) return resolved;
+	// The resolver is absent or returned the raw slot name ("RESPONSE_HANDLER").
+	// Subscription backends (codex) register every slot against one underlying
+	// model configured via their own setting (CODEX_MODEL); only trust it when
+	// the slot is actually served by the codex-cli adapter, so a stale
+	// CODEX_MODEL on a non-codex backend can't mislabel the slot.
+	const provider = registeredProviderFor(runtime, modelType);
+	if (provider === "codex-cli") {
+		const codexModel = readSetting(runtime, "CODEX_MODEL");
+		if (codexModel) return codexModel;
 	}
-	return resolved;
+	// Otherwise resolve from the configured *_MODEL keys along the fallback chain
+	// (e.g. ANTHROPIC_LARGE_MODEL). If still unresolvable, return undefined so the
+	// caller OMITS the line rather than leaking the raw slot name to the user.
+	const configured = fallbackModelString(runtime, modelType);
+	return configured && configured !== String(modelType)
+		? configured
+		: undefined;
 }
 
 function registeredProviderFor(
@@ -279,10 +283,10 @@ export const runtimeModelContextProvider: Provider = {
 		const lines = [
 			"# Runtime Model Context",
 			"Use these runtime facts when asked what model, provider, or coding agent is currently in use. Provider adapter names may identify compatibility layers; endpoint hosts identify the configured backend when present. Do not infer a different model or provider from training data or old chat history.",
-			`- Response handler model: ${responseHandlerModel}`,
-			`- Action planner model: ${actionPlannerModel}`,
-			`- Large text model: ${textLargeModel}`,
-			`- Small text model: ${textSmallModel}`,
+			optionalLine("Response handler model", responseHandlerModel),
+			optionalLine("Action planner model", actionPlannerModel),
+			optionalLine("Large text model", textLargeModel),
+			optionalLine("Small text model", textSmallModel),
 			optionalLine(
 				"Response handler provider adapter",
 				responseHandlerProvider,

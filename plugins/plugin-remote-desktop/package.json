@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-remote-desktop",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Remote desktop session control for Eliza agents. REMOTE_DESKTOP umbrella action (start/status/end/list/revoke) over Tailscale VNC/SSH and ngrok backends with pairing-code confirmation. Extracted from @elizaos/plugin-personal-assistant.",
   "type": "module",
   "main": "dist/index.js",
@@ -50,7 +50,6 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
@@ -61,11 +60,11 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit -p tsconfig.json --rootDir ../..",
-    "lint": "echo \"Lint skipped\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "check": "bun run typecheck && bun run test"
   },
   "publishConfig": {

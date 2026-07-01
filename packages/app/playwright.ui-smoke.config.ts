@@ -6,6 +6,10 @@ import { defineConfig, devices } from "@playwright/test";
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import {
+  ASSERTION_GRADE_DASHBOARD_SPECS,
+  DASHBOARD_E2E_DEVICE_MATRIX,
+} from "./test/ui-smoke/device-matrix";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
@@ -19,6 +23,10 @@ const uiSmokeLiveStack = path.join(
 const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
+const nodeExecutable =
+  process.env.ELIZA_NODE_PATH?.trim() ||
+  process.env.npm_node_execpath?.trim() ||
+  process.execPath;
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
 // Real audio fed to the browser mic for the voice button-press e2e: Chromium
@@ -36,7 +44,10 @@ writeFileSync(
   fakeAudioWav,
   Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
 );
-const VOICE_MIC_SPEC = /voice-realaudio\.spec\.ts/;
+const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
+// The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
+// dedicated tool run via `audit:app`, not part of the default e2e smoke.
+const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
@@ -74,8 +85,9 @@ export default defineConfig({
     {
       name: "chromium",
       // The voice button-press spec needs the fake-audio launch flags; it runs
-      // in the dedicated `chromium-voice-mic` project below, not here.
-      testIgnore: VOICE_MIC_SPEC,
+      // in the dedicated `chromium-voice-mic` project below, not here. The
+      // all-views aesthetic audit runs only via the `audit:app` project.
+      testIgnore: [VOICE_MIC_SPEC, AUDIT_APP_SPEC],
       use: {
         ...devices["Desktop Chrome"],
         ...(chromiumExecutablePath
@@ -83,6 +95,19 @@ export default defineConfig({
           : {}),
       },
     },
+    ...DASHBOARD_E2E_DEVICE_MATRIX.map((viewport) => ({
+      name: `dashboard-${viewport.id}`,
+      testMatch: ASSERTION_GRADE_DASHBOARD_SPECS,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: viewport.viewport,
+        isMobile: viewport.isMobile,
+        hasTouch: viewport.hasTouch,
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
+    })),
     {
       name: "chromium-voice-mic",
       testMatch: VOICE_MIC_SPEC,
@@ -108,14 +133,26 @@ export default defineConfig({
       // personal-assistant domain views, so each lifeops view is exercised at
       // the same WebView viewport that ships on Capacitor iOS/Android.
       testMatch:
-        /(backgrounds|apps-personal-assistant-decomposed-interactions)\.spec\.ts/,
+        /(backgrounds|apps-personal-assistant-decomposed-interactions|chat-clear-swipe)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
+    },
+    {
+      // All-views aesthetic audit (#8796) — run with `audit:app`
+      // (`--project=audit-app`). Walks every view at desktop + mobile internally.
+      name: "audit-app",
+      testMatch: AUDIT_APP_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
     },
   ],
   webServer: {
-    command: `node ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
+    command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} ${JSON.stringify(uiSmokeLiveStack)}`,
     cwd: repoRoot,
-    port: uiSmokePort,
+    url: `http://127.0.0.1:${uiSmokePort}`,
     reuseExistingServer,
     // A cold renderer build transforms ~3000 modules (~12 min) before the smoke
     // harness can bind the port; the live stack caps the build at 18 min, so the

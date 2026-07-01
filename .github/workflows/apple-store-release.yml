@@ -140,8 +140,29 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.build_ios == 'true'
     runs-on: macos-15
-    timeout-minutes: 60
+    # Embedding the no-JIT Bun engine + CocoaPods adds build time over a thin
+    # cloud-only client, so allow more headroom than the bare-IPA budget.
+    timeout-minutes: 90
     env:
+      # Make this split build (web + cap sync + ios-overlay + fastlane) behave
+      # like buildIos()'s App Store target, which bundles a working on-device
+      # agent. These env vars are normally set by configureIosAppStoreBuildDefaults
+      # / buildWeb("ios"); the workflow must set them itself because it bypasses
+      # buildIos(). Without them the IPA ships as a cloud-only thin client whose
+      # "start local agent" path hard-fails ("the JSContext compatibility
+      # transport is disabled outside iOS development builds").
+      #   - ELIZA_BUILD_VARIANT/RELEASE_AUTHORITY: bake __ELIZA_BUILD_VARIANT__
+      #     ="store" (store CSP + isNativeIosStoreBuild()) and embed the engine.
+      #   - ELIZA_IOS_FULL_BUN_ENGINE=1: force the engine pod into the IPA.
+      #   - VITE_ELIZA_IOS_FULL_BUN_AVAILABLE=1: tell the renderer the engine is
+      #     present (isFullBunRuntimeBuiltIn) so the transport actually uses it.
+      #   - VITE_ELIZA_IOS_RUNTIME_MODE=cloud-hybrid: App Store default mode; the
+      #     user switching to "local" persists to localStorage and wins.
+      ELIZA_BUILD_VARIANT: store
+      ELIZA_RELEASE_AUTHORITY: apple-app-store
+      ELIZA_IOS_FULL_BUN_ENGINE: "1"
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1"
+      VITE_ELIZA_IOS_RUNTIME_MODE: cloud-hybrid
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}
@@ -219,6 +240,13 @@ jobs:
         env:
           LANG: en_US.UTF-8
 
+      # Build the on-device agent bundle the embedded Bun engine executes.
+      # buildIos() does this via buildMobileAgentBundle(); this split workflow
+      # must run it explicitly so the ios-overlay step below can stage
+      # packages/agent/dist-mobile-ios into the app's public/agent.
+      - name: Build iOS agent bundle
+        run: bun run --cwd packages/agent build:ios-bun
+
       - name: Overlay iOS native files (Fastlane, AppDelegate, entitlements)
         run: node packages/app-core/scripts/run-mobile-build.mjs ios-overlay
         env:
@@ -237,7 +265,7 @@ jobs:
         run: pod install
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
+        uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -363,7 +391,7 @@ jobs:
 
       - name: Stage renderer
         run: |
-          rm -rf packages/app-core/platforms/electrobun/renderer
+          node packages/scripts/rm-path-recursive.mjs packages/app-core/platforms/electrobun/renderer
           cp -r packages/app/dist packages/app-core/platforms/electrobun/renderer
 
       - name: Build native macOS effects

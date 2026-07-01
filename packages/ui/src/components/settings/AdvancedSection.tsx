@@ -1,82 +1,207 @@
 import { AlertTriangle, Download, Trash2, Upload } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";
+import { client, type LocalAgentBackupMetadata } from "../../api";
+import {
+  setDeveloperMode,
+  setPreviewMode,
+  useAppSelectorShallow,
+  useIsDeveloperMode,
+  useIsPreviewMode,
+} from "../../state";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
+function formatBackupDate(value: string): string {
+  return value.replace("T", " ").replace(/\.\d{3}Z$/, "Z");
+}
+
+function formatBackupSize(sizeBytes: number): string {
+  if (!Number.isFinite(sizeBytes) || sizeBytes < 0) return "0 KB";
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${Math.max(1, Math.ceil(sizeBytes / 1024))} KB`;
+}
+
+function backupErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+function BackupOptionList({
+  backups,
+  selectedFileName,
+  onSelect,
+}: {
+  backups: LocalAgentBackupMetadata[];
+  selectedFileName: string;
+  onSelect: (fileName: string) => void;
+}) {
+  if (backups.length === 0) {
+    return (
+      <div className="rounded-sm border border-line bg-bg px-3 py-2 text-sm text-muted">
+        No backups yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-sm border border-line bg-bg">
+      {backups.map((backup) => (
+        <label
+          key={backup.fileName}
+          className="flex min-h-[3.25rem] cursor-pointer items-center gap-3 border-line border-t px-3 py-2 first:border-t-0"
+        >
+          <input
+            type="radio"
+            name="agent-backup-file"
+            className="h-4 w-4 shrink-0 accent-current"
+            checked={selectedFileName === backup.fileName}
+            onChange={() => onSelect(backup.fileName)}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-txt-strong">
+              {formatBackupDate(backup.createdAt)}
+            </span>
+            <span className="block truncate text-xs text-muted">
+              {formatBackupSize(backup.sizeBytes)} ·{" "}
+              {backup.stateSha256.slice(0, 12)}
+            </span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function AdvancedSection() {
-  const { t } = useApp();
-  const {
-    handleReset,
-    exportBusy,
-    exportPassword,
-    exportIncludeLogs,
-    exportError,
-    exportSuccess,
-    importBusy,
-    importPassword,
-    importFile,
-    importError,
-    importSuccess,
-    handleAgentExport,
-    handleAgentImport,
-    setState,
-  } = useApp();
+  const { t, handleReset } = useAppSelectorShallow((s) => ({
+    t: s.t,
+    handleReset: s.handleReset,
+  }));
   const developerMode = useIsDeveloperMode();
+  const previewMode = useIsPreviewMode();
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const importFileInputRef = useRef<HTMLInputElement>(null);
+  const [backupList, setBackupList] = useState<LocalAgentBackupMetadata[]>([]);
+  const [selectedBackupFileName, setSelectedBackupFileName] = useState("");
+  const [backupListBusy, setBackupListBusy] = useState(false);
+  const [createBackupBusy, setCreateBackupBusy] = useState(false);
+  const [restoreBackupBusy, setRestoreBackupBusy] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
 
-  const resetExportState = useCallback(() => {
-    setState("exportPassword", "");
-    setState("exportIncludeLogs", false);
-    setState("exportError", null);
-    setState("exportSuccess", null);
-  }, [setState]);
+  const selectNewestBackup = useCallback(
+    (backups: LocalAgentBackupMetadata[]) => {
+      setSelectedBackupFileName((current) => {
+        if (current && backups.some((backup) => backup.fileName === current)) {
+          return current;
+        }
+        return backups[0]?.fileName ?? "";
+      });
+    },
+    [],
+  );
 
-  const resetImportState = useCallback(() => {
-    if (importFileInputRef.current) {
-      importFileInputRef.current.value = "";
-    }
-    setState("importPassword", "");
-    setState("importFile", null);
-    setState("importError", null);
-    setState("importSuccess", null);
-  }, [setState]);
+  const loadLocalBackups = useCallback(
+    async (target: "backup" | "restore") => {
+      setBackupListBusy(true);
+      try {
+        const backups = await client.listLocalAgentBackups();
+        setBackupList(backups);
+        selectNewestBackup(backups);
+      } catch (err) {
+        const message = backupErrorMessage(err, "Failed to load backups.");
+        if (target === "restore") setRestoreError(message);
+        else setBackupError(message);
+      } finally {
+        setBackupListBusy(false);
+      }
+    },
+    [selectNewestBackup],
+  );
 
   const openExportModal = useCallback(() => {
-    resetExportState();
+    setBackupError(null);
+    setBackupSuccess(null);
     setExportModalOpen(true);
-  }, [resetExportState]);
+    void loadLocalBackups("backup");
+  }, [loadLocalBackups]);
 
   const closeExportModal = useCallback(() => {
     setExportModalOpen(false);
-    resetExportState();
-  }, [resetExportState]);
+    setBackupError(null);
+    setBackupSuccess(null);
+  }, []);
 
   const openImportModal = useCallback(() => {
-    resetImportState();
+    setRestoreError(null);
+    setRestoreSuccess(null);
     setImportModalOpen(true);
-  }, [resetImportState]);
+    void loadLocalBackups("restore");
+  }, [loadLocalBackups]);
 
   const closeImportModal = useCallback(() => {
     setImportModalOpen(false);
-    resetImportState();
-  }, [resetImportState]);
+    setRestoreError(null);
+    setRestoreSuccess(null);
+  }, []);
+
+  const handleCreateBackup = useCallback(async () => {
+    if (createBackupBusy) return;
+    setCreateBackupBusy(true);
+    setBackupError(null);
+    setBackupSuccess(null);
+    try {
+      const backup = await client.createLocalAgentBackup();
+      const backups = await client
+        .listLocalAgentBackups()
+        .catch(() => [backup]);
+      setBackupList(backups);
+      setSelectedBackupFileName(backup.fileName);
+      setBackupSuccess(
+        `Created backup ${formatBackupDate(backup.createdAt)} (${formatBackupSize(
+          backup.sizeBytes,
+        )}).`,
+      );
+    } catch (err) {
+      setBackupError(backupErrorMessage(err, "Backup failed."));
+    } finally {
+      setCreateBackupBusy(false);
+    }
+  }, [createBackupBusy]);
+
+  const handleRestoreBackup = useCallback(async () => {
+    if (restoreBackupBusy) return;
+    if (!selectedBackupFileName) {
+      setRestoreError("Select a backup before restoring.");
+      setRestoreSuccess(null);
+      return;
+    }
+    setRestoreBackupBusy(true);
+    setRestoreError(null);
+    setRestoreSuccess(null);
+    try {
+      await client.restoreLocalAgentBackup(selectedBackupFileName);
+      setRestoreSuccess("Restored backup. Restart the agent to activate it.");
+    } catch (err) {
+      setRestoreError(backupErrorMessage(err, "Restore failed."));
+    } finally {
+      setRestoreBackupBusy(false);
+    }
+  }, [restoreBackupBusy, selectedBackupFileName]);
 
   const { ref: exportOpenRef, agentProps: exportOpenAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "advanced-export-open",
       role: "button",
-      label: t("settings.exportAgent"),
+      label: "Back Up Agent",
       group: "advanced",
       onActivate: openExportModal,
     });
@@ -84,7 +209,7 @@ export function AdvancedSection() {
     useAgentElement<HTMLButtonElement>({
       id: "advanced-import-open",
       role: "button",
-      label: t("settings.importAgent"),
+      label: "Restore Agent",
       group: "advanced",
       onActivate: openImportModal,
     });
@@ -96,58 +221,24 @@ export function AdvancedSection() {
       group: "advanced",
       onActivate: () => setResetConfirmOpen(true),
     });
-  const { ref: exportPasswordRef, agentProps: exportPasswordAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "advanced-export-password",
-      role: "text-input",
-      label: t("settingsview.Password"),
-      group: "advanced-export",
-      getValue: () => exportPassword,
-      onFill: (value) => setState("exportPassword", value),
-    });
-  const { ref: exportIncludeLogsRef, agentProps: exportIncludeLogsAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "advanced-export-include-logs",
-      role: "toggle",
-      label: t("settingsview.IncludeRecentLogs"),
-      group: "advanced-export",
-      status: exportIncludeLogs ? "active" : "inactive",
-      onActivate: () => setState("exportIncludeLogs", !exportIncludeLogs),
-    });
   const { ref: exportSubmitRef, agentProps: exportSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "advanced-export-submit",
       role: "button",
-      label: t("common.export"),
+      label: "Create Backup",
       group: "advanced-export",
-      status: exportBusy ? "inactive" : "active",
-      onActivate: () => void handleAgentExport(),
-    });
-  const { ref: importBrowseRef, agentProps: importBrowseAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "advanced-import-browse",
-      role: "button",
-      label: t("settingsview.BackupFile"),
-      group: "advanced-import",
-      onActivate: () => importFileInputRef.current?.click(),
-    });
-  const { ref: importPasswordRef, agentProps: importPasswordAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "advanced-import-password",
-      role: "text-input",
-      label: t("settingsview.Password"),
-      group: "advanced-import",
-      getValue: () => importPassword,
-      onFill: (value) => setState("importPassword", value),
+      status: createBackupBusy ? "inactive" : "active",
+      onActivate: () => void handleCreateBackup(),
     });
   const { ref: importSubmitRef, agentProps: importSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "advanced-import-submit",
       role: "button",
-      label: t("settings.import"),
+      label: "Restore Backup",
       group: "advanced-import",
-      status: importBusy ? "inactive" : "active",
-      onActivate: () => void handleAgentImport(),
+      status:
+        restoreBackupBusy || !selectedBackupFileName ? "inactive" : "active",
+      onActivate: () => void handleRestoreBackup(),
     });
   const { ref: resetConfirmRef, agentProps: resetConfirmAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -164,56 +255,42 @@ export function AdvancedSection() {
   return (
     <>
       <SettingsStack>
-        <SettingsGroup bare>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Button
-              ref={exportOpenRef}
-              variant="outline"
-              type="button"
-              onClick={openExportModal}
-              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[border-color,background-color] group hover:border-accent"
-              aria-haspopup="dialog"
-              {...exportOpenAgentProps}
-            >
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface p-3 transition-all group-hover:border-accent group-hover:bg-accent">
-                <Download className="h-5 w-5 shrink-0 text-txt-strong transition-colors group-hover:text-accent-fg" />
-              </div>
-              <div>
-                <div className="font-medium text-sm">
-                  {t("settings.exportAgent")}
-                </div>
-              </div>
-            </Button>
-
-            <Button
-              ref={importOpenRef}
-              variant="outline"
-              type="button"
-              onClick={openImportModal}
-              className="min-h-[5.5rem] h-auto rounded-lg border border-border bg-card p-5 text-left transition-[border-color,background-color] group hover:border-accent"
-              aria-haspopup="dialog"
-              {...importOpenAgentProps}
-            >
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface p-3 transition-all group-hover:border-accent group-hover:bg-accent">
-                <Upload className="h-5 w-5 shrink-0 text-txt-strong transition-colors group-hover:text-accent-fg" />
-              </div>
-              <div>
-                <div className="font-medium text-sm">
-                  {t("settings.importAgent")}
-                </div>
-              </div>
-            </Button>
-          </div>
+        <SettingsGroup>
+          <SettingsRow
+            icon={Download}
+            label="Back Up Agent"
+            onClick={openExportModal}
+            buttonRef={exportOpenRef}
+            buttonProps={exportOpenAgentProps}
+          />
+          <SettingsRow
+            icon={Upload}
+            label="Restore Agent"
+            onClick={openImportModal}
+            buttonRef={importOpenRef}
+            buttonProps={importOpenAgentProps}
+          />
         </SettingsGroup>
 
-        <SettingsGroup>
+        <SettingsGroup
+          title="View visibility"
+          description="Views are sorted into four kinds. System and Release views are always shown. Turn on the kinds below to reveal the rest."
+        >
           <SettingsSwitchRow
             agentId="advanced-developer-mode"
             group="advanced"
-            label="Developer Mode"
-            description="Show developer tools (logs, trajectory viewer, prompt artifacts) and developer-only apps in the nav."
+            label="Developer views"
+            description="Developer tooling to verify the app is working — logs, database, trajectories. On by default in dev builds."
             checked={developerMode}
             onCheckedChange={(checked) => setDeveloperMode(checked)}
+          />
+          <SettingsSwitchRow
+            agentId="advanced-preview-mode"
+            group="advanced"
+            label="Preview views"
+            description="Unfinished, alpha, or experimental views still in progress. Off by default."
+            checked={previewMode}
+            onCheckedChange={(checked) => setPreviewMode(checked)}
           />
         </SettingsGroup>
 
@@ -257,57 +334,38 @@ export function AdvancedSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("settings.exportAgent")}</DialogTitle>
+            <DialogTitle>Back Up Agent</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label
-                htmlFor="settings-export-password"
-                className="text-txt-strong"
-              >
-                {t("settingsview.Password")}
-              </Label>
-              <Input
-                ref={exportPasswordRef}
-                id="settings-export-password"
-                type="password"
-                value={exportPassword}
-                onChange={(e) => setState("exportPassword", e.target.value)}
-                placeholder={t("settingsview.EnterExportPasswor")}
-                className="h-11 rounded-sm bg-bg"
-                {...exportPasswordAgentProps}
+            {backupListBusy ? (
+              <div className="flex min-h-[3.25rem] items-center gap-2 rounded-sm border border-line bg-bg px-3 py-2 text-sm text-muted">
+                <Spinner size={16} />
+                Loading backups
+              </div>
+            ) : (
+              <BackupOptionList
+                backups={backupList}
+                selectedFileName={selectedBackupFileName}
+                onSelect={setSelectedBackupFileName}
               />
-              <Label className="flex items-center gap-2 font-normal text-muted">
-                <Checkbox
-                  ref={exportIncludeLogsRef}
-                  checked={exportIncludeLogs}
-                  onCheckedChange={(checked: boolean | "indeterminate") =>
-                    setState("exportIncludeLogs", !!checked)
-                  }
-                  aria-current={exportIncludeLogs ? "true" : undefined}
-                  {...exportIncludeLogsAgentProps}
-                />
+            )}
 
-                {t("settingsview.IncludeRecentLogs")}
-              </Label>
-            </div>
-
-            {exportError && (
+            {backupError && (
               <div
                 className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
                 role="alert"
                 aria-live="assertive"
               >
-                {exportError}
+                {backupError}
               </div>
             )}
-            {exportSuccess && (
+            {backupSuccess && (
               <div
                 className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
                 role="status"
                 aria-live="polite"
               >
-                {exportSuccess}
+                {backupSuccess}
               </div>
             )}
 
@@ -328,12 +386,12 @@ export function AdvancedSection() {
                 variant="default"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
-                disabled={exportBusy}
-                onClick={() => void handleAgentExport()}
+                disabled={createBackupBusy}
+                onClick={() => void handleCreateBackup()}
                 {...exportSubmitAgentProps}
               >
-                {exportBusy && <Spinner size={16} />}
-                {t("common.export")}
+                {createBackupBusy && <Spinner size={16} />}
+                Create Backup
               </Button>
             </div>
           </div>
@@ -348,76 +406,38 @@ export function AdvancedSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("settings.importAgent")}</DialogTitle>
+            <DialogTitle>Restore Agent</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <input
-              ref={importFileInputRef}
-              type="file"
-              className="hidden"
-              accept=".eliza-agent,.agent,application/octet-stream"
-              onChange={(e) =>
-                setState("importFile", e.target.files?.[0] ?? null)
-              }
-            />
-
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-txt-strong">
-                {t("settingsview.BackupFile")}
+            {backupListBusy ? (
+              <div className="flex min-h-[3.25rem] items-center gap-2 rounded-sm border border-line bg-bg px-3 py-2 text-sm text-muted">
+                <Spinner size={16} />
+                Loading backups
               </div>
-              <Button
-                ref={importBrowseRef}
-                variant="outline"
-                className="min-h-[2.625rem] px-4 rounded-sm flex w-full items-center justify-between gap-3 text-left"
-                onClick={() => importFileInputRef.current?.click()}
-                {...importBrowseAgentProps}
-              >
-                <span className="min-w-0 flex-1 truncate text-sm text-txt">
-                  {importFile?.name ?? t("settingsview.ChooseAnExportedBack")}
-                </span>
-                <span className="shrink-0 text-xs font-medium text-txt">
-                  {importFile
-                    ? t("settings.change", { defaultValue: "Change" })
-                    : t("settings.browse", { defaultValue: "Browse" })}
-                </span>
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="settings-import-password"
-                className="text-txt-strong"
-              >
-                {t("settingsview.Password")}
-              </Label>
-              <Input
-                ref={importPasswordRef}
-                id="settings-import-password"
-                type="password"
-                value={importPassword}
-                onChange={(e) => setState("importPassword", e.target.value)}
-                placeholder={t("settingsview.EnterImportPasswor")}
-                className="h-11 rounded-sm bg-bg"
-                {...importPasswordAgentProps}
+            ) : (
+              <BackupOptionList
+                backups={backupList}
+                selectedFileName={selectedBackupFileName}
+                onSelect={setSelectedBackupFileName}
               />
-            </div>
+            )}
 
-            {importError && (
+            {restoreError && (
               <div
                 className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
                 role="alert"
                 aria-live="assertive"
               >
-                {importError}
+                {restoreError}
               </div>
             )}
-            {importSuccess && (
+            {restoreSuccess && (
               <div
                 className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
                 role="status"
                 aria-live="polite"
               >
-                {importSuccess}
+                {restoreSuccess}
               </div>
             )}
 
@@ -438,12 +458,12 @@ export function AdvancedSection() {
                 variant="default"
                 size="sm"
                 className="min-h-[2.625rem] px-4 rounded-sm"
-                disabled={importBusy}
-                onClick={() => void handleAgentImport()}
+                disabled={restoreBackupBusy || !selectedBackupFileName}
+                onClick={() => void handleRestoreBackup()}
                 {...importSubmitAgentProps}
               >
-                {importBusy && <Spinner size={16} />}
-                {t("settings.import")}
+                {restoreBackupBusy && <Spinner size={16} />}
+                Restore Backup
               </Button>
             </div>
           </div>

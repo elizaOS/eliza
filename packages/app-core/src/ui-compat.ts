@@ -1,6 +1,5 @@
 export type {
   AppDetailExtensionProps,
-  AppOperatorSurfaceProps,
   AppRunSummary,
   AppSessionJsonValue,
   FeedActivityItem,
@@ -10,8 +9,6 @@ export type {
   FeedPredictionMarket,
   FeedTeamAgent,
   FeedWallet,
-  GameOperatorAction,
-  GameOperatorEvent,
   OverlayApp,
   OverlayAppContext,
   SurfaceTone,
@@ -40,10 +37,15 @@ export {
   toneForViewerAttachment,
 } from "@elizaos/ui/components/apps/extensions/surface.helpers";
 export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
-export { GameOperatorShell } from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
-export { registerOperatorSurface } from "@elizaos/ui/components/apps/surfaces/registry";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";
 export { Spinner } from "@elizaos/ui/components/ui/spinner";
+// app-store only pulls React + an erased type (same weight as useApp), so it
+// stays light enough for the Node API process — re-export the selector hooks so
+// app plugins can subscribe to AppContext slices instead of the whole value.
+export {
+  useAppSelector,
+  useAppSelectorShallow,
+} from "@elizaos/ui/state/app-store";
 export { useApp } from "@elizaos/ui/state/useApp";

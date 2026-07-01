@@ -2,16 +2,7 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
-import type {
-  CodingAgentTasksPanelProps,
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-  CompanionShellComponentProps,
-  ResolveCompanionInferenceNoticeArgs,
-  StewardApprovalQueueProps,
-  StewardLogoProps,
-  StewardTransactionHistoryProps,
-} from "@elizaos/ui/config";
+import type { CodingAgentTasksPanelProps } from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 
 type EmptyComponent = ComponentType<Record<string, never>>;
@@ -81,77 +72,14 @@ declare module "@elizaos/app-core" {
   };
 }
 
-declare module "@elizaos/app-companion" {
-  export const CompanionShell: ComponentType<CompanionShellComponentProps>;
-  export const GlobalEmoteOverlay: EmptyComponent;
-  export const InferenceCloudAlertButton: ComponentType<{
-    notice: CompanionInferenceNotice;
-    onClick: () => void;
-    onPointerDown?: (...args: unknown[]) => unknown;
-  }>;
-  export const THREE: unknown;
-  export function createVectorBrowserRenderer(
-    ...args: unknown[]
-  ): Promise<unknown>;
-  export function registerCompanionApp(): void;
-  export function resolveCompanionInferenceNotice(
-    args: ResolveCompanionInferenceNoticeArgs,
-  ): CompanionInferenceNotice | null;
-  export function useCompanionSceneStatus(): CompanionSceneStatus;
-}
-
-declare module "@elizaos/plugin-companion" {
-  export * from "@elizaos/app-companion";
-}
-
-declare module "@elizaos/plugin-companion/components/companion/companion-app" {
-  export function registerCompanionApp(): void;
-}
-
-declare module "@elizaos/plugin-companion/components/companion/companion-scene-status-context" {
-  import type { CompanionSceneStatus } from "@elizaos/ui/config";
-
-  export function useCompanionSceneStatus(): CompanionSceneStatus;
-}
-
-declare module "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice" {
-  import type {
-    CompanionInferenceNotice,
-    ResolveCompanionInferenceNoticeArgs,
-  } from "@elizaos/ui/config";
-
-  export function resolveCompanionInferenceNotice(
-    args: ResolveCompanionInferenceNoticeArgs,
-  ): CompanionInferenceNotice | null;
-}
-
-declare module "@elizaos/plugin-companion/components/companion/CompanionShell" {
-  import type { CompanionShellComponentProps } from "@elizaos/ui/config";
-  import type { ComponentType } from "react";
-
-  export const CompanionShell: ComponentType<CompanionShellComponentProps>;
-}
-
-declare module "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay" {
-  import type { ComponentType } from "react";
-
-  export const GlobalEmoteOverlay: ComponentType<Record<string, never>>;
-}
-
-declare module "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton" {
-  import type { CompanionInferenceNotice } from "@elizaos/ui/config";
-  import type { ComponentType } from "react";
-
-  export const InferenceCloudAlertButton: ComponentType<{
-    notice: CompanionInferenceNotice;
-    onClick: () => void;
-    onPointerDown?: (...args: unknown[]) => unknown;
-  }>;
-}
-
 declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
+}
+
+declare module "@elizaos/plugin-blocker" {
+  export function registerNativeWebsiteBlockerBackend(backend: unknown): void;
+  export function registerNativeAppBlockerBackend(backend: unknown): void;
 }
 
 declare module "@elizaos/app-phone" {
@@ -160,16 +88,6 @@ declare module "@elizaos/app-phone" {
 
 declare module "@elizaos/plugin-phone" {
   export * from "@elizaos/app-phone";
-}
-
-declare module "@elizaos/app-steward" {
-  export const StewardLogo: ComponentType<StewardLogoProps>;
-  export const ApprovalQueue: ComponentType<StewardApprovalQueueProps>;
-  export const TransactionHistory: ComponentType<StewardTransactionHistoryProps>;
-}
-
-declare module "@elizaos/plugin-steward-app" {
-  export * from "@elizaos/app-steward";
 }
 
 declare module "@elizaos/app-task-coordinator" {
@@ -192,36 +110,7 @@ declare module "@elizaos/plugin-training" {
   export * from "@elizaos/app-training";
 }
 
-declare module "@elizaos/app-vincent" {
-  // Imported only for its self-registration side effect.
-  export {};
-}
-
-declare module "@elizaos/plugin-vincent" {
-  export * from "@elizaos/app-vincent";
-}
-
 declare module "@elizaos/app-feed" {
-  export {};
-}
-
-declare module "@elizaos/app-scape" {
-  export {};
-}
-
-declare module "@elizaos/app-hyperscape" {
-  export {};
-}
-
-declare module "@elizaos/app-2004scape" {
-  export {};
-}
-
-declare module "@elizaos/app-defense-of-the-agents" {
-  export {};
-}
-
-declare module "@elizaos/app-clawville" {
   export {};
 }
 

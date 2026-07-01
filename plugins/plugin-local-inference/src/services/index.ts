@@ -4,28 +4,17 @@ export {
 	VoiceBundleDoesNotFitError,
 } from "./active-model";
 export {
-	type AsrBackend,
-	type AsrBackendLoader,
-	AsrBackendUnavailableError,
-	type AsrLoadArgs,
-	type AsrRequest,
-	type AsrResult,
-	type AsrTranscriptCacheLike,
-	type AsrUnavailableReason,
-	type CreateAsrCapabilityRegistrationOptions,
-	createAsrCapabilityRegistration,
-	hashAsrInput,
-	isAsrBackendUnavailable,
-} from "./asr";
-export {
 	type BackendDecision,
 	BackendDispatcher,
+	type BackendId,
 	type BackendOverride,
 	type BackendPlan,
 	decideBackend,
+	ELIZA_LLM_BACKEND_ENV,
 	type GenerateArgs as BackendGenerateArgs,
 	type GenerateResult,
 	type LocalInferenceBackend,
+	litertBackendSupported,
 	readBackendOverride,
 	resolveCatalogForPlan,
 } from "./backend";
@@ -44,7 +33,30 @@ export {
 	type LocalGenerateOutcome,
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
-export { type DeviceBridgeStatus, deviceBridge } from "./device-bridge";
+export {
+	computeRuntimeContextFit,
+	type RuntimeContextFit,
+	type RuntimeContextFitInput,
+} from "./context-fit";
+export {
+	buildDeviceResourceMetricsDevPayload,
+	type DeviceBridgeStatus,
+	type DeviceGenerationMetrics,
+	type DeviceResourceMetricsDevPayload,
+	deviceBridge,
+} from "./device-bridge";
+export {
+	type BatterySummary,
+	DeviceResourceMetrics,
+	type DeviceResourceSummary,
+	type DeviceThermalState,
+	type GenerationObservation,
+	type LowPowerSummary,
+	type ResourceSample,
+	type RssSummary,
+	type ThermalSummary,
+	type ThermalTransition,
+} from "./device-resource-metrics";
 export {
 	classifyDeviceTier,
 	DEVICE_TIER_ORDER,
@@ -74,6 +86,16 @@ export {
 	type ImageDescriptionRuntime,
 	type ImageDescriptionRuntimeOptions,
 } from "./image-description-runtime";
+export {
+	type CapabilityProbes,
+	defaultsForNoBinding,
+	type InferenceCapabilities,
+	probeCapabilities,
+	type ResourceSnapshot,
+	type ThermalState,
+	type ThermalThrottleDecision,
+	thermalThrottleDecision,
+} from "./inference-capabilities";
 export {
 	InferenceTelemetry,
 	inferenceTelemetry,
@@ -118,6 +140,16 @@ export {
 	setMemoryArbiter,
 	tryGetMemoryArbiter,
 } from "./memory-arbiter";
+export {
+	buildMemoryBenchmarkPlan,
+	buildMemoryBenchmarkReport,
+	type MemoryBenchmarkLoadResult,
+	type MemoryBenchmarkModelPlan,
+	type MemoryBenchmarkOptions,
+	type MemoryBenchmarkReport,
+	runMemoryBenchmark,
+	summarizeMemoryBenchmark,
+} from "./memory-benchmark";
 export {
 	type CapacitorPressureSource,
 	capacitorPressureSource,
@@ -189,6 +221,13 @@ export type {
 	ModelHubSnapshot,
 	TextGenerationSlot,
 } from "./types";
+export {
+	getVisionContextAugmenter,
+	registerVisionContextAugmenter,
+	type VisionAugmentResult,
+	type VisionContextAugmenter,
+	type VisionFusedContext,
+} from "./vision/augmenter";
 export {
 	VisionEmbeddingCache,
 	type VisionEmbeddingCacheConfig,

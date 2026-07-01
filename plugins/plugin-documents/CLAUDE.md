@@ -4,7 +4,7 @@ HTTP API surface for the elizaOS document store.
 
 ## Purpose / role
 
-Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It also registers the `OWNER_DOCUMENTS` action (currently a stub pending migration from plugin-lifeops). It has no providers, evaluators, or event handlers.
+Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-documents`).
 
@@ -27,11 +27,9 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 | PATCH  | `/api/documents/:id` | Update document text content (re-fragments) |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
-**Actions:**
-
-| Action name | File | Status |
-|-------------|------|--------|
-| `OWNER_DOCUMENTS` | `src/actions/owner-documents.ts` | Stub — full implementation (approval queue gating, scheduled-task deadline tracking, signing-portal dispatch, document-request lifecycle) pending migration from plugin-lifeops |
+**Actions:** none registered here. `OWNER_DOCUMENTS` is registered by
+`@elizaos/plugin-personal-assistant` and delegates to this package's document
+routes/store where appropriate.
 
 No providers, services, evaluators, or event handlers are registered.
 
@@ -46,8 +44,6 @@ src/
                          getDocumentProvenance(), getDocumentVisibilityScope(), etc.
   service-loader.ts      Re-exports canonical types and getDocumentsService() from
                          @elizaos/agent/api/documents-service-loader
-  actions/
-    owner-documents.ts   OWNER_DOCUMENTS action (stub)
   components/
     documents/
       DocumentsView.tsx          React view for documents UI
@@ -110,4 +106,46 @@ All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`,
 - **Fragment pagination.** Fragment listing always paginates in batches of 500 (`FRAGMENT_BATCH_SIZE`). Large documents with many fragments will issue multiple `getMemories` calls.
 - **Max body size.** Single and bulk upload endpoints cap at 32 MB (`DOCUMENT_UPLOAD_MAX_BODY_BYTES`). Bulk is further capped at 100 documents per request.
 - **rawPath routing.** All routes are registered with `rawPath: true`, meaning the agent server dispatches them directly without prefix stripping. The path `/api/documents` is absolute.
-- **OWNER_DOCUMENTS action is a stub.** The action registers cleanly so the runtime knows the action contract, but the full implementation (approval queue, deadline tracking, signing-portal dispatch) is not yet ported from plugin-lifeops.
+- **OWNER_DOCUMENTS is host-adapted.** Do not add a second action here unless the PA-hosted approval, scheduler, and document-request behavior is moved with tests that prove parity.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — storage / memory:**
+- The actual rows / embeddings / documents written **and read back**, with their shape inspected — not a mock asserting itself.
+- Query correctness: precision/recall on real data, ordering, pagination, and migration up/down.
+- GC/retention, concurrency, and large-payload paths.
+- A trajectory showing memory/knowledge actually recalled into a turn, where relevant.
+<!-- END: evidence-and-e2e-mandate -->

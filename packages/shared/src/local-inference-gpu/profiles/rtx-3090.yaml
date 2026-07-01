@@ -18,18 +18,6 @@ fp4_supported: false
 nvlink: false
 
 bundle_recommendations:
-  eliza-1-0_8b:
-    n_gpu_layers: -1
-    ctx_size: 32768
-    parallel: 16
-    batch_size: 2048
-    ubatch_size: 512
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 480
-    estimated_prefill_tps: 18000
-    notes: "Smallest active Qwen3.5 local tier; smoke/default fallback."
   eliza-1-2b:
     n_gpu_layers: -1
     ctx_size: 32768
@@ -41,7 +29,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 280
     estimated_prefill_tps: 9000
-    notes: "First-run active Qwen3.5 tier."
+    notes: "Smallest/entry active Gemma 4 local tier; smoke/default fallback."
   eliza-1-4b:
     n_gpu_layers: -1
     ctx_size: 65536
@@ -53,7 +41,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 150
     estimated_prefill_tps: 5200
-    notes: "Balanced Qwen3.5 tier; all layers fit on 24 GiB with 64k context."
+    notes: "Balanced Gemma 4 tier; all layers fit on 24 GiB with 64k context."
   eliza-1-9b:
     n_gpu_layers: -1
     ctx_size: 65536
@@ -65,7 +53,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 70
     estimated_prefill_tps: 3600
-    notes: "Best-fit Qwen3.5 tier for RTX 3090; keep 27B on larger cards."
+    notes: "Best-fit Gemma 4 tier for RTX 3090; keep 27B on larger cards."
 
 mtp:
   enabled: true

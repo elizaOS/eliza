@@ -5,11 +5,11 @@ import { cn } from "../../lib/utils";
 // is kept inline so the scanner emits the utility.
 
 /**
- * Hover-only tooltip with optional shortcut hint. Used as the icon-button
- * affordance pattern in plugins/plugin-companion. The other extended-tooltip
- * primitives (HoverTooltip, Spotlight, useGuidedTour, TourStep) were
- * deleted as zero-consumer in the Layer 5b sweep — their last shipping
- * surface was a guided-tour feature that was never wired up.
+ * Hover-only tooltip with optional shortcut hint — the icon-button affordance
+ * primitive exported from the kit. The other extended-tooltip primitives
+ * (HoverTooltip, Spotlight, useGuidedTour, TourStep) were deleted as
+ * zero-consumer in the Layer 5b sweep — their last shipping surface was a
+ * guided-tour feature that was never wired up.
  */
 export function IconTooltip({
   children,
@@ -30,7 +30,7 @@ export function IconTooltip({
       {children}
       <div
         className={cn(
-          "absolute px-3 py-2 bg-bg-elevated border border-border text-xs text-txt-strong rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-opacity duration-200 z-[200] pointer-events-none",
+          "absolute px-3 py-2 bg-bg-elevated border border-border text-xs text-txt-strong rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible   transition-opacity duration-200 z-[200] pointer-events-none",
           position === "top"
             ? "bottom-full left-1/2 -translate-x-1/2 mb-2"
             : "top-full left-1/2 -translate-x-1/2 mt-2",

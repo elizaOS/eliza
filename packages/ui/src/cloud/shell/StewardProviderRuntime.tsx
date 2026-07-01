@@ -12,10 +12,28 @@
  */
 
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
-import type { StewardClient as StewardReactClient } from "@stwd/react";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
+// The @stwd/react components — notably <StewardLogin> on the app-auth authorize
+// page (packages/ui/src/cloud-ui/components/auth/authorize-content.tsx) — are
+// styled ENTIRELY by this scoped `.stwd-*` stylesheet (it drives layout, button
+// borders/fills, and the input box via CSS custom properties). It was never
+// imported anywhere, so <StewardLogin> rendered completely unstyled in prod: the
+// authorize/sign-in buttons collapsed to plain inline text with icons floating
+// above jammed labels and no input box. Import it here, co-located with the lazy
+// web-only Steward chunk, so it loads exactly when the Steward UI mounts. Scoped
+// to `.stwd-*` → touches nothing else. This module is dynamically imported
+// (never in the Node barrel), so the .css never reaches a Node plugin loader.
+import "@stwd/react/styles.css";
 import { StewardClient } from "@stwd/sdk";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
+import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import {
   clearServerStewardSessionCookies,
   clearStaleStewardSession,
@@ -27,10 +45,23 @@ import {
   readStoredToken,
   tokenIsExpired,
   tokenSecsRemaining,
-} from "./StewardProvider";
+} from "./StewardProviderShared";
 
 const REFRESH_CHECK_INTERVAL_MS = 60_000;
 const REFRESH_AHEAD_SECS = 120;
+type StewardProviderClient = ComponentProps<typeof StewardProvider>["client"];
+
+// The Steward SDK UI (<StewardLogin> on the app-auth sign-in page, wallet,
+// dashboards) otherwise renders with the SDK's default gold accent
+// (DEFAULT_THEME.primaryColor = #D4A054). Override just the accent colors to
+// Eliza's brand orange so the sign-in matches the rest of the product (the main
+// /login page + the app shell are #FF5800). The SDK's dark surface/text defaults
+// already match our surfaces, so no other fields need theming. Passed as the
+// provider `theme` (Partial<TenantTheme>) → mapped to the scoped `.stwd-*` vars.
+const ELIZA_STEWARD_THEME: ComponentProps<typeof StewardProvider>["theme"] = {
+  primaryColor: "#FF5800",
+  accentColor: "#FF5800",
+};
 
 function AuthTokenSync({ children }: { children: ReactNode }) {
   const auth = useStewardAuth();
@@ -209,7 +240,16 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
           }
         : null,
       session: auth.session,
-      signOut: () => auth.signOut(),
+      signOut: () => {
+        // Drop the at-rest JWT from the persisted active server before the SDK
+        // sign-out — leaving it in localStorage is an at-rest token leak. Keeps
+        // the backend selection (kind/apiBase) so re-auth lands on the same one.
+        // The same JWT is also copied into the per-agent profile records, so
+        // scrub those too — otherwise the token survives at rest there.
+        scrubPersistedActiveServerToken();
+        scrubPersistedAgentProfileTokens();
+        auth.signOut();
+      },
       getToken: () => auth.getToken(),
       verifyEmailCallback: async (token: string, email: string) => {
         const result = await auth.verifyEmailCallback(token, email);
@@ -238,27 +278,25 @@ export default function StewardAuthRuntimeProvider({
   children: ReactNode;
   tenantId?: string;
 }) {
-  // @stwd/react bundles an older @stwd/sdk than the one pinned here. The
-  // StewardClient classes are public-API-identical and differ only by added
-  // private fields, so the cast bridges the nominal mismatch; StewardProvider
-  // only calls the public `client.getBaseUrl()` at runtime.
   const client = useMemo(
     () =>
       new StewardClient({
         baseUrl: apiUrl,
         ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
-      }) as unknown as StewardReactClient,
+      }),
     [apiUrl, tenantId],
   );
   const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
-  const providerClient = client as unknown as React.ComponentProps<
-    typeof StewardProvider
-  >["client"];
+  // @stwd/react bundles an older @stwd/sdk than the one pinned here. The
+  // client classes are runtime-compatible, but TypeScript treats them as
+  // nominally different because both versions declare private fields.
+  const providerClient = client as unknown as StewardProviderClient;
 
   return (
     <StewardProvider
       client={providerClient}
       agentId="eliza-cloud"
+      theme={ELIZA_STEWARD_THEME}
       auth={authConfig}
       tenantId={
         tenantId && !isPlaceholderValue(tenantId) ? tenantId : undefined

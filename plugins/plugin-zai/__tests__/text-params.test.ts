@@ -49,6 +49,32 @@ describe("z.ai text parameter resolution", () => {
     );
   });
 
+  it("honors a per-call model override before z.ai slot defaults", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        if (key === "ZAI_LARGE_MODEL") return "glm-default-large";
+        return undefined;
+      },
+    };
+
+    const { handleTextLarge } = await import("../models/text");
+
+    await expect(
+      handleTextLarge(runtime as never, {
+        prompt: "hello",
+        model: " glm-workflow ",
+      })
+    ).resolves.toBe("ok");
+
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { modelName: "glm-workflow" },
+      })
+    );
+  });
+
   it("uses deprecated CoT budget settings to enable z.ai thinking mode", async () => {
     const fetchMock = vi.fn(async () => new Response("ok")) as typeof fetch;
     const runtime = {

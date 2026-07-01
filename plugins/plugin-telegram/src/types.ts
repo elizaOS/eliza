@@ -21,7 +21,7 @@ export interface TelegramContent extends Content {
  */
 export type Button = {
   /** The type of button */
-  kind: "login" | "url";
+  kind: "login" | "url" | "web_app";
   /** The text to display on the button */
   text: string;
   /** The URL or endpoint the button should link to */

@@ -7,15 +7,27 @@ on:
     branches: ["main"]
   schedule:
     - cron: "29 8 * * 6"
+  workflow_dispatch:
 
 # Default to least privilege. Override per-job where needed.
+# cancel superseded in-flight runs for the same PR to free hosted-runner
+# capacity. only cancels pull_request runs; push runs on protected branches
+# (main/develop) are never cancelled mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    # WHY: whole-repo JS CodeQL can exhaust GitHub-hosted disk during the
+    # PolynomialReDoS dataflow query. Trusted events use the larger robot fleet;
+    # pull_request stays GitHub-hosted so forked code never runs on self-hosted.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","hetzner-robot"]') }}
+    timeout-minutes: 360
     permissions:
       # required for all workflows
       security-events: write
@@ -37,11 +49,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      - name: Report disk before CodeQL
+        shell: bash
+        run: |
+          df -h
+          du -sh "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+      - name: Free GitHub-hosted runner disk
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          # WHY: this preserves the full CodeQL query suite while giving the
+          # hosted fallback enough headroom for CodeQL's temporary databases.
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Python \
+            /opt/hostedtoolcache/Ruby || true
+          df -h
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+          # WHY: empty defaults made the action auto-pick all 12 threads + ~244GB,
+          # leaving zero headroom for un-budgeted per-thread dataflow working sets +
+          # file-backed mmaps that --ram does NOT bound — the exit-137 cause. Capping
+          # threads is the biggest peak-RAM lever; 90GB leaves ~150GB OS headroom.
+          ram: 90000
+          threads: 4
 
       - if: matrix.build-mode == 'manual'
         shell: bash

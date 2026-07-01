@@ -13,7 +13,7 @@ import {
   hasCriticalFailures,
   runVerification,
   writeReport,
-} from "../../soc2-verify/src/index.js";
+} from "../../security/soc2-verify/src/index.js";
 
 const elizaRoot = resolve(__dirname, "../../..");
 const outerRoot = resolve(elizaRoot, "..");
@@ -44,9 +44,11 @@ describe("SOC2 verification harness — full run", () => {
     // Every dynamic check in the include set must pass.
     for (const block of Object.values(report.controls)) {
       for (const c of block.checks) {
-        expect(
-          { id: c.id, status: c.status, evidence: c.evidence },
-        ).toMatchObject({ status: "pass" });
+        expect({
+          id: c.id,
+          status: c.status,
+          evidence: c.evidence,
+        }).toMatchObject({ status: "pass" });
       }
     }
   });

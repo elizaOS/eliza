@@ -1039,14 +1039,3 @@ export interface ICommunityInvestorService {
 	getLeaderboardData(runtime: IAgentRuntime): Promise<LeaderboardEntry[]>;
 	// ensureTaskWorkersRegistered(runtime: IAgentRuntime): void; // Task registration is internal to constructor
 }
-
-// Adding MessageReceivedHandlerParams
-export interface MessageReceivedHandlerParams {
-	runtime: IAgentRuntime;
-	message: Memory;
-	callback: (
-		response: string | Record<string, unknown>,
-		metadata?: Record<string, unknown>,
-	) => Promise<void>;
-	onComplete?: () => void;
-}

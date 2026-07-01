@@ -280,3 +280,64 @@ export function registerCoordOcrProvider(
 export function getCoordOcrProvider(): CoordOcrProvider | null {
   return registeredCoordOcrProvider;
 }
+
+// ── Set-of-Marks provider slot (#9170 M9) ────────────────────────────────────
+
+/**
+ * Set-of-Marks grounding (trycua/cua's OmniParser technique): fuse GGUF YOLO
+ * icon detections + OCR text boxes into ONE deduplicated, 1-indexed set of
+ * numbered targets, optionally with a numbered-overlay PNG. The VLM picks a
+ * *number* instead of regressing raw pixels.
+ *
+ * The fusion + overlay implementation lives in `@elizaos/plugin-vision`
+ * (`som.ts`) because that package owns the YOLO detector and OCR engines.
+ * computeruse exposes this registration slot (same no-hard-dep pattern as the
+ * CoordOcrProvider above); `detect_elements` consumes whatever is registered.
+ */
+export interface SetOfMarksMark {
+  /** 1-indexed mark number shown in the overlay. */
+  readonly index: number;
+  /** Display-local box `[x, y, w, h]`. */
+  readonly bbox: readonly [number, number, number, number];
+  /** Box center `[x, y]` — the click target the number resolves to. */
+  readonly center: readonly [number, number];
+  readonly source: "icon" | "text";
+  readonly label?: string;
+  readonly score: number;
+}
+
+export interface SetOfMarksResult {
+  readonly marks: ReadonlyArray<SetOfMarksMark>;
+  /** Base64 PNG of the numbered overlay (present only when requested). */
+  readonly overlayPngBase64?: string;
+}
+
+export interface SetOfMarksInput {
+  readonly displayId: string;
+  readonly sourceX: number;
+  readonly sourceY: number;
+  readonly pngBytes: Uint8Array;
+  /** Render and return the numbered-overlay PNG. Default false (marks only). */
+  readonly renderOverlay?: boolean;
+}
+
+export interface SetOfMarksProvider {
+  readonly name: string;
+  describe(input: SetOfMarksInput): Promise<SetOfMarksResult>;
+}
+
+let registeredSetOfMarksProvider: SetOfMarksProvider | null = null;
+
+/**
+ * Register the Set-of-Marks provider. Idempotent — last call wins. Pass `null`
+ * to unregister.
+ */
+export function registerSetOfMarksProvider(
+  provider: SetOfMarksProvider | null,
+): void {
+  registeredSetOfMarksProvider = provider;
+}
+
+export function getSetOfMarksProvider(): SetOfMarksProvider | null {
+  return registeredSetOfMarksProvider;
+}

@@ -62,6 +62,7 @@ vi.mock("@capacitor/app", () => ({
 
 import {
   installFirstRunDeepLinkListener,
+  parseFirstRunRemoteConnectDeepLink,
   routeFirstRunDeepLink,
 } from "../deep-link-handler";
 import {
@@ -326,5 +327,88 @@ describe("installFirstRunDeepLinkListener", () => {
 
     await cleanup();
     expect(removeMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("parseFirstRunRemoteConnectDeepLink", () => {
+  it("captures the remote agent URL from the api param", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?api=http://127.0.0.1:31337",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "http://127.0.0.1:31337" });
+  });
+
+  it("decodes a percent-encoded URL (how the OS delivers it)", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?api=https%3A%2F%2Fagent.example.com",
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+  });
+
+  it.each(["apiBase", "url", "host"])("accepts the %s query alias", (key) => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        `eliza://first-run/runtime/remote?${key}=https://agent.example.com`,
+        URL_SCHEME,
+      ),
+    ).toEqual({ apiBase: "https://agent.example.com" });
+  });
+
+  it("returns null for a bare remote link with no URL (falls through to pre-select)", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for the local/cloud runtime targets", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/local?api=http://127.0.0.1:31337",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/cloud?api=http://127.0.0.1:31337",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a foreign scheme or non-first-run host", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "evil://first-run/runtime/remote?api=http://127.0.0.1:31337",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://connect/runtime/remote?api=http://127.0.0.1:31337",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a malformed URL", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink("not a url", URL_SCHEME),
+    ).toBeNull();
+  });
+
+  it("ignores an empty api param", () => {
+    expect(
+      parseFirstRunRemoteConnectDeepLink(
+        "eliza://first-run/runtime/remote?api=",
+        URL_SCHEME,
+      ),
+    ).toBeNull();
   });
 });

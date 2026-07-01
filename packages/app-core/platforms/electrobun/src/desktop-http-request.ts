@@ -1,4 +1,5 @@
 import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
+import { resolveExternalApiBase } from "./api-base";
 
 function isExternalPlainHttpUrl(parsed: URL): boolean {
   return (
@@ -6,6 +7,14 @@ function isExternalPlainHttpUrl(parsed: URL): boolean {
     !isLoopbackBindHost(parsed.hostname) &&
     !isWildcardBindHost(parsed.hostname)
   );
+}
+
+function isConfiguredExternalApiBaseUrl(parsed: URL): boolean {
+  if (parsed.protocol !== "http:") return false;
+  const configured = resolveExternalApiBase(
+    process.env as Record<string, string | undefined>,
+  ).base;
+  return Boolean(configured && parsed.origin === configured);
 }
 
 export function normalizeDesktopHttpRequest(params: unknown): {
@@ -23,9 +32,12 @@ export function normalizeDesktopHttpRequest(params: unknown): {
     throw new Error("desktopHttpRequest url must be a string.");
   }
   const parsed = new URL(record.url);
-  if (!isExternalPlainHttpUrl(parsed)) {
+  if (
+    !isExternalPlainHttpUrl(parsed) &&
+    !isConfiguredExternalApiBaseUrl(parsed)
+  ) {
     throw new Error(
-      "desktopHttpRequest supports only external plain HTTP URLs.",
+      "desktopHttpRequest supports only external or configured desktop API plain HTTP URLs.",
     );
   }
   const method = typeof record.method === "string" ? record.method : "GET";

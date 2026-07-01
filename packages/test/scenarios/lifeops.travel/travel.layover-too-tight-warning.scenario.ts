@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "travel.layover-too-tight-warning",
   title:
     "Warn on a 35-minute international layover instead of silently booking",

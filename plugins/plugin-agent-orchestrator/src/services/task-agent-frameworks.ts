@@ -634,7 +634,7 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
     case "elizaos":
       return (
         Boolean(readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND")) ||
-        hasBinaryOnPath("elizaos")
+        hasBinaryOnPath("eliza-code-acp")
       );
     case "pi-agent":
       return (
@@ -802,7 +802,7 @@ async function computeTaskAgentFrameworkState(
         installCommand:
           preflight?.installCommand ??
           (id === "elizaos"
-            ? "Configure ELIZA_ELIZAOS_ACP_COMMAND or install an elizaos ACP command on PATH"
+            ? "Configure ELIZA_ELIZAOS_ACP_COMMAND or install eliza-code-acp on PATH"
             : id === "pi-agent"
               ? "Configure ELIZA_PI_AGENT_ACP_COMMAND or install pi-agent on PATH"
               : id === "opencode"

@@ -116,7 +116,7 @@ export const createOAuthIntentAction: Action = {
 	suppressPostActionContinuation: true,
 	similes: ["NEW_OAUTH_INTENT", "OPEN_OAUTH_INTENT", "START_OAUTH_FLOW"],
 	description:
-		"Create a new OAuth intent for a provider (google, discord, linkedin, linear, shopify, calendly).",
+		"Create a new OAuth intent for a provider (google, discord, github, notion, slack, linkedin, linear, shopify, calendly).",
 	descriptionCompressed:
 		"Create OAuth intent: provider, scopes, stateTokenHash.",
 	parameters: [

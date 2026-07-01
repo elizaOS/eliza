@@ -12,7 +12,7 @@ This trainer:
 
 Benefits over local training:
 - No local GPU required
-- Access to larger models (Qwen3-235B)
+- Access to the larger Gemma 4 training tiers
 - Faster weight sync (no vLLM restarts)
 - Better on-policy training with low staleness
 - Pay only for training time, not idle GPU

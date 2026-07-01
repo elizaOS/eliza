@@ -18,12 +18,12 @@ import {
   ArrowLeft,
   Cloud,
   ExternalLink,
-  MessageCircle,
   Server,
   Terminal,
 } from "lucide-react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { DockerLogsViewer } from "./components/docker-logs-viewer";
 import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
@@ -33,7 +33,6 @@ import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
-import { useDocumentTitle } from "./lib/use-document-title";
 import { useRequireAuth } from "./lib/use-session-auth";
 
 function formatDate(date: string | null): string {
@@ -145,15 +144,6 @@ export default function AgentDetailPage() {
         </Link>
 
         <div className="flex items-center gap-2">
-          {agent.status === "running" && (
-            <Link
-              to={`/dashboard/agents/${agent.id}/chat`}
-              className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium bg-[var(--brand-orange)] text-black hover:bg-foreground hover:text-background transition-colors"
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              {t("cloud.agents.detail.chat", { defaultValue: "Chat" })}
-            </Link>
-          )}
           {showConnect && <ElizaConnectButton agentId={agent.id} />}
         </div>
       </div>

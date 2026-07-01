@@ -92,12 +92,12 @@ export function summarizeRemoteCapabilityLiveCi():
   if (!runId) return undefined;
   return {
     runId,
-    runAttempt: process.env.GITHUB_RUN_ATTEMPT?.trim() ?? "",
-    workflow: process.env.GITHUB_WORKFLOW?.trim() ?? "",
-    eventName: process.env.GITHUB_EVENT_NAME?.trim() ?? "",
-    repository: process.env.GITHUB_REPOSITORY?.trim() ?? "",
-    sha: process.env.GITHUB_SHA?.trim() ?? "",
-    ref: process.env.GITHUB_REF?.trim() ?? "",
+    runAttempt: readTrimmedEnv("GITHUB_RUN_ATTEMPT"),
+    workflow: readTrimmedEnv("GITHUB_WORKFLOW"),
+    eventName: readTrimmedEnv("GITHUB_EVENT_NAME"),
+    repository: readTrimmedEnv("GITHUB_REPOSITORY"),
+    sha: readTrimmedEnv("GITHUB_SHA"),
+    ref: readTrimmedEnv("GITHUB_REF"),
   };
 }
 
@@ -131,7 +131,7 @@ export function summarizeRemoteCapabilityLiveRuntime(
 ): Record<string, unknown> {
   const plugins = runtime.plugins ?? [];
   return {
-    pluginCount: runtime.plugins?.length ?? 0,
+    pluginCount: plugins.length,
     remotePlugins: plugins
       .filter(
         (plugin) =>
@@ -147,38 +147,32 @@ export function summarizeRemoteCapabilityLiveRuntime(
     actionCount: runtime.actions.length,
     providerCount: runtime.providers.length,
     evaluatorCount: runtime.evaluators.length,
-    responseHandlerEvaluatorCount: sumPluginCounts(
-      plugins,
-      (plugin) => plugin.responseHandlerEvaluators?.length ?? 0,
+    responseHandlerEvaluatorCount: sumPluginCounts(plugins, (plugin) =>
+      countOptionalList(plugin.responseHandlerEvaluators),
     ),
-    responseHandlerFieldEvaluatorCount: sumPluginCounts(
-      plugins,
-      (plugin) => plugin.responseHandlerFieldEvaluators?.length ?? 0,
+    responseHandlerFieldEvaluatorCount: sumPluginCounts(plugins, (plugin) =>
+      countOptionalList(plugin.responseHandlerFieldEvaluators),
     ),
     routeCount: runtime.routes.length,
-    modelCount: sumPluginCounts(
-      plugins,
-      (plugin) => Object.keys(plugin.models ?? {}).length,
-    ),
+    modelCount: sumPluginCounts(plugins, (plugin) => countPluginModels(plugin)),
     eventCount: sumPluginCounts(plugins, countPluginEventHandlers),
-    serviceCount: sumPluginCounts(
-      plugins,
-      (plugin) => plugin.services?.length ?? 0,
+    serviceCount: sumPluginCounts(plugins, (plugin) =>
+      countOptionalList(plugin.services),
     ),
     appCount: sumPluginCounts(plugins, (plugin) => (plugin.app ? 1 : 0)),
     appBridgeCount: sumPluginCounts(plugins, (plugin) =>
       plugin.appBridge ? 1 : 0,
     ),
     lifecycleCount: sumPluginCounts(plugins, countPluginLifecycleHooks),
-    widgetCount: sumPluginCounts(
-      plugins,
-      (plugin) => plugin.widgets?.length ?? 0,
+    widgetCount: sumPluginCounts(plugins, (plugin) =>
+      countOptionalList(plugin.widgets),
     ),
-    componentTypeCount: sumPluginCounts(
-      plugins,
-      (plugin) => plugin.componentTypes?.length ?? 0,
+    componentTypeCount: sumPluginCounts(plugins, (plugin) =>
+      countOptionalList(plugin.componentTypes),
     ),
-    viewCount: sumPluginCounts(plugins, (plugin) => plugin.views?.length ?? 0),
+    viewCount: sumPluginCounts(plugins, (plugin) =>
+      countOptionalList(plugin.views),
+    ),
   };
 }
 
@@ -186,24 +180,39 @@ function summarizeRemoteCapabilityPluginSurfaces(
   plugin: Plugin,
 ): Record<string, number> {
   return {
-    actionCount: plugin.actions?.length ?? 0,
-    providerCount: plugin.providers?.length ?? 0,
-    evaluatorCount: plugin.evaluators?.length ?? 0,
-    responseHandlerEvaluatorCount:
-      plugin.responseHandlerEvaluators?.length ?? 0,
-    responseHandlerFieldEvaluatorCount:
-      plugin.responseHandlerFieldEvaluators?.length ?? 0,
-    routeCount: plugin.routes?.length ?? 0,
-    modelCount: Object.keys(plugin.models ?? {}).length,
+    actionCount: countOptionalList(plugin.actions),
+    providerCount: countOptionalList(plugin.providers),
+    evaluatorCount: countOptionalList(plugin.evaluators),
+    responseHandlerEvaluatorCount: countOptionalList(
+      plugin.responseHandlerEvaluators,
+    ),
+    responseHandlerFieldEvaluatorCount: countOptionalList(
+      plugin.responseHandlerFieldEvaluators,
+    ),
+    routeCount: countOptionalList(plugin.routes),
+    modelCount: countPluginModels(plugin),
     eventCount: countPluginEventHandlers(plugin),
-    serviceCount: plugin.services?.length ?? 0,
+    serviceCount: countOptionalList(plugin.services),
     appCount: plugin.app ? 1 : 0,
     appBridgeCount: plugin.appBridge ? 1 : 0,
     lifecycleCount: countPluginLifecycleHooks(plugin),
-    widgetCount: plugin.widgets?.length ?? 0,
-    componentTypeCount: plugin.componentTypes?.length ?? 0,
-    viewCount: plugin.views?.length ?? 0,
+    widgetCount: countOptionalList(plugin.widgets),
+    componentTypeCount: countOptionalList(plugin.componentTypes),
+    viewCount: countOptionalList(plugin.views),
   };
+}
+
+function readTrimmedEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  return value ? value : "";
+}
+
+function countOptionalList<T>(items: readonly T[] | undefined): number {
+  return Array.isArray(items) ? items.length : 0;
+}
+
+function countPluginModels(plugin: Plugin): number {
+  return plugin.models ? Object.keys(plugin.models).length : 0;
 }
 
 function countPluginEventHandlers(plugin: Plugin): number {

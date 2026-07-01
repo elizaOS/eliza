@@ -1,6 +1,6 @@
 // Websocket bridge client for the AiNex (and compatible) humanoid robots.
 //
-// Wire format mirrors `packages/robot/eliza_robot/bridge/protocol.py` exactly:
+// Wire format mirrors `packages/research/robot/eliza_robot/bridge/protocol.py` exactly:
 //   - CommandEnvelope (TS → bridge), matched by `request_id`
 //   - ResponseEnvelope (bridge → TS), keyed back to the awaiting send()
 //   - EventEnvelope (bridge → TS), dispatched to per-event handlers
@@ -9,7 +9,7 @@
 // triggers an exponential backoff retry. Pending sends fail-fast; the caller
 // is expected to handle retries at the action layer if needed.
 
-import { WebSocket, type RawData } from "ws";
+import { type RawData, WebSocket } from "ws";
 import type {
   BridgeCommand,
   BridgeEvent,

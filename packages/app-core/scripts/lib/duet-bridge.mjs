@@ -8,7 +8,7 @@
  *   A.scheduler.sink ── DuetSink(aToB) ──→ PcmRingBuffer ──→ B.micSource.push
  *   B.scheduler.sink ── DuetSink(bToA) ──→ PcmRingBuffer ──→ A.micSource.push
  *
- * The TTS emits 24 kHz mono; the VAD + Qwen3-ASR want 16 kHz mono — one
+ * The TTS emits 24 kHz mono; the VAD + local ASR want 16 kHz mono — one
  * linear-interpolation resample in the `DuetSink`, zero file writes.
  *
  * `DuetSink` also reports the **`peer-utterance-end`** instant: when the

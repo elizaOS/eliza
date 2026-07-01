@@ -26,10 +26,6 @@ const LEVELS = [
   // so this source file is guaranteed in the live graph.
   { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
   {
-    name: "plugin view companion",
-    file: "plugins/plugin-companion/src/components/companion/CompanionView.tsx",
-  },
-  {
     name: "plugin view contacts",
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
@@ -71,11 +67,11 @@ const LEVELS = [
   },
   {
     name: "plugin view hyperliquid",
-    file: "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx",
+    file: "plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
   },
   {
     name: "plugin view messages",
-    file: "plugins/plugin-messages/src/components/MessagesAppView.tsx",
+    file: "plugins/plugin-messages/src/components/MessagesView.tsx",
   },
   {
     name: "plugin view model tester",
@@ -83,31 +79,15 @@ const LEVELS = [
   },
   {
     name: "plugin view phone",
-    file: "plugins/plugin-phone/src/components/PhoneAppView.tsx",
+    file: "plugins/plugin-phone/src/components/PhoneView.tsx",
   },
   {
     name: "plugin view polymarket",
-    file: "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx",
+    file: "plugins/plugin-polymarket/src/PolymarketView.tsx",
   },
   {
     name: "plugin view shopify",
-    file: "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx",
-  },
-  {
-    name: "plugin view steward",
-    file: "plugins/plugin-steward-app/src/StewardView.tsx",
-  },
-  {
-    name: "plugin view vincent",
-    file: "plugins/plugin-vincent/src/VincentAppView.tsx",
-  },
-  {
-    name: "plugin view waifu-imagegen",
-    file: "plugins/plugin-waifu-imagegen-app/src/ImageGenAppView.tsx",
-  },
-  {
-    name: "plugin view waifu-swap",
-    file: "plugins/plugin-waifu-swap-app/src/SwapAppView.tsx",
+    file: "plugins/plugin-shopify/src/ShopifyView.tsx",
   },
   {
     name: "plugin view wallet",
@@ -118,40 +98,20 @@ const LEVELS = [
     file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
   },
   {
-    name: "plugin view 2004scape",
-    file: "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
-  },
-  {
     name: "plugin view feed",
-    file: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+    file: "plugins/plugin-feed/src/components/FeedView.tsx",
   },
   {
     name: "plugin view manager",
     file: "plugins/plugin-app-control/src/views/ViewManagerView.tsx",
   },
   {
-    name: "plugin view clawville",
-    file: "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view defense",
-    file: "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view hyperscape",
-    file: "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx",
-  },
-  {
-    name: "plugin view scape",
-    file: "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx",
-  },
-  {
     name: "plugin view screenshare",
-    file: "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx",
+    file: "plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
   },
   {
     name: "plugin view social alpha",
-    file: "plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx",
+    file: "plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
   },
   {
     name: "plugin view task coordinator",
@@ -171,7 +131,7 @@ const LEVELS = [
   },
   {
     name: "plugin view facewear",
-    file: "plugins/plugin-facewear/src/ui/FacewearView.tsx",
+    file: "plugins/plugin-facewear/src/components/FacewearView.tsx",
   },
   {
     name: "plugin view smartglasses",
@@ -205,35 +165,43 @@ async function waitForViteClient(page: Page): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
-// Plugin GUI views that are NOT reachable in the dev client's module graph from
-// the "/" route, so Vite never transforms their source and an edit emits no HMR
-// event — the same limitation the @elizaos/shared note above describes. These
-// views are lazy/registry-loaded on demand (overlay apps, operator surfaces) or
-// not eager on "/", and bringing them into this matrix would mean eager-loading
-// every view at dev boot, regressing startup (the app-load-perf work
-// deliberately defers them). They are HMR-validated when the view is actually
-// rendered; a follow-up may add a dev-only graph warmup to fold them back in.
-const VIEWS_NOT_IN_ROOT_GRAPH = new Set<string>([
-  "plugin view contacts",
-  "plugin view relationships",
-  "plugin view hyperliquid",
-  "plugin view messages",
-  "plugin view polymarket",
-  "plugin view shopify",
-  "plugin view vector-browser",
-  "plugin view manager",
-  "plugin view screenshare",
-  "plugin view social alpha",
-  "plugin view trajectory logger",
+// Most plugin GUI views are NOT reachable in the dev client's module graph from
+// the "/" route: they are served as standalone agent-built bundles loaded by
+// DynamicViewLoader (a separate module graph the app's Vite dev server never
+// transforms), or lazy()-split out of an eagerly-loaded register.ts. Vite never
+// transforms their source from "/", so an edit emits no HMR event — the same
+// limitation the @elizaos/shared note above describes. Eager-loading every view
+// at dev boot to fold them in would regress startup (the app-load-perf work
+// deliberately defers them); they are HMR-validated when the view is actually
+// rendered, and a follow-up may add a dev-only graph warmup.
+//
+// The exception is the handful of plugin views statically re-exported from a
+// barrel/ui entry that the app shell imports at boot, so Vite *does* pull their
+// source into the root graph and editing them must emit an HMR event. Those stay
+// in the assertion via this allowlist; every other "plugin view *" is skipped.
+const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>([
+  // appRegister:"ui" → src/ui.ts statically re-exports ModelTesterAppView, and
+  // the generated side-effect loader imports ui.ts eagerly at boot.
+  "plugin view model tester",
+  // main.tsx eagerly imports the @elizaos/plugin-phone barrel, which statically
+  // re-exports PhoneView.
+  "plugin view phone",
+  // main.tsx eagerly imports the @elizaos/plugin-training barrel, which
+  // statically re-exports FineTuningView.
+  "plugin view training",
 ]);
+
+function isNotInRootGraph(name: string): boolean {
+  return (
+    name.startsWith("plugin view ") && !PLUGIN_VIEWS_IN_ROOT_GRAPH.has(name)
+  );
+}
 
 test.describe("HMR propagation across package dependency levels", () => {
   test.describe.configure({ mode: "serial" });
 
   for (const level of LEVELS) {
-    const defineTest = VIEWS_NOT_IN_ROOT_GRAPH.has(level.name)
-      ? test.skip
-      : test;
+    const defineTest = isNotInRootGraph(level.name) ? test.skip : test;
     defineTest(
       `edit at ${level.name} reaches the running dev client`,
       async ({ page }) => {

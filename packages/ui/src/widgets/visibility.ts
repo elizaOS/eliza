@@ -1,21 +1,24 @@
+import type { WidgetSlot } from "./types";
+
 /**
- * User-controlled visibility overrides for `chat-sidebar` widgets.
+ * User-controlled visibility overrides for widget slots.
  *
  * Layered on top of the existing two-stage gate in
  * {@link ./registry.ts | resolveWidgetsForSlot}:
  *
  *   1. Plugin enabled?  →  declaration.defaultEnabled  →  user override
  *
- * The override layer is per-user, persisted to localStorage. When a widget's
- * id is absent from the override map we fall back to `declaration.defaultEnabled`,
- * so default flips don't reset users who never touched the toggle.
+ * The override layer is per-user and per-slot, persisted to localStorage. When
+ * a widget's id is absent from the override map we fall back to
+ * `declaration.defaultEnabled`, so default flips don't reset users who never
+ * touched the toggle.
  *
- * Wallet/browser widgets use the same path once their plugin registers them:
- * they appear with `defaultEnabled` and the user can hide them via the same
- * panel.
+ * Active widget slots use the same path once their plugin registers them: they
+ * appear with `defaultEnabled` and the user can hide them via the same panel.
  */
 
 const CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY = "eliza:chat-sidebar:visibility";
+const WIDGET_VISIBILITY_STORAGE_KEY_PREFIX = "eliza:widget-visibility";
 
 /**
  * Synthetic widget id reserved for the bespoke `AppsSection` rendered in
@@ -61,10 +64,19 @@ function sanitizeOverrides(value: unknown): Record<string, boolean> {
   return next;
 }
 
-export function loadChatSidebarVisibility(): WidgetVisibilityState {
+export function widgetVisibilityStorageKey(slot: WidgetSlot): string {
+  // Keep the original chat-sidebar key for backward compatibility with users'
+  // existing sidebar overrides.
+  if (slot === "chat-sidebar") return CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY;
+  return `${WIDGET_VISIBILITY_STORAGE_KEY_PREFIX}:${slot}`;
+}
+
+export function loadWidgetVisibility(
+  slot: WidgetSlot = "chat-sidebar",
+): WidgetVisibilityState {
   return tryLocalStorage(
     () => {
-      const raw = localStorage.getItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY);
+      const raw = localStorage.getItem(widgetVisibilityStorageKey(slot));
       if (!raw) return { overrides: {} };
       const parsed = JSON.parse(raw) as unknown;
       return { overrides: sanitizeOverrides(parsed) };
@@ -73,17 +85,18 @@ export function loadChatSidebarVisibility(): WidgetVisibilityState {
   );
 }
 
-export function saveChatSidebarVisibility(state: WidgetVisibilityState): void {
+export function saveWidgetVisibility(
+  state: WidgetVisibilityState,
+  slot: WidgetSlot = "chat-sidebar",
+): void {
   tryLocalStorage(() => {
     const sanitized = sanitizeOverrides(state.overrides);
+    const key = widgetVisibilityStorageKey(slot);
     if (Object.keys(sanitized).length === 0) {
-      localStorage.removeItem(CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY);
+      localStorage.removeItem(key);
       return;
     }
-    localStorage.setItem(
-      CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,
-      JSON.stringify(sanitized),
-    );
+    localStorage.setItem(key, JSON.stringify(sanitized));
   }, undefined);
 }
 
@@ -117,4 +130,11 @@ export function applyChatSidebarVisibility<
   );
 }
 
-export { CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY };
+export const applyWidgetVisibility = applyChatSidebarVisibility;
+export const loadChatSidebarVisibility = loadWidgetVisibility;
+export const saveChatSidebarVisibility = saveWidgetVisibility;
+
+export {
+  CHAT_SIDEBAR_VISIBILITY_STORAGE_KEY,
+  WIDGET_VISIBILITY_STORAGE_KEY_PREFIX,
+};

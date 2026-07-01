@@ -6,33 +6,25 @@ import {
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  isMobilePlatform,
   logger,
   type Media,
   type Memory,
   type State,
 } from "@elizaos/core";
-import type { VisionService } from "./service";
+import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
+import { buildGetScreen, summarizeGetScreen } from "./get-screen";
 import { assertValidVisionImageBuffer } from "./image-input";
+import {
+  SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+  type ScreenCaptureBridgeService,
+} from "./screen-capture-bridge";
+import type { VisionService } from "./service";
 import { VisionMode } from "./types";
 
 const VISION_ACTION_TIMEOUT_MS = 10_000;
 const MAX_VISION_TEXT_LENGTH = 4000;
 const MAX_VISION_ENTITIES = 25;
-
-const VISION_OPS = [
-  "describe",
-  "capture",
-  "set_mode",
-  "enable_camera",
-  "disable_camera",
-  "enable_screen",
-  "disable_screen",
-  "name_entity",
-  "identify_person",
-  "track_entity",
-] as const;
-
-type VisionOp = (typeof VISION_OPS)[number];
 
 const ALL_VISION_CONTEXTS = [
   "media",
@@ -41,182 +33,6 @@ const ALL_VISION_CONTEXTS = [
   "memory",
   "settings",
 ] as const;
-
-const DESCRIBE_KEYWORDS = [
-  "describe",
-  "scene",
-  "see",
-  "look",
-  "camera",
-  "screen",
-  "object",
-  "person",
-  "escena",
-  "ver",
-  "camara",
-  "décrire",
-  "scène",
-  "voir",
-  "beschreiben",
-  "szene",
-  "sehen",
-  "descrivi",
-  "scena",
-  "vedi",
-  "説明",
-  "見える",
-  "场景",
-  "描述",
-  "看见",
-  "장면",
-  "설명",
-  "보여",
-];
-
-const CAPTURE_KEYWORDS = [
-  "capture",
-  "image",
-  "photo",
-  "picture",
-  "snapshot",
-  "screenshot",
-  "camera",
-  "captura",
-  "foto",
-  "imagen",
-  "capturer",
-  "photo",
-  "bild",
-  "foto",
-  "capturare",
-  "写真",
-  "画像",
-  "スクリーンショット",
-  "拍照",
-  "截图",
-  "이미지",
-  "사진",
-  "스크린샷",
-];
-
-const SET_MODE_KEYWORDS = [
-  "vision",
-  "mode",
-  "camera",
-  "screen",
-  "both",
-  "disable",
-  "enable",
-  "off",
-  "visión",
-  "camara",
-  "pantalla",
-  "écran",
-  "kamera",
-  "bildschirm",
-  "schermo",
-  "ビジョン",
-  "カメラ",
-  "画面",
-  "视觉",
-  "相机",
-  "屏幕",
-  "비전",
-  "카메라",
-  "화면",
-];
-
-const NAME_ENTITY_KEYWORDS = [
-  "name",
-  "named",
-  "call",
-  "person",
-  "entity",
-  "remember",
-  "object",
-  "nombre",
-  "llama",
-  "persona",
-  "nom",
-  "appelle",
-  "personne",
-  "name",
-  "nenne",
-  "person",
-  "nome",
-  "chiama",
-  "persona",
-  "名前",
-  "呼ぶ",
-  "人",
-  "命名",
-  "叫",
-  "人",
-  "이름",
-  "불러",
-  "사람",
-];
-
-const IDENTIFY_PERSON_KEYWORDS = [
-  "identify",
-  "recognize",
-  "who is",
-  "person",
-  "face",
-  "seen before",
-  "identificar",
-  "reconoces",
-  "persona",
-  "visage",
-  "reconnais",
-  "personne",
-  "erkennen",
-  "gesicht",
-  "person",
-  "riconosci",
-  "persona",
-  "識別",
-  "誰",
-  "顔",
-  "识别",
-  "是谁",
-  "人",
-  "식별",
-  "누구",
-  "얼굴",
-];
-
-const TRACK_ENTITY_KEYWORDS = [
-  "track",
-  "follow",
-  "watch",
-  "keep an eye",
-  "entity",
-  "person",
-  "object",
-  "rastrear",
-  "seguir",
-  "vigilar",
-  "persona",
-  "suivre",
-  "surveiller",
-  "personne",
-  "verfolgen",
-  "beobachten",
-  "person",
-  "traccia",
-  "segui",
-  "persona",
-  "追跡",
-  "見張",
-  "人",
-  "跟踪",
-  "关注",
-  "人",
-  "추적",
-  "지켜봐",
-  "사람",
-];
 
 function withVisionTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
@@ -303,81 +119,123 @@ function visionServiceIsActive(runtime: IAgentRuntime): boolean {
   return Boolean(visionService?.isActive());
 }
 
-function normalizeOp(value: unknown): VisionOp | null {
-  if (typeof value !== "string") return null;
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-  if (!normalized) return null;
-  const aliases: Record<string, VisionOp> = {
-    describe_scene: "describe",
-    scene: "describe",
-    capture_image: "capture",
-    image: "capture",
-    photo: "capture",
-    snapshot: "capture",
-    screenshot: "capture",
-    set_vision_mode: "set_mode",
-    mode: "set_mode",
-    vision_mode: "set_mode",
-    camera_on: "enable_camera",
-    turn_on_camera: "enable_camera",
-    start_camera: "enable_camera",
-    camera_off: "disable_camera",
-    turn_off_camera: "disable_camera",
-    stop_camera: "disable_camera",
-    screen_on: "enable_screen",
-    turn_on_screen: "enable_screen",
-    start_screen: "enable_screen",
-    screen_off: "disable_screen",
-    turn_off_screen: "disable_screen",
-    stop_screen: "disable_screen",
-    name: "name_entity",
-    identify: "identify_person",
-    recognize: "identify_person",
-    track: "track_entity",
-    follow: "track_entity",
-  };
-  if (aliases[normalized]) return aliases[normalized];
-  return (VISION_OPS as readonly string[]).includes(normalized)
-    ? (normalized as VisionOp)
-    : null;
+/** Structural view of plugin-computeruse's screenshot capability (no hard dep). */
+interface ComputerUseLike {
+  executeCommand?: (
+    command: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ success?: boolean; screenshot?: string; displayId?: number }>;
 }
 
-function inferOpFromMessage(text: string): VisionOp | null {
-  const lower = text.toLowerCase();
-  if (
-    NAME_ENTITY_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(call|name|named)\b/.test(lower)
-  ) {
-    return "name_entity";
+/**
+ * Acquire a fresh screen frame for GET_SCREEN. Prefers plugin-computeruse's
+ * verified OS screenshot (which also drives the CUA loop); falls back to the
+ * vision service's own screen capture. Returns null when neither is available.
+ *
+ * On mobile the agent has no desktop capture sources; the renderer-pulled
+ * ScreenCaptureBridgeService is the ONLY source (the renderer polls, captures
+ * via the Capacitor ScreenCapture MediaProjection plugin, and POSTs the frame
+ * back). Return its result directly — do not fall through to desktop sources.
+ */
+async function acquireScreenFrame(runtime: IAgentRuntime): Promise<{
+  pngBytes: Uint8Array;
+  displayId: number;
+  capturedAt: number;
+} | null> {
+  if (isMobilePlatform()) {
+    const bridge = runtime.getService<ScreenCaptureBridgeService>(
+      SCREEN_CAPTURE_BRIDGE_SERVICE_TYPE,
+    );
+    return bridge ? await bridge.requestFrame() : null;
   }
-  if (
-    IDENTIFY_PERSON_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(who|identify|recognize)\b/.test(lower)
-  ) {
-    return "identify_person";
+  const cu = runtime.getService("computeruse") as ComputerUseLike | null;
+  if (cu?.executeCommand) {
+    try {
+      const r = await cu.executeCommand("screenshot");
+      if (
+        r?.success !== false &&
+        typeof r?.screenshot === "string" &&
+        r.screenshot
+      ) {
+        return {
+          pngBytes: new Uint8Array(Buffer.from(r.screenshot, "base64")),
+          displayId: typeof r.displayId === "number" ? r.displayId : 0,
+          capturedAt: Date.now(),
+        };
+      }
+    } catch (err) {
+      logger.debug(
+        `[vision] computeruse screenshot unavailable for get_screen (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+    }
   }
-  if (
-    TRACK_ENTITY_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(track|follow|watch|keep an eye)\b/.test(lower)
-  ) {
-    return "track_entity";
-  }
-  if (
-    SET_MODE_KEYWORDS.some((k) => lower.includes(k.toLowerCase())) &&
-    /\b(mode|enable|disable|turn off|turn on)\b/.test(lower)
-  ) {
-    return "set_mode";
-  }
-  if (CAPTURE_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
-    return "capture";
-  }
-  if (DESCRIBE_KEYWORDS.some((k) => lower.includes(k.toLowerCase()))) {
-    return "describe";
+  const visionService = runtime.getService<VisionService>("VISION");
+  const cap = await visionService?.getScreenCapture();
+  if (cap?.data && cap.data.byteLength > 0) {
+    return {
+      pngBytes: new Uint8Array(cap.data),
+      displayId: 0,
+      capturedAt: cap.timestamp ?? Date.now(),
+    };
   }
   return null;
+}
+
+async function runGetScreen(
+  runtime: IAgentRuntime,
+  message: Memory,
+  options: Record<string, unknown>,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const includeImage = options.includeImage === true;
+  const includeOcr = options.includeOcr !== false;
+  const displayId =
+    typeof options.displayId === "number" ? options.displayId : undefined;
+
+  const frame = await acquireScreenFrame(runtime);
+  if (!frame) {
+    const thought = "No screen capture source is available.";
+    const text =
+      "I couldn't read the screen — neither the desktop capture (plugin-computeruse) nor screen-vision mode is available right now.";
+    await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
+    if (callback) await callback({ thought, text, actions: ["VISION"] });
+    return {
+      success: false,
+      text: "No screen capture source available for get_screen",
+      values: { success: false, visionAvailable: false },
+      data: {
+        actionName: "VISION",
+        op: "get_screen",
+        error: "no_capture_source",
+      },
+    };
+  }
+
+  const result = await buildGetScreen({
+    pngBytes: frame.pngBytes,
+    displayId: displayId ?? frame.displayId,
+    includeImage,
+    includeOcr,
+    capturedAt: frame.capturedAt,
+  });
+  const text = summarizeGetScreen(result);
+  await saveExecutionRecord(runtime, message, text, text, ["VISION"]);
+  if (callback) await callback({ thought: text, text, actions: ["VISION"] });
+  return {
+    success: true,
+    text,
+    values: {
+      success: true,
+      visionAvailable: true,
+      ocrAvailable: result.ocrAvailable,
+      elementCount: result.elementCount,
+      width: result.width,
+      height: result.height,
+    },
+    data: { actionName: "VISION", ...result },
+  };
 }
 
 async function runDescribe(
@@ -719,7 +577,7 @@ async function runCapture(
       },
     };
   } catch (error) {
-    logger.error("[VISION/capture] Error capturing image:", error);
+    logger.error({ error }, "[VISION/capture] Error capturing image:");
     const thought = "An error occurred while trying to capture an image.";
     const errorMessage = error instanceof Error ? error.message : String(error);
     const text = `Error capturing image: ${errorMessage}`;
@@ -749,7 +607,7 @@ async function runCapture(
 
 async function runToggleSubMode(
   runtime: IAgentRuntime,
-  message: Memory,
+  _message: Memory,
   op: "enable_camera" | "disable_camera" | "enable_screen" | "disable_screen",
   options: Record<string, unknown>,
   callback?: HandlerCallback,
@@ -832,21 +690,9 @@ async function runSetMode(
   }
 
   try {
-    const explicitMode =
-      typeof options.mode === "string" ? options.mode.toLowerCase() : "";
-    const messageText =
-      explicitMode || message.content.text?.toLowerCase() || "";
-    let newMode: VisionMode | null = null;
-
-    if (messageText.includes("off") || messageText.includes("disable")) {
-      newMode = VisionMode.OFF;
-    } else if (messageText.includes("both")) {
-      newMode = VisionMode.BOTH;
-    } else if (messageText.includes("screen")) {
-      newMode = VisionMode.SCREEN;
-    } else if (messageText.includes("camera")) {
-      newMode = VisionMode.CAMERA;
-    }
+    // #10471: the mode comes from the structured `mode` param, matched exactly
+    // against the VisionMode enum — never a substring test on message text.
+    const newMode = normalizeVisionMode(options.mode);
 
     if (!newMode) {
       const thought =
@@ -908,7 +754,7 @@ async function runSetMode(
       data: { actionName: "VISION", op: "set_mode", visionMode: newMode },
     };
   } catch (error) {
-    logger.error("[VISION/set_mode] Error changing vision mode:", error);
+    logger.error({ error }, "[VISION/set_mode] Error changing vision mode:");
     const errorMessage = error instanceof Error ? error.message : String(error);
     const thought = "An error occurred while trying to change the vision mode.";
     const text = `Error changing vision mode: ${errorMessage}`;
@@ -968,17 +814,14 @@ async function runNameEntity(
       };
     }
 
-    const messageText = message.content.text?.toLowerCase() || "";
-    const explicitName =
-      typeof options.name === "string" ? options.name.trim() : "";
-    const nameMatch = explicitName
-      ? [explicitName, explicitName]
-      : messageText.match(/(?:named?|call(?:ed)?|is)\s+(\w+)/i);
+    // #10471: the entity name comes from the structured `name` param, not a
+    // regex over the raw message text.
+    const name = typeof options.name === "string" ? options.name.trim() : "";
 
-    if (!nameMatch) {
-      const thought = "Could not extract name from message.";
+    if (!name) {
+      const thought = "No structured name parameter was provided.";
       const text =
-        'I couldn\'t understand what name to assign. Please say something like "The person is named Alice".';
+        'I couldn\'t understand what name to assign. Provide a "name" parameter (e.g. name: "Alice").';
       await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
       if (callback) {
         await callback({ thought, text, actions: ["VISION"] });
@@ -990,7 +833,6 @@ async function runNameEntity(
       };
     }
 
-    const name = nameMatch[1];
     const entityTracker = visionService.getEntityTracker();
 
     await entityTracker.updateEntities(
@@ -1078,7 +920,7 @@ async function runNameEntity(
       };
     }
   } catch (error) {
-    logger.error("[VISION/name_entity] Error:", error);
+    logger.error({ error }, "[VISION/name_entity] Error:");
     const thought = "Failed to name entity.";
     const text = `Sorry, I couldn't name the entity: ${error instanceof Error ? error.message : "Unknown error"}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
@@ -1240,7 +1082,7 @@ async function runIdentifyPerson(
       },
     };
   } catch (error) {
-    logger.error("[VISION/identify_person] Error:", error);
+    logger.error({ error }, "[VISION/identify_person] Error:");
     const thought = "Failed to identify people.";
     const text = `Sorry, I couldn't identify people: ${error instanceof Error ? error.message : "Unknown error"}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
@@ -1350,7 +1192,7 @@ async function runTrackEntity(
       },
     };
   } catch (error) {
-    logger.error("[VISION/track_entity] Error:", error);
+    logger.error({ error }, "[VISION/track_entity] Error:");
     const thought = "Failed to track entities.";
     const text = `Sorry, I couldn't track entities: ${error instanceof Error ? error.message : "Unknown error"}`;
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
@@ -1386,11 +1228,15 @@ export const visionAction: Action = {
     "SCREENSHOT",
     "CAPTURE_FRAME",
     "TAKE_PICTURE",
+    "GET_SCREEN",
+    "READ_SCREEN",
+    "SCREEN_TEXT",
+    "OCR_SCREEN",
   ],
   description:
-    "Camera and screen vision: describe the current scene, capture an image, switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The action is inferred from the message text when not explicitly provided.",
+    "Camera and screen vision: describe the current scene, capture an image, GET_SCREEN (token-frugal structured readout — OCR text + grounded UI elements with coordinates, no image unless includeImage=true), switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The action is inferred from the message text when not explicitly provided.",
   descriptionCompressed:
-    "Vision: describe / capture / set_mode / name_entity / identify_person / track_entity.",
+    "Vision: describe / capture / get_screen (OCR+elements, no image) / set_mode / name_entity / identify_person / track_entity.",
   parameters: [
     {
       name: "action",
@@ -1415,6 +1261,13 @@ export const visionAction: Action = {
         enum: ["summary", "detailed"],
         default: "detailed",
       },
+    },
+    {
+      name: "includeImage",
+      description:
+        "For action=get_screen: when true, attach the base64 screenshot too (costs image tokens). Default false — return only OCR text + grounded elements.",
+      required: false,
+      schema: { type: "boolean", default: false },
     },
     {
       name: "mode",
@@ -1480,11 +1333,11 @@ export const visionAction: Action = {
     _responses?: Memory[],
   ): Promise<ActionResult> => {
     const params = readActionParams(_options);
-    const explicitOp = normalizeOp(
+    // #10471: the operation comes from the planner's structured discriminator,
+    // never from English keyword-matching the raw message text.
+    const inferredOp = normalizeOp(
       params.action ?? params.subaction ?? params.op,
     );
-    const inferredOp =
-      explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
 
     if (!inferredOp) {
       const text = `VISION could not determine the operation. Specify one of: ${VISION_OPS.join(", ")}.`;
@@ -1507,6 +1360,8 @@ export const visionAction: Action = {
         return runDescribe(runtime, message, params, callback);
       case "capture":
         return runCapture(runtime, message, callback);
+      case "get_screen":
+        return runGetScreen(runtime, message, params, callback);
       case "set_mode":
         return runSetMode(runtime, message, params, callback);
       case "enable_camera":

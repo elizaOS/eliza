@@ -17,7 +17,7 @@
     "typecheck": "cd ../.. && bun run scripts/typecheck-workspace.ts packages/testing",
     "test:unit": "bun test unit/ --preload ./unit/preload.ts",
     "test:integration": "bun test integration/ --preload ./integration/preload.ts",
-    "test:e2e": "cd ../.. && rm -rf packages/testing/node_modules/@playwright packages/testing/node_modules/playwright && bunx playwright test --config packages/testing/playwright.config.ts",
+    "test:e2e": "cd ../.. && node ../../packages/scripts/rm-path-recursive.mjs packages/testing/node_modules/@playwright packages/testing/node_modules/playwright && bunx playwright test --config packages/testing/playwright.config.ts",
     "test:chroma": "cd ../../tools/chroma && bun run test"
   },
   "dependencies": {
@@ -30,13 +30,13 @@
   },
   "devDependencies": {
     "@elizaos/core": "2.0.0-alpha.109",
-    "@playwright/test": "1.61.0",
+    "@playwright/test": "1.61.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "dotenv": "^16.4.5",
     "nanoid": "5.1.7",
     "next": "16.2.6",
-    "playwright": "1.61.0",
+    "playwright": "1.61.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "siwe": "^3.0.0",

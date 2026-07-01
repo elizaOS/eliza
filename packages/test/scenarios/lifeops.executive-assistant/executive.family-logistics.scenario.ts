@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.family-logistics",
   title:
     "Family logistics reconciles appointments, rides, forms, and reminders",

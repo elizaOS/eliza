@@ -58,7 +58,7 @@ import {
  *    to use the generic emitEvent overload.
  */
 import {
-	AttachmentBuilder,
+	type AttachmentBuilder,
 	type Channel,
 	type Collection,
 	ChannelType as DiscordChannelType,
@@ -94,7 +94,7 @@ import {
 } from "./accounts";
 import type { ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
-import type { ChannelDebouncer, MessageDebouncer } from "./debouncer";
+import type { ChannelDebouncer } from "./debouncer";
 import {
 	handleGuildCreate as handleGuildCreateExtracted,
 	isGuildOnlyCommand,
@@ -137,7 +137,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
-	getAttachmentFileName,
+	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
 	splitMessage,
@@ -478,12 +478,11 @@ export class DiscordService extends Service implements IDiscordService {
 	public accountId: string = DEFAULT_ACCOUNT_ID;
 	private defaultAccountId = DEFAULT_ACCOUNT_ID;
 	private readonly accountPool = new DiscordAccountClientPool();
-	client: DiscordJsClient | null;
+	client: DiscordJsClient | null = null;
 	character: Character;
 	discordSettings: DiscordSettings;
 	messageManager?: MessageManager;
 	voiceManager?: VoiceManager;
-	private messageDebouncer?: MessageDebouncer;
 	private channelDebouncer?: ChannelDebouncer;
 	private _loginFailed = false;
 	private userSelections: Map<string, Record<string, unknown>> = new Map();
@@ -942,7 +941,6 @@ export class DiscordService extends Service implements IDiscordService {
 		this.discordSettings = state?.settings ?? getDiscordSettings(this.runtime);
 		this.messageManager = state?.messageManager;
 		this.voiceManager = state?.voiceManager;
-		this.messageDebouncer = state?.messageDebouncer;
 		this.channelDebouncer = state?.channelDebouncer;
 		this.allowedChannelIds = state?.allowedChannelIds;
 		this.dynamicChannelIds = state?.dynamicChannelIds ?? new Set();
@@ -1084,17 +1082,6 @@ export class DiscordService extends Service implements IDiscordService {
 				}
 				if (!state || state.accountId === parent.defaultAccountId) {
 					parent.voiceManager = value;
-				}
-			},
-			get messageDebouncer() {
-				return state?.messageDebouncer ?? parent.messageDebouncer;
-			},
-			set messageDebouncer(value: MessageDebouncer | undefined) {
-				if (state) {
-					state.messageDebouncer = value;
-				}
-				if (!state || state.accountId === parent.defaultAccountId) {
-					parent.messageDebouncer = value;
 				}
 			},
 			get channelDebouncer() {
@@ -1282,13 +1269,13 @@ export class DiscordService extends Service implements IDiscordService {
 	 *
 	 * @param {IAgentRuntime} runtime - The AgentRuntime instance
 	 */
-	constructor(runtime: IAgentRuntime) {
+	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
 
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
-		this.discordSettings = getDiscordSettings(runtime);
+		this.discordSettings = getDiscordSettings(this.runtime);
 
-		this.character = runtime.character;
+		this.character = this.runtime.character;
 
 		this.defaultAccountId = normalizeAccountId(
 			resolveDefaultDiscordAccountId(this.runtime),
@@ -1324,7 +1311,7 @@ export class DiscordService extends Service implements IDiscordService {
 				"Initialized Discord account client pool",
 			);
 		} catch (error) {
-			runtime.logger.error(
+			this.runtime.logger.error(
 				`Error initializing Discord client: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			this.syncLegacyDefaultAliases(null);
@@ -1459,9 +1446,8 @@ export class DiscordService extends Service implements IDiscordService {
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
 							if (media.url) {
-								const fileName = getAttachmentFileName(media);
 								files.push(
-									new AttachmentBuilder(media.url, { name: fileName }),
+									await buildOutboundDiscordAttachment(media, runtime),
 								);
 							}
 						}
@@ -2649,14 +2635,12 @@ export class DiscordService extends Service implements IDiscordService {
 			return;
 		}
 
-		const { messageDebouncer, channelDebouncer } = setupDiscordEventListeners(
+		const { channelDebouncer } = setupDiscordEventListeners(
 			this.createAccountServiceFacade(state),
 		);
 
-		state.messageDebouncer = messageDebouncer;
 		state.channelDebouncer = channelDebouncer;
 		if (state.accountId === this.defaultAccountId) {
-			this.messageDebouncer = messageDebouncer;
 			this.channelDebouncer = channelDebouncer;
 		}
 	}
@@ -3339,12 +3323,9 @@ export class DiscordService extends Service implements IDiscordService {
 
 		const states = this.accountPool.list();
 		for (const state of states) {
-			state.messageDebouncer?.destroy();
 			state.channelDebouncer?.destroy();
-			state.messageDebouncer = undefined;
 			state.channelDebouncer = undefined;
 		}
-		this.messageDebouncer = undefined;
 		this.channelDebouncer = undefined;
 
 		this.userSelections.clear();

@@ -39,6 +39,7 @@ import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
+  ensureRouteMinRole,
 } from "./auth.ts";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
@@ -138,10 +139,13 @@ import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudPairRoute } from "./cloud-pair-route";
+import { handleCredentialTunnelRoute } from "./credential-tunnel-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
+import { handleEmbedAuthRoutes } from "./embed-auth-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
-import { handleFirstRunTtsRoute } from "./first-run-tts-route";
+import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import {
   isPerfInstrumentEnabled,
@@ -152,13 +156,6 @@ import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
-
-// Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
-// Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
-
-// Phase 2 extraction: Steward compat routes → app-steward/src/plugin.ts (stewardPlugin)
-// Includes: handleWalletBrowserCompatRoutes, handleWalletTradeCompatRoutes,
-//           handleStewardCompatRoutes, handleWalletCompatRoutes
 import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
@@ -348,7 +345,7 @@ async function clearCompatPgliteDataDir(
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
       await Promise.race([
-        Promise.resolve(runtime.stop()),
+        Promise.resolve(runtime.stop({ fast: true })),
         new Promise<void>((resolve) => {
           timeoutHandle = setTimeout(() => {
             stopTimedOut = true;
@@ -574,12 +571,6 @@ async function _getTableColumnNames(
   return columns;
 }
 
-// normalizePluginCategory, normalizePluginId, titleCasePluginId,
-// buildPluginParamDefs, findNearestFile, resolvePluginManifestPath,
-// resolveInstalledPackageVersion, resolveLoadedPluginNames, isPluginLoaded,
-// buildPluginListResponse, validateCompatPluginConfig, persistCompatPluginMutation
-// — extracted to ./plugins-routes
-
 /**
  * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
  * user is still linked to Eliza Cloud but a stale write dropped the key.
@@ -698,6 +689,10 @@ async function handleCompatRouteInner(
   // useRuntimeMode() hook.
   if (await handleRuntimeModeRoute(req, res, state)) return true;
 
+  // First-paint UI language suggestion. Public/advisory only; the client
+  // falls back to English when it is absent, but serving it avoids noisy 404s.
+  if (handleI18nLocaleRoute(req, res)) return true;
+
   // Eliza Cloud thin-client proxy (compat agents, jobs, OAuth, …). Keep this
   // before the local /api/cloud handler so /api/cloud/v1/* forwards to Cloud.
   if (
@@ -726,7 +721,7 @@ async function handleCompatRouteInner(
     });
   }
 
-  // Dev observability routes — extracted to dev-compat-routes.ts
+  // Dev observability routes.
   if (await handleDevCompatRoutes(req, res, state)) return true;
 
   // Cloud SSO popup landing — `/pair?token=X` calls cloud-api server-side,
@@ -740,8 +735,10 @@ async function handleCompatRouteInner(
   // Cookie + CSRF session lifecycle (setup, login, logout, me, sessions).
   if (await handleAuthSessionRoutes(req, res, state)) return true;
 
-  // Auth / pairing / first-run status — extracted to auth-pairing-routes.ts
+  // Auth / pairing / first-run status.
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  // Embedded-app launch verification (Discord Activity / Telegram Mini App).
+  if (await handleEmbedAuthRoutes(req, res, state)) return true;
   // Sensitive-request REST surface (create/get/submit/cancel) for owner secret
   // collection — e.g. orchestrator provider keys land in the shared vault
   // instead of plain config. Each branch self-authorizes via
@@ -770,28 +767,12 @@ async function handleCompatRouteInner(
   }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
-  // Now served via workflowRoutePlugin.routes (rawPath) on the runtime
-  // plugin route system.
-
-  // GitHub PAT routes — extracted to plugins/plugin-github/src/routes/github-routes.ts.
-  // Now served via githubPlugin.routes (rawPath) on the runtime plugin route system.
-
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const { handleCloudTtsPreviewRoute } = await import(
       "@elizaos/plugin-elizacloud"
     );
     return handleCloudTtsPreviewRoute(req, res);
-  }
-
-  // Onboarding voice: serve the pre-generated OmniVoice presets for the fixed
-  // first-run lines (committed WAVs) before any agent exists. The client falls
-  // back to browser speechSynthesis if this route fails, so onboarding never
-  // goes silent.
-  if (method === "POST" && url.pathname === "/api/tts/first-run/speak") {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    return handleFirstRunTtsRoute(req, res);
   }
 
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
@@ -801,13 +782,11 @@ async function handleCompatRouteInner(
     return false;
   }
 
-  // Workbench / todos routes — extracted to workbench-compat-routes.ts
+  // Workbench / todos routes.
   if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
 
-  // Public cached market overview for wallet empty states and cloud feeds —
-  // now served via @elizaos/plugin-wallet:routes Plugin.routes (rawPath).
   if (url.pathname.startsWith("/api/secrets/")) {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
     if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
       return true;
     }
@@ -816,43 +795,20 @@ async function handleCompatRouteInner(
     }
   }
 
-  // ── /api/cloud/* routes — extracted to plugins/plugin-elizacloud ──────
-  // (cloud-routes, cloud-status-routes). Now served via
-  // elizaCloudRoutePlugin.routes (rawPath) on the runtime plugin route
-  // system. The plugin handlers carry the cloud-provisioned auth exemption
-  // for `/api/cloud/status` and the post-dispatch loopback sync that keeps
-  // the upstream state.config in agreement with disk on login / disconnect.
-  // Note: /api/cloud/compat/* and /api/cloud/billing/* still dispatch
-  // above this point through @elizaos/agent (intentional — those are thin
-  // proxies to Eliza Cloud, not local cloud-connection management).
-
-  if (method === "GET" && url.pathname === "/api/drop/status") {
-    const config = loadElizaConfig() as ElizaConfig & {
-      features?: { dropEnabled?: boolean };
-    };
-    if (config.features?.dropEnabled === true) {
-      return false;
-    }
-    sendJsonResponse(res, 200, {
-      dropEnabled: false,
-      publicMintOpen: false,
-      whitelistMintOpen: false,
-      mintedOut: false,
-      currentSupply: 0,
-      maxSupply: 0,
-      shinyPrice: "0",
-      userHasMinted: false,
-    });
-    return true;
+  // Owner-only credential-tunnel submit: redeems a tunnel-routed secret request
+  // into the parent runtime's one-shot CredentialTunnelService (never the agent
+  // secret store). OWNER role enforces the `owner_only` actor policy.
+  if (method === "POST" && url.pathname === "/api/credential-tunnel/submit") {
+    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
+    return handleCredentialTunnelRoute(req, res, state, method, url.pathname);
   }
 
-  // ── Vincent OAuth routes — extracted to app-vincent/src/plugin.ts ──
-  // Now served via vincentPlugin.routes (rawPath) on the runtime plugin
-  // route system.  /callback/vincent is marked public: true.
+  // `/api/cloud/compat/*` and `/api/cloud/billing/*` dispatch above this
+  // point through @elizaos/agent — thin proxies to Eliza Cloud, not local
+  // cloud-connection management. `/api/cloud/*` connection management is
+  // served by elizaCloudRoutePlugin.routes on the runtime plugin route system.
 
-  // ── Shopify routes — extracted to app-shopify/src/plugin.ts ───────
-  // Now served via shopifyPlugin.routes (rawPath) on the runtime plugin
-  // route system.
+  if (handleDropStatusCompatRoute(req, res, method, url.pathname)) return true;
 
   if (method === "POST" && url.pathname === "/api/agent/reset") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) {
@@ -897,14 +853,9 @@ async function handleCompatRouteInner(
     return true;
   }
 
-  // ── Steward wallet compat routes — extracted to app-steward/src/plugin.ts ──
-  // All four handler groups (wallet-compat, wallet-browser-compat,
-  // steward-compat, wallet-trade-compat) are now served via
-  // stewardPlugin.routes (rawPath) on the runtime plugin route system.
-
-  // Plugin routes — extracted to @elizaos/plugin-registry. That package pulls
-  // in heavyweight registry/install code, so keep it out of the startup path
-  // and only load it for plugin-management requests.
+  // Plugin routes load @elizaos/plugin-registry lazily: that package pulls in
+  // heavyweight registry/install code, so keep it out of the startup path and
+  // only load it for plugin-management requests.
   if (url.pathname.startsWith("/api/plugins")) {
     const { handlePluginsCompatRoutes } = await getPluginRegistryApi();
     if (await handlePluginsCompatRoutes(req, res, state)) return true;

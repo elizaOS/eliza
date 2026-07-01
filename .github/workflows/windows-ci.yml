@@ -69,7 +69,7 @@ jobs:
           - lane: test-elizaos-cli
             command: bun run --cwd packages/elizaos test
           - lane: test-cloud-shared
-            command: bun run --cwd packages/cloud-shared test
+            command: bun run --cwd packages/cloud/shared test
           - lane: test-plugin-coding-tools
             command: bun run --cwd plugins/plugin-coding-tools test
           - lane: test-scenario-runner
@@ -78,8 +78,6 @@ jobs:
             command: bun run --cwd packages/vault test
           - lane: test-security
             command: bun run --cwd packages/security test
-          - lane: test-elizaos-cli-full
-            command: bun run --cwd packages/elizaos test
           - lane: test-plugin-elizacloud
             command: bun run --cwd plugins/plugin-elizacloud test
           - lane: test-plugin-discord
@@ -154,7 +152,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node packages/app-core/scripts/ensure-shared-i18n-data.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --filter=@elizaos/prompts --filter=@elizaos/core --filter=@elizaos/shared --concurrency=4
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --concurrency=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Prompts codegen writes generated source consumed by core/shared; run
+          # it outside Turbo so Windows prep does not build stale generated inputs.
+          bun run --cwd packages/prompts build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --concurrency=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run lane "${{ matrix.lane }}"

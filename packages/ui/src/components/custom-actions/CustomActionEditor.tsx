@@ -2,7 +2,7 @@ import type { CustomActionDef, CustomActionHandler } from "@elizaos/shared";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -56,7 +56,7 @@ export function CustomActionEditor({
   onSave,
   onClose,
 }: CustomActionEditorProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [similesInput, setSimilesInput] = useState("");

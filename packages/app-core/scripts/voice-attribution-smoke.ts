@@ -4,38 +4,55 @@
  *
  * Runs the full native voice-attribution stack against a real-speech WAV and
  * asserts each stage produces correct output:
- *   - Silero VAD (`SileroVadGgml`)            → detects speech windows
- *   - WeSpeaker encoder (`SpeakerEncoderGgml`) → 256-d unit-norm, deterministic
- *   - pyannote diarizer (`PyannoteDiarizer`)   → segments real speech
- *   - `VoiceAttributionPipeline`               → enroll → bind entity → re-match
+ *   - WeSpeaker encoder (`FusedSpeakerEncoder`) → 256-d unit-norm, deterministic
+ *   - pyannote diarizer (`FusedDiarizer`)       → segments real speech
+ *   - `VoiceAttributionPipeline`                → enroll → bind entity → re-match
+ *
+ * Single fused engine: the speaker encoder + diarizer run EXCLUSIVELY through
+ * the one fused `libelizainference` handle (`eliza_inference_speaker_*` /
+ * `_diariz_*`). There is no standalone `libvoice_classifier` runtime.
  *
  * The GGUFs are NOT in the repo (they are produced by the in-tree onnx→gguf
  * converters under packages/native/plugins/<lib>/scripts/). Point this at a
- * directory holding them; the native .so libs resolve automatically from the
- * cmake build dirs (or $ELIZA_SILERO_VAD_LIB / $ELIZA_VOICE_CLASSIFIER_LIB).
+ * directory holding them; the fused lib resolves from $ELIZA_INFERENCE_LIBRARY
+ * (exact) or $ELIZA_INFERENCE_LIB_DIR.
  *
  * Usage:
  *   bun packages/app-core/scripts/voice-attribution-smoke.ts \
  *     --models /path/to/dir/with/{silero-vad-v5,wespeaker-resnet34-lm,pyannote-segmentation-3.0}.gguf
  *   ELIZA_VOICE_REAL_MODEL_DIR=/path/to/models bun packages/app-core/scripts/voice-attribution-smoke.ts
  *
- * Exit 0 on pass OR when models are absent (skipped); 1 on any assertion fail.
+ * Exit 0 on pass OR when models / the fused lib are absent (skipped). Pass
+ * `--require-real` (or set `ELIZA_VOICE_REAL_REQUIRE=1`) in provisioned CI to
+ * convert any skip into a hard failure; the real matrix must produce evidence,
+ * not a green skip.
  */
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 import { handleLiveVoiceAttribution } from "../../../plugins/plugin-local-inference/src/runtime/voice-entity-binding.ts";
+import { resolveFusedLibraryPath } from "../../../plugins/plugin-local-inference/src/services/desktop-fused-ffi-backend-runtime.ts";
 import {
   AudioFrameConsumer,
   type AudioFrameEvent,
 } from "../../../plugins/plugin-local-inference/src/services/voice/audio-frame-consumer.ts";
+import { loadElizaInferenceFfi } from "../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts";
 import { VoiceProfileStore } from "../../../plugins/plugin-local-inference/src/services/voice/profile-store.ts";
 import { VoiceAttributionPipeline } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/attribution-pipeline.ts";
-import { PyannoteDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer.ts";
-import { SpeakerEncoderGgmlImpl } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder-ggml.ts";
-import { VadDetector } from "../../../plugins/plugin-local-inference/src/services/voice/vad.ts";
-import { SileroVadGgml } from "../../../plugins/plugin-local-inference/src/services/voice/vad-ggml.ts";
+import { FusedDiarizer } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.ts";
+import { FusedSpeakerEncoder } from "../../../plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.ts";
+import {
+  GgmlSileroVad,
+  VadDetector,
+} from "../../../plugins/plugin-local-inference/src/services/voice/vad.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(
@@ -48,23 +65,104 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+const REQUIRE_REAL =
+  process.argv.includes("--require-real") ||
+  process.env.ELIZA_VOICE_REAL_REQUIRE?.trim() === "1";
+
+function skip(message: string): never {
+  const prefix = REQUIRE_REAL ? "FAIL" : "SKIP";
+  console.log(`[voice-attribution-smoke] ${prefix} — ${message}`);
+  process.exit(REQUIRE_REAL ? 1 : 0);
+}
+
 const modelsDir =
   arg("--models") ??
   process.env.ELIZA_VOICE_REAL_MODEL_DIR?.trim() ??
   "/tmp/voice-models";
+function firstExisting(...parts: string[]): string | null {
+  for (const part of parts) {
+    const p = path.isAbsolute(part) ? part : path.join(modelsDir, part);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
 const M = {
-  vad: path.join(modelsDir, "silero-vad-v5.gguf"),
-  enc: path.join(modelsDir, "wespeaker-resnet34-lm.gguf"),
-  dia: path.join(modelsDir, "pyannote-segmentation-3.0.gguf"),
+  vad: firstExisting(
+    "silero-vad-v5.1.2.ggml.bin",
+    "silero-vad-v5.gguf",
+    "vad/silero-vad-v5.1.2.ggml.bin",
+    "vad/silero-vad-v5.gguf",
+    "voice/vad/silero-vad-v5.1.2.ggml.bin",
+    "bundles/2b/vad/silero-vad-v5.gguf",
+  ),
+  enc: firstExisting(
+    "wespeaker-resnet34-lm.gguf",
+    "speaker/wespeaker-resnet34-lm.gguf",
+    "speaker-encoder/wespeaker-resnet34-lm.gguf",
+    "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
+  ),
+  dia: firstExisting(
+    "pyannote-segmentation-3.0.gguf",
+    "diariz/pyannote-segmentation-3.0.gguf",
+    "diarizer/pyannote-segmentation-3.0.gguf",
+    "voice/diarizer/pyannote-segmentation-3.0.gguf",
+  ),
 };
 
-if (!existsSync(M.vad) || !existsSync(M.enc) || !existsSync(M.dia)) {
-  console.log(
-    `[voice-attribution-smoke] SKIP — GGUF models not found under ${modelsDir}.\n` +
-      "  Produce them with the converters in packages/native/plugins/<lib>/scripts/ and pass --models <dir>.",
+if (!M.vad || !M.enc || !M.dia) {
+  skip(
+    `GGUF models not found under ${modelsDir}.\n` +
+      "  Expected Silero VAD, WeSpeaker, and pyannote assets; pass --models <dir> or set ELIZA_VOICE_REAL_MODEL_DIR.",
   );
-  process.exit(0);
 }
+
+function stageVoiceBundle(models: { vad: string; enc: string; dia: string }): {
+  root: string;
+  vad: string;
+  enc: string;
+  dia: string;
+} {
+  const root = mkdtempSync(path.join(tmpdir(), "voice-model-bundle-"));
+  const out = {
+    root,
+    vad: path.join(root, "vad", path.basename(models.vad)),
+    enc: path.join(root, "speaker", "wespeaker-resnet34-lm.gguf"),
+    dia: path.join(root, "diariz", "pyannote-segmentation-3.0.gguf"),
+  };
+  mkdirSync(path.dirname(out.vad), { recursive: true });
+  mkdirSync(path.dirname(out.enc), { recursive: true });
+  mkdirSync(path.dirname(out.dia), { recursive: true });
+  copyFileSync(models.vad, out.vad);
+  copyFileSync(models.enc, out.enc);
+  copyFileSync(models.dia, out.dia);
+  return out;
+}
+
+const BUNDLE = stageVoiceBundle(M as { vad: string; enc: string; dia: string });
+
+// Resolve the fused libelizainference. The speaker encoder + diarizer run
+// EXCLUSIVELY through it (the `eliza_inference_speaker_*` / `_diariz_*` ABI off
+// one handle); there is no standalone runtime to fall back to.
+const FUSED_LIB = resolveFusedLibraryPath(modelsDir, process.env);
+if (!FUSED_LIB) {
+  skip(
+    "fused libelizainference not found.\n" +
+      "  Set $ELIZA_INFERENCE_LIBRARY (exact) or $ELIZA_INFERENCE_LIB_DIR, or build it via packages/app-core/scripts/build-llama-cpp-mtp.mjs.",
+  );
+}
+const FFI = loadElizaInferenceFfi(FUSED_LIB);
+const FFI_CTX = FFI.create(BUNDLE.root);
+if (!FusedSpeakerEncoder.isSupported(FFI)) {
+  skip(
+    `the fused lib at ${FUSED_LIB} (ABI v${FFI.libraryAbiVersion}) lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in.`,
+  );
+}
+if (!FusedDiarizer.isSupported(FFI)) {
+  skip(
+    `the fused lib at ${FUSED_LIB} (ABI v${FFI.libraryAbiVersion}) lacks the diarizer ABI (eliza_inference_diariz_supported() == 0). Rebuild with the pyannote forward graph linked in.`,
+  );
+}
+const FUSED_VAD_AVAILABLE = GgmlSileroVad.isSupported(FFI);
 
 /** Decode a PCM16 mono WAV → { pcm, sampleRate }. */
 function decodeWavMono(file: string): {
@@ -129,27 +227,53 @@ console.log(
   `[voice-attribution-smoke] ${path.basename(WAV)} → ${pcm.length} samples @16k (${(pcm.length / 16_000).toFixed(1)}s)`,
 );
 
-// VAD
-{
-  const vad = await SileroVadGgml.load({ ggufPath: M.vad });
-  let speech = 0;
-  let max = 0;
-  const total = Math.floor(pcm.length / 512);
-  for (let i = 0; i < total; i++) {
-    const p = await vad.process(pcm.subarray(i * 512, i * 512 + 512));
-    if (p > 0.5) speech++;
-    if (p > max) max = p;
+// VAD — fused-only; the fused ffi + ctx are booted above, but the VAD-driven
+// turn-segmentation stage runs through GgmlSileroVad on the same FFI context.
+if (FUSED_VAD_AVAILABLE) {
+  const vad = await GgmlSileroVad.load({ ffi: FFI, ctx: FFI_CTX });
+  const silence = new Float32Array(vad.windowSamples);
+  let speechMax = 0;
+  for (
+    let off = 0;
+    off + vad.windowSamples <= Math.min(pcm.length, 16_000 * 4);
+    off += vad.windowSamples
+  ) {
+    const p = await vad.process(pcm.subarray(off, off + vad.windowSamples));
+    if (p > speechMax) speechMax = p;
   }
+  vad.reset();
+  let silenceMax = 0;
+  for (let i = 0; i < 8; i += 1) {
+    const p = await vad.process(silence);
+    if (p > silenceMax) silenceMax = p;
+  }
+  vad.close();
   ok(
-    "Silero VAD detects speech in a real-speech clip",
-    speech > 50 && max > 0.9,
-    `${speech}/${total} windows>0.5, max=${max.toFixed(3)}`,
+    "Silero VAD: real speech scores above silence",
+    speechMax > silenceMax && speechMax > 0.2,
+    `speechMax=${speechMax.toFixed(3)} silenceMax=${silenceMax.toFixed(3)}`,
   );
+} else {
+  if (REQUIRE_REAL) {
+    ok(
+      "Silero VAD: fused lib advertises eliza_inference_vad_* support",
+      false,
+      "fused libelizainference does not advertise eliza_inference_vad_* support",
+    );
+  } else {
+    console.log(
+      "[voice-attribution-smoke] SKIP VAD stage — fused libelizainference does not advertise eliza_inference_vad_* support.",
+    );
+  }
 }
 
 // Encoder
 {
-  const enc = new SpeakerEncoderGgmlImpl({ ggufPath: M.enc });
+  const enc = await FusedSpeakerEncoder.load({
+    ffi: FFI,
+    ctx: FFI_CTX,
+    ggufPath: M.enc,
+  });
   const eA = await enc.encode(pcm.subarray(0, 16_000 * 8));
   const eA2 = await enc.encode(pcm.subarray(0, 16_000 * 8));
   const eB = await enc.encode(pcm.subarray(16_000 * 8, 16_000 * 16));
@@ -170,12 +294,27 @@ console.log(
     cos(eA, eB) > 0.78,
     `cos(A,B)=${cos(eA, eB).toFixed(3)}`,
   );
+  const selfVoiceSimilarity = cos(eA, eA2);
+  const selfVoiceSignal = buildVoiceTurnSignal("misheard synthetic echo", {
+    agentSpeaking: true,
+    selfVoiceSimilarity,
+  });
+  ok(
+    "Live selfVoiceSimilarity cosine suppresses an agent-echo turn",
+    selfVoiceSignal.agentShouldSpeak === false &&
+      selfVoiceSignal.source === "client-ambient+self-voice",
+    `selfVoiceSimilarity=${selfVoiceSimilarity.toFixed(4)} source=${selfVoiceSignal.source}`,
+  );
   await enc.dispose();
 }
 
 // Diarizer
 {
-  const dia = await PyannoteDiarizer.load(M.dia);
+  const dia = await FusedDiarizer.load({
+    ffi: FFI,
+    ctx: FFI_CTX,
+    ggufPath: M.dia,
+  });
   const win = new Float32Array(16_000 * 5);
   win.set(pcm.subarray(0, Math.min(pcm.length, 16_000 * 5)));
   const out = await dia.diarizeWindow(win);
@@ -189,8 +328,16 @@ console.log(
 
 // Attribution pipeline: enroll → bind → re-match
 {
-  const encoder = new SpeakerEncoderGgmlImpl({ ggufPath: M.enc });
-  const diarizer = await PyannoteDiarizer.load(M.dia);
+  const encoder = await FusedSpeakerEncoder.load({
+    ffi: FFI,
+    ctx: FFI_CTX,
+    ggufPath: M.enc,
+  });
+  const diarizer = await FusedDiarizer.load({
+    ffi: FFI,
+    ctx: FFI_CTX,
+    ggufPath: M.dia,
+  });
   const store = new VoiceProfileStore({
     rootDir: mkdtempSync(path.join(tmpdir(), "vp-")),
   });
@@ -352,7 +499,11 @@ console.log(
 // platform-agnostic AudioFrameConsumer wired to the REAL ggml VAD/encoder/
 // diarizer, and assert it segments ≥ 1 turn, attributes a speaker, and emits a
 // voiceTurnSignal — the full on-device path minus the device.
-{
+//
+// Gated on FUSED_VAD_AVAILABLE: AudioFrameConsumer needs a real VAD to segment
+// turns, and the sole VAD runtime is now the fused libelizainference engine,
+// which this standalone-model harness now boots from the same FFI context.
+if (FUSED_VAD_AVAILABLE) {
   /** Encode a Float32 [-1,1] window → base64 LE-s16, as the native side does. */
   function encodeFrame(
     pcm: Float32Array,
@@ -377,17 +528,23 @@ console.log(
     };
   }
 
-  const vadGgml = await SileroVadGgml.load({ ggufPath: M.vad });
-  const detector = new VadDetector(vadGgml, {
+  const fusedVad = await GgmlSileroVad.load({ ffi: FFI, ctx: FFI_CTX });
+  const detector = new VadDetector(fusedVad, {
     onsetThreshold: 0.5,
-    // freeman.wav is one continuous read; a generous end hangover lets the
-    // single utterance finalize at the trailing silence / end-of-stream flush.
     pauseHangoverMs: 120,
     endHangoverMs: 500,
     minSpeechMs: 250,
   });
-  const encoder = new SpeakerEncoderGgmlImpl({ ggufPath: M.enc });
-  const diarizer = await PyannoteDiarizer.load(M.dia);
+  const encoder = await FusedSpeakerEncoder.load({
+    ffi: FFI,
+    ctx: FFI_CTX,
+    ggufPath: M.enc,
+  });
+  const diarizer = await FusedDiarizer.load({
+    ffi: FFI,
+    ctx: FFI_CTX,
+    ggufPath: M.dia,
+  });
   const store = new VoiceProfileStore({
     rootDir: mkdtempSync(path.join(tmpdir(), "vp-consumer-")),
   });
@@ -474,9 +631,9 @@ console.log(
   );
 
   await consumer.close();
+  fusedVad.close();
   await encoder.dispose();
   await diarizer.dispose?.();
-  vadGgml.close();
 }
 
 console.log(

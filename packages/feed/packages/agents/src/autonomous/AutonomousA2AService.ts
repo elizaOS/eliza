@@ -64,6 +64,41 @@ interface PortfolioPosition {
   type: "prediction" | "perp";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isPortfolioPosition(value: unknown): value is PortfolioPosition {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.id === "string" &&
+    typeof value.side === "string" &&
+    typeof value.amount === "number" &&
+    typeof value.price === "number" &&
+    (value.type === "prediction" || value.type === "perp")
+  );
+}
+
+function readPortfolio(value: unknown): {
+  balance: number;
+  positions: PortfolioPosition[];
+  pnl: number;
+} {
+  if (!isRecord(value)) {
+    return { balance: 0, positions: [], pnl: 0 };
+  }
+
+  return {
+    balance: typeof value.balance === "number" ? value.balance : 0,
+    positions: Array.isArray(value.positions)
+      ? value.positions.filter(isPortfolioPosition)
+      : [],
+    pnl: typeof value.pnl === "number" ? value.pnl : 0,
+  };
+}
+
 /**
  * Service for autonomous actions via A2A protocol
  */
@@ -142,12 +177,10 @@ export class AutonomousA2AService {
       }>;
     };
 
-    const hasPredictions =
-      predictionsResponse?.predictions &&
-      predictionsResponse.predictions.length > 0;
-    const hasPerpetuals =
-      perpetualsResponse?.perpetuals &&
-      perpetualsResponse.perpetuals.length > 0;
+    const predictionMarkets = predictionsResponse.predictions ?? [];
+    const perpetualMarkets = perpetualsResponse.perpetuals ?? [];
+    const hasPredictions = predictionMarkets.length > 0;
+    const hasPerpetuals = perpetualMarkets.length > 0;
 
     if (!hasPredictions && !hasPerpetuals) {
       logger.debug("No markets available for trading", { agentUserId });
@@ -161,22 +194,17 @@ export class AutonomousA2AService {
     }
 
     // Get portfolio for context
-    const portfolio = (await a2aClient.sendRequest(
-      "a2a.getPortfolio",
-      {},
-    )) as unknown as {
-      balance: number;
-      positions: Array<PortfolioPosition>;
-      pnl: number;
-    };
+    const portfolio = readPortfolio(
+      await a2aClient.sendRequest("a2a.getPortfolio", {}),
+    );
 
     // Shuffle markets to provide variety and avoid bias toward first markets
     const { shuffleArray } = await import("@feed/engine");
     const shuffledPredictions = hasPredictions
-      ? shuffleArray([...predictionsResponse.predictions!])
+      ? shuffleArray([...predictionMarkets])
       : [];
     const shuffledPerpetuals = hasPerpetuals
-      ? shuffleArray([...perpetualsResponse.perpetuals!])
+      ? shuffleArray([...perpetualMarkets])
       : [];
 
     // Build LLM decision prompt with both market types
@@ -558,7 +586,10 @@ Your JSON response:`;
     let engagements = 0;
 
     // Engage with top trending topic
-    const topTag = trendingResponse.tags[0]!;
+    const topTag = trendingResponse.tags[0];
+    if (!topTag) {
+      return { success: false, engagements: 0 };
+    }
     const postsResponse = (await a2aClient.sendRequest("a2a.getPostsByTag", {
       tag: topTag.name,
       limit: 5,

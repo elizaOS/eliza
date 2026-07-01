@@ -21,6 +21,7 @@ import {
 import {
   agentRuntimeManager,
   agentService,
+  dispatchAgentChat,
   notifyTeamChatMessage,
   teamChatService,
 } from "@feed/agents";
@@ -425,6 +426,8 @@ export const POST = withErrorHandling(
         state.data = {
           ...state.data,
           actionResults: traceActionResults,
+          broadcastFn: broadcastChatMessage,
+          dispatchAgentChat,
         };
 
         // Build prompt from template
@@ -521,12 +524,14 @@ export const POST = withErrorHandling(
         state.data = {
           ...state.data,
           actionParams,
+          broadcastFn: broadcastChatMessage,
+          dispatchAgentChat,
         };
 
         // Persist actionParams to stateCache so action handlers that compose
         // their own state still see the parsed parameters.
         const stateCache = (
-          runtime as unknown as {
+          runtime as {
             stateCache?: Map<
               string,
               {
@@ -540,7 +545,12 @@ export const POST = withErrorHandling(
         if (stateCache && elizaMessage.id) {
           const cached = stateCache.get(elizaMessage.id);
           if (cached) {
-            cached.data = { ...cached.data, actionParams };
+            cached.data = {
+              ...cached.data,
+              actionParams,
+              broadcastFn: broadcastChatMessage,
+              dispatchAgentChat,
+            };
           }
         }
 
@@ -638,7 +648,7 @@ export const POST = withErrorHandling(
 
           if (!actionResult) {
             const cachedState = (
-              runtime as unknown as { stateCache?: Map<string, unknown> }
+              runtime as { stateCache?: Map<string, unknown> }
             ).stateCache?.get(`${elizaMessage.id}_action_results`) as
               | {
                   values?: {

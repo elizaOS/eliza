@@ -1,4 +1,4 @@
-import { createElement, type ComponentType } from "react";
+import { type ComponentType, createElement } from "react";
 import { RetainedLazyComponent } from "../../retained-lazy";
 import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 
@@ -17,6 +17,7 @@ export function getOverlayAppLazyComponent(
   const created = function RetainedOverlayApp(props: OverlayAppContext) {
     return createElement(RetainedLazyComponent<OverlayAppContext>, {
       loader,
+      cacheKey: app.name,
       componentProps: props,
       fallback: null,
     });

@@ -1,0 +1,18 @@
+{
+  "package": "@wasmagent/eliza-rollout-plugin",
+  "repository": "github:WasmAgent/wasmagent-js",
+  "kind": "plugin",
+  "description": "Captures elizaOS action runs as rollout-wire/v1 training records (DPO/PPO JSONL) for fine-tuning via evomerge. No sandbox layer — elizaOS Bun Worker isolation already covers that.",
+  "homepage": "https://github.com/WasmAgent/wasmagent-js/tree/main/packages/eliza-rollout-plugin",
+  "version": "1.0.3",
+  "directory": "packages/eliza-rollout-plugin",
+  "tags": [
+    "training-data",
+    "rlaif",
+    "dpo",
+    "ppo",
+    "rollout",
+    "fine-tuning",
+    "wasmagent"
+  ]
+}

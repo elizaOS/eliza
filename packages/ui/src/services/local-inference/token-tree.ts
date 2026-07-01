@@ -175,7 +175,7 @@ export interface TokenTreeDescriptor {
  * `responseSkeleton` on the chat-completion request.
  *
  * `modelId` is the tokenizer key — different Eliza-1 variants share the
- * Qwen3 tokenizer family but distinct distillations may have different
+ * Gemma 4 tokenizer family but distinct distillations may have different
  * special-token ids, so leaves tokenized against one model are NOT portable
  * to another. The fork should validate that the active model's id matches
  * this descriptor's `modelId` before honouring the trie.

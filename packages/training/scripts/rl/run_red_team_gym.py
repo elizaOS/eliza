@@ -209,7 +209,7 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Red Team Gym")
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--targets", default="local", help="Comma-separated: local,groq,gpt,sonnet")
     parser.add_argument("--episodes", type=int, default=5)

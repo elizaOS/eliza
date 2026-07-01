@@ -18,4 +18,4 @@ export {
   mergeGoalSemanticReviewMetadata,
   readGoalGroundingMetadata,
   readGoalSemanticReviewMetadata,
-} from "@elizaos/plugin-goals";
+} from "@elizaos/plugin-goals/goal-grounding";

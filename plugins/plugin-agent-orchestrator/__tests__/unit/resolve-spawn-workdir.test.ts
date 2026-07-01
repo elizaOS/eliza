@@ -76,7 +76,19 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         NO_ROUTE_TASK,
         undefined,
       ),
-    ).toEqual({ workdir: root });
+    ).toEqual({ workdir: root, isolate: true });
+  });
+
+  it("ignores planner-guessed runtime cwd when a workspace root is configured", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ws-root-"));
+    expect(
+      resolveSpawnWorkdir(
+        stubRuntime({ ELIZA_ACP_WORKSPACE_ROOT: root }),
+        NO_ROUTE_TASK,
+        NO_ROUTE_TASK,
+        process.cwd(),
+      ),
+    ).toEqual({ workdir: root, isolate: true });
   });
 
   it("honors ACPX_DEFAULT_CWD when ELIZA_ACP_WORKSPACE_ROOT is unset", () => {
@@ -88,7 +100,7 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         NO_ROUTE_TASK,
         undefined,
       ),
-    ).toEqual({ workdir: root });
+    ).toEqual({ workdir: root, isolate: true });
   });
 
   it("prefers ELIZA_ACP_WORKSPACE_ROOT over ACPX_DEFAULT_CWD", () => {
@@ -104,7 +116,7 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         NO_ROUTE_TASK,
         undefined,
       ),
-    ).toEqual({ workdir: preferred });
+    ).toEqual({ workdir: preferred, isolate: true });
   });
 
   it("still returns process.cwd() when no workspace root is configured (self-checkout default)", () => {
@@ -116,6 +128,91 @@ describe("resolveSpawnWorkdir — configured workspace root fallback", () => {
         undefined,
       ),
     ).toEqual({ workdir: process.cwd() });
+  });
+});
+
+describe("resolveDefaultSpawnWorkdir — full setting precedence", () => {
+  // The last-resort default-spawn workdir reads, in order, the runtime settings
+  // ELIZA_ACP_WORKSPACE_ROOT > ACPX_DEFAULT_CWD > ELIZA_WORKSPACE_DIR >
+  // ELIZA_CODING_WORKSPACE > ELIZA_CODING_DIRECTORY, then the equivalent
+  // config-env keys, then process.cwd(). Exercised through resolveSpawnWorkdir's
+  // no-route/no-explicit fallback path. Pin TASK_AGENT_WORKDIR_ROOTS to an empty
+  // dir so the convention scan never short-circuits before the default.
+  const stubRuntime = (settings: Record<string, string>) =>
+    ({ getSetting: (key: string) => settings[key] }) as never;
+
+  let emptyRoots: string;
+  const previousRoots = process.env.TASK_AGENT_WORKDIR_ROOTS;
+
+  beforeEach(() => {
+    emptyRoots = fs.mkdtempSync(path.join(os.tmpdir(), "no-convention-"));
+    process.env.TASK_AGENT_WORKDIR_ROOTS = emptyRoots;
+  });
+
+  afterEach(() => {
+    if (previousRoots === undefined)
+      delete process.env.TASK_AGENT_WORKDIR_ROOTS;
+    else process.env.TASK_AGENT_WORKDIR_ROOTS = previousRoots;
+    fs.rmSync(emptyRoots, { recursive: true, force: true });
+  });
+
+  const resolveDefault = (settings: Record<string, string>) =>
+    resolveSpawnWorkdir(
+      stubRuntime(settings),
+      NO_ROUTE_TASK,
+      NO_ROUTE_TASK,
+      undefined,
+    );
+
+  it("honors ELIZA_WORKSPACE_DIR when the ACP-specific roots are unset", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ws-dir-"));
+    expect(resolveDefault({ ELIZA_WORKSPACE_DIR: dir })).toEqual({
+      workdir: dir,
+      isolate: true,
+    });
+  });
+
+  it("honors ELIZA_CODING_WORKSPACE when higher-precedence keys are unset", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coding-ws-"));
+    expect(resolveDefault({ ELIZA_CODING_WORKSPACE: dir })).toEqual({
+      workdir: dir,
+      isolate: true,
+    });
+  });
+
+  it("honors ELIZA_CODING_DIRECTORY when higher-precedence keys are unset (WorkspaceService parity)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coding-dir-"));
+    expect(resolveDefault({ ELIZA_CODING_DIRECTORY: dir })).toEqual({
+      workdir: dir,
+      isolate: true,
+    });
+  });
+
+  it("applies the full precedence order ACP_ROOT > ACPX > WORKSPACE_DIR > CODING_WORKSPACE > CODING_DIRECTORY", () => {
+    const acpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "p-acproot-"));
+    const acpxCwd = fs.mkdtempSync(path.join(os.tmpdir(), "p-acpx-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "p-wsdir-"));
+    const codingWs = fs.mkdtempSync(path.join(os.tmpdir(), "p-codingws-"));
+    const codingDir = fs.mkdtempSync(path.join(os.tmpdir(), "p-codingdir-"));
+
+    const all = {
+      ELIZA_ACP_WORKSPACE_ROOT: acpRoot,
+      ACPX_DEFAULT_CWD: acpxCwd,
+      ELIZA_WORKSPACE_DIR: workspaceDir,
+      ELIZA_CODING_WORKSPACE: codingWs,
+      ELIZA_CODING_DIRECTORY: codingDir,
+    };
+
+    // Peel keys off one at a time; each step's top-most remaining key wins.
+    expect(resolveDefault(all).workdir).toBe(acpRoot);
+    const { ELIZA_ACP_WORKSPACE_ROOT: _a, ...noAcpRoot } = all;
+    expect(resolveDefault(noAcpRoot).workdir).toBe(acpxCwd);
+    const { ACPX_DEFAULT_CWD: _b, ...noAcpx } = noAcpRoot;
+    expect(resolveDefault(noAcpx).workdir).toBe(workspaceDir);
+    const { ELIZA_WORKSPACE_DIR: _c, ...noWsDir } = noAcpx;
+    expect(resolveDefault(noWsDir).workdir).toBe(codingWs);
+    const { ELIZA_CODING_WORKSPACE: _d, ...onlyCodingDir } = noWsDir;
+    expect(resolveDefault(onlyCodingDir).workdir).toBe(codingDir);
   });
 });
 

@@ -1,3 +1,5 @@
+import { copyFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
@@ -7,11 +9,10 @@ import {
 } from "./helpers";
 
 // Every other ui-smoke spec seeds `eliza:first-run-complete = "1"`, so the
-// onboarding surface (StartupScreen → CompactOnboarding, "Choose how to run
-// your agent") never gets render-telemetry coverage. That surface is exactly
-// where the agent-start render loop froze onboarding, so this spec lands on it
-// with the guard armed and drives the runtime selection that preceded the
-// freeze.
+// first-run runtime chooser rarely gets render-telemetry coverage. That surface
+// is exactly where the agent-start render loop once froze onboarding, so this
+// spec lands on it with the guard armed and drives the runtime selection that
+// preceded the freeze.
 
 async function fulfillJson(
   route: Route,
@@ -25,12 +26,35 @@ async function fulfillJson(
   });
 }
 
-// A full-capability host (real API base) so the onboarding offers all three
-// runtimes — without it the surface falls back to cloud-only and the Remote
-// card is correctly disabled.
+const EVIDENCE_DIR = path.resolve(
+  process.cwd(),
+  "../../.github/issue-evidence",
+);
+
+async function captureFirstRunRestoreEvidence(page: Page): Promise<void> {
+  if (!process.env.E2E_RECORD) return;
+  await mkdir(EVIDENCE_DIR, { recursive: true });
+  await page.screenshot({
+    path: path.join(EVIDENCE_DIR, "9963-first-run-restore-prompt.png"),
+    fullPage: false,
+  });
+  const video = page.video();
+  if (!video) return;
+  await page.close();
+  await copyFile(
+    await video.path(),
+    path.join(EVIDENCE_DIR, "9963-first-run-restore-prompt.webm"),
+  );
+}
+
+// A full-capability host (real API base + Electrobun window marker) so the local
+// finish path would be reachable; the in-chat conductor seeds the same three
+// runtime choices (Cloud / On this device / Bring your own keys) regardless.
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
+      window.location.origin;
+    (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
@@ -61,7 +85,7 @@ async function routeFirstRunIncomplete(page: Page): Promise<void> {
   });
 }
 
-test("first-run onboarding renders without a render loop and lets the runtime be chosen", async ({
+test("first-run chooser renders without a render loop and lets the runtime be chosen", async ({
   page,
 }) => {
   await installRenderTelemetryGuard(page);
@@ -73,56 +97,115 @@ test("first-run onboarding renders without a render loop and lets the runtime be
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  // The onboarding card renders inside the orange first-run background. The
-  // outer container testid is stable across the redesign.
-  const onboarding = page.getByTestId("onboarding-toast");
-  await expect(onboarding).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText("How should Eliza run?")).toBeVisible({
-    timeout: 15_000,
-  });
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  const chooser = page.getByTestId("first-run-runtime-chooser");
+  await expect(chooser).toBeVisible({ timeout: 20_000 });
+  await expect(
+    chooser.getByText("Choose how Eliza should run", { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
 
-  // The redesigned onboarding offers three runtime option cards. Cloud is the
-  // recommended resting choice; Remote opens an inline connect form; Local
-  // starts an on-device runtime. All three are always rendered (Remote is only
-  // disabled on cloud-only hosts, never removed).
-  const cloud = page.getByTestId("onboarding-option-cloud");
-  const remote = page.getByTestId("onboarding-option-remote");
-  const local = page.getByTestId("onboarding-option-local");
-  await expect(cloud).toBeVisible({ timeout: 15_000 });
-  await expect(remote).toBeVisible();
-  await expect(local).toBeVisible();
-
-  // Drive the Remote → Back round-trip a few times. Each pass re-renders the
-  // onboarding selector — the same churn path that previously froze
-  // onboarding — without committing a runtime and leaving the surface.
-  for (let i = 0; i < 4; i++) {
-    await remote.click();
-    const remoteConnect = page.getByTestId("onboarding-remote-connect");
-    await expect(remoteConnect).toBeVisible({ timeout: 10_000 });
-    // The remote step exposes the agent URL + access-token fields.
-    const apiBase = page.locator("#onboarding-remote-address");
-    await expect(apiBase).toBeVisible();
-    await apiBase.fill("https://agent.example.com");
-    await page.locator("#onboarding-remote-password").fill("");
-    await expect(remoteConnect).toBeEnabled();
-    await page.getByRole("button", { name: "Back" }).click();
-    await expect(cloud).toBeVisible({ timeout: 10_000 });
+  // The removed full-screen onboarding gate must NOT render — proof the surface
+  // is genuinely chat-first.
+  for (const removed of [
+    "first-run-chat",
+    "first-run-greeting",
+    "startup-first-run-background",
+  ]) {
+    await expect(page.getByTestId(removed)).toHaveCount(0);
   }
 
-  // Local advances to the inference sub-choice (cloud vs on-device), then Back
-  // returns to the runtime cards — the same re-render churn, on the newer step.
-  await local.click();
-  const inferenceCloud = page.getByTestId("onboarding-inference-cloud");
-  const inferenceLocal = page.getByTestId("onboarding-inference-local");
-  await expect(inferenceCloud).toBeVisible({ timeout: 10_000 });
-  await expect(inferenceLocal).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(cloud).toBeVisible({ timeout: 10_000 });
-
-  // Cloud remains the always-offered resting choice after the churn.
+  const cloud = chooser.getByTestId("first-run-chooser-cloud");
+  const local = chooser.getByTestId("first-run-chooser-local");
+  const other = chooser.getByTestId("first-run-chooser-other");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
-  await expect(cloud).toBeEnabled({ timeout: 15_000 });
+  await expect(local).toBeVisible();
+  await chooser.getByRole("button", { name: /Advanced setup/i }).click();
+  await expect(other).toBeVisible();
 
-  await expectNoRenderTelemetryErrors(page, "first-run onboarding");
-  await expect(onboarding).toBeVisible();
+  // Local advances to the provider step (on-device vs Eliza Cloud vs other) —
+  // the re-render churn on the newer step that previously froze.
+  await local.click();
+  await expect(chooser.getByTestId("first-run-provider-on-device")).toBeVisible(
+    { timeout: 15_000 },
+  );
+  await expect(
+    chooser.getByTestId("first-run-provider-elizacloud"),
+  ).toBeVisible();
+  await expect(chooser.getByTestId("first-run-provider-other")).toBeVisible();
+
+  await expectNoRenderTelemetryErrors(page, "first-run chooser flow");
+  await expect(chatOverlay).toBeVisible();
+});
+
+test("fresh first-run offers to restore an existing local backup before onboarding", async ({
+  page,
+}) => {
+  await installRenderTelemetryGuard(page);
+  await installDefaultAppRoutes(page);
+  await routeFirstRunIncomplete(page);
+  await injectFullCapabilityHost(page);
+  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+
+  const restoreRequests: string[] = [];
+  await page.route("**/api/backups**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/backups" && request.method() === "GET") {
+      await fulfillJson(route, 200, {
+        backups: [
+          {
+            fileName: "agent-2026-06-30.eliza-backup",
+            path: "agent-2026-06-30.eliza-backup",
+            createdAt: "2026-06-30T06:00:00.000Z",
+            agentId: "agent-ui-smoke",
+            stateSha256: "sha256-ui-smoke",
+            sizeBytes: 2048,
+          },
+        ],
+      });
+      return;
+    }
+    if (
+      url.pathname === "/api/backups/restore" &&
+      request.method() === "POST"
+    ) {
+      restoreRequests.push(request.postData() ?? "");
+      await fulfillJson(route, 200, {
+        restored: true,
+        requiresRestart: true,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  await expect(
+    chatOverlay.getByText("I found an existing local backup", {
+      exact: false,
+    }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:backup-restore:latest"),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId("choice-__first_run__:backup-restore:start-fresh"),
+  ).toBeVisible();
+
+  await page.getByTestId("choice-__first_run__:backup-restore:latest").click();
+  await expect.poll(() => restoreRequests.length, { timeout: 15_000 }).toBe(1);
+  expect(restoreRequests[0]).toContain("agent-2026-06-30.eliza-backup");
+  await expect(
+    chatOverlay.getByText("Backup restored", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await expectNoRenderTelemetryErrors(
+    page,
+    "in-chat first-run local backup restore",
+  );
+  await captureFirstRunRestoreEvidence(page);
 });

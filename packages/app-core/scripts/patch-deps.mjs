@@ -19,12 +19,12 @@
  * docs/retired-patches.md — do not add new memorial comments in this
  * file.
  */
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   readdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -47,6 +47,19 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = resolve(
+  root,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: root,
+    stdio: "inherit",
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Bust stale Bun cache entries for @elizaos packages.
@@ -72,7 +85,7 @@ warnStaleBunCache(root);
       try {
         for (const entry of readdirSync(nmDir)) {
           if (entry.startsWith("@types+")) {
-            rmSync(resolve(nmDir, entry), { recursive: true, force: true });
+            removePathRecursive(resolve(nmDir, entry));
             removedCount++;
           }
         }
@@ -280,7 +293,7 @@ function patchBaileysNestedSharpCopies() {
     for (const entry of readdirSync(bunCacheDir)) {
       if (!entry.startsWith("@whiskeysockets+baileys@")) continue;
       const nestedSharp = resolve(bunCacheDir, entry, "node_modules/sharp");
-      rmSync(nestedSharp, { recursive: true, force: true });
+      removePathRecursive(nestedSharp);
       symlinkSync(rootSharpRealPath, nestedSharp, linkType);
       patched++;
       console.log(
@@ -336,7 +349,7 @@ function patchLegacySharpStoreAliases() {
     const staleRealPath = realpathSync(stalePath);
     if (staleRealPath === canonicalRealPath) continue;
 
-    rmSync(stalePath, { recursive: true, force: true });
+    removePathRecursive(stalePath);
     symlinkSync(canonicalRealPath, stalePath, linkType);
     patched++;
     console.log(
@@ -417,7 +430,7 @@ for (const viteCacheDir of [
   resolve(root, "apps/app", "node_modules", ".vite"),
 ]) {
   if (!existsSync(viteCacheDir)) continue;
-  rmSync(viteCacheDir, { recursive: true, force: true });
+  removePathRecursive(viteCacheDir);
   console.log(`[patch-deps] Cleared Vite optimize cache: ${viteCacheDir}`);
 }
 

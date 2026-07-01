@@ -34,11 +34,12 @@ export const ConnectionStatus = React.forwardRef<
     },
     ref,
   ) => {
-    const overrideLabels: Record<ConnectionState, string | undefined> = {
-      connected: connectedLabel,
-      disconnected: disconnectedLabel,
-      error: errorLabel,
-    };
+    const overrideLabel =
+      state === "connected"
+        ? connectedLabel
+        : state === "disconnected"
+          ? disconnectedLabel
+          : errorLabel;
     const defaultLabel =
       state === "connected"
         ? "Connected"
@@ -71,7 +72,7 @@ export const ConnectionStatus = React.forwardRef<
                 : "bg-destructive",
           )}
         />
-        {label ?? overrideLabels[state] ?? defaultLabel}
+        {label ?? overrideLabel ?? defaultLabel}
       </div>
     );
   },

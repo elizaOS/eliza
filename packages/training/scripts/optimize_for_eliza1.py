@@ -16,8 +16,8 @@ Usage::
 
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_eliza1.py \\
-        --base-model Qwen/Qwen3.5-0.8B-Base \\
-        --output-dir checkpoints/eliza-1-0_8b \\
+        --base-model google/gemma-4-E2B-Base \\
+        --output-dir checkpoints/eliza-1-2b \\
         --apply polarquant qjl turboquant fused_turboquant \\
         --gguf-target packages/inference \\
         --hf-repo elizaos/eliza-1 \\
@@ -25,19 +25,19 @@ Usage::
 
     # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
-    # Published artifacts land at elizaos/eliza-1/bundles/0_8b/.
+    # Published artifacts land at elizaos/eliza-1/bundles/2b/.
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp \\
         uv run python scripts/optimize_for_eliza1.py \\
-            --base-model Qwen/Qwen3.5-0.8B-Base \\
-            --output-dir checkpoints/eliza-1-0_8b \\
+            --base-model google/gemma-4-E2B-Base \\
+            --output-dir checkpoints/eliza-1-2b \\
             --apply polarquant qjl turboquant fused_turboquant \\
             --hf-repo elizaos/eliza-1
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
 
-    llama-server --model eliza-1-0_8b-Q4_POLAR.gguf \\
-                 --draft-model eliza-1-0_8b-drafter.gguf \\
+    llama-server --model eliza-1-2b-Q4_POLAR.gguf \\
+                 --draft-model eliza-1-2b-drafter.gguf \\
                  --spec-type mtp \\
                  --cache-type-k qjl1_256 \\
                  --cache-type-v tbq3_0
@@ -558,7 +558,7 @@ def _push_to_hf(
         sys.executable,
         str(push_script),
         "--registry-key",
-        "qwen3.5-0.8b",  # smoke entry; --repo-id below overrides anyway
+        "gemma4-e2b",  # smoke entry; --repo-id below overrides anyway
         "--checkpoint",
         str(gguf_path.parent),
         "--repo-id",
@@ -738,7 +738,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--base-model",
         required=True,
         help="HF repo id or local path to the base model "
-             "(e.g. Qwen/Qwen3.5-0.8B-Base for the 0_8b tier upstream base, "
+             "(e.g. google/gemma-4-E2B-Base for the 2b tier upstream base, "
              "or a local trained checkpoint path).",
     )
     p.add_argument(

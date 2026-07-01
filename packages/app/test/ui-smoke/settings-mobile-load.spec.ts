@@ -36,6 +36,8 @@ const BENIGN_CONSOLE = [
   /favicon/i,
 ];
 
+const DEVELOPER_ONLY_SECTION_IDS = new Set(["remote-plugins"]);
+
 function isBenign(message: string): boolean {
   return BENIGN_CONSOLE.some((pattern) => pattern.test(message));
 }
@@ -54,6 +56,10 @@ test.describe("settings sections load at mobile width", () => {
       test.skip(
         section.id === "wallet-rpc",
         "capability-gated; covered by wallet-keys.spec.ts",
+      );
+      test.skip(
+        DEVELOPER_ONLY_SECTION_IDS.has(section.id),
+        "developer-gated; hidden in ordinary keyless settings smoke",
       );
       await mkdir(OUT_DIR, { recursive: true });
 
@@ -150,9 +156,6 @@ const CLOUD_SECTION_IDS = [
   "cloud-agents",
   "cloud-account",
   "cloud-billing",
-  "cloud-api-keys",
-  "cloud-applications",
-  "cloud-monetization",
   "cloud-organization",
   "cloud-connectors",
   "mcps",
@@ -160,10 +163,22 @@ const CLOUD_SECTION_IDS = [
   "cloud-plugin-grants",
 ] as const;
 
+const DEVELOPER_CLOUD_SECTION_IDS = [
+  "cloud-api-keys",
+  "cloud-applications",
+  "cloud-monetization",
+] as const;
+
 test.describe("cloud settings sections load at mobile width", () => {
   test.use({ viewport: VIEWPORT_SIZES.mobile });
 
-  for (const id of CLOUD_SECTION_IDS) {
+  for (const { id, developerMode } of [
+    ...CLOUD_SECTION_IDS.map((id) => ({ id, developerMode: false })),
+    ...DEVELOPER_CLOUD_SECTION_IDS.map((id) => ({
+      id,
+      developerMode: true,
+    })),
+  ] as const) {
     test(`${id} renders without crashing`, async ({ page }) => {
       await mkdir(OUT_DIR, { recursive: true });
 
@@ -179,7 +194,10 @@ test.describe("cloud settings sections load at mobile width", () => {
         consoleErrors.push(text);
       });
 
-      await seedAppStorage(page);
+      await seedAppStorage(
+        page,
+        developerMode ? { "eliza:developerMode": "1" } : {},
+      );
       await installDefaultAppRoutes(page);
       await openAppPath(page, "/settings");
 

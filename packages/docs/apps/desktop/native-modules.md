@@ -213,9 +213,9 @@ Scans the local network for `_eliza._tcp` services using mDNS/Bonjour and surfac
 
 ## Talk Mode
 
-**Class**: `TalkModeManager` | **Channels**: 10 invoke, 7 events
+**Class**: `TalkModeManager` | **Channels**: 9 invoke, 5 events
 
-Manages the full speech pipeline: speech-to-text via Whisper or the Web Speech API, and text-to-speech via ElevenLabs or the system TTS engine.
+Manages the full speech pipeline: speech-to-text through renderer Web Speech, and text-to-speech via ElevenLabs or the system TTS engine.
 
 | Channel | Direction | Description |
 |---|---|---|
@@ -227,23 +227,20 @@ Manages the full speech pipeline: speech-to-text via Whisper or the Web Speech A
 | `talkmode:getState` | invoke | Returns the current Talk Mode state object. |
 | `talkmode:isEnabled` | invoke | Returns `true` if Talk Mode is enabled in settings. |
 | `talkmode:updateConfig` | invoke | Updates Talk Mode configuration at runtime. |
-| `talkmode:isWhisperAvailable` | invoke | Returns `true` if the local Whisper model is available. |
-| `talkmode:getWhisperInfo` | invoke | Returns metadata about the loaded Whisper model. |
+| `talkmode:audioChunk` | invoke | Accepts a base64-encoded Float32 PCM chunk while listening. |
 | `talkmode:transcript` | event | Pushed when a speech-to-text transcript is ready. |
-| `talkmode:speaking` | event | Pushed when TTS playback starts. |
 | `talkmode:speakComplete` | event | Pushed when TTS playback finishes. |
-| `talkmode:audioChunk` | event | Pushed with raw PCM audio chunks during recording. |
-| `talkmode:audioComplete` | event | Pushed when audio recording ends. |
-| `talkmode:stateChange` | event | Pushed whenever the Talk Mode state changes. |
+| `talkmode:audioChunkPush` | event | Pushed with base64 audio chunks for playback or renderer-side recognition. |
+| `talkmode:stateChanged` | event | Pushed whenever the Talk Mode state changes. |
 | `talkmode:error` | event | Pushed when a speech pipeline error occurs. |
 
 ---
 
 ## Swabble
 
-**Class**: `SwabbleManager` | **Channels**: 6 invoke, 3 events
+**Class**: `SwabbleManager` | **Channels**: 6 invoke, 5 events
 
-Runs continuous wake-word detection in the background using fuzzy phrase matching. Whisper is used for transcription when available.
+Runs continuous wake-word detection in the background using fuzzy phrase matching. The desktop native module forwards audio chunks to renderer-side speech recognition.
 
 | Channel | Direction | Description |
 |---|---|---|
@@ -252,10 +249,12 @@ Runs continuous wake-word detection in the background using fuzzy phrase matchin
 | `swabble:isListening` | invoke | Returns `true` if the listener is active. |
 | `swabble:getConfig` | invoke | Returns the current wake-word configuration. |
 | `swabble:updateConfig` | invoke | Updates the wake-word phrases and sensitivity at runtime. |
-| `swabble:isWhisperAvailable` | invoke | Returns `true` if Whisper is available for transcription. |
+| `swabble:audioChunk` | invoke | Accepts a base64-encoded Float32 PCM chunk while listening. |
 | `swabble:stateChange` | event | Pushed when the listener starts or stops. |
 | `swabble:transcript` | event | Pushed with the transcribed phrase that was detected. |
 | `swabble:wakeWord` | event | Pushed when a configured wake-word is matched. |
+| `swabble:error` | event | Pushed when speech recognition or wake-word detection fails. |
+| `swabble:audioChunkPush` | event | Pushed with base64 audio chunks for renderer-side recognition. |
 
 ---
 

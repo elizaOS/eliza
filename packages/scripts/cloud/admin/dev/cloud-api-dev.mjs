@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+const cloudApiDir = path.join(repoRoot, "packages", "cloud", "api");
 const require = createRequire(import.meta.url);
 const rawArgs = process.argv.slice(2);
 const withControlPlane = rawArgs.includes("--with-control-plane");
@@ -82,7 +83,7 @@ function wranglerScript() {
   // ERR_PACKAGE_PATH_NOT_EXPORTED on wrangler >=4. Resolve the package via its
   // (exported) package.json and read the declared bin path instead.
   const pkgJsonPath = require.resolve("wrangler/package.json", {
-    paths: [path.join(repoRoot, "packages", "cloud-api")],
+    paths: [cloudApiDir, repoRoot],
   });
   const pkg = require(pkgJsonPath);
   const binRel =
@@ -201,31 +202,72 @@ async function main() {
     env,
   );
 
-  // When the e2e harness runs (NODE_ENV=test), force the KMS backend to
-  // the in-memory adapter via `--var`. wrangler's `[vars] NODE_ENV =
-  // "production"` block in wrangler.toml takes precedence over the shell
-  // NODE_ENV, which would otherwise cause `resolveKmsBackend()` in
-  // `@elizaos/security/kms` to default to the Steward backend and throw
-  // `KmsError("ELIZA_KMS_BACKEND=steward requires steward.{baseUrl, tokenProvider}")`
-  // for any route that touches encrypted fields (e.g. /api/v1/api-keys/*,
-  // /api/v1/api-keys/explorer). The integration suite expects these
-  // routes to return 2xx with a working in-memory key store.
+  // When the e2e harness runs (NODE_ENV=test), forward the test KMS backend via
+  // `--var`. wrangler's `[vars] NODE_ENV = "production"` block in wrangler.toml
+  // takes precedence over the shell NODE_ENV, which would otherwise cause
+  // `resolveKmsBackend()` in `@elizaos/security/kms` to default to the Steward
+  // backend and throw `KmsError("ELIZA_KMS_BACKEND=steward requires
+  // steward.{baseUrl, tokenProvider}")` for any route that touches encrypted
+  // fields. Cross-process e2e flows use the local backend with a deterministic
+  // root key so Worker routes can decrypt rows written by the control plane.
   const isE2eTestMode =
     process.env.NODE_ENV === "test" || process.env.CLOUD_E2E === "1";
+  const kmsBackend = process.env.ELIZA_KMS_BACKEND ?? "memory";
+  const localRootKey = process.env.ELIZA_LOCAL_ROOT_KEY;
   // In e2e/test mode, also stub the Cloudflare registrar/DNS by default so the
   // domain buy/check routes never hit the real Cloudflare API (overridable via
   // ELIZA_CF_REGISTRAR_DEV_STUB).
   const registrarStub = process.env.ELIZA_CF_REGISTRAR_DEV_STUB ?? "1";
+  // In e2e/test mode, neutralize the dedicated-agent public subdomain. The agent
+  // detail route synthesizes `web_ui_url = https://<id>.<ELIZA_CLOUD_AGENT_BASE_DOMAIN>`
+  // (wrangler.toml pins `elizacloud.ai`), and the client's readiness probe prefers
+  // that web_ui_url over the agent's `bridge_url`. There is no Worker-fronted
+  // `*.elizacloud.ai` ingress in the local mock stack, so that subdomain is
+  // unreachable — the dedicated agent's reachable base IS its `bridge_url` (the
+  // control-plane mock). The detail route feeds `containersEnv.publicBaseDomain()`
+  // into `getElizaAgentPublicWebUiUrl` as the EXPLICIT `{baseDomain}` option; a
+  // value that normalizes to empty makes that explicit-option path return null, so
+  // the reachable bridge wins and the shared→dedicated handoff import can complete.
+  // (The compat-envelope no-option path keeps its default and is intentionally not
+  // neutralized.) The apps domain (`CONTAINERS_PUBLIC_BASE_DOMAIN`) is a separate
+  // knob and is left untouched.
+  const agentBaseDomainOverride =
+    process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN ?? "https://";
   const testModeVars = isE2eTestMode
     ? [
         "--var",
         "NODE_ENV:test",
         "--var",
-        "ELIZA_KMS_BACKEND:memory",
+        `ELIZA_KMS_BACKEND:${kmsBackend}`,
+        ...(localRootKey
+          ? ["--var", `ELIZA_LOCAL_ROOT_KEY:${localRootKey}`]
+          : []),
         "--var",
         `ELIZA_CF_REGISTRAR_DEV_STUB:${registrarStub}`,
+        "--var",
+        `ELIZA_CLOUD_AGENT_BASE_DOMAIN:${agentBaseDomainOverride}`,
       ]
     : [];
+  // Redis selection must reach the Worker's `c.env`, not just this launcher's
+  // process.env: routes build their client via `buildRedisClient(c.env)`, and
+  // wrangler `--local` only exposes vars passed through wrangler.toml/.dev.vars/
+  // `--var` — ambient process.env does NOT leak into `c.env`. Without this, the
+  // e2e env's `MOCK_REDIS=1` is invisible inside the Worker and any nonce-storage
+  // route (e.g. SIWE nonce/verify) returns 503 "Nonce storage unavailable". Most
+  // redis consumers (rate-limit) fail open, so this only surfaced once a spec
+  // drove the real SIWE login. Forward whichever redis selector is set.
+  const redisDevVars = ["MOCK_REDIS", "REDIS_URL"].flatMap((key) => {
+    const value = process.env[key];
+    return value ? ["--var", `${key}:${value}`] : [];
+  });
+  const appDeployDevVars = [
+    "APPS_DEPLOY_ENABLED",
+    "APPS_DEPLOY_ALLOWED_ORG_IDS",
+    "APP_DEFAULT_IMAGE",
+  ].flatMap((key) => {
+    const value = process.env[key];
+    return value ? ["--var", `${key}:${value}`] : [];
+  });
 
   const wranglerArgs =
     args.length > 0
@@ -238,6 +280,8 @@ async function main() {
           apiPort,
           "--local",
           ...testModeVars,
+          ...redisDevVars,
+          ...appDeployDevVars,
         ];
 
   const useNodeWrangler = env.CLOUD_E2E === "1" && env.NODE_ENV === "test";
@@ -246,7 +290,7 @@ async function main() {
     ? [wranglerScript(), ...wranglerArgs]
     : ["run", "wrangler", ...wranglerArgs];
   const wrangler = spawn(wranglerCmd, wranglerSpawnArgs, {
-    cwd: path.join(repoRoot, "packages", "cloud-api"),
+    cwd: cloudApiDir,
     env,
     stdio: "inherit",
   });

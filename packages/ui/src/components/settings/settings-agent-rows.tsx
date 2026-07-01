@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
+import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import {
   SettingsInput,
   type SettingsInputVariant,
+  SettingsSegmentedGroup,
   SettingsSelectTrigger,
   SettingsTextarea,
 } from "../ui/settings-controls";
@@ -167,6 +169,103 @@ export function SettingsSelectRow({
           ))}
         </SelectContent>
       </Select>
+    </SettingsRow>
+  );
+}
+
+export interface SettingsSegmentedRowProps {
+  agentId: string;
+  label: React.ReactNode;
+  agentLabel?: string;
+  description?: React.ReactNode;
+  icon?: LucideIcon;
+  iconClassName?: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: SettingsSelectRowOption[];
+  disabled?: boolean;
+  group?: string;
+  className?: string;
+  /** Optional stable test id, applied to the segmented group container. */
+  testId?: string;
+}
+
+/**
+ * A segmented control for a small, fixed set of options (≈2–4). All choices are
+ * visible at once — no OS picker, no "options a whole page away" on mobile —
+ * and the whole control is agent-addressable (`role: "select"`) just like
+ * {@link SettingsSelectRow}. Prefer this over {@link SettingsSelectRow} when the
+ * option set is small and stable (e.g. local/cloud strategy, on/off/auto).
+ */
+export function SettingsSegmentedRow({
+  agentId,
+  label,
+  agentLabel,
+  description,
+  icon,
+  iconClassName,
+  value,
+  onValueChange,
+  options,
+  disabled = false,
+  group = "settings",
+  className,
+  testId,
+}: SettingsSegmentedRowProps) {
+  const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
+    id: agentId,
+    role: "select",
+    label: resolvedLabel,
+    group,
+    description: typeof description === "string" ? description : undefined,
+    status: value || undefined,
+    options: options.map((option) => option.value),
+    getValue: () => value,
+    onFill: disabled ? undefined : (next: string) => onValueChange(next),
+  });
+
+  return (
+    <SettingsRow
+      icon={icon}
+      iconClassName={iconClassName}
+      label={label}
+      description={description}
+      stacked
+    >
+      <SettingsSegmentedGroup
+        ref={ref}
+        role="radiogroup"
+        aria-label={resolvedLabel}
+        data-testid={testId}
+        className={cn("w-full", className)}
+        {...agentProps}
+      >
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            // biome-ignore lint/a11y/useSemanticElements: a themed segmented button keeps its custom styling + agent-surface wiring; a native input[type=radio] would lose them.
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              data-value={option.value}
+              data-active={active ? "true" : "false"}
+              disabled={disabled}
+              onClick={() => onValueChange(option.value)}
+              className={cn(
+                "flex h-9 flex-1 items-center justify-center rounded-sm px-2 text-xs font-medium transition-colors    disabled:opacity-50",
+                active
+                  ? "bg-card text-txt-strong"
+                  : "text-muted hover:bg-card/60 hover:text-txt",
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </SettingsSegmentedGroup>
     </SettingsRow>
   );
 }

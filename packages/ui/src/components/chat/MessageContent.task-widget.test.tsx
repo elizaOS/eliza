@@ -17,6 +17,7 @@ import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { CodingAgentTaskThreadDetail } from "../../api/client-types-cloud";
+import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
 const { clientMock, getTaskMock } = vi.hoisted(() => ({
@@ -122,24 +123,22 @@ function messageWithTaskBlock(prose: string): ConversationMessage {
 }
 
 function withApp(node: React.ReactElement) {
+  const appValue = {
+    t: (key: string, vars?: Record<string, unknown>) =>
+      String(vars?.defaultValue ?? key),
+    sendActionMessage: vi.fn(),
+  } as never;
+  // MessageContent reads context via the selector store, so seed it too.
+  __setAppValueForTests(appValue);
   return render(
-    <AppContext.Provider
-      value={
-        {
-          t: (key: string, vars?: Record<string, unknown>) =>
-            String(vars?.defaultValue ?? key),
-          sendActionMessage: vi.fn(),
-        } as never
-      }
-    >
-      {node}
-    </AppContext.Provider>,
+    <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
   );
 }
 
 describe("MessageContent → TaskWidget integration", () => {
   afterEach(() => {
     cleanup();
+    __setAppValueForTests(null);
   });
 
   beforeEach(() => {

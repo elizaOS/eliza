@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "renovation-lien-waiver-payment",
   title: "Assistant holds renovation payment for lien waiver",
   domain: "executive.household",
@@ -22,7 +23,12 @@ export default scenario({
       name: "triage-contractor-payment",
       text: "The renovation contractor wants the final payment. Pull invoice, lien waiver, punch list, inspection signoff, warranty docs, and payment deadline.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "approval"],
-      responseIncludesAny: ["invoice", "lien waiver", "punch list", "inspection"],
+      responseIncludesAny: [
+        "invoice",
+        "lien waiver",
+        "punch list",
+        "inspection",
+      ],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },
     {

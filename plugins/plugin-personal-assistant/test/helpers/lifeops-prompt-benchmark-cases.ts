@@ -1,6 +1,6 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 type ScenarioTurnLike = {
   kind?: string;
@@ -80,9 +80,24 @@ export type PromptBenchmarkVariantId =
 
 export type PromptBenchmarkSuiteId =
   | "lifeops-self-care"
-  | "lifeops-executive-assistant";
+  | "lifeops-executive-assistant"
+  | "lifeops-capability-coverage";
 
 export type PromptBenchmarkRiskClass = "positive" | "edge" | "null";
+
+export const LIFEOPS_PROMPT_BENCHMARK_TASKS = [
+  "calendar_extract",
+  "schedule_plan",
+  "reminder_dispatch",
+  "inbox_triage",
+  "meeting_prep",
+  "morning_brief",
+  "health_checkin",
+  "screentime_recap",
+] as const;
+
+export type LifeOpsPromptBenchmarkTask =
+  (typeof LIFEOPS_PROMPT_BENCHMARK_TASKS)[number];
 
 export type PromptBenchmarkCase = {
   caseId: string;
@@ -93,6 +108,7 @@ export type PromptBenchmarkCase = {
   basePrompt: string;
   prompt: string;
   benchmarkContext: string;
+  optimizationTask: LifeOpsPromptBenchmarkTask;
   variantId: PromptBenchmarkVariantId;
   variantLabel: string;
   axes: string[];
@@ -125,7 +141,12 @@ type PromptVariantDefinition = {
 };
 
 const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../../..");
-const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
+const ELIZA_SCENARIO_ROOT = path.join(
+  ELIZA_ROOT,
+  "packages",
+  "test",
+  "scenarios",
+);
 const EXECUTIVE_ASSISTANT_SCENARIO_DIR = path.join(
   ELIZA_SCENARIO_ROOT,
   "executive-assistant",
@@ -377,6 +398,58 @@ function deriveExecutiveAssistantExpectation(
   };
 }
 
+function deriveOptimizationTask(args: {
+  expectedAction: string | null;
+  scenario: ScenarioLike;
+}): LifeOpsPromptBenchmarkTask {
+  const text = [
+    args.scenario.id,
+    args.scenario.title,
+    args.scenario.domain,
+    ...(args.scenario.tags ?? []),
+    args.expectedAction ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  const expectedAction = String(args.expectedAction ?? "").toUpperCase();
+
+  if (text.includes("screen") || text.includes("screentime")) {
+    return "screentime_recap";
+  }
+  if (text.includes("health") || text.includes("sleep")) {
+    return "health_checkin";
+  }
+  if (text.includes("brief") || text.includes("digest")) {
+    return "morning_brief";
+  }
+  if (text.includes("meeting-prep") || text.includes("dossier")) {
+    return "meeting_prep";
+  }
+  if (
+    text.includes("inbox") ||
+    text.includes("gmail") ||
+    text.includes("messaging") ||
+    expectedAction === "MESSAGE" ||
+    expectedAction === "INBOX"
+  ) {
+    return "inbox_triage";
+  }
+  if (
+    text.includes("reminder") ||
+    text.includes("push") ||
+    expectedAction === "OWNER_REMINDERS"
+  ) {
+    return "reminder_dispatch";
+  }
+  if (text.includes("scheduling negotiation") || text.includes("propose")) {
+    return "schedule_plan";
+  }
+  if (text.includes("calendar") || expectedAction === "CALENDAR") {
+    return "calendar_extract";
+  }
+  return "reminder_dispatch";
+}
+
 function buildPromptBenchmarkContext(args: {
   scenarioTitle: string;
   expectedAction: string | null;
@@ -404,6 +477,10 @@ function buildPromptBenchmarkCasesForScenario(args: {
     const positiveCase = variant.shouldExecute;
     const caseId = `${scenario.id}__${variant.id}`;
     const expectedAction = positiveCase ? expectation.expectedAction : null;
+    const optimizationTask = deriveOptimizationTask({
+      expectedAction,
+      scenario,
+    });
     const riskClass =
       positiveCase && expectation.expectedAction === null
         ? "null"
@@ -437,6 +514,7 @@ function buildPromptBenchmarkCasesForScenario(args: {
         scenarioTitle: scenario.title,
         expectedAction,
       }),
+      optimizationTask,
       variantId: variant.id,
       variantLabel: variant.label,
       axes: [...variant.axes],
@@ -451,6 +529,7 @@ function buildPromptBenchmarkCasesForScenario(args: {
       tags: uniqueStrings([
         suiteId,
         scenario.domain,
+        optimizationTask,
         variant.id,
         riskClass,
         ...scenarioTags,
@@ -464,9 +543,160 @@ function buildPromptBenchmarkCasesForScenario(args: {
   });
 }
 
+function buildCapabilityCoverageCases(): PromptBenchmarkCase[] {
+  const cases: Array<{
+    task: LifeOpsPromptBenchmarkTask;
+    prompt: string;
+    expectedAction: string;
+    acceptableActions?: string[];
+    expectedOperation?: string | null;
+  }> = [
+    {
+      task: "calendar_extract",
+      prompt: "Put dentist on my calendar tomorrow at 3pm.",
+      expectedAction: "CALENDAR",
+    },
+    {
+      task: "schedule_plan",
+      prompt:
+        "Start a scheduling negotiation with Mia for a 30 minute review next week.",
+      expectedAction: "PERSONAL_ASSISTANT",
+      expectedOperation: "scheduling",
+      acceptableActions: ["CALENDAR"],
+    },
+    {
+      task: "reminder_dispatch",
+      prompt: "Remind me every weekday at 3pm to take my medication.",
+      expectedAction: "OWNER_REMINDERS",
+      acceptableActions: ["LIFE"],
+    },
+    {
+      task: "inbox_triage",
+      prompt:
+        "Find the vendor renewal invoice email and tell me if it needs a reply.",
+      expectedAction: "MESSAGE",
+      acceptableActions: ["INBOX"],
+    },
+    {
+      task: "meeting_prep",
+      prompt: "Give me the dossier for my next meeting.",
+      expectedAction: "BRIEF",
+      acceptableActions: ["CALENDAR", "PERSONAL_ASSISTANT"],
+    },
+    {
+      task: "morning_brief",
+      prompt: "What's on my plate today? Give me the brief.",
+      expectedAction: "BRIEF",
+    },
+    {
+      task: "health_checkin",
+      prompt: "Check my sleep and activity signals for recovery risk today.",
+      expectedAction: "OWNER_HEALTH",
+    },
+    {
+      task: "screentime_recap",
+      prompt:
+        "Summarize my screen-time pattern and suggest one focus adjustment.",
+      expectedAction: "OWNER_SCREENTIME",
+    },
+  ];
+
+  return cases.map((testCase) => ({
+    caseId: `lifeops-capability.${testCase.task}__direct`,
+    suiteId: "lifeops-capability-coverage",
+    baseScenarioId: `lifeops-capability.${testCase.task}`,
+    scenarioTitle: `LifeOps capability coverage: ${testCase.task}`,
+    domain: "lifeops",
+    basePrompt: testCase.prompt,
+    prompt: testCase.prompt,
+    benchmarkContext: buildPromptBenchmarkContext({
+      scenarioTitle: `LifeOps capability coverage: ${testCase.task}`,
+      expectedAction: testCase.expectedAction,
+    }),
+    optimizationTask: testCase.task,
+    variantId: "direct",
+    variantLabel: "Direct",
+    axes: ["baseline", "direct", "lifeops-capability"],
+    riskClass: "positive",
+    benchmarkWeight: 1,
+    expectedAction: testCase.expectedAction,
+    acceptableActions: [...(testCase.acceptableActions ?? [])],
+    forbiddenActions: [],
+    expectedOperation: testCase.expectedOperation ?? null,
+    tags: [
+      "lifeops-capability-coverage",
+      "lifeops",
+      testCase.task,
+      "direct",
+      "positive",
+    ],
+  }));
+}
+
+function firstStringLiteral(source: string, property: string): string {
+  const pattern = new RegExp(`${property}:\\s*(['"\`])([\\s\\S]*?)\\1`, "u");
+  return source.match(pattern)?.[2]?.trim() ?? "";
+}
+
+function stringArrayLiteral(source: string, property: string): string[] {
+  const pattern = new RegExp(`${property}:\\s*\\[([\\s\\S]*?)\\]`, "u");
+  const body = source.match(pattern)?.[1] ?? "";
+  const values: string[] = [];
+  const stringPattern = /(['"`])([\s\S]*?)\1/gu;
+  for (const match of body.matchAll(stringPattern)) {
+    const value = match[2]?.trim();
+    if (value) values.push(value);
+  }
+  return values;
+}
+
+function allTurnTexts(source: string): ScenarioTurnLike[] {
+  const turns: ScenarioTurnLike[] = [];
+  const textPattern = /\btext:\s*(['"`])([\s\S]*?)\1/gu;
+  for (const match of source.matchAll(textPattern)) {
+    const text = match[2]?.trim();
+    if (text) turns.push({ kind: "message", text });
+  }
+  return turns;
+}
+
+function selectedActionChecks(source: string): ScenarioFinalCheckLike[] {
+  const checks: ScenarioFinalCheckLike[] = [];
+  if (/\btype:\s*(['"])goalCountDelta\1/u.test(source)) {
+    checks.push({ type: "goalCountDelta" });
+  }
+
+  const actionPattern = /\bactionName:\s*(\[[\s\S]*?\]|(['"`])([\s\S]*?)\2)/gu;
+  for (const match of source.matchAll(actionPattern)) {
+    const raw = match[1] ?? "";
+    const actionName = raw.startsWith("[")
+      ? stringArrayLiteral(`actionName: ${raw}`, "actionName")
+      : (match[3]?.trim() ?? "");
+    if (Array.isArray(actionName) ? actionName.length > 0 : actionName) {
+      checks.push({ type: "selectedAction", actionName });
+    }
+  }
+  return checks;
+}
+
 async function loadScenarioModule(filePath: string): Promise<ScenarioLike> {
-  const module = await import(pathToFileURL(filePath).href);
-  return module.default as ScenarioLike;
+  const source = await readFile(filePath, "utf8");
+  const id = firstStringLiteral(source, "id");
+  const title = firstStringLiteral(source, "title");
+  const domain = firstStringLiteral(source, "domain");
+  if (!id || !title || !domain) {
+    throw new Error(
+      `Scenario "${filePath}" is missing static id/title/domain metadata.`,
+    );
+  }
+  return {
+    id,
+    title,
+    domain,
+    tags: stringArrayLiteral(source, "tags"),
+    turns: allTurnTexts(source),
+    finalChecks: selectedActionChecks(source),
+  };
 }
 
 async function loadScenarioFromDirectory(args: {
@@ -487,8 +717,18 @@ export async function loadExecutiveAssistantScenarios(): Promise<
   ScenarioLike[]
 > {
   const catalog = await loadExecutiveAssistantCatalog();
+  const landedEntries = catalog.scenarios.filter((entry) =>
+    existsSync(
+      path.join(EXECUTIVE_ASSISTANT_SCENARIO_DIR, `${entry.id}.scenario.ts`),
+    ),
+  );
+  if (landedEntries.length === 0) {
+    throw new Error(
+      `No executable executive-assistant scenarios found under ${EXECUTIVE_ASSISTANT_SCENARIO_DIR}.`,
+    );
+  }
   return Promise.all(
-    catalog.scenarios.map((entry) =>
+    landedEntries.map((entry) =>
       loadScenarioFromDirectory({
         directory: EXECUTIVE_ASSISTANT_SCENARIO_DIR,
         id: entry.id,
@@ -557,7 +797,11 @@ export async function buildLifeOpsPromptBenchmarkCases(): Promise<
     buildSelfCarePromptBenchmarkCases(),
     buildExecutiveAssistantPromptBenchmarkCases(),
   ]);
-  return [...selfCareCases, ...executiveAssistantCases];
+  return [
+    ...buildCapabilityCoverageCases(),
+    ...selfCareCases,
+    ...executiveAssistantCases,
+  ];
 }
 
 export function getPromptBenchmarkVariantDefinitions(): readonly PromptVariantDefinition[] {

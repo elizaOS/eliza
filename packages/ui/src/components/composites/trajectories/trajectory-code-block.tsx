@@ -25,10 +25,11 @@ export function TrajectoryCodeBlock({
   onCopy,
 }: TrajectoryCodeBlockProps) {
   const [expanded, setExpanded] = React.useState(false);
-  const lines = content.split("\n").length;
+  const contentLines = React.useMemo(() => content.split("\n"), [content]);
+  const lines = contentLines.length;
   const shouldTruncate = !expanded && lines > 20;
   const displayContent = shouldTruncate
-    ? `${content.split("\n").slice(0, 20).join("\n")}\n...`
+    ? `${contentLines.slice(0, 20).join("\n")}\n...`
     : content;
 
   return (

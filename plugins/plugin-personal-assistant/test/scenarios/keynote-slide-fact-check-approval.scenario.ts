@@ -1,10 +1,17 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "keynote-slide-fact-check-approval",
   title: "Assistant fact-checks keynote slides before approval",
   domain: "executive.briefing",
-  tags: ["lifeops", "executive-assistant", "briefing", "documents", "approvals"],
+  tags: [
+    "lifeops",
+    "executive-assistant",
+    "briefing",
+    "documents",
+    "approvals",
+  ],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

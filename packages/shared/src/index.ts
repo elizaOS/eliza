@@ -13,7 +13,6 @@ export * from "./app-hero-art.js";
 export * from "./awareness/index.js";
 export * from "./character-presets.characters.js";
 export * from "./character-presets.js";
-export * from "./character-presets.js";
 export * from "./cli/parse-duration.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";
@@ -208,10 +207,20 @@ export {
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
+export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
 export {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
+export {
+  PostMarketplaceInstallRequestSchema,
+  PostMarketplaceUninstallRequestSchema,
+  PostSkillAcknowledgeRequestSchema,
+  PostSkillCatalogInstallRequestSchema,
+  PostSkillCatalogUninstallRequestSchema,
+  PostSkillCreateRequestSchema,
+  PutSkillSourceRequestSchema,
+} from "./contracts/skills-routes.js";
 // themes/ runtime (presets + apply engine) moved to @elizaos/ui/themes in
 // Phase 5B (shared shrink). The theme TYPE contract stays here because
 // `contracts/content-pack` references `ThemeDefinition`. Consumers should
@@ -233,6 +242,7 @@ export * from "./elizacloud/index.js";
 // @elizaos/plugin-personal-assistant.
 export * from "./email-classification/index.js";
 export * from "./env-utils.js";
+export * from "./error-classification.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
 // Knowledge-graph primitives — canonical Entity/Relationship types + the
@@ -252,7 +262,9 @@ export * from "./lifeops-normalize/index.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";
+export * from "./loopback-trust.js";
 export * from "./platform/is-native-server.js";
+export * from "./process-guards.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";
@@ -266,6 +278,7 @@ export {
 export * from "./spoken-text.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
+export * from "./transcripts.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";
 export * from "./utils/asset-url.js";
@@ -287,6 +300,7 @@ export * from "./utils/log-prefix.js";
 export * from "./utils/name-tokens.js";
 export * from "./utils/namespace-defaults.js";
 export * from "./utils/number-parsing.js";
+export { parseClampedInteger } from "./utils/number-parsing.js";
 export * from "./utils/owner-name.js";
 export * from "./utils/permission-deep-links.js";
 export * from "./utils/rate-limiter.js";
@@ -301,3 +315,4 @@ export * from "./view-hero-art.js";
 export * from "./voice/first-sentence-snip.js";
 export * from "./voice/voice-cancellation-token.js";
 export * from "./voice.js";
+export * from "./voice-wer.js";

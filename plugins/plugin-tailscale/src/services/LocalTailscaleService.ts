@@ -47,7 +47,10 @@ function runCommand(cmd: string, args: string[]): Promise<SpawnResult> {
 
 function checkTailscaleInstalled(): Promise<boolean> {
   return new Promise((resolve) => {
-    const proc = spawn("which", ["tailscale"]);
+    // `which` does not exist on Windows; use `where`. Otherwise the probe
+    // spawn errors (ENOENT) and tailscale is always reported as not installed.
+    const probe = process.platform === "win32" ? "where" : "which";
+    const proc = spawn(probe, ["tailscale"]);
     proc.on("exit", (code) => resolve(code === 0));
     proc.on("error", () => resolve(false));
   });

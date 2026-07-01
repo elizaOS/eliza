@@ -5,5 +5,5 @@ export default createViewBundleConfig({
   viewId: "task-coordinator",
   entry: "./src/task-coordinator-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "CodingAgentTasksPanel",
+  componentExport: "TaskCoordinatorView",
 });

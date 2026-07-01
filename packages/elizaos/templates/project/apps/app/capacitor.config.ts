@@ -77,10 +77,6 @@ function filterIosStoreAllowedHosts(
 const allowNavigation: CapacitorAllowNavigation = [
   ...(isIosStoreBuild() ? [] : ["localhost", "127.0.0.1"]),
   "*.elizacloud.ai",
-  "rs-sdk-demo.fly.dev",
-  "*.fly.dev",
-  "hyperscape.gg",
-  "*.hyperscape.gg",
   ...toCapacitorAllowNavigation(
     filterIosStoreAllowedHosts(parseAllowedHostEnv(allowedHostsEnv)),
   ),

@@ -1038,7 +1038,7 @@ export default function GetStartedPage() {
                     <TelegramIcon className="size-6 text-[#229ED9]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">
+                    <p className="font-medium">
                       {t("homepage_eliza.getStarted.btnTelegram", {
                         defaultValue: "Telegram",
                       })}
@@ -1056,7 +1056,7 @@ export default function GetStartedPage() {
                     <AppleMessagesIcon className="size-12" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">
+                    <p className="font-medium">
                       {t("homepage_eliza.getStarted.btnImessage", {
                         defaultValue: "iMessage",
                       })}
@@ -1074,7 +1074,7 @@ export default function GetStartedPage() {
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">
+                    <p className="font-medium">
                       {t("homepage_eliza.getStarted.btnWhatsapp", {
                         defaultValue: "WhatsApp",
                       })}
@@ -1092,7 +1092,7 @@ export default function GetStartedPage() {
                     <DiscordIcon className="size-6 text-[#5865F2]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">
+                    <p className="font-medium">
                       {t("homepage_eliza.getStarted.btnDiscord", {
                         defaultValue: "Discord",
                       })}

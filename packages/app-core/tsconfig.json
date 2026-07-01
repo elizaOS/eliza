@@ -24,9 +24,14 @@
       "@elizaos/plugin-agent-skills": [
         "../../plugins/plugin-agent-skills/src/index.ts"
       ],
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/app-core/*": ["./src/*"],
@@ -45,8 +50,8 @@
       "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
-      "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["../cloud-sdk/src/*"],
+      "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
@@ -65,6 +70,9 @@
       "@elizaos/plugin-coding-tools/*": [
         "../../plugins/plugin-coding-tools/src/*"
       ],
+      "@elizaos/plugin-commands": [
+        "../../plugins/plugin-commands/src/index.ts"
+      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-discord-local": [
@@ -81,6 +89,9 @@
       ],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
@@ -113,7 +124,25 @@
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],
+      "@elizaos/capacitor-canvas": [
+        "../../plugins/plugin-native-canvas/src/index.ts"
+      ],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/capacitor-location": [
+        "../../plugins/plugin-native-location/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../../plugins/plugin-native-appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-screencapture": [
+        "../../plugins/plugin-native-screencapture/src/index.ts"
+      ],
       "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"

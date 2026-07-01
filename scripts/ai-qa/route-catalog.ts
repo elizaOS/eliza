@@ -38,7 +38,14 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
     { selector: '[data-testid="conversations-sidebar"]' },
     { selector: '[data-testid="chat-composer-textarea"]' },
   ],
-  "/connectors": [{ selector: "#root" }],
+  // Settings/lazy-view routes: wait for the actual rendered view marker, not the
+  // always-present #root, so the screenshot is captured after the lazy chunk
+  // mounts and paints (a bare #root check races the chunk and yields a blank,
+  // one-solid-color capture that fails the screenshot-quality gate).
+  "/connectors": [{ selector: '[data-testid="settings-shell"]' }],
+  "/tutorial": [{ selector: '[data-testid="tutorial-launcher"]' }],
+  "/help": [{ selector: '[data-testid="help-view"]' }],
+  "/apps/transcripts": [{ selector: '[data-testid="transcripts-view"]' }],
   "/apps": [{ selector: '[data-testid="apps-shell"]' }],
   "/views": [{ text: "Views" }],
   "/apps/lifeops": [{ selector: '[data-testid="lifeops-shell"]' }],
@@ -51,7 +58,6 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
   "/apps/inventory": [{ selector: '[data-testid="wallet-shell"]' }],
   "/apps/runtime": [{ selector: '[data-testid="runtime-view"]' }],
   "/apps/database": [{ selector: '[data-testid="database-view"]' }],
-  "/apps/elizamaker": [{ selector: '[data-testid="chat-composer-textarea"]' }],
   "/apps/logs": [{ selector: '[data-testid="logs-view"]' }],
   "/apps/tasks": [{ selector: '[data-testid="tasks-view"]' }],
   "/character": [{ selector: '[data-testid="character-editor-view"]' }],
@@ -74,12 +80,6 @@ const extraAppWindowRoutes = [
     tabId: "app-window-inventory",
     path: "/apps/inventory",
     label: "Inventory App Window",
-    platformGate: null,
-  },
-  {
-    tabId: "app-window-elizamaker",
-    path: "/apps/elizamaker",
-    label: "ElizaMaker App Window",
     platformGate: null,
   },
 ] as const;

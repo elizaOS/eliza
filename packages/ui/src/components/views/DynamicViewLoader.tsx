@@ -49,11 +49,23 @@ import {
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
 import {
+  type EvictReason,
   emitModuleCacheTelemetry,
   type ModuleCacheTelemetryEvent,
 } from "../../cache-telemetry";
 import { APP_PAUSE_EVENT } from "../../events";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import { SpatialSurface } from "../../spatial/index.ts";
+import {
+  useAppSelector,
+  useAppSelectorShallow,
+} from "../../state/app-store.ts";
+import {
+  HEAP_PRESSURE_EVENT,
+  isUnderMemoryPressure,
+  planModuleCacheEvictions,
+} from "../../state/bounded-view-lru";
+import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
@@ -72,8 +84,6 @@ import {
   SurfaceSection,
 } from "../apps/extensions/surface.tsx";
 import { registerOverlayApp } from "../apps/overlay-app-registry.ts";
-import { GameOperatorShell } from "../apps/surfaces/GameOperatorShell.tsx";
-import { registerOperatorSurface } from "../apps/surfaces/registry.ts";
 import { PagePanel } from "../composites/page-panel/index.ts";
 import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -99,7 +109,6 @@ interface ViewBundleCacheEntry {
   cleanupScheduled: boolean;
   retentionTimer: ReturnType<typeof setTimeout> | null;
 }
-type EvictReason = NonNullable<ModuleCacheTelemetryEvent["reason"]>;
 
 // Browser ESM modules cannot be forcibly unloaded once imported, but the shell
 // can stop retaining the resolved module object and call the view's exported
@@ -112,6 +121,10 @@ const DEFAULT_BUNDLE_CACHE_MAX_ENTRIES = 6;
 const LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES = 2;
 
 let bundleCacheLifecycleInstalled = false;
+let pruneBundleCacheOnPressure: (() => void) | null = null;
+let pruneBundleCacheOnHeapPressure: (() => void) | null = null;
+let pruneBundleCacheOnVisibilityHidden: (() => void) | null = null;
+let pruneBundleCacheOnAppPause: (() => void) | null = null;
 
 function bundleCacheStats(): {
   activeCount: number;
@@ -142,23 +155,15 @@ function emitBundleTelemetry(
   });
 }
 
-function resolveDeviceMemoryGb(): number | null {
-  if (typeof navigator === "undefined") return null;
-  const value = (navigator as { deviceMemory?: unknown }).deviceMemory;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function getBundleCacheMaxEntries(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  if (memoryGb !== null && memoryGb <= 4) {
+  if (isUnderMemoryPressure()) {
     return LOW_MEMORY_BUNDLE_CACHE_MAX_ENTRIES;
   }
   return DEFAULT_BUNDLE_CACHE_MAX_ENTRIES;
 }
 
 function getBundleCacheTtlMs(): number {
-  const memoryGb = resolveDeviceMemoryGb();
-  if (memoryGb !== null && memoryGb <= 4) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
+  if (isUnderMemoryPressure()) return LOW_MEMORY_BUNDLE_CACHE_TTL_MS;
   return DEFAULT_BUNDLE_CACHE_TTL_MS;
 }
 
@@ -224,52 +229,97 @@ function armBundleEntryRetentionTimer(entry: ViewBundleCacheEntry): void {
 function pruneBundleModuleCache(
   options: { force?: boolean; reason?: EvictReason } = {},
 ): void {
-  const now = Date.now();
-  const ttlMs = options.force ? 0 : getBundleCacheTtlMs();
-  const reason = options.reason ?? (options.force ? "memorypressure" : "ttl");
-  const idleEntries = [...bundleModuleCache.values()]
-    .filter((entry) => entry.refCount === 0)
-    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-
-  for (const entry of idleEntries) {
-    if (options.force || now - entry.lastUsedAt >= ttlMs) {
-      cleanupBundleEntry(entry, reason);
-    }
-  }
-
-  const maxEntries = options.force ? 0 : getBundleCacheMaxEntries();
-  let retained = [...bundleModuleCache.values()].filter(
-    (entry) => entry.refCount === 0,
-  );
-  retained = retained.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-  while (bundleModuleCache.size > maxEntries && retained.length > 0) {
-    const entry = retained.shift();
-    if (!entry) break;
-    cleanupBundleEntry(entry, options.reason ?? "lru");
+  const ttlReason =
+    options.reason ?? (options.force ? "memorypressure" : "ttl");
+  const lruReason = options.reason ?? "lru";
+  const plan = planModuleCacheEvictions([...bundleModuleCache.values()], {
+    now: Date.now(),
+    ttlMs: options.force ? 0 : getBundleCacheTtlMs(),
+    maxEntries: options.force ? 0 : getBundleCacheMaxEntries(),
+    force: options.force ?? false,
+    totalSize: bundleModuleCache.size,
+  });
+  for (const { entry, phase } of plan) {
+    cleanupBundleEntry(entry, phase === "ttl" ? ttlReason : lruReason);
   }
 }
 
 function installBundleCacheLifecycle(): void {
   if (bundleCacheLifecycleInstalled || typeof window === "undefined") return;
   bundleCacheLifecycleInstalled = true;
-  const pruneOnPressure = () => {
+  installHeapPressureMonitor();
+  pruneBundleCacheOnPressure = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "memorypressure" }),
     );
   };
-  window.addEventListener("memorypressure", pruneOnPressure);
-  document.addEventListener("visibilitychange", () => {
+  // Real heap-driven eviction (#10196): the shared heap-pressure monitor
+  // (installHeapPressureMonitor) dispatches this when live usedJSHeapSize
+  // crosses HEAP_PRESSURE_RATIO. Unlike the never-fired `memorypressure`
+  // window event, this actually feeds live heap into the cache.
+  pruneBundleCacheOnHeapPressure = () => {
+    scheduleIdleWork(() =>
+      pruneBundleModuleCache({ force: true, reason: "heap-pressure" }),
+    );
+  };
+  pruneBundleCacheOnVisibilityHidden = () => {
     if (document.visibilityState === "hidden") {
       scheduleIdleWork(() =>
         pruneBundleModuleCache({ reason: "visibility-hidden" }),
       );
     }
-  });
-  document.addEventListener(APP_PAUSE_EVENT, () => {
+  };
+  pruneBundleCacheOnAppPause = () => {
     scheduleIdleWork(() =>
       pruneBundleModuleCache({ force: true, reason: "app-pause" }),
     );
-  });
+  };
+  window.addEventListener("memorypressure", pruneBundleCacheOnPressure);
+  document.addEventListener(
+    HEAP_PRESSURE_EVENT,
+    pruneBundleCacheOnHeapPressure,
+  );
+  document.addEventListener(
+    "visibilitychange",
+    pruneBundleCacheOnVisibilityHidden,
+  );
+  document.addEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
+}
+
+export function __resetDynamicViewLoaderCacheForTests(): void {
+  for (const entry of bundleModuleCache.values()) {
+    if (entry.retentionTimer) {
+      clearTimeout(entry.retentionTimer);
+      entry.retentionTimer = null;
+    }
+    const cleanup = entry.module?.cleanup;
+    entry.module = null;
+    runBundleCleanup(cleanup);
+  }
+  bundleModuleCache.clear();
+  if (typeof window !== "undefined" && pruneBundleCacheOnPressure) {
+    window.removeEventListener("memorypressure", pruneBundleCacheOnPressure);
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnHeapPressure) {
+    document.removeEventListener(
+      HEAP_PRESSURE_EVENT,
+      pruneBundleCacheOnHeapPressure,
+    );
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnVisibilityHidden) {
+    document.removeEventListener(
+      "visibilitychange",
+      pruneBundleCacheOnVisibilityHidden,
+    );
+  }
+  if (typeof document !== "undefined" && pruneBundleCacheOnAppPause) {
+    document.removeEventListener(APP_PAUSE_EVENT, pruneBundleCacheOnAppPause);
+  }
+  pruneBundleCacheOnPressure = null;
+  pruneBundleCacheOnHeapPressure = null;
+  pruneBundleCacheOnVisibilityHidden = null;
+  pruneBundleCacheOnAppPause = null;
+  bundleCacheLifecycleInstalled = false;
 }
 
 function isReactComponentExport(
@@ -283,6 +333,14 @@ function isReactComponentExport(
 
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
+function importHostExternal(
+  specifier: string,
+): Promise<Record<string, unknown>> {
+  return import(/* @vite-ignore */ specifier) as Promise<
+    Record<string, unknown>
+  >;
+}
+
 const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   client,
   resolveAppBranding,
@@ -290,11 +348,11 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   Input,
   Spinner,
   PagePanel,
-  GameOperatorShell,
   registerDetailExtension,
   registerOverlayApp,
-  registerOperatorSurface,
   useApp,
+  useAppSelector,
+  useAppSelectorShallow,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
@@ -311,27 +369,43 @@ async function importAppCoreViewCompat(): Promise<Record<string, unknown>> {
   return APP_CORE_VIEW_COMPAT;
 }
 
+async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
+  return import("../index.ts");
+}
+
+async function importUiRootCompat(): Promise<Record<string, unknown>> {
+  return import("../../index.ts");
+}
+
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/app-core": importAppCoreViewCompat,
   "@elizaos/app-core/browser": importAppCoreViewCompat,
   "@elizaos/app-core/ui-compat": importAppCoreViewCompat,
-  "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
-  "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
+  "@elizaos/capacitor-contacts": () =>
+    importHostExternal("@elizaos/capacitor-contacts"),
+  "@elizaos/capacitor-messages": () =>
+    importHostExternal("@elizaos/capacitor-messages"),
   "@elizaos/capacitor-mobile-signals": () =>
-    import("@elizaos/capacitor-mobile-signals"),
-  "@elizaos/capacitor-phone": () => import("@elizaos/capacitor-phone"),
-  "@elizaos/capacitor-system": () => import("@elizaos/capacitor-system"),
-  "@elizaos/shared": () => import("@elizaos/shared"),
-  "@elizaos/ui": () => import("@elizaos/ui"),
-  "@elizaos/plugin-browser": () => import("@elizaos/plugin-browser"),
+    importHostExternal("@elizaos/capacitor-mobile-signals"),
+  "@elizaos/capacitor-phone": () =>
+    importHostExternal("@elizaos/capacitor-phone"),
+  "@elizaos/capacitor-system": () =>
+    importHostExternal("@elizaos/capacitor-system"),
+  "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
+  "@elizaos/ui": importUiRootCompat,
+  "@elizaos/plugin-browser": () =>
+    importHostExternal("@elizaos/plugin-browser"),
   "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
-    import("@elizaos/plugin-health/screen-time/mobile-signal-setup"),
-  "@elizaos/plugin-training": () => import("@elizaos/plugin-training"),
+    importHostExternal(
+      "@elizaos/plugin-health/screen-time/mobile-signal-setup",
+    ),
+  "@elizaos/plugin-training": () =>
+    importHostExternal("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": () => import("../../app-navigate-view.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
   "@elizaos/ui/bridge": () => import("../../bridge/index.ts"),
-  "@elizaos/ui/components": () => import("../index.ts"),
+  "@elizaos/ui/components": importUiComponentsCompat,
   "@elizaos/ui/config": () => import("../../config/index.ts"),
   "@elizaos/ui/events": () => import("../../events/index.ts"),
   "@elizaos/ui/hooks": () => import("../../hooks/index.ts"),
@@ -339,6 +413,8 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/platform": () => import("../../platform/index.ts"),
   "@elizaos/ui/platform/ios-runtime": () =>
     import("../../platform/ios-runtime.ts"),
+  "@elizaos/ui/spatial": () => import("../../spatial/index.ts"),
+  "@elizaos/ui/spatial/tui": () => import("../../spatial/tui/index.ts"),
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
@@ -370,8 +446,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/components/ui/textarea": () => import("../ui/textarea.tsx"),
   "@elizaos/ui/components/ui/tooltip-extended": () =>
     import("../ui/tooltip-extended.tsx"),
-  "@elizaos/ui/components/apps/surfaces/GameOperatorShell": () =>
-    import("../apps/surfaces/GameOperatorShell.tsx"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
@@ -429,6 +503,27 @@ if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
 /** Dev-mode polling interval in ms. Not used in production builds. */
 const DEV_POLL_INTERVAL_MS = 2000;
 
+/**
+ * A view bundle is executed as an ES module in the host realm (it receives the
+ * host React singleton, the API client, and the native bridges via the
+ * host-external map), so it runs with full app privilege. Only ever import a
+ * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
+ * remote-plugin descriptor can announce) would be arbitrary attacker code
+ * executing against the user's authenticated session. Every shipped view is
+ * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
+ * Subresource-Integrity before this gate can be relaxed.
+ */
+export function isSameOriginBundleUrl(bundleUrl: string): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return (
+      new URL(bundleUrl, window.location.href).origin === window.location.origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function importViewBundle(
   bundleUrl: string,
 ): Promise<Record<string, unknown>> {
@@ -437,6 +532,12 @@ async function importViewBundle(
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
   ) {
     return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl);
+  }
+
+  if (!isSameOriginBundleUrl(bundleUrl)) {
+    throw new Error(
+      `DynamicViewLoader: refusing to import a cross-origin view bundle (${bundleUrl}). View bundles must be served same-origin from /api/views/.`,
+    );
   }
 
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
@@ -947,7 +1048,7 @@ function ViewStatusFrame({
   return (
     <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
       <div
-        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 shadow-sm ${toneClass}`}
+        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
       >
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">
@@ -1306,7 +1407,13 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             />
           )}
         >
-          <View {...viewProps} />
+          {/* One shell-level SpatialSurface owns modality for every mounted
+              view — GUI by auto-detect, XR inside a headset host — so plugin
+              view components no longer each wrap themselves. Omitting `modality`
+              keeps the exact auto-detect behaviour the per-view wrappers had. */}
+          <SpatialSurface>
+            <View {...viewProps} />
+          </SpatialSurface>
         </ErrorBoundary>
         <AgentElementOverlay />
         <AgentSurfaceElementReporter />

@@ -34,7 +34,7 @@
 import { createHash } from "node:crypto";
 import type { VisionImageInput } from "./types";
 
-const DEFAULT_FAMILY = "qwen3-vl";
+const DEFAULT_FAMILY = "gemma-vl";
 
 /**
  * Resolve a `VisionImageInput` to its raw bytes. Returns the decoded

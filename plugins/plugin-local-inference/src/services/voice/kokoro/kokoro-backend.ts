@@ -42,6 +42,22 @@ export interface KokoroTtsBackendDeps extends KokoroBackendOptions {
 }
 
 /**
+ * Wall-clock budget for time-to-first-audio (TTFA) on the Kokoro path for a
+ * mobile-class tier (0.8b/2b/4b — where Kokoro is the *exclusive* backend per
+ * `ELIZA_1_VOICE_BACKENDS`). TTFA is measured to the first **audible** chunk:
+ * the first non-empty sub-phrase PCM slice the scheduler can begin playing,
+ * NOT the whole-phrase synthesis latency. The re-chunking in
+ * `synthesizeStream` (one runtime forward → `streamingChunkSamples` slices) is
+ * exactly what makes those two numbers differ — the listener hears audio after
+ * the first slice, well before the phrase finishes decoding.
+ *
+ * Conservative gate (catches gross regressions without CI flakiness): real
+ * Kokoro-82M first-phrase TTFB is ~97 ms on a warm desktop handle; mobile CPU
+ * plus phonemize headroom lands comfortably under this ceiling.
+ */
+export const KOKORO_MOBILE_TTFA_BUDGET_MS = 700;
+
+/**
  * `KokoroTtsBackend` is a streaming-only TTS backend. The model produces
  * the full waveform in one forward, but we surface it as one body chunk +
  * tail so the scheduler protocol is identical for both backends.

@@ -36,9 +36,9 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
 | Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, `moltbook`, `react`, `elizagotchi`, `farcaster-miniapp`, `next`, `app/capacitor`, `app/electron`, `browser-extension`, and `farcaster` passed targeted reruns after the last fixes. |
-| Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Roblox, Minecraft, cloud, social, hardware, and wallet examples. |
-| Setup guide links/render | `packages/examples/setup-guide.html` rendered in Playwright with 34 links, Roblox/Minecraft sections visible, and every external setup link returning HTTP < 400 after redirects. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, `moltbook`, `react`, `elizagotchi`, `farcaster-miniapp`, `next`, `app/capacitor`, `app/electron`, `browser-extension`, and `farcaster` passed targeted reruns after the last fixes. |
+| Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Minecraft, cloud, social, hardware, and wallet examples. |
+| Setup guide links/render | `packages/examples/setup-guide.html` rendered in Playwright with the Minecraft section visible, and every external setup link returning HTTP < 400 after redirects. |
 
 ## Example Matrix
 
@@ -54,7 +54,6 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `app/electron/backend` | `typecheck`, `test`, `build` | Provider-key chat flow from the packaged Electron shell. |
 | `app/electron/frontend` | `test`, `typecheck`, `build` | Static preload bridge wiring test; renderer smoke test in Electron and browser dev-server mode. |
 | `autonomous` | `test`, `typecheck`, `build` | Decision parser, shell allowlist, and prompt tests; optional local model and shell sandbox configuration. |
-| `avatar` | `test`, `typecheck`, `build` | Provider-mode fallback tests; browser microphone/audio flow, selected model key, optional ElevenLabs key. |
 | `aws` | `typecheck`, `test`, `build` | AWS account, SAM deployment, and Lambda invocation with `OPENAI_API_KEY`. |
 | `bluesky` | `typecheck`, `test`, `build` | `LIVE_TEST=true` with Bluesky credentials and dry-run/posting flags. |
 | `browser-extension` | `test`, parent typecheck/build skip scripts and documented Chrome/Safari package checks | Workspace/shared runtime smoke test; load unpacked Chrome extension; Safari requires Xcode signing/install. |
@@ -84,7 +83,6 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `rest-api/elysia` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |
 | `rest-api/express` | `test`, `typecheck`, `build` | Ephemeral-port CORS/request validation tests; start server for full HTTP chat flow. |
 | `rest-api/hono` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |
-| `roblox` | `typecheck`, `test`, `build` | Roblox Studio place, Open Cloud key, tunnel/shared-secret bridge test. |
 | `smartglasses` | `typecheck`, `test` | Even Realities simulator or BLE hardware evidence report. |
 | `supabase` | Static review; no package scripts | Supabase CLI/Deno function serve or deployment with anon key and `OPENAI_API_KEY`. |
 | `telegram` | `test`, `typecheck`, `build` | Env and character wiring tests; Telegram bot token and provider key for live run. |
@@ -100,8 +98,8 @@ These requirements cannot be honestly marked complete from local scripts alone:
 
 - External account deployments: AWS, GCP, Cloudflare, Convex, Supabase, Vercel.
 - Public/social posting flows: Bluesky, Discord, Farcaster, Telegram, Twitter/X.
-- Desktop or hardware flows: Roblox Studio, Safari/Xcode, Capacitor device builds,
-  Electron app launch, Smartglasses BLE hardware.
+- Desktop or hardware flows: Safari/Xcode, Capacitor device builds, Electron
+  app launch, Smartglasses BLE hardware.
 - Financial transaction flows: `trader`, `lp-manager`, and wallet-enabled
   Farcaster mini app paths.
 

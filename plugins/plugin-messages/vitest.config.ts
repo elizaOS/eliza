@@ -28,6 +28,17 @@ export default defineConfig({
         replacement: require.resolve("react-dom/client"),
       },
       {
+        // @elizaos/ui's DynamicViewLoader statically imports this plugin-health
+        // subpath; the keyless lane has no built plugin-health dist, so anchor
+        // the exact subpath to source. Matches plugin-contacts/hyperliquid-app/
+        // phone/wallet-ui/facewear.
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins/plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/capacitor-messages$/,
         replacement: path.join(
           repoRoot,
@@ -52,7 +63,6 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
-    passWithNoTests: true,
     environment: "node",
   },
 });

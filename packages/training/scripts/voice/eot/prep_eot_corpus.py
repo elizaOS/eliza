@@ -3,13 +3,13 @@
 
 Reads conversations from canonical formats (subtitle SRT, JSONL with
 `turns: [...]`, scenario YAML, plain dialog), formats them with the
-Qwen-style chat template the LiveKit turn-detector uses, and emits
+Gemma chat template the eliza-1 chat model uses, and emits
 `(transcript_so_far, label_eot)` pairs:
 
   - positive (label=1): the transcript ends at a complete user turn
-    boundary (the natural place an `<|im_end|>` token would follow).
+    boundary (the natural place an `<end_of_turn>` token would follow).
   - negative (label=0): the transcript is chopped mid-token at a
-    random boundary inside a user turn (no `<|im_end|>` would follow).
+    random boundary inside a user turn (no `<end_of_turn>` would follow).
 
 Output: Parquet (preferred) or JSONL with columns
   `(text: str, label: int, source: str, conversation_id: str)`.
@@ -39,18 +39,18 @@ logger = logging.getLogger("eot.prep_eot_corpus")
 # Chat template
 # ---------------------------------------------------------------------------
 
-QWEN_USER_START = "<|im_start|>user\n"
-QWEN_USER_END = "<|im_end|>"
-QWEN_NL = "\n"
+GEMMA_USER_START = "<start_of_turn>user\n"
+GEMMA_USER_END = "<end_of_turn>"
+GEMMA_NL = "\n"
 
 
-def apply_qwen_user_template(text: str) -> str:
-    """Format `text` as the LiveKit turn-detector does.
+def apply_gemma_user_template(text: str) -> str:
+    """Format `text` as the Gemma chat model does.
 
-    The detector reads `P(<|im_end|>)` from the next-token distribution
-    *after* the trailing newline; do NOT append `<|im_end|>` here.
+    The detector reads `P(<end_of_turn>)` from the next-token distribution
+    *after* the trailing newline; do NOT append `<end_of_turn>` here.
     """
-    return f"{QWEN_USER_START}{text}{QWEN_NL}"
+    return f"{GEMMA_USER_START}{text}{GEMMA_NL}"
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +301,7 @@ def build_corpus(
                 # Positive: full turn, formatted with chat template.
                 out.append(
                     EotRecord(
-                        text=apply_qwen_user_template(turn),
+                        text=apply_gemma_user_template(turn),
                         label=1,
                         source=source_name,
                         conversation_id=convo_id,
@@ -321,7 +321,7 @@ def build_corpus(
                         continue
                     out.append(
                         EotRecord(
-                            text=apply_qwen_user_template(chopped),
+                            text=apply_gemma_user_template(chopped),
                             label=0,
                             source=source_name,
                             conversation_id=convo_id,

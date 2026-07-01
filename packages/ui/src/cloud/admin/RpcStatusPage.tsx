@@ -20,8 +20,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { api } from "../lib/api-client";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { useDocumentTitle } from "./use-document-title";
 
 interface RpcProbe {
   network: "ethereum" | "base" | "bnb";

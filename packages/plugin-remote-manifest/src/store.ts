@@ -10,7 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { join, parse, resolve, sep } from "node:path";
 import { isJsonObject } from "./json.js";
 import {
   flattenRemotePluginPermissions,
@@ -118,6 +118,31 @@ function parseJsonFile(filePath: string): JsonValue {
 
 function ensureStoreRoot(storeRoot: string): void {
   mkdirSync(storeRoot, { recursive: true });
+}
+
+function removePathRecursive(targetPath: string): void {
+  if (targetPath.length === 0) {
+    throw new RemotePluginStoreError("Refusing to remove an empty store path.");
+  }
+
+  const resolvedTarget = resolve(targetPath);
+  if (resolvedTarget === resolve(".")) {
+    throw new RemotePluginStoreError(
+      `Refusing to remove the current working directory: ${targetPath}`,
+    );
+  }
+  if (resolvedTarget === parse(resolvedTarget).root) {
+    throw new RemotePluginStoreError(
+      `Refusing to remove a filesystem root: ${targetPath}`,
+    );
+  }
+
+  rmSync(resolvedTarget, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
 
 function stringField(object: JsonObject, key: string, path: string): string {
@@ -361,16 +386,12 @@ function parseInstallRecord(
       value.permissionsGranted,
       "install.permissionsGranted",
     ),
-    devMode: optionalBooleanField(value, "devMode", "install"),
-    lastBuildAt: parseOptionalNumberOrNull(
-      value.lastBuildAt,
-      "install.lastBuildAt",
-    ),
-    lastBuildError: optionalNullableStringField(
-      value,
-      "lastBuildError",
-      "install",
-    ),
+    devMode: optionalBooleanField(value, "devMode", "install") ?? false,
+    lastBuildAt:
+      parseOptionalNumberOrNull(value.lastBuildAt, "install.lastBuildAt") ??
+      null,
+    lastBuildError:
+      optionalNullableStringField(value, "lastBuildError", "install") ?? null,
     status,
     source: parseInstallSource(
       value.source,
@@ -830,10 +851,10 @@ export function installPrebuiltRemotePlugin(
 
   try {
     cpSync(payloadDir, tempCurrentDir, { recursive: true, force: true });
-    rmSync(paths.currentDir, { recursive: true, force: true });
+    removePathRecursive(paths.currentDir);
     renameSync(tempCurrentDir, paths.currentDir);
   } finally {
-    rmSync(tempRootDir, { recursive: true, force: true });
+    removePathRecursive(tempRootDir);
   }
 
   const installRecord = writeRemotePluginInstallRecord(storeRoot, {
@@ -865,10 +886,7 @@ export function uninstallInstalledRemotePlugin(
 ): RemotePluginInstallRecord | null {
   const record = readRemotePluginInstallRecord(storeRoot, id);
   if (!record) return null;
-  rmSync(getRemotePluginStorePaths(storeRoot, id).rootDir, {
-    recursive: true,
-    force: true,
-  });
+  removePathRecursive(getRemotePluginStorePaths(storeRoot, id).rootDir);
   syncRemotePluginRegistry(storeRoot);
   return record;
 }

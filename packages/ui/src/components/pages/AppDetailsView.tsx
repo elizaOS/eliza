@@ -17,8 +17,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { useAppSelectorShallow } from "../../state";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
-import { useApp } from "../../state/useApp";
 import { openExternalUrl } from "../../utils";
 import { getWidgetComponent } from "../../widgets/registry";
 import type { PluginWidgetDeclaration } from "../../widgets/types";
@@ -373,7 +373,15 @@ export function AppDetailsView({
   slug,
   onLaunched,
 }: AppDetailsViewProps): React.JSX.Element {
-  const { plugins, appRuns, t, setTab, setState, setActionNotice } = useApp();
+  const { plugins, appRuns, t, setTab, setState, setActionNotice } =
+    useAppSelectorShallow((s) => ({
+      plugins: s.plugins,
+      appRuns: s.appRuns,
+      t: s.t,
+      setTab: s.setTab,
+      setState: s.setState,
+      setActionNotice: s.setActionNotice,
+    }));
 
   // Catalog of registry apps for slug → app resolution.
   const {
@@ -381,7 +389,15 @@ export function AppDetailsView({
     error: catalogError,
     loading: catalogLoading,
   } = useRegistryCatalog();
-  const catalog: RegistryAppInfo[] = registryCatalog ?? [];
+  // Stabilize identity: `registryCatalog ?? []` would mint a fresh array every
+  // render while the registry is still loading (registryCatalog nullish), which
+  // re-recomputes `resolved` and re-fires the launch-history effect every
+  // render — an infinite render loop on first paint. Memoize so it only changes
+  // when the underlying catalog actually changes.
+  const catalog = useMemo<RegistryAppInfo[]>(
+    () => registryCatalog ?? [],
+    [registryCatalog],
+  );
 
   const resolved = useMemo(
     () => resolveAppFromSlug(slug, catalog),

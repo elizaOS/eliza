@@ -5,5 +5,5 @@ export default createViewBundleConfig({
   viewId: "phone",
   entry: "./src/components/phone-view-bundle.ts",
   outDir: "dist/views",
-  componentExport: "PhonePluginView",
+  componentExport: "PhoneView",
 });

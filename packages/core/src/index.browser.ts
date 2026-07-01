@@ -6,7 +6,10 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./access-context";
+export * from "./access-control/filter";
 export * from "./actions";
+export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
 // Export core modules (all browser-compatible after refactoring)
@@ -28,6 +31,10 @@ export * from "./connectors/privacy";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+// `isTruthyEnvValue` is pure string logic (no Node deps), so it is browser-safe
+// and exported from both barrels. @elizaos/shared re-exports it from the core
+// barrel so browser consumers resolve the same canonical truthy set.
+export * from "./env-utils";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export {
@@ -71,6 +78,7 @@ export {
 	scoreMessages,
 } from "./features/messaging/triage";
 export { paymentsPlugin } from "./features/payments/index";
+export * from "./features/sub-agent-credentials/index";
 export * from "./inference-timing";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
@@ -82,16 +90,10 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
-export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
-export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
-export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
-export {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "./runtime/stage1-honesty-detector";
+export * from "./runtime/shortcut-registry";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime-route-context";
@@ -111,6 +113,14 @@ export { AgentEventService } from "./services/agentEvent";
 export * from "./services/message";
 export * from "./services/trajectories";
 export * from "./settings";
+// Settings-debug sanitizers are pure functions (process access is feature-detected),
+// so they are safe in the browser bundle. Re-exported so @elizaos/shared can
+// forward them from its browser-safe barrel.
+export {
+	isElizaSettingsDebugEnabled,
+	sanitizeForSettingsDebug,
+	settingsDebugCloudSummary,
+} from "./settings-debug";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
@@ -124,7 +134,21 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/message-service";
+export { PENDING_USER_ACTION_WEIGHT } from "./types/pending-user-action";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./types/view-kind";
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./types/view-kind";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export {
@@ -134,6 +158,7 @@ export {
 	parseToonKeyValue,
 } from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
+export * from "./utils/boolean";
 export * from "./utils/buffer";
 export type {
 	ConfirmationDecision,
@@ -152,11 +177,13 @@ export {
 	requireConfirmation,
 } from "./utils/confirmation";
 export * from "./utils/description-compressed-lint";
+export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/read-env";
+export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // Validation helpers (validateActionKeywords / validateActionRegex /

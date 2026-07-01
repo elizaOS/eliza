@@ -45,7 +45,7 @@ import type {
 } from "./types";
 
 /** Minimal structural view of `VadDetector` — avoids a module dependency on
- *  `vad.ts` (which pulls in the native silero-vad-cpp bun:ffi surface). */
+ *  `vad.ts` (which pulls in the fused `libelizainference` VAD FFI surface). */
 interface VadEventSource {
 	onVadEvent(listener: VadEventListener): () => void;
 }
@@ -87,9 +87,8 @@ function tripToken(
 	token: BargeInCancelToken,
 	reason: BargeInCancelToken["reason"],
 ): void {
-	const trip = (
-		token as unknown as { __trip?: (r: BargeInCancelToken["reason"]) => void }
-	).__trip;
+	const trip = (token as { __trip?: (r: BargeInCancelToken["reason"]) => void })
+		.__trip;
 	if (trip) trip(reason);
 }
 

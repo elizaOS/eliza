@@ -1,7 +1,11 @@
+import { execFile, spawn } from "node:child_process";
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Where the encryption master key lives.
@@ -17,11 +21,22 @@ import { generateMasterKey, KEY_BYTES } from "./crypto.js";
  *      Operator opts in by setting the env var; we never derive from a
  *      hard-coded fallback.
  *   3. **In-memory** — `inMemoryMasterKey(buffer)`. Tests only.
+ *   4. **Attestation-bound** — `attestationMasterKey(verifier)`. Releases the
+ *      sealed-state-volume master key ONLY when trusted TEE evidence is present.
+ *      For a confidential-compute deployment where the vault sits on an
+ *      attestation-gated sealed volume: the key is bound to the measured
+ *      agent/policy/device identity, so absent or tampered attestation yields
+ *      NO key (fail-closed) — never a fallback key. The TEE trust decision lives
+ *      in the agent runtime (`packages/agent/src/services/tee-*`), which vault
+ *      must not import; the caller injects it through the
+ *      {@link TeeAttestationVerifier} interface.
  *
  * `defaultMasterKey()` walks 1 → 2 and throws a single
  * `MasterKeyUnavailableError` with both paths' diagnostic messages when
  * neither is available. Operators see a single line that names every
- * remediation option.
+ * remediation option. The attestation resolver is opt-in (the caller wires it),
+ * not part of the default walk, because it requires the agent's TEE policy to be
+ * injected.
  */
 
 export interface MasterKeyResolver {
@@ -48,6 +63,77 @@ export function inMemoryMasterKey(key: Buffer): MasterKeyResolver {
     },
     describe() {
       return "inMemory";
+    },
+  };
+}
+
+/**
+ * Injected TEE trust boundary for {@link attestationMasterKey}. The vault
+ * package is a leaf and must NOT depend on `@elizaos/agent` / `@elizaos/core`,
+ * so the attestation policy + sealed-volume key-release path is supplied by the
+ * caller (the agent wires its `evaluateTeeEvidencePolicy` / boot-gate state and
+ * `unsealStateVolumeKey` here).
+ *
+ * Contract (fail-closed):
+ *
+ *   - `releaseSealedVolumeKey()` MUST resolve with the 32-byte sealed-volume
+ *     master key ONLY when fresh TEE evidence is trusted by the agent's policy.
+ *   - It MUST reject (throw) when attestation is absent, stale, simulated, or
+ *     tampered, or when the boot gate already blocked secrets. It MUST NEVER
+ *     resolve with a fallback / default / host-readable key — the negative path
+ *     is "no key", enforced by the agent's key-release client refusing to
+ *     release one.
+ *
+ * `attestationMasterKey` adds only shape/length validation on top: a verifier
+ * that returns a non-32-byte buffer is a programming error and is rejected.
+ */
+export interface TeeAttestationVerifier {
+  /**
+   * Release the sealed-state-volume master key, gated on trusted TEE evidence.
+   * Rejects (never returns a fallback key) when attestation is missing/tampered.
+   */
+  releaseSealedVolumeKey(): Promise<Buffer>;
+  /** Short identifier for diagnostics/`describe()`, e.g. `"tdx-dstack"`. */
+  describe(): string;
+}
+
+/**
+ * Attestation-bound master key (resolver #4). Releases the sealed-volume master
+ * key ONLY when the injected {@link TeeAttestationVerifier} confirms trusted TEE
+ * evidence. When attestation is absent or tampered the verifier rejects, and
+ * this resolver surfaces a {@link MasterKeyUnavailableError} — it never falls
+ * back to an unsealed or default key. This is the vault-side half of the
+ * confidential-compute sealed-volume contract; the trust decision itself is the
+ * agent's `tee-*` policy path, injected via `verifier`.
+ */
+export function attestationMasterKey(
+  verifier: TeeAttestationVerifier,
+): MasterKeyResolver {
+  return {
+    async load() {
+      let key: Buffer;
+      try {
+        key = await verifier.releaseSealedVolumeKey();
+      } catch (err) {
+        // Fail closed: a refused/absent/tampered attestation means the key is
+        // UNAVAILABLE. Never substitute a fallback key.
+        throw new MasterKeyUnavailableError(
+          `attestation-bound master key unavailable (${verifier.describe()}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+      if (!Buffer.isBuffer(key) || key.length !== KEY_BYTES) {
+        throw new MasterKeyUnavailableError(
+          `attestationMasterKey: verifier (${verifier.describe()}) returned ${
+            Buffer.isBuffer(key) ? `${key.length} bytes` : typeof key
+          }, expected a ${KEY_BYTES}-byte Buffer`,
+        );
+      }
+      return key;
+    },
+    describe() {
+      return `attestation://${verifier.describe()}`;
     },
   };
 }
@@ -204,6 +290,74 @@ function keychainUnsafeMessage(prefix: string): string {
   return `${prefix}OS keychain is unsafe on this host (headless Linux with no reachable D-Bus session, or ELIZA_VAULT_DISABLE_KEYCHAIN=1). Set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) to enable a passphrase-derived master key, or pass an inMemoryMasterKey.`;
 }
 
+async function readMacOSKeychainPassword(
+  service: string,
+  account: string,
+): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/security",
+      ["find-generic-password", "-s", service, "-a", account, "-w"],
+      { encoding: "utf8" },
+    );
+    const value = stdout.trim();
+    return value.length > 0 ? value : null;
+  } catch (err) {
+    const stderr = String((err as { stderr?: string }).stderr ?? err);
+    if (
+      stderr.includes("could not be found") ||
+      stderr.includes("The specified item could not be found")
+    ) {
+      return null;
+    }
+    throw new MasterKeyUnavailableError(
+      `macOS keychain read failed (${service}/${account}): ${stderr.trim()}`,
+    );
+  }
+}
+
+function writeMacOSKeychainPassword(
+  service: string,
+  account: string,
+  password: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Use the system `security` tool instead of @napi-rs/keyring on macOS.
+    // Keychain ACLs are tied to the requesting binary; dev Bun paths change
+    // often enough that the native binding can trigger a GUI prompt on every
+    // boot. `/usr/bin/security` is stable and commonly already trusted by the
+    // item ACL. Password data goes through stdin, not argv.
+    const child = spawn(
+      "/usr/bin/security",
+      ["add-generic-password", "-s", service, "-a", account, "-U", "-w"],
+      { stdio: ["pipe", "ignore", "pipe"] },
+    );
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new MasterKeyUnavailableError(
+          `macOS keychain write failed (${service}/${account}): ${
+            stderr.trim() || `security exited ${code}`
+          }`,
+        ),
+      );
+    });
+    child.stdin.on("error", () => {});
+    child.stdin.write(`${password}\n${password}\n`, () => {
+      child.stdin.end();
+    });
+  });
+}
+
 /**
  * Default resolver: try the OS keychain first, then a passphrase-derived
  * key from `ELIZA_VAULT_PASSPHRASE`. If both fail, throws a single
@@ -290,6 +444,25 @@ export function osKeychainMasterKey(
         throw new MasterKeyUnavailableError(
           keychainUnsafeMessage(`OS keychain (${service}/${account}): `),
         );
+      }
+      if (process.platform === "darwin") {
+        const existing = await readMacOSKeychainPassword(service, account);
+        if (existing && existing.length > 0) {
+          const buf = Buffer.from(existing, "base64");
+          if (buf.length !== KEY_BYTES) {
+            throw new MasterKeyUnavailableError(
+              `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
+            );
+          }
+          return buf;
+        }
+        const created = generateMasterKey();
+        await writeMacOSKeychainPassword(
+          service,
+          account,
+          created.toString("base64"),
+        );
+        return created;
       }
       let Entry: typeof import("@napi-rs/keyring").Entry;
       try {

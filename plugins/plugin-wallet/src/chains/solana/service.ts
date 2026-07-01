@@ -1286,10 +1286,17 @@ export class SolanaService extends Service {
     const data = accountInfo.data;
     let offset = 1 + 32 + 32;
 
+    // Metaplex metadata comes from untrusted RPC data; bound every length read
+    // so a malformed/oversized length field returns null instead of throwing an
+    // uncaught RangeError (mirrors the try/catch already guarding getTokensSymbols).
+    if (offset + 4 > data.length) return null;
     const nameLen = data.readUInt32LE(offset);
+    if (nameLen > data.length - offset - 4) return null;
     offset += 4 + nameLen;
 
+    if (offset + 4 > data.length) return null;
     const symbolLen = data.readUInt32LE(offset);
+    if (symbolLen > data.length - offset - 4) return null;
     offset += 4;
 
     const symbol = data

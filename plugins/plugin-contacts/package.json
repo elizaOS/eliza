@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-contacts",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./dist/index.js",
@@ -9,7 +9,7 @@
     "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "bunx tsc --noCheck -p tsconfig.build.json"
@@ -59,7 +59,8 @@
       "category": "system",
       "androidOnly": true,
       "heroImage": "assets/hero.png"
-    }
+    },
+    "appRegister": "register"
   },
   "publishConfig": {
     "access": "public"
@@ -69,7 +70,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

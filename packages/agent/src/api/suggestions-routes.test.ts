@@ -84,10 +84,10 @@ describe("parseRequestBody", () => {
 
   it("keeps a well-formed page scope and rejects junk", () => {
     expect(
-      parseRequestBody(JSON.stringify({ scope: "page-lifeops" })).scope,
-    ).toBe("page-lifeops");
+      parseRequestBody(JSON.stringify({ scope: "page-wallet" })).scope,
+    ).toBe("page-wallet");
     expect(
-      parseRequestBody(JSON.stringify({ scope: "lifeops" })).scope,
+      parseRequestBody(JSON.stringify({ scope: "wallet" })).scope,
     ).toBeUndefined(); // missing page- prefix
     expect(
       parseRequestBody(JSON.stringify({ scope: "page-<script>" })).scope,
@@ -116,7 +116,7 @@ describe("computeHeuristicSuggestions", () => {
     const out = computeHeuristicSuggestions({
       messages: [{ role: "user", content: "hey" }],
       hour: 9,
-      scope: "page-lifeops",
+      scope: "page-wallet",
     });
     expect(out[0]).toBe("Continue where we left off");
     expect(out).toHaveLength(3);
@@ -135,17 +135,18 @@ describe("computeHeuristicSuggestions", () => {
     ]);
   });
 
-  it("dedupes a lead that collides with a scope starter", () => {
-    // Morning lead "Plan my day" === page-lifeops starter "Plan my day".
+  it("dedupes a scope starter that collides with a general starter", () => {
+    // page-character starter "What can you do?" === GENERAL_STARTERS[0]
+    // "What can you do?" — the collision must not leave a duplicate.
     const out = computeHeuristicSuggestions({
       messages: [],
       hour: 9,
-      scope: "page-lifeops",
+      scope: "page-character",
     });
     expect(out).toEqual([
       "Plan my day",
-      "What's on my plate?",
-      "Review my reminders",
+      "Tune your personality",
+      "Change your voice",
     ]);
     expect(new Set(out).size).toBe(3);
   });

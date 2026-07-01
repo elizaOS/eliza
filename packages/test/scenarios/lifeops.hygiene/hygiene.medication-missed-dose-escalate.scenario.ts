@@ -10,6 +10,7 @@ import {
 import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.medication-missed-dose-escalate",
   title: "Missed medication dose surfaces immediately on check-in",
   domain: "lifeops.hygiene",

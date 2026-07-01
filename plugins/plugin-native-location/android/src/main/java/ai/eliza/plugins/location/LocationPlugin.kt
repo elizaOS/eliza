@@ -1,11 +1,8 @@
 package ai.eliza.plugins.location
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.location.Location
-import android.os.Build
 import android.os.Looper
-import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -44,6 +41,11 @@ class LocationPlugin : Plugin() {
 
     // Cache the last known location for maxAge support
     private var lastKnownLocation: Location? = null
+
+    // The fused current-location fetch (priority map + request build + getCurrentLocation)
+    // lives in LocationFixReader so it is exercisable by an instrumented androidTest
+    // without an Activity/Bridge (issue #9967). The watch path keeps its own client.
+    private val reader by lazy { LocationFixReader(context) }
 
     override fun load() {
         super.load()
@@ -97,15 +99,11 @@ class LocationPlugin : Plugin() {
 
     /** Request a fresh location using CurrentLocationRequest. */
     private fun requestFreshLocation(call: PluginCall, priority: Int, timeout: Double, maxAge: Double) {
-        val request = CurrentLocationRequest.Builder()
-            .setPriority(priority)
-            .setMaxUpdateAgeMillis(maxAge.toLong())
-            .setDurationMillis(timeout.toLong())
-            .build()
+        val request = reader.buildCurrentLocationRequest(priority, timeout.toLong(), maxAge.toLong())
 
         try {
-            fusedLocationClient?.getCurrentLocation(request, null)
-                ?.addOnSuccessListener { location ->
+            reader.getCurrentLocation(request)
+                .addOnSuccessListener { location ->
                     if (location != null) {
                         lastKnownLocation = location
                         call.resolve(buildLocationResult(location, cached = false))
@@ -115,7 +113,7 @@ class LocationPlugin : Plugin() {
                         call.reject("Unable to get location")
                     }
                 }
-                ?.addOnFailureListener { e ->
+                .addOnFailureListener { e ->
                     val code = if (e is SecurityException) "PERMISSION_DENIED" else "POSITION_UNAVAILABLE"
                     val err = buildErrorEvent(code, "Location error: ${e.message}")
                     notifyListeners("error", err)
@@ -257,16 +255,7 @@ class LocationPlugin : Plugin() {
     }
 
     /** Map accuracy string from JS to Play Services Priority constant. */
-    private fun mapAccuracyToPriority(accuracy: String): Int {
-        return when (accuracy) {
-            "best" -> Priority.PRIORITY_HIGH_ACCURACY
-            "high" -> Priority.PRIORITY_HIGH_ACCURACY
-            "medium" -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
-            "low" -> Priority.PRIORITY_LOW_POWER
-            "passive" -> Priority.PRIORITY_PASSIVE
-            else -> Priority.PRIORITY_HIGH_ACCURACY
-        }
-    }
+    private fun mapAccuracyToPriority(accuracy: String): Int = reader.mapAccuracyToPriority(accuracy)
 
     private fun buildPermissionResult(): JSObject {
         val locationState = getPermissionState("location")
@@ -276,54 +265,37 @@ class LocationPlugin : Plugin() {
             else -> "prompt"
         }
 
-        val result = JSObject().apply {
+        return JSObject().apply {
             put("location", locationStatus)
+            put("background", reader.readBackgroundPermissionStatus(locationStatus))
         }
-
-        // Background location is a separate permission on Android 10+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val bgGranted = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-
-            val bgStatus = when {
-                bgGranted -> "granted"
-                // If foreground isn't granted, background is implicitly denied
-                locationStatus != "granted" -> "denied"
-                else -> "prompt"
-            }
-            result.put("background", bgStatus)
-        } else {
-            // Pre-Q: background is granted with foreground
-            result.put("background", locationStatus)
-        }
-
-        return result
     }
 
     private fun buildLocationResult(location: Location, cached: Boolean): JSObject {
+        val position = reader.buildPositionResult(location, cached)
+        val coordsData = position.coords
         val coords = JSObject().apply {
-            put("latitude", location.latitude)
-            put("longitude", location.longitude)
-            if (location.hasAltitude()) {
-                put("altitude", location.altitude)
+            put("latitude", coordsData.latitude)
+            put("longitude", coordsData.longitude)
+            coordsData.altitude?.let {
+                put("altitude", it)
             }
-            put("accuracy", location.accuracy.toDouble())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
-                put("altitudeAccuracy", location.verticalAccuracyMeters.toDouble())
+            put("accuracy", coordsData.accuracy)
+            coordsData.altitudeAccuracy?.let {
+                put("altitudeAccuracy", it)
             }
-            if (location.hasSpeed()) {
-                put("speed", location.speed.toDouble())
+            coordsData.speed?.let {
+                put("speed", it)
             }
-            if (location.hasBearing()) {
-                put("heading", location.bearing.toDouble())
+            coordsData.heading?.let {
+                put("heading", it)
             }
-            put("timestamp", location.time)
+            put("timestamp", coordsData.timestamp)
         }
 
         return JSObject().apply {
             put("coords", coords)
-            put("cached", cached)
+            put("cached", position.cached)
         }
     }
 

@@ -6,7 +6,7 @@
 // a live runtime.
 
 import { expect, type Page, test } from "@playwright/test";
-import { selectLiveProvider } from "../../../app-core/test/helpers/live-provider";
+import { selectLiveProviderAsync } from "../../../app-core/test/helpers/live-provider";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -14,17 +14,45 @@ import {
 } from "./helpers";
 
 const LIVE_AGENT_CHAT_ENABLED = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
-const LIVE_PROVIDER = selectLiveProvider();
-const LIVE_AGENT_RESPONSE_MARKER = "APP_LIVE_AGENT_OK";
+const LIVE_PROVIDER = await selectLiveProviderAsync();
+const REPORT_LIVE_TIMINGS = process.env.ELIZA_UI_SMOKE_REPORT_TIMINGS === "1";
+const LIVE_AGENT_RESPONSE_MARKER = "LIVE_AGENT_RESPONSE_OK";
+const LIVE_GENERAL_PROMPTS: ReadonlyArray<{
+  marker: string;
+  prompt: string;
+}> = [
+  {
+    marker: "LIVE_TIME_CHECK_OK",
+    prompt:
+      "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_TIME_CHECK_OK, then answer this user request in one sentence: what time is it?",
+  },
+  {
+    marker: "LIVE_BTC_CHECK_OK",
+    prompt:
+      "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_CHECK_OK, then answer this tool-free user request in one sentence: in plain terms, what is BTC? Do not look up live prices.",
+  },
+  {
+    marker: "LIVE_BTC_PRICE_HANDLED_OK",
+    prompt:
+      "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_BTC_PRICE_HANDLED_OK, then answer this tool-free user request in one sentence: what is the price of BTC? Do not call tools or look up live prices; say live market data is unavailable.",
+  },
+  {
+    marker: "LIVE_WEBSITE_CODE_OK",
+    prompt:
+      "For a Playwright end-to-end smoke test, start your reply with exactly LIVE_WEBSITE_CODE_OK, then provide a tiny complete HTML example for a simple personal website.",
+  },
+];
 const CHAT_COMPOSER_SELECTOR =
   '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
 const CHAT_SEND_SELECTOR =
   '[data-testid="chat-composer-action"], button[aria-label="Send"], button[aria-label="Send message"]';
 const OPTIONAL_LIVE_ENDPOINTS = [
   /\/api\/coding-agents(?:\?|$)/,
+  /\/api\/i18n\/locale(?:\?|$)/,
   /\/api\/lifeops\/activity-signals(?:\?|$)/,
+  /\/api\/orchestrator\/status(?:\?|$)/,
+  /\/api\/orchestrator\/tasks(?:\?|$)/,
   /\/api\/tts\/cloud(?:\?|$)/,
-  /\/api\/vincent\/status(?:\?|$)/,
 ];
 
 type DeterministicAssistantFixture = {
@@ -37,6 +65,19 @@ type DeterministicAssistantFixture = {
     type: string;
     target: string | null;
   };
+};
+
+type ApiConversationResponse = {
+  conversation?: {
+    id?: string;
+  };
+};
+
+type LivePromptTiming = {
+  marker: string;
+  promptLength: number;
+  sendToUserVisibleMs: number;
+  sendToAssistantMarkerMs: number;
 };
 
 function isOptionalLiveEndpoint(url: string): boolean {
@@ -131,9 +172,82 @@ function assistantMessage(page: Page, text: string | RegExp) {
     .first();
 }
 
+async function sendPromptAndExpectAssistantMarker(
+  page: Page,
+  prompt: string,
+  marker: string,
+): Promise<LivePromptTiming> {
+  await expect(chatComposer(page)).toBeVisible({
+    timeout: 60_000,
+  });
+  await chatComposer(page).fill(prompt);
+  await expect(chatSendButton(page)).toBeEnabled();
+  const sentAt = Date.now();
+  await chatSendButton(page).click();
+
+  await expect(userMessage(page, prompt)).toBeVisible({ timeout: 30_000 });
+  const userVisibleAt = Date.now();
+  await expect(assistantMessage(page, new RegExp(marker, "i"))).toBeVisible({
+    timeout: 120_000,
+  });
+  return {
+    marker,
+    promptLength: prompt.length,
+    sendToUserVisibleMs: userVisibleAt - sentAt,
+    sendToAssistantMarkerMs: Date.now() - sentAt,
+  };
+}
+
+function reportLiveTiming(timing: LivePromptTiming): void {
+  if (!REPORT_LIVE_TIMINGS) return;
+  console.log(
+    `[live-agent-chat][timing] marker=${timing.marker} promptLength=${timing.promptLength} userVisibleMs=${timing.sendToUserVisibleMs} assistantMarkerMs=${timing.sendToAssistantMarkerMs}`,
+  );
+}
+
+async function createAndActivateLiveConversation(
+  page: Page,
+  title: string,
+): Promise<void> {
+  await openAppPath(page, "/chat");
+  await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
+
+  const response = await page.evaluate(async (conversationTitle) => {
+    const createResponse = await fetch("/api/conversations", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: conversationTitle }),
+    });
+    return {
+      ok: createResponse.ok,
+      status: createResponse.status,
+      text: await createResponse.text(),
+    };
+  }, title);
+  expect(
+    response.ok,
+    `live runtime should create an isolated chat (status=${response.status}, body=${response.text.slice(0, 500)})`,
+  ).toBe(true);
+
+  const body = JSON.parse(response.text) as ApiConversationResponse;
+  const conversationId = body.conversation?.id?.trim();
+  expect(conversationId, "created live conversation id").toBeTruthy();
+
+  await page.evaluate((id) => {
+    localStorage.setItem("eliza:chat:activeConversationId", id);
+  }, conversationId);
+  await openAppPath(page, "/chat");
+  await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
+}
+
 test("app chat sends a message to the deterministic keyless agent and renders parseable JSON", async ({
   page,
 }) => {
+  test.skip(
+    LIVE_AGENT_CHAT_ENABLED,
+    "deterministic keyless assertions are only valid against the stub stack",
+  );
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 
@@ -169,6 +283,10 @@ test("app chat sends a message to the deterministic keyless agent and renders pa
 test("app chat rejects intentionally broken deterministic mock LLM output", async ({
   page,
 }) => {
+  test.skip(
+    LIVE_AGENT_CHAT_ENABLED,
+    "deterministic keyless assertions are only valid against the stub stack",
+  );
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 
@@ -209,23 +327,33 @@ test.describe("live agent chat", () => {
   }) => {
     const failures = installFailureCollectors(page);
     await seedAppStorage(page);
-
-    await openAppPath(page, "/chat");
-    await expect(chatComposer(page)).toBeVisible({
-      timeout: 60_000,
-    });
+    await createAndActivateLiveConversation(page, "live-agent-marker");
 
     const prompt = `For a Playwright end-to-end smoke test, reply with exactly ${LIVE_AGENT_RESPONSE_MARKER} and no other words.`;
-    await chatComposer(page).fill(prompt);
-    await expect(chatSendButton(page)).toBeEnabled();
-    await chatSendButton(page).click();
-
-    await expect(userMessage(page, prompt)).toBeVisible({ timeout: 30_000 });
-
-    await expect(
-      assistantMessage(page, new RegExp(LIVE_AGENT_RESPONSE_MARKER, "i")),
-    ).toBeVisible({ timeout: 120_000 });
+    reportLiveTiming(
+      await sendPromptAndExpectAssistantMarker(
+        page,
+        prompt,
+        LIVE_AGENT_RESPONSE_MARKER,
+      ),
+    );
 
     expect(failures, "live agent chat browser/runtime failures").toEqual([]);
   });
+
+  for (const { marker, prompt } of LIVE_GENERAL_PROMPTS) {
+    test(`app chat handles live general prompt ${marker}`, async ({ page }) => {
+      const failures = installFailureCollectors(page);
+      await seedAppStorage(page);
+      await createAndActivateLiveConversation(page, `live-agent-${marker}`);
+      reportLiveTiming(
+        await sendPromptAndExpectAssistantMarker(page, prompt, marker),
+      );
+
+      expect(
+        failures,
+        `live prompt ${marker} browser/runtime failures`,
+      ).toEqual([]);
+    });
+  }
 });

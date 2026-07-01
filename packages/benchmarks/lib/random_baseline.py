@@ -324,11 +324,6 @@ BENCHMARK_STRATEGIES: dict[str, BaselineStrategy] = {
         "Random hex addresses -- uninterpretable",
         False,
     ),
-    "evm": BaselineStrategy(
-        "freeform",
-        "Random hex -- uninterpretable",
-        False,
-    ),
     "hyperliquid": BaselineStrategy(
         "freeform",
         "Random trading actions -- uninterpretable as a baseline",

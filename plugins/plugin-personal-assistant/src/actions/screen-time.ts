@@ -37,5 +37,11 @@ export const runScreenTimeHandler = createScreenTimeActionRunner({
   getActivityReport,
   getTimeOnApp,
   getBrowserDomainActivity,
-  getBrowserActivitySnapshot,
+  // The runner's BrowserActivitySnapshot types domains as a mutable array; our
+  // store returns it readonly. Return a shallow mutable copy at the boundary so
+  // the (read-only) consumer's contract is satisfied without weakening ours.
+  getBrowserActivitySnapshot: async (runtime, opts) => {
+    const snapshot = await getBrowserActivitySnapshot(runtime, opts);
+    return { ...snapshot, domains: [...snapshot.domains] };
+  },
 });

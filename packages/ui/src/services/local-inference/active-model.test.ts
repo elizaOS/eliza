@@ -8,6 +8,7 @@ import {
   resolveLocalInferenceLoadArgs,
   validateLocalInferenceLoadArgs,
 } from "./active-model";
+import { ELIZA_1_MTP_TIER_IDS } from "./catalog";
 import type { InstalledModel } from "./types";
 
 function makeInstalledModel(
@@ -34,11 +35,9 @@ function makeTempElizaBundle(
   const bundleRoot = mkdtempSync(pathJoin(tmpdir(), "eliza-ui-mtp-"));
   mkdirSync(pathJoin(bundleRoot, "text"), { recursive: true });
   const textPath = pathJoin(bundleRoot, "text", `eliza-1-${tier}-32k.gguf`);
-  const drafterPath = pathJoin(
-    bundleRoot,
-    "mtp",
-    `eliza-1-${tier}-drafter.gguf`,
-  );
+  // Shape a would-be separate-drafter MTP file. The resolver should ignore it
+  // until the shared catalog says that hosted Gemma drafter GGUFs are present.
+  const drafterPath = pathJoin(bundleRoot, "mtp", `drafter-${tier}.gguf`);
   writeFileSync(textPath, "fake-text-gguf");
   if (options.hasMtp !== false) {
     mkdirSync(pathJoin(bundleRoot, "mtp"), { recursive: true });
@@ -122,37 +121,34 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 
-  it("activates same-file MTP (no separate drafter) for every autoregressive Eliza-1 tier", async () => {
-    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
-    try {
-      const target = makeInstalledModel(
-        "eliza-1-0_8b",
-        bundle.textPath,
-        bundle.bundleRoot,
-      );
-      const args = await resolveLocalInferenceLoadArgs(target);
-      // Same-file MTP: NextN head embedded in the text GGUF, no separate
-      // draft model resolved.
-      expect(args.draftModelPath).toBeUndefined();
-      expect(args.draftMin).toBeGreaterThan(0);
-      expect(args.draftMax).toBeGreaterThan(0);
-      expect(args.mobileSpeculative).toBe(true);
-    } finally {
-      rmSync(bundle.bundleRoot, { recursive: true, force: true });
+  it("does not enable MTP args until hosted Gemma drafter GGUFs are cataloged", async () => {
+    for (const id of ELIZA_1_MTP_TIER_IDS) {
+      const tier = id.replace("eliza-1-", "");
+      const bundle = makeTempElizaBundle(tier);
+      const target = makeInstalledModel(id, bundle.textPath, bundle.bundleRoot);
+      try {
+        const args = await resolveLocalInferenceLoadArgs(target);
+        expect(args.draftModelPath).toBeUndefined();
+        expect(args.draftMin).toBeUndefined();
+        expect(args.draftMax).toBeUndefined();
+        expect(args.mobileSpeculative).toBeUndefined();
+      } finally {
+        rmSync(bundle.bundleRoot, { recursive: true, force: true });
+      }
     }
   });
 
-  it("does not throw when no drafter GGUF is present (same-file MTP needs none)", async () => {
-    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
+  it("does not require a drafter GGUF while hosted Gemma MTP is unavailable", async () => {
+    const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
-        "eliza-1-0_8b",
+        "eliza-1-2b",
         bundle.textPath,
         bundle.bundleRoot,
       );
       const args = await resolveLocalInferenceLoadArgs(target);
-      expect(args.modelPath).toBe(bundle.textPath);
       expect(args.draftModelPath).toBeUndefined();
+      expect(args.mobileSpeculative).toBeUndefined();
     } finally {
       rmSync(bundle.bundleRoot, { recursive: true, force: true });
     }

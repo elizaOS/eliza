@@ -1,6 +1,7 @@
 import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -123,7 +124,7 @@ export interface ChatConversationItemProps {
   variant?: ChatVariant;
 }
 
-export function ChatConversationItem({
+export const ChatConversationItem = memo(function ChatConversationItem({
   conversation,
   deleting = false,
   displayTitle,
@@ -240,7 +241,7 @@ export function ChatConversationItem({
           data-testid="conv-actions"
           aria-label={labels.actions ?? "More actions"}
           className={cn(
-            "h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:bg-transparent hover:text-txt focus-visible:opacity-100",
+            "h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:bg-transparent hover:text-txt ",
             mobile
               ? "opacity-100"
               : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
@@ -263,11 +264,11 @@ export function ChatConversationItem({
           aria-label={labels.rename ?? "Rename conversation"}
           className={cn(
             isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)]   "
               : "h-8 w-8 shrink-0 rounded-sm hover:text-accent",
             mobile
               ? "opacity-100"
-              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
+              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto  ",
           )}
           onClick={(event) => {
             event.preventDefault();
@@ -287,11 +288,11 @@ export function ChatConversationItem({
           aria-label={labels.delete ?? "Delete conversation"}
           className={cn(
             isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)]   "
               : "h-8 w-8 shrink-0 rounded-sm",
             mobile
               ? "opacity-100"
-              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
+              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto  ",
             "hover:text-danger",
           )}
           onClick={(event) => {
@@ -331,4 +332,4 @@ export function ChatConversationItem({
       ) : null}
     </div>
   );
-}
+});

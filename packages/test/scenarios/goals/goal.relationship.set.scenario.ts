@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "goal.relationship.set",
   title: "Set a relationship goal to stay in closer touch with family",
   domain: "goals",

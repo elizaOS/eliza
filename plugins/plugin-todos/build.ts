@@ -1,37 +1,18 @@
-import { rmSync } from "node:fs";
-import { join } from "node:path";
-import { build } from "bun";
+#!/usr/bin/env bun
+import { buildPlugin } from "../plugin-build";
 
-const distDir = join(import.meta.dir, "dist");
-
-try {
-  rmSync(distDir, { recursive: true, force: true });
-} catch {
-  // ignore
-}
-
-console.log("Building @elizaos/plugin-todos...");
-
-await build({
-  entrypoints: ["./src/index.ts"],
-  outdir: "./dist",
-  target: "node",
-  format: "esm",
-  sourcemap: "external",
-  minify: false,
-  external: ["@elizaos/core"],
+await buildPlugin({
+  name: "@elizaos/plugin-todos",
+  externalsOptions: { extra: ["node:*"] },
+  targets: [
+    {
+      label: "Node",
+      entry: "src/index.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsEmitDeclarationOnly: true,
 });
-
-console.log("Build complete.");
-
-const proc = Bun.spawn(
-  ["bunx", "tsc", "-p", "tsconfig.build.json", "--emitDeclarationOnly"],
-  {
-    cwd: import.meta.dir,
-    stdio: ["inherit", "inherit", "inherit"],
-  },
-);
-
-await proc.exited;
-
-console.log("Types generated.");

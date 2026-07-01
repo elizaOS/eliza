@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.signal.certify-session-revoked",
   title: "Certify Signal revoked-session degradation handling",
   connector: "signal",

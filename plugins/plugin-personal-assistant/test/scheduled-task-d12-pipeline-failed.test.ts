@@ -7,37 +7,28 @@
  * read terminal state to decide downstream behavior.
  */
 
-import { describe, expect, it } from "vitest";
-
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  ChannelKeyError,
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
-} from "@elizaos/plugin-scheduling";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
   ScheduledTask,
   SubjectStoreView,
 } from "@elizaos/plugin-scheduling";
+import {
+  ChannelKeyError,
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it } from "vitest";
 
 function makeRunner(opts?: { channelKeys?: () => ReadonlySet<string> }) {
   const gates = createTaskGateRegistry();

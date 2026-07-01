@@ -1,7 +1,7 @@
 // Real interaction coverage for the Settings sections + character editor.
 // all-pages-clicksafe only render-smokes settings; this drives the actual
-// controls (voice strategy select, appearance theme, capability switch, app-
-// permission refresh, backup/export modal, character bio save) and asserts they
+// controls (voice auto-learn toggle, appearance theme, capability switch, app-
+// permission refresh, backup modal, character bio save) and asserts they
 // DO something. Keyless against the stub.
 
 import { expect, type Page, test } from "@playwright/test";
@@ -30,38 +30,62 @@ function countRequests(
   return () => n;
 }
 
-test("voice settings: the strategy select changes value", async ({ page }) => {
+test("voice settings: the auto-learn toggle flips state", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Voice$/);
   await expect(page.getByTestId("voice-section")).toBeVisible({
     timeout: 30_000,
   });
 
-  const strategy = page.getByTestId("voice-section-strategy-select");
-  await expect(strategy).toBeVisible({ timeout: 15_000 });
-  const before = await strategy.inputValue();
-  const options = await strategy
-    .locator("option")
-    .evaluateAll((els) => (els as HTMLOptionElement[]).map((o) => o.value));
-  const next = options.find((v) => v && v !== before);
-  expect(next, "voice strategy select must offer a second option").toBeTruthy();
-  await strategy.selectOption(next as string);
-  await expect.poll(() => strategy.inputValue()).toBe(next);
+  const autoLearn = page.getByTestId("voice-section-auto-learn-toggle");
+  await expect(autoLearn).toBeVisible({ timeout: 15_000 });
+  const before = await autoLearn.isChecked();
+  await autoLearn.click();
+  await expect.poll(() => autoLearn.isChecked()).toBe(!before);
 });
 
-test("appearance settings: selecting the Dark theme marks it active", async ({
+test("appearance settings: selecting a language tile marks it active", async ({
   page,
 }) => {
+  // The app ships a single curated light look (no dark/light/system toggle).
+  // Appearance now exposes the language tiles; selecting one is the real
+  // "pick an option, it marks active via aria-current" interaction here.
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /Appearance/);
   await expect(page.locator("#appearance")).toBeVisible({ timeout: 30_000 });
 
-  const dark = page.locator('[data-agent-id="appearance-mode-dark"]').first();
-  await expect(dark).toBeVisible({ timeout: 15_000 });
-  await dark.click();
-  await expect(dark).toHaveAttribute("aria-current", "true", {
+  const english = page
+    .locator('[data-agent-id="appearance-language-en"]')
+    .first();
+  const spanish = page
+    .locator('[data-agent-id="appearance-language-es"]')
+    .first();
+  await expect(english).toBeVisible({ timeout: 15_000 });
+  await expect(english).toHaveAttribute("aria-current", "true");
+  await expect(spanish).not.toHaveAttribute("aria-current", "true");
+
+  await spanish.click();
+  await expect(spanish).toHaveAttribute("aria-current", "true", {
     timeout: 10_000,
   });
+  await expect(english).not.toHaveAttribute("aria-current", "true");
+});
+
+test("background settings: color controls update the shared wallpaper", async ({
+  page,
+}) => {
+  await openAppPath(page, "/settings");
+  await openSettingsSection(page, /^Background$/);
+  await expect(page.locator("#background")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByLabel("Set background to Green").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.localStorage.getItem("eliza:ui-background") ?? "",
+      ),
+    )
+    .toContain("#059669");
 });
 
 test("app-permissions settings: Refresh re-queries the app permissions", async ({
@@ -131,7 +155,7 @@ test("capabilities settings: the Wallet switch fires the real config write", asy
     .not.toBe(before);
 });
 
-test("backup & reset settings: Export opens its modal", async ({ page }) => {
+test("backup & reset settings: Back Up opens its modal", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /Backup & Reset|Advanced/);
   await expect(page.locator("#advanced")).toBeVisible({ timeout: 30_000 });

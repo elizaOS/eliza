@@ -162,7 +162,7 @@ export async function expectNoPageDiagnostics(
 
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],
-  ["Providers", "ai-model"],
+  ["Models & Providers", "ai-model"],
   ["Runtime", "runtime"],
   ["Appearance", "appearance"],
   ["Voice", "voice"],
@@ -208,13 +208,17 @@ export async function seedAppStorage(
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
   await page.addInitScript(
     ({ entries, seededKey }) => {
-      if (sessionStorage.getItem(seededKey) === "1") {
-        return;
+      try {
+        if (sessionStorage.getItem(seededKey) === "1") {
+          return;
+        }
+        for (const [key, value] of Object.entries(entries)) {
+          localStorage.setItem(key, value);
+        }
+        sessionStorage.setItem(seededKey, "1");
+      } catch {
+        // Sandboxed or opaque-origin frames can deny Web Storage access.
       }
-      for (const [key, value] of Object.entries(entries)) {
-        localStorage.setItem(key, value);
-      }
-      sessionStorage.setItem(seededKey, "1");
     },
     { entries: storage, seededKey: STORAGE_SEEDED_KEY },
   );
@@ -349,7 +353,9 @@ async function expectMainShellReadyForRoute(
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
   if (!options.allowOnboardingToast) {
-    await expect(page.getByTestId("onboarding-toast")).toHaveCount(0, {
+    // Runtime/provider setup is owned by the floating first-run chooser. Its
+    // absence proves the main shell is past onboarding.
+    await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
     });
   }
@@ -722,7 +728,7 @@ function smokePolymarketMarkets() {
           { name: "No", price: "0.13" },
         ],
         // Raw numeric strings — the real Gamma API + BFF parser emit unformatted
-        // numerics (see plugin-polymarket-app routes.contract.test.ts). The view's
+        // numerics (see plugin-polymarket routes.contract.test.ts). The view's
         // shortNumber() does Number(value), so a pre-formatted "$12,345" would
         // render as "—". Keep this matching the validated real DTO shape.
         liquidity: "12345.5",
@@ -990,40 +996,6 @@ function smokeWalletNfts() {
         },
       ],
     },
-  };
-}
-
-function smokeVincentStrategy(connected: boolean) {
-  return {
-    connected,
-    strategy: connected
-      ? {
-          name: "threshold",
-          venues: ["hyperliquid", "polymarket"],
-          params: { maxPositionUsd: 250, rebalanceThreshold: "5%" },
-          intervalSeconds: 900,
-          dryRun: true,
-          running: true,
-        }
-      : null,
-  };
-}
-
-function smokeVincentTradingProfile(connected: boolean) {
-  return {
-    connected,
-    profile: connected
-      ? {
-          totalPnl: "+$42.00",
-          winRate: 0.625,
-          totalSwaps: 8,
-          volume24h: "$1,234.00",
-          tokenBreakdown: [
-            { symbol: "BTC", pnl: "+$30.00", swaps: 5 },
-            { symbol: "ETH", pnl: "+$12.00", swaps: 3 },
-          ],
-        }
-      : null,
   };
 }
 
@@ -1773,6 +1745,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     },
   );
 
+  await page.route(/^https:\/\/ipapi\.co\/json\/?(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        latitude: 37.7749,
+        longitude: -122.4194,
+        city: "San Francisco",
+      }),
+    });
+  });
+
+  await page.route("https://api.open-meteo.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        current: {
+          temperature_2m: 68,
+          weather_code: 2,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,
@@ -1796,6 +1795,22 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         startedAt: Date.parse(SMOKE_GENERATED_AT),
         uptime: 60_000,
       }),
+    });
+  });
+
+  // The Transcripts view (client.listTranscripts) hits this on mount; the
+  // keyless loopback stack answers 501 for unimplemented endpoints, which surface
+  // as console errors in the stricter app-window smoke. Serve an empty list so
+  // the view renders its real empty state cleanly.
+  await page.route("**/api/transcripts**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ transcripts: [] }),
     });
   });
 
@@ -1866,6 +1881,59 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // Activity-feed widget poller — a shell-level GET on the home/chat surface that
+  // sits behind every view. The zero-key smoke stack returns 501; a fresh agent
+  // has no activity, so the canonical empty feed keeps the diagnostics guard clean.
+  await page.route("**/api/apps/feed/agent/activity**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0 }),
+    });
+  });
+
+  // Relationship merge-candidates poller — another shell-level GET. The zero-key
+  // smoke stack returns 501; a fresh agent has no candidate merges, so the empty
+  // `{ data: [] }` shape matches real zero-state and keeps diagnostics clean.
+  await page.route("**/api/relationships/candidates**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+
+  // Approval/needs-attention poller — shell-level GET on the home surface. The
+  // zero-key smoke stack has no approval queue, so return the canonical empty
+  // pending-actions shape instead of letting the fallback server emit a 501.
+  await page.route("**/api/approvals**", async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      route.request().method() !== "GET" ||
+      url.pathname !== "/api/approvals"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        approvals: [],
+        pending: [],
+        pendingUserActions: [],
+      }),
+    });
+  });
+
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1897,6 +1965,48 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         },
       }),
     });
+  });
+
+  await page.route("**/api/backups**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/backups" && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ backups: [] }),
+      });
+      return;
+    }
+    if (url.pathname === "/api/backups" && request.method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          backup: {
+            fileName: "ui-smoke.agent-backup.json",
+            path: "ui-smoke.agent-backup.json",
+            createdAt: SMOKE_GENERATED_AT,
+            agentId: SMOKE_AGENT.id,
+            stateSha256: "ui-smoke-state",
+            sizeBytes: 0,
+          },
+        }),
+      });
+      return;
+    }
+    if (
+      url.pathname === "/api/backups/restore" &&
+      request.method() === "POST"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ restored: true, requiresRestart: true }),
+      });
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/asr/local-inference/status", async (route) => {
@@ -2207,87 +2317,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify(
         smokeShopifyCustomers(new URL(route.request().url())),
       ),
-    });
-  });
-
-  let vincentConnected = true;
-  const vincentConnectedAt = Date.parse(SMOKE_GENERATED_AT);
-
-  await page.route("**/api/vincent/status**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        connected: vincentConnected,
-        connectedAt: vincentConnected ? vincentConnectedAt : null,
-        tradingVenues: vincentConnected ? ["hyperliquid", "polymarket"] : [],
-      }),
-    });
-  });
-
-  await page.route("**/api/vincent/start-login", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    vincentConnected = true;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        authUrl: "https://heyvincent.ai/ui-smoke-auth",
-        state: "ui-smoke",
-        redirectUri: "http://127.0.0.1/callback/vincent",
-      }),
-    });
-  });
-
-  await page.route("**/api/vincent/disconnect", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    vincentConnected = false;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true }),
-    });
-  });
-
-  await page.route("**/api/vincent/strategy", async (route) => {
-    if (route.request().method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(smokeVincentStrategy(vincentConnected)),
-      });
-      return;
-    }
-    if (route.request().method() === "POST") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true, ...smokeVincentStrategy(true) }),
-      });
-      return;
-    }
-    await route.fallback();
-  });
-
-  await page.route("**/api/vincent/trading-profile", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(smokeVincentTradingProfile(vincentConnected)),
     });
   });
 
@@ -3189,6 +3218,33 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       body: JSON.stringify({
         nodes: [],
         summary: { total: 0, enabled: 0, disabled: 0 },
+      }),
+    });
+  });
+
+  await page.route("**/api/automations", async (route) => {
+    // Only the bare list endpoint — the /nodes sub-route has its own stub above.
+    if (
+      route.request().method() !== "GET" ||
+      new URL(route.request().url()).pathname !== "/api/automations"
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        automations: [],
+        summary: {
+          total: 0,
+          coordinatorCount: 0,
+          workflowCount: 0,
+          scheduledCount: 0,
+          draftCount: 0,
+        },
+        workflowStatus: null,
+        workflowFetchError: null,
       }),
     });
   });

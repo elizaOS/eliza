@@ -26,6 +26,16 @@ export default defineConfig({
 		dedupe: ["react", "react-dom"],
 		alias: [
 			{
+				// @elizaos/ui DynamicViewLoader statically imports this plugin-health
+				// subpath; anchor it to source (no built plugin-health dist in the
+				// keyless lane). Self-contained so it needs no config-local path vars.
+				find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+				replacement: new URL(
+					"../plugin-health/src/screen-time/mobile-signal-setup.ts",
+					import.meta.url,
+				).pathname,
+			},
+			{
 				find: /^react$/,
 				replacement: path.dirname(require.resolve("react/package.json")),
 			},
@@ -68,6 +78,23 @@ export default defineConfig({
 			{
 				find: "@elizaos/ui/spatial",
 				replacement: path.join(uiSrc, "spatial/index.ts"),
+			},
+			// React-free settings-section metadata consumed by the VIEWS action's
+			// subview deep-linking (token resolution + planner subview list).
+			// Resolve to source so tests need no built @elizaos/ui dist.
+			{
+				find: "@elizaos/ui/components/settings/settings-section-tokens",
+				replacement: path.join(
+					uiSrc,
+					"components/settings/settings-section-tokens.ts",
+				),
+			},
+			{
+				find: "@elizaos/ui/components/settings/settings-section-meta",
+				replacement: path.join(
+					uiSrc,
+					"components/settings/settings-section-meta.ts",
+				),
 			},
 			{
 				find: "@elizaos/tui",

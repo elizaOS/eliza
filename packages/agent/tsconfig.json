@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
@@ -18,7 +18,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
+      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/native-activity-tracker": [
         "../../plugins/plugin-native-activity-tracker/src/index.ts"
       ],
@@ -47,11 +50,12 @@
       "@elizaos/plugin-personal-assistant": [
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
+      "@elizaos/plugin-scheduling": [
+        "../../plugins/plugin-scheduling/src/index.ts"
+      ],
+      "@elizaos/plugin-scheduling/*": ["../../plugins/plugin-scheduling/src/*"],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
-      "@elizaos/plugin-elizamaker": [
-        "../../plugins/plugin-elizamaker/src/index.ts"
-      ],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
       "@elizaos/plugin-agent-skills": [
         "../../plugins/plugin-agent-skills/src/index.ts"
@@ -62,6 +66,7 @@
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
+      "@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/index.ts"
       ],
@@ -74,21 +79,12 @@
       "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
-      "@elizaos/plugin-steward-app": [
-        "../../plugins/plugin-steward-app/src/index.ts"
-      ],
-      "@elizaos/plugin-shopify-ui": [
-        "../../plugins/plugin-shopify-ui/src/index.ts"
-      ],
-      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
+      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/tui": ["../tui/src/index.ts"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
-      ],
-      "@elizaos/plugin-companion": [
-        "../../plugins/plugin-companion/src/index.ts"
       ],
       "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
       "@elizaos/plugin-training": [
@@ -102,7 +98,7 @@
       ],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
-      "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],

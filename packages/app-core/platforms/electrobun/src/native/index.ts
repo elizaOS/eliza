@@ -6,6 +6,7 @@ import { getBrowserWorkspaceManager } from "./browser-workspace";
 import { getCameraManager } from "./camera";
 import { getCanvasManager } from "./canvas";
 import { getDesktopManager } from "./desktop";
+import { getFusedWakeManager } from "./fused-wake";
 import { getGatewayDiscovery } from "./gateway";
 import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
@@ -18,6 +19,7 @@ import { getSwabbleManager } from "./swabble";
 import { getTalkModeManager } from "./talkmode";
 
 const NATIVE_DISPOSE_TIMEOUT_MS = 10_000;
+let nativeDisposePromise: Promise<void> | null = null;
 
 export function initializeNativeModules(
   mainWindow: BrowserWindow,
@@ -39,10 +41,16 @@ export function initializeNativeModules(
   screencapture.setSendToWebview(sendToWebview);
   screencapture.setMainWebview(mainWindow.webview);
   getSwabbleManager().setSendToWebview(sendToWebview);
+  getFusedWakeManager().setSendToWebview(sendToWebview);
   getTalkModeManager().setSendToWebview(sendToWebview);
 }
 
 export async function disposeNativeModules(): Promise<void> {
+  nativeDisposePromise ??= disposeNativeModulesOnce();
+  return nativeDisposePromise;
+}
+
+async function disposeNativeModulesOnce(): Promise<void> {
   const managers = [
     ["agent", getAgentManager()],
     ["browser-workspace", getBrowserWorkspaceManager()],
@@ -56,6 +64,7 @@ export async function disposeNativeModules(): Promise<void> {
     ["permissions", getPermissionManager()],
     ["screencapture", getScreenCaptureManager()],
     ["swabble", getSwabbleManager()],
+    ["fused-wake", getFusedWakeManager()],
     ["talkmode", getTalkModeManager()],
     ["music-player", getMusicPlayerManager()],
   ] as const;

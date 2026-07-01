@@ -1,0 +1,18 @@
+{
+  "package": "plugin-x402-endpoints",
+  "repository": "github:digitalweb33333-creator/plugin-x402-endpoints",
+  "kind": "plugin",
+  "description": "Exposes the x402-endpoints catalogue (28 paid data endpoints: official EU/global registries — GLEIF, VIES, BODACC, EUR-Lex, Companies House, EPO, sanctions, CVE, FDA — plus crypto pre-trade data) as native ElizaOS actions, billed per call via x402 (USDC on Base mainnet).",
+  "homepage": "https://github.com/digitalweb33333-creator/plugin-x402-endpoints",
+  "version": "0.1.0",
+  "tags": [
+    "x402",
+    "micropayments",
+    "base",
+    "usdc",
+    "compliance",
+    "crypto",
+    "data",
+    "kyb"
+  ]
+}

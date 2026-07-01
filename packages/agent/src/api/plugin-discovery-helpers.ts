@@ -1,9 +1,8 @@
 /**
  * Plugin discovery and categorization helpers.
  *
- * Extracted from server.ts. Handles reading the plugins.json manifest,
- * categorizing plugins, building parameter definitions, and aggregating
- * secrets for the plugin management UI.
+ * Handles reading the plugins.json manifest, categorizing plugins, building
+ * parameter definitions, and aggregating secrets for the plugin management UI.
  */
 
 import fs from "node:fs";
@@ -670,7 +669,6 @@ export const BLOCKED_ENV_KEYS = new Set([
   "ELIZA_API_TOKEN",
   "ELIZA_WALLET_EXPORT_TOKEN",
   "ELIZA_TERMINAL_RUN_TOKEN",
-  "HYPERSCAPE_AUTH_TOKEN",
   // Wallet private keys — writable via API would enable key theft / replacement
   "EVM_PRIVATE_KEY",
   "SOLANA_PRIVATE_KEY",
@@ -749,6 +747,7 @@ export const AGENT_EVENT_ALLOWED_STREAMS = new Set([
   "assistant",
   "thought",
   "action",
+  "notification",
   "viewer_stats",
 ]);
 

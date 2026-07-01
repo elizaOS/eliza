@@ -19,10 +19,6 @@
     "description": "ElevenLabs voice plugin for text-to-speech generation and conversational audio output.",
     "tags": ["feature", "voice", "text-to-speech", "audio"]
   },
-  "eliza-classic": {
-    "description": "Compatibility plugin referencing the original ELIZA-style patterns alongside legacy elizaOS agent workflows.",
-    "tags": ["feature", "compatibility", "legacy", "agents"]
-  },
   "elizacloud": {
     "description": "elizaOS plugin to connect with elizaOS Cloud services",
     "tags": ["elizacloud"]
@@ -90,10 +86,6 @@
   "pdf": {
     "description": "Core Node.js plugin for elizaOS that provides essential services and actions for file operations.",
     "tags": ["pdf"]
-  },
-  "roblox": {
-    "description": "Roblox app integration for agent-driven gameplay and interactive experiences.",
-    "tags": ["app", "games", "roblox", "interactive"]
   },
   "s3-storage": {
     "description": "S3-compatible object storage plugin for saving files, media, and generated artifacts.",

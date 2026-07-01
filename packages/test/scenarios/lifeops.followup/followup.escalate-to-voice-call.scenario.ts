@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.escalate-to-voice-call",
   title: "Escalate a stalled follow-up to a voice call via Twilio",
   domain: "lifeops.followup",

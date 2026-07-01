@@ -27,6 +27,7 @@
 const NAV_VERBS = [
 	// en
 	"open",
+	"go",
 	"go to",
 	"goto",
 	"show me",
@@ -48,6 +49,8 @@ const NAV_VERBS = [
 	"display",
 	"launch",
 	"back to",
+	"return to",
+	"return",
 	// es
 	"abre",
 	"abrir",
@@ -211,11 +214,36 @@ const POSSESSIVES = [
 	"của tôi",
 	"akin",
 	"aking",
-	"the",
 ] as const;
 
 // Per-view multilingual noun synonyms. Order = match priority.
 const VIEW_NOUNS: Record<string, readonly string[]> = {
+	transcripts: [
+		"transcripts",
+		"transcript",
+		"recording",
+		"recordings",
+		"voice notes",
+		"voice transcript",
+		"voice transcripts",
+		"voice recordings",
+		"transcripciones",
+		"grabaciones",
+		"transcrições",
+		"gravações",
+		"transcriptions",
+		"enregistrements",
+		"transkripte",
+		"aufnahmen",
+		"转录",
+		"录音",
+		"文字起こし",
+		"録音",
+		"기록",
+		"녹음",
+		"bản ghi",
+		"ghi âm",
+	],
 	settings: [
 		"settings",
 		"setting",
@@ -249,6 +277,36 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"tuy chon",
 		"setting",
 		"mga setting",
+	],
+	background: [
+		"background",
+		"app background",
+		"page background",
+		"wallpaper",
+		"wallpapers",
+		"backdrop",
+		"theme background",
+		"shader",
+		"background image",
+		"fond",
+		"fond d'écran",
+		"fond d'ecran",
+		"wallpaper",
+		"fondo",
+		"papel tapiz",
+		"壁纸",
+		"壁紙",
+		"背景",
+		"背景画像",
+		"배경",
+		"appearance",
+		"plano de fundo",
+		"papier peint",
+		"arrière-plan",
+		"arriere-plan",
+		"hintergrund",
+		"hình nền",
+		"hinh nen",
 	],
 	calendar: [
 		"calendar",
@@ -478,18 +536,31 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"viec can lam",
 		"công việc",
 	],
+	notes: [
+		"notes",
+		"note",
+		"notepad",
+		"sticky notes",
+		"scratchpad",
+		"memo",
+		"memos",
+		"笔记",
+		"メモ",
+		"ノート",
+		"메모",
+		"노트",
+		"ghi chú",
+		"ghi chu",
+	],
 	documents: [
 		"documents",
 		"document",
 		"files",
 		"file",
-		"notes",
-		"note",
 		"docs",
 		"papers",
 		"documentos",
 		"archivos",
-		"notas",
 		"arquivos",
 		"documents",
 		"fichiers",
@@ -498,17 +569,36 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"文档",
 		"文檔",
 		"文件",
-		"笔记",
 		"文書",
 		"ファイル",
-		"メモ",
 		"문서",
 		"파일",
-		"메모",
 		"tài liệu",
 		"tai lieu",
 		"tập tin",
-		"ghi chú",
+	],
+	memories: [
+		"memories",
+		"memory",
+		"remembered",
+		"recollections",
+		"memoria",
+		"memorias",
+		"memória",
+		"memórias",
+		"mémoire",
+		"souvenirs",
+		"erinnerungen",
+		"speicher",
+		"记忆",
+		"回忆",
+		"記憶",
+		"メモリ",
+		"메모리",
+		"기억",
+		"ký ức",
+		"ky uc",
+		"bộ nhớ",
 	],
 	relationships: [
 		"relationships",
@@ -541,25 +631,17 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"danh bạ",
 		"liên hệ",
 	],
-	companion: [
-		"companion",
-		"avatar",
-		"vrm",
-		"compañero",
-		"companero",
-		"companheiro",
-		"compagnon",
-		"begleiter",
-		"伙伴",
-		"化身",
-		"コンパニオン",
-		"アバター",
-		"동반자",
-		"아바타",
-		"người đồng hành",
-		"nguoi dong hanh",
-	],
 	chat: [
+		"home",
+		"home screen",
+		"home page",
+		"home dashboard",
+		"dashboard",
+		"main screen",
+		"main page",
+		"main chat",
+		"start screen",
+		"landing page",
 		"chat",
 		"conversation",
 		"chatear",
@@ -576,6 +658,13 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 		"대화",
 		"trò chuyện",
 		"tro chuyen",
+	],
+	cockpit: [
+		"cockpit",
+		"coding cockpit",
+		"the cockpit",
+		"agents view",
+		"my agents",
 	],
 	"task-coordinator": [
 		"task coordinator",
@@ -699,12 +788,16 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 // Priority order: more-specific / multiword views before generic ones so
 // "task coordinator" wins over a bare "coding" elsewhere, etc.
 const VIEW_PRIORITY = [
+	"cockpit",
 	"task-coordinator",
 	"finances",
 	"relationships",
 	"automations",
 	"documents",
+	"memories",
+	"transcripts",
 	"settings",
+	"background",
 	"calendar",
 	"inbox",
 	"wallet",
@@ -712,7 +805,7 @@ const VIEW_PRIORITY = [
 	"goals",
 	"health",
 	"todos",
-	"companion",
+	"notes",
 	"character",
 	"plugins-page",
 	"camera",
@@ -736,6 +829,26 @@ function alt(items: readonly string[]): string {
 const VERB_ALT = alt(NAV_VERBS);
 const VW_ALT = alt(VIEW_WORDS);
 const POSS_ALT = alt(POSSESSIVES);
+const COMPANION_ACTION_VERBS = new Set([
+	"DRAW",
+	"GENERATE",
+	"MAKE",
+	"PERFORM",
+	"PLAY",
+	"RENDER",
+	"RUN",
+	"TRIGGER",
+]);
+const COMPANION_ACTION_TARGETS = new Set([
+	"ANIMATION",
+	"AVATAR",
+	"COMPANION",
+	"DANCE",
+	"EMOTE",
+	"GESTURE",
+	"POSE",
+	"WAVE",
+]);
 
 interface CompiledView {
 	viewId: string;
@@ -777,6 +890,7 @@ export function matchViewCommand(text: string | undefined): string | null {
 	const raw = (text ?? "").trim();
 	if (!raw || raw.length > 160) return null; // commands are short
 	const lower = raw.toLowerCase();
+	if (looksLikeCompanionActionRequest(lower)) return null;
 	const variants = [lower, stripDiacritics(lower)];
 	for (const { viewId, re } of COMPILED) {
 		for (const v of variants) {
@@ -784,6 +898,14 @@ export function matchViewCommand(text: string | undefined): string | null {
 		}
 	}
 	return null;
+}
+
+function looksLikeCompanionActionRequest(text: string): boolean {
+	const tokens = text.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
+	return (
+		tokens.some((token) => COMPANION_ACTION_VERBS.has(token)) &&
+		tokens.some((token) => COMPANION_ACTION_TARGETS.has(token))
+	);
 }
 
 /** All view ids this matcher can resolve (for tests + callers). */

@@ -632,7 +632,7 @@ export type X402Config = {
 // --- Local embedding runtime config ---
 
 export type EmbeddingConfig = {
-  /** GGUF model filename (e.g. "text/eliza-1-0_8b-32k.gguf"). */
+  /** GGUF model filename (e.g. "text/eliza-1-2b-32k.gguf"). */
   model?: string;
   /** Optional Hugging Face repo/source for model resolution. */
   modelRepo?: string;
@@ -836,13 +836,13 @@ export type ElizaConfig = {
       }
     >;
   };
-  /** ERC-8004 agent registry and ElizaMaker NFT collection configuration. */
+  /** ERC-8004 agent registry and agent NFT collection configuration. */
   registry?: {
     /** Ethereum mainnet (or local Anvil) RPC URL. */
     mainnetRpc?: string;
     /** ElizaAgentRegistry contract address. */
     registryAddress?: string;
-    /** ElizaMaker collection contract address. */
+    /** Agent NFT collection contract address. */
     collectionAddress?: string;
   };
   /** Feature flags for plugin auto-enable. */

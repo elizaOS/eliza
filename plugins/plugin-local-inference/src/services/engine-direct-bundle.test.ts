@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { BackendPlan } from "./backend";
 import { LocalInferenceEngine } from "./engine";
+import type { VoiceStartupError } from "./voice/engine-bridge";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -27,21 +28,25 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 			captured = plan;
 		};
 
-		const bundleRoot = path.join(root, "eliza-1-0_8b.bundle");
-		const modelPath = path.join(bundleRoot, "text", "eliza-1-0_8b-128k.gguf");
+		const bundleRoot = path.join(root, "eliza-1-2b.bundle");
+		const litertPath = path.join(bundleRoot, "text", "eliza-1-2b.litertlm");
+		fs.mkdirSync(path.dirname(litertPath), { recursive: true });
+		fs.writeFileSync(litertPath, "fake litert bundle");
+		const modelPath = path.join(bundleRoot, "text", "eliza-1-2b-128k.gguf");
 		await engine.load(modelPath, {
 			modelPath,
-			modelId: "eliza-1-0_8b",
+			modelId: "eliza-1-2b",
 		});
 
 		expect(captured).toBeDefined();
 		expect(captured?.modelPath).toBe(modelPath);
-		expect(captured?.modelId).toBe("eliza-1-0_8b");
-		expect(captured?.catalog?.id).toBe("eliza-1-0_8b");
+		expect(captured?.modelId).toBe("eliza-1-2b");
+		expect(captured?.catalog?.id).toBe("eliza-1-2b");
 		expect(captured?.overrides?.bundleRoot).toBe(bundleRoot);
 		expect(captured?.overrides?.manifestPath).toBe(
 			path.join(bundleRoot, "eliza-1.manifest.json"),
 		);
+		expect(captured?.overrides?.litertModelPath).toBe(litertPath);
 		expect(
 			(
 				engine as unknown as {
@@ -51,8 +56,35 @@ describe("LocalInferenceEngine direct Eliza-1 bundle loads", () => {
 		).toEqual(
 			expect.objectContaining({
 				root: bundleRoot,
-				tierId: "eliza-1-0_8b",
+				tierId: "eliza-1-2b",
 			}),
 		);
+	});
+
+	it("rejects Qwen ASR provenance before starting the fused voice bridge", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-engine-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const bundleRoot = path.join(root, "eliza-1-2b.bundle");
+		fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+		fs.writeFileSync(path.join(bundleRoot, "asr", "model.gguf"), "asr");
+		fs.writeFileSync(
+			path.join(bundleRoot, "eliza-1.manifest.json"),
+			JSON.stringify({ lineage: { asr: { base: "Qwen3-ASR" } } }),
+		);
+
+		const engine = new LocalInferenceEngine();
+		(
+			engine as unknown as {
+				activeEliza1Bundle: { root: string; tierId: "eliza-1-2b" };
+			}
+		).activeEliza1Bundle = { root: bundleRoot, tierId: "eliza-1-2b" };
+		(
+			engine as unknown as { dispatcher: { hasLoadedModel(): boolean } }
+		).dispatcher.hasLoadedModel = () => true;
+
+		await expect(engine.ensureActiveBundleAsrReady()).rejects.toMatchObject({
+			name: "VoiceStartupError",
+			code: "blocked-asr-provenance",
+		} satisfies Partial<VoiceStartupError>);
 	});
 });

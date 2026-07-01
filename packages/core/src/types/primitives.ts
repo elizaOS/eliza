@@ -39,6 +39,7 @@ export const ChannelType = {
 	THREAD: "THREAD",
 	WORLD: "WORLD",
 	FORUM: "FORUM",
+	AUTONOMOUS: "AUTONOMOUS",
 	API: "API",
 } as const;
 
@@ -112,6 +113,15 @@ export interface Content {
 
 	/** UUID of parent message if this is a reply/thread */
 	inReplyTo?: UUID;
+
+	/**
+	 * Full, untruncated text of the message THIS message reacted to. Connectors
+	 * that record an emoji reaction as a short display stub in `text` (e.g.
+	 * `*Added 👍 to: "first 50 chars…"*`) set this so context-building can feed
+	 * the planner the complete reacted-to statement instead of a truncated
+	 * fragment it would otherwise back-rationalize into a phantom task (#9874).
+	 */
+	reactedMessageText?: string;
 
 	/** Array of media attachments */
 	attachments?: Media[];
@@ -219,6 +229,50 @@ export interface Media {
 	 * Generated client-side on upload; absent for small/remote/generated media.
 	 */
 	thumbnailUrl?: string;
+
+	// --- Additive metadata widening (#8876) ----------------------------------
+	// All optional and backward-compatible: `Media` is serialized inside
+	// `memories.content` (jsonb) and `central_messages.content` (text), so adding
+	// optional keys is a pure type change with zero at-rest migration. Fine-grained
+	// kind (pdf/code/transcript/3d) is derived from `mimeType` at read time — the
+	// coarse `ContentType` enum stays frozen and append-only.
+
+	/** Authoritative IANA media type of the bytes (e.g. `application/pdf`). */
+	mimeType?: string;
+
+	/** Original filename as provided by the user/connector/generator. */
+	filename?: string;
+
+	/** Byte size of the original media. */
+	size?: number;
+
+	/**
+	 * Lowercase hex sha256 of the bytes — the content-address that matches the
+	 * served `/api/media/<sha256>.<ext>` URL. Enables dedup + Files-view linkage.
+	 */
+	checksum?: string;
+
+	/** Pixel width of an image/video. */
+	width?: number;
+
+	/** Pixel height of an image/video. */
+	height?: number;
+
+	/** Duration in seconds for audio/video. */
+	duration?: number;
+
+	/** Page count for paginated documents (e.g. a PDF). */
+	pageCount?: number;
+
+	/** Creation timestamp (ms since epoch). */
+	createdAt?: number;
+
+	/**
+	 * True when `url` still points at an external/ephemeral source we could not
+	 * rehost into managed storage (e.g. egress unavailable on a network-locked
+	 * device). Surfaces a retry affordance instead of a permanently broken tile.
+	 */
+	ephemeral?: boolean;
 }
 
 export const ContentType = {

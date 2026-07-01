@@ -25,7 +25,7 @@ Per Apache 2.0 §4(b), the changes made on top of upstream
 * **Parameterized `EMB_DIM` (head_dim) as a C++ template parameter.**
   Upstream hard-codes `#define EMB_DIM 128` at the top of every kernel.
   This is correct for Llama 2/3 and older 128-dim heads but fails to
-  compile/run for active Qwen3.5 text models with head_dim=256. We changed:
+  compile/run for 256-dim text-decoder heads. We changed:
 
     - `csrc/qjl_quant_kernel.cu`:
       `quantize_with_outliers_kernel` and `QJLQuantCudaTemplate` are now

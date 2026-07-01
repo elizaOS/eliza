@@ -37,6 +37,7 @@ import {
 	extractJsonObjects,
 	parseJsonObject,
 	stringifyForModel,
+	stripJsonStructuralJunkReply,
 } from "./json-output";
 import {
 	assertRepeatedFailureLimit,
@@ -107,6 +108,44 @@ export type {
 
 const DEFAULT_PLANNER_MAX_TOKENS = 1024;
 
+/**
+ * Coding/full-surface mode is on when the eliza-code sub-agent sets
+ * `ELIZA_PLANNER_FULL_ACTION_SURFACE` (the ACP server does). Centralized so the
+ * tool-call ceiling, the queue-drain cadence, and the output-token cap all read
+ * the same signal.
+ */
+function isCodingFullSurfaceMode(): boolean {
+	const v = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+	return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/**
+ * Default per-call output-token ceiling for a coding planner turn. A single
+ * FILE/WRITE tool call must carry the entire file as a JSON-escaped argument —
+ * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
+ * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
+ * (1024), which truncates the tool-call argument mid-stream so the model either
+ * narrates without ever completing the call or the provider 400s. opencode on
+ * the same Cerebras `zai-glm-4.7` builds the same app reliably precisely because
+ * it does not clamp the file-emitting completion to a chat-sized budget.
+ * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
+ */
+const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
+
+/**
+ * Resolve the planner's per-call `maxTokens`: the small chat default, or — in
+ * coding/full-surface mode — a budget large enough to emit a full file in one
+ * tool call ({@link DEFAULT_CODING_PLANNER_MAX_TOKENS}, overridable via
+ * `ELIZA_CODING_PLANNER_MAX_TOKENS`).
+ */
+function resolvePlannerMaxTokens(): number {
+	if (!isCodingFullSurfaceMode()) return DEFAULT_PLANNER_MAX_TOKENS;
+	const raw = Number(process.env.ELIZA_CODING_PLANNER_MAX_TOKENS);
+	return Number.isFinite(raw) && raw > 0
+		? Math.floor(raw)
+		: DEFAULT_CODING_PLANNER_MAX_TOKENS;
+}
+
 interface RawPlannerOutput {
 	action?: unknown;
 	parameters?: unknown;
@@ -125,7 +164,41 @@ export async function runPlannerLoop(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
-	const config = mergeChainingLoopConfig(params.config);
+	// Coding/full-surface mode (the eliza-code sub-agent sets
+	// ELIZA_PLANNER_FULL_ACTION_SURFACE): a real build legitimately makes many
+	// tool calls (read several files, write several, run tests). The chat default
+	// (maxToolCalls=16) caps that mid-build, ending the turn on a
+	// TrajectoryLimitExceeded with no terminal REPLY → an EMPTY relay to the user.
+	// Raise the ceiling for coding builds (still bounded). Overridable via
+	// ELIZA_CODING_MAX_TOOL_CALLS.
+	const codingMode = isCodingFullSurfaceMode();
+	const codingMaxToolCalls = ((): number => {
+		const raw = Number(process.env.ELIZA_CODING_MAX_TOOL_CALLS);
+		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 80;
+	})();
+	// Weak coding models (e.g. Cerebras glm-4.7) sometimes answer a trivial build
+	// with a terminal REPLY ("Creating the app now…") instead of calling FILE.
+	// The action-first gate below re-prompts that, but the chat default of 3
+	// misses gives up too soon to convert a stubborn narrator — give coding
+	// builds more attempts to actually act. Overridable via
+	// ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES.
+	const codingMaxRequiredToolMisses = ((): number => {
+		const raw = Number(process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES);
+		return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
+	})();
+	const config = ((): ChainingLoopConfig => {
+		const merged = mergeChainingLoopConfig(params.config);
+		return codingMode
+			? {
+					...merged,
+					maxToolCalls: Math.max(merged.maxToolCalls, codingMaxToolCalls),
+					maxRequiredToolMisses: Math.max(
+						merged.maxRequiredToolMisses,
+						codingMaxRequiredToolMisses,
+					),
+				}
+			: merged;
+	})();
 	const trajectory: PlannerTrajectory = {
 		context: plannerContext,
 		steps: [],
@@ -139,8 +212,14 @@ export async function runPlannerLoop(
 	let unavailableToolCallRetries = 0;
 	let silentFailedFinishRecoveries = 0;
 	let repeatedNonTerminalToolCalls = 0;
+	// In coding mode the agent's whole job is to DO work via FILE/SHELL, so a
+	// terminal REPLY before any non-terminal tool has run is almost always the
+	// "Creating the app now…" narration that leaves nothing on disk. Force the
+	// gate on (when real coding tools are exposed) so such a turn is re-prompted
+	// into actually acting instead of being accepted as the final answer. A
+	// genuinely blocking question still surfaces after the miss budget.
 	const requireNonTerminalToolCall =
-		params.requireNonTerminalToolCall === true &&
+		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
 
 	// Cumulative gross prompt-token counter, summed across every planner
@@ -189,6 +268,14 @@ export async function runPlannerLoop(
 	// `maxRequiredToolMisses`, throws `TrajectoryLimitExceeded`, and the
 	// caller surfaces a generic apology instead of the planner's real answer.
 	let lastTerminalRefusalText: string | undefined;
+
+	// Coding/full-surface mode (set above from ELIZA_PLANNER_FULL_ACTION_SURFACE):
+	// when the model emits a batch of tool calls in a single response, execute
+	// EVERY queued call before re-evaluating. A real build needs all of its
+	// FILE/SHELL calls to run; a dedicated coding agent drains the whole batch and
+	// feeds the results back together. Chat mode keeps its
+	// re-evaluate-after-each-action cadence (one action, then evaluate).
+	const codingDrainQueue = codingMode;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -244,9 +331,17 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
-					const refusalCandidate = getNonEmptyString(
-						lastPlannerExplicitMessageToUser,
-					);
+					// Prefer the planner's EXPLICIT messageToUser refusal. When the
+					// model emitted only native free text (no explicit field, no REPLY
+					// call), fall back to that text ONLY if it survives the user-safe
+					// refusal gate — which rejects reasoning/leak/fabrication AND
+					// pre-tool deliberation — so an honest native-mode refusal reaches
+					// the user instead of the caller's generic apology, without ever
+					// surfacing a pre-tool thought (#9874 item 3; guarded by the "does
+					// not capture native text fallback" test).
+					const refusalCandidate =
+						userSafeRefusalCandidate(lastPlannerExplicitMessageToUser) ??
+						userSafeRefusalCandidate(plannerOutput.messageToUser);
 					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
 					if (
@@ -286,6 +381,22 @@ export async function runPlannerLoop(
 					message: plannerOutput.messageToUser,
 				});
 				if (trajectory.steps.some((step) => step.toolCall)) {
+					// Coding mode: the model emitted a final text summary AFTER
+					// executing build tools — it's signalling completion. Finish with
+					// that message instead of running the chat completion-evaluator,
+					// which can decline to FINISH and trip terminal_only_continuations
+					// (observed live: a successful 4-file build threw 3/2 and relayed an
+					// EMPTY reply). The model, not the evaluator, owns termination here.
+					if (codingDrainQueue) {
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								codingFinalMessage(trajectory, plannerOutput.messageToUser),
+								trajectory,
+							),
+						};
+					}
 					const evaluator = await evaluateTrajectory(
 						params,
 						trajectory,
@@ -360,9 +471,11 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
-					const refusalCandidate = terminalMessageFromToolCalls(
-						plannerOutput.toolCalls,
-						plannerOutput.messageToUser,
+					const refusalCandidate = userSafeRefusalCandidate(
+						terminalMessageFromToolCalls(
+							plannerOutput.toolCalls,
+							plannerOutput.messageToUser,
+						),
 					);
 					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
@@ -578,8 +691,24 @@ export async function runPlannerLoop(
 				trajectory,
 				finalMessage: suppressReply
 					? ""
-					: userSafeFinalMessage(latestResult.text, trajectory),
+					: userSafeFinalMessage(
+							// Coding mode: drop a junk/empty terminal reply and fall back to
+							// a synthesized "what I did" summary so the sub-agent never
+							// relays garbage or an empty reply after doing real work.
+							codingDrainQueue
+								? codingFinalMessage(trajectory, latestResult.text)
+								: latestResult.text,
+							trajectory,
+						),
 			};
+		}
+
+		// Coding mode: keep executing the rest of this model-emitted tool-call
+		// batch before evaluating/re-planning. Terminal calls already returned
+		// above, so anything still queued is non-terminal build work (more FILE
+		// writes / SHELL runs) that the model asked for in the same response.
+		if (codingDrainQueue && trajectory.plannedQueue.length > 0) {
+			continue;
 		}
 
 		await maybeCompactBeforeNextModelCall({
@@ -592,6 +721,20 @@ export async function runPlannerLoop(
 			iteration,
 			logger: params.runtime.logger,
 		});
+
+		// Coding mode: the MODEL — not the chat completion-evaluator — owns
+		// termination. After a tool batch is fully drained, re-plan (give the
+		// model another tools round) so it can run the next step (e.g. SHELL
+		// after writing files) and only ends the turn by emitting a terminal
+		// call (REPLY/STOP), handled at the top of the loop. `maxToolCalls`
+		// bounds runaway loops. This gives the eliza-code sub-agent a real
+		// coding-agent loop instead of chat's evaluate-after-each-action — the
+		// chat evaluator would otherwise prematurely FINISH after the first
+		// file write (before the build's SHELL run / verification).
+		if (codingDrainQueue) {
+			trajectory.plannedQueue.length = 0;
+			continue;
+		}
 
 		// Conservative gate (PR #7514): when a successful tool drained the queue
 		// and the just-completed planner call gave us a clean explicit
@@ -806,7 +949,7 @@ const MANDATORY_PLANNER_POLICY_LINES = [
 	"SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups.",
 	"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
 	"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-	"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+	"messageToUser and REPLY text must NEVER claim or imply",
 ];
 
 const MANDATORY_PLANNER_POLICY = [
@@ -814,7 +957,8 @@ const MANDATORY_PLANNER_POLICY = [
 	"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.",
 	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
 	'- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to "search the Discord channel for messages mentioning X" routinely ends in sub-agent error/timeout and a generic "Sorry, something went wrong" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.',
-	'- messageToUser and REPLY text must NEVER claim or imply an investigative action is happening, has happened, or is about to happen — "I\'m fetching X, please hold", "Let me look that up", "Pulling up the info", "Searching for the answer", "I\'m checking now", "I\'ll get back to you", "Spawning a sub-agent" — when no tool call this turn is in flight to produce that content. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: "I tried web search via the available tools and couldn\'t find current info on X — try checking a news site directly" or "The searches returned no usable results". Never promise ongoing fetch when this turn is the planner\'s final iteration. This rule covers every grammatical form: past-perfect ("I have fetched"), bare past-tense ("I fetched"), present-continuous with subject ("I\'m fetching now", "I\'m checking"), bare present-participle without subject ("Fetching latest info", "Looking it up", "Pulling up the logs"), and "please hold" / "give me a sec" / "be right back" style stalling phrases.',
+	'- messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening, has happened, or is about to happen — "I\'m fetching X, please hold", "Let me look that up", "Pulling up the info", "Searching for the answer", "I\'m checking now", "I\'ll get back to you", "Spawning a sub-agent", "I\'m working on it", "I\'m fixing that now", "Let me get that done", "Wrapping it up", "Almost done", "Building it now", "I\'ll start on that" — when no tool call this turn is in flight to produce that content. A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call (e.g. TASKS_SPAWN_AGENT) is actually in flight THIS turn; if you did not spawn a sub-agent or take an action this turn, do not say the task is underway. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: "I tried web search via the available tools and couldn\'t find current info on X — try checking a news site directly" or "The searches returned no usable results". Never promise ongoing fetch when this turn is the planner\'s final iteration. This rule covers every grammatical form for both investigative and task-execution verbs (fetch/search/look up/check AND work on/start/fix/build/wrap up/finish): past-perfect ("I have fetched", "I have started fixing it"), bare past-tense ("I fetched", "I started on it"), present-continuous with subject ("I\'m fetching now", "I\'m checking", "I\'m working on it", "I\'m fixing it"), bare present-participle without subject ("Fetching latest info", "Looking it up", "Working on it", "Wrapping it up"), and "please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases.',
+	'- messageToUser and REPLY text must NEVER fabricate a failure, error, or interruption that did not actually occur this turn. Do not claim something "glitched", "hiccuped", "broke", "went wrong", "snagged", "errored out", "got cut off", "didn\'t go through", "failed on my end", or invite the user to "give it another go / try that again / ask again" UNLESS a real tool call THIS turn actually returned an error or empty result. If you are choosing NOT to take an action this turn (no tool call in flight), do not invent a malfunction to excuse it: instead either (a) take the correct action (e.g. spawn the coding sub-agent for a build request), or (b) say plainly and truthfully what you can do and ask the user to confirm scope, e.g. "I can build that as a single-file site in its own folder, want me to start?". A fabricated "something glitched, give it another go" is a hallucinated failure and is forbidden when nothing failed.',
 ].join("\n");
 
 function appendMandatoryPlannerPolicy(instructions: string): string {
@@ -907,6 +1051,26 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
 
+	// Some provider/proxy combinations return planner/evaluator control JSON in
+	// the native text channel (e.g. `{"decision":"CONTINUE","thought":...}`)
+	// while tool calls are delivered out-of-band. That JSON is control data, not
+	// a user-facing message, and must never leak into the channel verbatim. We
+	// only treat the text this way when it actually looks like a planner/
+	// evaluator envelope — a legitimate non-envelope JSON object reply (e.g. a
+	// user asking for `{"foo":"bar"}`) carries no recognized planner field and
+	// must fall through to round-trip as `messageToUser`.
+	const controlText =
+		text && looksLikePlannerControlJson(text)
+			? parseJsonPlannerOutput(text)
+			: undefined;
+	// No native tool calls + the text channel is itself a control envelope:
+	// consume it fully through the JSON planner parser so any embedded
+	// REPLY/tool-call envelope still works and the raw JSON never reaches the
+	// user.
+	if (controlText && nativeToolCalls.length === 0) {
+		return controlText;
+	}
+
 	let textRecoveredCalls: PlannerToolCall[] = [];
 	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
 	const embeddedObjectCount =
@@ -921,18 +1085,47 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	return {
 		toolCalls,
-		// When `raw.text` was itself tool-call JSON it is not a user-facing
-		// message — take the reply from a REPLY call rather than leaking the
-		// raw JSON blob into the channel.
+		// When `raw.text` was itself tool-call/control JSON it is not a
+		// user-facing message — take the reply from a REPLY call, or the
+		// control envelope's own `messageToUser`, rather than leaking the raw
+		// JSON blob into the channel.
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: text,
+				: controlText
+					? controlText.messageToUser
+					: text,
+		thought: controlText?.thought,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(controlText ? { parsedText: controlText.raw } : {}),
 		} as Record<string, unknown>,
 	};
+}
+
+/**
+ * True when `text` is a planner/evaluator CONTROL envelope that must be
+ * consumed as data rather than surfaced to the user. This is narrow on
+ * purpose: a bare user-requested JSON object (e.g. `{"foo":"bar"}`) carries no
+ * recognized planner field, returns `false`, and is preserved as a visible
+ * reply. Recognized either by the strict evaluator-envelope shape or by a
+ * top-level planner field (`action` / `toolCalls` / `messageToUser` / `text` /
+ * `decision`).
+ */
+function looksLikePlannerControlJson(text: string): boolean {
+	if (looksLikeEvaluatorEnvelopeJson(text)) return true;
+	const parsed = parseJsonObject<RawPlannerOutput & { decision?: unknown }>(
+		text.trim(),
+	);
+	if (!parsed) return false;
+	return (
+		parsed.action !== undefined ||
+		parsed.toolCalls !== undefined ||
+		parsed.messageToUser !== undefined ||
+		parsed.text !== undefined ||
+		parsed.decision !== undefined
+	);
 }
 
 function parseJsonPlannerOutput(raw: string): {
@@ -944,22 +1137,28 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
+		// Non-JSON output: a weak model emitted prose and/or `<tool_call>` markup
+		// instead of the planner envelope. Recover the call it meant to make and
+		// strip the markup from the user-facing text instead of leaking it.
 		return {
-			toolCalls: [],
-			messageToUser: getNonEmptyString(trimmed),
+			toolCalls: recoverEmbeddedToolCalls(trimmed),
+			messageToUser: sanitizePlannerMessage(trimmed),
 			raw: { text: trimmed },
 		};
 	}
-	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
+	const messageToUser = sanitizePlannerMessage(
+		parsed.messageToUser ?? parsed.text,
+	);
 	const toolCalls = normalizeToolCalls(parsed.toolCalls);
 	const bareActionCalls =
 		toolCalls.length === 0 ? normalizeBarePlannerAction(parsed) : [];
 	let resolvedCalls = toolCalls.length > 0 ? toolCalls : bareActionCalls;
 	// `parseJsonObject` only returns the FIRST top-level object, so a weak
-	// model that concatenated bare `{type, args}` calls would lose every one
-	// after the first. Recover the full set from the raw string.
+	// model that concatenated bare `{type, args}` calls — or emitted native
+	// `<tool_call>` markup — would lose every call. Recover the full set from
+	// the raw string.
 	if (resolvedCalls.length === 0) {
-		resolvedCalls = parseEmbeddedToolCalls(trimmed);
+		resolvedCalls = recoverEmbeddedToolCalls(trimmed);
 	}
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
@@ -1077,7 +1276,10 @@ async function callPlanner(params: {
 			}),
 			modelInputBudget,
 		),
-		maxTokens: DEFAULT_PLANNER_MAX_TOKENS,
+		// Chat planner turns stay at the small DEFAULT_PLANNER_MAX_TOKENS; a coding
+		// turn must be able to emit a whole file in one tool call, so coding mode
+		// raises the cap (see resolvePlannerMaxTokens / issue #10132).
+		maxTokens: resolvePlannerMaxTokens(),
 	};
 	modelParams.providerOptions = {
 		...modelParams.providerOptions,
@@ -2046,6 +2248,67 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 }
 
 /**
+ * Recover tool calls from the model's native `<tool_call>` markup —
+ * `<tool_call>ACTION<arg_key>k</arg_key><arg_value>v</arg_value>...</tool_call>`
+ * — emitted as text by weak open models (cerebras gpt-oss / zai) that fail to
+ * route a structured call. Sibling of {@link parseEmbeddedToolCalls} (which
+ * recovers JSON-object calls): same intent — honor the call the model meant to
+ * make instead of dropping it and answering blind — for the one serialization
+ * that isn't JSON. The same markup is removed from the user-facing message by
+ * {@link stripJsonStructuralJunkReply}, so a recovered call never double-shows
+ * as prose.
+ */
+function parseNativeMarkupToolCalls(
+	text: string | undefined,
+): PlannerToolCall[] {
+	if (!text?.includes("<tool_call")) {
+		return [];
+	}
+	const calls: PlannerToolCall[] = [];
+	const blockRe = /<tool_call\b[^>]*>([\s\S]*?)(?:<\/tool_call>|$)/gi;
+	const argRe =
+		/<arg_key>([\s\S]*?)<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/gi;
+	for (const block of text.matchAll(blockRe)) {
+		const body = block[1];
+		// The action name is the leading token before the first <arg_key>.
+		const name = body.match(/^\s*([A-Za-z][A-Za-z0-9_]*)/)?.[1];
+		if (!name) continue;
+		const params: Record<string, string> = {};
+		for (const arg of body.matchAll(argRe)) {
+			const key = arg[1].trim();
+			if (key) params[key] = arg[2].trim();
+		}
+		const call = normalizeToolCall({
+			action: name,
+			parameters: Object.keys(params).length > 0 ? params : undefined,
+		});
+		if (call) calls.push(call);
+	}
+	return calls;
+}
+
+/**
+ * Recover tool calls a weak model emitted as text — JSON objects first, then
+ * the native `<tool_call>` markup — when no structured call was parsed.
+ */
+function recoverEmbeddedToolCalls(text: string): PlannerToolCall[] {
+	const fromJson = parseEmbeddedToolCalls(text);
+	return fromJson.length > 0 ? fromJson : parseNativeMarkupToolCalls(text);
+}
+
+/**
+ * The user-facing planner message with any leaked tool-call / JSON-structural
+ * markup removed (see {@link stripJsonStructuralJunkReply}). Applied at the one
+ * parse boundary so every downstream consumer of `messageToUser` gets clean
+ * text without each having to re-sanitize.
+ */
+function sanitizePlannerMessage(value: unknown): string | undefined {
+	const text = getNonEmptyString(value);
+	if (!text) return undefined;
+	return getNonEmptyString(stripJsonStructuralJunkReply(text));
+}
+
+/**
  * Merge native tool calls with calls recovered from the model's text
  * narration, deduped by normalized name and parameters. Native calls are
  * authoritative and keep their order; text-recovered calls only fill in exact
@@ -2483,6 +2746,115 @@ export function singleVerifiedUserFacingToolResultText(
 	return text || undefined;
 }
 
+/**
+ * Synthesize a short "here's what I did" summary from the coding tools a turn
+ * executed (FILE writes/edits, SHELL runs). Used as the LAST-resort fallback for
+ * the eliza-code coding sub-agent so it always relays a result — a weak model can
+ * edit files correctly then end the turn with no final text, which would otherwise
+ * surface as an EMPTY reply even though the work succeeded (observed: a SWE-bench
+ * fix applied perfectly but relayed nothing). Returns undefined when no coding
+ * tool ran (so chat turns are unaffected).
+ */
+function codingActionSummary(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	const parts: string[] = [];
+	for (const step of trajectory.steps) {
+		if (step.result?.success === false) continue;
+		const name = step.toolCall?.name?.toUpperCase();
+		const params = (step.toolCall?.params ?? {}) as Record<string, unknown>;
+		if (name === "FILE") {
+			const action = String(params.action ?? "").toLowerCase();
+			const rawPath = params.file_path ?? params.path;
+			const path =
+				typeof rawPath === "string"
+					? (rawPath.split("/").pop() ?? rawPath)
+					: undefined;
+			if (path && (action === "write" || action === "create")) {
+				parts.push(`wrote ${path}`);
+			} else if (path && action === "edit") {
+				parts.push(`edited ${path}`);
+			}
+		} else if (name === "SHELL") {
+			const cmd = params.command;
+			if (typeof cmd === "string" && cmd.trim()) {
+				parts.push(`ran \`${compactText(cmd.trim(), 60)}\``);
+			}
+		} else if (name === "WORKTREE") {
+			parts.push("managed a git worktree");
+		}
+	}
+	if (parts.length === 0) return undefined;
+	const unique = [...new Set(parts)].slice(0, 8);
+	const summary = unique.join("; ");
+	return `Done — ${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`;
+}
+
+/**
+ * In coding mode a weak model sometimes ends a successful turn with a junk
+ * "reply" — the literal word "None"/"null", or a tool-call emitted as text
+ * (`<tool_call>…`, a raw JSON action blob). Treating those as a real
+ * user-facing message surfaces garbage to the user even though the build
+ * succeeded. Detect them so the caller can fall back to a synthesized summary.
+ */
+function isJunkCodingReply(text: unknown): boolean {
+	if (typeof text !== "string") return true;
+	const t = text.trim();
+	if (t.length === 0) return true;
+	const lower = t.toLowerCase();
+	if (
+		lower === "none" ||
+		lower === "null" ||
+		lower === "n/a" ||
+		lower === "undefined"
+	) {
+		return true;
+	}
+	if (
+		/^(<tool_call|<arg_key|<arg_value|```json|\[?\s*\{.*"(action|decision|tool_calls|thought)"\s*:)/.test(
+			t,
+		)
+	) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Strip reasoning-model scaffolding that leaks into a final reply: a
+ * `<think>…</think>` block, or a stray closing `</think>` with the chain-of-
+ * thought before it (keep only the answer after the last `</think>`). Observed
+ * with glm-4.7 on Cerebras: "…Let me verify.</think>I've fixed both validators…".
+ */
+function stripReasoningArtifacts(text: string): string {
+	let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+	const lastClose = out.toLowerCase().lastIndexOf("</think>");
+	if (lastClose >= 0) out = out.slice(lastClose + "</think>".length);
+	return out.replace(/<\/?think>/gi, "").trim();
+}
+
+/**
+ * Coding-mode user-facing reply: strip reasoning artifacts, drop a junk model
+ * message, and fall back to a synthesized "what I did" summary — so the
+ * eliza-code sub-agent always relays a clean result for successful work
+ * (matching a polished coding agent's output).
+ */
+function codingFinalMessage(
+	trajectory: PlannerTrajectory,
+	modelMessage: unknown,
+): string | undefined {
+	const cleaned =
+		typeof modelMessage === "string"
+			? stripReasoningArtifacts(modelMessage)
+			: modelMessage;
+	const clean = isJunkCodingReply(cleaned) ? undefined : cleaned;
+	return preferredFinalMessageFromToolOrModel(
+		trajectory,
+		clean,
+		codingActionSummary(trajectory),
+	);
+}
+
 function preferredFinalMessageFromToolOrModel(
 	trajectory: PlannerTrajectory,
 	modelMessage?: unknown,
@@ -2684,11 +3056,16 @@ function userSafeFinalMessage(
 	message: string | undefined,
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	const candidate = getNonEmptyString(message);
+	// Strip leaked tool-call / JSON-structural markup before the safety check so
+	// a message that is good prose with trailing leaked markup ("...let me look.
+	// <tool_call>WEB_FETCH...") becomes clean usable text instead of being
+	// rejected wholesale (or worse, sent verbatim when the unsafe-text heuristic
+	// doesn't match the markup shape).
+	const candidate = sanitizePlannerMessage(message);
 	if (candidate && !isUnsafeUserVisibleText(candidate)) {
 		return candidate;
 	}
-	const latest = latestToolResultText(trajectory);
+	const latest = sanitizePlannerMessage(latestToolResultText(trajectory));
 	if (latest && !isUnsafeUserVisibleText(latest)) {
 		return latest;
 	}
@@ -2746,11 +3123,50 @@ export function looksLikeSpawnEnvelopeJson(text: string): boolean {
 	);
 }
 
+/**
+ * Detects a planner/evaluator CONTROL envelope returned in a user-visible
+ * channel — `{"decision":"CONTINUE"|"FINISH"|"NEXT_RECOMMENDED", …}` (or
+ * `route`) carrying at least one evaluator discriminator
+ * (`success`/`thought`/`nextTool`/`recommendedToolCallId`). Narrow by design:
+ * a bare `{"decision":"approve"}` from a real reply does not match.
+ */
+export function looksLikeEvaluatorEnvelopeJson(text: string): boolean {
+	let body = text.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) body = fence[1].trim();
+	if (!body.startsWith("{") || !body.endsWith("}")) return false;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return false;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return false;
+	}
+	const record = parsed as Record<string, unknown>;
+	const decision = String(record.decision ?? record.route ?? "").toUpperCase();
+	if (!["FINISH", "CONTINUE", "NEXT_RECOMMENDED"].includes(decision)) {
+		return false;
+	}
+	return (
+		typeof record.success === "boolean" ||
+		typeof record.thought === "string" ||
+		typeof record.nextTool === "object" ||
+		typeof record.recommendedToolCallId === "string"
+	);
+}
+
 function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
-	if (looksLikeSpawnEnvelopeJson(text)) return true;
+	if (
+		looksLikeSpawnEnvelopeJson(text) ||
+		looksLikeEvaluatorEnvelopeJson(text)
+	) {
+		return true;
+	}
 	return [
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,
@@ -2761,6 +3177,75 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/\b(?:MESSAGE\s+action|action=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
 		/\{\s*"parameters"\s*:/i,
 	].some((pattern) => pattern.test(text));
+}
+
+// Detects planner free-text that NARRATES the model's own deliberation / tool
+// selection rather than addressing the user — a pre-tool "thought". Kept as a
+// belt-and-braces reject alongside the positive allowlist below.
+function looksLikePreToolThought(value: string): boolean {
+	const text = value.trim();
+	if (!text) return false;
+	return [
+		/\bthink(?:ing)?\s+through\b/i,
+		/\btool\s+choice\b/i,
+		/\b(?:after|before|once)\s+(?:thinking|considering|deciding|choosing|reviewing|figuring)\b/i,
+		/\blet me (?:think|consider|figure|decide|choose)\b/i,
+		/\bI(?:'ll| will| should| need to| am going to| plan to)\s+(?:think|consider|figure|decide|choose)\b/i,
+	].some((pattern) => pattern.test(text));
+}
+
+// Positive markers that a native free-text is a genuine inability/refusal — the
+// ONLY shape we surface from an ambiguous native `text` field. An allowlist (not
+// a denylist of known-bad phrasings) is what makes this safe: intent-narration
+// like "Let me check the database" or "I'm reviewing the history" carries no
+// inability marker, so it is never surfaced and a pre-tool thought can't reach
+// the user as a fake "refusal" (#9874 item 3).
+const REFUSAL_MARKERS = [
+	/\b(?:can(?:'|no)?t|cannot)\b/i,
+	/\b(?:un)?able to\b/i,
+	/\bdon'?t (?:have|see)\b/i,
+	/\bno (?:access|way|ability|matching|such|suitable)\b/i,
+	/\bnot (?:available|possible|supported|something I can|wired|connected|set up)\b/i,
+	/\bisn'?t (?:available|possible|supported|something I can)\b/i,
+	/\bthere(?:'s| is| are) (?:no|nothing)\b/i,
+];
+
+// In-flight / imminent action narration — the confabulation shape ("Let me look
+// that up", "I'm pulling up your messages", "please hold"). Rejected even when a
+// refusal marker co-occurs, because once this iteration ends no further tool
+// work happens, so any "I'm doing X now" is a false promise.
+const IN_FLIGHT_ACTION_CLAIM = [
+	/\blet me\b/i,
+	/\bI(?:'ll| will| am going to|'m going to|'m gonna| am gonna)\b/i,
+	/\bI'?m\s+(?:checking|fetching|searching|looking|pulling|reviewing|gathering|working|getting|grabbing|loading|digging|querying)\b/i,
+	/\b(?:one|just a)\s+(?:sec|second|moment|min|minute)\b/i,
+	/\bplease (?:hold|wait)\b/i,
+	/\b(?:be right back|brb|hang on)\b/i,
+];
+
+// Gate for surfacing native planner free-text as a forced-tool-exhaustion
+// refusal (#9874 item 3). Returns the sanitized message ONLY when it POSITIVELY
+// reads as an inability statement (REFUSAL_MARKERS) and carries no leaked
+// tool-call/reasoning markup (isUnsafeUserVisibleText), no deliberation
+// (looksLikePreToolThought), and no in-flight action claim (IN_FLIGHT). When the
+// text is ambiguous (e.g. a bare native "Let me check…" thought) it returns
+// undefined and the caller falls back to its generic apology — the safe
+// direction. Stricter than userSafeFinalMessage's candidate check, which runs on
+// text already known to be user-directed.
+function userSafeRefusalCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (!REFUSAL_MARKERS.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (looksLikePreToolThought(candidate)) return undefined;
+	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	return candidate;
 }
 
 function preferRecommendedToolCall(

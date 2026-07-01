@@ -11,6 +11,45 @@ transcript through the standard message pipeline. Voice responses are generated
 via the TEXT_TO_SPEECH model and sent back as binary audio frames. The plugin
 is opt-in — register `xrPlugin` in your character's plugins array.
 
+## WEBXR_STATUS — what "XR" renders, precisely (read before claiming more)
+
+There are **two** XR surfaces; do not conflate them.
+
+1. **Flat view-host** (`xr-view-host.ts`) — a screen-space (head-locked) 2D DOM
+   shell that loads a plugin view bundle. `SpatialSurface modality="xr"` here is
+   GUI's React tree with larger cell sizing / touch targets
+   (`packages/ui/src/spatial/primitives.tsx` — `fontSize * (modality === "xr" ? 1.25 : 1)`;
+   `packages/ui/src/spatial/dom.tsx`). This is the headset-iframe path and is
+   genuinely flat. It is NOT spatial.
+
+2. **`XRSpatialScene`** (`packages/ui/src/spatial/xr-scene.tsx`) — a **real 3D
+   spatial renderer**: authored views are placed as panels at world poses
+   (position, orientation, depth), billboarded to face a movable headset camera,
+   projected to screen by a pinhole camera (`xr-scene-math.ts`). Controller world
+   rays are intersected with panel planes; the nearest hit maps back to a DOM
+   element — controller targeting + hit-testing are real, computed 3D facts, and a
+   `move` SpatialAction relocates a panel in world space. This satisfies the
+   #9968 renderer contract: 3D placement, depth, follow-mode, and ray hit-testing
+   exist.
+
+   **Scope / honesty:** `XRSpatialScene` is **simulator-grade** — it composites
+   panels with CSS transforms so the whole pose→ray→hit→press→drag loop is
+   deterministic and headless-testable in CI. Compositing those same panels into a
+   headset's **WebGL** layer on-device (an immersive `requestSession`
+   `XRWebGLLayer` render loop) is the **native renderer's** job and is still out
+   of scope. The math core (`xr-scene-math.ts`) supports arbitrarily-oriented
+   planes for that on-device path.
+
+What IS real and tested: the WebSocket streaming protocol (`protocol.ts`), the
+flat view-host route, the **single canonical IWER harness** under `simulator/`
+(`navigator.xr` polyfill on an emulated Quest 3 — #9941 deduped; facewear
+re-exports it) that starts a session, sets head/controller/hand poses, aims a
+controller ray, computes the hit, presses, drags, and captures screenshot +
+per-frame pose/hit JSON. Coverage: `simulator/e2e/harness.spec.ts` (flat target)
+and `simulator/e2e/scene.spec.ts` (the 3D `XRSpatialScene` over the gallery
+views). Every registered view is asserted to place + render in the 3D scene by
+`packages/ui/src/spatial/__tests__/registered-view-parity.test.tsx`.
+
 ## Plugin surface
 
 **Service**
@@ -149,3 +188,45 @@ field across all loaded plugins at runtime.
   on the same machine via the browser simulator.
 - See repo root `AGENTS.md` for repo-wide architecture rules, logger
   conventions, ESM requirements, and naming standards.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — native / on-device bridge:**
+- The capability run on a **real device or simulator** — not desktop Chromium against a mocked bridge (see #9967/#9580): device logs + the captured output (photo, OCR text, detection boxes, transcript, sensor reading).
+- Parity vs the reference implementation where one exists (e.g. the Python/Ultralytics reference), with the numeric tolerances actually met.
+- Permission-denied, no-hardware, and background/foreground lifecycle paths.
+- A short recording of the on-device run; confirm the build under test is yours (versionName / a known on-screen change), not a stale install.
+<!-- END: evidence-and-e2e-mandate -->

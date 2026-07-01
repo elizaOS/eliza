@@ -151,9 +151,31 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   useEffect(() => {
     if (skip || observeOnly || pollIntervalMs === 0) return;
     const id = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
       void fetch();
     }, pollIntervalMs);
-    return () => clearInterval(id);
+
+    const visibilityHandler =
+      typeof document !== "undefined"
+        ? () => {
+            if (document.visibilityState === "visible") void fetch();
+          }
+        : undefined;
+    if (visibilityHandler) {
+      document.addEventListener("visibilitychange", visibilityHandler);
+    }
+
+    return () => {
+      clearInterval(id);
+      if (visibilityHandler && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", visibilityHandler);
+      }
+    };
   }, [skip, observeOnly, pollIntervalMs, fetch]);
 
   return { state, refetch: fetch };

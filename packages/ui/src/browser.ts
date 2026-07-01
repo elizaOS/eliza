@@ -31,15 +31,13 @@ export * from "./cache-telemetry.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/AppWindowRenderer.helpers.ts";
 export * from "./components/apps/AppWindowRenderer.tsx";
+export * from "./components/apps/EmbeddedAppViewer.tsx";
 export * from "./components/apps/extensions/registry.ts";
 export * from "./components/apps/extensions/surface.helpers.ts";
 export * from "./components/apps/extensions/surface.tsx";
 export * from "./components/apps/extensions/types.ts";
 export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
-export * from "./components/apps/surfaces/GameOperatorShell.tsx";
-export * from "./components/apps/surfaces/registry.ts";
-export * from "./components/apps/surfaces/types.ts";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/chat/widgets/shared.tsx";
@@ -52,6 +50,11 @@ export {
 // the root index.ts too; keep both in sync. Missing here breaks
 // `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
 export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
+export {
+  ChatEmptyStateWithRecommendations,
+  type ChatEmptyStateWithRecommendationsProps,
+  type ChatRecommendation,
+} from "./components/composites/chat/ChatEmptyStateWithRecommendations.tsx";
 export { DiffReviewPanel } from "./components/composites/code/DiffReviewPanel.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
@@ -70,7 +73,13 @@ export {
   UiRenderer,
   type UiRendererProps,
 } from "./components/config-ui/ui-renderer.tsx";
-export * from "./components/pages/PageScopedChatPane.tsx";
+export {
+  getAllSettingsSections,
+  getSettingsSection,
+  listSettingsSections,
+  registerSettingsSection,
+  type SettingsSectionDef,
+} from "./components/settings/settings-sections.ts";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export * from "./components/shared/LanguageDropdown.helpers.ts";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
@@ -104,6 +113,7 @@ export { SettingsControls } from "./components/ui/settings-controls.tsx";
 export { Skeleton } from "./components/ui/skeleton.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
 export {
+  agentLifecycleLabel,
   statusLabelForState,
   statusToneForState,
 } from "./components/ui/status-badge.helpers.ts";
@@ -120,15 +130,10 @@ export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
 export { TerminalPluginView } from "./components/views/TerminalPluginView.tsx";
-export * from "./components/workspace/AppWorkspaceChrome.hooks.ts";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";
 export * from "./config/boot-config-react.hooks.ts";
-export type {
-  CompanionInferenceNotice,
-  CompanionSceneStatus,
-} from "./config/boot-config-store.ts";
 export * from "./config/branding.ts";
 export * from "./config/cloud-only.ts";
 export * from "./config/config-catalog.ts";
@@ -170,7 +175,6 @@ export * from "./navigation/index.ts";
 export * from "./platform/index.ts";
 export * from "./slots/task-coordinator-slots.helpers.ts";
 export * from "./slots/task-coordinator-slots.tsx";
-export * from "./state/CompanionSceneConfigContext.hooks.ts";
 export * from "./state/index.ts";
 export * from "./themes/index.ts";
 export * from "./types/index.ts";

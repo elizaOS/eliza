@@ -122,6 +122,7 @@ function expectViewsAction(
 
 export default scenario({
   id: "deterministic-pr-smoke",
+  lane: "pr-deterministic",
   title: "Deterministic PR scenario smoke",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost"],

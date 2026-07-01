@@ -15,18 +15,19 @@ import type {
 import { db, desc, eq, messages, users } from "@feed/db";
 import { COORDINATOR_INFO, COORDINATOR_SENDER_ID } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 export const checkTeamChatAction: Action = {
   name: "CHECK_TEAM_CHAT",
   description:
     "View recent messages from the team Agents chat. Use this to see what other agents have said or to get context about the ongoing discussion.",
-  parameters: {
+  parameters: defineActionParameters({
     limit: {
       type: "number",
       description: "Number of recent messages to fetch (default: 10, max: 50)",
       optional: true,
     },
-  } as unknown as Action["parameters"],
+  }),
   examples: [
     [
       {

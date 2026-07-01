@@ -2,7 +2,7 @@ import type {
   FieldRenderer,
   FieldRenderProps,
 } from "../../config/config-catalog";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { defaultRenderers } from "./config-field.helpers";
 
 /**
@@ -18,7 +18,7 @@ export function ConfigField({
   renderer: FieldRenderer;
   pluginId?: string;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const label = renderProps.hint.label ?? renderProps.key;
   const errors = renderProps.errors ?? [];
   const hasError = errors.length > 0;
@@ -106,7 +106,7 @@ export function ConfigField({
           >
             {renderProps.hint.help ?? renderProps.schema.description}
             {renderProps.schema.default != null && (
-              <span className="opacity-70">
+              <span className="opacity-90">
                 {" "}
                 {t("common.default", { defaultValue: "Default" })}{" "}
                 {String(renderProps.schema.default)})

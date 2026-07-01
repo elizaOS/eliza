@@ -98,8 +98,8 @@ read another app's UIAccessibility tree.
 
 Apple ships an on-device LLM under the `FoundationModels` framework when
 Apple Intelligence is enabled. We expose this as an *opportunistic*
-fast-path. If unavailable, the existing llama-cpp-capacitor (Qwen3-VL-2B)
-local-inference path stays as the default.
+fast-path. If unavailable, the existing llama-cpp-capacitor local Eliza-1
+vision path stays as the default.
 
 Entitlement and Info.plist updates are listed below.
 

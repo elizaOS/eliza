@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/test-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-cost end-to-end test substrate: the deterministic mock-LLM proxy, a one-import withMockLlmRuntime() helper, and a shared negative-response fixture pack.",
+  "main": "./harness/index.ts",
+  "exports": {
+    ".": "./harness/index.ts",
+    "./llm-proxy": "./mocks/helpers/llm-proxy-plugin.ts",
+    "./action-route-fixtures": "./harness/action-route-fixtures.ts",
+    "./negative-fixtures": "./harness/negative-fixtures.ts"
+  },
+  "scripts": {
+    "test": "vitest run --config harness/vitest.config.ts --passWithNoTests"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.4.0",
+    "@elizaos/core": "workspace:*",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "discord.js": "^14.26.4",
+    "vitest": "*"
+  }
+}

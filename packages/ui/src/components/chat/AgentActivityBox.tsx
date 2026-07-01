@@ -1,30 +1,45 @@
+import { activityEventToPlaintext } from "@elizaos/core";
 import type { CodingAgentSession } from "../../api/client-types-cloud";
 import {
   PULSE_STATUSES,
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 
-/** Derive activity text for sessions hydrated from the server (no lastActivity yet). */
+/** Session statuses the canonical pty serializer turns into useful text. */
+const SUMMARIZABLE_STATUSES = new Set<CodingAgentSession["status"]>([
+  "tool_running",
+  "blocked",
+  "error",
+]);
+
+/**
+ * Derive activity text for sessions hydrated from the server (no lastActivity
+ * yet). Maps the session status onto a synthetic pty activity event and routes
+ * it through the canonical `activityEventToPlaintext` serializer so the rail
+ * speaks the same language as the live WebSocket stream (see
+ * `useActivityEvents`). Statuses the serializer does not summarize fall back to
+ * a localized "Running" label.
+ */
 function deriveActivity(
   s: CodingAgentSession,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
-  if (s.status === "tool_running" && s.toolDescription) {
-    return t("agentactivitybox.RunningTool", {
-      defaultValue: "Running {{tool}}",
-      tool: s.toolDescription,
-    }).slice(0, 60);
+  const fallback = t("appsview.Running", { defaultValue: "Running" });
+  if (!SUMMARIZABLE_STATUSES.has(s.status)) {
+    return fallback;
   }
-  if (s.status === "blocked") {
-    return t("agentactivitybox.WaitingForInput", {
-      defaultValue: "Waiting for input",
-    });
-  }
-  if (s.status === "error") {
-    return t("common.error", { defaultValue: "Error" });
-  }
-  return t("appsview.Running", { defaultValue: "Running" });
+  const summary = activityEventToPlaintext(
+    {
+      eventType: s.status,
+      sessionId: s.sessionId,
+      ...(s.toolDescription
+        ? { data: { description: s.toolDescription } }
+        : {}),
+    },
+    { maxLength: 60 },
+  );
+  return summary?.plaintext ?? fallback;
 }
 
 interface AgentActivityBoxProps {
@@ -36,7 +51,7 @@ export function AgentActivityBox({
   sessions,
   onSessionClick,
 }: AgentActivityBoxProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   if (!sessions || sessions.length === 0) return null;
 
   return (

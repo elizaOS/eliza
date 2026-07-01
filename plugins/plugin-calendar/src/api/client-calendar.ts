@@ -9,7 +9,6 @@
  * are stable contract surface and intentionally unchanged by the extraction.
  */
 
-import { ElizaClient } from "@elizaos/ui";
 import type {
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -21,6 +20,11 @@ import type {
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
 } from "@elizaos/shared";
+// Load the `@elizaos/ui` barrel so the `declare module "@elizaos/ui"`
+// augmentation below resolves; the calendar methods are exposed on the
+// public `ElizaClient` surface that consumers import from `@elizaos/ui`.
+import type {} from "@elizaos/ui";
+import { ElizaClient } from "@elizaos/ui/api";
 
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
@@ -44,9 +48,8 @@ export interface CalendarClientMethods {
   ): Promise<LifeOpsCalendarEventMutationResult>;
   deleteLifeOpsCalendarEvent(
     eventId: string,
-    options?: Pick<
-      LifeOpsCalendarEventUpdate,
-      "calendarId" | "grantId" | "side"
+    options?: Partial<
+      Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
     >,
   ): Promise<{ deleted: true }>;
 }
@@ -159,9 +162,8 @@ calendarClientPrototype.updateLifeOpsCalendarEvent = async function (
 calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId: string,
-  options: Pick<
-    LifeOpsCalendarEventUpdate,
-    "calendarId" | "grantId" | "side"
+  options: Partial<
+    Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
   > = {},
 ) {
   const params = new URLSearchParams();

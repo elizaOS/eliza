@@ -13,8 +13,8 @@
  * because `@elizaos/ui` deliberately does not depend on the cloud-shared server
  * bundle. If the backend contract changes, update both — these are the exact
  * fields the route handlers serialize (see
- * `packages/cloud-api/organizations/**` and
- * `packages/cloud-shared/src/types/cloud-api.ts`).
+ * `packages/cloud/api/organizations/**` and
+ * `packages/cloud/shared/src/types/cloud-api.ts`).
  */
 
 export interface OrgMemberDto {

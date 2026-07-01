@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.home-ops",
   title:
     "Home ops review covers deliveries, errands, reservations, and support tickets",

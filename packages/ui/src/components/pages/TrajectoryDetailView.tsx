@@ -19,7 +19,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryProviderAccess,
 } from "../../api/client-types-cloud";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTokenCount,
@@ -367,7 +367,8 @@ function buildContextDiffSummaries(
 export function TrajectoryDetailView({
   trajectoryId,
 }: TrajectoryDetailViewProps) {
-  const { t, copyToClipboard } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TrajectoryDetailResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -395,44 +396,71 @@ export function TrajectoryDetailView({
   const llmCalls = detail?.llmCalls ?? [];
   const providerAccesses = detail?.providerAccesses ?? [];
   const trajectory = detail?.trajectory;
-  const explicitEvents = detail?.events ?? [];
-  const toolEvents = dedupeEvents([
-    ...(detail?.toolEvents ?? []),
-    ...explicitEvents.filter(isNativeToolCallEvent),
-  ]);
-  const evaluationEvents = dedupeEvents([
-    ...(detail?.evaluationEvents ?? []),
-    ...explicitEvents.filter(isEvaluationEvent),
-  ]);
-  const cacheObservations = dedupeEvents([
-    ...(detail?.cacheObservations ?? []),
-    ...explicitEvents.filter(isCacheObservation),
-  ]);
-  const contextDiffs = dedupeEvents([
-    ...(detail?.contextDiffs ?? []),
-    ...explicitEvents.filter(isContextDiff),
-  ]);
-  const timelineEvents = buildTimelineEvents({
-    events: dedupeEvents([
-      ...explicitEvents,
-      ...toolEvents,
-      ...evaluationEvents,
-      ...cacheObservations,
-      ...contextDiffs,
-    ]),
-    llmCalls,
-    providerAccesses,
-  });
-  const cacheMetrics = buildCacheMetrics(cacheObservations, detail?.cacheStats);
-  const contextDiffSummaries = buildContextDiffSummaries(contextDiffs);
-  const shouldShowNativeEventPanels =
-    explicitEvents.length > 0 ||
-    toolEvents.length > 0 ||
-    evaluationEvents.length > 0 ||
-    cacheObservations.length > 0 ||
-    Boolean(detail?.cacheStats) ||
-    contextDiffs.length > 0 ||
-    (detail?.contextEvents?.length ?? 0) > 0;
+  // The whole event pipeline (several O(n) dedupeEvents + the O(n log n)
+  // buildTimelineEvents + cache/context derivations) was rebuilt in the render
+  // body on EVERY render — filter clicks, hover, any state change — over a
+  // trajectory that can carry hundreds of events. Memoize it on the fetched
+  // detail so it only recomputes when the data actually changes.
+  const {
+    toolEvents,
+    timelineEvents,
+    cacheMetrics,
+    contextDiffSummaries,
+    shouldShowNativeEventPanels,
+  } = useMemo(() => {
+    const explicitEvents = detail?.events ?? [];
+    const toolEvents = dedupeEvents([
+      ...(detail?.toolEvents ?? []),
+      ...explicitEvents.filter(isNativeToolCallEvent),
+    ]);
+    const evaluationEvents = dedupeEvents([
+      ...(detail?.evaluationEvents ?? []),
+      ...explicitEvents.filter(isEvaluationEvent),
+    ]);
+    const cacheObservations = dedupeEvents([
+      ...(detail?.cacheObservations ?? []),
+      ...explicitEvents.filter(isCacheObservation),
+    ]);
+    const contextDiffs = dedupeEvents([
+      ...(detail?.contextDiffs ?? []),
+      ...explicitEvents.filter(isContextDiff),
+    ]);
+    const timelineEvents = buildTimelineEvents({
+      events: dedupeEvents([
+        ...explicitEvents,
+        ...toolEvents,
+        ...evaluationEvents,
+        ...cacheObservations,
+        ...contextDiffs,
+      ]),
+      llmCalls,
+      providerAccesses,
+    });
+    const cacheMetrics = buildCacheMetrics(
+      cacheObservations,
+      detail?.cacheStats,
+    );
+    const contextDiffSummaries = buildContextDiffSummaries(contextDiffs);
+    const shouldShowNativeEventPanels =
+      explicitEvents.length > 0 ||
+      toolEvents.length > 0 ||
+      evaluationEvents.length > 0 ||
+      cacheObservations.length > 0 ||
+      Boolean(detail?.cacheStats) ||
+      contextDiffs.length > 0 ||
+      (detail?.contextEvents?.length ?? 0) > 0;
+    return {
+      explicitEvents,
+      toolEvents,
+      evaluationEvents,
+      cacheObservations,
+      contextDiffs,
+      timelineEvents,
+      cacheMetrics,
+      contextDiffSummaries,
+      shouldShowNativeEventPanels,
+    };
+  }, [detail, llmCalls, providerAccesses]);
 
   const pipelineNodes = useMemo(
     () => buildPipelineNodes(llmCalls, trajectory?.status ?? "active"),
@@ -505,12 +533,9 @@ export function TrajectoryDetailView({
     <div className="flex h-full min-h-0 flex-col gap-4">
       {orchestratorData ? (
         <PagePanel variant="section" className="p-5">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.Orchestrator")}
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight text-muted/70">
                 {t("trajectorydetailview.DecisionType")}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -518,7 +543,7 @@ export function TrajectoryDetailView({
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight text-muted/70">
                 {t("trajectorydetailview.Task")}
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -526,7 +551,7 @@ export function TrajectoryDetailView({
               </div>
             </PagePanel.SummaryCard>
             <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+              <div className="text-xs-tight text-muted/70">
                 {t("trajectorydetailview.Session1")}
               </div>
               <div className="mt-2 break-all font-mono text-xs-tight text-txt">
@@ -541,12 +566,7 @@ export function TrajectoryDetailView({
       Object.keys(trajectory.metadata).length > 0 &&
       formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
         <PagePanel variant="section" className="p-5">
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.Metadata", {
-              defaultValue: "Metadata",
-            })}
-          </div>
-          <pre className="mt-4 max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+          <pre className="max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
             {formatProviderPayload(trajectory.metadata)}
           </pre>
         </PagePanel>
@@ -554,11 +574,6 @@ export function TrajectoryDetailView({
 
       {llmCalls.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
-          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.Pipeline", {
-              defaultValue: "Pipeline",
-            })}
-          </div>
           <TrajectoryPipelineGraph
             nodes={pipelineNodes}
             activeStageId={activeStage}
@@ -599,11 +614,6 @@ export function TrajectoryDetailView({
 
       {toolEvents.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
-          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.NativeToolEvents", {
-              defaultValue: "Native Tool Events",
-            })}
-          </div>
           <div className="space-y-3">
             {toolEvents.map((event, index) => (
               <ToolCallEventLog
@@ -641,16 +651,11 @@ export function TrajectoryDetailView({
 
       {providerAccesses.length > 0 ? (
         <PagePanel variant="section" className="px-5 py-4">
-          <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            {t("trajectorydetailview.ProviderAccesses", {
-              defaultValue: "Provider Accesses",
-            })}
-          </div>
           <div className="space-y-4">
             {providerAccesses.map((access, index) => (
               <PagePanel variant="inset" key={access.id} className="p-4">
                 <div className="flex flex-col gap-1">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                  <div className="text-[11px] font-semibold text-muted">
                     {t("trajectorydetailview.ProviderAccess", {
                       defaultValue: "Provider Access",
                     })}{" "}
@@ -665,7 +670,7 @@ export function TrajectoryDetailView({
                 </div>
                 {access.query ? (
                   <div className="mt-4">
-                    <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                    <div className="text-xs-tight font-semibold text-muted/70">
                       {t("trajectorydetailview.Query", {
                         defaultValue: "Query",
                       })}
@@ -676,7 +681,7 @@ export function TrajectoryDetailView({
                   </div>
                 ) : null}
                 <div className="mt-4">
-                  <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                  <div className="text-xs-tight font-semibold text-muted/70">
                     {t("trajectorydetailview.Data", {
                       defaultValue: "Data",
                     })}

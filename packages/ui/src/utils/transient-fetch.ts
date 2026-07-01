@@ -4,7 +4,10 @@
  *
  *  - the app's `ApiError` with `kind === "network"` and a message of
  *    "Failed to fetch" / "Request aborted" (a request that never got an HTTP
- *    response — connection reset, navigation away, server still starting); and
+ *    response — connection reset, navigation away, server still starting);
+ *  - the app's `ApiError` with `kind === "timeout"` (the request was made but
+ *    the server was briefly too slow to respond under boot load — a heavy dev
+ *    cold-start can blow the per-request timeout; a later poll succeeds); and
  *  - a raw `TypeError: Failed to fetch` / "NetworkError" / "Load failed"
  *    (fetch() rejecting before any response — same root cause, but the call
  *    site didn't wrap it in an ApiError).
@@ -21,9 +24,16 @@ export function isTransientOptionalFetchFailure(err: unknown): boolean {
   ) {
     return true;
   }
+  const kind = (err as Error & { kind?: string }).kind;
+  // A request/response timeout during best-effort hydration is transient: the
+  // server is briefly slow under boot load, and a later poll succeeds once it
+  // settles. (ApiError kind="timeout" → "Request/Response ... timed out after Nms".)
+  if (err.name === "ApiError" && kind === "timeout") {
+    return true;
+  }
   return (
     err.name === "ApiError" &&
-    (err as Error & { kind?: string }).kind === "network" &&
+    kind === "network" &&
     /^(Failed to fetch|Request aborted)$/i.test(err.message)
   );
 }

@@ -8,7 +8,9 @@ import type {
   WorkflowCredentialStoreApi,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
+  WorkflowEvaluationSuite,
   WorkflowExecution,
+  WorkflowRevision,
 } from '../types/index';
 import {
   isCredentialProvider,
@@ -23,6 +25,7 @@ import { filterNodesByIntegrationSupport, searchNodes } from '../utils/catalog';
 import { CATALOG_CLARIFICATION_SUFFIX, isCatalogClarification } from '../utils/clarification';
 import { getUserTagName } from '../utils/context';
 import { resolveCredentials } from '../utils/credentialResolver';
+import { buildWorkflowEvaluationSuite } from '../utils/evaluation-samples';
 import {
   assessFeasibility,
   collectExistingNodeDefinitions,
@@ -70,6 +73,8 @@ type WorkflowDefinitionClient = Pick<
   | 'deleteWorkflow'
   | 'activateWorkflow'
   | 'deactivateWorkflow'
+  | 'listWorkflowRevisions'
+  | 'restoreWorkflowRevision'
   | 'executeWorkflow'
   | 'updateWorkflowTags'
   | 'createCredential'
@@ -103,6 +108,34 @@ const FIELD_TRANSFORM_TARGET_PATTERN =
   /\b(field|fields|value|values|data|item|items|metadata|json|property|properties)\b/;
 const NETWORK_REQUEST_PATTERN =
   /\b(http|https|url|api|request|fetch|call|post|get|put|patch|delete|webhook)\b/;
+const WORKFLOW_SEARCH_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'automation',
+  'automations',
+  'can',
+  'do',
+  'find',
+  'for',
+  'have',
+  'i',
+  'list',
+  'me',
+  'my',
+  'of',
+  'please',
+  'search',
+  'show',
+  'that',
+  'the',
+  'to',
+  'what',
+  'which',
+  'workflow',
+  'workflows',
+]);
 
 function buildWorkflowSearchKeywords(prompt: string, keywords: string[]): string[] {
   const normalized = new Set(keywords.map((keyword) => keyword.toLowerCase()));
@@ -144,6 +177,88 @@ function normalizeGeneratedNodeParameterShapes(
       `Normalized ${fixes} node parameter shape(s) in ${context}`
     );
   }
+}
+
+function normalizeWorkflowSearchToken(token: string): string {
+  return token.length > 3 && token.endsWith('s') ? token.slice(0, -1) : token;
+}
+
+export function tokenizeWorkflowSearchQuery(query: string): string[] {
+  const normalized = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .map((token) => normalizeWorkflowSearchToken(token.trim()))
+    .filter(
+      (token, index, tokens) =>
+        token.length >= 2 &&
+        !WORKFLOW_SEARCH_STOPWORDS.has(token) &&
+        tokens.indexOf(token) === index
+    );
+  return normalized;
+}
+
+function scoreWorkflowMatchTerm(workflow: WorkflowDefinitionResponse, q: string): number {
+  const name = String(workflow.name ?? '').toLowerCase();
+  let score = 0;
+  if (name === q) score += 100;
+  else if (name.startsWith(q)) score += 50;
+  else if (name.includes(q)) score += 30;
+
+  const nodes = (workflow as { nodes?: Array<{ type?: unknown; name?: unknown }> }).nodes;
+  if (Array.isArray(nodes)) {
+    for (const node of nodes) {
+      const type = String(node?.type ?? '').toLowerCase();
+      const nodeName = String(node?.name ?? '').toLowerCase();
+      if (type.includes(q) || nodeName.includes(q)) {
+        score += 10;
+        break;
+      }
+    }
+  }
+
+  const description = String(
+    (workflow as { description?: unknown }).description ?? ''
+  ).toLowerCase();
+  if (description.includes(q)) score += 5;
+
+  return score;
+}
+
+/**
+ * Score a workflow against a free-text query: name beats node type beats
+ * description, and an exact/prefix name match beats a substring. Sentence
+ * queries are tokenized with generic workflow/search words ignored. Returns 0
+ * for no match. Pure + exported so the ranking is unit-testable without a DB.
+ */
+export function scoreWorkflowMatch(workflow: WorkflowDefinitionResponse, query: string): number {
+  const q = query.trim().toLowerCase();
+  if (!q) return 0;
+
+  const phraseScore = scoreWorkflowMatchTerm(workflow, q);
+  const tokenScore = tokenizeWorkflowSearchQuery(q).reduce(
+    (total, token) => total + scoreWorkflowMatchTerm(workflow, token),
+    0
+  );
+
+  return Math.max(phraseScore, tokenScore);
+}
+
+/**
+ * Rank workflows best-match-first for a free-text query, dropping non-matches.
+ * An empty or generic query returns the input order unchanged. Pure + exported
+ * (#8913).
+ */
+export function rankWorkflowsByQuery(
+  workflows: WorkflowDefinitionResponse[],
+  query: string
+): WorkflowDefinitionResponse[] {
+  if (!query.trim()) return workflows;
+  if (tokenizeWorkflowSearchQuery(query).length === 0) return workflows;
+  return workflows
+    .map((workflow) => ({ workflow, score: scoreWorkflowMatch(workflow, query) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.workflow);
 }
 
 /**
@@ -861,6 +976,16 @@ export class WorkflowService extends Service {
     return response.data;
   }
 
+  /**
+   * Free-text search over the user's workflows by name, node type, and
+   * description, ranked best-match-first (#8913). Lets a user find "the Slack
+   * workflow" from a chat message without knowing its id.
+   */
+  async searchWorkflows(query: string, userId?: string): Promise<WorkflowDefinitionResponse[]> {
+    const workflows = await this.listWorkflows(userId);
+    return rankWorkflowsByQuery(workflows, query);
+  }
+
   async activateWorkflow(workflowId: string): Promise<void> {
     const client = this.getClient();
     await client.activateWorkflow(workflowId);
@@ -882,6 +1007,20 @@ export class WorkflowService extends Service {
   async getWorkflow(workflowId: string): Promise<WorkflowDefinitionResponse> {
     const client = this.getClient();
     return client.getWorkflow(workflowId);
+  }
+
+  async listWorkflowRevisions(workflowId: string, limit?: number): Promise<WorkflowRevision[]> {
+    const client = this.getClient();
+    const response = await client.listWorkflowRevisions(workflowId, limit);
+    return response.data;
+  }
+
+  async restoreWorkflowRevision(
+    workflowId: string,
+    versionId: string
+  ): Promise<WorkflowDefinitionResponse> {
+    const client = this.getClient();
+    return client.restoreWorkflowRevision(workflowId, versionId);
   }
 
   async runWorkflow(
@@ -906,6 +1045,17 @@ export class WorkflowService extends Service {
     const client = this.getClient();
     const response = await client.listExecutions({ workflowId, limit });
     return response.data;
+  }
+
+  async getWorkflowEvaluationSuite(
+    workflowId: string,
+    limit?: number
+  ): Promise<WorkflowEvaluationSuite> {
+    const [workflow, executions] = await Promise.all([
+      this.getWorkflow(workflowId),
+      this.getWorkflowExecutions(workflowId, limit),
+    ]);
+    return buildWorkflowEvaluationSuite(workflow, executions, { limit });
   }
 
   async listExecutions(params?: {

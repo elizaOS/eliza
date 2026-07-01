@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "succession-comms-holdback",
   title: "Assistant stages succession communications with holdbacks",
   domain: "executive.briefing",

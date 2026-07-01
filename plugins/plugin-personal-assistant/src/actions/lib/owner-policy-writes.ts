@@ -5,7 +5,7 @@
  * single source of truth for reminder intensity + escalation rules.
  */
 
-import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
+import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import type {
   LifeOpsDefinitionRecord,
   LifeOpsDomain,
@@ -102,7 +102,7 @@ function detailArray(
 
 export async function applyOwnerPolicySetReminder(
   args: OwnerPolicySetReminderInput,
-): Promise<ReturnType<NonNullable<Action["handler"]>>> {
+): Promise<ActionResult> {
   const details = detailRecord(args.details);
   const intent =
     args.intent.trim() ||
@@ -166,7 +166,7 @@ export async function applyOwnerPolicySetReminder(
 
 export async function applyOwnerPolicyConfigureEscalation(
   args: OwnerPolicyConfigureEscalationInput,
-): Promise<ReturnType<NonNullable<Action["handler"]>>> {
+): Promise<ActionResult> {
   const details = detailRecord(args.details);
   const service = new LifeOpsService(args.runtime);
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;

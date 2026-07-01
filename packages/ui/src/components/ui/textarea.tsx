@@ -9,10 +9,10 @@ const textareaVariants = cva(
     variants: {
       variant: {
         default:
-          "flex rounded-sm border-input bg-bg px-3 py-2 ring-offset-bg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        form: "rounded-sm border-border bg-bg px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          "flex rounded-sm border-input bg-bg px-3 py-2  placeholder:text-muted    ",
+        form: "rounded-sm border-border bg-bg px-4 py-3    ",
         config:
-          "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60    ",
       },
       density: {
         default: "min-h-[80px]",

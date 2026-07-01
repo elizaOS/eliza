@@ -9,7 +9,7 @@ plugin uses to acquire, run, and release a model.
 This document is the integration contract for the plugins that will wire
 into the arbiter in WS2–WS8:
 
-- `plugin-vision` (WS2 — Qwen3-VL vision-describe)
+- `plugin-vision` (WS2 — Eliza-1 vision-describe)
 - `plugin-image-gen` (WS3 — image generation; future plugin)
 - `plugin-aosp-local-inference` (WS8 — AOSP bun:ffi backend)
 - `plugin-computeruse` (WS9 — screen + OCR pipelines that may share the
@@ -20,14 +20,52 @@ The arbiter exists so loading a vision model can unload the text model
 gracefully and we don't get jetsam'd on iPhone or `lmkd`-killed on
 Android.
 
+## Validation status (2026-06-23)
+
+Live in this checkout:
+
+- Fit-to-budget LRU eviction uses non-zero resident estimates and evicts
+  the coldest evictable non-text role before a new load would exceed the
+  configured budget.
+- The arbiter counts the engine-owned resident footprint (the active
+  text/embedding bundle) via `externalFootprintMb`, wired in `service.ts` to
+  `LocalInferenceEngine.getResidentFootprintMb()`. Without this the dominant
+  resident consumer was invisible to the arbiter and `evictToFit` silently
+  no-opped; it now trips for the roles that actually dominate RAM (#8809 AC#1).
+- `MemoryArbiter.preload(capability, modelKey)` warm-loads only under
+  nominal pressure and only when the budget proves the resident set fits.
+  It returns `false` under `low` / `critical` pressure or when the load
+  would overrun the budget.
+- The active text target registers a catalog/file-size-derived resident
+  estimate with the shared registry, so pressure telemetry no longer
+  reports the dominant text role as `0 MB`.
+- `bun run --cwd plugins/plugin-local-inference memory:benchmark` emits a
+  desktop/server memory report with host RAM, the device-fit Eliza-1 pick,
+  per-tier resident estimates, installed bundle footprints, and arbiter
+  load/eviction/pressure telemetry. Add `--load` to exercise every
+  installed Eliza-owned bundle with a short decode and RSS delta sample.
+- The `memperf` harness (`packages/benchmarks/memperf/run-all.mjs`) is wired
+  into CI as a budget / eviction-telemetry regression gate
+  (`.github/workflows/memperf.yml`): exit `1` — a real `budgets.json` peak-RSS
+  or co-residency eviction-count regression — fails the build; a model-absent
+  runner exits `2` (skip) after the real-arbiter co-residency self-check still
+  runs.
+
+Still deferred:
+
+- Voice next-stage predictors that call `preload()` during ASR / LM /
+  TTS transitions.
+- Dedicated embedding-sidecar residency registration for the larger
+  Eliza-1 tiers.
+
 ## Why one arbiter
 
 Before WS1, every plugin loaded its own models with no shared budget:
 
 - `plugin-local-inference` owns text + voice GGUFs through
   `LocalInferenceEngine` + `SharedResourceRegistry`.
-- `plugin-vision` loads its own TF.js / face-api models with no shared
-  budget.
+- `plugin-vision` loads native vision/OCR helpers and VLM describers with
+  no shared budget.
 - `plugin-aosp-local-inference` runs its bun:ffi llama.cpp binding in
   its own world, no shared budget.
 
@@ -81,7 +119,8 @@ arbiter.registerCapability({
   residentRole: "vision",                // RESIDENT_ROLE_PRIORITY[vision] = 20
   estimatedMb: 2_400,                    // best-effort; telemetry only
   async load(modelKey) {
-    return await loadQwen3VL(modelKey);  // expensive — happens once per (capability, modelKey)
+    // Expensive — happens once per (capability, modelKey).
+    return await loadEliza1Vision(modelKey);
   },
   async unload(handle) {
     await handle.dispose();              // free GPU/VRAM and JS refs
@@ -113,8 +152,11 @@ Two ways to use the arbiter — pick the right one for your callsite:
 queue, run, release.
 
 ```ts
-const result = await arbiter.requestVisionDescribe<VisionDescribeRequest, VisionDescribeResult>({
-  modelKey: "qwen3-vl-4b",
+const result = await arbiter.requestVisionDescribe<
+  VisionDescribeRequest,
+  VisionDescribeResult
+>({
+  modelKey: "eliza-1-2b",
   payload: { imageBytes, prompt: "What's in this image?" },
 });
 ```
@@ -124,7 +166,10 @@ conversations, or anything that needs the same handle across multiple
 calls.
 
 ```ts
-const handle = await arbiter.acquire<Qwen3VLBackend>("vision-describe", "qwen3-vl-4b");
+const handle = await arbiter.acquire<Eliza1VisionBackend>(
+  "vision-describe",
+  "eliza-1-2b",
+);
 try {
   for await (const chunk of handle.backend.stream(request)) {
     yield chunk;
@@ -242,12 +287,17 @@ function hashFrame(bytes: Uint8Array, modelFamily: string): string {
 }
 
 async function describeImage(req: VisionDescribeRequest): Promise<VisionDescribeResult> {
-  const hash = hashFrame(req.imageBytes, "qwen3-vl");
+  const hash = hashFrame(req.imageBytes, "eliza-1-vision");
   let projected = arbiter.getCachedVisionEmbedding(hash);
   if (!projected) {
     const tokens = await projector.run(req.imageBytes);
     arbiter.setCachedVisionEmbedding(hash, tokens);
-    projected = { tokens: tokens.tokens, tokenCount: tokens.tokenCount, hiddenSize: tokens.hiddenSize, live: true };
+    projected = {
+      tokens: tokens.tokens,
+      tokenCount: tokens.tokenCount,
+      hiddenSize: tokens.hiddenSize,
+      live: true,
+    };
   }
   return await decoder.runWithProjectedTokens(projected, req.prompt);
 }
@@ -294,7 +344,7 @@ async function describeImage(req: VisionDescribeRequest): Promise<VisionDescribe
 - Apple Metal / CUDA GPU paths are **not validated on this host** (no
   NVIDIA GPU, no Apple Silicon). The arbiter does not contain any
   backend-specific code, so this is a downstream concern for the
-  loader plugins (WS2 = Qwen3-VL, WS3 = image gen). When wiring those
+  loader plugins (WS2 = Eliza-1 vision, WS3 = image gen). When wiring those
   loaders, validate on a real GPU host that:
   - Loading a vision model evicts the text model gracefully (not
     via an OOM kill).

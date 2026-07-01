@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.conditional-unblock.fixed-duration",
   title: "Unlock X for a fixed window after the workout",
   domain: "selfcontrol",

@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo, SkillMarketplaceResult } from "../../api";
-import { useApp } from "../../state";
+import { type useApp, useAppSelector } from "../../state";
 import {
   AdminDialog,
   AdminDialogContent,
@@ -240,7 +240,7 @@ export function MarketplaceCard({
   onCopy: (skillId: string, name: string) => void;
   onDetails: (skillId: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const isInstalling = skillsMarketplaceAction === `install:${item.id}`;
   const isUninstalling = skillsMarketplaceAction === `uninstall:${item.id}`;
   const isToggling =
@@ -497,7 +497,7 @@ export function InstallModal({
   setState: ReturnType<typeof useApp>["setState"];
   onClose: () => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [tab, setTab] = useState<InstallTab>("search");
   const installTabs = [
     {

@@ -7,13 +7,17 @@ Manifest schema, permissions, store, and wire envelope types for remote-mode eli
 This package is the single source of truth for the remote plugin protocol used across the elizaOS
 desktop runtime. It defines the `plugin.json` manifest schema, the permission model (host + Bun
 sandbox), the on-disk install store, the worker↔host wire message types, artifact signature
-verification, and RPC MAC helpers. It is not an elizaOS agent plugin itself — it exports no
-`Plugin` object — it is a shared library consumed by other packages.
+verification, RPC MAC helpers, host shims, the worker runtime bootstrap, and the reference
+Claude Code sub-agent implementation. It is a shared library consumed by other packages.
 
 Primary consumers (each declares a `workspace:*` dependency unless noted):
 - `packages/agent` — `src/services/remote-plugin-bridge.ts`, `src/runtime/release-plugin-policy.ts`
-- `packages/plugin-host-shim-ios` — mobile host shim
-- `packages/plugin-host-shim-android` — mobile host shim
+- host shim subpaths — `./host-shim`, `./host-shim/web`, `./host-shim/ios`,
+  `./host-shim/android`, `./host-shim/electrobun`
+- worker-runtime subpaths — `./worker-runtime`, `./worker-runtime/bootstrap`,
+  `./worker-runtime/error`, `./worker-runtime/runtime-proxy`
+- `packages/plugin-worker-runtime` — compatibility wrapper package for the worker-runtime subpaths
+- `packages/plugin-sub-agent-claude-code` — compatibility wrapper package for the Claude sub-agent subpaths
 - `packages/app-core/platforms/electrobun` — desktop host, RPC schema, launch orchestrator, trace layer
 - `packages/ui` — no package.json dep; path-mapped to `src/` in `tsconfig.json` for type resolution
 
@@ -31,17 +35,22 @@ packages/plugin-remote-manifest/
     signature.ts      — Ed25519 artifact verification (SOC2 A-1); verifyPluginArtifact
     rpc-mac.ts        — HMAC-SHA256 canonical encoding for WorkerRpcMessage (SOC2 A-4)
     json.ts           — isJsonObject guard (internal)
+    host-shim/        — host shim entry points for web, iOS, Android, and Electrobun
+    worker-runtime/   — worker bootstrap, runtime proxy, dispatch, envelope, error helpers
+    sub-agent-claude-code/ — reference remote-mode Claude Code sub-agent
     *.test.ts         — co-located unit tests (run with `bun test src/`)
   examples/
     hello-remote-plugin/   — minimal background-mode reference plugin (plugin.json + worker.mjs)
     remote-plugin-clock/   — clock example
+  sandbox/
+    macos.sb / linux-bwrap.sh / SMOKE.md — Claude sub-agent sandbox assets
   scripts/
     sign-manifest.ts  — CLI: sign a plugin tarball with Ed25519 via KMS
 ```
 
 ## Export surface
 
-The package exposes eight export entries: the barrel `.` plus seven named subpaths. Import the
+The package exposes the barrel `.`, subsystem subpaths, and host-shim subpaths. Import the
 specific subpath rather than the barrel when only one subsystem is needed.
 
 | Import path | Key exports |
@@ -54,6 +63,17 @@ specific subpath rather than the barrel when only one subsystem is needed.
 | `@elizaos/plugin-remote-manifest/store` | install store CRUD: `installPrebuiltRemotePlugin`, `uninstallInstalledRemotePlugin`, `loadInstalledRemotePlugins`, `readRemotePluginRegistry`, `writeRemotePluginRegistry`, `syncRemotePluginRegistry`, `buildRemotePluginRuntimeContext`, `writeRemotePluginWorkerBootstrap`, `getRemotePluginStorePaths`, `RemotePluginStoreError` |
 | `@elizaos/plugin-remote-manifest/signature` | `verifyPluginArtifact`, `sha256File`, `PluginSignatureError`, `PLUGIN_MANIFEST_KEY` |
 | `@elizaos/plugin-remote-manifest/rpc-mac` | `canonicalRpcBytes`, `pluginRpcKeyId`, `hexEncode`, `hexDecode` |
+| `@elizaos/plugin-remote-manifest/host-shim` | shared host-shim registry and fallback helpers |
+| `@elizaos/plugin-remote-manifest/host-shim/web` | browser host shim |
+| `@elizaos/plugin-remote-manifest/host-shim/ios` | iOS host shim |
+| `@elizaos/plugin-remote-manifest/host-shim/android` | Android host shim |
+| `@elizaos/plugin-remote-manifest/host-shim/electrobun` | Electrobun desktop host shim |
+| `@elizaos/plugin-remote-manifest/worker-runtime` | worker bootstrap, dispatch, channel, and runtime proxy exports |
+| `@elizaos/plugin-remote-manifest/worker-runtime/bootstrap` | worker bootstrap entrypoint |
+| `@elizaos/plugin-remote-manifest/worker-runtime/error` | wire error serialization helpers |
+| `@elizaos/plugin-remote-manifest/worker-runtime/runtime-proxy` | worker-side runtime proxy |
+| `@elizaos/plugin-remote-manifest/sub-agent-claude-code` | reference Claude Code sub-agent plugin descriptor |
+| `@elizaos/plugin-remote-manifest/sub-agent-claude-code/worker` | reference Claude Code sub-agent worker entry |
 
 ### Core types
 
@@ -145,3 +165,45 @@ and worker bootstrap in `packages/app-core/platforms/electrobun` will need corre
 - The package is `"private": true` — it is not published to npm independently. It is consumed via
   `workspace:*` within the monorepo.
 - Build target is ESM only (`"type": "module"`). No CJS output.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — CLI / tooling:**
+- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
+- Failure paths: bad args, missing deps, partial state, permission/network errors.
+- A recording/log of the actual run end to end — not a unit test of one helper.
+- Any model interaction captured as a live trajectory and reviewed.
+<!-- END: evidence-and-e2e-mandate -->

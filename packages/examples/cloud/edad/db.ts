@@ -27,7 +27,9 @@ export function dbReady(): boolean {
 /** Connect + ensure the schema. Never throws — falls back to no persistence. */
 export async function initDb(): Promise<void> {
   if (!DATABASE_URL) {
-    console.log("[edad-chat] database: none (DATABASE_URL unset) — running stateless");
+    console.log(
+      "[edad-chat] database: none (DATABASE_URL unset) — running stateless",
+    );
     return;
   }
   try {
@@ -42,7 +44,9 @@ export async function initDb(): Promise<void> {
       )`;
     await db`CREATE INDEX IF NOT EXISTS edad_messages_user_idx ON edad_messages (user_ref, id)`;
     sql = db;
-    console.log("[edad-chat] database: connected — per-tenant chat persistence ON");
+    console.log(
+      "[edad-chat] database: connected — per-tenant chat persistence ON",
+    );
   } catch (err) {
     sql = null;
     console.error(
@@ -57,7 +61,10 @@ export async function initDb(): Promise<void> {
  * history per user WITHOUT ever storing the token itself (one-way sha256).
  */
 export function userRef(userToken: string): string {
-  return new Bun.CryptoHasher("sha256").update(userToken).digest("hex").slice(0, 32);
+  return new Bun.CryptoHasher("sha256")
+    .update(userToken)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 /** Append one turn. No-op when there is no DB or the content is empty. */
@@ -70,7 +77,10 @@ export async function saveTurn(
   try {
     await sql`INSERT INTO edad_messages (user_ref, role, content) VALUES (${ref}, ${role}, ${content})`;
   } catch (err) {
-    console.error("[edad-chat] db saveTurn failed:", err instanceof Error ? err.message : err);
+    console.error(
+      "[edad-chat] db saveTurn failed:",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -92,7 +102,10 @@ export async function getHistory(
     }>;
     return rows.reverse();
   } catch (err) {
-    console.error("[edad-chat] db getHistory failed:", err instanceof Error ? err.message : err);
+    console.error(
+      "[edad-chat] db getHistory failed:",
+      err instanceof Error ? err.message : err,
+    );
     return [];
   }
 }

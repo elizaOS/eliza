@@ -18,16 +18,39 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  detectTaskType,
+  generateDefaultAcceptanceCriteria,
+  isNonTrivialGoal,
+  type OrchestratorTaskType,
+  shouldRequireGoalContract,
+} from "./acceptance-criteria.js";
 import { AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
   accountMetaFromSessionMetadata,
+  assessCodingAccountReadiness,
+  type CodingAccountReadiness,
   getCodingAccountBridge,
   resolveCodingAccountStrategy,
 } from "./coding-account-selection.js";
+import {
+  envelopeCorrection,
+  parseCompletionEnvelope,
+  summarizeEnvelope,
+} from "./completion-envelope.js";
+import {
+  buildCompletionEvidenceString,
+  type CompletionEvidenceBundle,
+  classifyToolOutput,
+  type EvidenceArtifactRef,
+  type EvidenceSignal,
+  renderChangeSetBody,
+} from "./completion-evidence.js";
 import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
@@ -41,6 +64,11 @@ import {
   coerceGoalCapabilityProfile,
   type GoalFollowUpReason,
 } from "./goal-prompt.js";
+import {
+  type IndependentVerifierVerdict,
+  runIndependentVerification,
+  shouldRunIndependentVerify,
+} from "./independent-verifier.js";
 import {
   summarizeUsage,
   summarizeUsageRows,
@@ -60,7 +88,9 @@ import {
 } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
+  type AttemptReflection,
   type CreateTaskInput,
+  MAX_ATTEMPT_REFLECTIONS,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
   type OrchestratorRoomParticipant,
@@ -81,6 +111,10 @@ import {
 } from "./orchestrator-task-types.js";
 import { PARENT_AGENT_BROKER_MANIFEST_ENTRY } from "./parent-agent-broker.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
+import {
+  configureSpendLedger,
+  createTaskStoreSpendLedger,
+} from "./spend-allowance.js";
 import type { ApprovalPreset } from "./types.js";
 import {
   ensureTaskWorkdir,
@@ -115,6 +149,60 @@ type RuntimeLike = IAgentRuntime & {
   databaseAdapter?: unknown;
   getSetting?: (key: string) => string | undefined | null;
 };
+
+/**
+ * The deployment's configured default coding agent type, if any
+ * (`ELIZA_ACP_DEFAULT_AGENT` or its alias `ELIZA_DEFAULT_AGENT_TYPE` — e.g.
+ * "elizaos" for the eliza-code coding sub-agent). Returns a trimmed non-empty
+ * string or undefined; `getSetting` may return non-string values, so coerce
+ * defensively.
+ */
+function configuredDefaultAgentType(runtime: {
+  getSetting?: (key: string) => unknown;
+}): string | undefined {
+  for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
+    const raw = runtime.getSetting?.(key);
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  }
+  // Fall back to process.env. runtime.getSetting reads character
+  // settings/secrets, not raw env, so a deployment that configures the default
+  // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
+  // container) would otherwise be ignored and the spawn would fall through to
+  // the "opencode" fallback, which may not be installed. This mirrors the env
+  // resolution the spawn-workdir path already does.
+  for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
+    const raw = process.env[key];
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  }
+  return undefined;
+}
+
+/** Provenance stamped on the `validateTask` verdict produced by the independent
+ *  read-only execution verifier (#8898), distinct from the text judge's
+ *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
+const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
+
+/** Default upper bound on how long the independent verifier session may run
+ *  before its await is abandoned (treated as inconclusive). Overridable via
+ *  `ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY_TIMEOUT_MS`. */
+const DEFAULT_INDEPENDENT_VERIFY_TIMEOUT_MS = 600_000;
+
+function independentVerifyTimeoutMs(runtime: {
+  getSetting?: (key: string) => unknown;
+}): number {
+  const raw = runtime.getSetting?.(
+    "ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY_TIMEOUT_MS",
+  );
+  const value =
+    typeof raw === "string"
+      ? Number(raw)
+      : typeof raw === "number"
+        ? raw
+        : Number.NaN;
+  return Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : DEFAULT_INDEPENDENT_VERIFY_TIMEOUT_MS;
+}
 
 export interface SpawnAgentForTaskOptions {
   framework?: string;
@@ -226,6 +314,32 @@ function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * Coerce the persisted `metadata.attemptReflections` (free-form JSON) back into
+ * typed {@link AttemptReflection}s, dropping any malformed entries. See #8899.
+ */
+function readAttemptReflections(
+  metadata: Record<string, unknown> | undefined,
+): AttemptReflection[] {
+  const raw = metadata?.attemptReflections;
+  if (!Array.isArray(raw)) return [];
+  const out: AttemptReflection[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const r = entry as Record<string, unknown>;
+    if (typeof r.attempt !== "number" || typeof r.summary !== "string")
+      continue;
+    out.push({
+      attempt: r.attempt,
+      summary: r.summary,
+      missing: Array.isArray(r.missing)
+        ? r.missing.filter((m): m is string => typeof m === "string")
+        : [],
+    });
+  }
+  return out;
+}
+
 function truncate(text: string, max = 2000): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
@@ -240,10 +354,42 @@ function readLastChangeSet(
   metadata: Record<string, unknown> | undefined,
 ): WorkspaceChangeSet | undefined {
   const raw = metadata?.lastChangeSet;
-  if (!isRecord(raw)) return undefined;
-  if (!Array.isArray(raw.changedFiles)) return undefined;
-  if (typeof raw.capturedAt !== "number") return undefined;
-  return raw as unknown as WorkspaceChangeSet;
+  if (!raw || typeof raw !== "object") return undefined;
+  const candidate = raw as Partial<WorkspaceChangeSet>;
+  if (!Array.isArray(candidate.changedFiles)) return undefined;
+  if (typeof candidate.capturedAt !== "number") return undefined;
+  return candidate as WorkspaceChangeSet;
+}
+
+/** Render an event's `data` payload to a bounded scannable string so the
+ *  completion-evidence assembler can mine build/test lines out of it. */
+function stringifyEventData(data: Record<string, unknown>): string {
+  if (!data || Object.keys(data).length === 0) return "";
+  try {
+    return truncate(JSON.stringify(data), 1500);
+  } catch {
+    return "";
+  }
+}
+
+const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
+
+/** Collect distinct http(s) URLs from a set of text bodies, for the verified-
+ *  URLs evidence section. Order-stable, deduped, trailing punctuation stripped. */
+function collectUrls(texts: readonly string[]): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    if (!text) continue;
+    EVIDENCE_URL_RE.lastIndex = 0;
+    for (const match of text.matchAll(EVIDENCE_URL_RE)) {
+      const url = match[0].replace(/[.,;:)\]]+$/, "");
+      if (url.length === 0 || seen.has(url)) continue;
+      seen.add(url);
+      urls.push(url);
+    }
+  }
+  return urls;
 }
 
 function findPlanRevision(
@@ -463,6 +609,9 @@ export class OrchestratorTaskService extends Service {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    // Persist self-spend durably so a configured ELIZA_AGENT_SPEND_CAP_USD
+    // survives a restart instead of resetting to zero (#8924).
+    configureSpendLedger(createTaskStoreSpendLedger(this.store));
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
@@ -659,9 +808,27 @@ export class OrchestratorTaskService extends Service {
         await this.advanceTaskStatus(taskId, "validating");
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
-        // the task done. Fire-and-forget so the event-bridge write path stays
-        // fast; the verifier gates itself on the flag + criteria presence.
-        void this.autoVerifyCompletion(taskId, sessionId, summary ?? "");
+        // the task done. Feed the verifier REAL completion evidence (git
+        // changeset + deliverable + final reply + verified URLs + test/build
+        // markers + artifact refs) assembled from data we already have, not the
+        // bare event summary. Fire-and-forget so the event-bridge write path
+        // stays fast; the verifier gates itself on the flag + criteria presence,
+        // and evidence assembly never throws into this path.
+        const completionEvidence = await this.buildCompletionEvidence(
+          taskId,
+          sessionId,
+          summary ?? "",
+        );
+        // Thread the RAW final message (record.response) through alongside the
+        // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
+        // the sub-agent's last message, not in the prose evidence, so the structural
+        // parser must see the original text.
+        void this.autoVerifyCompletion(
+          taskId,
+          sessionId,
+          completionEvidence,
+          summary ?? "",
+        );
         break;
       }
       case "error": {
@@ -756,6 +923,339 @@ export class OrchestratorTaskService extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Assemble the rich, sectioned completion-evidence string the auto
+   * goal-verifier grills against, from data the orchestrator already has —
+   * instead of feeding it only the thin `task_complete` event summary.
+   *
+   * Sections (each omitted when absent):
+   *  - **CHANGESET** — the real git diff captured at completion (the same
+   *    {@link WorkspaceChangeSet} the CODING_SESSION_CHANGES provider renders),
+   *    read from the live ACP session or, failing that, the mirrored store
+   *    session metadata;
+   *  - **DELIVERABLE / FINAL REPLY** — the sub-agent's completion summary
+   *    (its reported result) and any longer captured `sub_agent` reply recorded
+   *    in the task room;
+   *  - **VERIFIED URLS** — reachable URLs mined from the completion summary and
+   *    recorded sub-agent messages (loopback-flagged so the verifier can reject
+   *    localhost-only "deploys");
+   *  - **TEST / BUILD / TYPECHECK OUTPUT** — lines that look like build/test
+   *    output, mined from the durable event/message log of this session;
+   *  - **ARTIFACTS** — screenshot/trajectory artifact references on the task or
+   *    its session metadata.
+   *
+   * Fire-and-forget safety: this runs on the `task_complete` event-write path,
+   * so it must NEVER throw. Any failure falls back to the bare summary, which is
+   * exactly the prior behavior.
+   */
+  private async buildCompletionEvidence(
+    taskId: string,
+    sessionId: string,
+    fallbackSummary: string,
+  ): Promise<string> {
+    try {
+      const bundle = await this.collectEvidenceBundle(
+        taskId,
+        sessionId,
+        fallbackSummary,
+      );
+      // Stamp the deterministic trajectory path onto the bundle so the verifier
+      // evidence (and the serialized string) cite the durable artifact, then
+      // serialize immediately and fire the actual JSONL write off the critical
+      // path. The write is fire-and-forget (`void`) so trajectory IO never
+      // delays the verifier or the event-bridge write path, and any IO failure
+      // is swallowed inside the writer — the path is valid regardless of when
+      // the file lands.
+      bundle.trajectoryPath = await this.resolveTrajectoryPath(
+        taskId,
+        sessionId,
+      );
+      void this.writeEvidenceTrajectory(taskId, sessionId, bundle);
+      return buildCompletionEvidenceString(bundle);
+    } catch (err) {
+      this.log("debug", "build completion evidence failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return fallbackSummary;
+    }
+  }
+
+  /**
+   * Assemble the TYPED {@link CompletionEvidenceBundle} from data the
+   * orchestrator already has (issue #8894). Each field resolves from a named
+   * source:
+   *  - `summary` — the `task_complete` response (fallback);
+   *  - `diffSummary` — the real git change set captured at completion, via the
+   *    same {@link readLastChangeSet} mechanism the CODING_SESSION_CHANGES path
+   *    and `mirrorChangeSetToStore` use, rendered with {@link renderChangeSetBody};
+   *  - `toolOutput` — test/build/lint stdout mined from recorded `tool_running`
+   *    events (and sub-agent messages) and classified by {@link classifyToolOutput};
+   *  - `verifiedUrls` — URLs probed at completion (session/task `subAgentVerifiedUrls`
+   *    metadata plus URLs mined from the summary and sub-agent replies);
+   *  - `screenshots` — screenshot artifact paths on the task/session.
+   *
+   * Pure with respect to throwing: returns at least the summary on any error.
+   */
+  private async collectEvidenceBundle(
+    taskId: string,
+    sessionId: string,
+    fallbackSummary: string,
+  ): Promise<CompletionEvidenceBundle> {
+    const summary = fallbackSummary.trim();
+    const empty: CompletionEvidenceBundle = {
+      summary,
+      verifiedUrls: [],
+      screenshots: [],
+    };
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return empty;
+
+    // Scope to this session's rows, but keep cross-session task events too
+    // (validation/build steps are sometimes recorded without a sessionId).
+    const sessionEvents = doc.events.filter(
+      (event) => event.sessionId === sessionId || event.sessionId === undefined,
+    );
+    const sessionMessages = doc.messages.filter(
+      (message) => message.sessionId === sessionId,
+    );
+
+    const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    const diffSummary =
+      changeSet && changeSet.changedFiles.length > 0
+        ? renderChangeSetBody(changeSet)
+        : undefined;
+
+    const subAgentReplies = sessionMessages
+      .filter(
+        (message) =>
+          message.senderKind === "sub_agent" && message.direction === "stdout",
+      )
+      .map((message) => message.content.trim())
+      .filter((content) => content.length > 0);
+
+    // Tool-output signals: prefer the structured `toolCall.output` recorded on
+    // `tool_running`/`tool_result` events, labelled by the tool command/title so
+    // the classifier can route the stdout to its test/build/lint bucket. Fall
+    // back to the full event/message bodies so a real run still surfaces even
+    // when the adapter folded its output into the assistant text.
+    const toolSignals: EvidenceSignal[] = [
+      ...this.extractToolSignals(sessionEvents),
+      ...sessionEvents.map((event) => ({
+        text: `${event.summary}\n${stringifyEventData(event.data)}`,
+        source: event.eventType,
+      })),
+      ...sessionMessages.map((message) => ({
+        text: message.content,
+        source: message.senderKind,
+      })),
+    ];
+    const toolOutput = classifyToolOutput(toolSignals);
+
+    const verifiedUrls = [
+      ...new Set([
+        ...this.metadataVerifiedUrls(doc, sessionId),
+        ...collectUrls([summary, ...subAgentReplies]),
+      ]),
+    ];
+
+    const screenshots = this.collectArtifactRefs(doc, sessionId).flatMap(
+      (ref) => (ref.artifactType === "screenshot" && ref.ref ? [ref.ref] : []),
+    );
+
+    return {
+      summary,
+      diffSummary,
+      toolOutput,
+      verifiedUrls,
+      screenshots: [...new Set(screenshots)],
+    };
+  }
+
+  /** Build per-tool evidence signals from recorded `tool_running`/`tool_result`
+   *  events: the signal text is the tool's captured stdout, and the source label
+   *  carries the command/title so {@link classifyToolOutput} can class it. */
+  private extractToolSignals(
+    events: OrchestratorTaskDocument["events"],
+  ): EvidenceSignal[] {
+    const signals: EvidenceSignal[] = [];
+    for (const event of events) {
+      if (
+        event.eventType !== "tool_running" &&
+        event.eventType !== "tool_result"
+      )
+        continue;
+      const toolCall = isRecord(event.data.toolCall)
+        ? event.data.toolCall
+        : event.data;
+      const output = str(toolCall.output) ?? str(event.data.output);
+      if (!output) continue;
+      const rawInput = isRecord(toolCall.rawInput) ? toolCall.rawInput : {};
+      const command =
+        str(rawInput.command) ??
+        str(toolCall.title) ??
+        str(toolCall.kind) ??
+        "tool";
+      signals.push({ text: output, source: command });
+    }
+    return signals;
+  }
+
+  /** URLs the router stamped as verified onto the task or session metadata
+   *  (`subAgentVerifiedUrls`), separate from URLs mined out of free text. */
+  private metadataVerifiedUrls(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): string[] {
+    const out: string[] = [];
+    const session = doc.sessions.find((row) => row.sessionId === sessionId);
+    for (const meta of [doc.task.metadata, session?.metadata]) {
+      const raw = meta?.subAgentVerifiedUrls;
+      if (!Array.isArray(raw)) continue;
+      for (const entry of raw) {
+        const url = str(entry);
+        if (url) out.push(url);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Write the completion-evidence bundle as a single appended JSONL line and
+   * record the artifact path on a task event so a reviewer can re-read exactly
+   * what the verifier judged.
+   *
+   * Fire-and-forget: invoked with `void` from {@link buildCompletionEvidence},
+   * so every IO step is wrapped — a failure logs and continues without throwing
+   * into the `task_complete` event path. The path is already stamped on the
+   * bundle by the caller, so a write failure only means the artifact never lands;
+   * the evidence string still cites the (intended) path.
+   */
+  private async writeEvidenceTrajectory(
+    taskId: string,
+    sessionId: string,
+    bundle: CompletionEvidenceBundle,
+  ): Promise<void> {
+    const trajectoryPath = bundle.trajectoryPath;
+    if (!trajectoryPath) return;
+    try {
+      await mkdir(dirname(trajectoryPath), { recursive: true });
+      const line = `${JSON.stringify({
+        kind: "completion_evidence_bundle",
+        taskId,
+        sessionId,
+        recordedAt: nowIso(),
+        bundle,
+      })}\n`;
+      await appendFile(trajectoryPath, line, "utf8");
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "completion_evidence_persisted",
+        summary: "Persisted completion-evidence bundle to trajectory artifact.",
+        data: { trajectoryPath },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      this.emitChange(taskId);
+    } catch (err) {
+      this.log("debug", "persist evidence trajectory failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** The completion-evidence trajectory file path: a `completion-evidence.jsonl`
+   *  under the live session workdir's `.eliza/trajectories`, else a `~/.eliza`-
+   *  scoped per-task dir when no workspace is available. Deterministic so it can
+   *  be cited in the evidence before the file is actually written. */
+  private async resolveTrajectoryPath(
+    taskId: string,
+    sessionId: string,
+  ): Promise<string> {
+    let dir = join(homedir(), ".eliza", "trajectories", taskId);
+    try {
+      const acp = this.acp();
+      const live = acp ? await acp.getSession(sessionId) : undefined;
+      const workdir = str(live?.workdir);
+      if (workdir) dir = join(workdir, ".eliza", "trajectories");
+    } catch {
+      // best-effort — keep the home-scoped task dir
+    }
+    return join(dir, "completion-evidence.jsonl");
+  }
+
+  /** The git change set for a completed session: prefer the live ACP session
+   *  metadata (freshest), fall back to the mirrored store-session metadata. */
+  private async resolveCompletionChangeSet(
+    sessionId: string,
+    doc: OrchestratorTaskDocument,
+  ): Promise<WorkspaceChangeSet | undefined> {
+    try {
+      const acp = this.acp();
+      if (acp) {
+        const live = await acp.getSession(sessionId);
+        const fromLive = readLastChangeSet(
+          live?.metadata as Record<string, unknown> | undefined,
+        );
+        if (fromLive) return fromLive;
+      }
+    } catch {
+      // best-effort — fall through to the store-session copy
+    }
+    const stored = doc.sessions.find(
+      (session) => session.sessionId === sessionId,
+    );
+    return readLastChangeSet(stored?.metadata);
+  }
+
+  /** Screenshot / trajectory / other artifact references for the verifier to
+   *  cite, from the durable artifact rows plus any artifact paths stamped on
+   *  the task or its session metadata. */
+  private collectArtifactRefs(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): EvidenceArtifactRef[] {
+    const refs: EvidenceArtifactRef[] = doc.artifacts
+      .filter(
+        (artifact) =>
+          artifact.sessionId === sessionId || artifact.sessionId === undefined,
+      )
+      .map((artifact) => ({
+        artifactType: artifact.artifactType,
+        title: artifact.title,
+        ref: artifact.path ?? artifact.uri,
+      }));
+
+    const session = doc.sessions.find((row) => row.sessionId === sessionId);
+    for (const [label, meta] of [
+      ["task", doc.task.metadata],
+      ["session", session?.metadata],
+    ] as const) {
+      const screenshot = str(meta?.screenshotPath ?? meta?.screenshot);
+      if (screenshot) {
+        refs.push({
+          artifactType: "screenshot",
+          title: `${label} screenshot`,
+          ref: screenshot,
+        });
+      }
+      const trajectory = str(meta?.trajectoryPath ?? meta?.trajectory);
+      if (trajectory) {
+        refs.push({
+          artifactType: "trajectory",
+          title: `${label} trajectory`,
+          ref: trajectory,
+        });
+      }
+    }
+    return refs;
   }
 
   /**
@@ -903,7 +1403,9 @@ export class OrchestratorTaskService extends Service {
   // ---- lifecycle ---------------------------------------------------------
 
   async createTask(input: CreateTaskInput): Promise<TaskThreadDetailDto> {
-    const doc = await this.store.createTask(input);
+    const doc = await this.store.createTask(
+      await this.withDefaultAcceptanceCriteria(input),
+    );
     if (input.originalRequest) {
       await this.recordMessage(doc.task.id, {
         content: input.originalRequest,
@@ -913,6 +1415,60 @@ export class OrchestratorTaskService extends Service {
     }
     const detail = await this.store.getTask(doc.task.id);
     return toTaskThreadDetail(detail ?? doc);
+  }
+
+  /**
+   * When a task is created WITHOUT acceptance criteria and with a non-trivial
+   * goal, populate 3-5 measurable default criteria so the auto goal-verifier
+   * (#8896) always has something to grill against instead of fast-pathing to
+   * pass / parking forever in `validating`.
+   *
+   * - **No-op when criteria were supplied** — the caller's contract wins; the
+   *   input is returned unchanged.
+   * - **Gated** behind `ELIZA_REQUIRE_GOAL_CONTRACT` (default ON; `"0"`
+   *   disables), mirroring {@link shouldAutoVerifyGoal}.
+   * - **Defensive** — {@link generateDefaultAcceptanceCriteria} never throws;
+   *   on any model failure it returns the static template set, so task creation
+   *   can never be broken by criteria generation.
+   */
+  private async withDefaultAcceptanceCriteria(
+    input: CreateTaskInput,
+  ): Promise<CreateTaskInput> {
+    const supplied = input.acceptanceCriteria;
+    // Caller-supplied criteria are authoritative — never overwrite them.
+    if (supplied && supplied.length > 0) return input;
+    if (!shouldRequireGoalContract()) return input;
+    if (!isNonTrivialGoal(input.goal)) return input;
+
+    const hint = this.taskTypeHintFor(input);
+    const generated = await generateDefaultAcceptanceCriteria(
+      input.goal,
+      hint,
+      this.runtime,
+    );
+    if (generated.length === 0) return input;
+    this.log(
+      "debug",
+      `auto-generated ${generated.length} default acceptance criteria for criteria-free task (type=${hint ?? detectTaskType(input.goal)})`,
+    );
+    return { ...input, acceptanceCriteria: generated };
+  }
+
+  /** Map an explicit `kind` on the create input to a task type when it lines up
+   *  with a known template type, so the caller's stated kind beats keyword
+   *  detection; otherwise let {@link detectTaskType} read the goal text. */
+  private taskTypeHintFor(
+    input: CreateTaskInput,
+  ): OrchestratorTaskType | undefined {
+    switch (input.kind) {
+      case "coding":
+      case "view-create":
+      case "app-build":
+      case "deploy":
+        return input.kind;
+      default:
+        return undefined;
+    }
   }
 
   async listTasks(filter: TaskListFilter = {}): Promise<TaskThreadDto[]> {
@@ -928,6 +1484,31 @@ export class OrchestratorTaskService extends Service {
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     return doc ? toTaskThreadDetail(doc) : null;
+  }
+
+  /**
+   * Resolve the originating chat target for a task — the room + connector source
+   * it was created from — so proactive surfaces (the TaskSupervisorService
+   * digest, #8900) can post back to where the user is. The origin `source` is
+   * read from the task record metadata stamped at create time. Returns null when
+   * the task has no origin room (e.g. an API-created task with no chat).
+   */
+  async getTaskOriginTarget(
+    taskId: string,
+  ): Promise<{ roomId: string; source: string; worldId?: string } | null> {
+    const doc = await this.store.getTask(taskId);
+    const roomId = doc?.task.roomId;
+    if (!roomId) return null;
+    const meta = doc.task.metadata ?? {};
+    const source =
+      typeof meta.source === "string" && meta.source
+        ? meta.source
+        : "orchestrator";
+    return {
+      roomId,
+      source,
+      ...(doc.task.worldId ? { worldId: doc.task.worldId } : {}),
+    };
   }
 
   async updateTask(
@@ -1081,23 +1662,30 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
-   * Automatically judge a freshly-`validating` task against its acceptance
-   * criteria (issue #8124): the orchestrator should always behave like `/goal`,
-   * confirming the sub-agent met every criterion before reporting done.
+   * Verify a freshly-`validating` task against its acceptance criteria before
+   * promoting it to `done` (issue #8124). One linear pipeline runs inside the
+   * re-entrancy guard:
    *
-   * Behavior:
-   * - **Gated.** No-op when {@link shouldAutoVerifyGoal} is off, when the task
-   *   has no acceptance criteria (so a criteria-free task incurs zero model
-   *   spend and behaves exactly as before), or when the task is no longer
-   *   `validating` (e.g. a human already validated it).
-   * - **Small model only.** Delegates to {@link verifyGoalCompletion}, which
-   *   uses `ModelType.TEXT_SMALL`.
-   * - **Pass →** forwards a passing verdict to {@link validateTask} (task → done).
-   * - **Fail, under cap →** sends a corrective follow-up to the active sub-agent
-   *   citing the unmet criteria (task returns to `active` via `sendToTaskAgent`),
-   *   and increments the per-task attempt counter.
-   * - **Fail, cap reached →** stops looping and parks the task on
-   *   `waiting_on_user` for a human, instead of re-prompting forever.
+   * 1. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
+   *    the sub-agent's verbatim final message. A PRESENT-but-malformed envelope is
+   *    blocked *before* any model spend and the worker is re-prompted with
+   *    {@link envelopeCorrection}. An ABSENT envelope falls through unchanged
+   *    (back-compat). A VALID envelope is stamped onto `metadata.completionEnvelope`
+   *    and its {@link summarizeEnvelope} is prepended to the judge's evidence so the
+   *    judge grills the contract, not prose.
+   * 2. **Independent execution verifier (#8898).** For code-change tasks
+   *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
+   *    the tests/diff and returns an execution-grounded verdict. A failing verdict
+   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
+   *    the task `validating` (never a false promotion on a verifier crash); a
+   *    passing/skipped verdict falls through.
+   * 3. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
+   *    judges the evidence and promotes (→ `done`) or re-prompts.
+   *
+   * All three failure paths share one {@link reEngageOrEscalate} helper, one
+   * `autoVerifyAttempts` counter, and one {@link MAX_AUTO_VERIFY_ATTEMPTS} cap, so a
+   * malformed/failing worker is re-prompted a bounded number of times and then
+   * parked on `waiting_on_user`.
    *
    * Fire-and-forget from the event bridge: failures here must never break the
    * session-event write path, so everything is wrapped and logged.
@@ -1106,6 +1694,7 @@ export class OrchestratorTaskService extends Service {
     taskId: string,
     sessionId: string,
     completionEvidence: string,
+    rawCompletion: string,
   ): Promise<void> {
     if (!shouldAutoVerifyGoal()) return;
     // Re-entrancy guard: drop a second overlapping run for the same task (the
@@ -1122,18 +1711,132 @@ export class OrchestratorTaskService extends Service {
       // Criteria-free tasks keep the prior behavior: stay `validating` for a
       // human/manual caller, no surprise model spend.
       if (acceptanceCriteria.length === 0) return;
+      const attempts = num(doc.task.metadata?.autoVerifyAttempts);
 
-      const verdict = await verifyGoalCompletion(this.runtime, {
-        goal: doc.task.goal,
-        acceptanceCriteria,
-        completionEvidence,
-      });
+      // 1. Structural envelope gate (#8895) — BEFORE any model spend.
+      const parse = parseCompletionEnvelope(rawCompletion);
+      let evidence = completionEvidence;
+      if (parse.present && !parse.ok) {
+        // Malformed contract: block the judge and re-prompt for a valid envelope.
+        await this.reEngageOrEscalate({
+          taskId,
+          sessionId,
+          correction: envelopeCorrection(parse.errors),
+          eventType: "envelope_invalid",
+          verifier: "completion-envelope",
+          summary: `Completion envelope was malformed: ${parse.errors.join("; ")}`,
+          missing: parse.errors,
+          attempt: attempts,
+        });
+        return;
+      }
+      if (parse.present && parse.ok) {
+        // Valid contract: stamp the structured fields and feed the judge a
+        // contract-grounded evidence string instead of raw prose.
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...doc.task.metadata,
+            completionEnvelope: {
+              diffSummary: parse.envelope.diffSummary,
+              filesChanged: parse.envelope.filesChanged,
+              testResults: parse.envelope.testResults,
+              acceptanceCriteriaStatus: parse.envelope.acceptanceCriteriaStatus,
+              residualRisks: parse.envelope.residualRisks,
+            },
+          },
+        });
+        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${completionEvidence}`;
+      }
+
+      // 2. Independent read-only execution verifier (#8898).
+      const independent = await this.runIndependentVerify(
+        taskId,
+        doc,
+        sessionId,
+      );
+      if (independent) {
+        if (independent.inconclusive) {
+          // A verifier crash/empty verdict is never a pass — keep validating.
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            eventType: "independent_verify_inconclusive",
+            summary: independent.summary,
+            data: {
+              verifier: INDEPENDENT_ACP_VERIFIER_NAME,
+              unmet: independent.unmet,
+              failedCommands: independent.failedCommands,
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+          this.emitChange(taskId);
+          return;
+        }
+        if (!independent.passed) {
+          // Execution disproved the worker's claim — block with distinct
+          // provenance, then re-prompt with the concrete gaps.
+          const blockEvidence = [
+            independent.summary,
+            independent.unmet.length > 0
+              ? `Unmet criteria: ${independent.unmet.join("; ")}`
+              : "",
+            independent.failedCommands.length > 0
+              ? `Failing commands: ${independent.failedCommands.join("; ")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+          await this.validateTask(taskId, {
+            passed: false,
+            summary: independent.summary,
+            evidence: blockEvidence,
+            verifier: INDEPENDENT_ACP_VERIFIER_NAME,
+          });
+          const missing = [
+            ...independent.unmet,
+            ...independent.failedCommands.map((c) => `command failed: ${c}`),
+          ];
+          await this.reEngageOrEscalate({
+            taskId,
+            sessionId,
+            correction: buildAutoVerifyCorrection(
+              missing.length > 0 ? missing : [independent.summary],
+              attempts + 1,
+            ),
+            eventType: "independent_verify_failed",
+            verifier: INDEPENDENT_ACP_VERIFIER_NAME,
+            summary: independent.summary,
+            missing,
+            attempt: attempts,
+          });
+          return;
+        }
+      }
+
+      // 3. Text judge (fallback for non-code / criteria-light tasks).
+      const verdict = await verifyGoalCompletion(
+        this.runtime,
+        {
+          goal: doc.task.goal,
+          acceptanceCriteria,
+          completionEvidence: evidence,
+        },
+        {
+          recordTrajectory: {
+            roomId: doc.task.roomId,
+            taskId,
+            sessionId,
+          },
+        },
+      );
 
       if (verdict.passed) {
         await this.validateTask(taskId, {
           passed: true,
           summary: verdict.summary,
-          evidence: verdict.rawResponse || completionEvidence,
+          evidence: verdict.rawResponse || evidence,
           verifier: LLM_GOAL_VERIFIER_NAME,
         });
         // Notify live subscribers (SSE/UI) — this is a fire-and-forget hook with
@@ -1143,86 +1846,18 @@ export class OrchestratorTaskService extends Service {
         return;
       }
 
-      const attempts = num(doc.task.metadata?.autoVerifyAttempts);
-      if (attempts >= MAX_AUTO_VERIFY_ATTEMPTS) {
-        // Stop the loop: park for a human rather than re-prompting forever.
-        await this.store.addEvent({
-          id: randomUUID(),
-          taskId,
-          sessionId,
-          eventType: "auto_verify_exhausted",
-          summary: `Automatic verification failed ${attempts} time(s); escalating to a human.`,
-          data: {
-            verifier: LLM_GOAL_VERIFIER_NAME,
-            missing: verdict.missing,
-            attempts,
-          },
-          timestamp: Date.now(),
-          createdAt: nowIso(),
-        });
-        await this.advanceTaskStatus(taskId, "waiting_on_user");
-        this.emitChange(taskId);
-        return;
-      }
-
-      // Under cap: re-send a corrective follow-up to the worker. The reporting
-      // session is now `completed` (terminal) but was spawned with
-      // `keepAliveAfterComplete`, so the ACP process is still attached and can
-      // take a follow-up. Persist the bumped attempt counter first so a
-      // redelivered task_complete can't double-count, then reactivate and steer.
-      await this.store.updateTask(taskId, {
-        metadata: { ...doc.task.metadata, autoVerifyAttempts: attempts + 1 },
-      });
-      await this.store.addEvent({
-        id: randomUUID(),
+      await this.reEngageOrEscalate({
         taskId,
         sessionId,
+        // Escalate the grill per attempt: `attempts` is the count of prior
+        // failures, so `attempts + 1` is this correction's 1-based stage.
+        correction: buildAutoVerifyCorrection(verdict.missing, attempts + 1),
         eventType: "auto_verify_failed",
+        verifier: LLM_GOAL_VERIFIER_NAME,
         summary: verdict.summary,
-        data: {
-          verifier: LLM_GOAL_VERIFIER_NAME,
-          missing: verdict.missing,
-          attempt: attempts + 1,
-        },
-        timestamp: Date.now(),
-        createdAt: nowIso(),
+        missing: verdict.missing,
+        attempt: attempts,
       });
-      try {
-        // Reactivate the kept-alive session so the corrective turn lands on a
-        // non-terminal record, then re-dispatch through the goal envelope.
-        await this.store.updateSession(sessionId, {
-          status: "ready",
-          taskDelivered: false,
-          stoppedAt: undefined,
-        });
-        await this.sendToTaskAgent(
-          taskId,
-          sessionId,
-          buildAutoVerifyCorrection(verdict.missing),
-          "validation_failed",
-        );
-        await this.store.updateTask(taskId, { status: "active" });
-      } catch (sendErr) {
-        // The kept-alive session could not take the follow-up — escalate rather
-        // than silently leaving the task stuck in `validating`.
-        await this.store.addEvent({
-          id: randomUUID(),
-          taskId,
-          sessionId,
-          eventType: "auto_verify_resend_failed",
-          summary:
-            "Automatic verification failed and the corrective follow-up could not be delivered; escalating to a human.",
-          data: {
-            verifier: LLM_GOAL_VERIFIER_NAME,
-            missing: verdict.missing,
-            error: sendErr instanceof Error ? sendErr.message : String(sendErr),
-          },
-          timestamp: Date.now(),
-          createdAt: nowIso(),
-        });
-        await this.advanceTaskStatus(taskId, "waiting_on_user");
-      }
-      this.emitChange(taskId);
     } catch (err) {
       this.log("warn", "auto goal verification failed", {
         taskId,
@@ -1231,6 +1866,240 @@ export class OrchestratorTaskService extends Service {
       });
     } finally {
       this.autoVerifyInFlight.delete(taskId);
+    }
+  }
+
+  /**
+   * Shared re-prompt / escalation path for every failed completion verdict — the
+   * malformed-envelope gate (#8895), the independent-verify block (#8898), and the
+   * text judge. ONE `autoVerifyAttempts` counter and ONE
+   * {@link MAX_AUTO_VERIFY_ATTEMPTS} cap govern all three: under the cap the
+   * kept-alive worker is reactivated and re-prompted with `correction` (and a
+   * reflexion post-mortem is recorded for the next respawn, #8899); at the cap, or
+   * when the corrective send fails, the task is parked on `waiting_on_user` instead
+   * of looping forever.
+   *
+   * @param attempt the count of PRIOR failed attempts (0-based); the helper persists
+   *        `attempt + 1` as the new counter and uses it as the 1-based grill stage.
+   */
+  private async reEngageOrEscalate(args: {
+    taskId: string;
+    sessionId: string;
+    correction: string;
+    eventType: string;
+    verifier: string;
+    summary: string;
+    missing: string[];
+    attempt: number;
+  }): Promise<void> {
+    const {
+      taskId,
+      sessionId,
+      correction,
+      eventType,
+      verifier,
+      summary,
+      missing,
+      attempt,
+    } = args;
+    if (attempt >= MAX_AUTO_VERIFY_ATTEMPTS) {
+      // Stop the loop: park for a human rather than re-prompting forever.
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_exhausted",
+        summary: `Automatic verification failed ${attempt} time(s); escalating to a human.`,
+        data: { verifier, missing, attempts: attempt },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.advanceTaskStatus(taskId, "waiting_on_user");
+      this.emitChange(taskId);
+      return;
+    }
+    // Persist the bumped attempt counter + a reflexion post-mortem first, so a
+    // redelivered task_complete can't double-count and the next respawn (#8899)
+    // can replay the gap. Re-read the doc so an upstream metadata write in this
+    // same pass (e.g. the valid-envelope stamp) is preserved.
+    const doc = await this.store.getTask(taskId);
+    const attemptReflections = [
+      ...readAttemptReflections(doc?.task.metadata),
+      { attempt: attempt + 1, missing, summary },
+    ].slice(-MAX_ATTEMPT_REFLECTIONS);
+    await this.store.updateTask(taskId, {
+      metadata: {
+        ...doc?.task.metadata,
+        autoVerifyAttempts: attempt + 1,
+        attemptReflections,
+      },
+    });
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType,
+      summary,
+      data: { verifier, missing, attempt: attempt + 1 },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    try {
+      // Reactivate the kept-alive session so the corrective turn lands on a
+      // non-terminal record, then re-dispatch through the goal envelope.
+      await this.store.updateSession(sessionId, {
+        status: "ready",
+        taskDelivered: false,
+        stoppedAt: undefined,
+      });
+      await this.sendToTaskAgent(
+        taskId,
+        sessionId,
+        correction,
+        "validation_failed",
+      );
+      await this.store.updateTask(taskId, { status: "active" });
+    } catch (sendErr) {
+      // The kept-alive session could not take the follow-up — escalate rather
+      // than silently leaving the task stuck in `validating`.
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_resend_failed",
+        summary:
+          "Automatic verification failed and the corrective follow-up could not be delivered; escalating to a human.",
+        data: {
+          verifier,
+          missing,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.advanceTaskStatus(taskId, "waiting_on_user");
+    }
+    this.emitChange(taskId);
+  }
+
+  /**
+   * Independent read-only execution verifier (#8898). For code-change tasks, spawn
+   * a SEPARATE read-only ACP session that re-runs the tests/diff and returns an
+   * execution-grounded verdict. Returns `null` when the verifier is gated off
+   * (non-code task, flag disabled, or no ACP / workdir available), so the caller
+   * falls through to the text judge.
+   */
+  private async runIndependentVerify(
+    taskId: string,
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): Promise<IndependentVerifierVerdict | null> {
+    const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+    const hasCodeChanges = (changeSet?.changedFiles.length ?? 0) > 0;
+    // shouldRunIndependentVerify wants (key) => string | undefined | null.
+    // Resolve from runtime settings, then fall back to process.env so the
+    // ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY flag is honored consistently with the
+    // env-driven shouldAutoVerifyGoal gate (runtime.getSetting may be absent).
+    const getSetting = (key: string): string | undefined => {
+      const value = this.runtime.getSetting?.(key);
+      if (typeof value === "string") return value;
+      const fromEnv = process.env[key];
+      return typeof fromEnv === "string" ? fromEnv : undefined;
+    };
+    if (!shouldRunIndependentVerify(getSetting, hasCodeChanges)) return null;
+    const acp = this.acp();
+    if (!acp) return null;
+    const session = doc.sessions.find((s) => s.sessionId === sessionId);
+    const workdir = session?.workdir;
+    if (!workdir) return null;
+    const diffSummary =
+      changeSet && changeSet.changedFiles.length > 0
+        ? renderChangeSetBody(changeSet)
+        : undefined;
+    return runIndependentVerification(
+      {
+        goal: doc.task.goal,
+        acceptanceCriteria: doc.task.acceptanceCriteria,
+        ...(diffSummary ? { diffSummary } : {}),
+      },
+      {
+        spawnAndAwait: (prompt) =>
+          this.spawnReadOnlyVerifier(acp, prompt, workdir, taskId, sessionId),
+      },
+    );
+  }
+
+  /**
+   * Spawn the #8898 read-only verifier as an EPHEMERAL ACP session and resolve its
+   * final completion text. The session runs under the `verifier` approval preset
+   * (read + search + execute; writes denied at the transport) in the completed
+   * worker's workdir and is torn down after its verdict. It is intentionally NOT
+   * registered with the task store, so the event bridge's `resolveTaskId` ignores
+   * its events and it never recurses into auto-verify.
+   */
+  private async spawnReadOnlyVerifier(
+    acp: AcpService,
+    prompt: string,
+    workdir: string,
+    taskId: string,
+    reportingSessionId: string,
+  ): Promise<string> {
+    const timeoutMs = independentVerifyTimeoutMs(this.runtime);
+    const live = await acp.getSession(reportingSessionId);
+    const meta = live?.metadata;
+    const parentDepth =
+      isRecord(meta) && typeof meta.nestingDepth === "number"
+        ? meta.nestingDepth
+        : 0;
+    const spawn = await acp.spawnSession({
+      agentType: configuredDefaultAgentType(this.runtime) ?? "opencode",
+      workdir,
+      initialTask: prompt,
+      approvalPreset: "verifier",
+      metadata: {
+        taskId,
+        source: "independent-verifier",
+        keepAliveAfterComplete: false,
+        nestingDepth: parentDepth + 1,
+      },
+    });
+    const verifierSessionId = spawn.sessionId;
+    let unsubscribe: (() => void) | undefined;
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(
+            new Error(
+              `independent verifier session timed out after ${timeoutMs}ms`,
+            ),
+          );
+        }, timeoutMs);
+        timer.unref?.();
+        unsubscribe = acp.onSessionEvent((sid, event, data) => {
+          if (sid !== verifierSessionId) return;
+          if (event === "task_complete") {
+            clearTimeout(timer);
+            const response = isRecord(data) ? str(data.response) : undefined;
+            resolve(response ?? "");
+          } else if (event === "error") {
+            clearTimeout(timer);
+            const message = isRecord(data) ? str(data.message) : undefined;
+            reject(
+              new Error(message ?? "independent verifier session errored"),
+            );
+          }
+        });
+      });
+    } finally {
+      unsubscribe?.();
+      try {
+        await acp.stopSession(verifierSessionId);
+      } catch (stopErr) {
+        this.log("warn", "failed to stop independent verifier session", {
+          sessionId: verifierSessionId,
+          error: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        });
+      }
     }
   }
 
@@ -1685,6 +2554,9 @@ export class OrchestratorTaskService extends Service {
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
       workdir,
       repo: opts.repo,
+      // Replay prior failed-verification post-mortems so a re-spawn of this task
+      // doesn't repeat them (#8899).
+      attemptReflections: readAttemptReflections(doc.task.metadata),
       ...(capabilityProfile ? { capabilityProfile } : {}),
     });
 
@@ -1708,10 +2580,20 @@ export class OrchestratorTaskService extends Service {
     }
 
     const result = await acp.spawnSession({
-      // Default the orchestrator's coding agent to the vendored opencode
-      // backend (auto-detects the user's Cerebras key) rather than the
-      // unsupported "elizaos" native default, which has no ACP command.
-      agentType: opts.framework ?? policy.preferredFramework ?? "opencode",
+      // Coding-agent selection: explicit request → routing policy → the
+      // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
+      // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
+      // sub-agent) → opencode as the safe fallback. Honoring the configured
+      // default here keeps this spawn path consistent with acp-service's
+      // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
+      // no ACP command, but elizaos is now a supported ACP agent via
+      // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
+      // image) gets eliza-code, while unconfigured hosts still get opencode.
+      agentType:
+        opts.framework ??
+        policy.preferredFramework ??
+        configuredDefaultAgentType(this.runtime) ??
+        "opencode",
       workdir,
       initialTask: goalPrompt,
       model: opts.model ?? policy.model,
@@ -1934,6 +2816,20 @@ export class OrchestratorTaskService extends Service {
     const availability = getCodingAccountBridge()?.describe() ?? {};
 
     return { strategy, availability, assignments };
+  }
+
+  /**
+   * Loud readiness gate for the multi-account orchestrator: asserts the pool
+   * has ≥1 healthy Codex AND ≥1 healthy Claude (≥2 each with `rotation`).
+   * Unlike the per-spawn `selectCodingAccount` — which silently single-account
+   * falls back so a thin pool never hard-fails a spawn — this is meant to fail
+   * loudly (a CI/ops check + a 503 route) so a misconfigured pool is caught.
+   */
+  getAccountReadiness(
+    opts: { rotation?: boolean } = {},
+  ): CodingAccountReadiness {
+    const availability = getCodingAccountBridge()?.describe() ?? {};
+    return assessCodingAccountReadiness(availability, opts);
   }
 
   /**

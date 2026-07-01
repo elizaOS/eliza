@@ -2,8 +2,20 @@
   "extends": "../tsconfig.build.shared.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "types": ["node"],
+    "typeRoots": [
+      "./node_modules/@types",
+      "../../node_modules/@types",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types"
+    ]
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**",
+    "vitest.harness.config.ts"
+  ]
 }

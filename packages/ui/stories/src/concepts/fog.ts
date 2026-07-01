@@ -7,6 +7,11 @@ import type {
   WebGPUModule,
 } from "../orb-kit.ts";
 
+interface MutablePositionAttribute {
+  setXYZ: (index: number, x: number, y: number, z: number) => void;
+  needsUpdate: boolean;
+}
+
 // Calm volumetric haze. Layered translucent spheres drift and rotate slowly,
 // their combined transparencies churning like soft mist. Muted, sleepy, restful.
 // Deep slate-blue shells with NormalBlending so the haze reads as a soft, moody
@@ -242,7 +247,7 @@ function build(
       phase: moteSeeds[i * 3] * Math.PI * 2,
     });
   }
-  const motePosAttr = moteGeo.attributes.position as any;
+  const motePosAttr: MutablePositionAttribute = moteGeo.attributes.position;
 
   return {
     frame(f: OrbFrame) {

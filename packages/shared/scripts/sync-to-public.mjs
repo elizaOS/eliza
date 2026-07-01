@@ -25,12 +25,12 @@
  * orphan files.
  */
 
+import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
-  rmSync,
   statSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -38,6 +38,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_ROOT = resolve(__dirname, "..", "assets");
+const rmRecursiveScript = resolve(
+  __dirname,
+  "..",
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 function copyDir(src, dest) {
   mkdirSync(dest, { recursive: true });
@@ -54,7 +61,7 @@ function copyDir(src, dest) {
 }
 
 function copyDirClean(src, dest, shouldCopy = () => true) {
-  rmSync(dest, { recursive: true, force: true });
+  rmRecursive(dest);
   mkdirSync(dest, { recursive: true });
   for (const entry of readdirSync(src)) {
     const srcPath = join(src, entry);
@@ -68,22 +75,35 @@ function copyDirClean(src, dest, shouldCopy = () => true) {
   }
 }
 
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `[sync-to-public] recursive cleanup failed for ${targetPath} with exit code ${result.status ?? "unknown"}`,
+    );
+  }
+}
+
 const args = process.argv.slice(2);
 const cloudsArg = args.find(
   (a) => a === "--clouds" || a.startsWith("--clouds="),
 );
 const includeClouds = Boolean(cloudsArg);
 const includeBackgroundVideos = args.includes("--background-videos");
-const selectedCloudSpeeds =
-  cloudsArg && cloudsArg.includes("=")
-    ? new Set(
-        cloudsArg
-          .split("=")[1]
-          .split(",")
-          .map((speed) => speed.trim())
-          .filter(Boolean),
-      )
-    : null;
+const selectedCloudSpeeds = cloudsArg?.includes("=")
+  ? new Set(
+      cloudsArg
+        .split("=")[1]
+        .split(",")
+        .map((speed) => speed.trim())
+        .filter(Boolean),
+    )
+  : null;
 
 const positional = args.filter((a) => !a.startsWith("--"));
 const target = positional[0];

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-edge-tts",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -51,6 +51,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],
@@ -67,7 +68,7 @@
     "node-edge-tts": "^1.0.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
     "bun-types": "1.3.14",
@@ -78,7 +79,7 @@
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "test": "vitest run --config ./vitest.config.ts",
-    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

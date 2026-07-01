@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.unblock-websites.before-scheduled-end",
   title: "Timed website blocks can be removed before their scheduled end",
   domain: "selfcontrol",

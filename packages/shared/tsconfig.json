@@ -7,9 +7,9 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
-    "useUnknownInCatchVariables": false,
+    "useUnknownInCatchVariables": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -32,6 +32,8 @@
     "paths": {
       "@types/*": ["./src/*"],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/logger/*": ["../logger/src/*"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../app-core/node_modules/@types/react/jsx-runtime.d.ts"

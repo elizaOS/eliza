@@ -139,7 +139,7 @@ jobs:
           targets: ${{ matrix.settings.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: |
             ~/.cargo/registry
@@ -151,9 +151,10 @@ jobs:
 
       - name: Install npm dependencies
         run: |
+          cleanup_helper="$GITHUB_WORKSPACE/packages/scripts/rm-path-recursive.mjs"
           cd packages/computeruse/packages/computeruse-ts
           rm -f *.tgz
-          rm -rf node_modules package-lock.json
+          node "$cleanup_helper" node_modules package-lock.json
           npm install --ignore-scripts --omit=optional
         shell: bash
 

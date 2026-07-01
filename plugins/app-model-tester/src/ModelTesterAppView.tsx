@@ -1,4 +1,3 @@
-import { TerminalPluginView } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import { Button } from "@elizaos/ui/components/ui/button";
@@ -22,7 +21,11 @@ import {
   Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MODEL_TESTER_TUI_CAPABILITIES } from "./ModelTesterAppView.interact";
+import {
+  type AudioPayload,
+  audioFileToPayload,
+  fileToDataUrl,
+} from "./model-tester-probe.helpers";
 
 type TestId =
   | "text-small"
@@ -47,12 +50,6 @@ interface TestResult {
   durationMs?: number;
   output?: unknown;
   error?: string;
-}
-
-interface AudioPayload {
-  audioDataUrl: string;
-  pcmSamples: number[];
-  sampleRateHz: number;
 }
 
 const DEFAULT_PROMPT =
@@ -132,41 +129,6 @@ const TEST_COPY: Record<
     Icon: ImagePlus,
   },
 };
-
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () =>
-      reject(reader.error ?? new Error("File read failed"));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function audioFileToPayload(file: File): Promise<AudioPayload> {
-  const audioDataUrl = await fileToDataUrl(file);
-  const buffer = await file.arrayBuffer();
-  const AudioContextCtor =
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
-  if (!AudioContextCtor) {
-    throw new Error("This browser cannot decode audio files.");
-  }
-  const context = new AudioContextCtor();
-  const decoded = await context.decodeAudioData(buffer.slice(0));
-  const src = decoded.getChannelData(0);
-  const targetRate = 16_000;
-  const maxSamples = targetRate * 15;
-  const ratio = decoded.sampleRate / targetRate;
-  const length = Math.min(maxSamples, Math.floor(src.length / ratio));
-  const pcmSamples = new Array<number>(length);
-  for (let i = 0; i < length; i += 1) {
-    pcmSamples[i] = src[Math.min(src.length - 1, Math.floor(i * ratio))] ?? 0;
-  }
-  await context.close();
-  return { audioDataUrl, pcmSamples, sampleRateHz: targetRate };
-}
 
 function outputText(value: unknown): string {
   if (typeof value === "string") return value;
@@ -327,14 +289,14 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
       data-testid="model-tester-shell"
       className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg supports-[height:100dvh]:h-[100dvh]"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
             ref={backControl.ref}
             {...backControl.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-lg text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={t("nav.back", { defaultValue: "Back" })}
           >
@@ -352,7 +314,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
             {...refreshControl.agentProps}
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-lg text-muted hover:text-txt"
+            className="h-9 w-9 text-muted hover:text-txt"
             onClick={refreshStatus}
             aria-label="Refresh model status"
           >
@@ -370,9 +332,9 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
 
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-4 pb-32 pt-4 sm:px-6">
-        <div className="mx-auto flex max-w-5xl flex-col gap-4">
-          <section className="rounded-lg border border-border/20 bg-bg-accent/60 p-4">
+      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 pb-32 pt-2 sm:px-5">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3">
+          <section className="py-2">
             <div className="grid grid-cols-3 gap-2">
               <MetricBadge
                 icon={CheckCircle2}
@@ -401,7 +363,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   type="button"
                   onClick={() => setPrompt(preset.prompt)}
                   aria-pressed={prompt === preset.prompt}
-                  className={`h-12 rounded-lg px-3 text-left text-xs font-semibold transition ${
+                  className={`h-10 px-2 text-left text-xs font-semibold transition ${
                     prompt === preset.prompt
                       ? "bg-accent/10 text-accent"
                       : "text-muted hover:bg-bg-accent hover:text-txt"
@@ -413,7 +375,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border/24 bg-bg px-3 py-2 text-sm text-txt hover:bg-bg-accent">
+              <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 px-2 py-1.5 text-sm text-txt hover:bg-bg-accent/50">
                 <ImageIcon
                   className={`h-4 w-4 ${imageDataUrl ? "text-ok" : "text-muted"}`}
                 />
@@ -429,7 +391,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   }
                 />
               </label>
-              <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border/24 bg-bg px-3 py-2 text-sm text-txt hover:bg-bg-accent">
+              <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 px-2 py-1.5 text-sm text-txt hover:bg-bg-accent/50">
                 <FileAudio
                   className={`h-4 w-4 ${audioPayload ? "text-ok" : "text-muted"}`}
                 />
@@ -455,12 +417,12 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
               <img
                 src={imageDataUrl}
                 alt=""
-                className="mt-3 aspect-video w-full rounded-lg object-cover"
+                className="mt-3 aspect-video w-full object-cover"
               />
             ) : null}
           </section>
 
-          <main className="divide-y divide-border/15">
+          <main className="flex flex-col gap-1">
             {TEST_ORDER.map((id) => {
               const copy = TEST_COPY[id];
               const Icon = copy.Icon;
@@ -470,10 +432,10 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
               const audio = id === "text-to-speech" ? audioSrc(result) : null;
               const urls = id === "image" ? generatedImageUrls(result) : [];
               return (
-                <section key={id} className="py-4">
+                <section key={id} className="py-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-border/20 bg-bg">
+                      <div className="grid h-9 w-9 shrink-0 place-items-center">
                         <Icon className="h-5 w-5 text-txt" />
                       </div>
                       <div className="min-w-0">
@@ -518,10 +480,10 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                           key={url}
                           src={url}
                           alt=""
-                          className="mt-3 aspect-square w-full rounded-lg object-cover"
+                          className="mt-3 aspect-square w-full object-cover"
                         />
                       ))}
-                      <pre className="mt-3 max-h-60 overflow-auto rounded-lg bg-bg p-3 text-xs leading-relaxed text-muted">
+                      <pre className="mt-3 max-h-60 overflow-auto bg-bg/60 p-3 text-xs leading-relaxed text-muted">
                         {outputText(result.ok ? result.output : result.error)}
                       </pre>
                     </div>
@@ -533,18 +495,6 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
     </div>
-  );
-}
-
-export function ModelTesterTuiView() {
-  return (
-    <TerminalPluginView
-      id="model-tester"
-      label="Model Tester TUI"
-      description="Terminal probes for Eliza-1 text, voice, audio, and vision models"
-      commands={[...MODEL_TESTER_TUI_CAPABILITIES]}
-      endpoints={["/api/model-tester/status", "/api/model-tester/run"]}
-    />
   );
 }
 
@@ -573,7 +523,7 @@ function TestRunButton({
       {...agentProps}
       variant="outline"
       size="icon"
-      className="h-9 w-9 rounded-lg"
+      className="h-9 w-9"
       disabled={isRunning}
       onClick={onRun}
       aria-label={`Run ${title}`}
@@ -638,7 +588,7 @@ function MetricBadge({
         : "text-muted";
   return (
     <div
-      className="flex min-h-14 items-center justify-center gap-2 rounded-lg border border-border/20 bg-bg px-2"
+      className="flex min-h-12 items-center justify-center gap-2 px-2"
       role="status"
       aria-label={label}
       title={label}

@@ -65,9 +65,9 @@ def test_sft_weights_status_pending_without_final(monkeypatch, tmp_path):
 
 def test_bundle_tiers_cover_release_size_matrix():
     assert P.BUNDLE_TIERS == (
-        "0_8b",
         "2b",
         "4b",
         "9b",
         "27b",
+        "27b-256k",
     )

@@ -140,6 +140,7 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 - **Dual build (node + browser).** Exports differ: `dist/node/index.node.js` and `dist/browser/index.browser.js`. Browser build avoids sending `Authorization` headers by default; set `OPENAI_BROWSER_BASE_URL` to a server-side proxy.
 - **Cerebras mode.** Detected automatically from `ELIZA_PROVIDER=cerebras`, `OPENAI_BASE_URL` matching `*.cerebras.ai`, or presence of `CEREBRAS_API_KEY` without `OPENAI_API_KEY`. In Cerebras mode: structured output via `response_format: json_object` (not `json_schema`); `reasoning_effort` defaults to `"low"` for reasoning-capable models; `promptCacheRetention` is stripped (Cerebras rejects it); embeddings fall back to a deterministic local hash when no explicit embedding URL is set.
 - **EvoLink mode.** Detected automatically from `ELIZA_PROVIDER=evolink`, `OPENAI_BASE_URL` matching `*.evolink.ai`, or presence of `EVOLINK_API_KEY` without a conflicting key. Uses `EVOLINK_BASE_URL` (default `https://direct.evolink.ai/v1`) and defaults to `gpt-5.2` as the model.
+- **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated calls such as Cerebras `gpt-oss-120b` without changing every OpenAI text call.
 - **Reasoning models.** Pass `OPENAI_REASONING_EFFORT=low|medium|high` to control o-series / gpt-oss reasoning budgets. Valid values: `minimal`, `low`, `medium`, `high`.
 - **Prompt caching.** Pass `providerOptions: { openai: { promptCacheKey: "...", promptCacheRetention: "24h" } }` on any `GenerateTextParams` call to enable OpenAI prompt caching.
 - **Deep research.** `ModelType.RESEARCH` uses the OpenAI Responses API (`POST /responses`), not Chat Completions. It defaults to `o3-deep-research` and can take minutes to hours; use `params.background = true` for long jobs.
@@ -147,3 +148,45 @@ Model tiers (nano/medium/mega/response-handler/action-planner) all call the shar
 - **All API calls go through `recordLlmCall()`** from `@elizaos/core` for trajectory logging. Audio/embedding handlers carry a `// @trajectory-allow` comment where appropriate.
 - **No barrel re-export of internal utils.** Import from `"../utils/config"`, `"../utils/events"`, etc. directly within the plugin.
 - See root `AGENTS.md` for repo-wide architecture rules, logger conventions, ESM requirements, and naming standards.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — model provider:**
+- A trajectory from a **live** call to this provider (not the proxy, not a mock): full request, raw response, token usage, finish reason, and streamed chunks.
+- Proof of tool/function-calling and structured-output parsing against the real model.
+- The error paths exercised: bad key, model-not-found, oversized context, timeout, rate-limit, mid-stream disconnect — plus latency and cost from the real call.
+- If no key is available in CI, attach the documented live-run transcript as evidence — never a mocked client passed off as a pass.
+<!-- END: evidence-and-e2e-mandate -->

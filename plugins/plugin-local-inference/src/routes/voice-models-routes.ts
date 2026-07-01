@@ -61,6 +61,7 @@ import {
 	type VoiceModelVersion,
 } from "@elizaos/shared";
 import { evaluateRuntimePolicy } from "../services/network-policy";
+import { stageWakeWordModel } from "../services/voice/wake-word-staging";
 import {
 	downloadVoiceModel,
 	VoiceModelDownloadError,
@@ -499,28 +500,53 @@ export async function handleVoiceModelsRoutes(
 			);
 			return true;
 		}
-		// First asset only; this endpoint handles one published voice archive per request.
 		if (status.latestKnown.ggufAssets.length === 0) {
 			sendJsonError(res, `no assets published for ${id}`, 409);
 			return true;
 		}
 		const controller = new AbortController();
 		try {
-			const result = await getDownloader()({
-				version: status.latestKnown,
-				bundleVoiceDir: bundleVoiceDir(),
-				stagingDir: voiceStagingDir(),
-				assetIndex: 0,
-				networkPolicy,
-				signal: controller.signal,
-			});
+			// Download EVERY published asset for this version. Multi-asset models
+			// (e.g. `wakeword` ships melspec + embedding + classifier) were only
+			// fetching asset 0 before, leaving the model unusable (#9880).
+			const results: Array<{
+				finalPath: string;
+				sha256: string;
+				sizeBytes: number;
+			}> = [];
+			for (
+				let assetIndex = 0;
+				assetIndex < status.latestKnown.ggufAssets.length;
+				assetIndex++
+			) {
+				results.push(
+					await getDownloader()({
+						version: status.latestKnown,
+						bundleVoiceDir: bundleVoiceDir(),
+						stagingDir: voiceStagingDir(),
+						assetIndex,
+						networkPolicy,
+						signal: controller.signal,
+					}),
+				);
+			}
+			// Stage the wake-word head into the loader's `wake/<head>.<kind>.gguf`
+			// layout — the downloader's flat `models/voice/` names are not where
+			// the runtime resolves the standalone three-GGUF head (#9880).
+			const staged = await stageWakeWordModel(
+				status.latestKnown,
+				bundleVoiceDir(),
+			);
 			sendJson(res, {
 				ok: true,
 				id,
 				version: status.latestKnown.version,
-				finalPath: result.finalPath,
-				sha256: result.sha256,
-				sizeBytes: result.sizeBytes,
+				// `finalPath` keeps its single-asset shape for back-compat.
+				finalPath: results[0]?.finalPath,
+				finalPaths: results.map((r) => r.finalPath),
+				stagedPaths: staged,
+				sha256: results[0]?.sha256,
+				sizeBytes: results.reduce((n, r) => n + r.sizeBytes, 0),
 			});
 		} catch (err) {
 			if (err instanceof VoiceModelDownloadError) {

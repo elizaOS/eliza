@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
@@ -62,7 +62,7 @@ function currentPrompt(status: TelegramAccountStatus | null): {
 }
 
 export function TelegramAccountConnectorPanel() {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [status, setStatus] = useState<TelegramAccountStatus | null>(null);
   const [phone, setPhone] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -222,7 +222,7 @@ export function TelegramAccountConnectorPanel() {
                 }
               }}
               placeholder="+15551234567"
-              className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+              className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
             />
             <Button
               variant="default"
@@ -254,7 +254,7 @@ export function TelegramAccountConnectorPanel() {
                   }
                 }}
                 placeholder={prompt.placeholder}
-                className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50  "
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     void submitAuthInput();

@@ -1,5 +1,6 @@
 import type { PermissionStatus } from "@elizaos/shared";
-import { Badge, Button, useApp } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
+import { useAppSelector } from "@elizaos/ui/state";
 import { CheckCircle2, Monitor, Settings, ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types/website-blocker-settings-card";
 
@@ -77,7 +78,7 @@ export function WebsiteBlockerSettingsCard({
   onOpenPermissionSettings,
   onRequestPermission,
 }: WebsiteBlockerSettingsCardProps) {
-  const { t: rawT } = useApp();
+  const rawT = useAppSelector((s) => s.t);
   const t = typeof rawT === "function" ? rawT : (key: string): string => key;
 
   const title = translate(
@@ -92,34 +93,19 @@ export function WebsiteBlockerSettingsCard({
   );
 
   if (mode === "web" || mode === "mobile") {
+    // Flat row to match the permission rows above it (no card chrome / prose).
     return (
-      <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
-            <Monitor className="h-5 w-5 text-muted" aria-hidden />
-          </div>
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="font-bold text-sm text-txt">{title}</div>
-              <Badge variant="outline">
-                {translate(t, "permissionssection.desktopOnly", "Desktop only")}
-              </Badge>
-            </div>
-            <div className="text-xs-tight leading-5 text-muted">
-              {mode === "web"
-                ? translate(
-                    t,
-                    "permissionssection.websiteBlocking.webInfo",
-                    "Use the desktop app to manage system hosts blocking.",
-                  )
-                : translate(
-                    t,
-                    "permissionssection.websiteBlocking.mobileInfo",
-                    "Install the desktop build to manage blocked sites.",
-                  )}
-            </div>
-          </div>
+      <div className="flex items-center gap-3 py-2.5">
+        <Monitor
+          className="h-[18px] w-[18px] shrink-0 text-muted/80"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1 text-sm font-medium text-txt">
+          {title}
         </div>
+        <span className="text-xs text-muted">
+          {translate(t, "permissionssection.desktopOnly", "Desktop only")}
+        </span>
       </div>
     );
   }
@@ -154,24 +140,30 @@ export function WebsiteBlockerSettingsCard({
       : null;
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/92 shadow-sm">
-      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="px-1 py-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/40">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
             <ShieldBan className="h-5 w-5 text-txt" aria-hidden />
           </div>
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <div className="font-bold text-sm text-txt">{title}</div>
               {permission ? (
-                <Badge variant={badge.variant}>
+                <span
+                  className={`inline-flex items-center gap-1 text-xs ${
+                    badge.ready ? "text-ok" : "text-muted"
+                  }`}
+                >
                   {badge.ready ? (
                     <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden />
                   ) : null}
                   {badge.label}
-                </Badge>
+                </span>
               ) : null}
-              {platform ? <Badge variant="outline">{platform}</Badge> : null}
+              {platform ? (
+                <span className="text-xs text-muted">{platform}</span>
+              ) : null}
             </div>
             <div className="max-w-2xl text-xs-tight leading-5 text-muted">
               {description}

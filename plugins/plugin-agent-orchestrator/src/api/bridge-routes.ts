@@ -29,6 +29,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SessionInfo } from "../services/types.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
+import {
+  emitCredentialPrompt,
+  emitCredentialResolved,
+} from "./credential-prompt.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendJson } from "./route-utils.js";
 
@@ -193,6 +197,20 @@ async function handlePost(
     childSessionId: sessionId,
     credentialKeys: rawKeys as readonly string[],
   });
+  // #8907/#10317: surface the pending request as the real out-of-band
+  // sensitive-request in the origin task thread so `SensitiveRequestBlock`
+  // renders an inline tunnel-routed secure form (AC1). Best-effort; never blocks
+  // the credential bridge response. The scoped token is NOT forwarded — only the
+  // scope id + child session id, so the submitted value tunnels to this child.
+  await emitCredentialPrompt({
+    runtime: ctx.runtime,
+    metadata: session.metadata,
+    credentialKeys: rawKeys as readonly string[],
+    label: session.name,
+    credentialScopeId: result.credentialScopeId,
+    childSessionId: sessionId,
+    expiresAt: result.expiresAt,
+  });
   sendJson(res, {
     credentialScopeId: result.credentialScopeId,
     scopedToken: result.scopedToken,
@@ -255,6 +273,13 @@ async function handleGet(
       scopedToken,
     });
     if (outcome.status === "ready") {
+      // #8907: tell the origin thread the task is unblocked (best-effort).
+      await emitCredentialResolved({
+        runtime: ctx.runtime,
+        metadata: session.metadata,
+        key,
+        label: session.name,
+      });
       sendJson(res, {
         key,
         value: outcome.value,

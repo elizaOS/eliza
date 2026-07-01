@@ -1,0 +1,3 @@
+2026-06-30T00:38:21-07:00
+$ bun run --cwd packages/core typecheck
+$ tsgo --noEmit -p ./tsconfig.json

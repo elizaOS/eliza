@@ -8,6 +8,10 @@ export const VECTOR_DIMS = {
   LARGE: 768,
   XL: 1024,
   XXL: 1536,
+  // 2048: retained for local Eliza-1 pooled-text embeddings and other
+  // 2048-wide local providers. Without this column those embeddings have no
+  // storable dimension and are silently dropped (broken on-device memory/RAG).
+  XXL2: 2048,
   XXXL: 3072,
 } as const;
 
@@ -17,6 +21,7 @@ export const DIMENSION_MAP = {
   [VECTOR_DIMS.LARGE]: "dim768",
   [VECTOR_DIMS.XL]: "dim1024",
   [VECTOR_DIMS.XXL]: "dim1536",
+  [VECTOR_DIMS.XXL2]: "dim2048",
   [VECTOR_DIMS.XXXL]: "dim3072",
 } as const;
 
@@ -37,6 +42,7 @@ export const embeddingTable = pgTable(
     dim768: vector("dim_768", { dimensions: VECTOR_DIMS.LARGE }),
     dim1024: vector("dim_1024", { dimensions: VECTOR_DIMS.XL }),
     dim1536: vector("dim_1536", { dimensions: VECTOR_DIMS.XXL }),
+    dim2048: vector("dim_2048", { dimensions: VECTOR_DIMS.XXL2 }),
     dim3072: vector("dim_3072", { dimensions: VECTOR_DIMS.XXXL }),
   },
   (table) => [
@@ -60,6 +66,7 @@ export type EmbeddingDimensionColumn =
   | "dim768"
   | "dim1024"
   | "dim1536"
+  | "dim2048"
   | "dim3072";
 
 /**

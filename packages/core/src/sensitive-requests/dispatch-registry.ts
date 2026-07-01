@@ -33,6 +33,24 @@ export interface DeliveryResult {
 }
 
 /**
+ * Sub-agent credential-bridge routing carried on a secret request's delivery.
+ *
+ * Present only on sensitive-requests that collect a credential for a blocked
+ * coding sub-agent. It names the one-shot scope and the child session the
+ * value should be tunneled to, so the in-chat / DM submit surface knows to
+ * route the value through `CredentialTunnelService.tunnelCredential` instead
+ * of writing it to the long-term agent secret store.
+ *
+ * SECURITY: this carries identifiers only. The scoped bearer token and the
+ * credential value are NEVER serialized into chat text or into this routing
+ * object (locked "secrets never transit chat text" invariant).
+ */
+export interface SensitiveRequestTunnelRouting {
+	credentialScopeId: string;
+	childSessionId: string;
+}
+
+/**
  * Payment-context discriminator used by the public-link adapter and (later)
  * by the unified payment surface in Wave B.
  */
@@ -55,6 +73,12 @@ export interface DispatchSensitiveRequest {
 	kind: string;
 	/** epoch ms (preferred) or ISO string for legacy / policy-resolved requests. */
 	expiresAt?: number | string;
+	/**
+	 * Optional sub-agent credential-bridge routing (identifiers only — never the
+	 * scoped token or value). When present, the collected value is tunneled to a
+	 * blocked child session rather than written to the agent secret store.
+	 */
+	tunnel?: SensitiveRequestTunnelRouting;
 	[k: string]: unknown;
 }
 

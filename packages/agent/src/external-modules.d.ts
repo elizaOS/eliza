@@ -435,6 +435,7 @@ declare module "@elizaos/plugin-imessage" {
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
+declare module "@elizaos/plugin-pty";
 declare module "@elizaos/plugin-x402" {
   import type {
     IAgentRuntime,
@@ -505,6 +506,66 @@ declare module "markdown-it" {
     disable(rule: string | string[], ignoreInvalid?: boolean): this;
   }
   export = MarkdownIt;
+}
+
+declare module "fluent-ffmpeg" {
+  export interface FfprobeStream {
+    codec_type?: string;
+  }
+
+  export interface FfprobeData {
+    streams?: FfprobeStream[];
+  }
+
+  export interface FfmpegCommand {
+    output(path: string): FfmpegCommand;
+    noVideo(): FfmpegCommand;
+    audioCodec(codec: string): FfmpegCommand;
+    videoCodec(codec: string): FfmpegCommand;
+    screenshots(options: {
+      timestamps: number[];
+      filename: string;
+      folder: string;
+      size: string;
+    }): FfmpegCommand;
+    seekInput(seconds: number): FfmpegCommand;
+    duration(seconds: number): FfmpegCommand;
+    format(format: string): FfmpegCommand;
+    toFormat(format: string): FfmpegCommand;
+    size(size: string): FfmpegCommand;
+    videoBitrate(bitrate: string | number): FfmpegCommand;
+    fps(fps: number): FfmpegCommand;
+    on(event: "end", listener: () => void): FfmpegCommand;
+    on(event: "error", listener: (error: Error) => void): FfmpegCommand;
+    run(): void;
+  }
+
+  interface FfmpegFactory {
+    (input?: string): FfmpegCommand;
+    setFfmpegPath(path: string): void;
+    ffprobe(
+      input: string,
+      callback: (error: Error | null, metadata: FfprobeData) => void,
+    ): void;
+  }
+
+  const ffmpeg: FfmpegFactory;
+  export default ffmpeg;
+}
+
+declare module "pngjs" {
+  export class PNG {
+    constructor(options: { width: number; height: number });
+
+    data: Buffer;
+    height: number;
+    width: number;
+
+    static sync: {
+      read(buffer: Buffer): PNG;
+      write(png: PNG): Buffer;
+    };
+  }
 }
 
 declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
@@ -761,15 +822,11 @@ declare module "@elizaos/ui" {
   export type WindowShellRoute = string;
   export type AppDetailExtensionProps = AnyValue;
   export type AppBootConfig = AnyValue;
-  export type AppOperatorSurfaceProps = AnyValue;
   export type AppRunSummary = AnyValue;
   export type AppSessionJsonValue = AnyValue;
   export type BrandingConfig = AnyValue;
   export type CharacterCatalogData = AnyValue;
   export type CodingAgentTasksPanelProps = AnyValue;
-  export type CompanionInferenceNotice = AnyValue;
-  export type CompanionSceneStatus = AnyValue;
-  export type CompanionShellComponentProps = AnyValue;
   export type ConversationMessage = AnyValue;
   export type FeedActivityItem = AnyValue;
   export type FeedAgentGoal = AnyValue;
@@ -779,19 +836,11 @@ declare module "@elizaos/ui" {
   export type FeedTeamAgent = AnyValue;
   export type FeedWallet = AnyValue;
   export type FineTuningViewProps = AnyValue;
-  export type GameOperatorAction = AnyValue;
-  export type GameOperatorEvent = AnyValue;
   export type NetworkStatusChangeDetail = AnyValue;
   export type OverlayApp = AnyValue;
   export type OverlayAppContext = AnyValue;
-  export type ResolveCompanionInferenceNoticeArgs = AnyValue;
   export type ShareTargetPayload = AnyValue;
-  export type StewardApprovalQueueProps = AnyValue;
-  export type StewardLogoProps = AnyValue;
-  export type StewardTransactionHistoryProps = AnyValue;
   export type SurfaceTone = string;
-  export type VincentStateHookArgs = AnyValue;
-  export type VincentStateHookResult = AnyValue;
 
   export interface IosLocalAgentNativeRequestOptions {
     path: string;
@@ -815,13 +864,23 @@ declare module "@elizaos/ui" {
   export const App: ComponentType<AnyValue>;
   export const AppProvider: ComponentType<AnyValue>;
   export const AppWindowRenderer: ComponentType<AnyValue>;
+  export const EmbeddedAppViewer: ComponentType<AnyValue>;
   export const Button: ComponentType<AnyValue>;
   export const CharacterEditor: ComponentType<AnyValue>;
   export const COMMAND_PALETTE_EVENT: string;
   export const CONNECT_EVENT: string;
   export const ELIZA_DEFAULT_THEME: string;
+  export type EmbeddedAppViewerStatus = "loading" | "ready" | "authenticated";
+  export interface EmbeddedAppViewerProps {
+    viewerUrl: string;
+    authMessage?: AnyValue | null;
+    sandbox?: string;
+    title: string;
+    className?: string;
+    onStatusChange?: (status: EmbeddedAppViewerStatus) => void;
+  }
+  export const EmbeddedAppViewer: ComponentType<EmbeddedAppViewerProps>;
   export const ErrorBoundary: ComponentType<AnyValue>;
-  export const GameOperatorShell: ComponentType<AnyValue>;
   export const Input: ComponentType<AnyValue>;
   export const IOS_LOCAL_AGENT_IPC_BASE: string;
   export const MOBILE_LOCAL_AGENT_API_BASE: string;
@@ -854,7 +913,6 @@ declare module "@elizaos/ui" {
   export const loadUiTheme: AnyFunction;
   export const normalizeMobileRuntimeMode: AnyFunction;
   export const registerDetailExtension: AnyFunction;
-  export const registerOperatorSurface: AnyFunction;
   export const registerOverlayApp: AnyFunction;
   export const resolveWindowShellRoute: AnyFunction;
   export const routeFirstRunDeepLink: AnyFunction;

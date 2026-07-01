@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   type ChangeEvent,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
@@ -36,6 +37,26 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+
+/**
+ * Gate a native read behind its permission check so we never invoke a native
+ * plugin call we already know will reject. Capacitor logs every rejected native
+ * call itself (`@capacitor/core` handleError → console.error), so issuing
+ * `listContacts` / `listMessages` without first confirming access turns an
+ * expected permission-denied state into a raw console error. `check`/`request`
+ * resolve to the relevant permission state ("granted" when allowed); on web the
+ * native plugins report "granted", so the read path is unchanged. Returns true
+ * when the read may proceed.
+ */
+export async function ensureNativeReadGranted(
+  check: (() => Promise<string>) | null,
+  request: (() => Promise<string>) | null,
+): Promise<boolean> {
+  if (!check) return true;
+  if ((await check().catch(() => null)) === "granted") return true;
+  if (request && (await request().catch(() => null)) === "granted") return true;
+  return false;
+}
 
 type PhonePanel = "dialer" | "recents" | "contacts" | "import" | "transcripts";
 
@@ -409,36 +430,55 @@ function DialpadButton({
   );
 }
 
-function RecentCallButton({
+const RecentCallButton = memo(function RecentCallButton({
   call,
   onSelect,
-  children,
 }: {
   call: CallLogEntry;
-  onSelect: () => void;
-  children: ReactNode;
+  onSelect: (call: CallLogEntry) => void;
 }) {
+  const { t } = useTranslation();
+  const handleSelect = useCallback(() => onSelect(call), [onSelect, call]);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `recent-call-${call.id}`,
     role: "list-item",
     label: callDisplayName(call),
     group: "recent-calls",
-    onActivate: onSelect,
+    onActivate: handleSelect,
   });
+  const summary =
+    call.agentSummary || call.agentTranscript || call.transcription;
   return (
     <button
       ref={ref}
       type="button"
-      onClick={onSelect}
+      onClick={handleSelect}
       className="rounded-sm border border-border bg-bg p-3 text-left text-sm hover:border-primary"
       {...agentProps}
     >
-      {children}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium text-txt">{callDisplayName(call)}</span>
+        <span className="text-xs text-muted">
+          {callTypeLabel(call.type)} · {durationLabel(call.durationSeconds)}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+        <span>
+          {call.number ||
+            t("elizaosapps.phone.unknownNumber", {
+              defaultValue: "unknown number",
+            })}
+        </span>
+        <span>{formatTimestamp(call.date)}</span>
+      </div>
+      {summary ? (
+        <div className="mt-2 line-clamp-2 text-xs text-muted">{summary}</div>
+      ) : null}
     </button>
   );
-}
+});
 
-function PhoneContactRow({
+const PhoneContactRow = memo(function PhoneContactRow({
   contact,
   dialLabel,
   smsLabel,
@@ -456,6 +496,14 @@ function PhoneContactRow({
   onSms: (contactNumber: string) => void;
 }) {
   const contactNumber = primaryPhoneNumber(contact);
+  const handleDial = useCallback(
+    () => onDial(contactNumber),
+    [onDial, contactNumber],
+  );
+  const handleSms = useCallback(
+    () => onSms(contactNumber),
+    [onSms, contactNumber],
+  );
   return (
     <div className="rounded-sm border border-border bg-bg p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -481,7 +529,7 @@ function PhoneContactRow({
             agentGroup="phone-contacts"
             disabled={!contactNumber}
             icon={<PhoneCall className="h-4 w-4" />}
-            onClick={() => onDial(contactNumber)}
+            onClick={handleDial}
           >
             {dialLabel}
           </SecondaryButton>
@@ -491,7 +539,7 @@ function PhoneContactRow({
             agentGroup="phone-contacts"
             disabled={!contactNumber}
             icon={<MessageSquare className="h-4 w-4" />}
-            onClick={() => onSms(contactNumber)}
+            onClick={handleSms}
           >
             {smsLabel}
           </SecondaryButton>
@@ -499,7 +547,7 @@ function PhoneContactRow({
       </div>
     </div>
   );
-}
+});
 
 function PhoneRoleRow({
   role,
@@ -636,6 +684,18 @@ export function PhonePageView() {
     [contactQuery],
   );
 
+  // Stable per-row handlers so the memoized RecentCallButton / PhoneContactRow
+  // hold across re-renders of this page.
+  const handleSelectCall = useCallback((call: CallLogEntry) => {
+    setSelectedCallId(call.id);
+    setActivePanel("transcripts");
+  }, []);
+
+  const handleDialContact = useCallback((contactNumber: string) => {
+    setNumber(contactNumber);
+    setActivePanel("dialer");
+  }, []);
+
   useEffect(() => {
     const launchNumber =
       params.get("number") ?? numberFromTelUri(params.get("uri"));
@@ -664,24 +724,46 @@ export function PhonePageView() {
     setError(null);
     try {
       const plugins = getPlugins();
-      if (typeof plugins.phone.plugin.getStatus !== "function") {
+      const phonePlugin = plugins.phone.plugin;
+      const contactsPlugin = plugins.contacts.plugin;
+      if (typeof phonePlugin.getStatus !== "function") {
         throw new Error("ElizaPhone plugin is unavailable");
       }
-      if (typeof plugins.phone.plugin.listRecentCalls !== "function") {
+      if (typeof phonePlugin.listRecentCalls !== "function") {
         throw new Error("ElizaPhone call log API is unavailable");
       }
       if (typeof plugins.system.plugin.getStatus !== "function") {
         throw new Error("ElizaSystem plugin is unavailable");
       }
-      if (typeof plugins.contacts.plugin.listContacts !== "function") {
+      if (typeof contactsPlugin.listContacts !== "function") {
         throw new Error("ElizaContacts plugin is unavailable");
       }
-      const [phone, system, recentCalls, contactResult] = await Promise.all([
-        plugins.phone.plugin.getStatus(),
+      // Gate the permission-bearing reads (#10196): the call log needs phone
+      // permission and the address book needs contacts permission; getStatus
+      // needs neither. Resolving access first means we never invoke a native
+      // call we know will reject (which Capacitor would console.error).
+      const phoneCheck = phonePlugin.checkPermissions;
+      const phoneReq = phonePlugin.requestPermissions;
+      const contactsCheck = contactsPlugin.checkPermissions;
+      const contactsReq = contactsPlugin.requestPermissions;
+      const [phone, system, callsGranted, contactsGranted] = await Promise.all([
+        phonePlugin.getStatus(),
         plugins.system.plugin.getStatus(),
-        plugins.phone.plugin.listRecentCalls({ limit: 100 }),
-        plugins.contacts.plugin.listContacts(contactListOptions),
+        ensureNativeReadGranted(
+          phoneCheck ? async () => (await phoneCheck()).phone : null,
+          phoneReq ? async () => (await phoneReq()).phone : null,
+        ),
+        ensureNativeReadGranted(
+          contactsCheck ? async () => (await contactsCheck()).contacts : null,
+          contactsReq ? async () => (await contactsReq()).contacts : null,
+        ),
       ]);
+      const recentCalls = callsGranted
+        ? await phonePlugin.listRecentCalls({ limit: 100 })
+        : { calls: [] };
+      const contactResult = contactsGranted
+        ? await contactsPlugin.listContacts(contactListOptions)
+        : { contacts: [] };
       setStatus([
         `telecom: ${phone.hasTelecom ? "available" : "unavailable"}`,
         `default dialer: ${phone.defaultDialerPackage ?? "none"}`,
@@ -694,6 +776,15 @@ export function PhonePageView() {
       setSelectedCallId(
         (current) => current ?? recentCalls.calls[0]?.id ?? null,
       );
+      if (!callsGranted || !contactsGranted) {
+        setError(
+          !callsGranted && !contactsGranted
+            ? "Phone and Contacts permissions are required to load recent calls and your address book."
+            : callsGranted
+              ? "Contacts permission is required to load your address book."
+              : "Phone permission is required to load recent calls.",
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -908,37 +999,8 @@ export function PhonePageView() {
                 <RecentCallButton
                   key={call.id}
                   call={call}
-                  onSelect={() => {
-                    setSelectedCallId(call.id);
-                    setActivePanel("transcripts");
-                  }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-txt">
-                      {callDisplayName(call)}
-                    </span>
-                    <span className="text-xs text-muted">
-                      {callTypeLabel(call.type)} ·{" "}
-                      {durationLabel(call.durationSeconds)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                    <span>
-                      {call.number ||
-                        t("elizaosapps.phone.unknownNumber", {
-                          defaultValue: "unknown number",
-                        })}
-                    </span>
-                    <span>{formatTimestamp(call.date)}</span>
-                  </div>
-                  {call.agentTranscript || call.transcription ? (
-                    <div className="mt-2 line-clamp-2 text-xs text-muted">
-                      {call.agentSummary ||
-                        call.agentTranscript ||
-                        call.transcription}
-                    </div>
-                  ) : null}
-                </RecentCallButton>
+                  onSelect={handleSelectCall}
+                />
               ))
             ) : (
               <EmptyState>
@@ -1006,10 +1068,7 @@ export function PhonePageView() {
                   noNumbersLabel={t("elizaosapps.phone.contacts.noNumbers", {
                     defaultValue: "No phone numbers",
                   })}
-                  onDial={(contactNumber) => {
-                    setNumber(contactNumber);
-                    setActivePanel("dialer");
-                  }}
+                  onDial={handleDialContact}
                   onSms={openMessagesForNumber}
                 />
               ))
@@ -1512,11 +1571,24 @@ export function MessagesPageView() {
     setBusy(true);
     setError(null);
     try {
-      const plugins = getPlugins();
-      if (typeof plugins.messages.plugin.listMessages !== "function") {
+      const messagesPlugin = getPlugins().messages.plugin;
+      if (typeof messagesPlugin.listMessages !== "function") {
         throw new Error("ElizaMessages plugin is unavailable");
       }
-      const result = await plugins.messages.plugin.listMessages({ limit: 100 });
+      const check = messagesPlugin.checkPermissions;
+      const request = messagesPlugin.requestPermissions;
+      const granted = await ensureNativeReadGranted(
+        check ? async () => (await check()).sms : null,
+        request ? async () => (await request()).sms : null,
+      );
+      if (!granted) {
+        setMessages([]);
+        setError(
+          "SMS permission is required. Grant Messages access to read your texts, then retry.",
+        );
+        return;
+      }
+      const result = await messagesPlugin.listMessages({ limit: 100 });
       setMessages(result.messages);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1739,7 +1811,7 @@ export function MessagesPageView() {
                     </span>
                     <span>
                       {messageTypeLabel(message.type)} ·{" "}
-                      {new Date(message.date).toLocaleString()}
+                      {new Date(message.date).toLocaleString("en-US")}
                     </span>
                   </div>
                   <p className="mt-2 whitespace-pre-wrap text-txt">
@@ -1781,11 +1853,24 @@ export function ContactsPageView() {
     setBusy(true);
     setError(null);
     try {
-      const plugins = getPlugins();
-      if (typeof plugins.contacts.plugin.listContacts !== "function") {
+      const contactsPlugin = getPlugins().contacts.plugin;
+      if (typeof contactsPlugin.listContacts !== "function") {
         throw new Error("ElizaContacts plugin is unavailable");
       }
-      const result = await plugins.contacts.plugin.listContacts(listOptions);
+      const check = contactsPlugin.checkPermissions;
+      const request = contactsPlugin.requestPermissions;
+      const granted = await ensureNativeReadGranted(
+        check ? async () => (await check()).contacts : null,
+        request ? async () => (await request()).contacts : null,
+      );
+      if (!granted) {
+        setContacts([]);
+        setError(
+          "Contacts permission is required. Grant Contacts access to read your address book, then retry.",
+        );
+        return;
+      }
+      const result = await contactsPlugin.listContacts(listOptions);
       setContacts(result.contacts);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

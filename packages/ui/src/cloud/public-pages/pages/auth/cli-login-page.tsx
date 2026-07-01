@@ -5,16 +5,10 @@
  * Ported from `@elizaos/cloud-frontend/src/pages/auth/cli-login/page.tsx`.
  */
 
-import {
-  AlertCircle,
-  CheckCircle2,
-  Key,
-  Loader2,
-  Terminal,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -82,12 +76,6 @@ function getPageState({
   return { status: "loading" };
 }
 
-function getUserEmail(user: unknown): string | undefined {
-  if (!user || typeof user !== "object" || !("email" in user)) return undefined;
-  const { email } = user as { email?: unknown };
-  return typeof email === "string" ? email : undefined;
-}
-
 function CliLoginPanel({
   actions,
   children,
@@ -132,8 +120,9 @@ function CliLoginPanel({
 
 export default function CliLoginPage() {
   const t = useCloudT();
-  const { authenticated, ready, user } = useSessionAuth();
+  const { authenticated, ready } = useSessionAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const sessionId = searchParams.get("session");
   const [completion, setCompletion] = useState<CompletionState>({
     status: "idle",
@@ -143,7 +132,7 @@ export default function CliLoginPage() {
 
   usePageTitle(
     t("cloud.cliLogin.metaTitle", {
-      defaultValue: "CLI Authentication | Eliza Cloud",
+      defaultValue: "Sign in | Eliza Cloud",
     }),
   );
 
@@ -218,7 +207,35 @@ export default function CliLoginPage() {
   const returnToQuery = searchParams.toString();
   const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
   const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
-  const userEmail = getUserEmail(user);
+
+  // No "CLI Authentication" interstitial: when the user isn't signed in yet,
+  // forward straight to the Steward login. `returnTo` brings the browser back
+  // here once authenticated, where the session auto-completes. Guarded per
+  // session via sessionStorage so a login page that bounces back without
+  // establishing a session falls back to a manual button instead of looping.
+  const autoSignInKey = sessionId
+    ? `eliza-cloud-cli-login-autosignin:${sessionId}`
+    : null;
+  const autoSignInTried =
+    autoSignInKey !== null &&
+    typeof sessionStorage !== "undefined" &&
+    sessionStorage.getItem(autoSignInKey) === "1";
+
+  useEffect(() => {
+    if (
+      pageState.status !== "waiting_auth" ||
+      !autoSignInKey ||
+      autoSignInTried
+    ) {
+      return;
+    }
+    try {
+      sessionStorage.setItem(autoSignInKey, "1");
+    } catch {
+      // sessionStorage unavailable — fall through to the manual sign-in button.
+    }
+    navigate(signInHref, { replace: true });
+  }, [pageState.status, autoSignInKey, autoSignInTried, signInHref, navigate]);
 
   if (pageState.status === "initializing" || pageState.status === "loading") {
     return (
@@ -244,26 +261,15 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          <>
-            {sessionId ? (
-              <a href={signInHref} className="w-full">
-                <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
-                  {t("cloud.cliLogin.signInAgain", {
-                    defaultValue: "Sign In Again",
-                  })}
-                </Button>
-              </a>
-            ) : null}
-            <Button
-              onClick={() => window.close()}
-              variant="outline"
-              className="w-full mt-2 border-white/14 hover:bg-white/10"
-            >
-              {t("cloud.cliLogin.closeWindow", {
-                defaultValue: "Close Window",
-              })}
-            </Button>
-          </>
+          sessionId ? (
+            <a href={signInHref} className="w-full">
+              <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+                {t("cloud.cliLogin.signInAgain", {
+                  defaultValue: "Sign In Again",
+                })}
+              </Button>
+            </a>
+          ) : null
         }
         description={pageState.errorMessage}
         icon={AlertCircle}
@@ -276,32 +282,43 @@ export default function CliLoginPage() {
   }
 
   if (pageState.status === "waiting_auth") {
+    // Happy path: the effect above is forwarding to /login — render a neutral
+    // "redirecting" state, never the CLI interstitial. Only if the login page
+    // bounced back here still unauthenticated (guard already set) do we show a
+    // manual sign-in button as a non-looping fallback.
+    if (!autoSignInTried) {
+      return (
+        <CliLoginPanel
+          description={t("cloud.cliLogin.redirecting", {
+            defaultValue: "Taking you to sign in…",
+          })}
+          icon={Loader2}
+          iconClassName="animate-spin"
+          title={t("cloud.cliLogin.redirectingTitle", {
+            defaultValue: "Signing in",
+          })}
+          tone="accent"
+        />
+      );
+    }
     return (
       <CliLoginPanel
         actions={
-          <a href={signInHref} className="w-full">
-            <Button
-              className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
-              disabled={!ready}
-            >
-              {!ready ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  {t("cloud.cliLogin.loading", { defaultValue: "Loading..." })}
-                </>
-              ) : (
-                t("cloud.cliLogin.signIn", { defaultValue: "Sign In" })
-              )}
-            </Button>
-          </a>
+          <Button
+            asChild
+            className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+          >
+            <a href={signInHref}>
+              {t("cloud.cliLogin.signIn", { defaultValue: "Sign In" })}
+            </a>
+          </Button>
         }
         description={t("cloud.cliLogin.waitingAuthDescription", {
-          defaultValue:
-            "Sign in to connect your Eliza app or CLI to Eliza Cloud",
+          defaultValue: "Sign in to connect your Eliza app to Eliza Cloud",
         })}
-        icon={Terminal}
+        icon={Key}
         title={t("cloud.cliLogin.cliAuthentication", {
-          defaultValue: "CLI Authentication",
+          defaultValue: "Sign in to Eliza Cloud",
         })}
         tone="accent"
       />
@@ -312,7 +329,7 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         description={t("cloud.cliLogin.completingDescription", {
-          defaultValue: "Creating your credentials for CLI access...",
+          defaultValue: "Finishing sign-in…",
         })}
         icon={Key}
         iconClassName="animate-pulse"
@@ -334,16 +351,17 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          <Button
-            onClick={() => window.close()}
-            variant="outline"
-            className="w-full border-white/14 hover:bg-white/10"
-          >
-            {t("cloud.cliLogin.closeWindow", { defaultValue: "Close Window" })}
-          </Button>
+          <a href="/" className="w-full">
+            <Button className="w-full h-11 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
+              {t("cloud.cliLogin.continueToDashboard", {
+                defaultValue: "Continue to dashboard",
+              })}
+            </Button>
+          </a>
         }
         description={t("cloud.cliLogin.successDescription", {
-          defaultValue: "Your API key has been generated and sent to the CLI",
+          defaultValue:
+            "You're signed in. Your credentials were sent to the app you started from.",
         })}
         icon={CheckCircle2}
         title={t("cloud.cliLogin.authComplete", {
@@ -351,43 +369,11 @@ export default function CliLoginPage() {
         })}
         tone="success"
       >
-        <div className="w-full bg-black/40 border border-white/14 p-4 space-y-3">
-          <p className="text-xs font-medium text-neutral-400">
-            {t("cloud.cliLogin.apiKeyDetails", {
-              defaultValue: "API Key Details",
-            })}
-          </p>
-          <div className="text-sm space-y-2">
-            <div className="flex justify-between">
-              <span className="text-neutral-500">
-                {t("cloud.cliLogin.prefix", { defaultValue: "Prefix" })}
-              </span>
-              <span className="font-mono text-white">
-                {pageState.apiKeyPrefix}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-500">
-                {t("cloud.cliLogin.createdFor", {
-                  defaultValue: "Created for",
-                })}
-              </span>
-              <span className="text-white">
-                {userEmail ||
-                  t("cloud.cliLogin.yourAccount", {
-                    defaultValue: "Your account",
-                  })}
-              </span>
-            </div>
-          </div>
-        </div>
-
         <div className="w-full border border-green-500/20 bg-green-500/5 p-4">
           <p className="text-sm text-green-400 flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
-            {t("cloud.cliLogin.returnToTerminal", {
-              defaultValue:
-                "You can now close this window and return to your terminal",
+            {t("cloud.cliLogin.returnToApp", {
+              defaultValue: "Return to your app to continue.",
             })}
           </p>
         </div>

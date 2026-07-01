@@ -111,6 +111,27 @@ export interface WorkflowDefinitionResponse extends WorkflowDefinition {
   versionId: string;
 }
 
+export type WorkflowRevisionOperation =
+  | 'update'
+  | 'activate'
+  | 'deactivate'
+  | 'tags'
+  | 'restore'
+  | 'delete';
+
+export interface WorkflowRevision {
+  id: string;
+  workflowId: string;
+  versionId: string;
+  name: string;
+  active: boolean;
+  workflow: WorkflowDefinition;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
+}
+
 export interface WorkflowCredential {
   id: string;
   name: string;
@@ -119,6 +140,18 @@ export interface WorkflowCredential {
   isResolvable?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkflowExecutionEngineMetrics {
+  provider: 'smithers';
+  nodes: number;
+  levels: number;
+  maxConcurrency: number;
+  started: number;
+  finished: number;
+  failed: number;
+  skipped: number;
+  retries: number;
 }
 
 export interface WorkflowExecution {
@@ -147,6 +180,7 @@ export interface WorkflowExecution {
     resultData?: {
       runData?: Record<string, unknown[]>;
       lastNodeExecuted?: string;
+      engine?: WorkflowExecutionEngineMetrics;
       error?: {
         message: string;
         stack?: string;
@@ -157,6 +191,64 @@ export interface WorkflowExecution {
       nodeExecutionStack?: unknown[];
       waitingExecution?: Record<string, unknown>;
     };
+  };
+}
+
+export interface WorkflowEvaluationSampleNode {
+  name: string;
+  status: 'success' | 'error' | 'unknown';
+  itemCount: number;
+  executionTimeMs?: number;
+  error?: string;
+  preview?: string;
+}
+
+export interface WorkflowEvaluationSample {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  executionId: string;
+  createdAt: string;
+  input: {
+    mode: WorkflowExecution['mode'];
+    triggerData?: Record<string, unknown>;
+  };
+  expected: {
+    status: WorkflowExecution['status'];
+    passed: boolean;
+    lastNodeExecuted?: string;
+    engine?: WorkflowExecutionEngineMetrics;
+    error?: string;
+    nodes: WorkflowEvaluationSampleNode[];
+  };
+  score: {
+    pass: boolean;
+    value: number;
+    reason: string;
+  };
+  tags: string[];
+}
+
+export interface WorkflowEvaluationSuite {
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  generatedAt: string;
+  sampleCount: number;
+  samples: WorkflowEvaluationSample[];
+  jsonl: string;
+  optimizer: {
+    engine: 'smithers-gepa';
+    target: 'workflow-generation';
+    suiteName: string;
+    caseFile: string;
+    recommendedCommand: string;
+    recommendedEvalCommand: string;
+    recommendedOptimizeCommand: string;
+    recommendedObservabilityCommand: string;
+    recommendedMetricsCommand: string;
+    notes: string[];
   };
 }
 

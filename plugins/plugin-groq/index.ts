@@ -283,6 +283,12 @@ function getResponseHandlerModel(runtime: IAgentRuntime): string {
   return typeof setting === "string" ? setting : getNanoModel(runtime);
 }
 
+function getTranscriptionModel(runtime: IAgentRuntime): string {
+  const setting =
+    runtime.getSetting("GROQ_TRANSCRIPTION_MODEL") || runtime.getSetting("TRANSCRIPTION_MODEL");
+  return typeof setting === "string" ? setting : DEFAULT_TRANSCRIPTION_MODEL;
+}
+
 function getActionPlannerModel(runtime: IAgentRuntime): string {
   const setting =
     runtime.getSetting("GROQ_ACTION_PLANNER_MODEL") ||
@@ -436,7 +442,8 @@ async function generateWithRetry(
     prompt: string;
     system?: string;
     temperature: number;
-    maxTokens: number;
+    maxTokens?: number;
+    omitMaxTokens?: boolean;
     frequencyPenalty: number;
     presencePenalty: number;
     stopSequences: string[];
@@ -453,7 +460,8 @@ async function generateWithRetry(
       systemPrompt: params.system ?? "",
       userPrompt: params.prompt,
       temperature: params.temperature,
-      maxTokens: params.maxTokens,
+      maxTokens: params.maxTokens ?? 0,
+      maxTokensOmitted: params.omitMaxTokens ? true : undefined,
       purpose: "external_llm",
       actionType: "ai.generateText",
     };
@@ -469,7 +477,9 @@ async function generateWithRetry(
         model: groq.languageModel(model),
         system: params.system,
         temperature: params.temperature,
-        maxOutputTokens: params.maxTokens,
+        // Omit the cap on opt-out (direct-channel Stage-1) so the model's own
+        // max applies; otherwise send the resolved value.
+        ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens }),
         maxRetries: 3,
         frequencyPenalty: params.frequencyPenalty,
         presencePenalty: params.presencePenalty,
@@ -549,7 +559,8 @@ function buildGroqGenerateParams(
   prompt: string;
   system?: string;
   temperature: number;
-  maxTokens: number;
+  maxTokens?: number;
+  omitMaxTokens?: boolean;
   frequencyPenalty: number;
   presencePenalty: number;
   stopSequences: string[];
@@ -575,7 +586,10 @@ function buildGroqGenerateParams(
     prompt: promptText,
     system: systemPrompt,
     temperature: boundedNumber(params.temperature, 0.7, 0, 2),
-    maxTokens: positiveInteger(params.maxTokens, 8192),
+    // Stage-1 direct reply opts out of any cap; everyone else keeps the 8192
+    // default so they stay bounded.
+    maxTokens: params.omitMaxTokens ? undefined : positiveInteger(params.maxTokens, 8192),
+    omitMaxTokens: params.omitMaxTokens,
     frequencyPenalty: boundedNumber(params.frequencyPenalty, 0.7, -2, 2),
     presencePenalty: boundedNumber(params.presencePenalty, 0.7, -2, 2),
     stopSequences: stringArray(params.stopSequences),
@@ -650,6 +664,8 @@ export const groqPlugin: Plugin = {
     GROQ_SHOULD_RESPOND_MODEL: env("GROQ_SHOULD_RESPOND_MODEL"),
     GROQ_ACTION_PLANNER_MODEL: env("GROQ_ACTION_PLANNER_MODEL"),
     GROQ_PLANNER_MODEL: env("GROQ_PLANNER_MODEL"),
+    GROQ_TRANSCRIPTION_MODEL: env("GROQ_TRANSCRIPTION_MODEL"),
+    TRANSCRIPTION_MODEL: env("TRANSCRIPTION_MODEL"),
     NANO_MODEL: env("NANO_MODEL"),
     MEDIUM_MODEL: env("MEDIUM_MODEL"),
     SMALL_MODEL: env("SMALL_MODEL"),
@@ -720,16 +736,17 @@ export const groqPlugin: Plugin = {
         throw new Error("Groq TRANSCRIPTION requires non-empty audio data.");
       }
       const baseURL = getBaseURL(runtime);
+      const transcriptionModel = getTranscriptionModel(runtime);
       const formData = new FormData();
       formData.append(
         "file",
         new File([audioBuffer as BlobPart], "audio.mp3", { type: "audio/mp3" })
       );
-      formData.append("model", DEFAULT_TRANSCRIPTION_MODEL);
+      formData.append("model", transcriptionModel);
 
       const apiKey = nonEmptyString(runtime.getSetting("GROQ_API_KEY"));
       const details: RecordLlmCallDetails = {
-        model: DEFAULT_TRANSCRIPTION_MODEL,
+        model: transcriptionModel,
         systemPrompt: "",
         userPrompt: `audio transcription request: ${audioBuffer.byteLength} bytes`,
         temperature: 0,

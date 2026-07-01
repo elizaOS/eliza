@@ -18,6 +18,7 @@ import {
 } from "@elizaos/core";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import { beginDelivery } from "./delivery-dedupe.ts";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -78,8 +79,8 @@ interface TaskCompletionSummary {
 // ---------------------------------------------------------------------------
 
 const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
-  "lifeops-reminder",
-  "lifeops-workflow",
+  "reminder",
+  "workflow",
   "proactive-gm",
   "proactive-gn",
   "proactive-nudge",
@@ -157,10 +158,28 @@ export async function routeAutonomyTextToUser(
     "action",
     "swarm_synthesis",
   ]);
+  const isEphemeral = ephemeralSources.has(source);
+
+  // Cross-path delivery dedupe (Bug A): the same reply may also be delivered
+  // by the `client_chat` send handler (client-chat-sender.deliver). If this
+  // exact (roomId + text) was just delivered, suppress this relay copy instead
+  // of writing a second memory + broadcasting a second proactive-message. The
+  // reservation is only committed AFTER a successful persist, and released on
+  // failure, so a failed delivery never suppresses a retry. CRUCIALLY, only
+  // DURABLE (persisted) deliveries engage the guard: an ephemeral broadcast
+  // writes no memory, so it must NOT anchor the dedupe and suppress a later
+  // persistent sink of the same text (which would leave the user with a
+  // transient WS message that vanishes on reconnect/history reload).
+  const delivery = isEphemeral
+    ? undefined
+    : beginDelivery(state.deliveryDedupe, conv.roomId, normalizedText);
+  if (delivery?.kind === "duplicate") {
+    return;
+  }
 
   const messageId = crypto.randomUUID() as UUID;
 
-  if (!ephemeralSources.has(source)) {
+  if (!isEphemeral) {
     const agentMessage = createMessageMemory({
       id: messageId,
       entityId: runtime.agentId,
@@ -170,7 +189,12 @@ export async function routeAutonomyTextToUser(
         source,
       },
     });
-    await runtime.createMemory(agentMessage, "messages");
+    try {
+      await runtime.createMemory(agentMessage, "messages");
+    } catch (err) {
+      if (delivery?.kind === "deliver") delivery.reservation.release();
+      throw err;
+    }
   }
   conv.updatedAt = new Date().toISOString();
 
@@ -186,6 +210,7 @@ export async function routeAutonomyTextToUser(
       source,
     },
   });
+  if (delivery?.kind === "deliver") delivery.reservation.commit();
 }
 
 // ---------------------------------------------------------------------------
@@ -232,14 +257,6 @@ export function getCoordinatorFromRuntime(runtime: AgentRuntime): {
   const coordinator = runtime.getService("SWARM_COORDINATOR");
   if (coordinator) {
     return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
-  }
-  const ptyService = runtime.getService("PTY_SERVICE") as
-    | (PTYService & { coordinator?: unknown })
-    | null;
-  if (ptyService?.coordinator) {
-    return ptyService.coordinator as ReturnType<
-      typeof getCoordinatorFromRuntime
-    >;
   }
   return null;
 }
@@ -600,7 +617,8 @@ function removeLocalPathReferences(
   let cleaned = replaceAttachedArtifactMarkdownLinks(text, attachments);
   const titles: string[] = [];
   for (const attachment of attachments) {
-    if (!attachment.url.startsWith("/")) continue;
+    // Absolute local path (POSIX "/…" or Windows "C:\…") — skip remote URLs.
+    if (!path.isAbsolute(attachment.url)) continue;
     const title = attachment.title || path.basename(attachment.url);
     titles.push(title);
     const escapedPath = escapeRegExp(attachment.url);
@@ -661,10 +679,19 @@ function replaceAttachedArtifactMarkdownLinks(
 
 function extractLocalArtifactPaths(text: string): string[] {
   const paths = new Set<string>();
-  for (const match of text.matchAll(/`(\/[^`\n]+)`/gu)) {
+  // Match absolute on-disk paths. On Windows also accept drive-rooted paths
+  // (C:\foo, C:/foo); POSIX keeps the original "/"-rooted behavior byte-for-byte.
+  // Without the Windows arm, artifacts produced on a Windows host (backslash,
+  // drive-letter paths) are never detected, so nothing is ever attached.
+  const win = process.platform === "win32";
+  const quoted = win ? /`((?:\/|[A-Za-z]:[\\/])[^`\n]+)`/gu : /`(\/[^`\n]+)`/gu;
+  const bare = win
+    ? /(?:^|\s)((?:\/|[A-Za-z]:[\\/])[^\s"'`<>|]+)/gmu
+    : /(?:^|\s)(\/[^\s"'`<>|]+)/gmu;
+  for (const match of text.matchAll(quoted)) {
     paths.add(match[1]);
   }
-  for (const match of text.matchAll(/(?:^|\s)(\/[^\s"'`<>|]+)/gmu)) {
+  for (const match of text.matchAll(bare)) {
     paths.add(match[1].replace(/[),.;:!?]+$/u, ""));
   }
   return [...paths];
@@ -924,7 +951,10 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
 // ---------------------------------------------------------------------------
 
 export function getPtyConsoleBridge(st: ServerState) {
+  return getPtyService(st)?.consoleBridge ?? null;
+}
+
+export function getPtyService(st: ServerState): PTYService | null {
   if (!st.runtime) return null;
-  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
-  return ptyService?.consoleBridge ?? null;
+  return st.runtime.getService("PTY_SERVICE") as PTYService | null;
 }

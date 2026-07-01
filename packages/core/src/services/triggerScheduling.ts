@@ -1,9 +1,4 @@
-import type { TaskMetadata } from "../types/task";
-import {
-	TRIGGER_SCHEMA_VERSION,
-	type TriggerConfig,
-	type TriggerType,
-} from "../types/trigger";
+import type { TriggerConfig, TriggerType } from "../types/trigger";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
 export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
@@ -74,7 +69,12 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
 			const single = parseInteger(rangeParts[0].trim());
 			if (single === null) return null;
 			if (single < range.min || single > range.max) return null;
-			output.add(single);
+			// `N/step` (e.g. `5/15`) means "from N to the range max, stepping by
+			// step" — standard cron. Without a step it is just the single value.
+			const upper = stepParts.length === 2 ? range.max : single;
+			for (let value = single; value <= upper; value += step) {
+				output.add(value);
+			}
 			continue;
 		}
 
@@ -290,25 +290,4 @@ export function resolveTriggerTiming(
 			throw new Error(`Unsupported trigger type: ${exhaustiveCheck}`);
 		}
 	}
-}
-
-export function buildTriggerTaskMetadata(params: {
-	trigger: TriggerConfig;
-	nowMs: number;
-	existingMetadata?: TaskMetadata;
-}): TaskMetadata | null {
-	const timing = resolveTriggerTiming(params.trigger, params.nowMs);
-	if (!timing) return null;
-
-	return {
-		...(params.existingMetadata ?? {}),
-		blocking: true,
-		updatedAt: timing.updatedAt,
-		updateInterval: timing.updateIntervalMs,
-		trigger: {
-			...params.trigger,
-			version: TRIGGER_SCHEMA_VERSION,
-			nextRunAtMs: timing.nextRunAtMs,
-		},
-	};
 }

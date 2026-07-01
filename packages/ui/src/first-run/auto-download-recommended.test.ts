@@ -99,9 +99,9 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     const snapshot = simulatorSnapshot();
     snapshot.installed = [
       {
-        id: "eliza-1-0_8b",
-        displayName: "eliza-1-0.8B",
-        path: "/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+        id: "eliza-1-2b",
+        displayName: "eliza-1-2B",
+        path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
         sizeBytes: 556_982_432,
         installedAt: new Date(0).toISOString(),
         source: "eliza-download",
@@ -118,7 +118,7 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     );
 
     expect(mockClient.setLocalInferenceActive).toHaveBeenCalledWith(
-      "eliza-1-0_8b",
+      "eliza-1-2b",
     );
     expect(mockClient.startLocalInferenceDownload).not.toHaveBeenCalled();
   });
@@ -127,16 +127,16 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     const snapshot = simulatorSnapshot();
     snapshot.installed = [
       {
-        id: "eliza-1-0_8b",
-        displayName: "eliza-1-0.8B",
-        path: "/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+        id: "eliza-1-2b",
+        displayName: "eliza-1-2B",
+        path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
         sizeBytes: 556_982_432,
         installedAt: new Date(0).toISOString(),
         source: "eliza-download",
       },
     ] as ModelHubSnapshot["installed"];
     snapshot.active = {
-      modelId: "eliza-1-0_8b",
+      modelId: "eliza-1-2b",
       loadedAt: new Date(0).toISOString(),
       status: "ready",
     };

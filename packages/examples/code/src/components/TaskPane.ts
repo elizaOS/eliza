@@ -17,7 +17,6 @@ const SUB_AGENT_TYPES: SubAgentType[] = [
   "claude-code",
   "codex",
   "opencode",
-  "sweagent",
   "elizaos-native",
 ];
 

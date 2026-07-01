@@ -36,6 +36,34 @@ export interface NetworkStatusChangeDetail {
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
 export const CHAT_AVATAR_VOICE_EVENT = "eliza:chat-avatar-voice" as const;
 export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
+/**
+ * Fused on-device wake (#9953 / #10351). The battery-efficient native
+ * openWakeWord runtime (`libwakeword` via `wake-word-ggml.ts`) runs in the
+ * agent/native process; each detected stage is forwarded to the renderer as
+ * this window event, where `useWakeController` activates the bottom bar and
+ * starts a turn. This is the single contract shared by the producer
+ * (`@elizaos/plugin-local-inference`) and the consumer (`@elizaos/ui`
+ * fused-wake-bridge) so the two halves never drift.
+ */
+export const FUSED_WAKE_EVENT = "eliza:fused-wake" as const;
+
+/** Which fused wake stage fired. */
+export type FusedWakeStage =
+  /** A trained openWakeWord head crossed threshold — terminal, no ASR confirm. */
+  | "head-fired"
+  /** The generic detector raised a candidate; an ASR confirm window opens. */
+  | "stage-a-candidate"
+  /** The short-window ASR transcript for two-stage confirmation. */
+  | "stage-b-transcript";
+
+/** Detail payload for {@link FUSED_WAKE_EVENT} — one fused-wake stage. */
+export interface FusedWakeEventDetail {
+  stage: FusedWakeStage;
+  /** ASR transcript for `stage-b-transcript`. */
+  transcript?: string;
+  /** Detector confidence in [0, 1], when known. */
+  confidence?: number;
+}
 /** After `/api/cloud/status` — chat voice reloads config so cloud-backed TTS mode matches the server snapshot. */
 export const ELIZA_CLOUD_STATUS_UPDATED_EVENT =
   "eliza:cloud-status-updated" as const;
@@ -90,6 +118,7 @@ export type ElizaDocumentEventName =
 export type ElizaWindowEventName =
   | typeof VOICE_CONFIG_UPDATED_EVENT
   | typeof CHAT_AVATAR_VOICE_EVENT
+  | typeof FUSED_WAKE_EVENT
   | typeof APP_EMOTE_EVENT
   | typeof ELIZA_CLOUD_STATUS_UPDATED_EVENT
   | typeof VRM_TELEPORT_COMPLETE_EVENT

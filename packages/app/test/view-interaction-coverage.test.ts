@@ -106,18 +106,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["todos decomposed view", "/todos"],
     },
   ],
-  companion: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Drives companion chat dock, emote picker, microphone toggles, and VRM canvas drag controls.",
-      signals: [
-        "companion interactions",
-        "emote-picker",
-        "companion-vrm-canvas",
-      ],
-    },
-  ],
   contacts: [
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
@@ -133,9 +121,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   hyperliquid: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Refreshes market data and verifies markets, positions, and orders.",
-      signals: ["hyperliquid refresh", "Markets", "Orders"],
+      proves: "Verifies markets, positions, and orders.",
+      signals: ["Markets", "Orders"],
     },
   ],
   lifeops: [
@@ -187,8 +174,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   polymarket: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves: "Refreshes markets and verifies the Polymarket route shell.",
-      signals: ["Polymarket refresh", "Polymarket"],
+      proves: "Verifies the Polymarket route shell.",
+      signals: ["Polymarket"],
     },
   ],
   shopify: [
@@ -197,22 +184,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       proves:
         "Exercises products, create product dialog, orders, inventory, customers, and search controls.",
       signals: ["Shopify create product", "Shopify inventory increase"],
-    },
-  ],
-  steward: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises approval refresh, approve/reject flows, rejection reason, history filters, and table state.",
-      signals: ["steward interactions", "Confirm Reject", "2 transactions"],
-    },
-  ],
-  vincent: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises refresh, connected wallet/trading state, and disconnect flow.",
-      signals: ["vincent interactions", "Disconnect", "Open Vincent"],
     },
   ],
   wallet: [
@@ -254,52 +225,12 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
-  clawville: [
-    {
-      spec: "packages/app/test/ui-smoke/game-apps.spec.ts",
-      proves:
-        "Launches the game app, validates viewer load, command buttons, and chat message flow.",
-      signals: ["clawville", "clawville-command", "chatContent"],
-    },
-  ],
-  "defense-of-the-agents": [
-    {
-      spec: "packages/app/test/ui-smoke/game-apps.spec.ts",
-      proves:
-        "Launches the game app, validates viewer load, command buttons, and chat message flow.",
-      signals: ["defense-of-the-agents", "defense-command", "chatContent"],
-    },
-  ],
-  "2004scape": [
-    {
-      spec: "packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
-      proves:
-        "Launches the operator game app, validates viewer load, suggested prompts, control routes, and chat message flow.",
-      signals: ["2004scape-live-operator-surface", "controlAction"],
-    },
-  ],
-  hyperscape: [
-    {
-      spec: "packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
-      proves:
-        "Launches the Hyperscape host, validates viewer load, diagnostics, and the exposed session-control route.",
-      signals: ["hostOnly", "game-session-control", "controlAction"],
-    },
-  ],
-  scape: [
-    {
-      spec: "packages/app/test/ui-smoke/game-operator-gui-interactions.spec.ts",
-      proves:
-        "Launches the operator game app, validates viewer load, suggested prompts, control routes, and chat message flow.",
-      signals: ["scape-live-operator-surface", "controlAction"],
-    },
-  ],
   orchestrator: [
     {
       spec: "packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
       proves:
-        "Exercises empty state, create task form, POST body, task rail/detail, composer, and message send.",
-      signals: ["orchestrator-create-submit", "orchestrator-send"],
+        "Exercises the read-only empty workbench and the rich build-room rail/timeline/inspector controls plus the add-agent form submit. (The GUI create-task/composer affordances moved to chat in the overlay-only redesign.)",
+      signals: ["orchestrator-workbench", "orchestrator-add-agent-submit"],
     },
   ],
   screenshare: [
@@ -307,7 +238,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/screenshare-gui-interactions.spec.ts",
       proves:
         "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
-      signals: ["host lifecycle", "Refresh capabilities", "screen-token-1"],
+      signals: ["host lifecycle", "capability refresh", "screen-token-1"],
     },
   ],
   "social-alpha": [
@@ -342,9 +273,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
   "trajectory-logger": [
     {
       spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
-      proves:
-        "Exercises trajectory refresh, detail selection, stage filtering, and search.",
-      signals: ["trajectory viewer route refreshes", "trajectory refresh"],
+      proves: "Exercises detail selection, stage filtering, and search.",
+      signals: ["trajectory viewer route refreshes"],
     },
   ],
   training: [
@@ -385,19 +315,9 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
     "`documents` tab (/character/documents) via App.tsx findView, so it cannot be " +
     "registered in the ui-smoke stub without hijacking that route. Needs a " +
     "disambiguated view path before a keyless interaction spec can drive it.",
-  "waifu-imagegen:gui":
-    "The Waifu image generation view is newly boot-loaded and visually covered, " +
-    "but it still needs a keyless interaction owner that injects waifu API " +
-    "runtime config/auth and stubs the image-gen invoke endpoint without hiding " +
-    "credit-settled error states.",
-  "waifu-swap:gui":
-    "The Waifu swap view is newly boot-loaded and visually covered, but it " +
-    "still needs a keyless interaction owner that injects token/runtime config " +
-    "and proves the quote-only, execution-disabled flow without calling live " +
-    "PancakeSwap/waifu capability endpoints.",
 };
 
-const MAX_INTERACTION_DEBT = 3;
+const MAX_INTERACTION_DEBT = 1;
 
 const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
   "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
@@ -457,7 +377,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(63);
+    expect(visualCases.length).toBe(56);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

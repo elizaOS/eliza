@@ -1,0 +1,3 @@
+# Generated per-run artifacts (screenshots, report, contact sheet).
+# The committed `baseline/` dir is the tracked source of truth.
+output/

@@ -12,8 +12,9 @@ Stages (skippable individually; see flags):
   6. Quantized benchmark                          → benchmarks/<run>/<q>/
   6b. Eliza-1-typed GGUF bundle (--eliza1-bundle,  → checkpoints/<run>/eliza1-optimized/
       auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
-      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json),
-      optional MTP drafter (--mtp-drafter)     checkpoints/<run>/mtp/drafter-<tier>.gguf
+      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json).
+      (The MTP drafter is staged out of band — --mtp-drafter is removed and
+      hard-errors; see gemma4-mtp-drafter-conversion.md for the convert + A/B path.)
   6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
       — prefill + gen tokens/sec, CUDA build if       (best -fa 1 -b 2048 -ngl 99 on GPU)
       available; --skip-throughput-bench to skip
@@ -22,13 +23,13 @@ Stages (skippable individually; see flags):
 Usage:
     # Validation smoke on the smallest Eliza-1 size, tiny 1k-per-source mix.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3.5-0.8b \
+        --registry-key gemma4-e2b \
         --from-scratch --sample-per-source 1000 \
         --epochs 1 --eval-mode smoke
 
     # Only build the validation dataset (skip everything else).
     uv run python scripts/run_pipeline.py \
-        --registry-key qwen3.5-0.8b --from-scratch --sample-per-source 1000 \
+        --registry-key gemma4-e2b --from-scratch --sample-per-source 1000 \
         --skip-base-bench --skip-finetune --skip-quantize --skip-bench
 
     # Production run on eliza-1-2b.
@@ -41,7 +42,7 @@ Usage:
         --trajectory-export ../trajectories/export.jsonl --epochs 1
 
     # Cloud run for eliza-1-4b — use scripts/train_vast.sh, which wraps
-    # run_pipeline.py with the active Qwen3.5 registry defaults.
+    # run_pipeline.py with the active Gemma 4 registry defaults.
 """
 
 from __future__ import annotations
@@ -216,8 +217,9 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, "
-                         "eliza-1-0_8b, eliza-1-2b, eliza-1-4b. "
+                    help="One of: gemma4-e2b, gemma4-e4b, gemma4-12b, "
+                         "gemma4-31b, eliza-1-2b, eliza-1-4b, eliza-1-9b, "
+                         "eliza-1-27b. "
                          "Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
@@ -249,9 +251,9 @@ def main() -> int:
         "--micro-batch", type=int, default=0,
         help="Per-device micro-batch size for SFT (forwarded to "
              "train_local.py --batch-size). 0 = use the registry default for "
-             "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
-             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
-             "(same effective batch); validate VRAM with memory_calc.py first.",
+             "the tier. For Gemma E2B/E4B overrides, keep the effective batch "
+             "stable with --grad-accum and validate VRAM with memory_calc.py "
+             "first.",
     )
     ap.add_argument(
         "--grad-accum", type=int, default=0,
@@ -351,7 +353,7 @@ def main() -> int:
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = polarquant (4-bit weights) + turboquant V-cache "
              "sidecar + qjl (1-bit K cache). fused_turboquant is excluded: "
-             "incompatible with Qwen3.5 hybrid linear+full attention arch.",
+             "incompatible with Gemma 4 dense attention arch.",
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
@@ -364,10 +366,13 @@ def main() -> int:
                     help="Skip the Eliza-1 GGUF bundle stage.")
     ap.set_defaults(eliza1_bundle=None)  # None ⇒ auto (on iff the fork is found)
     ap.add_argument("--mtp-drafter", action="store_true",
-                    help="Also distill a MTP speculative-decode drafter for "
-                         "this tier (distill_mtp_drafter.py). Needs a GPU for "
-                         "a real run; uses --synthetic-smoke when --eval-mode "
-                         "smoke so the pipeline still validates on CPU.")
+                    help="REMOVED — passing this now hard-errors. In-repo MTP "
+                         "drafter distillation (scripts/distill_mtp_drafter.py) "
+                         "was deleted; release-grade distillation is H100/H200-"
+                         "gated and done out of band. Produce the drafter via "
+                         "the no-train convert + A/B runbook (plugins/plugin-"
+                         "local-inference/docs/gemma4-mtp-drafter-conversion.md) "
+                         "and stage it into the bundle's mtp/ dir.")
     ap.add_argument("--skip-throughput-bench", action="store_true",
                     help="Skip stage 6c (llama-bench tokens/sec on the produced "
                          "GGUFs — prefill + generation t/s, CUDA build if "
@@ -377,6 +382,17 @@ def main() -> int:
 
     if args.publish and not args.bundle_dir:
         raise SystemExit("--publish requires --bundle-dir")
+
+    if args.mtp_drafter:
+        raise SystemExit(
+            "--mtp-drafter is no longer supported: the in-repo drafter "
+            "distillation script (scripts/distill_mtp_drafter.py) was removed. "
+            "Release-grade MTP drafter distillation is H100/H200-gated and done "
+            "out of band. For the supported no-train path, convert the published "
+            "Gemma-4 MTP drafter and A/B it per "
+            "plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md, "
+            "then stage the resulting drafter GGUF into the bundle's mtp/ dir."
+        )
 
     entry = registry_get(args.registry_key)
     if (
@@ -683,10 +699,12 @@ def main() -> int:
 
     # ───────────── stage 6b: Eliza-1-typed GGUF bundle ─────────────────
     # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
-    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json,
-    # optionally paired with a MTP drafter. optimize_for_eliza1.py is the
-    # canonical orchestrator (it re-runs polarquant→qjl→turboquant idempotently
-    # and then converts via the fork) — run_pipeline just delegates to it.
+    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json.
+    # The MTP drafter is produced out of band (no-train convert + A/B per
+    # plugins/plugin-local-inference/docs/gemma4-mtp-drafter-conversion.md) and
+    # staged into the bundle's mtp/ dir, not by this stage. optimize_for_eliza1.py
+    # is the canonical orchestrator (it re-runs polarquant→qjl→turboquant
+    # idempotently and then converts via the fork) — run_pipeline delegates to it.
     fork_dir = _resolve_eliza1_llama_cpp()
     want_bundle = args.eliza1_bundle if args.eliza1_bundle is not None else (fork_dir is not None)
     if want_bundle and not args.skip_quantize:
@@ -701,23 +719,6 @@ def main() -> int:
             summary["stages"]["eliza1_bundle"] = {"skipped": "no checkpoint"}
         else:
             opt_dir = ckpt_dir / "eliza1-optimized"
-            drafter_gguf: Path | None = None
-            if args.mtp_drafter:
-                mtp_dir = ckpt_dir / "mtp"
-                d_cmd = [
-                    "uv", "run", "--extra", "train", "python",
-                    "scripts/distill_mtp_drafter.py",
-                    "--tier", tier_id,
-                    "--target-checkpoint", str(finetuned_model),
-                    "--dataset", str(train_file),
-                    "--out-dir", str(mtp_dir),
-                ]
-                if args.eval_mode == "smoke":
-                    d_cmd.append("--synthetic-smoke")
-                rc = run(d_cmd, cwd=ROOT)
-                summary["stages"]["mtp_drafter"] = {"exit": rc, "output": str(mtp_dir)}
-                cand = mtp_dir / f"drafter-{tier_id}.gguf"
-                drafter_gguf = cand if cand.exists() else None
             o_cmd = [
                 "uv", "run", "--extra", "train", "python",
                 "scripts/optimize_for_eliza1.py",
@@ -728,8 +729,6 @@ def main() -> int:
                 "--calibration-samples", "128",
                 "--llama-cpp-dir", str(fork_dir),
             ]
-            if drafter_gguf is not None:
-                o_cmd += ["--drafter-repo", str(drafter_gguf)]
             if args.publish and getattr(entry, "eliza_repo_id", None):
                 o_cmd += ["--hf-repo", entry.eliza_repo_id]
             rc = run(o_cmd, cwd=ROOT)

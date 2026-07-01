@@ -82,6 +82,9 @@ Note: iOS connections are rejected with close code `4003`. iOS uses native IPC, 
 
 | Slot | Model ID | HuggingFace path |
 |---|---|---|
-| TEXT_SMALL | `eliza-1-0_8b` | `elizaos/eliza-1` — `bundles/0_8b/text/eliza-1-0_8b-128k.gguf` |
-| TEXT_LARGE | `eliza-1-2b` | `elizaos/eliza-1` — `bundles/2b/text/eliza-1-2b-128k.gguf` |
+| TEXT_SMALL | `eliza-1-4b` | `elizaos/eliza-1` — `bundles/4b/text/eliza-1-4b-128k.gguf` |
+| TEXT_LARGE | `eliza-1-4b` | `elizaos/eliza-1` — `bundles/4b/text/eliza-1-4b-128k.gguf` |
 | TEXT_EMBEDDING | `eliza-1-embedding` | `elizaos/eliza-1` — `bundles/4b/embedding/eliza-1-embedding.gguf` |
+
+The 4B tier is the shipped mobile default for both chat slots; `eliza-1-2b` is
+the smallest/entry tier (the small-phone floor) but is not a recommended default.

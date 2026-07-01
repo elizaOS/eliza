@@ -1,30 +1,25 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLocalElizaDisabled } from "./lib/eliza-source-mode.mjs";
 
 const LOG_PREFIX = "[ensure-elizaos-optional-app-stubs]";
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..");
 const nodeModulesDir = path.join(repoRoot, "node_modules");
+const cleanupHelperPath = path.join(scriptDir, "rm-path-recursive.mjs");
 
 const optionalPackages = [
-  "@elizaos/plugin-clawville",
-  "@elizaos/plugin-companion",
-  "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-training",
-  "@elizaos/plugin-vincent",
 ];
 
 const forcedStubPackages = ["@elizaos/plugin-whatsapp"];
@@ -34,8 +29,6 @@ const stubSource = `const optionalStub = Object.freeze({
   routes: [],
 });
 
-export const EMOTE_BY_ID = Object.freeze({});
-export const EMOTE_CATALOG = Object.freeze([]);
 export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = Object.freeze([]);
 export const appPlugin = optionalStub;
 export const defaultPlugin = optionalStub;
@@ -47,7 +40,6 @@ export const plugin = optionalStub;
 export const shopifyPlugin = optionalStub;
 export const stewardPlugin = optionalStub;
 export const trainingPlugin = optionalStub;
-export const vincentPlugin = optionalStub;
 
 export const documentsRoutes = Object.freeze([]);
 export const trainingRoutes = Object.freeze([]);
@@ -55,9 +47,6 @@ export const trainingRoutes = Object.freeze([]);
 export function clearBackendCache() {}
 export async function detectAvailableBackends() {
   return { available: false, backends: [] };
-}
-export function getElizaMakerRegistryService() {
-  return null;
 }
 export function getSelfControlPermissionState() {
   return { granted: false, status: "unavailable" };
@@ -108,8 +97,6 @@ export function setActiveTrainingService() {}
 export function sanitizeWhatsAppAccountId(value) {
   return typeof value === "string" ? value.trim() : "";
 }
-export async function stewardEvmPostBoot() {}
-export async function stewardEvmPreBoot() {}
 export class WhatsAppPairingSession {}
 export async function whatsappAuthExists() {
   return false;
@@ -125,6 +112,21 @@ function packageDir(packageName) {
   return path.join(nodeModulesDir, ...packageName.split("/"));
 }
 
+function removePathRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [cleanupHelperPath, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `rm-path-recursive failed for ${targetPath} with status ${result.status}`,
+    );
+  }
+}
+
 function ensureStubPackage(packageName, { force = false } = {}) {
   const dir = packageDir(packageName);
   const packageJsonPath = path.join(dir, "package.json");
@@ -138,7 +140,7 @@ function ensureStubPackage(packageName, { force = false } = {}) {
     } catch {
       // Replace unreadable package metadata with a known stub below.
     }
-    fs.rmSync(dir, { recursive: true, force: true });
+    removePathRecursive(dir);
   }
 
   try {

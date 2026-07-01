@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-cli",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
   "type": "module",
   "main": "dist/index.js",
@@ -29,6 +29,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "scripts": {
@@ -47,7 +48,7 @@
     "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "strip-literal": "^3.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"

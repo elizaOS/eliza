@@ -1,17 +1,41 @@
+import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applyEsmDynamicRequireCompat,
   patchGitWorkspaceServiceEsmRequireCompat,
+  pruneNestedElizaPluginCoreCopies,
+  repairElizaCoreRuntimeDist,
 } from "./patch-bun-exports.mjs";
+import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
+
+const repoRoot = resolveElizaWorkspaceRootFromImportMeta(import.meta.url);
+const cleanupHelperScript = join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
+
+function writeFixtureFile(filePath, contents = "export {};\n") {
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, contents, "utf8");
+}
 
 describe("patch-bun-exports", () => {
   it("applyEsmDynamicRequireCompat replaces generated require shims", () => {
@@ -40,7 +64,7 @@ describe("patch-bun-exports", () => {
       );
       expect(updated).not.toContain("Dynamic require of");
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removePathRecursive(tmp);
     }
   });
 
@@ -73,7 +97,87 @@ describe("patch-bun-exports", () => {
       expect(logs).toHaveLength(1);
       expect(logs[0]).toContain("git-workspace-service");
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removePathRecursive(tmp);
+    }
+  });
+
+  it("repairElizaCoreRuntimeDist replaces an incomplete runtime dist", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "patch-bun-exports-test-"));
+    try {
+      const sourcePkgDir = join(tmp, "source-core");
+      const targetPkgDir = join(tmp, "target-core");
+      for (const relativePath of [
+        "dist/index.js",
+        "dist/browser/index.browser.js",
+        "dist/node/index.node.js",
+      ]) {
+        writeFixtureFile(
+          join(sourcePkgDir, relativePath),
+          `// healthy ${relativePath}\n`,
+        );
+      }
+      writeFixtureFile(join(targetPkgDir, "dist/testing/index.js"));
+      writeFixtureFile(join(targetPkgDir, "dist/stale.js"), "// stale\n");
+
+      expect(repairElizaCoreRuntimeDist(targetPkgDir, sourcePkgDir)).toBe(true);
+      expect(readFileSync(join(targetPkgDir, "dist/index.js"), "utf8")).toBe(
+        "// healthy dist/index.js\n",
+      );
+      expect(
+        existsSync(join(targetPkgDir, "dist/browser/index.browser.js")),
+      ).toBe(true);
+      expect(existsSync(join(targetPkgDir, "dist/node/index.node.js"))).toBe(
+        true,
+      );
+      expect(existsSync(join(targetPkgDir, "dist/stale.js"))).toBe(false);
+    } finally {
+      removePathRecursive(tmp);
+    }
+  });
+
+  it("pruneNestedElizaPluginCoreCopies removes plugin-local core copies", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "patch-bun-exports-test-"));
+    try {
+      const rootCorePkg = join(
+        tmp,
+        "node_modules",
+        "@elizaos",
+        "core",
+        "package.json",
+      );
+      const pluginPkg = join(
+        tmp,
+        "node_modules",
+        "@elizaos",
+        "plugin-demo",
+        "package.json",
+      );
+      const nestedCoreDir = join(
+        tmp,
+        "node_modules",
+        "@elizaos",
+        "plugin-demo",
+        "node_modules",
+        "@elizaos",
+        "core",
+      );
+
+      writeFixtureFile(rootCorePkg, '{"name":"@elizaos/core"}\n');
+      writeFixtureFile(pluginPkg, '{"name":"@elizaos/plugin-demo"}\n');
+      writeFixtureFile(
+        join(nestedCoreDir, "package.json"),
+        '{"name":"@elizaos/core"}\n',
+      );
+
+      const logs = [];
+      expect(
+        pruneNestedElizaPluginCoreCopies(tmp, (msg) => logs.push(msg)),
+      ).toBe(true);
+      expect(existsSync(nestedCoreDir)).toBe(false);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toContain("@elizaos/plugin-demo");
+    } finally {
+      removePathRecursive(tmp);
     }
   });
 });

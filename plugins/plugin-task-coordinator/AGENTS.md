@@ -4,28 +4,36 @@ Coding-agent task coordinator and session control surface for elizaOS agents.
 
 ## Purpose / role
 
-This plugin adds a UI workbench for managing coding-agent task threads and PTY sessions. It registers view panels (standard, XR, and TUI variants) into the elizaOS app shell for both the task coordinator and the multi-agent orchestrator surfaces. It has no server-side runtime component (no actions, providers, services, or evaluators); all agent/task state is owned by `@elizaos/plugin-agent-orchestrator` — this plugin is the display and control layer only.
+This plugin adds a UI workbench for managing coding-agent task threads and PTY sessions. It registers view panels (standard, XR, and TUI variants) into the elizaOS app shell for both the task coordinator and the multi-agent orchestrator surfaces. All agent/task state is owned by `@elizaos/plugin-agent-orchestrator` — this plugin is the display and control layer only. Its sole server-side runtime contribution is a single view-scoped slash command for the orchestrator view (`/orchestrator-status`), registered through `@elizaos/plugin-commands`, plus its deterministic handler action (no providers, services, or evaluators).
 
 The plugin is opt-in: it must be listed in the agent's plugin configuration. Once loaded, it registers its views into the app shell and fills the slot registry entries (`CodingAgentControlChip`, `CodingAgentSettingsSection`, `CodingAgentTasksPanel`, `PtyConsoleBase`) that `@elizaos/ui` leaves empty without this plugin.
 
 ## Plugin surface
 
-No actions, providers, services, or evaluators are registered. The plugin surface is entirely views and slot-registry fills.
+The plugin surface is primarily views and slot-registry fills, plus one slash command + handler action (no providers, services, or evaluators).
+
+### Slash command (`src/orchestrator-command.ts`)
+
+| command | view scope | target | handler action |
+|---|---|---|---|
+| `/orchestrator-status` | `orchestrator` (#8798) | `agent` | `ORCHESTRATOR_STATUS_COMMAND` |
+
+The plugin's `init()` calls `registerOrchestratorCommands(runtime.agentId)`, which registers the command into the per-runtime `@elizaos/plugin-commands` registry. Being `views`-scoped, it appears in `GET /api/commands` only while the orchestrator view is the active surface; the registered `orchestratorStatusCommandAction` is its deterministic, slash-only handler. This proves a non-core, view-owning plugin can light up the universal slash-command surface end to end (#8790).
 
 ### Views registered (`src/index.ts`)
 
-| view id | path | viewType | componentExport | description |
-|---|---|---|---|---|
-| `task-coordinator` | `/task-coordinator` | default | `CodingAgentTasksPanel` | Task threads + PTY session panel |
-| `task-coordinator` | `/task-coordinator` | `xr` | `CodingAgentTasksPanel` | XR variant |
-| `task-coordinator` | `/task-coordinator/tui` | `tui` | `TaskCoordinatorTuiView` | TUI terminal variant |
-| `orchestrator` | `/orchestrator` | default | `OrchestratorWorkbench` | Multi-agent orchestration workbench |
-| `orchestrator` | `/orchestrator` | `xr` | `OrchestratorWorkbench` | XR variant |
-| `orchestrator` | `/orchestrator/tui` | `tui` | `OrchestratorTuiView` | TUI terminal variant |
+Two views, each ONE adaptive declaration spanning all three modalities from a single component — no per-`viewType` duplicates.
 
-The task-coordinator TUI view declares capabilities: `list-sessions`, `list-task-threads`, `open-thread`, `stop-session`, `refresh`.
+| view id | path | viewKind | modalities | componentExport | description |
+|---|---|---|---|---|---|
+| `task-coordinator` | `/task-coordinator` | `preview` | `gui`, `xr`, `tui` | `TaskCoordinatorView` | Coding-agent task threads, sessions, and controls |
+| `orchestrator` | `/orchestrator` | `developer` (`developerOnly`) | `gui`, `xr`, `tui` | `OrchestratorView` | Multi-agent task orchestration workbench |
 
-The orchestrator views declare capabilities — typed descriptors the TUI layer uses to drive the workbench. Capability IDs: `orchestrator-status`, `orchestrator-list-tasks`, `orchestrator-open-task`, `orchestrator-create-task`, `orchestrator-pause-task`, `orchestrator-resume-task`, `orchestrator-pause-all`, `orchestrator-resume-all`, `orchestrator-delete-task`, `orchestrator-fork-task`, `orchestrator-update-task`, `orchestrator-validate-task`, `orchestrator-add-agent`, `orchestrator-stop-agent`, `orchestrator-send-message`.
+`TaskCoordinatorView` (`src/TaskCoordinatorView.tsx`) and `OrchestratorView` (`src/OrchestratorView.tsx`) are the route components — each authored once and rendered inside a `SpatialSurface` that auto-detects GUI vs XR. `OrchestratorView` wraps the rich GUI/XR `OrchestratorWorkbench` in the spatial `Escape` hatch and degrades to the `OrchestratorSpatialView` summary in TUI; `TaskCoordinatorView` renders the presentational `TaskCoordinatorSpatialView` directly. The `tui` modality of both renders for real in the terminal — `register-terminal-view.tsx` registers `TaskCoordinatorSpatialView` and `OrchestratorSpatialView` into the `@elizaos/tui` terminal registry via `registerSpatialTerminalView`, each driven by a host-pushed snapshot. `CodingAgentTasksPanel` was not deleted; it still fills the `@elizaos/ui` Tasks-page slot (`register-slots.ts`) and is simply no longer a route `componentExport`.
+
+The `task-coordinator` view declares capabilities: `list-sessions`, `list-task-threads`, `open-thread`, `stop-session`, `refresh`.
+
+The `orchestrator` view declares capabilities — typed descriptors the TUI layer uses to drive the workbench. Capability IDs: `orchestrator-status`, `orchestrator-list-tasks`, `orchestrator-open-task`, `orchestrator-create-task`, `orchestrator-pause-task`, `orchestrator-resume-task`, `orchestrator-pause-all`, `orchestrator-resume-all`, `orchestrator-delete-task`, `orchestrator-fork-task`, `orchestrator-update-task`, `orchestrator-validate-task`, `orchestrator-add-agent`, `orchestrator-stop-agent`, `orchestrator-send-message`.
 
 ### Slot registry fills (`src/register-slots.ts`)
 
@@ -49,7 +57,8 @@ Registers two pages in the `developer` group via `registerAppShellPage` from `@e
 
 ```
 src/
-  index.ts                         Plugin definition — views + capabilities declared here
+  index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
+  orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
   register.ts                      App-shell page registration (/orchestrator, /orchestrator/tui)
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   register-terminal-view.tsx       Registers OrchestratorSpatialView in the @elizaos/tui terminal registry
@@ -143,10 +152,52 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 ## Conventions / gotchas
 
 - **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/task-coordinator-view-bundle.ts` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
-- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports all view components (`CodingAgentTasksPanel`, `TaskCoordinatorTuiView`, `OrchestratorWorkbench`, `OrchestratorTuiView`) plus the shared `interact` capability handler so the built bundle serves all `componentExport` names the view manifest declares.
+- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports the two unified route wrappers (`TaskCoordinatorView`, `OrchestratorView`) plus the shared `interact` capability handler, so the built bundle serves the `componentExport` names the view manifest declares. `OrchestratorWorkbench` ships inside the bundle transitively as the `Escape` child of `OrchestratorView`, not as a named export; `CodingAgentTasksPanel` is intentionally absent — it reaches its mount through the slot registry (`register-slots.ts` → the built-in Tasks page).
 - **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
-- **No server runtime.** This plugin registers zero actions, providers, services, or evaluators. All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
+- **Minimal server runtime.** This plugin registers no providers, services, or evaluators, and its only action is the `/orchestrator-status` slash-command handler (`src/orchestrator-command.ts`). All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.
 - **Live e2e test requires real Codex CLI.** `test:e2e:manual` (`test/coding-agent-codex-artifact.live.e2e.test.ts`) is skipped unless the `codex` binary is in PATH and `~/.codex/auth.json` exists.
 - **Spatial view.** `src/components/OrchestratorSpatialView.tsx` is authored once using the spatial vocabulary and renders in both GUI/XR and terminal (TUI) contexts via `register-terminal-view.tsx`. It is purely presentational (typed snapshot + action callback in, primitives out).
 - See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, naming, architecture rules).
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — agent behavior / app plugin:**
+- A **live-LLM** scenario trajectory showing the behavior end to end and asserting the **outcome**, not just that routing/an action was selected (see #9970).
+- The artifacts the behavior creates — memories, knowledge, scheduled-task rows, relationships, documents, outputs — inspected after the run.
+- Backend `[ClassName]` logs of the action/service/runner firing, plus error/edge/permission paths.
+- The empty-state and adversarial-input behavior, not just one happy scenario.
+<!-- END: evidence-and-e2e-mandate -->

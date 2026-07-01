@@ -1,3 +1,4 @@
+import type { ViewKind } from "@elizaos/core";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import type { SettingsSectionGroup } from "./settings-section-meta";
@@ -51,6 +52,23 @@ export interface SettingsSectionDef {
   order?: number;
   /** Padding override for the section body panel. */
   bodyClassName?: string;
+  /**
+   * Hide unless Developer Mode is on (dev builds default on; prod off).
+   * Equivalent to `viewKind: "developer"`.
+   */
+  developerOnly?: boolean;
+  /**
+   * Hide on the cloud mobile build (no host machine). For host/self-host
+   * concepts that are meaningless to a cloud user — e.g. the host
+   * remote-password security section. Evaluated against isAndroidCloudBuild().
+   */
+  hideOnCloud?: boolean;
+  /**
+   * Four-tier visibility category. Supersedes `developerOnly` when set:
+   * `system`/`release` always show; `developer`/`preview` follow the Settings
+   * toggles. See `ViewKind` in `@elizaos/core`.
+   */
+  viewKind?: ViewKind;
   Component: ComponentType;
 }
 

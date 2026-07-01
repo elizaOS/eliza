@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 /**
  * sync-to-aosp.mjs — Copy the brand vendor tree into an AOSP checkout.
  *
@@ -18,9 +19,39 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // packages/scripts/distro-android. brand.vendorDir is relative to it
 // (it includes the leading `packages/`). Matches validate.mjs.
 const repoRoot = path.resolve(here, "../../..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 const USAGE =
   "Usage: node packages/scripts/distro-android/sync-to-aosp.mjs [--brand-config <PATH>] [--source-vendor <VENDOR_DIR>] <AOSP_ROOT>";
+
+function removePathRecursive(targetPath) {
+  const completed = spawnSync(
+    "node",
+    [cleanupHelperScript, path.resolve(targetPath)],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (completed.error) throw completed.error;
+  if (completed.status !== 0) {
+    throw new Error(
+      [
+        `failed to remove ${targetPath}`,
+        completed.stdout.trim(),
+        completed.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+}
 
 export function parseSubArgs(argv, brand) {
   const args = {
@@ -66,7 +97,7 @@ export function syncToAosp({ aospRoot, sourceVendor, brand }) {
   }
 
   const targetVendor = path.join(aospRoot, "vendor", brand.brand);
-  fs.rmSync(targetVendor, { recursive: true, force: true });
+  removePathRecursive(targetVendor);
   fs.mkdirSync(path.dirname(targetVendor), { recursive: true });
   fs.cpSync(sourceVendor, targetVendor, {
     recursive: true,

@@ -1,3 +1,4 @@
+import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
 import { buildFailureReplyPrompt, isRateLimitError } from "../message";
 
@@ -137,6 +138,49 @@ describe("isRateLimitError", () => {
 		);
 		err.name = "AI_RetryError";
 		expect(isRateLimitError(err)).toBe(true);
+	});
+
+	// REAL-SHAPE regression: the AI SDK carries the upstream HTTP status on
+	// `APICallError.statusCode` (NOT `.status`), wrapped by `RetryError` when
+	// retries are exhausted. With NO rate-limit substring in the message, the
+	// structural status path is the ONLY signal — this case fails against a
+	// brittle `.status === 429` / message-regex-only detector.
+	it("detects a bare APICallError(statusCode: 429) structurally (no message hint)", () => {
+		const err = new APICallError({
+			message: "upstream error",
+			url: "https://api.cerebras.ai/v1/chat/completions",
+			requestBodyValues: {},
+			statusCode: 429,
+		});
+		expect(err.message.toLowerCase()).not.toContain("rate");
+		expect(err.message).not.toContain("429");
+		expect(isRateLimitError(err)).toBe(true);
+	});
+
+	it("unwraps a RetryError-wrapped APICallError(statusCode: 429) structurally", () => {
+		const inner = new APICallError({
+			message: "upstream error",
+			url: "https://api.cerebras.ai/v1/chat/completions",
+			requestBodyValues: {},
+			statusCode: 429,
+		});
+		const err = new RetryError({
+			message: "Failed after 3 attempts.",
+			reason: "maxRetriesExceeded",
+			errors: [inner],
+		});
+		expect(err.message).not.toContain("Too Many Requests");
+		expect(isRateLimitError(err)).toBe(true);
+	});
+
+	it("does not treat a non-429 APICallError as a rate limit", () => {
+		const err = new APICallError({
+			message: "upstream error",
+			url: "https://api.cerebras.ai/v1/chat/completions",
+			requestBodyValues: {},
+			statusCode: 500,
+		});
+		expect(isRateLimitError(err)).toBe(false);
 	});
 
 	it("matches common rate-limit phrasings case-insensitively", () => {

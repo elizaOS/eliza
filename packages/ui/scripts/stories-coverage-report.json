@@ -1,8 +1,8 @@
 {
-  "componentFiles": 405,
-  "withStories": 259,
+  "componentFiles": 404,
+  "withStories": 258,
   "missingStories": 146,
-  "coverage": "64.0%",
+  "coverage": "63.9%",
   "missing": [
     "src\\App.tsx",
     "src\\agent-surface\\AgentSurfaceContext.tsx",
@@ -237,7 +237,6 @@
     "src\\components\\apps\\RunningAppsRow.tsx",
     "src\\components\\apps\\app-identity.tsx",
     "src\\components\\apps\\extensions\\surface.tsx",
-    "src\\components\\apps\\surfaces\\GameOperatorShell.tsx",
     "src\\components\\auth\\LoginView.tsx",
     "src\\components\\character\\CharacterEditorPanels.tsx",
     "src\\components\\character\\CharacterOverviewSection.tsx",

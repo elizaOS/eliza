@@ -4,19 +4,13 @@
 
 import {
   type IAgentRuntime,
+  logger,
   Service,
   type ServiceTypeName,
-  logger,
 } from "@elizaos/core";
 import { AinexBridgeClient } from "./bridge-client";
-import {
-  loadProfileFromBridge,
-} from "./profile-schema";
-import type {
-  EventEnvelope,
-  JsonDict,
-  RobotProfileDescriptor,
-} from "./types";
+import { loadProfileFromBridge } from "./profile-schema";
+import type { EventEnvelope, JsonDict, RobotProfileDescriptor } from "./types";
 
 export interface BasicTelemetrySnapshot {
   battery_mv: number;
@@ -91,11 +85,6 @@ export class AinexService extends Service {
   private perception: PerceptionSnapshot | null = null;
   private policy: PolicyStatusSnapshot | null = null;
   private safety: SafetySnapshot | null = null;
-  private connectedAt: number | null = null;
-
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
 
   static async start(runtime: IAgentRuntime): Promise<AinexService> {
     const service = new AinexService(runtime);
@@ -124,10 +113,14 @@ export class AinexService extends Service {
    * width/height. Throws when the bridge is offline or the backend does
    * not expose a camera.
    */
-  async snapshotCamera(
-    camera: string = "head",
-  ): Promise<{ frameBase64: string; width: number; height: number; format: string; camera: string }> {
-    if (!this.bridge || !this.bridge.isConnected()) {
+  async snapshotCamera(camera: string = "head"): Promise<{
+    frameBase64: string;
+    width: number;
+    height: number;
+    format: string;
+    camera: string;
+  }> {
+    if (!this.bridge?.isConnected()) {
       throw new Error("AinexService.snapshotCamera: bridge not connected");
     }
     const payload: Record<string, string> = {};
@@ -181,7 +174,6 @@ export class AinexService extends Service {
   async stop(): Promise<void> {
     const bridge = this.bridge;
     this.bridge = null;
-    this.connectedAt = null;
     if (bridge) {
       await bridge.disconnect();
     }
@@ -199,14 +191,24 @@ export class AinexService extends Service {
   }
 
   private async _tryConnect(): Promise<void> {
-    const url =
-      this._readSetting("ELIZA_AINEX_BRIDGE_URL") ?? "ws://localhost:9100";
+    const configuredUrl = this._readSetting("ELIZA_AINEX_BRIDGE_URL");
+    // Only dial when a bridge URL is explicitly configured. Auto-connecting to a
+    // hardcoded `ws://localhost:9100` default when no robot is configured starts
+    // an endless background reconnect loop; under Bun (where the `ws` import is
+    // the native EventTarget WebSocket, not an EventEmitter) the reconnect
+    // socket's error event has no listener and crashes the whole agent process.
+    if (!configuredUrl) {
+      logger.info(
+        "[AinexService] no ELIZA_AINEX_BRIDGE_URL configured; staying disconnected (no robot bridge to dial)",
+      );
+      return;
+    }
+    const url = configuredUrl;
     const client = new AinexBridgeClient({ url });
     this._registerEventHandlers(client);
     try {
       await client.connect();
       this.bridge = client;
-      this.connectedAt = Date.now();
       logger.info(`[AinexService] connected to bridge ${url}`);
       this.profile = await loadProfileFromBridge(client);
     } catch (err) {
@@ -245,14 +247,15 @@ export class AinexService extends Service {
       head_pan: _toNumber(d.head_pan, 0),
       head_tilt: _toNumber(d.head_tilt, 0),
       joint_positions:
-        d.joint_positions && typeof d.joint_positions === "object" &&
+        d.joint_positions &&
+        typeof d.joint_positions === "object" &&
         !Array.isArray(d.joint_positions)
-          ? (Object.fromEntries(
+          ? Object.fromEntries(
               Object.entries(d.joint_positions as JsonDict).map(([k, v]) => [
                 k,
                 _toNumber(v, 0),
               ]),
-            ))
+            )
           : {},
       receivedAt: Date.now(),
     };
@@ -262,7 +265,10 @@ export class AinexService extends Service {
     const entitiesValue = env.data.entities;
     const entities: PerceptionEntity[] = Array.isArray(entitiesValue)
       ? entitiesValue
-          .filter((e): e is JsonDict => typeof e === "object" && e !== null && !Array.isArray(e))
+          .filter(
+            (e): e is JsonDict =>
+              typeof e === "object" && e !== null && !Array.isArray(e),
+          )
           .map((e) => ({
             entity_id: _toString(e.entity_id, ""),
             label: _toString(e.label, ""),
@@ -285,9 +291,18 @@ export class AinexService extends Service {
       task: this.policy?.task ?? "",
       step: _toNumber(d.step, this.policy?.step ?? 0),
       trace_id: _toString(d.trace_id, this.policy?.trace_id ?? ""),
-      planner_step_id: _toString(d.planner_step_id, this.policy?.planner_step_id ?? ""),
-      canonical_action: _toString(d.canonical_action, this.policy?.canonical_action ?? ""),
-      target_entity_id: _toString(d.target_entity_id, this.policy?.target_entity_id ?? ""),
+      planner_step_id: _toString(
+        d.planner_step_id,
+        this.policy?.planner_step_id ?? "",
+      ),
+      canonical_action: _toString(
+        d.canonical_action,
+        this.policy?.canonical_action ?? "",
+      ),
+      target_entity_id: _toString(
+        d.target_entity_id,
+        this.policy?.target_entity_id ?? "",
+      ),
       target_label: _toString(d.target_label, this.policy?.target_label ?? ""),
       receivedAt: Date.now(),
     };
@@ -299,11 +314,23 @@ export class AinexService extends Service {
       state: _toString(d.state, this.policy?.state ?? "idle"),
       reason: _toString(d.reason, ""),
       task: _toString(d.task, this.policy?.task ?? ""),
-      step: _toNumber(d.steps_completed, _toNumber(d.step, this.policy?.step ?? 0)),
+      step: _toNumber(
+        d.steps_completed,
+        _toNumber(d.step, this.policy?.step ?? 0),
+      ),
       trace_id: _toString(d.trace_id, this.policy?.trace_id ?? ""),
-      planner_step_id: _toString(d.planner_step_id, this.policy?.planner_step_id ?? ""),
-      canonical_action: _toString(d.canonical_action, this.policy?.canonical_action ?? ""),
-      target_entity_id: _toString(d.target_entity_id, this.policy?.target_entity_id ?? ""),
+      planner_step_id: _toString(
+        d.planner_step_id,
+        this.policy?.planner_step_id ?? "",
+      ),
+      canonical_action: _toString(
+        d.canonical_action,
+        this.policy?.canonical_action ?? "",
+      ),
+      target_entity_id: _toString(
+        d.target_entity_id,
+        this.policy?.target_entity_id ?? "",
+      ),
       target_label: _toString(d.target_label, this.policy?.target_label ?? ""),
       receivedAt: Date.now(),
     };

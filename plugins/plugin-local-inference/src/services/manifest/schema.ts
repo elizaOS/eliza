@@ -15,9 +15,13 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp MTP. MTP-enabled tiers
-//   ship a bundled drafter GGUF under `files.mtp`; the runtime resolves it at
-//   load time and passes it as the draft model.
+// - Eliza-1 speculative decoding is native llama.cpp MTP. Post-cutover (#9033)
+//   every Gemma 4 tier is SEPARATE-DRAFTER: it ships a dedicated drafter GGUF at
+//   `mtp/drafter-<tier>.gguf` in `files.mtp` (loaded `-md … --spec-type
+//   draft-mtp`), with its own `lineage.drafter`, and declares top-level
+//   `mtp: "separate-drafter"`. (The legacy embedded-draft-head shape carried the
+//   draft head inside the primary text GGUF with `files.mtp` empty; no shipped
+//   Gemma tier uses it.) AGENTS.md §1/§3 require MTP on every tier.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -26,25 +30,31 @@
 //   auto-updater walks.
 
 import type { LocalRuntimeKernel } from "@elizaos/shared";
-import { z } from "zod";
+import z from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
 	"https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// The shared Eliza-1 BPE vocabulary exported so runtime code can assert it.
-export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
-export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
+// The shared Eliza-1 tokenizer (Gemma 4 SentencePiece, 262144-entry vocab),
+// exported so runtime code can assert it. The cutover (#9033) moved eliza-1 to
+// Gemma 4 bases, whose tokenizer family the bundle builder stamps as "gemma4".
+export const ELIZA_1_TOKENIZER_FAMILY = "gemma4" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 262_144 as const;
 
-// Tiers — size-ordered across the active Eliza-1 bundles.
-export const ELIZA_1_TIERS = [
-	"0_8b",
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
+// MTP (speculative-decode) bundle mode. Gemma 4 uses a SEPARATE drafter GGUF
+// (`mtp/drafter-<tier>.gguf`, loaded `-md … --spec-type draft-mtp`); the older
+// embedded-draft-head shape carried the draft head inside the primary text
+// GGUF. AGENTS.md §1/§3 require MTP on every tier.
+export const ELIZA_1_MTP_MODES = [
+	"separate-drafter",
+	"embedded-draft-head",
 ] as const;
+export type Eliza1MtpMode = (typeof ELIZA_1_MTP_MODES)[number];
+
+// Tiers — size-ordered across the active Eliza-1 bundles. 2b is the
+// smallest/entry tier.
+export const ELIZA_1_TIERS = ["2b", "4b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
@@ -121,32 +131,47 @@ export const ELIZA_1_BACKENDS = [
 ] as const;
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
-// Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
-// - All tiers require turboquant + qjl + polarquant.
-// - All current text GGUFs ship at the 128k half-context floor or the 262k
-//   native tier, so every tier requires `turbo3_tcq`. The validator also
-//   enforces the same requirement dynamically for any bundle that declares
-//   a >64k text file, so additional tiers cannot publish long-context text
-//   without TCQ.
-//
-// Q4 is the release text quant baseline. TCQ is part of the release contract
-// for the full text ladder, including the smallest 0.8B and 2B bundles.
+// Required-kernel set per tier. Mirrors the active Gemma 4 Eliza-1 release
+// policy:
+// - Every tier requires only the geometry-agnostic GGUF weight-quant
+//   (`turboquant_q4`). Weight quant operates on (out_features, in_features)
+//   matmul tensors and is independent of attention head geometry, so it
+//   applies to Gemma's dense MQA backbone unchanged.
+// - The KV-cache kernels (`qjl`, `polarquant`, `turbo3_tcq`, and the
+//   `turbo3`/`turbo4` runtime handles) are 128-element FWHT-group kernels
+//   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
+//   (n_head_kv=1) with dual head dims (512 global / 256 SWA), so Gemma 4
+//   ships stock q8_0 KV and these kernels are OPTIONAL, never required.
+//   They stay compiled into the shared lib for legacy non-Gemma tiers and the
+//   shared OmniVoice/ASR FFI symbols, but no Gemma tier declares them
+//   required.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"2b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"4b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"9b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"27b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"2b": ["turboquant_q4"],
+	"4b": ["turboquant_q4"],
+	"9b": ["turboquant_q4"],
+	"27b": ["turboquant_q4"],
+	"27b-256k": ["turboquant_q4"],
+};
+
+// KV-cache kernels that remain available but are NOT required for any Gemma 4
+// tier (head_dim=128/FWHT-group coupled; Gemma uses stock q8_0 KV). Surfaced
+// as the optional kernel set for every tier.
+export const OPTIONAL_KERNELS_BY_TIER: Readonly<
+	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
+> = {
+	"2b": ["qjl", "polarquant", "turbo3_tcq"],
+	"4b": ["qjl", "polarquant", "turbo3_tcq"],
+	"9b": ["qjl", "polarquant", "turbo3_tcq"],
+	"27b": ["qjl", "polarquant", "turbo3_tcq"],
+	"27b-256k": ["qjl", "polarquant", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-	"0_8b": ["metal", "vulkan", "cpu"],
 	"2b": ["metal", "vulkan", "cpu"],
 	"4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
@@ -185,7 +210,7 @@ export const Eliza1LineageSchema = z.object({
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector lineage. When
 	// `files.turn` ships the bundled `livekit/turn-detector` ONNX (the
 	// ≤1.7B-tier `v1.2.2-en` SmolLM2 distill or the ≥4B-tier `v0.4.1-intl`
-	// pruned Qwen2.5-0.5B), this records the upstream repo + license. Apache-2.0
+	// multilingual detector), this records the upstream repo + license. Apache-2.0
 	// fallback path is `latishab/turnsense`.
 	turn: lineageEntry.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-prosody emotion classifier lineage.
@@ -200,6 +225,22 @@ export const Eliza1LineageSchema = z.object({
 	emotion: lineageEntry.optional(),
 });
 
+// Runtime class a text artifact is served by. Defaults to GGUF/llama.cpp when
+// absent, so every existing manifest round-trips unchanged.
+//   - `llama-cpp` — a `.gguf` served by the fused libelizainference llama.cpp
+//     path (the default).
+//   - `litert-lm` — a `.litertlm` single-file bundle served by the in-process
+//     LiteRT-LM backend (Android NPU / GPU delegate). The C-side
+//     `llm_backend_select` probes `<bundleRoot>/text/*.litertlm` and routes to
+//     it; the TS loader passes `ELIZA_LLM_BACKEND=litert-lm` when this entry is
+//     selected. See `tools/omnivoice/src/backends/litert-backend.cpp`.
+export const ELIZA_1_TEXT_RUNTIME_CLASSES = ["llama-cpp", "litert-lm"] as const;
+export type Eliza1TextRuntimeClass =
+	(typeof ELIZA_1_TEXT_RUNTIME_CLASSES)[number];
+export const Eliza1TextRuntimeClassEnumSchema = z.enum(
+	ELIZA_1_TEXT_RUNTIME_CLASSES,
+);
+
 export const Eliza1FileEntrySchema = z.object({
 	path: z.string().min(1),
 	sha256,
@@ -207,6 +248,29 @@ export const Eliza1FileEntrySchema = z.object({
 	// largest variant that fits the device's RAM budget. Other file kinds
 	// never have ctx.
 	ctx: z.number().int().min(131072, "must be at least 128k").optional(),
+	// Optional runtime-class discriminator on a `files.text` entry. Absent ⇒
+	// `llama-cpp` (GGUF, the default). A `.litertlm` text artifact declares
+	// `runtimeClass: "litert-lm"` so the loader can route it to the LiteRT-LM
+	// backend without re-deriving the runtime from the filename.
+	runtimeClass: Eliza1TextRuntimeClassEnumSchema.optional(),
+});
+
+/**
+ * A platform-targeted native-lib file in the bundle's `lib[]` set. The fused
+ * `libelizainference` ships as a SET (the fused lib + its ggml/llama/mtmd
+ * sibling backends), one set per platform `target`. The downloader fetches ONLY
+ * the entries whose `target` matches the host (see `../lib-target.ts`
+ * `resolveHostLibTargets`) into `<bundleRoot>/lib/`, where the desktop FFI
+ * runtime resolves them with no env wiring via `resolveFusedLibraryPath`
+ * (path #2 — bundle-local lib). `target` is free-form (e.g. "win-x64-cpu",
+ * "linux-x64-cuda", "darwin-arm64-metal") so new targets need no schema bump;
+ * `name` overrides the staged filename (defaults to the basename of `path`).
+ */
+export const Eliza1LibFileEntrySchema = z.object({
+	path: z.string().min(1),
+	sha256,
+	target: z.string().min(1),
+	name: z.string().min(1).optional(),
 });
 
 export const Eliza1FilesSchema = z.object({
@@ -217,12 +281,11 @@ export const Eliza1FilesSchema = z.object({
 	mtp: z.array(Eliza1FileEntrySchema),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers), a
-	// Silero-VAD GGUF, and an optional openWakeWord GGUF (the combined GGUF
-	// carries the mel filterbank + speech embedding model + every per-phrase
-	// head). All three are optional in the schema — the 0_8b tier
-	// intentionally omits the dedicated embedding (pools from text backbone)
-	// and a tier may ship without wake-word support.
+	// embedding model on non-lite tiers, a Silero-VAD GGUF, and an optional
+	// openWakeWord GGUF (the combined GGUF carries the mel filterbank + speech
+	// embedding model + every per-phrase head). All three are optional in the
+	// schema — the 2b entry tier intentionally omits the dedicated embedding
+	// (pools from text backbone) and a tier may ship without wake-word support.
 	//
 	// Schema-level optionality: empty array = "this bundle does not
 	// ship this component"; the validator enforces tier-specific
@@ -230,7 +293,7 @@ export const Eliza1FilesSchema = z.object({
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
 	// Optional image-generation artifacts. Most Eliza-1 base bundles do not
 	// carry diffusion weights; those are documented in
-	// packages/chip/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When an
+	// packages/research/chip/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When an
 	// additional bundle ships local image-gen weights inline, list them here
 	// and provide matching `lineage.imagegen`.
 	imagegen: z.array(Eliza1FileEntrySchema).optional(),
@@ -244,13 +307,13 @@ export const Eliza1FilesSchema = z.object({
 	// Tier mapping is data-driven (see
 	// `stage_turn_detector` in
 	// `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`):
-	// 0_8b/2b ship the EN-only SmolLM2-135M distill; 4b/9b/27b ship the
-	// multilingual pruned Qwen2.5-0.5B.
+	// 2b ships the EN-only SmolLM2-135M distill; 4b/9b/27b ship the
+	// multilingual detector.
 	turn: z.array(Eliza1FileEntrySchema).optional(),
 	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
 	// present, the runtime layers this adapter onto the in-process
 	// drafter at voice-session start (`voice/eliza1-eot-scorer.ts`) so
-	// P(`<|im_end|>`) calibration matches a fine-tuned EOT head without
+	// P(`<end_of_turn>`) calibration matches a fine-tuned EOT head without
 	// shipping a second base model. When both `turn` and `eotLoraAdapter`
 	// are present the operator picks via `ELIZA_VOICE_EOT_BACKEND` or
 	// `startVoiceSession({ useEliza1Eot })`. Training recipe:
@@ -264,9 +327,19 @@ export const Eliza1FilesSchema = z.object({
 	// `isFinal` transcript snapshots, and fuses the output with the Stage-1
 	// text-emotion field via the single fusion point in `emotion-attribution.ts`.
 	// All tiers ship the same Wav2Small student (the on-device budget is
-	// dominated by the LM, not this small head); a 0_8b bundle may still
+	// dominated by the LM, not this small head); a 2b entry bundle may still
 	// choose to omit it to save the cold-start cost.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
+	// Fused libelizainference native-lib SET, per platform target (#9105 /
+	// local-inference bundle delivery). Optional — when present the downloader
+	// stages the host-matching target's files into `<bundleRoot>/lib/`, which the
+	// desktop FFI runtime resolves with no env wiring (`resolveFusedLibraryPath`
+	// path #2). CPU baseline is always safe (GGML_CPU is built into the fused
+	// lib); GPU targets (`…-cuda` / `…-metal`) are opt-in. This is the bundle
+	// path that makes local inference work in a compiled desktop app without a
+	// separate lib download; absent ⇒ the runtime falls back to a host-staged
+	// `<stateDir>/local-inference/lib` (dev) and otherwise to cloud.
+	lib: z.array(Eliza1LibFileEntrySchema).optional(),
 });
 
 export const Eliza1KernelEnumSchema = z.enum(ELIZA_1_KERNELS);
@@ -298,7 +371,12 @@ export const Eliza1RecipeKernelPinsSchema = z.object({
 	perBlockTolerance: z.number().positive(),
 });
 
-export const Eliza1Eagle3KernelSchema = z
+// Generic speculative-decode capability metadata (drafter-agnostic). Covers
+// Gemma 4's separate-drafter MTP, an embedded draft head, or an EAGLE3 head —
+// the shape only records the capability/spec-type/draft model, never the
+// specific drafter family. `specType` names the runtime spec method (e.g.
+// `draft-mtp`, `draft-eagle3`); `model` names the drafter/head artifact.
+export const Eliza1SpecDecodeKernelSchema = z
 	.object({
 		enabled: z.boolean().optional(),
 		capability: z.string().min(1).optional(),
@@ -320,8 +398,12 @@ export const Eliza1KernelsSchema = z.object({
 		cpu: Eliza1VerifiedBackendStatusSchema,
 	}),
 	recipeManifest: z.record(z.string(), Eliza1RecipeKernelPinsSchema).optional(),
-	// Optional EAGLE3 capability metadata.
-	eagle3: Eliza1Eagle3KernelSchema.optional(),
+	// Optional speculative-decode capability metadata (canonical key).
+	specDecode: Eliza1SpecDecodeKernelSchema.optional(),
+	// Back-compat alias accepted for one release: pre-cutover manifests emit
+	// the same capability object under `eagle3`. New producers stamp
+	// `specDecode`; the validator reads `specDecode ?? eagle3`.
+	eagle3: Eliza1SpecDecodeKernelSchema.optional(),
 });
 
 // Wave-6: voice surface declares which expressive features the bundled
@@ -347,24 +429,27 @@ export const Eliza1VoiceSchema = z.object({
 	capabilities: z.array(z.enum(ELIZA_1_VOICE_CAPABILITIES)).default(["tts"]),
 });
 
-const Eliza1Eagle3EvalSchema = z
+// Generic speculative-decode eval metadata (drafter-agnostic): records the
+// accepted/drafted acceptance rate and the spec-decode-on ÷ baseline speedup
+// for whatever drafter the bundle ships (MTP separate drafter, EAGLE3 head, …).
+const Eliza1SpecDecodeEvalSchema = z
 	.object({
 		/** accepted/drafted; null or absent when not measured. */
 		acceptanceRate: z.number().min(0).max(1).nullable().optional(),
-		/** EAGLE3-on tok/s ÷ baseline tok/s; null or absent when not measured. */
+		/** spec-decode-on tok/s ÷ baseline tok/s; null or absent when not measured. */
 		speedup: z.number().nonnegative().nullable().optional(),
 		/** Preferred spelling for pass/fail status. */
 		passed: z.boolean().optional(),
 		/** Back-compat spelling accepted for manifest producers that emit `pass`. */
 		pass: z.boolean().optional(),
-		/** Human-readable reason when the EAGLE3 eval was not run or failed. */
+		/** Human-readable reason when the spec-decode eval was not run or failed. */
 		failure: z.string().min(1).optional(),
 	})
-	.superRefine((eagle3, ctx) => {
+	.superRefine((specDecode, ctx) => {
 		if (
-			eagle3.pass !== undefined &&
-			eagle3.passed !== undefined &&
-			eagle3.pass !== eagle3.passed
+			specDecode.pass !== undefined &&
+			specDecode.passed !== undefined &&
+			specDecode.pass !== specDecode.passed
 		) {
 			ctx.addIssue({
 				code: "custom",
@@ -372,10 +457,10 @@ const Eliza1Eagle3EvalSchema = z
 				path: ["pass"],
 			});
 		}
-		const passed = eagle3.passed ?? eagle3.pass;
+		const passed = specDecode.passed ?? specDecode.pass;
 		if (
 			passed === true &&
-			(eagle3.acceptanceRate == null || eagle3.speedup == null)
+			(specDecode.acceptanceRate == null || specDecode.speedup == null)
 		) {
 			ctx.addIssue({
 				code: "custom",
@@ -437,8 +522,12 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
-	// Optional EAGLE3 speculative-decoding bench metadata.
-	eagle3: Eliza1Eagle3EvalSchema.optional(),
+	// Optional speculative-decode bench metadata (canonical key).
+	specDecode: Eliza1SpecDecodeEvalSchema.optional(),
+	// Back-compat alias accepted for one release: pre-cutover manifests emit
+	// the same bench object under `eagle3`. The validator reads
+	// `specDecode ?? eagle3`.
+	eagle3: Eliza1SpecDecodeEvalSchema.optional(),
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
 	// Required when `files.turn` is non-empty (validator enforces). Thresholds
 	// applied by `eval_turn_detector.py` in `packages/training/scripts/turn_detector/`:
@@ -580,6 +669,15 @@ export const Eliza1ProvenanceSchema = z.object({
 	),
 });
 
+// Gemma 4 cutover (schemaVersion 2): the shared tokenizer identity the
+// publish-side builder stamps onto every bundle. The contract validator pins
+// `family` to `ELIZA_1_TOKENIZER_FAMILY` and `vocabSize` to
+// `ELIZA_1_TOKENIZER_VOCAB_SIZE` when this block is present.
+export const Eliza1TokenizerSchema = z.object({
+	family: z.string().min(1),
+	vocabSize: z.number().int().positive(),
+});
+
 export const Eliza1ManifestSchema = z
 	.object({
 		$schema: z.literal(ELIZA_1_MANIFEST_SCHEMA_URL).optional(),
@@ -630,6 +728,14 @@ export const Eliza1ManifestSchema = z
 		textQuant: z
 			.union([z.string().min(1), z.record(z.string(), z.unknown())])
 			.optional(),
+		// Gemma 4 cutover (schemaVersion 2) identity fields, stamped by the
+		// publish-side bundle builder. Optional so legacy v1 (pre-cutover)
+		// manifests still round-trip; the contract validator enforces their
+		// values when present.
+		schemaVersion: z.union([z.literal("2"), z.literal(2)]).optional(),
+		tokenizer: Eliza1TokenizerSchema.optional(),
+		kv: z.string().min(1).optional(),
+		mtp: z.enum(ELIZA_1_MTP_MODES).optional(),
 	})
 	// The id MUST encode the tier so catalogs can derive tier from id without
 	// re-reading the manifest. Example: `id: "eliza-1-9b"`.

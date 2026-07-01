@@ -110,7 +110,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 typeof ts === "string"
                   ? ts
                   : ts != null &&
-                      typeof (ts as unknown as { toISOString?: () => string })
+                      typeof (ts as { toISOString?: () => string })
                         .toISOString === "function"
                     ? (ts as { toISOString: () => string }).toISOString()
                     : new Date().toISOString();

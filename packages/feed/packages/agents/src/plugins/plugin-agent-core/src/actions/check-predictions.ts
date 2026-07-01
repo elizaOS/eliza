@@ -21,6 +21,7 @@ import { PredictionPricing } from "@feed/core/markets/prediction/client";
 import { db, desc, eq, gte, markets } from "@feed/db";
 import type { MessageTag } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -40,7 +41,7 @@ export const checkPredictionsAction: Action = {
   name: "CHECK_PREDICTIONS",
   description:
     "Check prediction markets - questions, YES/NO odds, resolution dates. Use marketId param for specific market details.",
-  parameters: {
+  parameters: defineActionParameters({
     marketId: {
       type: "string",
       description:
@@ -59,7 +60,7 @@ export const checkPredictionsAction: Action = {
         "Number of predictions to show (default: 10, max: 20). Only used when marketId is not provided.",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  }),
   examples: [
     [
       {

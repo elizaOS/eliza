@@ -512,13 +512,8 @@ async function handleTextWithModelType(
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   const extended = params as GenerateTextParamsWithNativeOptions;
-  const {
-    prompt,
-    maxTokens = 8192,
-    temperature = 0.7,
-    frequencyPenalty = 0.7,
-    presencePenalty = 0.7,
-  } = params;
+  const { prompt, temperature = 0.7, frequencyPenalty = 0.7, presencePenalty = 0.7 } = params;
+  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? 8192);
 
   let modelIdForLog = "";
   try {
@@ -603,9 +598,9 @@ async function handleTextWithModelType(
       ...promptOrMessages,
       system,
       temperature,
-      maxOutputTokens: maxTokens,
       frequencyPenalty,
       presencePenalty,
+      ...(typeof maxTokens === "number" ? { maxOutputTokens: maxTokens } : {}),
       ...(resolvedStopSequences ? { stopSequences: resolvedStopSequences } : {}),
       ...(tools ? { tools, ...(toolChoice ? { toolChoice } : {}) } : {}),
       ...(outputSpec ? { output: outputSpec } : {}),
@@ -679,7 +674,13 @@ async function handleTextWithModelType(
       endpoint,
       error
     );
-    return "Error generating text. Please try again later.";
+    // Throw, never fabricate a reply. A hardcoded "Error generating text…" string
+    // would be persisted to memory and sent to the user as the agent's response —
+    // in the wrong language/voice — and would bypass core's grounded failure-reply
+    // path (buildFailureReplyPrompt). The canonical providers (openai, anthropic,
+    // google-genai, elizacloud, openrouter) all throw here; the message pipeline
+    // handles it.
+    throw error;
   }
 }
 

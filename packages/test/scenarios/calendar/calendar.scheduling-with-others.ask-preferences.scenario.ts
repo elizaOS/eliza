@@ -23,6 +23,7 @@ const SAVED_MEETING_PREFERENCES = {
 };
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.scheduling-with-others.ask-preferences",
   title: "Agent pulls user's preferred meeting times when asked",
   domain: "calendar",

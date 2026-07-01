@@ -1,0 +1,88 @@
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
+
+const walletRecord = {
+  id: "wallet-1",
+  organization_id: "00000000-0000-4000-8000-0000000000aa",
+  steward_tenant_id: "tenant-1",
+  steward_agent_id: "steward-agent-1",
+};
+
+let capturedWhere: unknown;
+const findFirst = mock(async (query: { where: unknown }) => {
+  capturedWhere = query.where;
+  return walletRecord;
+});
+const signMessage = mock(async () => ({ signature: "0xsigned" }));
+const setIfNotExists = mock(async () => true);
+
+mock.module("viem", () => ({
+  verifyMessage: mock(async () => true),
+}));
+
+mock.module("../../../db/client", () => ({
+  db: {
+    query: {
+      agentServerWallets: {
+        findFirst,
+      },
+    },
+  },
+  dbRead: {},
+  dbWrite: {},
+  getDbConnectionInfo: () => ({
+    url: "postgres://test",
+    source: "test",
+  }),
+}));
+
+mock.module("../../cache/client", () => ({
+  cache: {
+    setIfNotExists,
+  },
+}));
+
+mock.module("../steward-client", () => ({
+  createStewardClient: mock(async () => ({
+    signMessage,
+  })),
+}));
+
+const { executeServerWalletRpc } = await import("../server-wallets");
+
+beforeEach(() => {
+  capturedWhere = undefined;
+  findFirst.mockClear();
+  signMessage.mockClear();
+  setIfNotExists.mockClear();
+});
+
+describe("server wallet RPC lookup", () => {
+  test("looks the wallet up globally by client_address + EVM chain, not org-scoped", async () => {
+    await executeServerWalletRpc({
+      clientAddress: "0x0000000000000000000000000000000000000001",
+      payload: {
+        method: "personal_sign",
+        params: ["hello"],
+        timestamp: Date.now(),
+        nonce: "nonce-1",
+      },
+      signature: "0xsignature",
+    });
+
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    // Render the WHERE to SQL — walking the object graph is unreliable because a
+    // column back-references its table (which exposes every column name).
+    const sql = new PgDialect().sqlToQuery(capturedWhere as SQL).sql;
+    expect(sql).toContain("client_address");
+    expect(sql).toContain("chain_type");
+    // Must NOT org-scope: provision stores the row under the API-key owner's
+    // org, the RPC signer resolves to a separate wallet-derived org, so an
+    // org-scoped lookup would 404 every legitimate call (#10279). client_address
+    // + chain_type is globally unique (proof-of-control at provision), so this
+    // is unambiguous while still supporting separate EVM and Solana wallets.
+    expect(sql).not.toContain("organization_id");
+    expect(signMessage).toHaveBeenCalledWith("steward-agent-1", "hello");
+  });
+});

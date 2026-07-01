@@ -2,7 +2,7 @@ import { logger } from "@elizaos/core";
 import { z } from "zod";
 
 const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-128k.gguf";
-const DEFAULT_LARGE_MODEL = "text/eliza-1-4b-128k.gguf";
+const DEFAULT_LARGE_MODEL = "text/eliza-1-2b-128k.gguf";
 const DEFAULT_EMBEDDING_MODEL = "gte-small_fp16.gguf";
 
 export const configSchema = z.object({

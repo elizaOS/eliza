@@ -32,7 +32,14 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import kotlinx.coroutines.*
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -54,6 +61,10 @@ class TalkModePlugin : Plugin() {
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
         private const val LOCAL_INFERENCE_TTS_URL = "http://127.0.0.1:31337/api/tts/local-inference"
+        // Abstract-namespace UDS of ElizaBionicInferenceServer (the bionic app
+        // process that has libelizainference loaded). Kept in sync with
+        // BIONIC_INFERENCE_SOCKET_NAME in ElizaAgentService.
+        private const val BIONIC_INFER_SOCKET = "eliza_bionic_infer_v1"
         // 16 kHz mono is the rate VAD / diarizer / wake-word models expect; 20 ms
         // (320 samples) is the standard VAD frame size.
         private const val DEFAULT_FRAME_SAMPLE_RATE = 16000
@@ -73,6 +84,10 @@ class TalkModePlugin : Plugin() {
     private var isListening = false
     private var listeningMode = false
     private var stopRequested = false
+    // Consecutive ERROR_NO_MATCH/SPEECH_TIMEOUT count, for exponential restart
+    // backoff so an idle always-on session settles instead of re-arming (and,
+    // with the system recognizer, beeping) every ~600ms when nobody is talking.
+    private var consecutiveNoMatch = 0
     private var restartJob: Job? = null
     private var lastTranscript = ""
     private var lastHeardAtMs: Long? = null
@@ -150,6 +165,7 @@ class TalkModePlugin : Plugin() {
 
         override fun onBeginningOfSpeech() {
             Log.d(TAG, "Beginning of speech")
+            consecutiveNoMatch = 0
         }
 
         override fun onRmsChanged(rmsdB: Float) {}
@@ -186,24 +202,34 @@ class TalkModePlugin : Plugin() {
                 return
             }
 
-            // Don't notify error for no-match / speech-timeout, just restart
-            if (error != SpeechRecognizer.ERROR_NO_MATCH &&
-                error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+            // Don't notify error for no-match / speech-timeout, just restart.
+            // These fire continuously when the always-on session hears only
+            // silence, so back off exponentially (600ms → 8s cap) instead of
+            // re-arming the recognizer every 600ms. onBeginningOfSpeech /
+            // onResults reset the counter the moment real speech arrives.
+            if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
             ) {
+                consecutiveNoMatch++
+                scheduleRestart(
+                    delayMs = minOf(600L * (1L shl minOf(consecutiveNoMatch, 4)), 8000L),
+                )
+            } else {
+                consecutiveNoMatch = 0
                 notifyListeners("error", JSObject().apply {
                     put("code", "recognition_error")
                     put("message", errorMsg)
                     put("recoverable", true)
                 })
+                scheduleRestart(delayMs = 600)
             }
-
-            scheduleRestart(delayMs = 600)
         }
 
         override fun onResults(results: Bundle?) {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             val transcript = matches?.firstOrNull()?.trim() ?: ""
             if (transcript.isNotEmpty()) {
+                consecutiveNoMatch = 0
                 handleTranscript(transcript, isFinal = true)
             }
             scheduleRestart()
@@ -321,9 +347,7 @@ class TalkModePlugin : Plugin() {
         mainHandler.post {
             try {
                 recognizer?.destroy()
-                recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                    setRecognitionListener(recognitionListener)
-                }
+                recognizer = createRecognizer()
                 startListeningInternal(markListening = true)
                 startSilenceMonitor()
 
@@ -493,12 +517,11 @@ class TalkModePlugin : Plugin() {
 
     private fun startAudioFramesInternal(call: PluginCall) {
         if (audioFrameRunning.get()) {
-            call.resolve(JSObject().apply {
-                put("started", true)
-                put("sampleRate", lastFrameSampleRate)
-                put("frameSamples", lastFrameSamples)
-                put("suspendedStt", sttSuspendedForFrames)
-            })
+            call.resolve(TalkModeAndroidBridgeContract.audioFramesStartedPayload(
+                sampleRate = lastFrameSampleRate,
+                frameSamples = lastFrameSamples,
+                suspendedStt = sttSuspendedForFrames
+            ).toJSObject())
             return
         }
 
@@ -557,12 +580,11 @@ class TalkModePlugin : Plugin() {
         audioFrameRunning.set(true)
         launchFrameLoop(record, frameSamples)
 
-        call.resolve(JSObject().apply {
-            put("started", true)
-            put("sampleRate", actualRate)
-            put("frameSamples", frameSamples)
-            put("suspendedStt", sttSuspendedForFrames)
-        })
+        call.resolve(TalkModeAndroidBridgeContract.audioFramesStartedPayload(
+            sampleRate = actualRate,
+            frameSamples = frameSamples,
+            suspendedStt = sttSuspendedForFrames
+        ).toJSObject())
     }
 
     @PluginMethod
@@ -730,9 +752,7 @@ class TalkModePlugin : Plugin() {
             try {
                 if (!SpeechRecognizer.isRecognitionAvailable(context)) return@post
                 recognizer?.destroy()
-                recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                    setRecognitionListener(recognitionListener)
-                }
+                recognizer = createRecognizer()
                 startListeningInternal(markListening = true)
                 startSilenceMonitor()
             } catch (e: Exception) {
@@ -817,6 +837,28 @@ class TalkModePlugin : Plugin() {
         }
     }
 
+    /**
+     * Create the speech recognizer. Prefer the API-31+ ON-DEVICE recognizer
+     * (in-process SODA): it plays NO start/error earcons, eliminating the
+     * audible "open"/"failure" beeps that came from the system
+     * com.google.android.tts recognizer service (which also can't be muted
+     * without ACCESS_NOTIFICATION_POLICY / STREAM_SYSTEM_ENFORCED control we
+     * don't hold). Falls back to the system recognizer when on-device SODA is
+     * unavailable.
+     */
+    private fun createRecognizer(): SpeechRecognizer {
+        val rec = if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+        ) {
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+        } else {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        }
+        rec.setRecognitionListener(recognitionListener)
+        return rec
+    }
+
     private fun scheduleRestart(delayMs: Long = 350) {
         if (stopRequested) return
         restartJob?.cancel()
@@ -890,10 +932,10 @@ class TalkModePlugin : Plugin() {
         } else {
             lastTranscript = transcript
             lastHeardAtMs = SystemClock.elapsedRealtime()
-            notifyListeners("transcript", JSObject().apply {
-                put("transcript", transcript)
-                put("isFinal", false)
-            })
+            notifyListeners("transcript", TalkModeAndroidBridgeContract.transcriptPayload(
+                transcript = transcript,
+                isFinal = false
+            ).toJSObject())
         }
     }
 
@@ -906,13 +948,18 @@ class TalkModePlugin : Plugin() {
         val text = transcript.trim()
         if (text.isEmpty()) return
         val now = SystemClock.elapsedRealtime()
-        if (text == lastEmittedFinal && now - lastEmittedFinalAtMs < 2000L) return
+        if (TalkModeAndroidBridgeContract.shouldDropDuplicateFinal(
+            transcript = text,
+            previousTranscript = lastEmittedFinal,
+            nowElapsedMs = now,
+            previousElapsedMs = lastEmittedFinalAtMs
+        )) return
         lastEmittedFinal = text
         lastEmittedFinalAtMs = now
-        notifyListeners("transcript", JSObject().apply {
-            put("transcript", text)
-            put("isFinal", true)
-        })
+        notifyListeners("transcript", TalkModeAndroidBridgeContract.transcriptPayload(
+            transcript = text,
+            isFinal = true
+        ).toJSObject())
     }
 
     /**
@@ -923,21 +970,10 @@ class TalkModePlugin : Plugin() {
      * genuine couple-of-words utterance from the user does.
      */
     private fun shouldInterrupt(transcript: String): Boolean {
-        val trimmed = transcript.trim()
-        val lower = trimmed.lowercase()
-        val words = lower.split(Regex("\\s+")).filter { it.isNotBlank() }
-        // Need real intent: at least two words, or one long word (≥ 8 chars).
-        if (words.size < 2 && trimmed.length < 8) return false
-        val spoken = lastSpokenText?.lowercase() ?: return true
-        // Exact echo of what we're saying → speaker bleed, not the user.
-        if (spoken.contains(lower)) return false
-        // Fuzzy echo: if most of the heard words appear in the text we're
-        // currently speaking, treat it as echo (ASR mishears of our own audio).
-        val echoed = words.count { spoken.contains(it) }
-        if (words.isNotEmpty() && echoed.toDouble() / words.size >= 0.6) {
-            return false
-        }
-        return true
+        return TalkModeAndroidBridgeContract.shouldInterruptSpeech(
+            transcript = transcript,
+            lastSpokenText = lastSpokenText
+        )
     }
 
     /**
@@ -951,9 +987,7 @@ class TalkModePlugin : Plugin() {
             if (!SpeechRecognizer.isRecognitionAvailable(context)) return@post
             try {
                 if (recognizer == null) {
-                    recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                        setRecognitionListener(recognitionListener)
-                    }
+                    recognizer = createRecognizer()
                 }
                 recognizer?.cancel()
                 startListeningInternal(markListening = false)
@@ -1204,6 +1238,12 @@ class TalkModePlugin : Plugin() {
         directive: JSObject?
     ) = withContext(Dispatchers.IO) {
         pcmStopRequested.set(false)
+        // Prefer the in-process fused Kokoro voice via the bionic inference host.
+        // Only if that host is unreachable (e.g. desktop/Electrobun, or a build
+        // without it) do we fall through to the HTTP agent endpoint.
+        if (streamAndPlayBionicKokoroTts(text, directive)) {
+            return@withContext
+        }
         val conn = openLocalInferenceTtsConnection()
         activePcmConnection = conn
         try {
@@ -1244,6 +1284,90 @@ class TalkModePlugin : Plugin() {
                 activePcmConnection = null
             }
             conn.disconnect()
+        }
+    }
+
+    /**
+     * Synthesize + play with the fused Kokoro-82M head in the bionic inference
+     * host (ElizaBionicInferenceServer, op "tts") over its abstract-namespace
+     * UDS. The host loads the same libelizainference that runs GPU text and
+     * synthesizes Kokoro PCM in-process — no musl agent, no HTTP, no 502 → no
+     * fallback to the platform TextToSpeech (the bug this fixes: the app was
+     * speaking with the Android system voice). Returns true on success; false if
+     * the host is unreachable so the caller can fall through.
+     */
+    private suspend fun streamAndPlayBionicKokoroTts(
+        text: String,
+        directive: JSObject?
+    ): Boolean = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return@withContext false
+        val speed = (directive?.optDouble("speed", 1.0) ?: 1.0).toFloat()
+        val sock = LocalSocket()
+        try {
+            sock.connect(
+                LocalSocketAddress(BIONIC_INFER_SOCKET, LocalSocketAddress.Namespace.ABSTRACT)
+            )
+        } catch (e: Exception) {
+            Log.d(TAG, "bionic Kokoro TTS host unreachable: ${e.message}")
+            try { sock.close() } catch (_: Exception) {}
+            return@withContext false
+        }
+        try {
+            val req = JSONObject().apply {
+                put("op", "tts")
+                put("text", trimmed)
+                put("speed", speed.toDouble())
+            }.toString().toByteArray(Charsets.UTF_8)
+            DataOutputStream(sock.outputStream).apply {
+                writeInt(req.size) // big-endian length prefix
+                write(req)
+                flush()
+            }
+            val din = DataInputStream(sock.inputStream)
+            val len = din.readInt()
+            if (len <= 0 || len > 64 * 1024 * 1024) {
+                throw IllegalStateException("bionic TTS bad frame length $len")
+            }
+            val respBytes = ByteArray(len)
+            din.readFully(respBytes)
+            val resp = JSONObject(String(respBytes, Charsets.UTF_8))
+            if (!resp.optBoolean("ok", false)) {
+                throw IllegalStateException("bionic TTS error: ${resp.optString("error")}")
+            }
+            val sampleRate = resp.optInt("sampleRate", 24000)
+            val pcmF32 = Base64.decode(resp.getString("pcmBase64"), Base64.NO_WRAP)
+            // fp32 LE → int16 PCM (the play path is ENCODING_PCM_16BIT).
+            val fb = ByteBuffer.wrap(pcmF32).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+            val nSamples = fb.remaining()
+            if (nSamples == 0) {
+                throw IllegalStateException("bionic TTS returned 0 samples")
+            }
+            val pcm16 = ByteArray(nSamples * 2)
+            val ob = ByteBuffer.wrap(pcm16).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until nSamples) {
+                val s = (fb.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort()
+                ob.putShort(s)
+            }
+            val format = PcmStreamFormat(sampleRate, 1, 16, pcm16.size)
+            val track = createPcmAudioTrack(format)
+            pcmTrack = track
+            track.play()
+            notifyListeners("playbackStart", JSObject().apply {
+                put("provider", "local-inference")
+                put("sampleRate", sampleRate)
+                put("channels", 1)
+            })
+            val framesWritten = writePcmStreamToTrack(
+                BufferedInputStream(ByteArrayInputStream(pcm16)), track, format
+            )
+            drainPcmTrack(track, framesWritten, sampleRate)
+            if (!pcmStopRequested.get()) track.stop()
+            Log.d(TAG, "bionic Kokoro TTS played $nSamples samples @ $sampleRate Hz")
+            true
+        } finally {
+            cleanupPcmTrack()
+            try { sock.close() } catch (_: Exception) {}
         }
     }
 
@@ -1498,7 +1622,7 @@ class TalkModePlugin : Plugin() {
         val conn = openTtsConnection(voiceId, apiKey, request)
         activePcmConnection = conn
         try {
-            val payload = buildRequestPayload(request)
+            val payload = ElevenLabsPayload.buildRequestPayload(request)
             conn.outputStream.use { it.write(payload.toByteArray()) }
 
             val code = conn.responseCode
@@ -1568,60 +1692,10 @@ class TalkModePlugin : Plugin() {
         conn.connectTimeout = 30_000
         conn.readTimeout = 30_000
         conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", resolveAcceptHeader(request.outputFormat))
+        conn.setRequestProperty("Accept", ElevenLabsPayload.resolveAcceptHeader(request.outputFormat))
         conn.setRequestProperty("xi-api-key", apiKey)
         conn.doOutput = true
         return conn
-    }
-
-    private fun resolveAcceptHeader(outputFormat: String?): String {
-        val normalized = outputFormat?.trim()?.lowercase().orEmpty()
-        return if (normalized.startsWith("pcm_")) "audio/pcm" else "audio/mpeg"
-    }
-
-    /**
-     * Build the full JSON request payload with all ElevenLabs voice_settings.
-     */
-    private fun buildRequestPayload(request: ElevenLabsRequest): String {
-        val sb = StringBuilder()
-        sb.append("{")
-        sb.append("\"text\":").append(jsonString(request.text))
-        request.modelId?.takeIf { it.isNotEmpty() }?.let {
-            sb.append(",\"model_id\":").append(jsonString(it))
-        }
-        request.outputFormat?.takeIf { it.isNotEmpty() }?.let {
-            sb.append(",\"output_format\":").append(jsonString(it))
-        }
-        request.seed?.let { sb.append(",\"seed\":$it") }
-        request.normalize?.let { sb.append(",\"apply_text_normalization\":").append(jsonString(it)) }
-        request.language?.let { sb.append(",\"language_code\":").append(jsonString(it)) }
-
-        // voice_settings sub-object
-        val vsEntries = mutableListOf<String>()
-        request.speed?.let { vsEntries.add("\"speed\":$it") }
-        request.stability?.let { vsEntries.add("\"stability\":$it") }
-        request.similarity?.let { vsEntries.add("\"similarity_boost\":$it") }
-        request.style?.let { vsEntries.add("\"style\":$it") }
-        request.speakerBoost?.let { vsEntries.add("\"use_speaker_boost\":$it") }
-        if (vsEntries.isNotEmpty()) {
-            sb.append(",\"voice_settings\":{")
-            sb.append(vsEntries.joinToString(","))
-            sb.append("}")
-        }
-
-        sb.append("}")
-        return sb.toString()
-    }
-
-    /** Escape a string for JSON. */
-    private fun jsonString(value: String): String {
-        val escaped = value
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-        return "\"$escaped\""
     }
 
     private suspend fun speakWithSystemTts(text: String, call: PluginCall) {
@@ -1811,9 +1885,11 @@ class TalkModePlugin : Plugin() {
     }
 
     private fun computeInterruptedAt(): Double? {
-        if (!isSpeaking) return null
-        val elapsed = SystemClock.elapsedRealtime() - speakStartTimeMs
-        return elapsed.toDouble() / 1000.0
+        return TalkModeAndroidBridgeContract.interruptedAtSeconds(
+            isSpeaking = isSpeaking,
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            speakStartTimeMs = speakStartTimeMs
+        )
     }
 
     // ── Voice alias resolution ──────────────────────────────────────────
@@ -1919,26 +1995,22 @@ class TalkModePlugin : Plugin() {
         state = newState
         statusText = newStatusText
 
-        notifyListeners("stateChange", JSObject().apply {
-            put("state", newState)
-            put("previousState", previousState)
-            put("statusText", newStatusText)
-            put("usingSystemTts", usedSystemTts)
-        })
+        notifyListeners("stateChange", TalkModeAndroidBridgeContract.statePayload(
+            state = newState,
+            previousState = previousState,
+            statusText = newStatusText,
+            usingSystemTts = usedSystemTts
+        ).toJSObject())
     }
 
     private fun buildPermissionResult(): JSObject {
         val micGranted = isPermissionGranted(Manifest.permission.RECORD_AUDIO)
         val speechAvailable = SpeechRecognizer.isRecognitionAvailable(context)
 
-        return JSObject().apply {
-            put("microphone", if (micGranted) "granted" else "denied")
-            put("speechRecognition", if (speechAvailable) {
-                if (micGranted) "granted" else "prompt"
-            } else {
-                "not_supported"
-            })
-        }
+        return TalkModeAndroidBridgeContract.permissionPayload(
+            microphoneGranted = micGranted,
+            speechRecognitionAvailable = speechAvailable
+        ).toJSObject()
     }
 
     private fun isPermissionGranted(permission: String): Boolean {
@@ -1969,20 +2041,4 @@ class TalkModePlugin : Plugin() {
         scope.cancel()
     }
 
-    // ── Data class ──────────────────────────────────────────────────────
-
-    private data class ElevenLabsRequest(
-        val text: String,
-        val modelId: String?,
-        val outputFormat: String?,
-        val speed: Double?,
-        val stability: Double?,
-        val similarity: Double?,
-        val style: Double?,
-        val speakerBoost: Boolean?,
-        val seed: Long?,
-        val normalize: String?,
-        val language: String?,
-        val latencyTier: Int?
-    )
 }

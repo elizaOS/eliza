@@ -8,7 +8,7 @@
  * model.
  *
  *   - The fused lib's `eliza_inference_llm_stream_open` loads the bundle's text
- *     GGUF (`<bundleRoot>/text/*.gguf`) and applies same-file MTP speculative
+ *     GGUF (`<bundleRoot>/text/*.gguf`) and applies MTP speculative
  *     decoding + KV-cache quant + per-load GPU layers natively (ABI v9). The
  *     path is gated on the capability probes
  *     (`llmStreamSupported && llmMtpSupported && llmKvQuantSupported`).
@@ -29,6 +29,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { resolveStateDir } from "@elizaos/core";
+
 import type { BackendPlan } from "./backend";
 import type {
 	FfiBackendRuntime,
@@ -42,10 +44,17 @@ import {
 	loadElizaInferenceFfi,
 } from "./voice/ffi-bindings";
 
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (!signal?.aborted) return;
+	throw signal.reason instanceof Error
+		? signal.reason
+		: new DOMException("Aborted", "AbortError");
+}
+
 /**
  * Candidate filenames for the fused library, per platform. Mirrors
- * `samantha-preset-regenerator.ts::libraryFilenames` so the runtime and the
- * voice regenerator resolve the same artifact.
+ * `engine-bridge.ts::libraryFilenames` so every consumer resolves the same
+ * artifact.
  */
 function fusedLibraryFilenames(): string[] {
 	if (process.platform === "darwin") return ["libelizainference.dylib"];
@@ -60,6 +69,9 @@ function fusedLibraryFilenames(): string[] {
  *   1. `ELIZA_INFERENCE_LIBRARY` — an explicit absolute path.
  *   2. `<bundleRoot>/lib/<name>` — the bundle-local lib.
  *   3. `ELIZA_INFERENCE_LIB_DIR/<name>` — an explicit lib directory.
+ *   4. `<stateDir>/local-inference/lib/<name>` — the default staging dir written
+ *      by `scripts/stage-desktop-fused-lib.mjs`, so a staged desktop build is
+ *      found with no env wiring.
  * Returns null when none of the candidates exist on disk — `supported()` then
  * reports unavailable and the engine raises LocalInferenceUnavailable.
  */
@@ -73,6 +85,7 @@ export function resolveFusedLibraryPath(
 		bundleRoot ? path.join(bundleRoot, "lib") : null,
 		exact ? path.dirname(exact) : null,
 		env.ELIZA_INFERENCE_LIB_DIR?.trim() || null,
+		path.join(resolveStateDir(env), "local-inference", "lib"),
 	].filter((dir): dir is string => Boolean(dir));
 	for (const dir of dirs) {
 		for (const name of fusedLibraryFilenames()) {
@@ -110,7 +123,7 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 	 * Viable only when:
 	 *   - bun:ffi resolves on the current runtime,
 	 *   - the fused dylib is present AND reports ABI-v9 capability: the
-	 *     streaming-LLM surface, same-file MTP, KV-cache quant, AND native
+	 *     streaming-LLM surface, MTP, KV-cache quant, AND native
 	 *     tokenization (`eliza_inference_tokenize`).
 	 * A pre-v9 fused lib reports the probes as unsupported → refused, and the
 	 * engine raises LocalInferenceUnavailable. libllama has been retired; there
@@ -231,8 +244,13 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 			draftModelPath: overrides?.draftModelPath ?? null,
 			mmprojPath: overrides?.mmprojPath ?? null,
 			// The fused path applies these at its first `llmStreamOpen`:
-			// gpuLayers + KV-cache quant types from the session config.
+			// context size, gpuLayers, and KV-cache quant types from the
+			// session config.
 			loadConfig: {
+				contextSize:
+					typeof overrides?.contextSize === "number"
+						? overrides.contextSize
+						: undefined,
 				gpuLayers:
 					typeof overrides?.gpuLayers === "number"
 						? overrides.gpuLayers
@@ -266,10 +284,35 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 	}
 
 	/**
-	 * Vision describe through the fused `eliza_inference_describe_image`
-	 * (ABI v9). Reuses the mtmd machinery linked for ASR over the bundle's text
-	 * model + the passed mmproj projector. The `FfiStreamingBackend` forwards
-	 * `describeImage`/`visionSupported` to this runtime by duck-typing.
+	 * Whether the LIVE session can STREAM a vision describe token-by-token
+	 * through `eliza_inference_describe_image_stream_open` + the existing
+	 * `llmStreamNext` loop (ABI v13). A <=v12 lib reports false and the handler
+	 * uses the buffered one-shot `describeImage` path.
+	 */
+	visionStreamSupported(): boolean {
+		if (!this.active) return false;
+		const { ffi } = this.active;
+		return (
+			typeof ffi.visionStreamSupported === "function" &&
+			ffi.visionStreamSupported() === true &&
+			typeof ffi.describeImageStreamOpen === "function" &&
+			typeof ffi.llmStreamNext === "function" &&
+			typeof ffi.llmStreamClose === "function"
+		);
+	}
+
+	/**
+	 * Vision describe through the fused mmproj path. Reuses the mtmd machinery
+	 * linked for ASR over the bundle's text model + the passed mmproj projector.
+	 * The `FfiStreamingBackend` forwards `describeImage`/`visionSupported` to this
+	 * runtime by duck-typing.
+	 *
+	 * When `onTextChunk` is supplied AND the fused lib exposes ABI-v13 streaming
+	 * vision, the description is decoded token-by-token: `describeImageStreamOpen`
+	 * primes a stream with the image+prompt KV and the EXISTING `llmStreamNext`
+	 * loop pulls tokens — the same machinery that streams chat text, so vision
+	 * flows into the dashboard through one pipe. Otherwise it falls back to the
+	 * buffered one-shot `eliza_inference_describe_image`.
 	 */
 	async describeImage(args: {
 		imageBytes: Uint8Array;
@@ -278,6 +321,8 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
 		if (!this.active) {
 			throw new Error(
@@ -296,6 +341,59 @@ export class DesktopFusedFfiBackendRuntime implements FfiBackendRuntime {
 					"lib with -DELIZA_ENABLE_VISION=ON (verify-fused-symbols requires it).",
 			);
 		}
+
+		// Token-by-token streaming path (ABI v13): open a vision stream and drive
+		// the shared `llmStreamNext` loop, surfacing each decoded piece through
+		// `onTextChunk` so the description renders as it generates.
+		if (
+			typeof args.onTextChunk === "function" &&
+			this.visionStreamSupported() &&
+			typeof ffi.describeImageStreamOpen === "function" &&
+			typeof ffi.llmStreamNext === "function" &&
+			typeof ffi.llmStreamClose === "function"
+		) {
+			throwIfAborted(args.signal);
+			const startedAt = Date.now();
+			const stream = ffi.describeImageStreamOpen({
+				ctx,
+				imageBytes: args.imageBytes,
+				mmprojPath: args.mmprojPath,
+				prompt: args.prompt,
+			});
+			let full = "";
+			let generated = 0;
+			// JS-side token budget: the native ELIZA_VISION_MAX_TOKENS env does not
+			// reliably reach the loaded DLL's getenv across runtimes, so cap here.
+			const tokenBudget =
+				typeof args.maxTokens === "number" && args.maxTokens > 0
+					? args.maxTokens
+					: 256;
+			try {
+				for (;;) {
+					if (args.signal?.aborted) {
+						ffi.llmStreamCancel?.(stream);
+						throwIfAborted(args.signal);
+					}
+					const step = ffi.llmStreamNext({
+						stream,
+						// Fine-grained by default so the description renders token-by-token
+						// in the dashboard rather than in coarse ~32-token jumps (matches
+						// the tuned chat default). Callers may override per request.
+						maxTokensPerStep: args.maxTokensPerStep ?? 8,
+					});
+					if (step.text.length > 0) {
+						full += step.text;
+						await args.onTextChunk(step.text);
+					}
+					generated += step.tokens.length;
+					if (step.done || generated >= tokenBudget) break;
+				}
+			} finally {
+				ffi.llmStreamClose(stream);
+			}
+			return { text: full, decodeMs: Date.now() - startedAt };
+		}
+
 		const startedAt = Date.now();
 		const text = ffi.describeImage({
 			ctx,

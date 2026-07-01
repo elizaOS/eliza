@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "discord.local.reply-to-dm",
   title: "Reply to Discord DM with confirmation",
   domain: "messaging.discord-local",

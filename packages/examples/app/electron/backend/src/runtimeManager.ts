@@ -14,10 +14,19 @@ import { v4 as uuidv4 } from "uuid";
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 import { getEffectiveMode } from "./types";
 
-const { elizaClassicPlugin, getElizaGreeting } = await import(
-  "@elizaos/plugin-eliza-classic"
-);
 const { default: localdbPlugin } = await import("@elizaos/plugin-localdb");
+
+/**
+ * Resolve a provider API key from the UI config first, then fall back to the
+ * matching environment variable. This lets the env-driven provider selection
+ * (see `selectProviderFromEnv`) supply credentials when none were typed in.
+ */
+function resolveKey(configValue: string, envVar: string): string {
+  const fromConfig = configValue.trim();
+  if (fromConfig.length > 0) return fromConfig;
+  const fromEnv = process.env[envVar];
+  return typeof fromEnv === "string" ? fromEnv.trim() : "";
+}
 
 type RuntimeBundle = {
   runtime: AgentRuntime;
@@ -50,7 +59,11 @@ function applySettings(
   runtime.setSetting("LOCALDB_DATA_DIR", dataDir);
 
   if (mode === "openai") {
-    runtime.setSetting("OPENAI_API_KEY", config.provider.openaiApiKey, true);
+    runtime.setSetting(
+      "OPENAI_API_KEY",
+      resolveKey(config.provider.openaiApiKey, "OPENAI_API_KEY"),
+      true,
+    );
     runtime.setSetting("OPENAI_BASE_URL", config.provider.openaiBaseUrl);
     runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel);
     runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel);
@@ -59,7 +72,7 @@ function applySettings(
   if (mode === "anthropic") {
     runtime.setSetting(
       "ANTHROPIC_API_KEY",
-      config.provider.anthropicApiKey,
+      resolveKey(config.provider.anthropicApiKey, "ANTHROPIC_API_KEY"),
       true,
     );
     runtime.setSetting(
@@ -99,7 +112,7 @@ function applySettings(
   if (mode === "openrouter") {
     runtime.setSetting(
       "OPENROUTER_API_KEY",
-      config.provider.openrouterApiKey,
+      resolveKey(config.provider.openrouterApiKey, "OPENROUTER_API_KEY"),
       true,
     );
     runtime.setSetting(
@@ -116,6 +129,26 @@ function applySettings(
     );
   }
 
+  if (mode === "elizacloud") {
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_API_KEY",
+      resolveKey(config.provider.elizacloudApiKey, "ELIZA_API_KEY"),
+      true,
+    );
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_BASE_URL",
+      config.provider.elizacloudBaseUrl,
+    );
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_SMALL_MODEL",
+      config.provider.elizacloudSmallModel,
+    );
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_LARGE_MODEL",
+      config.provider.elizacloudLargeModel,
+    );
+  }
+
   if (mode === "ollama") {
     runtime.setSetting(
       "OLLAMA_API_ENDPOINT",
@@ -127,50 +160,49 @@ function applySettings(
 }
 
 async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
-  const base: Plugin[] = [localdbPlugin as unknown as Plugin];
+  const base: Plugin[] = [localdbPlugin as Plugin];
   switch (mode) {
-    case "elizaClassic":
-      return [...base, elizaClassicPlugin as unknown as Plugin];
     case "openai":
       return [
         ...base,
-        (await import("@elizaos/plugin-openai")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-openai")).default as Plugin,
       ];
     case "anthropic":
       return [
         ...base,
-        (await import("@elizaos/plugin-anthropic"))
-          .default as unknown as Plugin,
+        (await import("@elizaos/plugin-anthropic")).default as Plugin,
       ];
     case "xai":
       return [
         ...base,
-        (await import("@elizaos/plugin-openai")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-openai")).default as Plugin,
       ];
     case "gemini":
       return [
         ...base,
-        (await import("@elizaos/plugin-google-genai"))
-          .default as unknown as Plugin,
+        (await import("@elizaos/plugin-google-genai")).default as Plugin,
       ];
     case "groq":
       return [
         ...base,
-        (await import("@elizaos/plugin-groq")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-groq")).default as Plugin,
       ];
     case "openrouter":
       return [
         ...base,
-        (await import("@elizaos/plugin-openrouter"))
-          .default as unknown as Plugin,
+        (await import("@elizaos/plugin-openrouter")).default as Plugin,
       ];
     case "ollama":
       return [
         ...base,
-        (await import("@elizaos/plugin-ollama")).default as unknown as Plugin,
+        (await import("@elizaos/plugin-ollama")).default as Plugin,
       ];
+    case "elizacloud": {
+      const { elizaOSCloudPlugin } = await import("@elizaos/plugin-elizacloud");
+      return [...base, elizaOSCloudPlugin as Plugin];
+    }
     default:
-      return [...base, elizaClassicPlugin as unknown as Plugin];
+      throw new Error(`Unsupported provider mode: ${mode}`);
   }
 }
 
@@ -226,11 +258,8 @@ async function getOrCreateRuntime(
   }
 }
 
-export function getGreetingText(config: AppConfig): string {
-  const effectiveMode = getEffectiveMode(config);
-  return effectiveMode === "elizaClassic"
-    ? getElizaGreeting()
-    : "Hello! What would you like to chat about?";
+export function getGreetingText(_config: AppConfig): string {
+  return "Hello! How can I help you today?";
 }
 
 function memoryToChatMessage(

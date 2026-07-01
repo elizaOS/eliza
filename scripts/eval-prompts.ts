@@ -87,8 +87,7 @@ const EXPORT_DIR = process.env.EXPORT_DIR ?? `/tmp/eliza-eval-${Date.now()}`;
 const EVAL_TASKS =
   process.env.EVAL_TASKS?.split(",").map((t) => t.trim()) ?? null;
 const EVAL_MAX_EXAMPLES = parseInt(process.env.EVAL_MAX_EXAMPLES ?? "0", 10);
-const EVAL_ALLOW_NO_IMPROVEMENT =
-  process.env.EVAL_ALLOW_NO_IMPROVEMENT === "1";
+const EVAL_ALLOW_NO_IMPROVEMENT = process.env.EVAL_ALLOW_NO_IMPROVEMENT === "1";
 const COUNT_SCENARIOS = process.argv.includes("--count-scenarios");
 const VALIDATE_SCENARIOS = process.argv.includes("--validate-scenarios");
 

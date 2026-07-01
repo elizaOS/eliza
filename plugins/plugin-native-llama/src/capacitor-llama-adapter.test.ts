@@ -44,6 +44,10 @@ interface MockPluginState {
 interface MockOptions {
   /** When true, include the fork-only setSpecType / setCacheType methods. */
   forkBuild?: boolean;
+  /** Platform reported by Capacitor.getPlatform() + getHardwareInfo(). */
+  platform?: "ios" | "android";
+  /** Value of getHardwareInfo().isSimulator (iOS Simulator detection). */
+  isSimulator?: boolean;
 }
 
 function installMockPlugin(opts: MockOptions = {}): MockPluginState {
@@ -93,15 +97,30 @@ function installMockPlugin(opts: MockOptions = {}): MockPluginState {
     }),
     tokenize: vi.fn(async () => ({ tokens: [1, 2, 3] })),
     addListener: vi.fn(async () => ({ remove: async () => undefined })),
-    getHardwareInfo: vi.fn(async () => ({
-      platform: "android",
-      deviceModel: "Pixel 9a",
-      totalRamGb: 8,
-      availableRamGb: 4,
-      cpuCores: 8,
-      gpu: null,
-      gpuSupported: false,
-    })),
+    getHardwareInfo: vi.fn(async () =>
+      opts.platform === "ios"
+        ? {
+            platform: "ios",
+            deviceModel: opts.isSimulator ? "iPhone Simulator" : "iPhone17,2",
+            totalRamGb: 8,
+            availableRamGb: 4,
+            cpuCores: 8,
+            gpu: { backend: "metal", available: !opts.isSimulator },
+            gpuSupported: true,
+            ...(typeof opts.isSimulator === "boolean"
+              ? { isSimulator: opts.isSimulator }
+              : {}),
+          }
+        : {
+            platform: "android",
+            deviceModel: "Pixel 9a",
+            totalRamGb: 8,
+            availableRamGb: 4,
+            cpuCores: 8,
+            gpu: null,
+            gpuSupported: false,
+          },
+    ),
   };
 
   if (opts.forkBuild) {
@@ -118,7 +137,7 @@ function installMockPlugin(opts: MockOptions = {}): MockPluginState {
   // Capacitor presence shim so isCapacitorNative() reports true.
   (globalThis as Record<string, unknown>).Capacitor = {
     isNativePlatform: () => true,
-    getPlatform: () => "android",
+    getPlatform: () => opts.platform ?? "android",
   };
 
   return state;
@@ -218,7 +237,7 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
 
     const adapter = new CapacitorLlamaAdapter();
-    await adapter.load({ modelPath: "/tmp/android-qwen.gguf" });
+    await adapter.load({ modelPath: "/tmp/android-eliza-1.gguf" });
 
     expect(state.initContextCalls).toHaveLength(1);
     expect(state.initContextCalls[0].params.n_gpu_layers).toBe(0);
@@ -236,6 +255,37 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     expect(state.initContextCalls).toHaveLength(1);
     expect(state.initContextCalls[0].params.n_gpu_layers).toBe(99);
     expect(state.initContextCalls[0].params.flash_attn).toBe(true);
+  });
+
+  it("uses Metal (GPU) by default on a real iOS device", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ platform: "ios", isSimulator: false });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/eliza-1.gguf" });
+
+    expect(state.initContextCalls).toHaveLength(1);
+    expect(state.initContextCalls[0].params.n_gpu_layers).toBe(99);
+    expect(state.initContextCalls[0].params.flash_attn).toBe(true);
+  });
+
+  it("forces CPU on the iOS Simulator (no Metal GPU compute → GPU load hangs)", async () => {
+    vi.resetModules();
+    const state = installMockPlugin({ platform: "ios", isSimulator: true });
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    // Default load (iOS default would be GPU on) must fall back to CPU on the Simulator.
+    await adapter.load({ modelPath: "/tmp/eliza-1.gguf" });
+    // Even an explicit useGpu:true must not enable GPU layers on the Simulator.
+    await adapter.load({ modelPath: "/tmp/eliza-1.gguf", useGpu: true });
+
+    expect(state.initContextCalls).toHaveLength(2);
+    for (const call of state.initContextCalls) {
+      expect(call.params.n_gpu_layers).toBe(0);
+      expect(call.params.flash_attn).toBe(false);
+    }
   });
 
   it("caps hostile generation token counts and derives stable cache slots", async () => {

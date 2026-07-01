@@ -16,14 +16,79 @@ import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
+import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
-import { useApp } from "../state";
+import { useAppSelectorShallow } from "../state";
+import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
+import { filterCommandsForSurface } from "./slash-menu";
+
+/** The surface the dashboard chat composer renders on. */
+const GUI_SURFACE = "gui" as const;
 
 /** Event the App shell listens for to open settings at a specific section. */
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
+
+/**
+ * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
+ * fully guarded: a failure here must never break navigation. `source: "user"`
+ * makes the server record state + emit VIEW_SWITCHED without echoing
+ * shell:navigate:view back to the client. The surface id is any view/tab id
+ * (e.g. a view id, a tab id, or "settings") the proactive decider keys off.
+ */
+export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
+  try {
+    const base = getElizaApiBase();
+    if (!base || typeof fetch === "undefined") return;
+    const token = getElizaApiToken();
+    void fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        source: "user",
+        ...(viewPath ? { path: viewPath } : {}),
+      }),
+    }).catch(() => {});
+  } catch {
+    // Best-effort observability only.
+  }
+}
+
+/**
+ * Report a user-fired keyboard / command-palette shortcut to the agent (#8792).
+ * Fire-and-forget, fully guarded: a failure here must never break the shortcut.
+ * The server emits SHORTCUT_FIRED for the proactive decider, which decides
+ * (governed) whether a scoped comment helps. Only meaningful, intent-bearing
+ * shortcuts should report — not every keystroke — to keep the judge cheap.
+ */
+export function reportShortcutFired(
+  shortcutId: string,
+  context?: string,
+): void {
+  try {
+    const base = getElizaApiBase();
+    if (!base || typeof fetch === "undefined") return;
+    const token = getElizaApiToken();
+    void fetch(`${base}/api/interactions/shortcut`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        shortcutId,
+        ...(context ? { context } : {}),
+      }),
+    }).catch(() => {});
+  } catch {
+    // Best-effort observability only.
+  }
+}
 
 export interface NavigateSettingsDetail {
   section?: string;
@@ -33,6 +98,8 @@ export interface SlashCommandController {
   /** The merged catalog (server commands + custom actions + saved commands). */
   commands: SlashCommandCatalogItem[];
   loading: boolean;
+  /** Whether natural-language navigate/client shortcuts may short-circuit send. */
+  naturalShortcutsEnabled: boolean;
   /** Resolve dynamic argument completions for a named source. */
   resolveChoices: (source: CommandArgSource) => string[];
   /** Map a user-typed settings token to a canonical section id. */
@@ -98,8 +165,31 @@ function mergeByAlias(
   return merged;
 }
 
-export function useSlashCommandController(): SlashCommandController {
-  const { setTab, handleChatClear } = useApp();
+export interface SlashCommandControllerOptions {
+  /**
+   * Whether the current sender is authenticated. Commands flagged
+   * `requiresAuth` are hidden when this is false. Defaults to `true`: the local
+   * dashboard composer is the trusted owner surface (gated by the agent's own
+   * API token), so the dashboard user is authorized by definition.
+   */
+  isAuthorized?: boolean;
+  /**
+   * Whether the current sender has elevated/owner privileges. Commands flagged
+   * `requiresElevated` are hidden when this is false. Defaults to `true` for the
+   * same reason as {@link isAuthorized}.
+   */
+  isElevated?: boolean;
+}
+
+export function useSlashCommandController(
+  options: SlashCommandControllerOptions = {},
+): SlashCommandController {
+  const { isAuthorized = true, isElevated = true } = options;
+  const bootConfig = useBootConfig();
+  const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
+    setTab: s.setTab,
+    handleChatClear: s.handleChatClear,
+  }));
   const { views } = useAvailableViews();
   const [serverCommands, setServerCommands] = React.useState<
     SlashCommandCatalogItem[]
@@ -136,10 +226,19 @@ export function useSlashCommandController(): SlashCommandController {
   }, []);
 
   const commands = React.useMemo(
-    // Server catalog wins over custom/saved on alias collisions.
-    () => mergeByAlias([serverCommands, customCommands]),
-    [serverCommands, customCommands],
+    // Server catalog wins over custom/saved on alias collisions; then gate by
+    // surface (hide non-gui commands) and sender authorization (hide
+    // requiresAuth/requiresElevated commands the sender can't run).
+    () =>
+      filterCommandsForSurface(mergeByAlias([serverCommands, customCommands]), {
+        surface: GUI_SURFACE,
+        isAuthorized,
+        isElevated,
+      }),
+    [serverCommands, customCommands, isAuthorized, isElevated],
   );
+  const naturalShortcutsEnabled =
+    bootConfig.shortcutFlags?.naturalLanguage === true;
 
   const resolveChoices = React.useCallback(
     (source: CommandArgSource): string[] => {
@@ -156,7 +255,12 @@ export function useSlashCommandController(): SlashCommandController {
   );
 
   const navigateTab = React.useCallback(
-    (tab: string) => setTab(tab as Tab),
+    (tab: string) => {
+      setTab(tab as Tab);
+      // Report the tab id as a surface so the proactive decider can react to
+      // user-initiated tab navigation (#8792). Fire-and-forget.
+      reportUserViewSwitch(tab);
+    },
     [setTab],
   );
 
@@ -167,6 +271,9 @@ export function useSlashCommandController(): SlashCommandController {
         detail: { section },
       }),
     );
+    // Surface key is "settings" with the section threaded through as the path
+    // so the decider can distinguish settings sub-screens (#8792).
+    reportUserViewSwitch("settings", section);
   }, []);
 
   const navigateView = React.useCallback(
@@ -180,6 +287,14 @@ export function useSlashCommandController(): SlashCommandController {
           },
         }),
       );
+      // Report this user-initiated switch to the agent (#8792) so the server's
+      // current-view state stays accurate and a VIEW_SWITCHED event fires for the
+      // proactive decider. `source: "user"` tells the server to record + emit
+      // WITHOUT re-broadcasting shell:navigate:view (the client already
+      // navigated above), avoiding an echo loop. Fire-and-forget.
+      if (target.viewId) {
+        reportUserViewSwitch(target.viewId, target.viewPath);
+      }
     },
     [],
   );
@@ -197,6 +312,7 @@ export function useSlashCommandController(): SlashCommandController {
     () => ({
       commands,
       loading,
+      naturalShortcutsEnabled,
       resolveChoices,
       resolveSection: resolveSettingsSectionToken,
       navigateTab,
@@ -208,6 +324,7 @@ export function useSlashCommandController(): SlashCommandController {
     [
       commands,
       loading,
+      naturalShortcutsEnabled,
       resolveChoices,
       navigateTab,
       navigateSettings,

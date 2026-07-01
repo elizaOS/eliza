@@ -1,7 +1,7 @@
-import { Handle, type NodeProps, Position } from "@xyflow/react";
+import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { memo } from "react";
 
-interface D {
+type D = {
   label: string;
   phase: string;
   phaseColor: string;
@@ -12,10 +12,9 @@ interface D {
   hasError: boolean;
   isCompleted: boolean;
   isHighlighted?: boolean;
-}
+};
 
-export const DagNode = memo(function DagNode({ data }: NodeProps) {
-  const d = data as unknown as D;
+export const DagNode = memo(function DagNode({ data: d }: NodeProps<Node<D>>) {
   const done = d.isCompleted;
   const skip = d.status === "skipped" || d.status === "pending";
   const err = d.status === "error";

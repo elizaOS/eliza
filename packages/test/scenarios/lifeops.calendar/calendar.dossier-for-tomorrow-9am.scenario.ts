@@ -33,6 +33,7 @@ function checkDossierAddressesSeededMeeting(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.dossier-for-tomorrow-9am",
   title:
     "Pre-meeting dossier references the seeded 9am event without fabrication",

@@ -8,13 +8,16 @@ export function getSegmenter(): Intl.Segmenter {
 }
 
 /**
- * Check if a grapheme cluster (after segmentation) could possibly be an RGI emoji.
- * This is a fast heuristic to avoid the expensive rgiEmojiRegex test.
+ * Check if a grapheme cluster (after segmentation) could possibly be an emoji.
+ * This is a fast heuristic that avoids depending on newer RegExp Unicode sets.
  * The tested Unicode blocks are deliberately broad so newer Unicode versions
  * keep matching likely emoji ranges.
  */
 function couldBeEmoji(segment: string): boolean {
-  const cp = segment.codePointAt(0)!;
+  const cp = segment.codePointAt(0);
+  if (cp === undefined) {
+    return false;
+  }
   return (
     (cp >= 0x1f000 && cp <= 0x1fbff) || // Emoji and Pictograph
     (cp >= 0x2300 && cp <= 0x23ff) || // Misc technical
@@ -30,7 +33,17 @@ const zeroWidthRegex =
   /^(?:\p{Default_Ignorable_Code_Point}|\p{Control}|\p{Mark}|\p{Surrogate})+$/u;
 const leadingNonPrintingRegex =
   /^[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]+/u;
-const rgiEmojiRegex = new RegExp("^\\p{RGI_Emoji}$", "v");
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
+const sgrAndCursorRegex = new RegExp("\\x1b\\[[0-9;]*[mGKHJ]", "g");
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
+const osc8HyperlinkRegex = new RegExp("\\x1b\\]8;;[^\\x07]*\\x07", "g");
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
+const apcSequenceRegex = new RegExp(
+  "\\x1b_[^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)",
+  "g",
+);
+// biome-ignore lint/complexity/useRegexLiterals: ANSI control escapes trip noControlCharactersInRegex as literals.
+const ansiSgrParamsRegex = new RegExp("\\x1b\\[([\\d;]*)m");
 
 // Cache for non-ASCII strings
 const WIDTH_CACHE_SIZE = 512;
@@ -38,8 +51,8 @@ const widthCache = new Map<string, number>();
 
 /**
  * Calculate the terminal width of a single grapheme cluster.
- * Based on code from the string-width library, but includes a possible-emoji
- * check to avoid running the RGI_Emoji regex unnecessarily.
+ * Based on code from the string-width library, with a possible-emoji check
+ * that works under older TypeScript targets.
  */
 function graphemeWidth(segment: string): number {
   // Zero-width clusters
@@ -64,7 +77,10 @@ function graphemeWidth(segment: string): number {
   // Trailing halfwidth/fullwidth forms
   if (segment.length > 1) {
     for (const char of segment.slice(1)) {
-      const c = char.codePointAt(0)!;
+      const c = char.codePointAt(0);
+      if (c === undefined) {
+        continue;
+      }
       if (c >= 0xff00 && c <= 0xffef) {
         width += eastAsianWidth(c);
       }
@@ -108,11 +124,11 @@ export function visibleWidth(str: string): number {
   }
   if (clean.includes("\x1b")) {
     // Strip SGR codes (\x1b[...m) and cursor codes (\x1b[...G/K/H/J)
-    clean = clean.replace(/\x1b\[[0-9;]*[mGKHJ]/g, "");
+    clean = clean.replace(sgrAndCursorRegex, "");
     // Strip OSC 8 hyperlinks: \x1b]8;;URL\x07 and \x1b]8;;\x07
-    clean = clean.replace(/\x1b\]8;;[^\x07]*\x07/g, "");
+    clean = clean.replace(osc8HyperlinkRegex, "");
     // Strip APC sequences: \x1b_...\x07 or \x1b_...\x1b\\ (used for cursor marker)
-    clean = clean.replace(/\x1b_[^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+    clean = clean.replace(apcSequenceRegex, "");
   }
 
   // Calculate width
@@ -147,7 +163,11 @@ export function extractAnsiCode(
   // CSI sequence: ESC [ ... m/G/K/H/J
   if (next === "[") {
     let j = pos + 2;
-    while (j < str.length && !/[mGKHJ]/.test(str[j]!)) j++;
+    while (j < str.length) {
+      const char = str[j];
+      if (char === undefined || /[mGKHJ]/.test(char)) break;
+      j++;
+    }
     if (j < str.length)
       return { code: str.substring(pos, j + 1), length: j + 1 - pos };
     return null;
@@ -206,7 +226,7 @@ class AnsiCodeTracker {
     }
 
     // Extract the parameters between \x1b[ and m
-    const match = ansiCode.match(/\x1b\[([\d;]*)m/);
+    const match = ansiCode.match(ansiSgrParamsRegex);
     if (!match) return;
 
     const params = match[1];

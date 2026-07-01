@@ -42,7 +42,6 @@ export interface DevRouteEntry {
   requiresAuth: boolean;
   platformGate: DevRoutePlatformGate;
 }
-
 export interface DevRouteSettingsSection {
   id: string;
   label: string;
@@ -238,6 +237,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "transcripts",
+    path: "/apps/transcripts",
+    label: "Transcripts",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "memories",
     path: "/apps/memories",
     label: "Memories",
@@ -261,6 +270,16 @@ const ROUTES: DevRouteEntry[] = [
     tabId: "database",
     path: "/apps/database",
     label: "Databases",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
+    tabId: "files",
+    path: "/apps/files",
+    label: "Files",
     group: "Apps",
     visibility: "all",
     featureFlag: "VITE_ENABLE_APPS",
@@ -303,7 +322,7 @@ const ROUTES: DevRouteEntry[] = [
     label: "Character Select",
     group: "Character",
     visibility: "all",
-    featureFlag: "VITE_ENABLE_COMPANION_MODE",
+    featureFlag: null,
     requiresAuth: true,
     platformGate: null,
   },
@@ -378,26 +397,6 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
-    tabId: "voice",
-    path: "/settings/voice",
-    label: "Voice",
-    group: "Settings",
-    visibility: "all",
-    featureFlag: null,
-    requiresAuth: true,
-    platformGate: null,
-  },
-  {
-    tabId: "companion",
-    path: "/companion",
-    label: "Companion",
-    group: "Hidden",
-    visibility: "all",
-    featureFlag: "VITE_ENABLE_COMPANION_MODE",
-    requiresAuth: true,
-    platformGate: null,
-  },
-  {
     tabId: "rolodex",
     path: "/rolodex",
     label: "Rolodex",
@@ -416,6 +415,16 @@ const ROUTES: DevRouteEntry[] = [
     featureFlag: null,
     requiresAuth: true,
     platformGate: "desktop",
+  },
+  {
+    tabId: "background",
+    path: "/background",
+    label: "Background",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
   },
 ];
 

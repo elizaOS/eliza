@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRouteCatalog } from "../../app-core/src/api/dev-route-catalog";
+import { discoverSideEffectAppModules } from "../vite/app-side-effect-modules";
 import {
   DIRECT_ROUTE_CASES,
   MANAGER_VISIBLE_VIEW_TILE_CASES,
@@ -47,10 +48,6 @@ const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   "../../ui/src/components/apps/internal-tool-apps.ts",
 );
 const APP_MAIN_SOURCE = path.resolve(HERE, "../src/main.tsx");
-const SIDE_EFFECT_PLUGIN_SOURCE = path.resolve(
-  HERE,
-  "../src/plugin-registrations.ts",
-);
 
 type PluginViewCase = {
   manifestPath: string;
@@ -59,14 +56,23 @@ type PluginViewCase = {
   path: string;
 };
 
-type PluginViewManifestContract = PluginViewCase & {
+/**
+ * A collapsed operator view: ONE declaration that draws several modalities from
+ * one source (`modalities`), one `path`, one `componentExport` (a
+ * SpatialSurface-wrapped view). The gate asserts that single declaration keeps
+ * its canonical path, bundle, component, and modality coverage.
+ */
+type PluginViewManifestContract = {
+  manifestPath: string;
+  id: string;
+  modalities: ReadonlyArray<"gui" | "tui" | "xr">;
+  path: string;
   componentExport: string;
 };
 
 const PLUGIN_VIEW_MANIFESTS = [
-  "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-blocker/src/plugin.ts",
@@ -79,25 +85,16 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-relationships/src/plugin.ts",
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket-app/src/plugin.ts",
-  "plugins/plugin-shopify-ui/src/plugin.ts",
-  "plugins/plugin-steward-app/src/plugin.ts",
-  "plugins/plugin-vincent/src/plugin.ts",
+  "plugins/plugin-polymarket/src/plugin.ts",
+  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
-  "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
-  "plugins/plugin-waifu-swap-app/src/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
-  "plugins/plugin-2004scape/src/index.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
-  "plugins/plugin-clawville/src/index.ts",
-  "plugins/plugin-defense-of-the-agents/src/index.ts",
-  "plugins/plugin-hyperscape/src/index.ts",
-  "plugins/plugin-scape/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-social-alpha/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
-  "plugins/plugin-trajectory-logger/src/index.ts",
+  "plugins/plugin-trajectory-logger/src/plugin.ts",
   "plugins/plugin-training/src/setup-routes.ts",
   "plugins/plugin-facewear/src/index.ts",
 ] as const;
@@ -138,67 +135,33 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/app-core": null,
-  "@elizaos/plugin-2004scape": "plugins/plugin-2004scape/src/index.ts",
-  "@elizaos/plugin-clawville": "plugins/plugin-clawville/src/index.ts",
-  "@elizaos/plugin-companion/components/companion/CompanionShell":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/GlobalEmoteOverlay":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/InferenceCloudAlertButton":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/companion-app":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/companion-scene-status-context":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-companion/components/companion/resolve-companion-inference-notice":
-    "plugins/plugin-companion/src/plugin.ts",
-  "@elizaos/plugin-contacts/register": "plugins/plugin-contacts/src/plugin.ts",
-  "@elizaos/plugin-defense-of-the-agents":
-    "plugins/plugin-defense-of-the-agents/src/index.ts",
-  "@elizaos/plugin-device-settings/register": null,
-  "@elizaos/plugin-facewear/register": "plugins/plugin-facewear/src/index.ts",
+  "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
+  "@elizaos/plugin-native-settings": null,
+  "@elizaos/plugin-facewear": "plugins/plugin-facewear/src/index.ts",
   "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
-  "@elizaos/plugin-hyperliquid-app":
-    "plugins/plugin-hyperliquid-app/src/plugin.ts",
-  "@elizaos/plugin-hyperscape": "plugins/plugin-hyperscape/src/index.ts",
+  "@elizaos/plugin-hyperliquid": "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
   "@elizaos/plugin-personal-assistant": null,
-  "@elizaos/plugin-messages/register": "plugins/plugin-messages/src/plugin.ts",
+  "@elizaos/plugin-messages": "plugins/plugin-messages/src/plugin.ts",
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
-  "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
-  "@elizaos/plugin-polymarket-app":
-    "plugins/plugin-polymarket-app/src/plugin.ts",
-  "@elizaos/plugin-scape": "plugins/plugin-scape/src/index.ts",
-  "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
-  "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
+  "@elizaos/plugin-polymarket": "plugins/plugin-polymarket/src/plugin.ts",
+  "@elizaos/plugin-shopify": "plugins/plugin-shopify/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-task-coordinator/register":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
   "@elizaos/plugin-trajectory-logger":
-    "plugins/plugin-trajectory-logger/src/index.ts",
-  "@elizaos/plugin-vector-browser/register":
+    "plugins/plugin-trajectory-logger/src/plugin.ts",
+  "@elizaos/plugin-vector-browser":
     "plugins/plugin-vector-browser/src/plugin.ts",
-  "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
-  "@elizaos/plugin-waifu-imagegen-app":
-    "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
-  "@elizaos/plugin-waifu-swap-app":
-    "plugins/plugin-waifu-swap-app/src/plugin.ts",
-  "@elizaos/plugin-wallet-ui/register":
-    "plugins/plugin-wallet-ui/src/plugin.ts",
-  "@elizaos/plugin-wifi/register": null,
+  "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
+  "@elizaos/plugin-wifi": null,
   "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
 };
 
 const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
-  {
-    manifestPath: "plugins/plugin-companion/src/plugin.ts",
-    id: "companion",
-    viewType: "xr",
-    path: "/companion",
-  },
   {
     manifestPath: "plugins/plugin-contacts/src/plugin.ts",
     id: "contacts",
@@ -206,7 +169,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/contacts",
   },
   {
-    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
+    manifestPath: "plugins/plugin-hyperliquid/src/plugin.ts",
     id: "hyperliquid",
     viewType: "xr",
     path: "/hyperliquid",
@@ -230,52 +193,22 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/phone",
   },
   {
-    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
+    manifestPath: "plugins/plugin-polymarket/src/plugin.ts",
     id: "polymarket",
     viewType: "xr",
     path: "/polymarket",
   },
   {
-    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
+    manifestPath: "plugins/plugin-shopify/src/plugin.ts",
     id: "shopify",
     viewType: "xr",
     path: "/shopify",
-  },
-  {
-    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
-    id: "steward",
-    viewType: "xr",
-    path: "/steward",
-  },
-  {
-    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
-    id: "vincent",
-    viewType: "xr",
-    path: "/vincent",
   },
   {
     manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
     id: "wallet",
     viewType: "xr",
     path: "/wallet",
-  },
-  {
-    manifestPath: "plugins/plugin-waifu-imagegen-app/src/plugin.ts",
-    id: "waifu-imagegen",
-    viewType: "xr",
-    path: "/waifu-imagegen",
-  },
-  {
-    manifestPath: "plugins/plugin-waifu-swap-app/src/plugin.ts",
-    id: "waifu-swap",
-    viewType: "xr",
-    path: "/waifu-swap",
-  },
-  {
-    manifestPath: "plugins/plugin-2004scape/src/index.ts",
-    id: "2004scape",
-    viewType: "xr",
-    path: "/2004scape",
   },
   {
     manifestPath: "plugins/plugin-feed/src/index.ts",
@@ -288,30 +221,6 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     id: "views-manager",
     viewType: "xr",
     path: "/views",
-  },
-  {
-    manifestPath: "plugins/plugin-clawville/src/index.ts",
-    id: "clawville",
-    viewType: "xr",
-    path: "/clawville",
-  },
-  {
-    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-    id: "defense-of-the-agents",
-    viewType: "xr",
-    path: "/defense-of-the-agents",
-  },
-  {
-    manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-    id: "hyperscape",
-    viewType: "xr",
-    path: "/hyperscape",
-  },
-  {
-    manifestPath: "plugins/plugin-scape/src/index.ts",
-    id: "scape",
-    viewType: "xr",
-    path: "/scape",
   },
   {
     manifestPath: "plugins/plugin-screenshare/src/index.ts",
@@ -332,7 +241,7 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     path: "/orchestrator",
   },
   {
-    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
+    manifestPath: "plugins/plugin-trajectory-logger/src/plugin.ts",
     id: "trajectory-logger",
     viewType: "xr",
     path: "/trajectory-logger",
@@ -341,212 +250,125 @@ const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
     manifestPath: "plugins/plugin-training/src/setup-routes.ts",
     id: "training",
     viewType: "xr",
-    path: "/training",
+    path: "/apps/fine-tuning",
   },
   {
+    manifestPath: "plugins/plugin-blocker/src/plugin.ts",
+    id: "focus",
+    viewType: "xr",
+    path: "/focus",
+  },
+  {
+    manifestPath: "plugins/plugin-calendar/src/plugin.ts",
+    id: "calendar",
+    viewType: "xr",
+    path: "/calendar",
+  },
+  {
+    manifestPath: "plugins/plugin-documents/src/plugin.ts",
+    id: "documents",
+    viewType: "xr",
+    path: "/documents",
+  },
+  {
+    manifestPath: "plugins/plugin-finances/src/plugin.ts",
+    id: "finances",
+    viewType: "xr",
+    path: "/finances",
+  },
+  {
+    manifestPath: "plugins/plugin-goals/src/plugin.ts",
+    id: "goals",
+    viewType: "xr",
+    path: "/goals",
+  },
+  {
+    manifestPath: "plugins/plugin-health/src/index.ts",
+    id: "health",
+    viewType: "xr",
+    path: "/health",
+  },
+  {
+    manifestPath: "plugins/plugin-inbox/src/plugin.ts",
+    id: "inbox",
+    viewType: "xr",
+    path: "/inbox",
+  },
+  {
+    manifestPath: "plugins/plugin-relationships/src/plugin.ts",
+    id: "relationships",
+    viewType: "xr",
+    path: "/relationships",
+  },
+  {
+    manifestPath: "plugins/plugin-todos/src/index.ts",
+    id: "todos",
+    viewType: "xr",
+    path: "/todos",
+  },
+  {
+    manifestPath: "plugins/plugin-vector-browser/src/plugin.ts",
+    id: "vector-browser",
+    viewType: "xr",
+    path: "/vector-browser",
+  },
+  {
+    manifestPath: "plugins/plugin-social-alpha/src/index.ts",
+    id: "social-alpha",
+    viewType: "xr",
+    path: "/social-alpha",
+  },
+  {
+    // Facewear collapsed to one declaration: gui/xr/tui all draw from the same
+    // `/apps/facewear` route (the standalone `/apps/facewear/xr` route is gone).
     manifestPath: "plugins/plugin-facewear/src/index.ts",
     id: "facewear",
     viewType: "xr",
-    path: "/apps/facewear/xr",
+    path: "/apps/facewear",
   },
   {
     manifestPath: "plugins/plugin-facewear/src/index.ts",
     id: "smartglasses",
     viewType: "xr",
-    path: "/apps/smartglasses/xr",
+    path: "/apps/smartglasses",
   },
+];
+
+const ALL_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = [
+  "gui",
+  "xr",
+  "tui",
 ];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [
     {
-      manifestPath: "plugins/plugin-2004scape/src/index.ts",
-      id: "2004scape",
-      viewType: "gui",
-      path: "/2004scape",
-      componentExport: "TwoThousandFourScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-2004scape/src/index.ts",
-      id: "2004scape",
-      viewType: "xr",
-      path: "/2004scape",
-      componentExport: "TwoThousandFourScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-2004scape/src/index.ts",
-      id: "2004scape",
-      viewType: "tui",
-      path: "/2004scape/tui",
-      componentExport: "TwoThousandFourScapeTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-clawville/src/index.ts",
-      id: "clawville",
-      viewType: "gui",
-      path: "/clawville",
-      componentExport: "ClawvilleOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-clawville/src/index.ts",
-      id: "clawville",
-      viewType: "xr",
-      path: "/clawville",
-      componentExport: "ClawvilleOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-clawville/src/index.ts",
-      id: "clawville",
-      viewType: "tui",
-      path: "/clawville/tui",
-      componentExport: "ClawvilleTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "gui",
-      path: "/defense-of-the-agents",
-      componentExport: "DefenseAgentsOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "xr",
-      path: "/defense-of-the-agents",
-      componentExport: "DefenseAgentsOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
-      id: "defense-of-the-agents",
-      viewType: "tui",
-      path: "/defense-of-the-agents/tui",
-      componentExport: "DefenseAgentsTuiView",
-    },
-    {
       manifestPath: "plugins/plugin-feed/src/index.ts",
       id: "feed",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/feed",
-      componentExport: "FeedOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-feed/src/index.ts",
-      id: "feed",
-      viewType: "xr",
-      path: "/feed",
-      componentExport: "FeedOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-feed/src/index.ts",
-      id: "feed",
-      viewType: "tui",
-      path: "/feed/tui",
-      componentExport: "FeedTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-      id: "hyperscape",
-      viewType: "gui",
-      path: "/hyperscape",
-      componentExport: "HyperscapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-      id: "hyperscape",
-      viewType: "xr",
-      path: "/hyperscape",
-      componentExport: "HyperscapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-hyperscape/src/index.ts",
-      id: "hyperscape",
-      viewType: "tui",
-      path: "/hyperscape/tui",
-      componentExport: "HyperscapeTuiView",
-    },
-    {
-      manifestPath: "plugins/plugin-scape/src/index.ts",
-      id: "scape",
-      viewType: "gui",
-      path: "/scape",
-      componentExport: "ScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-scape/src/index.ts",
-      id: "scape",
-      viewType: "xr",
-      path: "/scape",
-      componentExport: "ScapeOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-scape/src/index.ts",
-      id: "scape",
-      viewType: "tui",
-      path: "/scape/tui",
-      componentExport: "ScapeTuiView",
+      componentExport: "FeedView",
     },
     {
       manifestPath: "plugins/plugin-screenshare/src/index.ts",
       id: "screenshare",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/screenshare",
-      componentExport: "ScreenshareOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-screenshare/src/index.ts",
-      id: "screenshare",
-      viewType: "xr",
-      path: "/screenshare",
-      componentExport: "ScreenshareOperatorSurface",
-    },
-    {
-      manifestPath: "plugins/plugin-screenshare/src/index.ts",
-      id: "screenshare",
-      viewType: "tui",
-      path: "/screenshare/tui",
-      componentExport: "ScreenshareTuiView",
+      componentExport: "ScreenshareView",
     },
     {
       manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
       id: "task-coordinator",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/task-coordinator",
-      componentExport: "CodingAgentTasksPanel",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "task-coordinator",
-      viewType: "xr",
-      path: "/task-coordinator",
-      componentExport: "CodingAgentTasksPanel",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "task-coordinator",
-      viewType: "tui",
-      path: "/task-coordinator/tui",
-      componentExport: "TaskCoordinatorTuiView",
+      componentExport: "TaskCoordinatorView",
     },
     {
       manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
       id: "orchestrator",
-      viewType: "gui",
+      modalities: ALL_MODALITIES,
       path: "/orchestrator",
-      componentExport: "OrchestratorWorkbench",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "orchestrator",
-      viewType: "xr",
-      path: "/orchestrator",
-      componentExport: "OrchestratorWorkbench",
-    },
-    {
-      manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
-      id: "orchestrator",
-      viewType: "tui",
-      path: "/orchestrator/tui",
-      componentExport: "OrchestratorTuiView",
+      componentExport: "OrchestratorView",
     },
   ];
 
@@ -611,17 +433,37 @@ function stringField(source: string, field: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * The surfaces a single view object draws. A collapsed declaration uses
+ * `modalities: ["gui","xr","tui"]` — one source, one route, drawn in several
+ * modes — and expands to one logical case per surface (all sharing the same
+ * `path`). A legacy declaration uses a single `viewType` (default "gui").
+ */
+function viewObjectViewTypes(object: string): Array<"gui" | "tui" | "xr"> {
+  const modalitiesMatch = object.match(/modalities:\s*\[([^\]]*)\]/);
+  if (modalitiesMatch) {
+    const mods = [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map(
+      (match) => match[1] as "gui" | "tui" | "xr",
+    );
+    if (mods.length > 0) return mods;
+  }
+  const viewType = stringField(object, "viewType") ?? "gui";
+  if (viewType !== "gui" && viewType !== "tui" && viewType !== "xr") return [];
+  return [viewType];
+}
+
 function pluginViewCasesFromManifest(manifestPath: string): PluginViewCase[] {
   const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
   return viewObjects(source).flatMap((object) => {
     const id = stringField(object, "id");
     const pathValue = stringField(object, "path");
-    const viewType = stringField(object, "viewType") ?? "gui";
     if (!id || !pathValue) return [];
-    if (viewType !== "gui" && viewType !== "tui" && viewType !== "xr") {
-      return [];
-    }
-    return [{ manifestPath, id, viewType, path: pathValue }];
+    return viewObjectViewTypes(object).map((viewType) => ({
+      manifestPath,
+      id,
+      viewType,
+      path: pathValue,
+    }));
   });
 }
 
@@ -722,9 +564,15 @@ function appWindowRoutePaths(): string[] {
 }
 
 function sideEffectPluginIds(): string[] {
-  const source = readFileSync(SIDE_EFFECT_PLUGIN_SOURCE, "utf8");
+  // Manifest-driven: the side-effect loader list is generated at build time
+  // from each plugin's `elizaos.appRegister` marker (no hardcoded list in
+  // plugin-registrations.ts), so the ratchet reads the same scan the renderer
+  // build uses, keyed by canonical package name.
   return sorted(
-    [...source.matchAll(/key:\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
+    discoverSideEffectAppModules([
+      path.resolve(REPO_ROOT, "plugins"),
+      path.resolve(REPO_ROOT, "packages"),
+    ]).map((module) => module.key),
   );
 }
 
@@ -768,9 +616,9 @@ function managerVisibleGuiViewPaths(): Map<string, string> {
     for (const object of viewObjects(source)) {
       const id = stringField(object, "id");
       const pathValue = stringField(object, "path");
-      const viewType = stringField(object, "viewType") ?? "gui";
+      const drawsGui = viewObjectViewTypes(object).includes("gui");
       const visibleInManager = /visibleInManager:\s*true/.test(object);
-      if (!id || !pathValue || viewType !== "gui" || !visibleInManager) {
+      if (!id || !pathValue || !drawsGui || !visibleInManager) {
         continue;
       }
       if (!byId.has(id)) byId.set(id, pathValue);
@@ -913,7 +761,7 @@ describe("app route coverage gate", () => {
     ).toEqual([]);
   });
 
-  it("operator plugin view manifests keep explicit gui/xr/tui contracts", () => {
+  it("operator plugin view manifests keep one collapsed gui/xr/tui contract", () => {
     const contractsByManifest = new Map<string, PluginViewManifestContract[]>();
     for (const contract of OPERATOR_VIEW_MANIFEST_CONTRACTS) {
       const contracts = contractsByManifest.get(contract.manifestPath) ?? [];
@@ -927,36 +775,39 @@ describe("app route coverage gate", () => {
           path.resolve(REPO_ROOT, manifestPath),
           "utf8",
         );
-        const objectsByKey = new Map(
-          viewObjects(source).map((object) => {
-            const id = stringField(object, "id") ?? "";
-            const viewType = stringField(object, "viewType") ?? "gui";
-            return [`${id}:${viewType}`, object];
-          }),
+        // One collapsed declaration per id (no longer one per viewType).
+        const objectsById = new Map(
+          viewObjects(source).map((object) => [
+            stringField(object, "id") ?? "",
+            object,
+          ]),
         );
 
         return contracts.flatMap((contract) => {
-          const object = objectsByKey.get(
-            `${contract.id}:${contract.viewType}`,
-          );
+          const object = objectsById.get(contract.id);
           if (!object) {
-            return [
-              `${manifestPath}:${contract.id}:${contract.viewType} missing view declaration`,
-            ];
+            return [`${manifestPath}:${contract.id} missing view declaration`];
           }
           const bundlePath = stringField(object, "bundlePath");
           const componentExport = stringField(object, "componentExport");
           const pathValue = stringField(object, "path");
+          const modalities = viewObjectViewTypes(object);
+          const missingModalities = contract.modalities.filter(
+            (modality) => !modalities.includes(modality),
+          );
           return [
             pathValue === contract.path
               ? null
-              : `${manifestPath}:${contract.id}:${contract.viewType} path expected ${contract.path} got ${pathValue}`,
+              : `${manifestPath}:${contract.id} path expected ${contract.path} got ${pathValue}`,
             bundlePath === "dist/views/bundle.js"
               ? null
-              : `${manifestPath}:${contract.id}:${contract.viewType} bundle expected dist/views/bundle.js got ${bundlePath}`,
+              : `${manifestPath}:${contract.id} bundle expected dist/views/bundle.js got ${bundlePath}`,
             componentExport === contract.componentExport
               ? null
-              : `${manifestPath}:${contract.id}:${contract.viewType} component expected ${contract.componentExport} got ${componentExport}`,
+              : `${manifestPath}:${contract.id} component expected ${contract.componentExport} got ${componentExport}`,
+            missingModalities.length === 0
+              ? null
+              : `${manifestPath}:${contract.id} missing modalities ${missingModalities.join(",")}`,
           ].filter((failure): failure is string => Boolean(failure));
         });
       },

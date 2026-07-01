@@ -1,10 +1,10 @@
 import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";
 import { client } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { TranslateFn } from "../../types";
 import { Button } from "../ui/button";
 import {
@@ -96,8 +96,8 @@ export function SecretsView({
   contentHeader?: React.ReactNode;
   inModal?: boolean;
 } = {}) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const appT = useAppSelector((s) => s.t);
+  const t = appT ?? fallbackTranslate;
   // Seed from the shared cache so a revisit paints the last-known secrets
   // instantly and revalidates silently, instead of flashing a spinner.
   const cachedSecrets = getCached<SecretInfo[]>("secrets:list");
@@ -174,7 +174,7 @@ export function SecretsView({
     });
   };
 
-  const unpinKey = (key: string) => {
+  const unpinKey = useCallback((key: string) => {
     setPinnedKeys((prev) => {
       const next = new Set(prev);
       next.delete(key);
@@ -186,7 +186,7 @@ export function SecretsView({
       delete next[key];
       return next;
     });
-  };
+  }, []);
 
   const handleSave = async () => {
     if (dirtyKeys.length === 0) return;
@@ -221,14 +221,18 @@ export function SecretsView({
     });
   };
 
-  const toggleVisible = (key: string) => {
+  const toggleVisible = useCallback((key: string) => {
     setVisible((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
-  };
+  }, []);
+
+  const handleDraftChange = useCallback((key: string, val: string) => {
+    setDraft((prev) => ({ ...prev, [key]: val }));
+  }, []);
 
   if (loading && allSecrets.length === 0) {
     return (
@@ -331,11 +335,9 @@ export function SecretsView({
                       draftValue={draft[secret.key] ?? ""}
                       isVisible={visible.has(secret.key)}
                       isPinned={pinnedKeys.has(secret.key)}
-                      onToggleVisible={() => toggleVisible(secret.key)}
-                      onDraftChange={(val) =>
-                        setDraft((prev) => ({ ...prev, [secret.key]: val }))
-                      }
-                      onRemove={() => unpinKey(secret.key)}
+                      onToggleVisible={toggleVisible}
+                      onDraftChange={handleDraftChange}
+                      onRemove={unpinKey}
                     />
                   ))}
                 </div>
@@ -391,8 +393,8 @@ function SecretPicker({
   onAdd: (key: string) => void;
   onClose: () => void;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const appT = useAppSelector((s) => s.t);
+  const t = appT ?? fallbackTranslate;
   // Group available by category
   const grouped = useMemo(() => {
     return groupSecretsByCategory(available);
@@ -430,7 +432,7 @@ function SecretPicker({
         </DialogHeader>
         <Input
           type="text"
-          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none focus-visible:ring-0 font-body"
+          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none  font-body"
           placeholder={t("secretsview.SearchByKeyDescr")}
           aria-label={t("secretsview.SearchByKeyDescr")}
           value={search}
@@ -501,7 +503,7 @@ function SecretPicker({
 
 /* ── Secret Card ────────────────────────────────────────────────────── */
 
-function SecretCard({
+const SecretCard = memo(function SecretCard({
   secret,
   draftValue,
   isVisible,
@@ -514,12 +516,12 @@ function SecretCard({
   draftValue: string;
   isVisible: boolean;
   isPinned: boolean;
-  onToggleVisible: () => void;
-  onDraftChange: (val: string) => void;
-  onRemove: () => void;
+  onToggleVisible: (key: string) => void;
+  onDraftChange: (key: string, val: string) => void;
+  onRemove: (key: string) => void;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  const appT = useAppSelector((s) => s.t);
+  const t = appT ?? fallbackTranslate;
   const enabledPlugins = secret.usedBy.filter((u) => u.enabled);
   const pluginList = secret.usedBy
     .map((u) => u.pluginName || u.pluginId)
@@ -558,7 +560,7 @@ function SecretCard({
               variant="ghost"
               size="sm"
               className="h-7 rounded-sm px-2 text-xs-tight text-muted hover:bg-danger/10 hover:text-danger"
-              onClick={onRemove}
+              onClick={() => onRemove(secret.key)}
               title={t("secretsview.RemoveFromVault")}
             >
               x
@@ -588,18 +590,18 @@ function SecretCard({
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
         <Input
           type={isVisible ? "text" : "password"}
-          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt focus-visible:border-accent/50 focus-visible:ring-1 focus-visible:ring-accent/30"
+          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt   "
           placeholder={
             secret.isSet ? "Enter new value to update" : "Enter value"
           }
           value={draftValue}
-          onChange={(e) => onDraftChange(e.target.value)}
+          onChange={(e) => onDraftChange(secret.key, e.target.value)}
         />
         <Button
           variant="outline"
           size="sm"
           className="h-9 px-3 text-xs text-muted-strong hover:text-txt"
-          onClick={onToggleVisible}
+          onClick={() => onToggleVisible(secret.key)}
           title={isVisible ? "Hide" : "Show"}
         >
           {isVisible ? "Hide" : "Show"}
@@ -607,4 +609,4 @@ function SecretCard({
       </div>
     </div>
   );
-}
+});

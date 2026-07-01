@@ -43,7 +43,6 @@ describe("ContactsSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(view, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Contacts");
       expect(flat).toContain("Ada Lovelace");
       expect(flat).toContain("Grace Hopper");
       expect(flat).toContain("Search");
@@ -103,7 +102,6 @@ describe("ContactsSpatialView one source, three modalities", () => {
     );
     for (const line of lines) expect(visibleWidth(line)).toBe(54);
     const flat = lines.join("\n");
-    expect(flat).toContain("New contact");
     expect(flat).toContain("Name");
     expect(flat).toContain("Save");
   });

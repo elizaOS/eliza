@@ -1,7 +1,5 @@
 /**
  * Full Eliza Runtime for Browser Extension
- *
- * Based on examples/avatar/src/runtime/runtimeManager.ts
  */
 
 import {
@@ -17,13 +15,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { ExtensionConfig, PageContent, ProviderMode } from "./types";
+import { selectProvider } from "./types";
 
 const { default: anthropicPlugin } = (await import(
   "@elizaos/plugin-anthropic"
 )) as { default: Plugin };
-const { elizaClassicPlugin, getElizaGreeting } = (await import(
-  "@elizaos/plugin-eliza-classic"
-)) as { elizaClassicPlugin: Plugin; getElizaGreeting: () => string };
+const { default: elizaOSCloudPlugin } = (await import(
+  "@elizaos/plugin-elizacloud"
+)) as { default: Plugin };
 const { default: googleGenAIPlugin } = (await import(
   "@elizaos/plugin-google-genai"
 )) as { default: Plugin };
@@ -38,6 +37,9 @@ const { default: localdbPlugin } = (await import(
 const { default: openaiPlugin } = (await import("@elizaos/plugin-openai")) as {
   default: Plugin;
 };
+const { default: openrouterPlugin } = (await import(
+  "@elizaos/plugin-openrouter"
+)) as { default: Plugin };
 
 function uuidv4(): string {
   return globalThis.crypto.randomUUID();
@@ -211,31 +213,13 @@ function getOrCreateRoomId(): UUID {
   }
 }
 
-export function resolveEffectiveMode(config: ExtensionConfig): ProviderMode {
-  switch (config.mode) {
-    case "openai":
-      return (config.provider.openaiApiKey ?? "").trim()
-        ? "openai"
-        : "elizaClassic";
-    case "anthropic":
-      return (config.provider.anthropicApiKey ?? "").trim()
-        ? "anthropic"
-        : "elizaClassic";
-    case "xai":
-      return (config.provider.xaiApiKey ?? "").trim() ? "xai" : "elizaClassic";
-    case "gemini":
-      return (config.provider.googleGenaiApiKey ?? "").trim()
-        ? "gemini"
-        : "elizaClassic";
-    case "groq":
-      return (config.provider.groqApiKey ?? "").trim()
-        ? "groq"
-        : "elizaClassic";
-    case "elizaClassic":
-      return "elizaClassic";
-    default:
-      return "elizaClassic";
-  }
+const NO_PROVIDER_ERROR =
+  "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.";
+
+function resolveEffectiveMode(config: ExtensionConfig): ProviderMode {
+  const selected = selectProvider(config);
+  if (!selected) throw new Error(NO_PROVIDER_ERROR);
+  return selected;
 }
 
 function applySettings(
@@ -261,6 +245,26 @@ function applySettings(
     runtime.setSetting(
       "OPENAI_LARGE_MODEL",
       config.provider.openaiLargeModel ?? "gpt-5",
+    );
+  }
+
+  if (effectiveMode === "openrouter") {
+    runtime.setSetting(
+      "OPENROUTER_API_KEY",
+      config.provider.openrouterApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "OPENROUTER_BASE_URL",
+      config.provider.openrouterBaseUrl ?? "https://openrouter.ai/api/v1",
+    );
+    runtime.setSetting(
+      "OPENROUTER_SMALL_MODEL",
+      config.provider.openrouterSmallModel ?? "openai/gpt-4o-mini",
+    );
+    runtime.setSetting(
+      "OPENROUTER_LARGE_MODEL",
+      config.provider.openrouterLargeModel ?? "openai/gpt-4o",
     );
   }
 
@@ -325,17 +329,35 @@ function applySettings(
       config.provider.groqLargeModel ?? "openai/gpt-oss-120b",
     );
   }
+
+  if (effectiveMode === "elizacloud") {
+    runtime.setSetting("ELIZAOS_CLOUD_ENABLED", "true");
+    runtime.setSetting(
+      "ELIZAOS_CLOUD_API_KEY",
+      config.provider.elizaCloudApiKey ?? "",
+      true,
+    );
+  }
 }
 
 function buildPlugins(effectiveMode: ProviderMode): Plugin[] {
   const base = [localdbPlugin];
-  if (effectiveMode === "elizaClassic") return [...base, elizaClassicPlugin];
-  if (effectiveMode === "openai") return [...base, openaiPlugin];
-  if (effectiveMode === "anthropic") return [...base, anthropicPlugin];
-  if (effectiveMode === "xai") return [...base, openaiPlugin]; // xAI uses OpenAI-compatible API
-  if (effectiveMode === "gemini") return [...base, googleGenAIPlugin];
-  if (effectiveMode === "groq") return [...base, groqPlugin];
-  return [...base, elizaClassicPlugin];
+  switch (effectiveMode) {
+    case "openai":
+      return [...base, openaiPlugin];
+    case "openrouter":
+      return [...base, openrouterPlugin];
+    case "anthropic":
+      return [...base, anthropicPlugin];
+    case "elizacloud":
+      return [...base, elizaOSCloudPlugin];
+    case "xai":
+      return [...base, openaiPlugin]; // xAI uses the OpenAI-compatible API
+    case "gemini":
+      return [...base, googleGenAIPlugin];
+    case "groq":
+      return [...base, groqPlugin];
+  }
 }
 
 // ============================================
@@ -420,10 +442,7 @@ export async function resetConversation(): Promise<void> {
   }
 }
 
-export function getGreetingText(effectiveMode: ProviderMode): string {
-  if (effectiveMode === "elizaClassic") {
-    return getElizaGreeting();
-  }
+export function getGreetingText(): string {
   return "Hello! I can help you understand and discuss the content of this webpage. What would you like to know?";
 }
 

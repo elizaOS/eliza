@@ -278,8 +278,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
               aria-describedby={describedBy}
               className={cn(
                 setupInputClassName,
-                invalid &&
-                  "border-[var(--danger)] focus-visible:border-[var(--danger)]",
+                invalid && "border-[var(--danger)] ",
               )}
             />
           )}

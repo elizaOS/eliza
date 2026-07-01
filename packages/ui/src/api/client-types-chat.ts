@@ -76,6 +76,11 @@ export interface ImageAttachment {
    * resolution opens in the lightbox.
    */
   thumbnail?: { data: string; mimeType: string };
+  /**
+   * The stored {@link Transcript} record id when this attachment is a saved
+   * transcript — lets the chat tile re-open the rich, editable record.
+   */
+  transcriptId?: string;
 }
 
 /**
@@ -110,6 +115,11 @@ export interface MessageAttachment {
   mimeType?: string;
   /** Downscaled preview URL for the inline tile; `url` is the full original. */
   thumbnailUrl?: string;
+  /**
+   * The stored {@link Transcript} record id when this attachment is a saved
+   * transcript — the chat tile opens it in the maximized, editable viewer.
+   */
+  transcriptId?: string;
 }
 
 export interface ConversationMessageReaction {
@@ -122,7 +132,16 @@ export type ChatFailureKind =
   | "insufficient_credits"
   | "no_provider"
   | "provider_issue"
+  | "rate_limited"
   | "local_inference";
+
+export interface ChatActionResultSummary {
+  actionName?: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  values?: Record<string, unknown>;
+}
 
 export type LocalInferenceChatStatus =
   | "missing"
@@ -180,13 +199,28 @@ export interface SensitiveRequestDelivery {
   instruction?: string;
   privateRouteRequired?: boolean;
   canCollectValueInCurrentChannel?: boolean;
+  /**
+   * Present only when this secret request collects a credential for a blocked
+   * coding sub-agent. Identifiers only — the scoped token and the value are
+   * NEVER serialized here. When set, `SensitiveRequestBlock` tunnels the value
+   * to the waiting child via `client.tunnelCredential` instead of writing it to
+   * the agent secret store (the two paths are mutually exclusive).
+   */
+  tunnel?: {
+    credentialScopeId: string;
+    childSessionId: string;
+  };
 }
 
 export interface SensitiveRequestFormField {
   name: string;
   label?: string;
-  input?: "secret" | "text";
+  input?: "secret" | "text" | "image" | "file";
   required?: boolean;
+  /** For `input: "image" | "file"` — accepted MIME types (the `accept` attr). */
+  mimeTypes?: string[];
+  /** For `input: "image" | "file"` — max upload size in bytes. */
+  maxBytes?: number;
 }
 
 /**
@@ -241,6 +275,12 @@ export interface ConversationMessage {
   attachments?: MessageAttachment[];
   /** Source channel when forwarded from another channel (e.g. "autonomy"). */
   source?: string;
+  /**
+   * Short topic labels extracted for this turn (Stage-1 `topics`). Drives the
+   * transcript topic grouping + chips bar (#8928). Absent when the turn had no
+   * salient topic.
+   */
+  topics?: string[];
   /** Concrete action name that produced this assistant turn, when applicable. */
   actionName?: string;
   /** Callback/status lines emitted while the action was running. */
@@ -294,6 +334,49 @@ export interface ConversationMessage {
   };
 }
 
+/**
+ * Runtime guard for a {@link ConversationMessage} — validates the four required
+ * fields (`id`, `role`, `text`, `timestamp`) of an untrusted value before it is
+ * trusted as a message. Server/connector responses (e.g. `sendInboxMessage`)
+ * are appended straight into the rendered message list; a malformed payload
+ * (missing id/role/timestamp, an unexpected role) must NOT be `as`-cast into
+ * state where it breaks keying/rendering. Use this at the API boundary instead
+ * of `value as ConversationMessage`.
+ */
+export function isConversationMessage(
+  value: unknown,
+): value is ConversationMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const m = value as Record<string, unknown>;
+  return (
+    typeof m.id === "string" &&
+    m.id.length > 0 &&
+    (m.role === "user" || m.role === "assistant") &&
+    typeof m.text === "string" &&
+    typeof m.timestamp === "number" &&
+    Number.isFinite(m.timestamp)
+  );
+}
+
+/** One keyword-search hit from `GET /api/conversations/messages/search`. */
+export interface ConversationMessageSearchResult {
+  messageId: string;
+  conversationId: string;
+  roomId: string;
+  role: "user" | "assistant";
+  text: string;
+  /** A `…keyword…` excerpt around the first match, for the result row. */
+  snippet: string;
+  createdAt: number;
+  /** Relevance score (higher = better); the server sorts by it then recency. */
+  score: number;
+}
+
+export interface ConversationMessageSearchResponse {
+  results: ConversationMessageSearchResult[];
+  count: number;
+}
+
 export type ConversationChannelType =
   | "DM"
   | "GROUP"
@@ -307,6 +390,41 @@ export interface ChatTokenUsage {
   totalTokens: number;
   llmCalls?: number;
   model?: string;
+}
+
+/**
+ * The discrete phases an in-flight assistant turn moves through, surfaced to the
+ * UI so the chat shows what the agent is *doing* (not just breathing dots).
+ *
+ * - `thinking`   — the turn started; the model is being prompted but no visible
+ *                  text has streamed yet.
+ * - `streaming`  — the model is emitting the user-visible reply token-by-token.
+ * - `running_action` — a concrete action handler is executing (carry
+ *                  `actionName`, e.g. "SEND_MESSAGE").
+ * - `running_tool`   — a tool/MCP call is running (carry `toolName`).
+ * - `evaluating` — post-response evaluators are running.
+ * - `waking`     — a non-running cloud agent is auto-resuming (HTTP 202 +
+ *                  Retry-After); the request is parked until it answers.
+ * - `speaking`   — the reply is being spoken aloud (voice output); client-derived.
+ *
+ * Emitted by the server as additive SSE `{ type: "status", ... }` events and/or
+ * derived client-side. The `token` / `done` / `error` SSE contract is unchanged.
+ */
+export interface ChatTurnStatus {
+  kind:
+    | "thinking"
+    | "streaming"
+    | "running_action"
+    | "running_tool"
+    | "evaluating"
+    | "waking"
+    | "speaking";
+  /** Optional short human-readable label override for the phase. */
+  label?: string;
+  /** Canonical action name when `kind === "running_action"`. */
+  actionName?: string;
+  /** Tool/MCP name when `kind === "running_tool"`. */
+  toolName?: string;
 }
 
 // Document / Character Knowledge types
@@ -357,6 +475,10 @@ export interface DocumentRecord {
   canDelete: boolean;
   deleteabilityReason?: string;
   content?: { text?: string };
+  /** When this document mirrors a voice Transcript (#8789): the original
+   *  transcript record id (the Knowledge view links back to it) + its audio. */
+  transcriptId?: string;
+  transcriptAudioUrl?: string;
 }
 
 export interface DocumentDetail extends DocumentRecord {
@@ -624,12 +746,46 @@ export interface WorkflowDefinition {
   id: string;
   name: string;
   active: boolean;
+  versionId?: string;
   description?: string;
   nodeCount?: number;
   nodes?: WorkflowDefinitionNode[];
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
   connections?: WorkflowConnectionMap;
+}
+
+export type WorkflowRevisionOperation =
+  | "update"
+  | "activate"
+  | "deactivate"
+  | "tags"
+  | "restore"
+  | "delete";
+
+export interface WorkflowRevision {
+  id: string;
+  workflowId: string;
+  versionId: string;
+  name: string;
+  active: boolean;
+  workflow?: WorkflowDefinition;
+  createdAt: string;
+  updatedAt: string;
+  capturedAt: string;
+  operation: WorkflowRevisionOperation;
+}
+
+export interface WorkflowExecutionEngineMetrics {
+  provider: "smithers";
+  nodes: number;
+  levels: number;
+  maxConcurrency: number;
+  started: number;
+  finished: number;
+  failed: number;
+  skipped: number;
+  retries: number;
 }
 
 export interface WorkflowExecution {
@@ -652,7 +808,66 @@ export interface WorkflowExecution {
       runData?: Record<string, unknown[]>;
       error?: { message?: string; stack?: string };
       lastNodeExecuted?: string;
+      engine?: WorkflowExecutionEngineMetrics;
     };
+  };
+}
+
+export interface WorkflowEvaluationSampleNode {
+  name: string;
+  status: "success" | "error" | "unknown";
+  itemCount: number;
+  executionTimeMs?: number;
+  error?: string;
+  preview?: string;
+}
+
+export interface WorkflowEvaluationSample {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  executionId: string;
+  createdAt: string;
+  input: {
+    mode: string;
+    triggerData?: Record<string, unknown>;
+  };
+  expected: {
+    status: WorkflowExecution["status"];
+    passed: boolean;
+    lastNodeExecuted?: string;
+    engine?: WorkflowExecutionEngineMetrics;
+    error?: string;
+    nodes: WorkflowEvaluationSampleNode[];
+  };
+  score: {
+    pass: boolean;
+    value: number;
+    reason: string;
+  };
+  tags: string[];
+}
+
+export interface WorkflowEvaluationSuite {
+  workflowId: string;
+  workflowName: string;
+  workflowVersionId?: string;
+  generatedAt: string;
+  sampleCount: number;
+  samples: WorkflowEvaluationSample[];
+  jsonl: string;
+  optimizer: {
+    engine: "smithers-gepa";
+    target: "workflow-generation";
+    suiteName: string;
+    caseFile: string;
+    recommendedCommand: string;
+    recommendedEvalCommand: string;
+    recommendedOptimizeCommand: string;
+    recommendedObservabilityCommand: string;
+    recommendedMetricsCommand: string;
+    notes: string[];
   };
 }
 

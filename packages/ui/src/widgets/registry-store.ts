@@ -30,11 +30,15 @@ export function getWidgetComponent(
 }
 
 /**
- * Adapts existing ChatSidebarWidgetDefinition[] to the new registry format.
- * These legacy widgets used `ChatSidebarWidgetProps` which is compatible with
- * `WidgetProps` (events + clearEvents).
+ * Register bundled widget React components from `ChatSidebarWidgetDefinition[]`.
+ * `ChatSidebarWidgetProps` is structurally compatible with `WidgetProps`
+ * (events + clearEvents).
+ *
+ * This is the public API for plugins outside app-core to register their own
+ * widget components — call it when the plugin loads (e.g. via a side-effect
+ * import of a widgets module).
  */
-export function seedLegacyWidgets(
+export function registerBuiltinWidgets(
   definitions: ReadonlyArray<ChatSidebarWidgetDefinition>,
 ): void {
   for (const def of definitions) {
@@ -44,15 +48,4 @@ export function seedLegacyWidgets(
       def.Component as ComponentType<WidgetProps>,
     );
   }
-}
-
-/**
- * Public API for plugins outside app-core to seed their own widget components.
- * Call this when your plugin loads (e.g. via side-effect import of a widgets
- * module). Each definition must be a `ChatSidebarWidgetDefinition`.
- */
-export function registerBuiltinWidgets(
-  definitions: ReadonlyArray<ChatSidebarWidgetDefinition>,
-): void {
-  seedLegacyWidgets(definitions);
 }

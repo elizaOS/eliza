@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type {
-	EvaluatorRunOptions,
-	IAgentRuntime,
-	Memory,
-	State,
-} from "../../../types";
+import { createMockRuntime } from "../../../testing/mock-runtime";
+import type { EvaluatorRunOptions, Memory, State } from "../../../types";
 import { type SummaryPrepared, summaryEvaluator } from "./memory-items";
 
-const runtime = {
+const runtime = createMockRuntime({
 	agentId: "agent-1",
 	character: { name: "Agent" },
 	getService: () => null,
-} as unknown as IAgentRuntime;
+});
 
 function msg(id: string, text: string): Memory {
 	return {

@@ -33,9 +33,11 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  Room,
   State,
+  UUID,
 } from "@elizaos/core";
-import { logger as coreLogger } from "@elizaos/core";
+import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
@@ -296,11 +298,93 @@ function pickRoutingString(
   );
 }
 
+/**
+ * Mint and ensure a DISTINCT task room so a task (and its swarm of sub-agents)
+ * lives in its own room, separate from the originating chat room. Multiple
+ * sub-agents spawned for the SAME task (i.e. resolved within a single spawn
+ * action call, or by passing the parent's room id down to nested children)
+ * share this room; different tasks get a different room. The origin (chat) room
+ * is preserved separately on the swarm metadata so the supervisor can bridge
+ * task status back to the human.
+ *
+ * Returns the existing room id when an explicit taskRoomId was provided (caller
+ * intent wins: this is how nested child sub-agents JOIN their parent's task
+ * room), otherwise a freshly created room id. Best-effort: when room creation
+ * is unavailable (no createRoom / no resolvable world) or fails, falls back to
+ * the origin room, which is the prior single-room behavior.
+ *
+ * Opt-out: `ELIZA_ORCHESTRATOR_TASK_ROOMS=0` keeps the legacy single-room
+ * (origin == task room) behavior.
+ */
+async function ensureDistinctTaskRoom(
+  runtime: IAgentRuntime,
+  message: Memory,
+  explicitTaskRoomId: string | undefined,
+  label: string | undefined,
+): Promise<string> {
+  const originRoomId =
+    typeof message.roomId === "string"
+      ? message.roomId
+      : String(message.roomId);
+  // Caller intent wins: an explicit taskRoomId means "join THIS room" (e.g. a
+  // nested child sub-agent joining the parent's swarm room), so never mint.
+  if (explicitTaskRoomId?.trim()) {
+    return explicitTaskRoomId.trim();
+  }
+  // Opt-out keeps the legacy single-room behavior (origin == task room).
+  const taskRoomsEnabled =
+    runtime.getSetting?.("ELIZA_ORCHESTRATOR_TASK_ROOMS") !== "0";
+  if (!taskRoomsEnabled || typeof runtime.createRoom !== "function") {
+    return originRoomId;
+  }
+  try {
+    const seed = `task-${label?.trim() ?? ""}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const roomId = stringToUuid(seed);
+    // createRoom needs a worldId. The API/chat context often has none, so fall
+    // back to a stable per-agent "tasks" world to host all minted task rooms.
+    let worldId =
+      typeof message.worldId === "string"
+        ? (message.worldId as UUID)
+        : undefined;
+    if (!worldId && typeof runtime.ensureWorldExists === "function") {
+      worldId = stringToUuid(`orchestrator-tasks-world-${runtime.agentId}`);
+      await runtime.ensureWorldExists({
+        id: worldId,
+        name: "Orchestrator Tasks",
+        agentId: runtime.agentId,
+        serverId: worldId,
+      } as Parameters<typeof runtime.ensureWorldExists>[0]);
+    }
+    if (!worldId) {
+      // No world available and none can be created, fall back to origin room.
+      return originRoomId;
+    }
+    await runtime.createRoom({
+      id: roomId,
+      name: label?.trim() || `Task ${seed.slice(0, 18)}`,
+      source: "orchestrator-task",
+      type: ChannelType.GROUP,
+      worldId,
+    } as Room);
+    return roomId;
+  } catch (error) {
+    coreLogger.warn(
+      `[TASKS] distinct task room creation failed, using origin room: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return originRoomId;
+  }
+}
+
 function buildSwarmRoomMetadata(
   message: Memory,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   metadata: Record<string, unknown>,
+  resolvedTaskRoomId?: string,
 ): {
   originRoomId: unknown;
   taskRoomId: unknown;
@@ -308,6 +392,7 @@ function buildSwarmRoomMetadata(
   swarmRooms: Array<{ roomId: unknown; roles: string[] }>;
 } {
   const taskRoomId =
+    resolvedTaskRoomId ??
     pickRoutingString(params, content, metadata, "taskRoomId") ??
     pickRoutingString(params, content, metadata, "originRoomId") ??
     (typeof metadata.roomId === "string" ? metadata.roomId : undefined) ??
@@ -538,11 +623,22 @@ async function runCreate(
     message,
     content,
   );
+  // Resolve ONE distinct task room for this whole create call so every
+  // sub-agent spawned for this task shares it (swarm collaboration); a
+  // different task (a separate call) mints a different room. An explicit
+  // taskRoomId or the opt-out env short-circuits the mint.
+  const resolvedTaskRoomId = await ensureDistinctTaskRoom(
+    runtime,
+    message,
+    pickRoutingString(params, content, extraMetadata, "taskRoomId"),
+    baseLabel,
+  );
   const swarmRoomMetadata = buildSwarmRoomMetadata(
     message,
     params,
     content,
     extraMetadata,
+    resolvedTaskRoomId,
   );
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
@@ -552,13 +648,13 @@ async function runCreate(
       const label = baseLabel ?? labelFrom(task, index);
       // A matching workdir route outranks a planner-guessed workdir; a
       // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
-      const { workdir: sessionWorkdir, route } = resolveSpawnWorkdir(
-        runtime,
-        task,
-        routingRequest,
-        explicitWorkdir,
-        { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
-      );
+      const {
+        workdir: sessionWorkdir,
+        route,
+        isolate: isolateWorkdir,
+      } = resolveSpawnWorkdir(runtime, task, routingRequest, explicitWorkdir, {
+        lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true,
+      });
       // This path spawns WITHOUT `initialTask` and delivers the task via
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
@@ -569,6 +665,7 @@ async function runCreate(
       const session = await service.spawnSession({
         agentType,
         workdir: sessionWorkdir,
+        isolateWorkdir,
         memoryContent,
         approvalPreset,
         model,
@@ -695,6 +792,14 @@ async function runCreate(
     typeof swarmRoomMetadata.taskRoomId === "string"
       ? swarmRoomMetadata.taskRoomId
       : undefined;
+  // Preserve the ORIGIN (chat) room on the durable task's `roomId` so the
+  // supervisor can bridge task status back to the human (getTaskOriginTarget),
+  // while `taskRoomId` carries the DISTINCT swarm room the sub-agents share.
+  // When task rooms are opted out, both resolve to the origin room (no change).
+  const originRoomId =
+    typeof swarmRoomMetadata.originRoomId === "string"
+      ? swarmRoomMetadata.originRoomId
+      : undefined;
   let threadId: string | null = null;
   try {
     const taskService = runtime.getService?.(
@@ -707,7 +812,10 @@ async function runCreate(
         kind: "coding",
         priority: taskPriority,
         originalRequest: messageText(message),
-        ...(taskRoomId ? { roomId: taskRoomId, taskRoomId } : {}),
+        ...((originRoomId ?? taskRoomId)
+          ? { roomId: originRoomId ?? taskRoomId }
+          : {}),
+        ...(taskRoomId ? { taskRoomId } : {}),
         acceptanceCriteria,
       });
       threadId = detail?.id ?? null;
@@ -752,6 +860,42 @@ function pickStringArrayFromInputs(
 }
 
 // ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────
+
+/** Minimal view of SubAgentRouter's per-origin spawn-cap surface. Read via the
+ *  ACPX_SUB_AGENT_ROUTER service id; a structural type (rather than importing
+ *  the concrete SubAgentRouter class) keeps this action module from importing
+ *  the router — the two are already wired together only by the index.ts barrel. */
+type SpawnCapRouter = {
+  spawnCountForOrigin(originKey: string): number;
+  noteSpawnForOrigin(originKey: string): void;
+  bestResultFor(
+    originKey: string,
+  ): { text: string; deliverable?: string } | undefined;
+};
+
+/** getService is loosely typed and (in test doubles) can resolve a service that
+ *  isn't the SubAgentRouter; verify the cap API exists before calling it. */
+function isSpawnCapRouter(service: unknown): service is SpawnCapRouter {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as SpawnCapRouter).spawnCountForOrigin === "function" &&
+    typeof (service as SpawnCapRouter).noteSpawnForOrigin === "function" &&
+    typeof (service as SpawnCapRouter).bestResultFor === "function"
+  );
+}
+
+/** Max sub-agent spawns per root user message before the orchestrator relays
+ *  the best already-captured result instead of re-spawning — bounds the
+ *  weak-model re-spawn loop. Default 3 (a legitimate spawn + a retry or two);
+ *  override with ELIZA_MAX_SPAWNS_PER_ORIGIN. */
+function maxSpawnsPerOrigin(runtime: IAgentRuntime): number {
+  const raw =
+    runtime.getSetting?.("ELIZA_MAX_SPAWNS_PER_ORIGIN") ??
+    process.env.ELIZA_MAX_SPAWNS_PER_ORIGIN;
+  const n = Number.parseInt(String(raw ?? ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : 3;
+}
 
 async function runSpawnAgent(
   runtime: IAgentRuntime,
@@ -804,7 +948,11 @@ async function runSpawnAgent(
     // deliberate operator policy. A scaffold-aware caller that KNOWS its
     // workdir is correct (e.g. APP_CREATE) passes `lockWorkdir: true` to
     // skip route resolution entirely.
-    const { workdir, route } = resolveSpawnWorkdir(
+    const {
+      workdir,
+      route,
+      isolate: resolvedIsolate,
+    } = resolveSpawnWorkdir(
       runtime,
       task,
       routingRequest,
@@ -829,11 +977,22 @@ async function runSpawnAgent(
       message,
       content,
     );
+    // Nested/child sub-agents JOIN the parent's task room when an explicit
+    // taskRoomId is supplied (swarm collaboration on the same task); only a
+    // brand-new task with no explicit room mints its own distinct room. The
+    // opt-out env keeps origin == task room.
+    const resolvedTaskRoomId = await ensureDistinctTaskRoom(
+      runtime,
+      message,
+      pickRoutingString(params, content, extraMetadata, "taskRoomId"),
+      label,
+    );
     const swarmRoomMetadata = buildSwarmRoomMetadata(
       message,
       params,
       content,
       extraMetadata,
+      resolvedTaskRoomId,
     );
     const inheritedRoute =
       content.source === "sub_agent" && extraMetadata.subAgent === true
@@ -841,6 +1000,9 @@ async function runSpawnAgent(
         : undefined;
     const effectiveRoute = route ?? inheritedRoute;
     const effectiveWorkdir = effectiveRoute?.workdir ?? workdir;
+    // Only isolate per-session when we fell back to a shared scratch root (no
+    // route). A route resolves to a specific project dir that must be used as-is.
+    const isolateWorkdir = effectiveRoute ? false : resolvedIsolate === true;
     const taskWithRouteHints = taskWithResolvedRoute(
       task,
       effectiveRoute,
@@ -870,6 +1032,43 @@ async function runSpawnAgent(
         ? inboundOriginSource
         : content.source;
 
+    // Per-root-origin spawn cap. A weak coding model that returns a truncated or
+    // blocked completion makes the planner re-issue TASKS_SPAWN_AGENT for the
+    // SAME user request across turns (the router re-injects each completion, so
+    // `continueChain:false` below only stops intra-turn dups — observed live:
+    // 70 spawns for one request → ack+answer Discord spam). Once we've spawned
+    // the cap of sub-agents for this connector message + agent type, stop
+    // re-spawning and relay the best already-captured result instead.
+    // Only treat the resolved service as a spawn-cap router when it actually
+    // exposes the cap API (calling a missing method would throw and abort the
+    // spawn — test doubles return one mock for every service id).
+    const spawnCapRouterService = runtime.getService?.("ACPX_SUB_AGENT_ROUTER");
+    const spawnCapRouter = isSpawnCapRouter(spawnCapRouterService)
+      ? spawnCapRouterService
+      : undefined;
+    const spawnOriginKey = originConnectorMessageId
+      ? `${originConnectorMessageId}\0${agentType}`
+      : undefined;
+    if (spawnCapRouter && spawnOriginKey) {
+      const cap = maxSpawnsPerOrigin(runtime);
+      if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
+        const best = spawnCapRouter.bestResultFor(spawnOriginKey);
+        const replyText =
+          (best?.deliverable ?? best?.text ?? "").trim() ||
+          "I'm still working on that — the coding sub-agent took longer than expected.";
+        logger(runtime).warn(
+          `[TASKS:spawn_agent] per-origin spawn cap (${cap}) reached for ${spawnOriginKey}; relaying best result instead of re-spawning`,
+        );
+        await callbackText(callback, replyText);
+        return {
+          success: true,
+          text: replyText,
+          continueChain: false,
+          data: { actionName: "TASKS", spawnCapped: true },
+        };
+      }
+    }
+
     // Concurrency gate: serialise spawns past a small ceiling so parallel
     // coding sub-agents don't stampede the model provider into rate-limited,
     // tool-call-skipping degradation. See waitForSpawnSlot.
@@ -878,6 +1077,7 @@ async function runSpawnAgent(
     const session = await service.spawnSession({
       agentType,
       workdir: effectiveWorkdir,
+      isolateWorkdir,
       initialTask: taskWithRouteHints,
       memoryContent,
       approvalPreset,
@@ -903,6 +1103,9 @@ async function runSpawnAgent(
     });
 
     setCurrentSession(state, session);
+    if (spawnCapRouter && spawnOriginKey) {
+      spawnCapRouter.noteSpawnForOrigin(spawnOriginKey);
+    }
     logger(runtime).info(
       `Spawned acpx task agent: ${JSON.stringify({
         sessionId: session.sessionId,

@@ -1,5 +1,7 @@
+import { SearchX } from "lucide-react";
 import type { QueryResult } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
+import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -25,42 +27,29 @@ export function SqlEditorPanel({
   showHistory: boolean;
   onCellClick: (value: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   return (
     <>
-      <PagePanel variant="surface" as="section" className="px-5 py-5 sm:px-6">
-        <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-          {t("common.database")}
-        </div>
-        <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
-          {t("databaseview.SQLEditor")}
-        </h1>
-      </PagePanel>
-
-      <PagePanel variant="surface" className="mt-4 flex flex-col p-4">
-        <div className="relative group">
-          <div className="absolute -inset-[1px] bg-gradient-to-r from-accent/0 via-accent/30 to-accent/0 rounded-sm opacity-0 group-focus-within:opacity-100 blur transition-opacity duration-500" />
-          <Textarea
-            value={queryText}
-            onChange={(e) => setQueryText(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                e.preventDefault();
-                runQuery();
-              }
-            }}
-            placeholder={t("databaseview.SELECTFROMMemori")}
-            rows={6}
-            className="w-full relative bg-bg/80 backdrop-blur-md border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm focus-visible:ring-accent focus-visible:border-accent custom-scrollbar "
-            spellCheck={false}
-          />
-        </div>
+      <PagePanel variant="surface" className="flex flex-col p-4">
+        <Textarea
+          value={queryText}
+          onChange={(e) => setQueryText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              runQuery();
+            }
+          }}
+          placeholder={t("databaseview.SELECTFROMMemori")}
+          rows={6}
+          className="w-full bg-bg/95 border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm custom-scrollbar"
+          spellCheck={false}
+        />
         <div className="flex items-center gap-3 mt-3">
           <Button
             variant="default"
             size="sm"
-            className="h-auto min-h-[2.25rem] whitespace-normal break-words rounded-sm bg-accent px-6 py-1.5 text-left text-xs font-bold text-accent-fg transition-[opacity,transform,box-shadow] hover:scale-[1.02] hover:opacity-90 disabled:opacity-40"
             disabled={queryLoading || !queryText.trim()}
             onClick={runQuery}
           >
@@ -70,12 +59,12 @@ export function SqlEditorPanel({
                   defaultValue: "Run Query",
                 })}
           </Button>
-          <kbd className="text-2xs text-muted font-mono bg-bg/50 px-2 py-1 rounded-sm border border-border/30 tracking-wider">
+          <kbd className="text-2xs text-muted font-mono px-2 py-1 tracking-wider">
             {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}{" "}
             {t("common.enter")}
           </kbd>
           {queryResult && (
-            <div className="text-xs text-muted ml-auto bg-bg/50 px-3 py-1.5 rounded-sm border border-border/30 font-medium tracking-wide">
+            <div className="text-xs text-muted ml-auto font-medium">
               <span className="text-txt">{queryResult.rowCount}</span>{" "}
               {queryResult.rowCount === 1
                 ? t("databaseview.row")
@@ -88,24 +77,20 @@ export function SqlEditorPanel({
 
       {/* Inline query history (standalone layout only) */}
       {showHistory && queryHistory.length > 0 && !queryResult && (
-        <div className="border border-border/40 bg-card/40 backdrop-blur-xl rounded-sm overflow-hidden">
-          <div className="px-4 py-2.5 text-2xs text-muted uppercase font-bold tracking-widest bg-bg/60 ">
+        <div className="mt-4 flex flex-col gap-1">
+          <div className="px-1 text-xs-tight font-medium text-muted">
             {t("databaseview.RecentQueries")}
           </div>
-          <div className="flex flex-col">
-            {queryHistory.slice(0, 5).map((q) => (
-              <Button
-                variant="ghost"
-                key={q}
-                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none hover:bg-bg-hover hover:text-txt transition-colors truncate"
-                onClick={() => setQueryText(q)}
-              >
-                <span className="truncate opacity-80 group-hover:opacity-100">
-                  {q}
-                </span>
-              </Button>
-            ))}
-          </div>
+          {queryHistory.slice(0, 5).map((q) => (
+            <Button
+              variant="ghost"
+              key={q}
+              className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
+              onClick={() => setQueryText(q)}
+            >
+              <span className="truncate">{q}</span>
+            </Button>
+          ))}
         </div>
       )}
 
@@ -123,10 +108,21 @@ export function SqlEditorPanel({
       ) : null}
 
       {queryResult && queryResult.rows.length === 0 ? (
-        <PagePanel.Empty
+        <ChatEmptyStateWithRecommendations
           className="mt-4 min-h-[12rem]"
+          icon={SearchX}
           title={t("databaseview.QueryReturnedNoRo")}
-          description={t("databaseview.QueryReturnedNoRo")}
+          recommendations={[
+            t("databaseview.TrySelectCountRec", {
+              defaultValue: "Try SELECT COUNT(*)",
+            }),
+            t("databaseview.CheckLimitRec", {
+              defaultValue: "Check your LIMIT clause",
+            }),
+            t("databaseview.RunOnDifferentTableRec", {
+              defaultValue: "Run on a different table",
+            }),
+          ]}
         />
       ) : null}
     </>

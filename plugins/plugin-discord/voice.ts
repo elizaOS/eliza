@@ -25,7 +25,6 @@ import {
 	ChannelType as DiscordChannelType,
 	type Guild,
 	type GuildMember,
-	type VoiceChannel,
 	type VoiceState,
 } from "discord.js";
 import prism from "prism-media";
@@ -1552,7 +1551,7 @@ export class VoiceManager extends EventEmitter {
 			}
 
 			const voiceChannel = guild.channels.cache.find(
-				(channel: VoiceChannel) =>
+				(channel) =>
 					channel.id === channelId &&
 					channel.type === DiscordChannelType.GuildVoice,
 			);

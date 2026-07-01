@@ -6,7 +6,10 @@
  * Streaming context manager is auto-detected at runtime.
  */
 
+export * from "./access-context";
+export * from "./access-control/filter";
 export * from "./actions";
+export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
 // Export all core modules
@@ -24,6 +27,7 @@ export * from "./cloud-routing";
 export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/attachments";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
@@ -123,6 +127,13 @@ export {
 	triageMessagesAction,
 	WhatsappMessageAdapter,
 } from "./features/messaging/triage";
+// OAuth provider contract (the canonical provider identifiers the atomic OAuth
+// actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
+export {
+	CONNECTOR_NATIVE_OAUTH_PROVIDERS,
+	OAUTH_PROVIDERS,
+	type OAuthProvider,
+} from "./features/oauth/types.ts";
 export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
@@ -130,6 +141,7 @@ export {
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
+export * from "./features/sub-agent-credentials/index";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -176,9 +188,7 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
-export { looksLikeTrainingCutoffLeak } from "./runtime/cutoff-leak-detector";
 export * from "./runtime/execute-planned-tool-call";
-export { looksLikeFabricatedModeration } from "./runtime/fabricated-moderation-detector";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -200,7 +210,6 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
-export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -208,10 +217,7 @@ export * from "./runtime/response-handler-field-registry";
 export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
-export {
-	looksLikeNonRefusalStage1HonestyViolation,
-	looksLikeStage1HonestyViolation,
-} from "./runtime/stage1-honesty-detector";
+export * from "./runtime/shortcut-registry";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
@@ -243,24 +249,25 @@ export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
-export * from "./secrets";
 // Export security utilities
 export * from "./security";
+export * from "./security/secret-swap";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";
+export * from "./services/agent-event-bridge";
 export * from "./services/agentEvent";
 export * from "./services/approval";
-export * from "./services/notification";
+export * from "./services/channel-topics";
 export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
+export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
-export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/relationships-graph-builder";
 export * from "./services/runtime-capability-service";
@@ -284,6 +291,7 @@ export * from "./sessions";
 export * from "./settings";
 export {
 	isElizaSettingsDebugEnabled,
+	sanitizeForSettingsDebug,
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
@@ -307,12 +315,25 @@ export {
 	ConnectorAuthMethod,
 } from "./types";
 export * from "./types/agentEvent";
-export * from "./types/notification";
 export * from "./types/message-service";
+export * from "./types/notification";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export setup types and utilities
 export * from "./types/setup";
+export type {
+	EnabledViewKinds,
+	ViewKind,
+	ViewKindBearer,
+} from "./types/view-kind";
+export {
+	isAlwaysOnViewKind,
+	isViewKindEnabled,
+	isViewVisible,
+	resolveViewKind,
+	VIEW_KIND_META,
+	VIEW_KINDS,
+} from "./types/view-kind";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export {
@@ -323,6 +344,7 @@ export {
 } from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
+export * from "./utils/boolean";
 export * from "./utils/buffer";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
@@ -341,6 +363,7 @@ export {
 } from "./utils/confirmation";
 // Prompt description compression (parity with Python `compress_prompt_description`)
 export * from "./utils/description-compressed-lint";
+export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
@@ -350,6 +373,8 @@ export * from "./utils/plugin-loader";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
+// Canonical runtime-setting → env resolver (per-agent setting first, then env)
+export * from "./utils/resolve-setting";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";

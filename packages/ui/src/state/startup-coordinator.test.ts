@@ -66,6 +66,19 @@ describe("startup coordinator", () => {
     });
   });
 
+  it("routes unavailable web backends into offline first-run with the target preserved", () => {
+    expect(
+      startupReducer(
+        { phase: "polling-backend", target: "cloud-managed", attempts: 0 },
+        { type: "BACKEND_UNAVAILABLE_FIRST_RUN" },
+      ),
+    ).toEqual({
+      phase: "first-run-required",
+      serverReachable: false,
+      target: "cloud-managed",
+    });
+  });
+
   it("defaults a targetless first-run completion to embedded-local", () => {
     expect(
       startupReducer(
@@ -114,11 +127,17 @@ describe("isShellPaintable", () => {
     expect(isShellPaintable("ready")).toBe(true);
   });
 
+  it("paints the live shell during first-run so onboarding runs in the chat", () => {
+    // Onboarding is now seeded into the live ContinuousChatOverlay (homescreen +
+    // auto-opened chat) by the headless first-run conductor, not a full-screen
+    // gate — so first-run-required is shell-paintable.
+    expect(isShellPaintable("first-run-required")).toBe(true);
+  });
+
   it("keeps the full-screen StartupScreen for pre-shell + interactive phases", () => {
     expect(isShellPaintable("restoring-session")).toBe(false);
     expect(isShellPaintable("resolving-target")).toBe(false);
     expect(isShellPaintable("polling-backend")).toBe(false);
-    expect(isShellPaintable("first-run-required")).toBe(false);
     expect(isShellPaintable("pairing-required")).toBe(false);
     expect(isShellPaintable("error")).toBe(false);
   });

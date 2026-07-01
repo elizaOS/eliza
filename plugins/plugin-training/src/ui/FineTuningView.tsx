@@ -1,10 +1,3 @@
-import {
-  type AppDetailExtensionProps,
-  Button,
-  client,
-  registerDetailExtension,
-  useApp,
-} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   HuggingFaceDatasetIngestResponse,
@@ -29,8 +22,16 @@ import type {
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
 } from "@elizaos/ui/api";
+import { client } from "@elizaos/ui/api";
+import {
+  type AppDetailExtensionProps,
+  Button,
+  registerDetailExtension,
+} from "@elizaos/ui/components";
 import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
 import { ContentLayout } from "@elizaos/ui/layouts";
+import { Escape } from "@elizaos/ui/spatial";
+import { type AppContextValue, useAppSelector } from "@elizaos/ui/state";
 import {
   confirmDesktopAction,
   openExternalUrl,
@@ -49,10 +50,10 @@ import {
   ELIZA_ONE_BENCHMARK_TIERS,
 } from "../core/eliza1-benchmark-recipe.js";
 import {
-  asArray,
-  loadTrainingTuiState,
-  parseCollectionTierList,
-} from "./FineTuningView.helpers";
+  type FineTuningSnapshot,
+  FineTuningSpatialView,
+} from "./FineTuningSpatialView";
+import { asArray, parseCollectionTierList } from "./FineTuningView.helpers";
 import { interact } from "./FineTuningView.interact";
 import {
   asTrainingEvent,
@@ -706,7 +707,7 @@ function ReadinessCheckRow({
     },
   });
   return (
-    <div className="grid gap-2 border-t border-border/40 pt-2">
+    <div className="grid gap-2 pt-2">
       <div>
         <div className="font-mono text-xs text-txt">
           {check.label} · {check.status}
@@ -788,12 +789,48 @@ function TrainingActionButton({
   );
 }
 
-export function FineTuningView({
+const EMPTY_FINE_TUNING_SNAPSHOT: FineTuningSnapshot = {
+  runtimeAvailable: false,
+  runningJobs: 0,
+  queuedJobs: 0,
+  completedJobs: 0,
+  failedJobs: 0,
+  jobs: [],
+  models: 0,
+  datasets: 0,
+  trajectoryCount: 0,
+};
+
+/**
+ * FineTuningView — the single GUI / XR / TUI componentExport.
+ *
+ * GUI and XR render the full rich {@link FineTuningDashboard} (its real DOM:
+ * forms, panels, the live-event stream) through the spatial `Escape` hatch; TUI
+ * falls back to the presentational {@link FineTuningSpatialView} summary. That
+ * same `FineTuningSpatialView` is the source the agent terminal renders directly
+ * via `registerFineTuningTerminalView` (see `register-terminal-view.tsx`), so
+ * there is exactly one registered component and one terminal source.
+ */
+export function FineTuningView(props: { contentHeader?: ReactNode } = {}) {
+  return (
+    <Escape
+      tui={<FineTuningSpatialView snapshot={EMPTY_FINE_TUNING_SNAPSHOT} />}
+    >
+      <FineTuningDashboard {...props} />
+    </Escape>
+  );
+}
+
+export function FineTuningDashboard({
   contentHeader,
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { handleRestart, setActionNotice, t } = useApp();
+  const handleRestart = useAppSelector((s: AppContextValue) => s.handleRestart);
+  const setActionNotice = useAppSelector(
+    (s: AppContextValue) => s.setActionNotice,
+  );
+  const t = useAppSelector((s: AppContextValue) => s.t);
 
   const [pageLoading, setPageLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -883,9 +920,9 @@ export function FineTuningView({
   const [evalComparisonManifestPath, setEvalComparisonManifestPath] =
     useState("");
   const [evalComparisonBaseModel, setEvalComparisonBaseModel] =
-    useState("eliza-1-0_8b-base");
+    useState("eliza-1-2b-base");
   const [evalComparisonTrainedModelPath, setEvalComparisonTrainedModelPath] =
-    useState("eliza-1-0_8b-trained");
+    useState("eliza-1-2b-trained");
   const [evalComparisonBackend, setEvalComparisonBackend] = useState<
     "cpu" | "mlx" | "cuda"
   >("cpu");
@@ -894,7 +931,7 @@ export function FineTuningView({
   const [benchmarkRunning, setBenchmarkRunning] = useState(false);
   const [benchmarkResult, setBenchmarkResult] =
     useState<RunBenchmarkVsCerebrasResponse | null>(null);
-  const [benchmarkTiers, setBenchmarkTiers] = useState("0_8b");
+  const [benchmarkTiers, setBenchmarkTiers] = useState("2b");
   const [benchmarkKind, setBenchmarkKind] = useState<
     "eliza_harness_action_selection" | "hermes" | "clawbench" | "all"
   >("eliza_harness_action_selection");
@@ -911,7 +948,7 @@ export function FineTuningView({
   const [bundleStageResult, setBundleStageResult] =
     useState<StageEliza1BundleResponse | null>(null);
   const [bundleStageRepoId, setBundleStageRepoId] = useState("elizaos/eliza-1");
-  const [bundleStageTier, setBundleStageTier] = useState("0_8b");
+  const [bundleStageTier, setBundleStageTier] = useState("2b");
   const [bundleStageLocalDir, setBundleStageLocalDir] = useState(
     "/tmp/eliza-1-bundles",
   );
@@ -925,19 +962,18 @@ export function FineTuningView({
   const [actionBenchmarkRunsPerCase, setActionBenchmarkRunsPerCase] =
     useState("1");
   const [actionBenchmarkOutputDir, setActionBenchmarkOutputDir] = useState("");
-  const [actionBenchmarkModelId, setActionBenchmarkModelId] = useState(
-    "eliza-1-0_8b-trained",
-  );
+  const [actionBenchmarkModelId, setActionBenchmarkModelId] =
+    useState("eliza-1-2b-trained");
   const [actionBenchmarkRuntimeModel, setActionBenchmarkRuntimeModel] =
-    useState("eliza-1-0_8b-trained");
+    useState("eliza-1-2b-trained");
   const [actionBenchmarkPairEnabled, setActionBenchmarkPairEnabled] =
     useState(true);
   const [actionBenchmarkPairTiers, setActionBenchmarkPairTiers] =
-    useState("0_8b");
+    useState("2b");
   const [actionBenchmarkBaseModelId, setActionBenchmarkBaseModelId] =
-    useState("eliza-1-0_8b-base");
+    useState("eliza-1-2b-base");
   const [actionBenchmarkBaseRuntimeModel, setActionBenchmarkBaseRuntimeModel] =
-    useState("eliza-1-0_8b-base");
+    useState("eliza-1-2b-base");
   const [actionBenchmarkProvider, setActionBenchmarkProvider] =
     useState("local-llama-cpp");
   const [actionBenchmarkBaseUrl, setActionBenchmarkBaseUrl] = useState(
@@ -946,7 +982,7 @@ export function FineTuningView({
   const [actionBenchmarkVariant, setActionBenchmarkVariant] = useState<
     "reference" | "base" | "trained"
   >("trained");
-  const [actionBenchmarkTier, setActionBenchmarkTier] = useState("0_8b");
+  const [actionBenchmarkTier, setActionBenchmarkTier] = useState("2b");
   const [actionBenchmarkMatrixBenchmark, setActionBenchmarkMatrixBenchmark] =
     useState("eliza_harness_action_selection");
   const [actionBenchmarkDatasetVersion, setActionBenchmarkDatasetVersion] =
@@ -1051,10 +1087,23 @@ export function FineTuningView({
     try {
       const listed = await client.listTrainingCollections({ limit: 10 });
       setCollectionHistory(listed);
+    } catch (err) {
+      // Collection history is one panel among many. A failure here must not
+      // reject the shared refreshAll() Promise.all and blank the whole view —
+      // surface it as a non-blocking notice and keep any prior history.
+      setActionNotice(
+        err instanceof Error
+          ? err.message
+          : t("finetuningview.FailedToLoadCollectionHistory", {
+              defaultValue: "Failed to load collection history",
+            }),
+        "error",
+        4200,
+      );
     } finally {
       setCollectionHistoryLoading(false);
     }
-  }, []);
+  }, [setActionNotice, t]);
 
   const refreshAll = useCallback(async () => {
     setPageLoading(true);
@@ -2194,6 +2243,38 @@ export function FineTuningView({
     };
   }, [loadDatasets, loadJobs, loadModels, loadStatus]);
 
+  const onBuildDataset = useCallback(() => {
+    void handleBuildDataset();
+  }, [handleBuildDataset]);
+  const onRefreshDatasets = useCallback(() => {
+    void loadDatasets();
+  }, [loadDatasets]);
+  const onStartJob = useCallback(() => {
+    void handleStartJob();
+  }, [handleStartJob]);
+  const onRefreshJobs = useCallback(() => {
+    void loadJobs();
+    void loadStatus();
+  }, [loadJobs, loadStatus]);
+  const onCancelJob = useCallback(
+    (jobId: string) => {
+      void handleCancelJob(jobId);
+    },
+    [handleCancelJob],
+  );
+  const onImportModel = useCallback(() => {
+    void handleImportSelectedModel();
+  }, [handleImportSelectedModel]);
+  const onActivateModel = useCallback(() => {
+    void handleActivateSelectedModel();
+  }, [handleActivateSelectedModel]);
+  const onBenchmarkModel = useCallback(() => {
+    void handleBenchmarkSelectedModel();
+  }, [handleBenchmarkSelectedModel]);
+  const onSmokeTestModel = useCallback(() => {
+    void handleSmokeTestSelectedModel();
+  }, [handleSmokeTestSelectedModel]);
+
   if (pageLoading) {
     return (
       <ContentLayout contentHeader={contentHeader}>
@@ -2207,7 +2288,7 @@ export function FineTuningView({
   return (
     <ContentLayout contentHeader={contentHeader}>
       <div data-testid="fine-tuning-view" className="space-y-4 pb-32">
-        <section className="rounded-xl border border-border/50 bg-card/65 px-4 py-3 shadow-sm ring-1 ring-border/10">
+        <section className="px-2 py-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-txt">
@@ -2227,7 +2308,7 @@ export function FineTuningView({
             </TrainingActionButton>
           </div>
           {errorMessage && (
-            <div className="mt-3 rounded-xl border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">
+            <div className="mt-3 px-1 py-2 text-sm text-danger">
               {errorMessage}
             </div>
           )}
@@ -2394,8 +2475,8 @@ export function FineTuningView({
             </div>
           </div>
           <div className={`${FINE_TUNING_PANEL_CLASS} p-3 text-sm`}>
-            <div className="mb-3 border-b border-border/50 pb-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+            <div className="mb-3 pb-2">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="analysis-probe-endpoints"
                   label="Probe live endpoints"
@@ -2407,7 +2488,7 @@ export function FineTuningView({
                 Probe live endpoints
               </div>
             </div>
-            <div className="mb-3 border-b border-border/50 pb-3">
+            <div className="mb-3 pb-2">
               <div className="mb-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                 Natural trajectory import
               </div>
@@ -2472,7 +2553,7 @@ export function FineTuningView({
                     placeholder="response,action_planner"
                   />
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="natural-include-raw"
                     label="Include raw trajectories"
@@ -2486,7 +2567,7 @@ export function FineTuningView({
               </div>
             </div>
             {readinessReport ? (
-              <div className="mb-3 border-b border-border/50 pb-3">
+              <div className="mb-3 pb-2">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -2591,7 +2672,7 @@ export function FineTuningView({
               </div>
             ) : null}
             {collectionPreflightResult ? (
-              <div className="mb-3 border-b border-border/50 pb-3">
+              <div className="mb-3 pb-2">
                 <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                   Collection preflight
                 </div>
@@ -2609,7 +2690,7 @@ export function FineTuningView({
               </div>
             ) : null}
             {collectionResult ? (
-              <div className="mb-3 grid gap-3 border-b border-border/50 pb-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mb-3 grid gap-3 pb-2 md:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                     {t("finetuningview.Collection")}
@@ -3110,7 +3191,7 @@ export function FineTuningView({
               </div>
             ) : null}
             {collectionHistory ? (
-              <div className="mb-3 border-b border-border/50 pb-3">
+              <div className="mb-3 pb-2">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
@@ -3156,10 +3237,7 @@ export function FineTuningView({
                 {collectionHistory.collections.length > 0 ? (
                   <div className="grid gap-2">
                     {collectionHistory.collections.slice(0, 5).map((run) => (
-                      <div
-                        key={run.manifestPath}
-                        className="rounded border border-border/50 p-2"
-                      >
+                      <div key={run.manifestPath} className="p-2">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="break-all font-mono text-xs text-txt">
@@ -3465,9 +3543,7 @@ export function FineTuningView({
                     ))}
                   </div>
                 ) : (
-                  <div className="font-mono text-xs text-muted">
-                    No saved collection runs found.
-                  </div>
+                  <div className="font-mono text-xs text-muted">None</div>
                 )}
               </div>
             ) : null}
@@ -3687,14 +3763,14 @@ export function FineTuningView({
                     label="HuggingFace files"
                     group="hf-ingest"
                     description="Newline-separated dataset files to ingest"
-                    className="min-h-24 w-full rounded-xl border border-border/60 bg-bg/50 px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
+                    className="min-h-24 w-full border-border/60 bg-transparent px-3 py-2 font-mono text-xs text-txt outline-none focus:border-accent"
                     value={hfFiles}
                     onChange={setHfFiles}
                   />
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="hf-dry-run"
                     label="HuggingFace ingest dry run"
@@ -3871,7 +3947,7 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-cleanup"
                     label="Feed cleanup"
@@ -3882,7 +3958,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.Cleanup")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="feed-dry-run"
                     label="Feed generation dry run"
@@ -4055,7 +4131,7 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-export-native"
                     label="Export native trajectories"
@@ -4066,7 +4142,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.ExportNative")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-deterministic-proxy"
                     label="Deterministic proxy"
@@ -4077,7 +4153,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.Proxy")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="scenario-dry-run"
                     label="Scenario dry run"
@@ -4243,7 +4319,7 @@ export function FineTuningView({
                     className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonBaseModel}
                     onChange={setEvalComparisonBaseModel}
-                    placeholder="eliza-1-0_8b-base"
+                    placeholder="eliza-1-2b-base"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-muted">
@@ -4258,7 +4334,7 @@ export function FineTuningView({
                     className={AGENT_FIELD_INPUT_CLASS}
                     value={evalComparisonTrainedModelPath}
                     onChange={setEvalComparisonTrainedModelPath}
-                    placeholder="eliza-1-0_8b-trained"
+                    placeholder="eliza-1-2b-trained"
                   />
                 </div>
                 <div className="space-y-1 text-xs text-muted">
@@ -4299,7 +4375,7 @@ export function FineTuningView({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-include-in-collection"
                     label="Include eval in collection"
@@ -4310,7 +4386,7 @@ export function FineTuningView({
                   />
                   {t("finetuningview.IncludeInCollection")}
                 </div>
-                <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                   <AgentCheckboxField
                     agentId="eval-dry-run"
                     label="Eval comparison dry run"
@@ -4546,7 +4622,7 @@ export function FineTuningView({
                   className={AGENT_FIELD_INPUT_CLASS}
                   value={benchmarkTrainedModelPath}
                   onChange={setBenchmarkTrainedModelPath}
-                  placeholder="packages/training/checkpoints/eliza-1-0_8b/final"
+                  placeholder="packages/training/checkpoints/eliza-1-2b/final"
                 />
               </div>
               <div className="space-y-1 text-xs text-muted">
@@ -4566,7 +4642,7 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="benchmark-dry-run"
                   label="Benchmark dry run"
@@ -4714,9 +4790,8 @@ export function FineTuningView({
                   className={AGENT_FIELD_INPUT_CLASS}
                   value={bundleStageTier}
                   onChange={setBundleStageTier}
-                  options={["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]}
+                  options={["2b", "4b", "9b", "27b", "27b-256k"]}
                 >
-                  <option value="0_8b">0_8b</option>
                   <option value="2b">2b</option>
                   <option value="4b">4b</option>
                   <option value="9b">9b</option>
@@ -4771,7 +4846,7 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="bundle-apply"
                   label="Apply bundle"
@@ -5123,7 +5198,7 @@ export function FineTuningView({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-pair-enabled"
                   label="Pair base and trained"
@@ -5134,7 +5209,7 @@ export function FineTuningView({
                 />
                 {t("finetuningview.PairBaseTrained")}
               </div>
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-use-mocks"
                   label="Use mocks"
@@ -5145,7 +5220,7 @@ export function FineTuningView({
                 />
                 {t("finetuningview.UseMocks")}
               </div>
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-capture"
                   label="Capture trajectories"
@@ -5156,7 +5231,7 @@ export function FineTuningView({
                 />
                 {t("finetuningview.CaptureTrajectories")}
               </div>
-              <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-bg/30 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              <div className="flex h-10 items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                 <AgentCheckboxField
                   agentId="action-benchmark-dry-run"
                   label="Action benchmark dry run"
@@ -5295,12 +5370,8 @@ export function FineTuningView({
           buildMinCalls={buildMinCalls}
           setBuildMinCalls={setBuildMinCalls}
           datasetBuilding={datasetBuilding}
-          onBuildDataset={() => {
-            void handleBuildDataset();
-          }}
-          onRefreshDatasets={() => {
-            void loadDatasets();
-          }}
+          onBuildDataset={onBuildDataset}
+          onRefreshDatasets={onRefreshDatasets}
           datasets={datasets}
           selectedDatasetId={selectedDatasetId}
           setSelectedDatasetId={setSelectedDatasetId}
@@ -5323,20 +5394,13 @@ export function FineTuningView({
           setStartLearningRate={setStartLearningRate}
           startingJob={startingJob}
           activeRunningJob={activeRunningJob}
-          onStartJob={() => {
-            void handleStartJob();
-          }}
-          onRefreshJobs={() => {
-            void loadJobs();
-            void loadStatus();
-          }}
+          onStartJob={onStartJob}
+          onRefreshJobs={onRefreshJobs}
           jobs={jobs}
           selectedJobId={selectedJobId}
           setSelectedJobId={setSelectedJobId}
           cancellingJobId={cancellingJobId}
-          onCancelJob={(jobId) => {
-            void handleCancelJob(jobId);
-          }}
+          onCancelJob={onCancelJob}
           selectedJob={selectedJob}
           t={t}
         />
@@ -5356,246 +5420,16 @@ export function FineTuningView({
           setActivateProviderModel={setActivateProviderModel}
           modelAction={modelAction}
           smokeResult={smokeResult}
-          onImport={() => {
-            void handleImportSelectedModel();
-          }}
-          onActivate={() => {
-            void handleActivateSelectedModel();
-          }}
-          onBenchmark={() => {
-            void handleBenchmarkSelectedModel();
-          }}
-          onSmokeTest={() => {
-            void handleSmokeTestSelectedModel();
-          }}
+          onImport={onImportModel}
+          onActivate={onActivateModel}
+          onBenchmark={onBenchmarkModel}
+          onSmokeTest={onSmokeTestModel}
           t={t}
         />
 
         <LiveEventsPanel events={trainingEvents} t={t} />
       </div>
     </ContentLayout>
-  );
-}
-
-function TuiRefreshButton({
-  loading,
-  onRefresh,
-}: {
-  loading: boolean;
-  onRefresh: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "tui-refresh",
-    role: "button",
-    label: "Refresh training status",
-    group: "tui",
-    description: "Reload the training status in the terminal view",
-    onActivate: onRefresh,
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={onRefresh}
-      disabled={loading}
-      aria-label="Refresh training status"
-      style={{
-        background: "transparent",
-        color: "#a7f3d0",
-        border: "1px solid rgba(167,243,208,0.45)",
-        borderRadius: 4,
-        padding: "4px 8px",
-        cursor: loading ? "not-allowed" : "pointer",
-        fontFamily: "inherit",
-      }}
-      {...agentProps}
-    >
-      refresh
-    </button>
-  );
-}
-
-export function FineTuningTuiView() {
-  const [state, setState] = useState<Awaited<
-    ReturnType<typeof loadTrainingTuiState>
-  > | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastAction, setLastAction] = useState("boot");
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await loadTrainingTuiState();
-      setState(next);
-      setLastAction("refresh");
-    } catch (caught) {
-      setState(null);
-      setError(
-        caught instanceof Error ? caught.message : "Training refresh failed",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const activeJobs =
-    state?.jobs.jobs.filter(
-      (job) => job.status === "running" || job.status === "queued",
-    ) ?? [];
-  const viewState = {
-    viewType: "tui",
-    viewId: "training",
-    runtimeAvailable: state?.status.runtimeAvailable ?? false,
-    runningJobs: state?.status.runningJobs ?? 0,
-    queuedJobs: state?.status.queuedJobs ?? 0,
-    datasetCount: state?.datasets.datasets.length ?? 0,
-    jobCount: state?.jobs.jobs.length ?? 0,
-    modelCount: state?.models.models.length ?? 0,
-    trajectoryCount: state?.trajectories.total ?? 0,
-    loading,
-    lastAction,
-    error,
-  };
-
-  return (
-    <div
-      data-view-state={JSON.stringify(viewState)}
-      style={{
-        minHeight: "100vh",
-        background: "#020617",
-        color: "#cbd5e1",
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-        padding: 20,
-      }}
-    >
-      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
-        elizaos://training --type=tui
-      </div>
-      <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading
-          ? "loading"
-          : state?.status.runtimeAvailable
-            ? "runtime-ready"
-            : "runtime-offline"}{" "}
-        | {activeJobs.length} active jobs |{" "}
-        {state?.datasets.datasets.length ?? 0} datasets |{" "}
-        {state?.models.models.length ?? 0} models | {lastAction}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 16,
-        }}
-      >
-        <section
-          aria-label="Training status"
-          style={{
-            border: "1px solid rgba(125,211,252,0.3)",
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 10,
-            }}
-          >
-            <strong style={{ color: "#e2e8f0" }}>status</strong>
-            <TuiRefreshButton
-              loading={loading}
-              onRefresh={() => void refresh()}
-            />
-          </div>
-          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-          <div>
-            runtime {state?.status.runtimeAvailable ? "ready" : "offline"}
-          </div>
-          <div>running {state?.status.runningJobs ?? 0}</div>
-          <div>queued {state?.status.queuedJobs ?? 0}</div>
-          <div>completed {state?.status.completedJobs ?? 0}</div>
-          <div>failed {state?.status.failedJobs ?? 0}</div>
-
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
-            trajectories
-          </div>
-          <div>
-            {state?.trajectories.available ? "available" : "unavailable"} total{" "}
-            {state?.trajectories.total ?? 0}
-          </div>
-          {(state?.trajectories.trajectories ?? [])
-            .slice(0, 8)
-            .map((trajectory) => (
-              <div key={trajectory.id} style={{ padding: "5px 0" }}>
-                {trajectory.trajectoryId} calls {trajectory.llmCallCount}
-                {typeof trajectory.totalReward === "number"
-                  ? ` reward ${trajectory.totalReward}`
-                  : ""}
-              </div>
-            ))}
-        </section>
-
-        <section
-          aria-label="Training work"
-          style={{
-            border: "1px solid rgba(125,211,252,0.3)",
-            borderRadius: 6,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
-          <strong style={{ color: "#e2e8f0" }}>jobs and models</strong>
-          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | build-dataset | start-job | cancel-job |
-            import-model | activate-model | benchmark-model | ingest-hf-dataset
-            | feed-generate | run-scenarios | run-eval-comparison |
-            run-collection | build-analysis-index | build-readiness-report |
-            write-benchmark-matrix | run-benchmark-vs-cerebras |
-            stage-eliza1-bundle | run-action-benchmark
-          </div>
-          <div style={{ color: "#a7f3d0", marginBottom: 8 }}>jobs</div>
-          {(state?.jobs.jobs ?? []).slice(0, 10).map((job) => (
-            <div
-              key={job.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0,1fr) 10ch",
-                gap: 10,
-                borderTop: "1px solid rgba(125,211,252,0.14)",
-                padding: "7px 0",
-              }}
-            >
-              <span style={{ color: "#e2e8f0" }}>{job.id}</span>
-              <span style={{ color: "#a7f3d0" }}>{job.status}</span>
-              <span style={{ gridColumn: "1 / 3", color: "#94a3b8" }}>
-                {job.phase} {Math.round(job.progress * 100)}% dataset{" "}
-                {job.datasetId}
-              </span>
-            </div>
-          ))}
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>models</div>
-          {(state?.models.models ?? []).slice(0, 10).map((model) => (
-            <div key={model.id} style={{ padding: "5px 0" }}>
-              {model.id} {model.backend}
-              {model.active ? " active" : ""}
-              {model.ollamaModel ? ` ollama ${model.ollamaModel}` : ""}
-            </div>
-          ))}
-        </section>
-      </div>
-    </div>
   );
 }
 
@@ -5686,7 +5520,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
   return (
     <div
       data-testid="fine-tuning-detail-extension"
-      className="flex flex-col gap-3 rounded-md border border-border/45 bg-card/25 p-4"
+      className="flex flex-col gap-3 px-1 py-2"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -5699,7 +5533,7 @@ export function FineTuningDetailExtension({ app }: AppDetailExtensionProps) {
           <p className="mt-1 text-xs text-muted">
             {latest
               ? `${latest.readinessStatus} readiness, ${latest.artifactCount} artifacts`
-              : "No saved collection runs found yet."}
+              : "None"}
           </p>
         </div>
         <Button

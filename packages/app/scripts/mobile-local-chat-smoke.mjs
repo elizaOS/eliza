@@ -39,9 +39,9 @@ const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
-const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
+const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
-  "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf";
+  "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
 // Cap the on-device context window. The bundled eliza-1 GGUF advertises a 128k
 // max context; loading it at full width allocates a multi-GB KV cache that is
 // impractically slow (and OOMs) on a phone/simulator, so the first reply never
@@ -111,19 +111,20 @@ const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
   10,
 );
 const ANDROID_SMOKE_MODEL_ID =
-  process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-0_8b";
+  process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-2b";
 const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
   process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
-  "bundles/0_8b/text/eliza-1-0_8b-32k.gguf";
+  "bundles/2b/text/eliza-1-2b-128k.gguf";
 const ANDROID_SMOKE_MODEL_FILE =
-  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-0_8b-32k.gguf";
+  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-2b-128k.gguf";
+// Size/sha defaults are unset for the 2B entry tier — set them via env to
+// re-enable the exact-match download verification against a known artifact.
 const ANDROID_SMOKE_MODEL_SIZE_BYTES = Number.parseInt(
-  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "556982432",
+  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "",
   10,
 );
 const ANDROID_SMOKE_MODEL_SHA256 =
-  process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() ||
-  "9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581";
+  process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() || "";
 const ANDROID_SMOKE_MODEL_URL =
   process.env.ANDROID_SMOKE_MODEL_URL?.trim() ||
   `https://huggingface.co/elizaos/eliza-1/resolve/main/${ANDROID_SMOKE_MODEL_RELATIVE_PATH.split(
@@ -293,6 +294,67 @@ function launchIosSimulatorApp() {
     tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
   }
   return { udid, installed: true, fullBunSmokeRequestedAtMs };
+}
+
+/**
+ * Assert the renderer baked into the INSTALLED app bundle is the freshly built
+ * one — the on-device proof that the simulator is running the latest UI, not
+ * stale code (issue #9309). Reads the build stamp Capacitor copied into the
+ * .app (`<App.app>/public/eliza-renderer-build.json`) and compares its buildId
+ * to the freshly built `packages/app/dist` manifest. Skips gracefully when
+ * either manifest is absent (e.g. a build without the manifest plugin); throws
+ * only on a genuine stale-UI mismatch.
+ */
+function assertInstalledIosRendererIsFresh(udid) {
+  const id = appId();
+  const container = tryExec("xcrun", [
+    "simctl",
+    "get_app_container",
+    udid,
+    id,
+    "app",
+  ]);
+  if (!container) {
+    console.warn(
+      `[local-chat-smoke] cannot verify renderer stamp — ${id} not installed.`,
+    );
+    return;
+  }
+  const installedManifest = path.join(
+    container,
+    "public",
+    "eliza-renderer-build.json",
+  );
+  // Resolve the fresh renderer from the SAME dist the installed shell was built
+  // from. A white-label shell (ELIZA_SMOKE_APP_ID) builds from its own dist
+  // (e.g. apps/app/dist); comparing against packages/app/dist would be a
+  // guaranteed buildId mismatch and a false "stale UI" failure.
+  const rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST
+    ? path.resolve(process.env.ELIZA_SMOKE_RENDERER_DIST)
+    : path.join(repoRoot, "packages", "app", "dist");
+  const freshManifest = path.join(rendererDist, "eliza-renderer-build.json");
+  if (!fs.existsSync(freshManifest)) {
+    console.warn(
+      `[local-chat-smoke] no freshly built renderer manifest at ${freshManifest}; skipping stamp check.`,
+    );
+    return;
+  }
+  if (!fs.existsSync(installedManifest)) {
+    throw new Error(
+      `[local-chat-smoke] installed app has no renderer build stamp at ${installedManifest} — missing/stale UI.`,
+    );
+  }
+  const fresh = JSON.parse(fs.readFileSync(freshManifest, "utf8"));
+  const installed = JSON.parse(fs.readFileSync(installedManifest, "utf8"));
+  if (installed.buildId !== fresh.buildId) {
+    throw new Error(
+      `[local-chat-smoke] installed renderer buildId ${installed.buildId} != freshly built ${fresh.buildId} — ` +
+        `the simulator is running STALE UI.`,
+    );
+  }
+  console.log(
+    `[local-chat-smoke] renderer build stamp OK: installed == fresh (${String(fresh.buildId).slice(0, 12)} built ${fresh.builtAt}).`,
+  );
 }
 
 function writeIosDefaultsString(udid, domain, key, value) {
@@ -491,7 +553,7 @@ function stageIosFullBunSmokeModel(udid, id) {
     models: [
       {
         id: IOS_FULL_BUN_SMOKE_MODEL_ID,
-        displayName: "eliza-1-0.8B",
+        displayName: "eliza-1-2B",
         path: modelPath,
         sizeBytes: sourceStats.size,
         installedAt: now,
@@ -896,7 +958,7 @@ function writeAndroidLocalInferenceRegistry(context, localInferenceDir) {
       models: [
         {
           id: ANDROID_SMOKE_MODEL_ID,
-          displayName: "eliza-1-0.8B",
+          displayName: "eliza-1-2B",
           path: absoluteModelPath,
           sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
           installedAt: now,
@@ -2366,6 +2428,9 @@ async function main() {
   try {
     if (platform === "ios" || platform === "both") {
       iosContext = launchIosSimulatorApp();
+      if (iosContext?.installed) {
+        assertInstalledIosRendererIsFresh(iosContext.udid);
+      }
     }
     if (platform === "android" || platform === "both") {
       androidContext = await launchAndroidEmulatorApp();

@@ -247,7 +247,7 @@ describe("training-benchmarks read API", () => {
     await handleTrainingBenchmarksRoute(
       fakeReq({
         pathname: "/api/training/benchmarks/scores",
-        query: { model_id: "eliza-1-0_8b", benchmark: "mmlu" },
+        query: { model_id: "eliza-1-2b", benchmark: "mmlu" },
       }),
       res.res,
       STATE,
@@ -256,7 +256,7 @@ describe("training-benchmarks read API", () => {
     expect(res.status()).toBe(200);
     const body = res.body<BenchmarkScoresResponse>();
     expect(body.schema).toBe(ELIZA_BENCHMARK_SCORES_SCHEMA);
-    expect(body.modelId).toBe("eliza-1-0_8b");
+    expect(body.modelId).toBe("eliza-1-2b");
     expect(body.benchmark).toBe("mmlu");
     expect(body.dbReady).toBe(false);
     expect(body.runs).toEqual([]);
@@ -535,6 +535,25 @@ describe("openBenchmarkResultsReader", () => {
     });
     expect(history.map((r) => r.score)).toEqual([0.9, 0.1]);
     expect(reader.getLatest({ modelId: "m", benchmark: "b" })?.score).toBe(0.9);
+    reader.close();
+  });
+
+  it("rejects rows with unexpected SQLite column types", () => {
+    const dbPath = path.join(tmpDir, "results.db");
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath);
+    db.exec(SCHEMA_SQL);
+    db.prepare(
+      `INSERT INTO benchmark_runs (
+         model_id, benchmark, score, ts, dataset_version, code_commit, raw_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("m", "b", "not-a-score", 100, "2024-12", "abc1234", "{}");
+    db.close();
+
+    const reader = openBenchmarkResultsReader(dbPath);
+    expect(() =>
+      reader.getHistory({ modelId: "m", benchmark: "b", limit: 10 }),
+    ).toThrow("score must be a finite number");
     reader.close();
   });
 });

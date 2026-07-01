@@ -8,9 +8,9 @@
  *
  * For the scaffold phase the service exists as a registered Service so the
  * plugin manifest is self-contained. Once foundations (core scheduler,
- * owner-state, registries) land, the LifeOps CheckinService body — collectors,
+ * owner-state, registries) land, the PA CheckinService body — collectors,
  * acknowledgement window, escalation ladder, briefing assembly — moves into
- * this file and `plugin-lifeops` re-exports from here.
+ * this file.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -34,7 +34,7 @@ export class GoalsCheckinService extends Service {
     logger.info(`${GOALS_LOG_PREFIX} stopping GoalsCheckinService`);
   }
 
-  // TODO(migrate from plugin-lifeops/src/lifeops/checkin/checkin-service.ts):
+  // TODO(migrate from plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts):
   //   - runCheckin(request: RunCheckinRequest): Promise<CheckinReport>
   //   - recordAcknowledgement(request: RecordAcknowledgementRequest): Promise<void>
   //   - briefing assembly: getCheckinBriefing(kind, scope) -> sections

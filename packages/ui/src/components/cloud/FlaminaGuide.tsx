@@ -1,4 +1,4 @@
-import { useApp } from "../../state";
+import { useAppSelector, useAppSelectorShallow } from "../../state";
 import type { AppState, FlaminaGuideTopic } from "../../state/types";
 import { Button } from "../ui/button";
 
@@ -88,12 +88,12 @@ export function FlaminaGuideCard({
   topic: FlaminaGuideTopic;
   className?: string;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const guide = GUIDE_CONTENT[topic];
 
   return (
     <section
-      className={`rounded-sm border border-accent/25 bg-card/70 px-4 py-4 text-left backdrop-blur-sm ${className}`.trim()}
+      className={`rounded-sm border border-accent/25 bg-card/95 px-4 py-4 text-left ${className}`.trim()}
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-2xs font-semibold uppercase tracking-[0.16em] text-txt">
@@ -143,7 +143,12 @@ export function DeferredSetupChecklist({
   onOpenTask?: (task: FlaminaGuideTopic) => void;
 }) {
   const { firstRunDeferredTasks, postFirstRunChecklistDismissed, setState, t } =
-    useApp();
+    useAppSelectorShallow((s) => ({
+      firstRunDeferredTasks: s.firstRunDeferredTasks,
+      postFirstRunChecklistDismissed: s.postFirstRunChecklistDismissed,
+      setState: s.setState,
+      t: s.t,
+    }));
 
   if (
     postFirstRunChecklistDismissed ||
@@ -173,7 +178,7 @@ export function DeferredSetupChecklist({
 
   return (
     <section
-      className={`rounded-sm border border-border/60 bg-card/70 px-4 py-4 backdrop-blur-sm ${className}`.trim()}
+      className={`rounded-sm border border-border/60 bg-card/95 px-4 py-4 ${className}`.trim()}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>

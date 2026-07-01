@@ -9,7 +9,7 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
 
   Single-GPU targets (cheapest fit for 2B / 9B SFT):
   * ``blackwell6000-1x`` — 1 × RTX PRO 6000 Blackwell (96 GB). Default
-    pick for qwen3.5-2b (15.5 GB budget, ~84% headroom) and qwen3.5-9b
+    pick for gemma4-e2b (15.5 GB budget, ~84% headroom) and gemma4-12b
     (80 GB budget, ~16% headroom). ~$1.07/hr at write time.
   * ``h100-1x`` — 1 × H100 SXM (80 GB). Faster bf16 throughput than
     Blackwell at higher $/hr; pick for time-pressured 9B work where you're
@@ -25,22 +25,22 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
     budget vs 192 GB capacity). Long-context experiments
     (``--max-seq-len`` > 65k) still need ``b200-2x``.
   * ``b200-2x`` — 2 × NVIDIA B200 (≈183 GB each, ≈366 GB total).
-    Preferred cloud target for qwen3.6-27b at the default 64k seq_len
+    Preferred cloud target for gemma4-31b at the default 64k seq_len
     (190 GB budget on 366 GB capacity = 48% util with comfortable
     headroom for activation spikes). Required for ``--max-seq-len`` >
     65k or 122B-A10B work.
   * ``h100-2x`` — 2 × H100 SXM (80 GB each = 160 GB). Insufficient for
-    qwen3.6-27b at the registry's 190 GB budget; usable for 9B if
+    gemma4-31b at the registry's 190 GB budget; usable for 9B if
     blackwell6000-1x and h200-1x are unavailable.
 
   GRPO multi-GPU targets (verl splits actor train + rollout across the
   device pool — see ``scripts/train_grpo_verl.sh``):
   * ``h200-2x`` — 2 × H200 SXM (141 GB each = 282 GB). GRPO default for
-    qwen3.5-2b (1 train + 1 rollout). ~24h wall.
+    gemma4-e2b (1 train + 1 rollout). ~24h wall.
   * ``h200-4x`` — 4 × H200 SXM (564 GB total). GRPO default for
-    qwen3.5-9b (1 train + 3 rollout shards). ~24-48h wall.
+    gemma4-12b (1 train + 3 rollout shards). ~24-48h wall.
   * ``h200-8x`` — 8 × H200 SXM (1128 GB total). GRPO default for
-    qwen3.6-27b (4 train + 4 rollout). ~48h wall.
+    gemma4-31b (4 train + 4 rollout). ~48h wall.
   * ``b200-4x`` / ``b200-8x`` — B200 fallbacks when the H200 pool is
     empty. ~1.5-2× the $/hr but ~2× the throughput.
 
@@ -120,7 +120,7 @@ TARGETS: dict[str, dict[str, Any]] = {
         "num_gpus": 1,
         # B200 = 180 GB HBM3e per GPU; gpu_ram>=170 robust to ECC reserve.
         "min_per_gpu_ram_gb": 170,
-        "description": "1× NVIDIA B200 (≈183 GB) — qwen3.6-27b SFT default (130 GB budget @ seq=32k fits with headroom)",
+        "description": "1× NVIDIA B200 (≈183 GB) — gemma4-31b SFT default (130 GB budget @ seq=32k fits with headroom)",
     },
     # ─── multi-GPU targets (27B+) ───
     "blackwell6000-2x": {
@@ -154,9 +154,9 @@ TARGETS: dict[str, dict[str, Any]] = {
     # GRPO needs separate train + rollout GPUs (verl splits actor / rollout
     # across the available device pool via `n_gpus_per_node`). Per
     # RL_STRATEGY.md hardware budgets:
-    #   qwen3.5-2b  → 2× H200 (1 train + 1 rollout)
-    #   qwen3.5-9b  → 4× H200 (1 train + 3 rollout shards)
-    #   qwen3.6-27b → 8× H200 (4 train + 4 rollout)
+    #   gemma4-e2b  → 2× H200 (1 train + 1 rollout)
+    #   gemma4-12b  → 4× H200 (1 train + 3 rollout shards)
+    #   gemma4-31b → 8× H200 (4 train + 4 rollout)
     # The B200 variants are 1.5-2× pricier but ~2× faster and serve as the
     # fallback when the H200 pool is empty.
     "h200-2x": {

@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.inbox.daily-brief-cross-channel",
   title:
     "Build a daily brief with actions, schedule, unread channels, follow-ups, and docs",

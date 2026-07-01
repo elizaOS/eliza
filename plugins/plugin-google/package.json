@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-google",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -30,6 +30,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "publishConfig": {
@@ -52,7 +53,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.6.0",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"

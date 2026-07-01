@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "goal.health.set-weight",
   title: "Set a health goal to lose 10 lbs by June",
   domain: "goals",

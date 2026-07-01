@@ -1,11 +1,28 @@
 #!/usr/bin/env bun
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { $ } from "bun";
+
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+	new URL("./scripts/rm-path-recursive.mjs", import.meta.url),
+);
+
+function rmRecursive(target: string) {
+	const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, target], {
+		stdio: "inherit",
+	});
+	if (result.error) throw result.error;
+	if (result.status !== 0) {
+		throw new Error(
+			`rm-path-recursive failed for ${target} with status ${result.status}`,
+		);
+	}
+}
 
 async function cleanBuild(outdir = "dist") {
 	if (existsSync(outdir)) {
-		await rm(outdir, { recursive: true, force: true });
+		rmRecursive(outdir);
 		console.log(`✓ Cleaned ${outdir} directory`);
 	}
 }
@@ -50,7 +67,7 @@ async function build() {
 
 			(async () => {
 				console.log("📝 Generating TypeScript declarations...");
-				await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
+				await $`tsc --emitDeclarationOnly --incremental --noCheck --project ./tsconfig.build.json`.quiet();
 				console.log("✓ TypeScript declarations generated");
 				return { success: true };
 			})(),

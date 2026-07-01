@@ -17,7 +17,7 @@
  * `f16`) so that `appendOptimizationFlags` + `applyGpuProfile` can pass
  * them straight through to `--cache-type-k` / `--cache-type-v`.
  *
- * The active mobile/local release exposes Eliza-1 0_8b, 2b, 4b, 9b, and 27b
+ * The active mobile/local release exposes Eliza-1 2b, 4b, 9b, and 27b
  * tiers, with larger cards recommended toward the biggest installed bundle
  * that leaves memory headroom.
  */
@@ -105,7 +105,7 @@ export interface GpuProfile {
 /**
  * RTX 3090 — Ampere, 24 GiB, no FP8.
  *
- * Best current release fit: Eliza-1 9B with 4B/2B/0.8B fallbacks.
+ * Best current release fit: Eliza-1 9B with 4B/2B fallbacks.
  * Flash-attn helps Ampere meaningfully.
  */
 const RTX_3090: GpuProfile = {
@@ -115,12 +115,7 @@ const RTX_3090: GpuProfile = {
   computeCapability: "sm_86",
   memoryBandwidthGBs: 936,
   fp8: false,
-  recommendedBundles: [
-    "eliza-1-9b",
-    "eliza-1-4b",
-    "eliza-1-2b",
-    "eliza-1-0_8b",
-  ],
+  recommendedBundles: ["eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   flashAttn: true,
   // Ampere doesn't have the q4_polar kernel on the Polar fork; fall back to
   // the Q8/Q4 KV quants which work on every sm_70+ GPU.
@@ -141,7 +136,7 @@ const RTX_3090: GpuProfile = {
 /**
  * RTX 4090 — Ada Lovelace, 24 GiB, FP8 (no flash-attn-FP8 yet).
  *
- * Best current release fit: Eliza-1 27B with 9B/4B/2B/0.8B fallbacks.
+ * Best current release fit: Eliza-1 27B with 9B/4B/2B fallbacks.
  */
 const RTX_4090: GpuProfile = {
   id: "rtx-4090",
@@ -150,13 +145,7 @@ const RTX_4090: GpuProfile = {
   computeCapability: "sm_89",
   memoryBandwidthGBs: 1008,
   fp8: true,
-  recommendedBundles: [
-    "eliza-1-27b",
-    "eliza-1-9b",
-    "eliza-1-4b",
-    "eliza-1-2b",
-    "eliza-1-0_8b",
-  ],
+  recommendedBundles: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -187,13 +176,7 @@ const RTX_5090: GpuProfile = {
   computeCapability: "sm_120",
   memoryBandwidthGBs: 1792,
   fp8: true,
-  recommendedBundles: [
-    "eliza-1-27b",
-    "eliza-1-9b",
-    "eliza-1-4b",
-    "eliza-1-2b",
-    "eliza-1-0_8b",
-  ],
+  recommendedBundles: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -221,13 +204,7 @@ const H200: GpuProfile = {
   computeCapability: "sm_90",
   memoryBandwidthGBs: 4800,
   fp8: true,
-  recommendedBundles: [
-    "eliza-1-27b",
-    "eliza-1-9b",
-    "eliza-1-4b",
-    "eliza-1-2b",
-    "eliza-1-0_8b",
-  ],
+  recommendedBundles: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",

@@ -13,8 +13,15 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
+      "@elizaos/core": ["../../core/dist/index.d.ts"],
       "@elizaos/plugin-farcaster": [
         "../../../plugins/plugin-farcaster/index.ts"
+      ],
+      "@elizaos/plugin-openai": [
+        "../../../plugins/plugin-openai/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../../plugins/plugin-sql/src/dist/index.node.d.ts"
       ]
     }
   },

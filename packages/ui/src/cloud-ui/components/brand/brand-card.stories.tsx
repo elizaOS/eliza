@@ -85,13 +85,13 @@ export const AsAgentCard: StoryObj = {
         description="Maintains long-term entity and relationship stores for the household."
         icon={
           <img
-            src="https://placehold.co/24x24/3b82f6/ffffff?text=M"
+            src="https://placehold.co/24x24/f97316/ffffff?text=M"
             alt=""
             width={24}
             height={24}
           />
         }
-        color="#3b82f6"
+        color="#f97316"
       />
     </div>
   ),

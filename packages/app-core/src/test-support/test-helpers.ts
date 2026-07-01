@@ -103,24 +103,17 @@ export function isWorkspaceDependency(version: string | undefined): boolean {
   );
 }
 
-const DISCORD_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-discord";
-const DISCORD_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-discord/dist/index",
-] as const;
-/**
- * Resolve the Discord plugin import specifier.
- * Prefers package resolution, then falls back to local plugin checkout paths.
- */
-export function resolveDiscordPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(DISCORD_PLUGIN_PACKAGE_NAME)) {
-    return DISCORD_PLUGIN_PACKAGE_NAME;
-  }
+const PACKAGE_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
 
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  for (const relativeEntryPath of DISCORD_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
+function resolveFirstExistingPath(
+  relativeEntryPaths: readonly string[],
+): string | null {
+  for (const relativeEntryPath of relativeEntryPaths) {
+    const absoluteEntryPath = path.resolve(PACKAGE_ROOT, relativeEntryPath);
     if (existsSync(absoluteEntryPath)) {
       return pathToFileURL(absoluteEntryPath).href;
     }
@@ -129,276 +122,141 @@ export function resolveDiscordPluginImportSpecifier(): string | null {
   return null;
 }
 
-const TELEGRAM_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-telegram";
-const TELEGRAM_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-telegram/dist/index",
-] as const;
+function resolveNodeModulesEntry(
+  packageName: string,
+  relativeEntryPath: string,
+): string | null {
+  const packageSegments = packageName.split("/");
+  const entryPath = path.resolve(
+    PACKAGE_ROOT,
+    "node_modules",
+    ...packageSegments,
+    relativeEntryPath,
+  );
+  return existsSync(entryPath) ? pathToFileURL(entryPath).href : null;
+}
 
 /**
- * Resolve the Telegram plugin import specifier.
- * Prefers package resolution, then falls back to node_modules ESM entry
- * (the telegram plugin is ESM-only so CJS require.resolve fails), then
- * falls back to local plugin checkout paths.
+ * Resolve a plugin import specifier for a connector live test.
+ *
+ * Resolution order:
+ * 1. Package resolution (CJS `require.resolve`) of the canonical name, then
+ *    any alternate package names.
+ * 2. Direct `node_modules` entry probes — required for ESM-only packages whose
+ *    `require.resolve` fails (Telegram/Lens/Feishu ship ESM-only dist entries).
+ * 3. Local plugin-checkout paths relative to the package root.
  */
-export function resolveTelegramPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(TELEGRAM_PLUGIN_PACKAGE_NAME)) {
-    return TELEGRAM_PLUGIN_PACKAGE_NAME;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  // ESM-only: try direct node_modules entry
-  const nodeModulesEntry = path.resolve(
-    packageRoot,
-    "node_modules",
-    "@elizaos",
-    "plugin-telegram",
-    "dist",
-    "index.js",
-  );
-  if (existsSync(nodeModulesEntry)) {
-    return pathToFileURL(nodeModulesEntry).href;
-  }
-
-  for (const relativeEntryPath of TELEGRAM_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
-    if (existsSync(absoluteEntryPath)) {
-      return pathToFileURL(absoluteEntryPath).href;
+function resolvePluginImportSpecifier({
+  packageName,
+  alternatePackageNames = [],
+  nodeModulesEntries = [],
+  localEntries = [],
+}: {
+  packageName: string;
+  alternatePackageNames?: readonly string[];
+  nodeModulesEntries?: readonly {
+    packageName: string;
+    relativeEntryPath: string;
+  }[];
+  localEntries?: readonly string[];
+}): string | null {
+  for (const candidatePackageName of [packageName, ...alternatePackageNames]) {
+    if (isPackageImportResolvable(candidatePackageName)) {
+      return candidatePackageName;
     }
   }
 
-  return null;
+  for (const entry of nodeModulesEntries) {
+    const resolved = resolveNodeModulesEntry(
+      entry.packageName,
+      entry.relativeEntryPath,
+    );
+    if (resolved) return resolved;
+  }
+
+  return resolveFirstExistingPath(localEntries);
+}
+
+const TELEGRAM_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-telegram";
+
+export function resolveTelegramPluginImportSpecifier(): string | null {
+  return resolvePluginImportSpecifier({
+    packageName: TELEGRAM_PLUGIN_PACKAGE_NAME,
+    nodeModulesEntries: [
+      {
+        packageName: TELEGRAM_PLUGIN_PACKAGE_NAME,
+        relativeEntryPath: "dist/index.js",
+      },
+    ],
+    localEntries: ["../plugins/plugin-telegram/dist/index"],
+  });
 }
 
 const LENS_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-lens";
 const LENS_PLUGIN_FALLBACK_PACKAGE = "@elizaos-plugins/client-lens";
-const LENS_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-lens/dist/index",
-  "../../client-lens/dist/index",
-  "../../client-lens/src/index",
-] as const;
 
-/**
- * Resolve the Lens plugin import specifier.
- * Prefers package resolution, then falls back to local plugin checkout paths.
- * Uses both CJS require.resolve and a direct node_modules check for ESM-only packages.
- */
 export function resolveLensPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(LENS_PLUGIN_PACKAGE_NAME)) {
-    return LENS_PLUGIN_PACKAGE_NAME;
-  }
-  if (isPackageImportResolvable(LENS_PLUGIN_FALLBACK_PACKAGE)) {
-    return LENS_PLUGIN_FALLBACK_PACKAGE;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  const nodeModulesSourceEntry = path.resolve(
-    packageRoot,
-    "node_modules",
-    "@elizaos-plugins",
-    "client-lens",
-    "src",
-    "index.ts",
-  );
-  if (existsSync(nodeModulesSourceEntry)) {
-    return pathToFileURL(nodeModulesSourceEntry).href;
-  }
-  const nodeModulesDistEntry = path.resolve(
-    packageRoot,
-    "node_modules",
-    "@elizaos-plugins",
-    "client-lens",
-    "dist",
-    "index.js",
-  );
-  if (existsSync(nodeModulesDistEntry)) {
-    return pathToFileURL(nodeModulesDistEntry).href;
-  }
-
-  for (const relativeEntryPath of LENS_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
-    if (existsSync(absoluteEntryPath)) {
-      return pathToFileURL(absoluteEntryPath).href;
-    }
-  }
-
-  return null;
+  return resolvePluginImportSpecifier({
+    packageName: LENS_PLUGIN_PACKAGE_NAME,
+    alternatePackageNames: [LENS_PLUGIN_FALLBACK_PACKAGE],
+    nodeModulesEntries: [
+      {
+        packageName: LENS_PLUGIN_FALLBACK_PACKAGE,
+        relativeEntryPath: "src/index.ts",
+      },
+      {
+        packageName: LENS_PLUGIN_FALLBACK_PACKAGE,
+        relativeEntryPath: "dist/index.js",
+      },
+    ],
+    localEntries: [
+      "../plugins/plugin-lens/dist/index",
+      "../../client-lens/dist/index",
+      "../../client-lens/src/index",
+    ],
+  });
 }
 
 const FARCASTER_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-farcaster";
-const FARCASTER_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-farcaster/dist/node/index.node.js",
-] as const;
 
-/**
- * Resolve the Farcaster plugin import specifier.
- * Prefers package resolution, then falls back to local plugin checkout paths.
- */
 export function resolveFarcasterPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(FARCASTER_PLUGIN_PACKAGE_NAME)) {
-    return FARCASTER_PLUGIN_PACKAGE_NAME;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  for (const relativeEntryPath of FARCASTER_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
-    if (existsSync(absoluteEntryPath)) {
-      return pathToFileURL(absoluteEntryPath).href;
-    }
-  }
-
-  return null;
+  return resolvePluginImportSpecifier({
+    packageName: FARCASTER_PLUGIN_PACKAGE_NAME,
+    localEntries: ["../plugins/plugin-farcaster/dist/node/index.node.js"],
+  });
 }
 
 const NOSTR_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-nostr";
-const NOSTR_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-nostr/dist/index",
-] as const;
 
-/**
- * Resolve the Nostr plugin import specifier.
- * Prefers package resolution, then falls back to local plugin checkout paths.
- */
 export function resolveNostrPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(NOSTR_PLUGIN_PACKAGE_NAME)) {
-    return NOSTR_PLUGIN_PACKAGE_NAME;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  for (const relativeEntryPath of NOSTR_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
-    if (existsSync(absoluteEntryPath)) {
-      return pathToFileURL(absoluteEntryPath).href;
-    }
-  }
-
-  return null;
+  return resolvePluginImportSpecifier({
+    packageName: NOSTR_PLUGIN_PACKAGE_NAME,
+    localEntries: ["../plugins/plugin-nostr/dist/index"],
+  });
 }
 
 const MATRIX_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-matrix";
-const MATRIX_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-matrix/dist/index",
-] as const;
 
-/**
- * Resolve the Matrix plugin import specifier.
- * Prefers package resolution, then falls back to local plugin checkout paths.
- */
 export function resolveMatrixPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(MATRIX_PLUGIN_PACKAGE_NAME)) {
-    return MATRIX_PLUGIN_PACKAGE_NAME;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  for (const relativeEntryPath of MATRIX_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
-    if (existsSync(absoluteEntryPath)) {
-      return pathToFileURL(absoluteEntryPath).href;
-    }
-  }
-
-  return null;
+  return resolvePluginImportSpecifier({
+    packageName: MATRIX_PLUGIN_PACKAGE_NAME,
+    localEntries: ["../plugins/plugin-matrix/dist/index"],
+  });
 }
 
 const FEISHU_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-feishu";
-const FEISHU_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-feishu/dist/index",
-] as const;
 
-/**
- * Resolve the Feishu plugin import specifier.
- * Prefers package resolution, then falls back to local plugin checkout paths.
- */
 export function resolveFeishuPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(FEISHU_PLUGIN_PACKAGE_NAME)) {
-    return FEISHU_PLUGIN_PACKAGE_NAME;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  const nodeModulesDistEntry = path.resolve(
-    packageRoot,
-    "node_modules",
-    "@elizaos",
-    "plugin-feishu",
-    "dist",
-    "index.js",
-  );
-  if (existsSync(nodeModulesDistEntry)) {
-    return pathToFileURL(nodeModulesDistEntry).href;
-  }
-
-  for (const relativeEntryPath of FEISHU_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const absoluteEntryPath = path.resolve(packageRoot, relativeEntryPath);
-    if (existsSync(absoluteEntryPath)) {
-      return pathToFileURL(absoluteEntryPath).href;
-    }
-  }
-
-  return null;
-}
-
-const WECHAT_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-wechat";
-const WECHAT_PLUGIN_LEGACY_PACKAGE_NAME = "@elizaai/plugin-wechat";
-const WECHAT_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "src/index.ts",
-  "dist/index.js",
-] as const;
-
-export function resolveWechatPluginImportSpecifier(): string | null {
-  if (isPackageImportResolvable(WECHAT_PLUGIN_PACKAGE_NAME)) {
-    return WECHAT_PLUGIN_PACKAGE_NAME;
-  }
-  if (isPackageImportResolvable(WECHAT_PLUGIN_LEGACY_PACKAGE_NAME)) {
-    return WECHAT_PLUGIN_LEGACY_PACKAGE_NAME;
-  }
-
-  const helperDir = path.dirname(fileURLToPath(import.meta.url));
-  const packageRoot = path.resolve(helperDir, "..", "..");
-
-  // Check node_modules for either the canonical or legacy package name.
-  for (const packageName of [
-    WECHAT_PLUGIN_PACKAGE_NAME,
-    WECHAT_PLUGIN_LEGACY_PACKAGE_NAME,
-  ]) {
-    const packageSegments = packageName.split("/");
-    for (const relativeEntryPath of WECHAT_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-      const nodeModulesEntry = path.resolve(
-        packageRoot,
-        "node_modules",
-        ...packageSegments,
-        relativeEntryPath,
-      );
-      if (existsSync(nodeModulesEntry)) {
-        return pathToFileURL(nodeModulesEntry).href;
-      }
-    }
-  }
-
-  for (const relativeEntryPath of WECHAT_PLUGIN_LOCAL_ENTRY_CANDIDATES) {
-    const nodeModulesEntry = path.resolve(
-      packageRoot,
-      "node_modules",
-      "@elizaos",
-      "plugin-wechat",
-      relativeEntryPath,
-    );
-    if (existsSync(nodeModulesEntry)) {
-      return pathToFileURL(nodeModulesEntry).href;
-    }
-  }
-
-  return null;
+  return resolvePluginImportSpecifier({
+    packageName: FEISHU_PLUGIN_PACKAGE_NAME,
+    nodeModulesEntries: [
+      {
+        packageName: FEISHU_PLUGIN_PACKAGE_NAME,
+        relativeEntryPath: "dist/index.js",
+      },
+    ],
+    localEntries: ["../plugins/plugin-feishu/dist/index"],
+  });
 }
 
 /** Build a mock update check result with deterministic defaults. */

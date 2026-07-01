@@ -371,7 +371,7 @@ export class FeedAgentExecutor implements AgentExecutor {
 
     const result = await executor.executeOperation(command, context);
     // Cast to JsonValue since ExecutorOperationResult is compatible at runtime
-    return result as unknown as JsonValue;
+    return result as JsonValue;
   }
 
   async execute(

@@ -103,7 +103,7 @@ export async function broadcastChatMessage(
   // Cast to JsonValue for type compatibility - metadata may contain complex nested types
   await broadcastToChannel(`chat:${chatId}`, {
     type: "new_message",
-    message: message as unknown as JsonValue,
+    message: message as JsonValue,
   });
 }
 
@@ -122,7 +122,7 @@ export async function broadcastChatMessageReaction(
 ): Promise<void> {
   await broadcastToChannel(`chat:${chatId}`, {
     type: "message_reaction",
-    reaction: reaction as unknown as JsonValue,
+    reaction: reaction as JsonValue,
   });
 }
 

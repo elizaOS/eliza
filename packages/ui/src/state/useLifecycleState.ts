@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AgentStatus } from "../api";
+import { type ActionTone, TOAST_TTL_MS } from "./action-notice";
 import {
   loadPersistedFirstRunComplete,
   savePersistedFirstRunComplete,
@@ -340,8 +341,8 @@ export function useLifecycleState(): LifecycleStateHook {
   const setActionNotice = useCallback(
     (
       text: string,
-      tone: "info" | "success" | "error" = "info",
-      ttlMs = 2800,
+      tone: ActionTone = "info",
+      ttlMs: number = TOAST_TTL_MS.default,
       once = false,
       busy = false,
     ) => {

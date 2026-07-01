@@ -12,6 +12,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hold_style.polite.with_injection_attempt.036",
   title:
     "hold_style :: all_lowercase :: polite :: with_injection_attempt :: 6-turn (36)",

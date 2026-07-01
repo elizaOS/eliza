@@ -346,4 +346,104 @@ describe("EvaluatorService", () => {
 			}),
 		);
 	});
+
+	const registerOkEvaluator = (runtime: AgentRuntime): void => {
+		runtime.registerEvaluator({
+			name: "ok",
+			description: "ok section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract ok.",
+			parse: (output) => output as never,
+			processors: [
+				{
+					name: "storeOk",
+					process: async () => ({ success: true }),
+				},
+			],
+		});
+	};
+
+	it("arms the schema skip after repeated generic rejections", async () => {
+		const runtime = makeRuntime();
+		registerOkEvaluator(runtime);
+
+		const useModel = vi
+			.fn()
+			// Turn 1: generic 400 (streak 1, not yet armed) → json_object succeeds.
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce({ ok: { ok: true } })
+			// Turn 2: generic 400 again (streak 2 → arm) → json_object succeeds.
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce({ ok: { ok: true } })
+			// Turn 3: armed → straight to json_object, no schema attempt.
+			.mockResolvedValueOnce({ ok: { ok: true } });
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const service = new EvaluatorService(runtime);
+		await service.run(makeMessage());
+		await service.run(makeMessage());
+		await service.run(makeMessage());
+
+		// Turns 1 & 2 each attempt the schema (2 calls); turn 3 skips it (1 call).
+		expect(useModel).toHaveBeenCalledTimes(5);
+		expect(useModel.mock.calls[0]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[2]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[4]?.[1]).not.toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[4]?.[1]?.responseFormat).toEqual({
+			type: "json_object",
+		});
+	});
+
+	it("arms the schema skip immediately on an explicit schema rejection", async () => {
+		const runtime = makeRuntime();
+		registerOkEvaluator(runtime);
+
+		const useModel = vi
+			.fn()
+			// Turn 1: provider names the schema as the problem → arm immediately.
+			.mockRejectedValueOnce(
+				new Error("json_schema response_format is unsupported"),
+			)
+			.mockResolvedValueOnce({ ok: { ok: true } })
+			// Turn 2: armed → straight to json_object.
+			.mockResolvedValueOnce({ ok: { ok: true } });
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const service = new EvaluatorService(runtime);
+		await service.run(makeMessage());
+		await service.run(makeMessage());
+
+		// Schema-specific rejection arms after a single turn (no streak needed).
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(useModel.mock.calls[0]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[2]?.[1]).not.toHaveProperty("responseSchema");
+	});
+
+	it("does not arm on a one-off generic rejection that later succeeds", async () => {
+		const runtime = makeRuntime();
+		registerOkEvaluator(runtime);
+
+		const useModel = vi
+			.fn()
+			// Turn 1: transient generic 400 (streak 1) → json_object succeeds.
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce({ ok: { ok: true } })
+			// Turn 2: schema SUCCEEDS → streak resets.
+			.mockResolvedValueOnce({ ok: { ok: true } })
+			// Turn 3: another lone generic 400 (streak back to 1, still not armed).
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce({ ok: { ok: true } });
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const service = new EvaluatorService(runtime);
+		await service.run(makeMessage());
+		await service.run(makeMessage());
+		await service.run(makeMessage());
+
+		// The transient blip never sticks: turns 2 and 3 still attempt the schema.
+		expect(useModel).toHaveBeenCalledTimes(5);
+		expect(useModel.mock.calls[2]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[3]?.[1]).toHaveProperty("responseSchema");
+	});
 });

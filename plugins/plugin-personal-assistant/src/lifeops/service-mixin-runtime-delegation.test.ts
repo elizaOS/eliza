@@ -6,16 +6,9 @@ import type {
   LifeOpsConnectorGrant,
 } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
-import { LifeOpsServiceBase } from "./service-mixin-core.js";
-import { withSignal } from "./service-mixin-signal.js";
-import { withTelegram } from "./service-mixin-telegram.js";
-import { withWhatsApp } from "./service-mixin-whatsapp.js";
-import { withX } from "./service-mixin-x.js";
-import { withXRead } from "./service-mixin-x-read.js";
+import { LifeOpsService } from "./service.js";
 
-const TestMessagingService = withX(
-  withXRead(withWhatsApp(withSignal(withTelegram(LifeOpsServiceBase)))),
-);
+const TestMessagingService = LifeOpsService;
 
 type PrimaryChannelPolicy = {
   allowPosts: boolean;

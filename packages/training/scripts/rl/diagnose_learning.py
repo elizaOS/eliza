@@ -12,7 +12,7 @@ eval prompt response at baseline, post-SFT, and post-RL. Then analyzes:
   - Signs of underfitting (still ignoring format)
 
 Usage:
-    python scripts/diagnose_learning.py --model Qwen/Qwen3-4B --ticks 30
+    python scripts/diagnose_learning.py --model google/gemma-4-E4B --ticks 30
 """
 
 from __future__ import annotations
@@ -414,7 +414,7 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
+    parser.add_argument("--model", default="google/gemma-4-E4B")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--agents", type=int, default=5)
     parser.add_argument("--ticks", type=int, default=30)

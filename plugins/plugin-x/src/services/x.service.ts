@@ -13,7 +13,7 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
-import { ClientBase } from "../base";
+import { ClientBase, type TwitterProfile } from "../base";
 import {
   normalizeXAccountId,
   resolveDefaultXAccountId,
@@ -21,6 +21,7 @@ import {
   resolveTwitterAccountConfig,
 } from "../client/accounts.js";
 import { SearchMode } from "../client/index.js";
+import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
 import { TwitterDiscoveryClient } from "../discovery";
 import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
@@ -303,6 +304,13 @@ export class XService extends Service {
     service.runtime = runtime;
 
     try {
+      const authMode = (
+        getSetting(runtime, "TWITTER_AUTH_MODE") || "env"
+      ).toLowerCase();
+      if (authMode === "env") {
+        await materializeEnvAccountIfMissing(runtime);
+      }
+
       const defaultState = await resolveTwitterAccountConfig(runtime);
       await validateTwitterConfig(runtime, defaultState);
       service.defaultAccountId = resolveDefaultXAccountId(
@@ -458,6 +466,22 @@ export class XService extends Service {
       grantedScopes: scopes,
       authMode,
     };
+  }
+
+  /**
+   * Returns the authenticated X profile (username, screen name, bio, nicknames)
+   * for an already-loaded account, or `null` if the account's client has not
+   * been initialized yet. Used by the `TWITTER_IDENTITY` provider to make the
+   * agent aware of its own X identity.
+   */
+  getActiveProfile(
+    accountIdInput: string = this.defaultAccountId,
+  ): TwitterProfile | null {
+    const accountId = this.resolveAccountId(accountIdInput);
+    const loadedClient =
+      this.accountClients.get(accountId) ??
+      (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
+    return loadedClient?.client.profile ?? null;
   }
 
   private async startAutonomousClients(

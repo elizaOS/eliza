@@ -12,6 +12,7 @@ import type { ViewDeclaration } from "@elizaos/core";
 export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "tutorial",
+    viewKind: "system",
     label: "Tutorial",
     description:
       "Interactive guided tour — learn the chat, switching views, and Settings in 90 seconds",
@@ -26,6 +27,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "help",
+    viewKind: "system",
     label: "Help",
     description:
       "Searchable FAQ and knowledge base — what Eliza is and how everything works",
@@ -40,6 +42,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "camera",
+    viewKind: "preview",
     label: "Camera",
     description:
       "Live camera preview with photo capture and front/back switching",
@@ -54,6 +57,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "chat",
+    viewKind: "system",
     label: "Chat",
     description:
       "Conversations with your agent, inbound messages from every connector",
@@ -68,6 +72,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "character",
+    viewKind: "system",
     label: "Character",
     description: "Agent identity, personality, style, and knowledge documents",
     icon: "UserRound",
@@ -79,7 +84,21 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     desktopTabEnabled: true,
   },
   {
+    id: "documents",
+    viewKind: "system",
+    label: "Knowledge",
+    description: "Agent knowledge documents, uploads, and retrieval sources",
+    icon: "FileText",
+    heroImagePath: "assets/view-heroes/character.png",
+    path: "/character/documents",
+    order: 51,
+    tags: ["documents", "knowledge", "files", "uploads", "retrieval"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
     id: "automations",
+    viewKind: "system",
     label: "Automations",
     description: "Scheduled tasks and recurring workflows",
     icon: "Clock3",
@@ -91,6 +110,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "plugins-page",
+    viewKind: "system",
     label: "Plugins",
     description: "Manage installed plugins, configure credentials",
     icon: "Puzzle",
@@ -110,6 +130,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "trajectories",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Trajectories",
     description: "Agent trajectory logs and training data",
     icon: "GitBranch",
@@ -117,11 +139,25 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/trajectories",
     order: 70,
     tags: ["training", "logs", "trajectories"],
-    developerOnly: true,
+    visibleInManager: true,
+  },
+  {
+    id: "transcripts",
+    viewKind: "system",
+    label: "Transcripts",
+    description:
+      "Recorded voice transcripts — play, scrub, and read with word sync",
+    icon: "AudioLines",
+    heroImagePath: "assets/view-heroes/transcripts.png",
+    path: "/apps/transcripts",
+    order: 71,
+    tags: ["transcript", "voice", "recording", "audio"],
     visibleInManager: true,
   },
   {
     id: "memories",
+    viewKind: "system",
+    developerOnly: false,
     label: "Memories",
     description: "Agent memory viewer and management",
     icon: "Brain",
@@ -129,11 +165,12 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/memories",
     order: 72,
     tags: ["memory", "knowledge"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "database",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Database",
     description: "Raw database viewer and query interface",
     icon: "Database",
@@ -141,11 +178,12 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/database",
     order: 80,
     tags: ["database", "data", "debug"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "logs",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Logs",
     description: "Runtime logs and agent debug output",
     icon: "FileText",
@@ -153,11 +191,11 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/logs",
     order: 81,
     tags: ["logs", "debug", "runtime"],
-    developerOnly: true,
     visibleInManager: true,
   },
   {
     id: "settings",
+    viewKind: "system",
     label: "Settings",
     description: "Configuration, plugins, credentials, and preferences",
     icon: "Settings",
@@ -167,5 +205,20 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["configuration", "preferences", "plugins"],
     visibleInManager: true,
     desktopTabEnabled: true,
+  },
+  {
+    id: "background",
+    viewKind: "preview",
+    label: "Background",
+    description:
+      "Set the app background — pick a shader color, upload an image, or generate one",
+    icon: "Image",
+    heroImagePath: "assets/view-heroes/background.png",
+    path: "/background",
+    order: 92,
+    tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
   },
 ];

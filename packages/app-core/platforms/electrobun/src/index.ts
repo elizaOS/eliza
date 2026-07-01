@@ -2,12 +2,18 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+import { pathToFileURL } from "node:url";
+import {
+  formatError,
+  resolveApiToken,
+  resolveDesktopApiPort,
+} from "@elizaos/shared";
 import type { BrowserWindow } from "electrobun/bun";
 import Electrobun, {
   ApplicationMenu,
   BrowserView,
   BuildConfig,
+  Screen,
   Updater,
   Utils,
   WGPU,
@@ -28,19 +34,27 @@ import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import {
+  appendChatOverlayShellModeParam,
+  computeBottomBarFrame,
+  resolveDesktopShellWindowPresentation,
+} from "./desktop-bottom-bar-config";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
-import { shouldCreateDesktopPill } from "./desktop-pill-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
   shouldCreateDesktopTray,
-  shouldStartOnboardingOverlay,
+  shouldEnableTrayPopover,
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
-import { getFloatingChatManager } from "./floating-chat-window";
-import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
+import {
+  appendKioskShellModeParam,
+  appendShellModeParam,
+  isKioskShellMode,
+  readRendererShellMode,
+} from "./kiosk-mode";
 import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
@@ -80,18 +94,7 @@ import {
 import { getPermissionManager } from "./native/permissions";
 import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
-import {
-  submitOnboardingFirstRun,
-  waitForApiReady,
-  waitForOnboardingNotificationChoice,
-} from "./native-onboarding";
-import {
-  closeOnboardingOverlayWindow,
-  createOnboardingOverlayWindow,
-  getOnboardingOverlayWindow,
-} from "./onboarding-overlay-window";
 import { getPersistedDeployment } from "./persisted-deployment";
-import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
   createRendererApiProxyRequestInit,
@@ -629,10 +632,23 @@ let surfaceWindowManager: SurfaceWindowManager | null = null;
 let rendererUrlPromise: Promise<string> | null = null;
 let backgroundWindowPromise: Promise<void> | null = null;
 let isQuitting = false;
+let quitRequestPromise: Promise<void> | null = null;
 
-function requestAppQuit(): void {
+function requestAppQuit(): Promise<void> {
+  if (quitRequestPromise) {
+    return quitRequestPromise;
+  }
+
   isQuitting = true;
-  Utils.quit();
+  quitRequestPromise = (async () => {
+    await runShutdownCleanup("explicit-quit").catch((err) => {
+      logger.warn(
+        `[Main] Shutdown cleanup failed before explicit quit: ${formatError(err)}`,
+      );
+    });
+    Utils.quit();
+  })();
+  return quitRequestPromise;
 }
 
 /**
@@ -647,6 +663,7 @@ function isPackagedDesktopBuild(): boolean {
 }
 
 const cleanupFns: Array<() => void | Promise<void>> = [];
+let shutdownCleanupPromise: Promise<void> | null = null;
 let lastFocusedWindow: ManagedWindowLike | null = null;
 const macOpenedDevtoolsWindowIds = new Set<number>();
 
@@ -911,8 +928,12 @@ async function resolveRendererUrl(): Promise<string> {
   }
 
   if (!rendererUrl) {
-    // Last resort: file:// (may have CORS issues with crossorigin module scripts)
-    rendererUrl = `file://${path.join(resolveRendererAssetDir(import.meta.dir), "index.html")}`;
+    // Last resort: file:// (may have CORS issues with crossorigin module scripts).
+    // pathToFileURL builds a valid file:///C:/… URL on Windows; `file://${winPath}`
+    // would be malformed (backslashes, drive letter parsed as host) and not load.
+    rendererUrl = pathToFileURL(
+      path.join(resolveRendererAssetDir(import.meta.dir), "index.html"),
+    ).href;
     logger.warn(
       "[Main] Falling back to file:// renderer URL — CORS issues possible",
     );
@@ -921,11 +942,68 @@ async function resolveRendererUrl(): Promise<string> {
   return rendererUrl;
 }
 
+function appendApiBaseParam(rendererUrl: string, apiBase: string): string {
+  try {
+    const url = new URL(rendererUrl);
+    if (!url.searchParams.has("apiBase")) {
+      url.searchParams.set("apiBase", apiBase);
+    }
+    return url.toString();
+  } catch {
+    return rendererUrl;
+  }
+}
+
+async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
+  const rendererUrl = await resolveRendererUrl();
+  const runtime = resolveDesktopRuntime();
+  if (runtime.mode === "external" && runtime.externalApi.base) {
+    return appendApiBaseParam(rendererUrl, runtime.externalApi.base);
+  }
+  return rendererUrl;
+}
+
+/**
+ * Resolve the chromeless bottom-bar window frame from the primary display's
+ * usable work area. Falls back to a 1080p estimate if the Screen API is
+ * unavailable (the user-visible bar still opens; only the width estimate is off).
+ */
+function resolveBottomBarFrame(): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  let workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+  try {
+    const display = Screen.getPrimaryDisplay();
+    if (display?.workArea) {
+      workArea = display.workArea;
+    }
+  } catch (err) {
+    logger.warn(
+      `[main-window] bottom-bar Screen.getPrimaryDisplay() failed; using default geometry: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return computeBottomBarFrame(workArea);
+}
+
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
-  const kiosk = isKioskShellMode();
+  const presentation = resolveDesktopShellWindowPresentation();
+  const kiosk = presentation.mode === "kiosk";
+  // Chromeless bottom-bar shell (#9953): a frameless, transparent, always-on-top
+  // bar pinned to the screen bottom that renders the chat-overlay shell only.
+  // Opt-in and mutually exclusive with kiosk.
+  const bottomBar = presentation.mode === "bottom-bar";
+  const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
+  const requestedShellMode = readRendererShellMode();
   const rendererUrl = kiosk
-    ? appendKioskShellModeParam(await resolveRendererUrl())
-    : await resolveRendererUrl();
+    ? appendKioskShellModeParam(baseRendererUrl)
+    : bottomBar
+      ? appendChatOverlayShellModeParam(baseRendererUrl)
+      : requestedShellMode && requestedShellMode !== "full"
+        ? appendShellModeParam(baseRendererUrl, requestedShellMode)
+        : baseRendererUrl;
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,
@@ -956,18 +1034,19 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     preload = "// preload unavailable";
   }
 
-  const windowFrame = {
-    width: state.width,
-    height: state.height,
-    x: state.x,
-    y: state.y,
-  };
-  const titleBarStyle = kiosk
-    ? "hidden"
-    : process.platform === "darwin"
-      ? "hiddenInset"
-      : "default";
-  const transparent = !kiosk && process.platform === "darwin";
+  const windowFrame = bottomBar
+    ? resolveBottomBarFrame()
+    : {
+        width: state.width,
+        height: state.height,
+        x: state.x,
+        y: state.y,
+      };
+  const titleBarStyle = presentation.titleBarStyle;
+  // Bottom bar wants a transparent surface so the desktop shows through the
+  // empty region above the bar; on darwin it pairs with vibrancy. Win/Linux
+  // transparency support varies, so the bar stays opaque there for now.
+  const transparent = presentation.transparent;
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,
@@ -1012,8 +1091,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       frame: {
         x: 0,
         y: 0,
-        width: state.width,
-        height: state.height,
+        width: windowFrame.width,
+        height: windowFrame.height,
       },
       windowId: win.id,
       rpc,
@@ -1052,6 +1131,23 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     return win;
   }
 
+  // Bottom-bar shell: pin always-on-top and (on darwin) apply vibrancy. The bar
+  // has fixed, display-derived geometry, so skip bounds persistence + the
+  // first-launch maximize entirely.
+  if (bottomBar) {
+    try {
+      (
+        win as typeof win & { setAlwaysOnTop?: (flag: boolean) => void }
+      ).setAlwaysOnTop?.(true);
+    } catch (err) {
+      logger.warn(
+        `[main-window] bottom-bar setAlwaysOnTop() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    applyMacOSWindowEffects(win);
+    return win;
+  }
+
   applyMacOSWindowEffects(win);
   win.on("resize", () => scheduleStateSave(statePath, win));
   win.on("move", () => scheduleStateSave(statePath, win));
@@ -1085,9 +1181,10 @@ function attachMainWindow(
   wireMainWindowAfterCreate(win, rpc, sendToWebview);
   currentWindow = win;
   currentSendToWebview = sendToWebview;
+  const presentation = resolveDesktopShellWindowPresentation();
   setCurrentMainWindow(win, {
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    transparent: process.platform === "darwin",
+    titleBarStyle: presentation.titleBarStyle,
+    transparent: presentation.transparent,
   });
   trackFocusedWindow(win);
   // Reveal the Dock icon in tray-first mode whenever a main window is attached,
@@ -1160,7 +1257,7 @@ function attachMainWindow(
       logger.info(
         "[Main] Window close on Linux with no tray — quitting (no surface to restore from)",
       );
-      requestAppQuit();
+      void requestAppQuit();
       return;
     }
 
@@ -1211,62 +1308,6 @@ async function ensureBackgroundWindow(): Promise<void> {
   showBackgroundRunNoticeOnce();
 }
 
-/**
- * Create — or focus, if already open — the transparent onboarding overlay
- * window and wire its API base. Shared by the first-run boot branch and the
- * dock-reopen path so the overlay (not the dashboard) is always the surface
- * shown while onboarding is the active first-run mode.
- */
-async function openOnboardingOverlayWindow(): Promise<BrowserWindow> {
-  const existing = getOnboardingOverlayWindow();
-  if (existing) {
-    try {
-      existing.focus();
-    } catch {
-      // focus may be unavailable on this platform
-    }
-    return existing;
-  }
-  const { rpc } = createDesktopRpc("onboarding-overlay");
-  const rendererUrl = await resolveRendererUrl();
-  let preload = "";
-  try {
-    preload = readResolvedPreloadScript(import.meta.dir);
-  } catch {
-    // Dev fallback — an unbuilt preload should not block the overlay.
-  }
-  const win = createOnboardingOverlayWindow({ rendererUrl, preload, rpc });
-  win.webview.on("dom-ready", () => {
-    injectApiBase(win);
-  });
-
-  // When the overlay closes (renderer calls window.close() after the first-run
-  // API completes), transition to the main dashboard window. Without this the
-  // overlay disappears but no dashboard appears.
-  win.on("close", () => {
-    logger.info(
-      "[Main] Onboarding overlay closed — creating main dashboard window",
-    );
-    void (async () => {
-      try {
-        const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-          createDesktopRpc("main");
-        attachMainWindow(
-          await createMainWindow(mainRpc),
-          mainRpc,
-          mainSendToWebview,
-        );
-      } catch (err) {
-        logger.error(
-          `[Main] Failed to create dashboard after overlay close: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
-  });
-
-  return win;
-}
-
 /** Restore or recreate the main window (called on dock icon click). */
 async function restoreWindow(): Promise<void> {
   if (currentWindow) {
@@ -1278,15 +1319,6 @@ async function restoreWindow(): Promise<void> {
     }
     // Re-reveal the Dock icon for an already-open window (tray-first only).
     getDesktopManager().markMainWindowShown();
-    return;
-  }
-  // Onboarding-overlay mode: the correct first-run surface is the transparent
-  // overlay card, NOT the opaque dashboard. Re-show (or recreate) the overlay
-  // instead of building a main window. Once onboarding completes and a
-  // dashboard is attached, `currentWindow` is set and the branch above wins.
-  if (shouldStartOnboardingOverlay()) {
-    await openOnboardingOverlayWindow();
-    logger.info("[Main] Reopened onboarding overlay (dock reopen)");
     return;
   }
   if (backgroundWindowPromise) {
@@ -1669,13 +1701,12 @@ function injectApiBaseIntoOpenRendererWindows(): void {
     injectApiBase(currentWindow);
   }
 
-  const pillWindow = getPillWindow();
-  if (pillWindow && pillWindow !== currentWindow) {
-    injectApiBase(pillWindow);
-  }
-
   surfaceWindowManager?.forEachWindow((w) => {
     injectApiBase(w as BrowserWindow);
+  });
+
+  getDesktopManager().forEachTrayPopoverWindow((w) => {
+    injectApiBase(w);
   });
 }
 
@@ -1689,12 +1720,11 @@ function collectOpenRendererWindows(): BrowserWindow[] {
   if (currentWindow) {
     windows.push(currentWindow);
   }
-  const pillWindow = getPillWindow();
-  if (pillWindow && pillWindow !== currentWindow) {
-    windows.push(pillWindow);
-  }
   surfaceWindowManager?.forEachWindow((w) => {
     windows.push(w as BrowserWindow);
+  });
+  getDesktopManager().forEachTrayPopoverWindow((w) => {
+    windows.push(w);
   });
   return windows;
 }
@@ -2172,13 +2202,41 @@ function setupDockReopen(): void {
 }
 
 async function runShutdownCleanup(reason: string): Promise<void> {
-  logger.info(`[Main] App quitting (${reason}), disposing native modules...`);
-  isQuitting = true;
-  sendToActiveRenderer("desktopShutdownStarted", { reason });
-  for (const cleanupFn of cleanupFns) {
-    await Promise.resolve(cleanupFn());
+  if (shutdownCleanupPromise) {
+    return shutdownCleanupPromise;
   }
-  await disposeNativeModules();
+
+  shutdownCleanupPromise = (async () => {
+    logger.info(`[Main] App quitting (${reason}), disposing native modules...`);
+    isQuitting = true;
+    sendToActiveRenderer("desktopShutdownStarted", { reason });
+    const cleanupFnsToRun = cleanupFns.splice(0);
+    const cleanupResults = await Promise.allSettled(
+      cleanupFnsToRun.map((cleanupFn) => Promise.resolve().then(cleanupFn)),
+    );
+    for (const result of cleanupResults) {
+      if (result.status === "rejected") {
+        logger.warn(
+          `[Main] Shutdown cleanup callback failed: ${
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason)
+          }`,
+        );
+      }
+    }
+    try {
+      await disposeNativeModules();
+    } catch (error) {
+      logger.warn(
+        `[Main] Native module disposal failed during shutdown: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  })();
+
+  return shutdownCleanupPromise;
 }
 
 function setupShutdown(): void {
@@ -2428,7 +2486,7 @@ async function main(): Promise<void> {
         // The agent rebound to a different loopback port (or recovered from a
         // crash) — the cookies we installed during _startAgent were scoped to
         // the old origin. Re-prime so every renderer's next /api request stays
-        // authenticated, including the OS-level pill window.
+        // authenticated, including any open secondary renderer windows.
         markDesktopSessionStale();
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
@@ -2444,92 +2502,9 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  const onboardingOverlay = shouldStartOnboardingOverlay();
   const trayFirst = shouldStartTrayFirst();
   let mainWin: BrowserWindow | null = null;
-  if (onboardingOverlay) {
-    // First-run onboarding (macOS, opt-in): post a native macOS notification
-    // with action buttons ("Local On-Device", "Local Cloud AI", "Eliza Cloud").
-    // The user's choice is polled via FFI. Once selected, we wait for the
-    // embedded API server to be ready, POST the first-run config, then open
-    // the dashboard. Falls back to the overlay window on FFI failure.
-    logger.info("[Main] Onboarding — posting native macOS notification");
-    recordStartupPhase("creating_window", { pid: process.pid });
-
-    // Run notification flow async — don't block the event loop.
-    // Once the user picks and the API is ready, we create the dashboard.
-    void (async () => {
-      try {
-        const choice = await waitForOnboardingNotificationChoice();
-        if (!choice) {
-          // FFI failed or unsupported — fall back to overlay window.
-          logger.warn(
-            "[Main] Native notification unavailable — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        // Wait for the embedded API server to be ready before submitting.
-        // The agent manager may not have started yet, so poll until
-        // resolveLoopbackApiBase() returns a valid URL.
-        let apiBase: string | null = null;
-        const apiBaseDeadline = Date.now() + 120_000;
-        while (Date.now() < apiBaseDeadline) {
-          apiBase = resolveLoopbackApiBase();
-          if (apiBase) break;
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-        if (!apiBase) {
-          logger.error(
-            "[Main] Cannot resolve API base after 120s — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        logger.info(
-          `[Main] Notification choice received — waiting for API at ${apiBase}`,
-        );
-        const apiReady = await waitForApiReady(apiBase, 120_000);
-        if (!apiReady) {
-          logger.error(
-            "[Main] API server not ready after 120s — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        // Submit first-run config to the API.
-        const submitted = await submitOnboardingFirstRun(apiBase, choice);
-        if (!submitted) {
-          logger.error(
-            "[Main] First-run submission failed — falling back to overlay",
-          );
-          await openOnboardingOverlayWindow();
-          return;
-        }
-
-        // First-run complete — close the overlay and let its close handler
-        // create the dashboard (single handoff point). The win.on("close")
-        // handler wired in openOnboardingOverlayWindow() transitions to the
-        // main dashboard window, so we just need to trigger it.
-        logger.info(
-          "[Main] First-run complete — closing overlay to transition to dashboard",
-        );
-        closeOnboardingOverlayWindow();
-      } catch (err) {
-        logger.error(
-          `[Main] Native onboarding failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        await openOnboardingOverlayWindow();
-      }
-    })();
-
-    recordStartupPhase("window_ready", {
-      pid: process.pid,
-    });
-  } else if (trayFirst) {
+  if (trayFirst) {
     // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
     // only surface; the main window is created lazily via restoreWindow() /
     // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a
@@ -2555,31 +2530,6 @@ async function main(): Promise<void> {
     });
   }
   seedFirstPartyRemotePluginsForStartup();
-
-  // Configure the floating chat manager now that the renderer URL is resolved.
-  // This must run after createMainWindow() so rendererUrlPromise is already set.
-  void resolveRendererUrl().then((url) => {
-    let preload = "";
-    try {
-      preload = readResolvedPreloadScript(import.meta.dir);
-    } catch {
-      /* non-fatal */
-    }
-    getFloatingChatManager().configure(url, preload);
-    // In kiosk mode the chat pill lives in-canvas on the KioskShell, so we
-    // never spawn the separate native pill toplevel. Outside kiosk, the pill
-    // loads the same renderer in chat-overlay shell mode so the assistant
-    // lives in its own OS-level window instead of inside the app.
-    if (!isKioskShellMode() && shouldCreateDesktopPill()) {
-      try {
-        createPillWindow({ rendererUrl: url, preload });
-      } catch (err) {
-        logger.warn(
-          `[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-  });
 
   // Per-window RPC tracking: surface windows each get their own typed
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow
@@ -2632,7 +2582,7 @@ async function main(): Promise<void> {
   });
   getDesktopManager().setRestoreMainWindowCallback(() => restoreWindow());
   getDesktopManager().setRequestQuitCallback(() => {
-    requestAppQuit();
+    void requestAppQuit();
   });
   getDesktopManager().setOpenSurfaceWindowCallback(
     (surface, browse, alwaysOnTop) => {
@@ -2686,6 +2636,39 @@ async function main(): Promise<void> {
       logger.warn(
         `[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+
+    // Tray popover (#9953 Phase 4): when enabled, a tray click opens a widget
+    // popover instead of restoring the full window. macOS-only today (see
+    // shouldEnableTrayPopover); Win/Linux keep the text context menu.
+    if (shouldEnableTrayPopover()) {
+      try {
+        const base = await resolveRendererUrlForCurrentRuntime();
+        const popoverUrl = new URL(base);
+        popoverUrl.searchParams.set("shellMode", "tray-popover");
+        const { rpc } = createDesktopRpc("tray-popover");
+        const buildInfo = await BuildConfig.get();
+        const mainWindowPartition = resolveMainWindowPartition(process.env, {
+          platform: process.platform,
+          buildInfo,
+        });
+        desktop.configureTrayPopover({
+          url: popoverUrl.href,
+          preload: readResolvedPreloadScript(import.meta.dir),
+          partition: mainWindowPartition,
+          rpc,
+          wireRpc: () => wireSettingsRpcAfterCreate(rpc),
+          injectApiBase,
+          onWindowFocused: (window) => {
+            lastFocusedWindow = window;
+          },
+        });
+        logger.info("[Main] Tray popover enabled");
+      } catch (err) {
+        logger.warn(
+          `[Main] Tray popover configuration failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   } else {
     logger.info("[Main] Desktop tray disabled by environment");

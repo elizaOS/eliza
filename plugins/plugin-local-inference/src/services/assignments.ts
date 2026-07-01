@@ -20,6 +20,26 @@ import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
 
 const ASSIGNMENTS_FILENAME = "assignments.json";
 
+/**
+ * Raised when a slot assignment is outside the curated Eliza-1 catalog. The
+ * local stack is Eliza-1 only, so the assignment policy rejects anything else.
+ */
+export class AssignmentRejectedError extends Error {
+	readonly code = "ASSIGNMENT_REJECTED" as const;
+	readonly slot: AgentModelSlot;
+	readonly modelId: string;
+	constructor(args: {
+		slot: AgentModelSlot;
+		modelId: string;
+		message: string;
+	}) {
+		super(args.message);
+		this.name = "AssignmentRejectedError";
+		this.slot = args.slot;
+		this.modelId = args.modelId;
+	}
+}
+
 interface AssignmentsFile {
 	version: 1;
 	assignments: ModelAssignments;
@@ -27,6 +47,27 @@ interface AssignmentsFile {
 
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), ASSIGNMENTS_FILENAME);
+}
+
+function isCuratedEliza1AssignmentId(modelId: string): boolean {
+	const catalog = findCatalogModel(modelId);
+	return (
+		!!catalog &&
+		!catalog.hiddenFromCatalog &&
+		catalog.runtimeRole !== "mtp-drafter" &&
+		isDefaultEligibleId(catalog.id)
+	);
+}
+
+function sanitizeAssignments(assignments: ModelAssignments): ModelAssignments {
+	const next: ModelAssignments = {};
+	for (const [slot, modelId] of Object.entries(assignments) as Array<
+		[AgentModelSlot, string | undefined]
+	>) {
+		if (!modelId || !isCuratedEliza1AssignmentId(modelId)) continue;
+		next[slot] = modelId;
+	}
+	return next;
 }
 
 async function ensureRoot(): Promise<void> {
@@ -38,7 +79,7 @@ export async function readAssignments(): Promise<ModelAssignments> {
 		const raw = await fs.readFile(assignmentsPath(), "utf8");
 		const parsed = JSON.parse(raw) as AssignmentsFile;
 		if (parsed?.version !== 1 || !parsed.assignments) return {};
-		return parsed.assignments;
+		return sanitizeAssignments(parsed.assignments);
 	} catch {
 		return {};
 	}
@@ -58,9 +99,8 @@ function pickLargestInstalledModel(
  * Build slot recommendations from currently-installed models.
  *
  * Only default-eligible Eliza-1 downloads are auto-recommended.
- * External-scan blobs and ad-hoc Hugging Face downloads are surfaced only
- * through explicit search/manual selection; they are NOT auto-assigned to
- * any agent slot.
+ * External-scan blobs and ad-hoc Hugging Face downloads are never assigned to
+ * agent slots.
  *
  * Why: external blobs may use newer architectures or quant formats outside
  * the bundled `capacitor-llama` binding's supported set. Auto-loading
@@ -119,6 +159,14 @@ export async function setAssignment(
 	const current = await readAssignments();
 	const next: ModelAssignments = { ...current };
 	if (modelId) {
+		if (!isCuratedEliza1AssignmentId(modelId)) {
+			throw new AssignmentRejectedError({
+				slot,
+				modelId,
+				message:
+					"Local inference assignments are limited to curated Eliza-1 tiers.",
+			});
+		}
 		next[slot] = modelId;
 	} else {
 		delete next[slot];

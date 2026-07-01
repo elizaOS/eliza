@@ -1,11 +1,11 @@
 export type ProviderMode =
-  | "elizaClassic"
   | "openai"
+  | "openrouter"
   | "anthropic"
+  | "elizacloud"
   | "xai"
   | "gemini"
   | "groq"
-  | "openrouter"
   | "ollama";
 
 type ProviderSettings = {
@@ -19,6 +19,12 @@ type ProviderSettings = {
   anthropicApiKey: string;
   anthropicSmallModel: string;
   anthropicLargeModel: string;
+
+  // Eliza Cloud (ELIZA_API_KEY → ELIZAOS_CLOUD_API_KEY)
+  elizacloudApiKey: string;
+  elizacloudBaseUrl: string;
+  elizacloudSmallModel: string;
+  elizacloudLargeModel: string;
 
   // xAI (OpenAI-compatible)
   xaiApiKey: string;
@@ -55,7 +61,7 @@ export type AppConfig = {
 };
 
 export const DEFAULT_CONFIG: AppConfig = {
-  mode: "elizaClassic",
+  mode: "openai",
   provider: {
     // OpenAI
     openaiApiKey: "",
@@ -67,6 +73,12 @@ export const DEFAULT_CONFIG: AppConfig = {
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
     anthropicLargeModel: "claude-sonnet-4-6",
+
+    // Eliza Cloud
+    elizacloudApiKey: "",
+    elizacloudBaseUrl: "https://www.elizacloud.ai/api/v1",
+    elizacloudSmallModel: "gpt-oss-120b",
+    elizacloudLargeModel: "zai-glm-4.7",
 
     // xAI (Grok via OpenAI-compatible API)
     xaiApiKey: "",
@@ -107,20 +119,20 @@ export type ChatMessage = {
 
 function hasValidCredentials(config: AppConfig): boolean {
   switch (config.mode) {
-    case "elizaClassic":
-      return true;
     case "openai":
       return config.provider.openaiApiKey.trim().length > 0;
+    case "openrouter":
+      return config.provider.openrouterApiKey.trim().length > 0;
     case "anthropic":
       return config.provider.anthropicApiKey.trim().length > 0;
+    case "elizacloud":
+      return config.provider.elizacloudApiKey.trim().length > 0;
     case "xai":
       return config.provider.xaiApiKey.trim().length > 0;
     case "gemini":
       return config.provider.googleGenaiApiKey.trim().length > 0;
     case "groq":
       return config.provider.groqApiKey.trim().length > 0;
-    case "openrouter":
-      return config.provider.openrouterApiKey.trim().length > 0;
     case "ollama":
       return config.provider.ollamaApiEndpoint.trim().length > 0;
     default:
@@ -128,7 +140,21 @@ function hasValidCredentials(config: AppConfig): boolean {
   }
 }
 
+/**
+ * Pick an inference provider from the first matching API-key env var, in
+ * priority order. Used when the client config carries no usable credentials.
+ * There is no offline fallback — if nothing is configured we fail loudly.
+ */
+export function selectProviderFromEnv(): ProviderMode {
+  if (process.env.OPENAI_API_KEY) return "openai";
+  if (process.env.OPENROUTER_API_KEY) return "openrouter";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.ELIZA_API_KEY) return "elizacloud";
+  throw new Error(
+    "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.",
+  );
+}
+
 export function getEffectiveMode(config: AppConfig): ProviderMode {
-  if (config.mode === "elizaClassic") return "elizaClassic";
-  return hasValidCredentials(config) ? config.mode : "elizaClassic";
+  return hasValidCredentials(config) ? config.mode : selectProviderFromEnv();
 }

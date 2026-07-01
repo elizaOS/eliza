@@ -1,0 +1,49 @@
+#version 450
+
+// Shared-memory-tiled mul_mm (#9584/#9715) — the cooperative-matrix-free
+// optimization for Mali (Mali-G715 has `matrix cores: none`, so prefill is
+// mul_mat-bound on raw global-memory bandwidth). Each TSxTS workgroup stages a
+// TSxTS tile of A and B into shared memory per K-step, so each global element
+// is read once per tile instead of once per MAC — cutting A/B global traffic by
+// ~TS. C[M,N] = A[M,K] * B[K,N], row-major f32; f32 accumulate.
+//
+// This is the standalone prototype the mul_mm investigation calls for; the win
+// it measures on real Mali (see mul_mm_bench) is what a warp-tiled
+// ggml-vulkan `mul_mm` would capture on-device.
+
+#define TS 16
+
+layout(local_size_x = TS, local_size_y = TS) in;
+
+layout(std430, binding = 0) readonly buffer ABuf { float A[]; };
+layout(std430, binding = 1) readonly buffer BBuf { float B[]; };
+layout(std430, binding = 2) writeonly buffer CBuf { float C[]; };
+
+layout(push_constant) uniform Push { uint M, N, K; } p;
+
+shared float As[TS][TS];
+shared float Bs[TS][TS];
+
+void main() {
+    uint lx = gl_LocalInvocationID.x;
+    uint ly = gl_LocalInvocationID.y;
+    uint col = gl_WorkGroupID.x * TS + lx; // N
+    uint row = gl_WorkGroupID.y * TS + ly; // M
+
+    float acc = 0.0;
+    uint nTiles = (p.K + TS - 1u) / TS;
+    for (uint t = 0; t < nTiles; ++t) {
+        uint aCol = t * TS + lx;
+        uint bRow = t * TS + ly;
+        As[ly][lx] = (row < p.M && aCol < p.K) ? A[row * p.K + aCol] : 0.0;
+        Bs[ly][lx] = (bRow < p.K && col < p.N) ? B[bRow * p.N + col] : 0.0;
+        barrier();
+        for (uint k = 0; k < TS; ++k) {
+            acc += As[ly][k] * Bs[k][lx];
+        }
+        barrier();
+    }
+    if (row < p.M && col < p.N) {
+        C[row * p.N + col] = acc;
+    }
+}

@@ -30,24 +30,16 @@ const repoRoot = resolve(
 );
 
 const VIEW_MANIFESTS = [
-  "plugins/plugin-companion/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket-app/src/plugin.ts",
-  "plugins/plugin-shopify-ui/src/plugin.ts",
-  "plugins/plugin-steward-app/src/plugin.ts",
-  "plugins/plugin-vincent/src/plugin.ts",
+  "plugins/plugin-polymarket/src/plugin.ts",
+  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
-  "plugins/plugin-2004scape/src/index.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
-  "plugins/plugin-clawville/src/index.ts",
-  "plugins/plugin-defense-of-the-agents/src/index.ts",
-  "plugins/plugin-hyperscape/src/index.ts",
-  "plugins/plugin-scape/src/index.ts",
   "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
@@ -56,48 +48,49 @@ const VIEW_MANIFESTS = [
 ] as const;
 
 const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
-  "plugins/plugin-companion/src/components/companion/CompanionView.tsx": [
-    "terminal-companion-state",
-    "terminal-companion-emotes",
-    "terminal-companion-play-emote",
-    "terminal-companion-stop-emote",
-  ],
-  "plugins/plugin-contacts/src/components/ContactsAppView.tsx": [
+  // Each collapsed plugin re-exports its `<Name>View` componentExport and the
+  // `interact` capability handler from a `<name>-view-bundle.ts` entry file, so
+  // that bundle entry owns the terminal parity capabilities (same pattern as
+  // phone below).
+  "plugins/plugin-contacts/src/components/contacts-view-bundle.ts": [
     "terminal-list-contacts",
     "terminal-create-contact",
     "terminal-import-vcard",
   ],
-  "plugins/plugin-hyperliquid-app/src/HyperliquidAppView.tsx": [
+  "plugins/plugin-hyperliquid/src/hyperliquid-app-view-bundle.ts": [
     "terminal-hyperliquid-state",
     "terminal-hyperliquid-market",
     "terminal-hyperliquid-execution-check",
   ],
-  "plugins/plugin-messages/src/components/MessagesAppView.tsx": [
+  "plugins/plugin-messages/src/components/messages-view-bundle.ts": [
     "terminal-list-threads",
     "terminal-send-sms",
     "terminal-request-sms-role",
   ],
-  "plugins/app-model-tester/src/ModelTesterAppView.tsx": [
+  "plugins/app-model-tester/src/model-tester-view-bundle.ts": [
     "get-status",
     "run-text-small",
     "run-transcription",
     "run-vision",
     "run-vad",
   ],
-  "plugins/plugin-phone/src/components/PhoneAppView.tsx": [
+  // The phone view collapsed to one declaration (componentExport "PhoneView",
+  // modalities gui/xr/tui). The bundle entry re-exports both PhoneView and the
+  // `interact` capability handler, so it owns the terminal parity capabilities.
+  "plugins/plugin-phone/src/components/phone-view-bundle.ts": [
     "terminal-phone-state",
     "terminal-place-call",
     "terminal-open-dialer",
     "terminal-save-call-transcript",
   ],
-  "plugins/plugin-polymarket-app/src/PolymarketAppView.tsx": [
+  "plugins/plugin-polymarket/src/polymarket-view-bundle.ts": [
     "terminal-polymarket-state",
     "terminal-polymarket-market",
     "terminal-polymarket-orderbook",
     "terminal-polymarket-positions",
     "terminal-polymarket-trading-check",
   ],
-  "plugins/plugin-shopify-ui/src/ShopifyAppView.tsx": [
+  "plugins/plugin-shopify/src/shopify-view-bundle.ts": [
     "terminal-shopify-state",
     "terminal-shopify-products",
     "terminal-shopify-orders",
@@ -106,31 +99,12 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-shopify-create-product",
     "terminal-shopify-adjust-inventory",
   ],
-  "plugins/plugin-steward-app/src/StewardView.tsx": [
-    "terminal-steward-state",
-    "terminal-steward-pending",
-    "terminal-steward-history",
-    "terminal-steward-approve",
-    "terminal-steward-deny",
-  ],
-  "plugins/plugin-vincent/src/VincentAppView.tsx": [
-    "terminal-vincent-state",
-    "terminal-vincent-start-login",
-    "terminal-vincent-disconnect",
-    "terminal-vincent-update-strategy",
-  ],
   "plugins/plugin-wallet-ui/src/InventoryView.tsx": [
     "terminal-wallet-state",
     "terminal-wallet-market-overview",
     "terminal-wallet-trading-profile",
   ],
-  "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx": [
-    "terminal-2004scape-state",
-    "terminal-2004scape-command",
-    "terminal-2004scape-pause",
-    "terminal-2004scape-resume",
-  ],
-  "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx": [
+  "plugins/plugin-feed/src/ui/feed-view-bundle.ts": [
     "get-state",
     "refresh-agent-status",
     "open-live-dashboard",
@@ -144,23 +118,11 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-list-views",
     "terminal-open-view",
   ],
-  "plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx": [
-    "terminal-clawville-state",
-    "terminal-clawville-command",
-  ],
-  "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx":
-    ["terminal-defense-state", "terminal-defense-command"],
-  "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx": [
-    "terminal-hyperscape-state",
-    "terminal-hyperscape-command",
-    "terminal-hyperscape-control",
-  ],
-  "plugins/plugin-scape/src/ui/ScapeOperatorSurface.tsx": [
-    "terminal-scape-state",
-    "terminal-scape-command",
-    "terminal-scape-control",
-  ],
-  "plugins/plugin-screenshare/src/ui/ScreenshareOperatorSurface.tsx": [
+  // Screenshare collapsed to ONE declaration (componentExport "ScreenshareView",
+  // modalities gui/xr/tui). The bundle entry re-exports ScreenshareView plus the
+  // `interact` capability handler (from screenshare-interact.ts), so this bundle
+  // entry owns the terminal parity capabilities.
+  "plugins/plugin-screenshare/src/ui/screenshare-view-bundle.ts": [
     "terminal-screenshare-state",
     "terminal-screenshare-start",
     "terminal-screenshare-session",
@@ -168,7 +130,11 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-screenshare-input",
     "terminal-screenshare-viewer-url",
   ],
-  "plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx": [
+  // The task-coordinator bundle re-exports BOTH collapsed view components
+  // (`TaskCoordinatorView` and `OrchestratorView`) plus the shared `interact`
+  // handler, so this one bundle entry owns the terminal parity capabilities for
+  // both the task-coordinator and orchestrator declarations.
+  "plugins/plugin-task-coordinator/src/task-coordinator-view-bundle.ts": [
     "list-sessions",
     "list-task-threads",
     "open-thread",
@@ -312,6 +278,23 @@ function stringField(source: string, field: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * The surfaces a single view object draws: the `modalities: ["gui","xr","tui"]`
+ * array literal when present (the collapsed one-source pattern), otherwise the
+ * single `viewType` (default "gui"). One declaration drawing several surfaces
+ * is equivalent to one duplicate declaration per surface for coverage purposes.
+ */
+function viewObjectModalities(object: string): RoutedViewType[] {
+  const modalitiesMatch = object.match(/modalities:\s*\[([^\]]*)\]/);
+  if (modalitiesMatch) {
+    const mods = [...modalitiesMatch[1].matchAll(/"(gui|tui|xr)"/g)].map(
+      (m) => m[1] as RoutedViewType,
+    );
+    if (mods.length > 0) return mods;
+  }
+  return [(stringField(object, "viewType") ?? "gui") as RoutedViewType];
+}
+
 function coveredViewType(
   viewType: ViewDeclaration["viewType"],
 ): RoutedViewType | undefined {
@@ -338,28 +321,27 @@ function capabilitiesForDeclaration(
 }
 
 function viewDeclarations(manifestPath: string): CoveredView[] {
-  return viewObjects(readManifest(manifestPath))
-    .map((object): CoveredView | null => {
+  return viewObjects(readManifest(manifestPath)).flatMap(
+    (object): CoveredView[] => {
       const id = stringField(object, "id");
       const label = stringField(object, "label");
       const path = stringField(object, "path");
-      const viewType = stringField(object, "viewType");
       const bundlePath = stringField(object, "bundlePath");
       const componentExport = stringField(object, "componentExport");
-      if (!id || !label || !bundlePath || !componentExport) return null;
-      return {
+      if (!id || !label || !bundlePath || !componentExport) return [];
+      // One declaration with `modalities` expands to one CoveredView per
+      // surface — the same bundle + component routed in gui, tui, and xr.
+      return viewObjectModalities(object).map((viewType) => ({
         id,
         label,
         ...(path === null ? {} : { path }),
-        ...(viewType === "gui" || viewType === "tui" || viewType === "xr"
-          ? { viewType }
-          : {}),
+        viewType,
         bundlePath,
         componentExport,
         visibleInManager: true,
-      } satisfies CoveredView;
-    })
-    .filter((view): view is CoveredView => view !== null);
+      }));
+    },
+  );
 }
 
 function makeCtx(
@@ -448,11 +430,13 @@ describe("plugin TUI view coverage", () => {
 
       for (const object of objects) {
         const id = stringField(object, "id");
-        const viewType = stringField(object, "viewType") ?? "gui";
         const bundlePath = stringField(object, "bundlePath");
         if (!id || !bundlePath) continue;
-        if (viewType === "tui") tuiIds.add(id);
-        else if (viewType === "gui") guiIds.add(id);
+        // A `modalities` declaration draws every listed surface from one
+        // source, so it counts as both the gui view and its tui override.
+        const modalities = viewObjectModalities(object);
+        if (modalities.includes("tui")) tuiIds.add(id);
+        if (modalities.includes("gui")) guiIds.add(id);
       }
 
       for (const id of guiIds) {

@@ -10,17 +10,12 @@
 
 import { parseArgs } from "node:util";
 import { NATIVE_OPTIMIZERS, runNativeBackend } from "../backends/native.js";
+import { ALL_TRAINING_TASKS } from "../core/training-config.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 import type { OptimizerName } from "../optimizers/index.js";
 
 const ALLOWED_BACKENDS = new Set(["native"]);
-const ALLOWED_TASKS = new Set([
-  "should_respond",
-  "context_routing",
-  "action_planner",
-  "response",
-  "media_description",
-]);
+const ALLOWED_TASKS = new Set<string>(ALL_TRAINING_TASKS);
 const ALLOWED_OPTIMIZERS = new Set<string>(NATIVE_OPTIMIZERS);
 
 const HELP = `Usage:
@@ -29,7 +24,9 @@ const HELP = `Usage:
 Options:
   --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
-  --task NAME          should_respond | context_routing | action_planner | response | media_description
+  --task NAME          ${[...ALLOWED_TASKS].join(" | ")}
+                       (includes the LifeOps per-capability tasks, e.g.
+                       calendar_extract / schedule_plan / morning_brief)
   --optimizer NAME     instruction-search | prompt-evolution | gepa
                        | bootstrap-fewshot | dspy-bootstrap-fewshot
                        | dspy-copro | dspy-mipro
@@ -134,12 +131,22 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         );
         return 1;
       }
+      // The eval helper lives in plugin-personal-assistant's test tree, which is
+      // outside this package's emit rootDir. Declare the single export's real
+      // signature locally so the dynamic import stays fully typed without a
+      // static `typeof import()` reference dragging an out-of-rootDir file into
+      // the build program (TS6059).
+      interface LifeOpsEvalModelModule {
+        getTrainingUseModelAdapter(): (input: {
+          prompt: string;
+          temperature?: number;
+          maxTokens?: number;
+        }) => Promise<string>;
+      }
       const helperPath =
         "../../../plugin-personal-assistant/test/helpers/lifeops-eval-model.ts";
-      const { getTrainingUseModelAdapter } = (await import(
-        helperPath
-      )) as typeof import("../../../plugin-personal-assistant/test/helpers/lifeops-eval-model.ts");
-      const useModel = getTrainingUseModelAdapter();
+      const helperModule: LifeOpsEvalModelModule = await import(helperPath);
+      const useModel = helperModule.getTrainingUseModelAdapter();
       const adapter = {
         async complete(input: {
           system?: string;

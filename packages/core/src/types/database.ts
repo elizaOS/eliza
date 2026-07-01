@@ -1,3 +1,4 @@
+import type { AccessContext } from "./access-context";
 import type { Agent } from "./agent";
 import type {
 	Component,
@@ -909,6 +910,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		/**
+		 * Case-insensitive keyword predicate over `Memory.content.text`. SQL
+		 * adapters push this into the database (`ILIKE`); in-memory adapters apply
+		 * the same `includes` semantics. Used by keyword message search so the
+		 * filter runs in the store, not by scanning every room in the process.
+		 */
+		textContains?: string;
+		/**
 		 * Order by column (currently only 'createdAt' supported for security).
 		 * Whitelisted to prevent SQL injection. Default behavior: ORDER BY created_at DESC.
 		 */
@@ -925,6 +933,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		 * embeddings as before.
 		 */
 		includeEmbedding?: boolean;
+		/**
+		 * Requester identity to scope retrieval to. When omitted, no
+		 * access-context filtering is applied (single-tenant behavior).
+		 */
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
@@ -933,6 +946,26 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		/**
+		 * Skip the first N matching results. Applied after room-scoping and the
+		 * `textContains` filter so the LIMIT/OFFSET window is taken over the
+		 * already-filtered, ordered result set. Used for paginated keyword search.
+		 */
+		offset?: number;
+		/**
+		 * Case-insensitive keyword predicate over `Memory.content.text`. SQL
+		 * adapters push this into the database (`ILIKE`); in-memory adapters apply
+		 * the same `includes` semantics. Lets keyword message search scope to a set
+		 * of accessible rooms AND filter by keyword in a single store query, so the
+		 * LIMIT is applied after access-scoping rather than across every room.
+		 */
+		textContains?: string;
+		includeEmbedding?: boolean;
+		/**
+		 * Requester identity to scope retrieval to. When omitted, no
+		 * access-context filtering is applied (single-tenant behavior).
+		 */
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	getCachedEmbeddings(params: {
@@ -1006,6 +1039,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		unique?: boolean;
 		tableName: string;
@@ -1013,6 +1047,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		roomId?: UUID;
 		worldId?: UUID;
 		entityId?: UUID;
+		/**
+		 * Requester identity to scope retrieval to. When omitted, no
+		 * access-context filtering is applied (single-tenant behavior).
+		 */
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	// ── Memory CRUD (batch-only) ─────────────────────────────────────────

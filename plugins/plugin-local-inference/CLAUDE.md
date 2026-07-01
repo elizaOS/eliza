@@ -102,18 +102,17 @@ src/
     types.ts                      Re-exports from @elizaos/shared (CatalogModel, InstalledModel, …)
     hardware.ts                   probeHardware(), assessFit()
     recommendation.ts             selectRecommendedModels(), recommendForFirstRun()
-    downloader.ts                 Downloader — HuggingFace GGUF download with resume + progress events
+    downloader.ts                 Downloader — curated Eliza-1 bundle download with resume + progress events
     device-tier.ts                classifyDeviceTier(), DeviceTier thresholds
     router-handler.ts             installRouterHandler() — routing-policy layer (manual/cloud/local)
     cloud-fallback.ts             makeCloudFallbackHandler() — local → cloud fallback on error
     paths.ts                      localInferenceRoot(), elizaModelsDir(), registryPath()
     registry.ts                   listInstalledModels(), upsertElizaModel(), removeElizaModel()
-    hf-search.ts                  searchHuggingFaceGguf(), searchModelHubGguf()
     imagegen/                     Image generation backends (sd.cpp, CoreML, mflux, AOSP, TensorRT)
     tts/                          TTS pipeline helpers and audio cache
     asr/                          ASR backend interface and capability registration
     vision/                       Vision-describe backend interface and capability registration
-    voice/                        Full voice pipeline: Kokoro TTS, Whisper ASR, VAD, barge-in, speaker imprint, profiles
+    voice/                        Full voice pipeline: Kokoro/OmniVoice TTS, fused local ASR, VAD, barge-in, speaker imprint, profiles
 ```
 
 ## Commands
@@ -155,17 +154,17 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
 | `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES` | No | Maximum speculative decode responses buffered per request |
+| `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` | No | Per-step token cap for the FFI decode loop (default `32`, clamped `1`–`512`). Lower = smoother token-by-token streaming into the dashboard at the cost of more JS↔FFI round-trips |
 | `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL` | No | Enable automatic parallel resize for multi-session scenarios |
 | `ELIZA_NETWORK_POLICY` | No | Network access policy override for inference routing |
 | `ELIZA_VOICE_EOT_BACKEND` | No | End-of-turn detector backend selection for voice pipeline |
 | `ELIZA_VOICE_UPDATE_INTERVAL_MS` | No | Polling interval (ms) for voice model update checks |
-| `HF_TOKEN` / `HUGGINGFACE_TOKEN` / `HF_HUB_TOKEN` | No | HuggingFace token for gated model downloads |
 | `SD_CPP_BIN` | No | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | No | Absolute path to mflux binary |
 | `IMAGEGEN_TRT_BIN` | No | Absolute path to TensorRT image-gen binary |
 | `LOCAL_INFERENCE_IMAGE_MODEL_KEY` | No | Pin a specific image-gen model key |
 | `LOCAL_INFERENCE_ACTIVE_TIER` | No | Pin a specific Eliza-1 tier (e.g. `eliza-1-4b`) |
-| `ELIZA_WHISPER_USE_GPU` | No | Enable GPU acceleration for Whisper ASR |
+| `ELIZA_LOCAL_INFERENCE_ENABLE_EXTERNAL_SCAN` | No | Developer-only diagnostic opt-in; set `1`/`true`/`yes` to include external GGUF files in installed-model inventory. Default product setup is curated Eliza-1 only. |
 | `LOCAL_EMBEDDING_MODEL` | No | Override embedding model filename |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | No | GPU layers for embedding model |
 | `LOCAL_EMBEDDING_CONTEXT_SIZE` | No | Context size for embedding model |
@@ -197,8 +196,9 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 ## Conventions / gotchas
 
 - **Text runs through the in-process FFI llama.cpp backend only** (`node-llama-cpp` has been retired). The engine checks the dispatcher's `available()`/FFI probe before using it; an absent/unsupported FFI runtime produces a clean `LocalInferenceUnavailableError` rather than a crash. There is no `node-llama-cpp` fallback.
+- **Two text runtime classes — branch on `runtimeClass`, never on the id prefix.** Every `CatalogModel` / `InstalledModel` carries a `runtimeClass: "fused-eliza1" | "generic-gguf"` discriminator (canonical helpers in `@elizaos/shared/local-inference/runtime-class.ts`; populated by the catalog factory + hub-search synthesizers, and backfilled once at the registry-read boundary in `registry.ts listInstalledModels`). The dispatcher (`backend.ts decideBackend` / `BackendDispatcher.decide`) routes `fused-eliza1` → the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`, full pipeline) and `generic-gguf` → the explicit-`modelPath` runtime (`generic-gguf-backend.ts`, stock f16 KV, reduced optimizations). eliza-1 stays the default/recommended path; `buildRecommendedAssignments` / `autoAssignAtBoot` stay eliza-1-only and never auto-assign a generic blob. Generic single-file GGUF needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile); on desktop it is not built into the shipping fused lib, so a generic load raises a typed `GenericRuntimeUnavailableError` and `setAssignment` rejects it at the boundary with `AssignmentNotServableError` (route → 422) — never a silent deferred load failure. Generic-model search/download/assignment is an Advanced/Developer-mode surface in the UI; eliza-1 is the only thing shown by default.
 - **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.
-- **Native binary deps** (sd.cpp, mflux, whisper.cpp, Kokoro ONNX) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
+- **Native binary deps** (sd.cpp, mflux, Kokoro GGUF/fused `libelizainference`) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
 - **MemoryArbiter (WS1)** is the coordination point for all modalities on memory-constrained devices. Cross-plugin consumers (vision, image-gen, ASR, TTS) must go through the arbiter — never load models independently.
 - **Catalog source of truth** lives in `@elizaos/shared` (`MODEL_CATALOG`, tier ids, HuggingFace URL builders). `src/services/catalog.ts` is a thin re-export shim.
 - **Type source of truth** for `CatalogModel`, `InstalledModel`, `AgentModelSlot`, etc. also lives in `@elizaos/shared`. `src/services/types.ts` re-exports them.
@@ -206,3 +206,45 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 - The `GENERATE_MEDIA` action uses keyword matching first, then falls back to a `TEXT_SMALL` JSON classifier call. It does not perform intent detection on every message — the `validate` function only checks for non-empty text.
 - Voice pipeline (`services/voice/`) is large and self-contained. Entry points: `src/services/voice/index.ts`, `src/routes/voice-first-run-routes.ts`, `src/routes/voice-models-routes.ts`.
 - See `AGENTS.md` at the repo root for architecture rules, git workflow, and global coding standards.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — model provider:**
+- A trajectory from a **live** call to this provider (not the proxy, not a mock): full request, raw response, token usage, finish reason, and streamed chunks.
+- Proof of tool/function-calling and structured-output parsing against the real model.
+- The error paths exercised: bad key, model-not-found, oversized context, timeout, rate-limit, mid-stream disconnect — plus latency and cost from the real call.
+- If no key is available in CI, attach the documented live-run transcript as evidence — never a mocked client passed off as a pass.
+<!-- END: evidence-and-e2e-mandate -->

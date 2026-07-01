@@ -18,6 +18,10 @@ export interface ChatTranscriptProps {
   messages: ChatMessageData[];
   onCopy?: (text: string) => void;
   onDelete?: (messageId: string) => void;
+  /** Dismiss a proactive suggestion bubble (#8792). */
+  onDismissSuggestion?: (messageId: string) => void;
+  /** Accept ("Do it") a proactive suggestion bubble (#8792). */
+  onAcceptSuggestion?: (message: ChatMessageData) => void;
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
   onSpeak?: (messageId: string, text: string) => void;
   renderMessageContent?: (message: ChatMessageData) => React.ReactNode;
@@ -87,6 +91,23 @@ function normalizeTranscriptMessage(message: ChatMessageData): ChatMessageData {
   };
 }
 
+// Memoize normalization per message identity. During streaming only the last
+// message object changes each token frame; the other N-1 are the same reference,
+// so this returns their already-normalized result instead of re-running the
+// split + legacy-reply regex over the whole transcript every frame (O(N)→O(1)).
+// Keyed on the (immutable) message object, so a real new message misses and
+// re-parses; a WeakMap lets dropped messages GC.
+const normalizeCache = new WeakMap<ChatMessageData, ChatMessageData>();
+function normalizeTranscriptMessageCached(
+  message: ChatMessageData,
+): ChatMessageData {
+  const cached = normalizeCache.get(message);
+  if (cached) return cached;
+  const normalized = normalizeTranscriptMessage(message);
+  normalizeCache.set(message, normalized);
+  return normalized;
+}
+
 function getMessageGroupingKey(message: ChatMessageData): string {
   if (message.role !== "user") {
     return message.role;
@@ -112,6 +133,8 @@ export const ChatTranscript = memo(function ChatTranscript({
   messages,
   onCopy,
   onDelete,
+  onDismissSuggestion,
+  onAcceptSuggestion,
   onEdit,
   onSpeak,
   renderMessageContent,
@@ -120,7 +143,7 @@ export const ChatTranscript = memo(function ChatTranscript({
   variant = "default",
 }: ChatTranscriptProps) {
   const normalizedMessages = useMemo(
-    () => messages.map(normalizeTranscriptMessage),
+    () => messages.map(normalizeTranscriptMessageCached),
     [messages],
   );
   // Index by id so reply-target resolution is O(1) per row instead of an O(n)
@@ -240,6 +263,8 @@ export const ChatTranscript = memo(function ChatTranscript({
             labels={labels}
             onCopy={onCopy}
             onDelete={onDelete}
+            onDismissSuggestion={onDismissSuggestion}
+            onAcceptSuggestion={onAcceptSuggestion}
             onEdit={onEdit}
             onSpeak={onSpeak}
             replyTarget={replyTarget}

@@ -7,7 +7,7 @@ Visual perception plugin for elizaOS — gives Eliza agents real-time awareness 
 - Captures frames from a connected camera (macOS/Linux/Windows) or the host screen.
 - Describes scenes by routing images through `runtime.useModel(IMAGE_DESCRIPTION)` — compatible with any registered VLM (local or cloud).
 - Detects and tracks people, objects, and faces across frames with persistent entity IDs.
-- Reads text on screen via Apple Vision (darwin, when a provider is registered) falling through to a doCTR ggml backend (`native/doctr.cpp`) — no ONNX or Tesseract path.
+- Reads text on screen through the generic Apple Vision/doCTR OCR service and the coordinate-aware OCR registry used by computeruse: Windows.Media.Ocr on Windows, Tesseract on Linux when available, and the RapidOCR adapter as the portable fallback.
 - Exposes all capabilities through a single `VISION` action and a `VISION_PERCEPTION` context provider.
 
 ## Installation
@@ -62,18 +62,18 @@ All settings can also be prefixed with `VISION_` (e.g. `VISION_CAMERA_NAME`).
 
 ## Actions
 
-The plugin registers a single `VISION` action that routes to one of these sub-operations based on explicit `action` parameter or natural-language inference:
+The plugin registers a single `VISION` action that routes to one of these sub-operations from the structured `action` / `subaction` / `op` parameter. Mode changes use the structured `mode` parameter, and entity naming uses the structured `name` parameter.
 
-| Sub-operation | Trigger examples | What it does |
+| Sub-operation | Structured parameter example | What it does |
 |--------------|-----------------|-------------|
-| `describe` | "what do you see?", "describe the scene" | Returns the current VLM scene description |
-| `capture` | "take a photo", "screenshot" | Captures a frame and returns it as a base64 image attachment |
-| `set_mode` | "set vision mode to screen" | Switches between `OFF`, `CAMERA`, `SCREEN`, `BOTH` |
-| `enable_camera` / `disable_camera` | "turn on the camera" | Toggles camera input |
-| `enable_screen` / `disable_screen` | "enable screen capture" | Toggles screen input |
-| `name_entity` | "the person is named Alice" | Assigns a display name to the most prominent tracked entity |
-| `identify_person` | "who is that?" | Lists tracked people with names and presence duration |
-| `track_entity` | "track the person in the red shirt" | Refreshes entity tracking and reports statistics |
+| `describe` | `action: "describe"` | Returns the current VLM scene description |
+| `capture` | `action: "capture"` | Captures a frame and returns it as a base64 image attachment |
+| `set_mode` | `action: "set_mode", mode: "SCREEN"` | Switches between `OFF`, `CAMERA`, `SCREEN`, `BOTH` |
+| `enable_camera` / `disable_camera` | `action: "enable_camera"` | Toggles camera input |
+| `enable_screen` / `disable_screen` | `action: "enable_screen"` | Toggles screen input |
+| `name_entity` | `action: "name_entity", name: "Alice"` | Assigns a display name to the most prominent tracked entity |
+| `identify_person` | `action: "identify_person"` | Lists tracked people with names and presence duration |
+| `track_entity` | `action: "track_entity"` | Refreshes entity tracking and reports statistics |
 
 ## Vision Provider
 
@@ -94,14 +94,15 @@ The plugin registers a single `VISION` action that routes to one of these sub-op
 | Scene description | VLM via `runtime.useModel(IMAGE_DESCRIPTION)` | Any registered IMAGE_DESCRIPTION provider |
 | Object detection | YOLOv8n ggml via `native/yolo.cpp` (`src/yolo-detector.ts`); build with `bun run build:native` + `bun run build:weights`. Service degrades to motion/heuristic + VLM when the lib/GGUF are absent. | — (TensorFlow.js path removed) |
 | Pose detection | Heuristic person detection (motion-derived) | Planned ggml MoveNet port |
-| OCR | Apple Vision (darwin, when a provider is registered) → doCTR ggml (`native/doctr.cpp`) | No ONNX or Tesseract path |
+| OCR | Generic OCR uses Apple Vision (darwin, when a provider is registered) → doCTR ggml (`native/doctr.cpp`). Coordinate OCR for computeruse prefers Windows.Media.Ocr (Windows) → Tesseract CLI or vendored bundle (Linux) → RapidOCR adapter. | Native/mobile bridges can register platform OCR providers; no ONNX OCR path. |
+| Set-of-Marks grounding | `src/som.ts` fuses GGUF YOLO icon boxes + OCR text boxes into a deduplicated, 1-indexed numbered set (icon-over-text suppression + NMS) and renders a numbered-overlay PNG via `sharp`. `src/set-of-marks-provider.ts` registers it into plugin-computeruse's `detect_elements` seam at boot (best-effort; degrades to text-only marks when the GGUF detector is absent). | trycua/cua OmniParser parity (#9170 M9) |
 | Face recognition | Native ggml BlazeFace + 128-d embed (`face-detector-ggml.ts`, `face-recognition-ggml.ts`, `native/face-cpp`); disabled until the lib/GGUF artifacts land. No tfjs/face-api.js path. | MediaPipe BlazeFace migration shim is deprecated. |
 
 ## Platform notes
 
 - **Node.js only.** Mobile (iOS, Android) registers a `MobileCameraSource` (`src/mobile/capacitor-camera.ts`) bridged by plugin-ios / plugin-aosp.
 - **Camera tools** (`imagesnap` / `fswebcam` / `ffmpeg`) are required for camera mode; screen capture and OCR work without them.
-- **Native detectors** (`native/yolo.cpp`, `native/doctr.cpp`) run via `bun:ffi`; they require their compiled libraries and GGUF artifacts to be present, and throw clearly when missing rather than silently falling back.
+- **Native detectors and OCR** (`native/yolo.cpp`, `native/doctr.cpp`, and the coordinate-OCR providers) run through the available host backend. YOLO/doCTR require compiled libraries and GGUF artifacts; Tesseract requires a binary plus traineddata resolved from the vendored bundle or PATH.
 
 ## Privacy
 

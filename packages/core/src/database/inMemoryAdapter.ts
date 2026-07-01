@@ -1,5 +1,6 @@
 import { DatabaseAdapter } from "../database";
 import type {
+	AccessContext,
 	Agent,
 	AppendConnectorAccountAuditEventParams,
 	Component,
@@ -795,6 +796,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		roomId?: UUID;
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
+		textContains?: string;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const roomId = params.roomId ?? DEFAULT_UUID;
@@ -836,17 +842,35 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		// Keyword filter — same case-insensitive `includes` semantics the SQL
+		// adapter pushes down as ILIKE.
+		const textContains = params.textContains?.trim().toLowerCase();
+		if (textContains) {
+			all = all.filter((memory) => {
+				const text = memory.content.text;
+				return (
+					typeof text === "string" && text.toLowerCase().includes(textContains)
+				);
+			});
+		}
+
 		// Match plugin-sql ordering: newest first, then id desc as tiebreaker.
 		// Without this, `count: N` returns the N oldest instead of the N newest,
 		// which silently diverges from plugin-sql once a room exceeds N memories.
+		// `orderDirection: "asc"` flips it for around-message paging.
+		const direction = params.orderDirection ?? "desc";
 		all = all.slice().sort((a, b) => {
-			const ta = a.createdAt ?? 0;
-			const tb = b.createdAt ?? 0;
-			if (ta !== tb) return tb - ta;
-			return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
+			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+			if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
+			const aId = typeof a.id === "string" ? a.id : "";
+			const bId = typeof b.id === "string" ? b.id : "";
+			return direction === "asc"
+				? aId.localeCompare(bId)
+				: bId.localeCompare(aId);
 		});
 
-		const offset = params.offset ?? 0;
+		const offset = typeof params.offset === "number" ? params.offset : 0;
 		return all.slice(
 			offset,
 			offset + (effectiveLimit === Infinity ? all.length : effectiveLimit),
@@ -866,18 +890,41 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		offset?: number;
+		textContains?: string;
+		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		const limit = params.limit ?? 20;
-		const out: Memory[] = [];
+		let all: Memory[] = [];
 		for (const rid of params.roomIds) {
 			const list =
 				this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
-			for (const m of list) {
-				out.push(m);
-				if (out.length >= limit) return out;
-			}
+			all.push(...list);
 		}
-		return out;
+
+		// Keyword filter — same case-insensitive `includes` semantics the SQL
+		// adapter pushes down as ILIKE.
+		const textContains = params.textContains?.trim().toLowerCase();
+		if (textContains) {
+			all = all.filter((memory) => {
+				const text = memory.content.text;
+				return (
+					typeof text === "string" && text.toLowerCase().includes(textContains)
+				);
+			});
+		}
+
+		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
+		// freshest matches.
+		all = all.slice().sort((a, b) => {
+			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
+			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
+			return tb - ta;
+		});
+
+		const offset = typeof params.offset === "number" ? params.offset : 0;
+		const limit = params.limit ?? 20;
+		return all.slice(offset, offset + limit);
 	}
 
 	async getCachedEmbeddings(): Promise<
@@ -967,7 +1014,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.logs = this.logs.filter((l) => !idSet.has(String(l.id)));
 	}
 
-	async searchMemories(): Promise<Memory[]> {
+	async searchMemories(_params: {
+		tableName: string;
+		embedding: number[];
+		match_threshold?: number;
+		count?: number;
+		limit?: number;
+		unique?: boolean;
+		query?: string;
+		roomId?: UUID;
+		worldId?: UUID;
+		entityId?: UUID;
+		accessContext?: AccessContext;
+	}): Promise<Memory[]> {
 		return [];
 	}
 

@@ -16,7 +16,7 @@ import {
   shouldUseHashNavigation,
 } from "../../navigation";
 
-import { useApp, useIsDeveloperMode } from "../../state";
+import { useAppSelectorShallow, useEnabledViewKinds } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
 import { AppsSidebar } from "../apps/AppsSidebar";
@@ -264,8 +264,20 @@ export function AppsView() {
     setState,
     setActionNotice,
     t,
-  } = useApp();
-  const developerMode = useIsDeveloperMode();
+  } = useAppSelectorShallow((s) => ({
+    appRuns: s.appRuns,
+    activeGameRunId: s.activeGameRunId,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    appsSubTab: s.appsSubTab,
+    favoriteApps: s.favoriteApps,
+    walletEnabled: s.walletEnabled,
+    recentApps: s.recentApps,
+    setTab: s.setTab,
+    setState: s.setState,
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
+  const enabledKinds = useEnabledViewKinds();
   const [apps, setApps] = useState<RegistryAppInfo[]>(
     () => readAppsCache() ?? [],
   );
@@ -286,8 +298,16 @@ export function AppsView() {
   const [isAppWindow] = useState<boolean>(isAppWindowRoute);
   const [appWindows, setAppWindows] = useState<AppWindowRecord[]>([]);
   const [busyAppWindowId, setBusyAppWindowId] = useState<string | null>(null);
+  const mountedRef = useRef(true);
   const slugAutoLaunchDone = useRef(false);
   const appWindowsRef = useRef<AppWindowRecord[]>([]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleSidebarCollapsedChange = useCallback((next: boolean) => {
     setSidebarCollapsed(next);
@@ -462,6 +482,7 @@ export function AppsView() {
 
   const refreshRuns = useCallback(async () => {
     const runs = await client.listAppRuns();
+    if (!mountedRef.current) return runs;
     setState("appRuns", runs);
     return runs;
   }, [setState]);
@@ -505,9 +526,11 @@ export function AppsView() {
     void refreshRuns().catch(() => {});
     try {
       const list = await loadAppsCatalog();
+      if (!mountedRef.current) return;
       setApps(list);
       writeAppsCache(list);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(
         t("appsview.LoadError", {
           message:
@@ -515,7 +538,9 @@ export function AppsView() {
         }),
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [refreshRuns, t]);
 
@@ -1006,13 +1031,13 @@ export function AppsView() {
       activeAppNames,
       searchQuery,
       walletEnabled,
-      developerMode,
+      enabledKinds,
     });
-  }, [activeAppNames, apps, searchQuery, walletEnabled, developerMode]);
+  }, [activeAppNames, apps, searchQuery, walletEnabled, enabledKinds]);
 
   const browseApps = useMemo(() => {
-    return filterAppsForCatalog(apps, { walletEnabled, developerMode });
-  }, [apps, walletEnabled, developerMode]);
+    return filterAppsForCatalog(apps, { walletEnabled, enabledKinds });
+  }, [apps, walletEnabled, enabledKinds]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {

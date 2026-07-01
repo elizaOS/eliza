@@ -37,6 +37,7 @@ function extractParamText(action: CapturedAction): string {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross.parameter-extraction.complex-natural-language",
   title: "Extracts contact and date-time from a long utterance",
   domain: "cross-cutting",

@@ -2,6 +2,19 @@
  * Type definitions for the Markdown component.
  */
 
+import type { Token } from "marked";
+
+/**
+ * Narrow a marked token to one that carries a nested `tokens` array.
+ */
+export function hasNestedTokens(
+  token: Token,
+): token is Token & { tokens: Token[] } {
+  return (
+    "tokens" in token && Array.isArray((token as { tokens?: unknown }).tokens)
+  );
+}
+
 /**
  * Default text styling for markdown content.
  * Applied to all text unless overridden by markdown formatting.

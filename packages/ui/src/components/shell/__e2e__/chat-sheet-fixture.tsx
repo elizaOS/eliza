@@ -6,6 +6,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
+import { MockAppProvider } from "../../../storybook/mock-providers";
 import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { ShellController } from "../useShellController";
@@ -213,11 +214,12 @@ function Harness(): React.JSX.Element {
     },
     [],
   );
+  const setTranscriptSessionSink = React.useCallback(() => {}, []);
   // Test hooks for BIDIRECTIONAL voice (asserted by the e2e): a final transcript
   // either fills the composer draft (dictate) or sends a VOICE_DM (converse),
   // routed by the active capture intent — exactly the two real directions.
   React.useEffect(() => {
-    const w = window as unknown as {
+    const w = window as {
       __emitDictation?: (t: string) => void;
       __emitVoiceFinal?: (t: string) => void;
     };
@@ -247,6 +249,14 @@ function Harness(): React.JSX.Element {
     // `?speaking` for the spoken reply, so the trailing control + voice-gating
     // behave exactly as they do in the app.
     responding: phase === "responding" || initialSpeaking,
+    // Rich status (#8813): mirror the real controller's derivation so the
+    // screenshots show the phase-aware indicator. Speaking wins; otherwise a
+    // responding phase reads as "thinking" in the fixture (no token stream).
+    turnStatus: initialSpeaking
+      ? { kind: "speaking" as const }
+      : phase === "responding"
+        ? { kind: "thinking" as const }
+        : null,
     messages,
     canSend: initialCanSend && phase !== "booting",
     recording,
@@ -262,6 +272,7 @@ function Harness(): React.JSX.Element {
     toggleRecording,
     toggleHandsFree,
     setDictationSink,
+    setTranscriptSessionSink,
     setComposerHasDraft: (hasDraft: boolean) =>
       console.log(`[fixture] setComposerHasDraft -> ${hasDraft}`),
     startRecording,
@@ -269,10 +280,11 @@ function Harness(): React.JSX.Element {
     toggleAgentVoiceMute,
     unlockAudio: () => console.log("[fixture] unlockAudio"),
     openSettings: () => console.log("[fixture] openSettings"),
-    // `?tab=chat` hides the Home button (already home); `?tab=settings` hides
-    // the Settings button. Unset → both header buttons show.
+    // `?tab=chat` disables the Home button (already home); `?tab=views` disables
+    // Views; `?tab=settings` disables Settings. Unset → all three are enabled.
     currentTab: params.get("tab") ?? undefined,
     navigateHome: () => console.log("[fixture] navigateHome"),
+    navigateToViews: () => console.log("[fixture] navigateToViews"),
     clearConversation: () => console.log("[fixture] clearConversation"),
     stop: () => {
       console.log("[fixture] stop");
@@ -328,4 +340,12 @@ function Harness(): React.JSX.Element {
 }
 
 const root = document.getElementById("root");
-if (root) createRoot(root).render(<Harness />);
+// Assistant turns render inline widgets and adjacent rich blocks that read the
+// app store + chat composer — wrap the headless harness in the mock app provider
+// so the segment pipeline resolves without the real shell.
+if (root)
+  createRoot(root).render(
+    <MockAppProvider>
+      <Harness />
+    </MockAppProvider>,
+  );

@@ -129,17 +129,18 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(calories?.value).toBe(2415);
     expect(calories?.unit).toBe("kcal");
 
-    // distance_meters: the normalizer SUMS every summary.distances[] entry
-    // (not just the `activity: "total"` row) and converts km->m. With total
-    // 8.52 + tracker 8.52 + veryActive 4.1 = 21.14 km -> 21140 m. This is the
-    // genuine syncFitbit behavior (it double-counts the total + per-type rows);
-    // the contract test pins it so any future change to that aggregation is
-    // caught against the real multi-entry Fitbit distances shape.
+    // distance_meters: take ONLY the canonical activity:"total" row (the day
+    // total) and convert to meters via the account locale. tracker/veryActive/...
+    // are per-activity breakdowns OF that total, so summing them double/triple-
+    // counts. The fixture's multi-entry shape discriminates: a correct total-only
+    // read is 8520 m; a summing regression (8.52 + 8.52 + 4.1 km) would be 21140 m.
+    // profile.user.distanceUnit is "METRIC" here, so km->m (*1000).
     const distance = payload.samples.find(
       (s) => s.metric === "distance_meters",
     );
-    expect(distance?.value).toBeCloseTo((8.52 + 8.52 + 4.1) * 1000, 5);
+    expect(distance?.value).toBe(8.52 * 1000);
     expect(distance?.unit).toBe("m");
+    expect(distance?.metadata.providerUnit).toBe("METRIC");
 
     // activities-heart[0].value.restingHeartRate -> resting_heart_rate.
     const resting = payload.samples.find(
@@ -154,11 +155,15 @@ describe("Fitbit connector — recorded real API contract", () => {
     expect(sleepHours?.unit).toBe("h");
 
     // body.log.weight[0].weight kg -> weight_kg; logId -> sourceExternalId.
+    // profile.user.weightUnit is "METRIC", so the value passes through unchanged.
     const weight = payload.samples.find((s) => s.metric === "weight_kg");
     expect(weight?.value).toBe(61.2);
     expect(weight?.unit).toBe("kg");
     expect(weight?.sourceExternalId).toBe("38291077001");
+    // providerUnit is the per-log unit label; providerLocaleUnit is the account
+    // locale that drives the conversion.
     expect(weight?.metadata.providerUnit).toBe("kg");
+    expect(weight?.metadata.providerLocaleUnit).toBe("METRIC");
 
     // One recorded sleep log -> one normalized sleep episode.
     expect(payload.sleepEpisodes).toHaveLength(1);
@@ -232,5 +237,153 @@ describe("Fitbit connector — recorded real API contract", () => {
       expect(typeof s.startAt).toBe("string");
       expect(s.localDate).toBe(s.startAt.slice(0, 10));
     }
+  });
+
+  it("ignores extra Fitbit distance breakdown rows when the total row is present", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/")) {
+        return jsonResponse({
+          summary: {
+            distances: [
+              { activity: "total", distance: 8.52 },
+              { activity: "tracker", distance: 8.52 },
+              { activity: "veryActive", distance: 4.1 },
+              { activity: "loggedActivities", distance: 2.0 },
+            ],
+          },
+        });
+      }
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
+    expect(distance?.unit).toBe("m");
+  });
+
+  it("falls back to the largest single Fitbit distance row when no total row is present", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/")) {
+        return jsonResponse({
+          summary: {
+            distances: [
+              { activity: "tracker", distance: 8.52 },
+              { activity: "veryActive", distance: 4.1 },
+            ],
+          },
+        });
+      }
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
+    expect(distance?.unit).toBe("m");
+  });
+});
+
+// An imperial (en_US) Fitbit account reports summary.distances[].distance in
+// MILES and body.log.weight[].weight in POUNDS — the units are tied to
+// profile.user.distanceUnit / weightUnit, NOT to the wire field names. The
+// normalizer must convert to SI, not pass them through as if metric.
+const imperialRecorded = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../src/health-bridge/__fixtures__/fitbit.imperial.recorded.json",
+    ),
+    "utf8",
+  ),
+) as {
+  profile: Record<string, unknown>;
+  activity: Record<string, unknown>;
+  sleep: Record<string, unknown>;
+  heart: Record<string, unknown>;
+  weight: Record<string, unknown>;
+};
+
+describe("Fitbit connector — imperial (en_US) locale conversion", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/")) {
+        return jsonResponse(imperialRecorded.heart);
+      }
+      if (url.includes("/activities/date/")) {
+        return jsonResponse(imperialRecorded.activity);
+      }
+      if (url.includes("/sleep/date/")) {
+        return jsonResponse(imperialRecorded.sleep);
+      }
+      if (url.includes("/body/log/weight/")) {
+        return jsonResponse(imperialRecorded.weight);
+      }
+      if (url.includes("/profile.json")) {
+        return jsonResponse(imperialRecorded.profile);
+      }
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("converts miles->meters and pounds->kg using the account locale", async () => {
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    // distances[total].distance = 5.0 (MILES, because distanceUnit = en_US).
+    // 5.0 mi * 1609.344 = 8046.72 m — NOT 5000 m (the metric-assumption bug).
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBeCloseTo(8046.72, 6);
+    expect(distance?.unit).toBe("m");
+    expect(distance?.metadata.providerUnit).toBe("en_US");
+
+    // weight[0].weight = 150 (POUNDS, because weightUnit = en_US).
+    // 150 lb * 0.45359237 = 68.0388555 kg — NOT 150 kg.
+    const weight = payload.samples.find((s) => s.metric === "weight_kg");
+    expect(weight?.value).toBeCloseTo(68.0388555, 6);
+    expect(weight?.unit).toBe("kg");
+    expect(weight?.metadata.providerUnit).toBe("POUND");
+    expect(weight?.metadata.providerLocaleUnit).toBe("en_US");
   });
 });

@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "ipo-lockup-liquidity-window",
   title: "Assistant coordinates IPO lockup liquidity planning",
   domain: "executive.money",
@@ -21,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "map-liquidity-window",
       text: "The lockup window opens soon. Gather blackout dates, 10b5-1 plan status, advisor availability, tax estimates, and charitable pledge timing.",
-      plannerIncludesAny: ["OWNER_FINANCES", "calendar_action", "OWNER_DOCUMENTS"],
+      plannerIncludesAny: [
+        "OWNER_FINANCES",
+        "calendar_action",
+        "OWNER_DOCUMENTS",
+      ],
       responseIncludesAny: ["blackout", "10b5-1", "tax", "pledge"],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },

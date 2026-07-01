@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.create.with-prep-buffer",
   title: "Create a calendar event with a 15-minute prep buffer before it",
   domain: "calendar",

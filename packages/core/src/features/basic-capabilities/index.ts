@@ -14,17 +14,29 @@ import { v4 } from "uuid";
 import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
+import { fetchWithSsrfGuard } from "../../network/index.ts";
 import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
+import {
+	bridgeActionCompletedToStreams,
+	bridgeActionStartedToStreams,
+	bridgeConnectorMessageReceivedToStreams,
+	bridgeEvaluatorCompletedToStreams,
+	bridgeEvaluatorStartedToStreams,
+	bridgeMessageReceivedToStreams,
+	bridgeRunEndedToStreams,
+	bridgeRunStartedToStreams,
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
+} from "../../services/agent-event-bridge.ts";
+import { ChannelTopicsService } from "../../services/channel-topics.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
-import { isExplicitSelfModificationRequest } from "../../should-respond.ts";
 import type { Role } from "../../types/environment.ts";
 import { EventType } from "../../types/events.ts";
 import type {
@@ -34,6 +46,8 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
+	EvaluatorEventPayload,
+	EventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -88,6 +102,7 @@ export {
 } from "./prompt-runner-task.ts";
 export * from "./providers/index.ts";
 
+import { describeImageCached } from "../../media/index.ts";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
@@ -108,15 +123,17 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
-import { describeImageCached } from "../../media/index.ts";
+import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
 import { attachmentsProvider } from "./providers/attachments.ts";
+import { channelTopicsProvider } from "./providers/channelTopics.ts";
 import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
 import { contextBenchProvider } from "./providers/contextBench.ts";
@@ -173,6 +190,8 @@ interface PostCreationJson {
 	thought?: string;
 }
 
+const MAX_POST_GENERATION_ATTEMPTS = 3;
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -224,13 +243,22 @@ export async function fetchMediaData(
 	return Promise.all(
 		attachments.map(async (attachment: Media) => {
 			if (/^(http|https):\/\//.test(attachment.url)) {
-				const response = await fetch(attachment.url);
-				if (!response.ok) {
-					throw new Error(`Failed to fetch file: ${attachment.url}`);
+				// Attachment URLs are caller/agent-supplied — route through the SSRF
+				// guard so a crafted URL can't reach internal/metadata endpoints.
+				const { response, release } = await fetchWithSsrfGuard({
+					url: attachment.url,
+					timeoutMs: 30_000,
+				});
+				try {
+					if (!response.ok) {
+						throw new Error(`Failed to fetch file: ${attachment.url}`);
+					}
+					const mediaBuffer = Buffer.from(await response.arrayBuffer());
+					const mediaType = attachment.contentType || "image/png";
+					return { data: mediaBuffer, mediaType };
+				} finally {
+					await release();
 				}
-				const mediaBuffer = Buffer.from(await response.arrayBuffer());
-				const mediaType = attachment.contentType || "image/png";
-				return { data: mediaBuffer, mediaType };
 			}
 			throw new Error(
 				`File not found: ${attachment.url}. Make sure the path is correct.`,
@@ -485,18 +513,7 @@ export function shouldRespond(
 		};
 	}
 
-	// 5. Clear self-modification requests should bypass the ignore-biased
-	// classifier even in group chat, but only for narrow personality/style
-	// update phrasing to avoid broad false positives.
-	if (isExplicitSelfModificationRequest(message.content.text || "")) {
-		return {
-			shouldRespond: true,
-			skipEvaluation: true,
-			reason: "explicit self-modification request",
-		};
-	}
-
-	// 6. All other cases: let the LLM decide
+	// 5. All other cases: let the LLM decide
 	// The LLM will handle: indirect questions, conversation context, etc.
 	return {
 		shouldRespond: false,
@@ -519,14 +536,10 @@ const reactionReceivedHandler = async ({
 	await runtime.createMemories([{ memory: message, tableName: "messages" }]);
 };
 
-const postGeneratedHandler = async ({
-	runtime,
-	callback,
-	worldId,
-	userId,
-	roomId,
-	source,
-}: InvokePayload) => {
+const postGeneratedHandler = async (
+	{ runtime, callback, worldId, userId, roomId, source }: InvokePayload,
+	attempt = 1,
+) => {
 	const safeSource = source ?? "unknown";
 	const safeUserId = (userId ?? runtime.agentId) as UUID;
 
@@ -637,14 +650,28 @@ const postGeneratedHandler = async ({
 					{ src: "basic-capabilities", agentId: runtime.agentId, cleanedText },
 					"Already recently posted that, retrying",
 				);
-				postGeneratedHandler({
-					runtime,
-					callback,
-					worldId,
-					userId,
-					roomId,
-					source,
-				});
+				if (attempt >= MAX_POST_GENERATION_ATTEMPTS) {
+					runtime.logger.warn(
+						{
+							src: "basic-capabilities",
+							agentId: runtime.agentId,
+							cleanedText,
+						},
+						"Post generation retry limit reached for repeated content",
+					);
+					return;
+				}
+				await postGeneratedHandler(
+					{
+						runtime,
+						callback,
+						worldId,
+						userId,
+						roomId,
+						source,
+					},
+					attempt + 1,
+				);
 				return; // don't call callbacks
 			}
 		}
@@ -671,14 +698,24 @@ const postGeneratedHandler = async ({
 			{ src: "basic-capabilities", agentId: runtime.agentId, cleanedText },
 			"Got prompt moderation refusal, retrying",
 		);
-		postGeneratedHandler({
-			runtime,
-			callback,
-			worldId,
-			userId,
-			roomId,
-			source,
-		});
+		if (attempt >= MAX_POST_GENERATION_ATTEMPTS) {
+			runtime.logger.warn(
+				{ src: "basic-capabilities", agentId: runtime.agentId, cleanedText },
+				"Post generation retry limit reached for moderation refusals",
+			);
+			return;
+		}
+		await postGeneratedHandler(
+			{
+				runtime,
+				callback,
+				worldId,
+				userId,
+				roomId,
+				source,
+			},
+			attempt + 1,
+		);
 		return; // don't call callbacks
 	}
 
@@ -904,7 +941,28 @@ const controlMessageHandler = async ({
 // Events Configuration
 // ============================================================================
 
+const connectorMessageReceivedEvents = Object.fromEntries(
+	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES.map((eventType) => [
+		eventType,
+		[
+			async (payload: EventPayload) => {
+				await bridgeConnectorMessageReceivedToStreams(eventType, payload);
+			},
+		],
+	]),
+) as PluginEvents;
+
 const events: PluginEvents = {
+	...connectorMessageReceivedEvents,
+
+	// Bridge every connector's inbound message onto the AgentEventService
+	// `message` stream so the home activity rail shows the agent fielding
+	// messages (Discord/Telegram/etc.), not just orchestrator tasks (#9449).
+	[EventType.MESSAGE_RECEIVED]: [
+		async (payload: MessagePayload) => {
+			await bridgeMessageReceivedToStreams(payload);
+		},
+	],
 	[EventType.REACTION_RECEIVED]: [
 		async (payload: MessagePayload) => {
 			await reactionReceivedHandler(payload);
@@ -1024,6 +1082,11 @@ const events: PluginEvents = {
 
 	[EventType.ACTION_STARTED]: [
 		async (payload: ActionEventPayload) => {
+			// Bridge to the AgentEventService action/lifecycle streams so the WS
+			// `agent_event` channel carries real per-turn phase data (#8813 AC#3).
+			bridgeActionStartedToStreams(payload);
+		},
+		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
@@ -1074,6 +1137,10 @@ const events: PluginEvents = {
 
 	[EventType.ACTION_COMPLETED]: [
 		async (payload: ActionEventPayload) => {
+			// Bridge to the AgentEventService action/lifecycle streams (#8813 AC#3).
+			bridgeActionCompletedToStreams(payload);
+		},
+		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
 			if (payloadContent && payloadContent.source === "client_chat") {
@@ -1092,6 +1159,10 @@ const events: PluginEvents = {
 	],
 
 	[EventType.RUN_STARTED]: [
+		async (payload: RunEventPayload) => {
+			// Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
+			bridgeRunStartedToStreams(payload);
+		},
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
 				{
@@ -1121,6 +1192,10 @@ const events: PluginEvents = {
 	],
 
 	[EventType.RUN_ENDED]: [
+		async (payload: RunEventPayload) => {
+			// Bridge to the AgentEventService lifecycle stream (#8813 AC#3).
+			bridgeRunEndedToStreams(payload);
+		},
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
 				{
@@ -1185,6 +1260,20 @@ const events: PluginEvents = {
 		},
 	],
 
+	[EventType.EVALUATOR_STARTED]: [
+		async (payload: EvaluatorEventPayload) => {
+			// Bridge to the AgentEventService evaluator stream (#8813 AC#3).
+			bridgeEvaluatorStartedToStreams(payload);
+		},
+	],
+
+	[EventType.EVALUATOR_COMPLETED]: [
+		async (payload: EvaluatorEventPayload) => {
+			// Bridge to the AgentEventService evaluator stream (#8813 AC#3).
+			bridgeEvaluatorCompletedToStreams(payload);
+		},
+	],
+
 	[EventType.CONTROL_MESSAGE]: [
 		async (payload: ControlMessagePayload) => {
 			if (!payload.message) {
@@ -1210,6 +1299,7 @@ export const basicProviders = [
 	actionsProvider,
 	actionStateProvider,
 	attachmentsProvider,
+	channelTopicsProvider,
 	characterProvider,
 	choiceProvider,
 	contextBenchProvider,
@@ -1235,6 +1325,7 @@ export const basicActions = [
 	withCanonicalActionDocs(replyAction),
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
+	withCanonicalActionDocs(channelTopicSearchAction),
 ];
 
 /**
@@ -1266,6 +1357,9 @@ export const basicServices: ServiceClass[] = [
 	// in-memory cache; registering it on every runtime so the planner-loop
 	// can pick up artifacts produced by `bun run train -- --backend native`.
 	OptimizedPromptService,
+	// Per-channel topic LRU. Records Stage-1-extracted topics per room and
+	// surfaces them back into routing via the CHANNEL_TOPICS provider.
+	ChannelTopicsService,
 ];
 
 /**
@@ -1378,6 +1472,7 @@ export function createBasicCapabilitiesPlugin(
 		],
 		routes: [
 			...TURN_CONTROL_ROUTES,
+			...CHANNEL_TOPICS_ROUTES,
 			...(config.enableAutonomy ? autonomyCapabilities.routes : []),
 		],
 		events,
@@ -1400,6 +1495,7 @@ export function createBasicCapabilitiesPlugin(
 			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
+			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
 			if (config.enableAutonomy) {
 				await runtime.getService(AutonomyService.serviceType)?.stop();
 			}

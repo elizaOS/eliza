@@ -13,9 +13,9 @@
     "category": "Productivity",
     "subcategory": "Personal Assistant",
     "ageRating": "12+",
-    "website": "https://app.elizaos.ai",
+    "website": "https://app.elizacloud.ai",
     "supportUrl": "https://github.com/elizaos/elizaos-app/issues",
-    "privacyUrl": "https://app.elizaos.ai/privacy"
+    "privacyUrl": "https://app.elizacloud.ai/privacy"
   },
   "screenshots": {
     "_comment": "Required: 1-10 screenshots, 1366x768 or 2560x1440 recommended",

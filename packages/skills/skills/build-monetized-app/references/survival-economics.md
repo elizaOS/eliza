@@ -17,7 +17,7 @@ The dashboard view at `https://www.elizacloud.ai/dashboard/earnings` shows the r
 
 ## Container billing
 
-Container hosting is pay-as-you-go, billed daily. The cron at `app/api/cron/container-billing/route.ts` runs once per day and, for each container:
+Container hosting is pay-as-you-go, billed daily. The cron at `packages/cloud/api/cron/container-billing/route.ts` runs once per day and, for each container:
 
 1. Computes the day's hosting cost (CPU + RAM at the tier's per-second rate)
 2. Pulls from `redeemable_earnings_ledger` first (if `pay_as_you_go_from_earnings = true`, which is the org default)
@@ -61,4 +61,4 @@ The skill itself just covers the build-and-deploy mechanics. The strategic layer
 - Markup is the only revenue lever for chat-style apps in the current schema; if older code or docs reference per-message pricing, that's stale.
 - Earnings credit on completed inference. Failed calls don't generate earnings.
 - The redemption flow itself takes a small platform fee; the rate is shown on the dashboard at cashout time.
-- Cloud's container-quota per org caps how many simultaneous containers an agent can run. `getContainerQuota()` reports the current limit.
+- Cloud's per-org quota caps how many simultaneous apps/containers an agent can run. There is no SDK method that reports the limit; it surfaces as a `403 quota_exceeded` on deploy when the org is at its cap.

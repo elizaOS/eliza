@@ -2,10 +2,25 @@
 
 A simple REST API server for chatting with an elizaOS agent using Hono.
 
-**No API keys or external services required for local mode.** Uses:
+Uses:
 
-- `plugin-sql` with PGLite by default for local storage
-- `plugin-eliza-classic` for pattern-matching responses (no LLM needed)
+- `plugin-sql` with PGLite by default for local storage (no external DB required)
+- a real LLM provider, selected from the first API key that is set
+
+## Inference provider
+
+The server picks an inference provider from the first matching environment
+variable, in priority order:
+
+| Env var              | Provider plugin              | Reported `mode` |
+| -------------------- | ---------------------------- | --------------- |
+| `OPENAI_API_KEY`     | `@elizaos/plugin-openai`     | `openai`        |
+| `OPENROUTER_API_KEY` | `@elizaos/plugin-openrouter` | `openrouter`    |
+| `ANTHROPIC_API_KEY`  | `@elizaos/plugin-anthropic`  | `anthropic`     |
+| `ELIZA_API_KEY`      | `@elizaos/plugin-elizacloud` | `elizacloud`    |
+
+If none of these are set, the runtime fails to initialize and `/chat` returns a
+`503` explaining that no inference provider is configured.
 
 ## Quick Start
 
@@ -13,8 +28,8 @@ A simple REST API server for chatting with an elizaOS agent using Hono.
 # Install dependencies
 bun install
 
-# Start the server
-bun run start
+# Set one inference provider key, then start the server
+OPENAI_API_KEY=sk-... bun run start
 ```
 
 The server will start at http://localhost:3000
@@ -51,9 +66,10 @@ Response:
 
 ```json
 {
-  "response": "How do you do. Please state your problem.",
+  "response": "Hello! How can I help you today?",
   "character": "Eliza",
-  "userId": "generated-uuid"
+  "userId": "generated-uuid",
+  "mode": "openai"
 }
 ```
 

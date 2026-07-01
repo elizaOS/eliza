@@ -8,6 +8,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "push.full-ladder-T-1h-10m-0",
   title: "Complete reminder ladder T-1h → T-10m → T-0 across devices",
   domain: "lifeops.push",

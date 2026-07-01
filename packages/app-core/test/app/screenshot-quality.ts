@@ -61,15 +61,19 @@ export async function assertScreenshotNotBlank(
   }
   if (issues.length > 0) {
     throw new Error(
-      `${label}: screenshot quality failed: ${issues.join("; ")}; metrics=${JSON.stringify({
-        byteLength: buffer.length,
-        ...quality,
-      })}`,
+      `${label}: screenshot quality failed: ${issues.join("; ")}; metrics=${JSON.stringify(
+        {
+          byteLength: buffer.length,
+          ...quality,
+        },
+      )}`,
     );
   }
 }
 
-function screenshotResultToBuffer(result: Buffer | Uint8Array | string): Buffer {
+function screenshotResultToBuffer(
+  result: Buffer | Uint8Array | string,
+): Buffer {
   if (typeof result === "string") {
     return Buffer.from(result, "base64");
   }

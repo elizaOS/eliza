@@ -12,7 +12,7 @@ import { Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { AccountCard } from "./AccountCard";
@@ -24,7 +24,7 @@ interface AccountListProps {
 }
 
 export function AccountList({ providerId }: AccountListProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const accounts = useAccounts();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 

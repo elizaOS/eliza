@@ -3,18 +3,18 @@ import "./client-agent";
 import { ElizaClient } from "./client-base";
 
 describe("ElizaClient training model listing", () => {
-  it("returns legacy training models when they are available", async () => {
+  it("returns training models when they are available", async () => {
     const client = new ElizaClient("http://agent.example:31337", "token");
     const fetch = vi.fn().mockResolvedValue({
       models: [
         {
-          id: "trained-0_8b",
+          id: "trained-2b",
           createdAt: "2026-05-23T00:00:00.000Z",
           jobId: "job-1",
           outputDir: "/runs/job-1",
           modelPath: "/runs/job-1/model.gguf",
           adapterPath: null,
-          sourceModel: "eliza-1-0_8b-base",
+          sourceModel: "google/gemma-4-E2B",
           backend: "cuda",
           ollamaModel: null,
           active: false,
@@ -29,7 +29,7 @@ describe("ElizaClient training model listing", () => {
     client.fetch = fetch;
 
     await expect(client.listTrainingModels()).resolves.toMatchObject({
-      models: [{ id: "trained-0_8b" }],
+      models: [{ id: "trained-2b" }],
     });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith("/api/training/models");
@@ -44,14 +44,14 @@ describe("ElizaClient training model listing", () => {
         loaded_at: "2026-05-23T00:00:00.000Z",
         entries: [
           {
-            short_name: "eliza-1-0_8b",
+            short_name: "eliza-1-2b",
             entry: {
-              eliza_short_name: "eliza-1-0_8b",
-              eliza_repo_id: "elizaos/eliza-1-0_8b",
-              gguf_repo_id: "elizaos/eliza-1-0_8b-gguf",
-              base_hf_id: "NousResearch/Hermes-3-Llama-3.1-8B",
-              tier: "0_8b",
-              inference_max_context: 128000,
+              eliza_short_name: "eliza-1-2b",
+              eliza_repo_id: "elizaos/eliza-1",
+              gguf_repo_id: "elizaos/eliza-1",
+              base_hf_id: "google/gemma-4-E2B",
+              tier: "2b",
+              inference_max_context: 131072,
             },
           },
         ],
@@ -61,20 +61,20 @@ describe("ElizaClient training model listing", () => {
     await expect(client.listTrainingModels()).resolves.toEqual({
       models: [
         {
-          id: "eliza-1-0_8b",
+          id: "eliza-1-2b",
           createdAt: "2026-05-23T00:00:00.000Z",
-          jobId: "vast-registry:eliza-1-0_8b",
-          outputDir: "elizaos/eliza-1-0_8b-gguf",
-          modelPath: "elizaos/eliza-1-0_8b-gguf",
+          jobId: "vast-registry:eliza-1-2b",
+          outputDir: "elizaos/eliza-1",
+          modelPath: "elizaos/eliza-1",
           adapterPath: null,
-          sourceModel: "NousResearch/Hermes-3-Llama-3.1-8B",
+          sourceModel: "google/gemma-4-E2B",
           backend: "cuda",
           ollamaModel: null,
           active: false,
           benchmark: {
             status: "not_run",
             lastRunAt: null,
-            output: "Eliza-1 0_8b registry entry",
+            output: "Eliza-1 2b registry entry",
           },
         },
       ],
@@ -205,8 +205,8 @@ describe("ElizaClient training collection listing", () => {
             },
             {
               category: "model",
-              title: "eliza-1-0_8b-trained",
-              path: "/tmp/collection-1/models/0_8b-trained.json",
+              title: "eliza-1-2b-trained",
+              path: "/tmp/collection-1/models/2b-trained.json",
               schema: "eliza1_model_registry_entry",
             },
           ],
@@ -215,15 +215,15 @@ describe("ElizaClient training collection listing", () => {
             models: 1,
             modelInventory: [
               {
-                title: "eliza-1-0_8b-trained",
-                path: "/tmp/collection-1/models/0_8b-trained.json",
+                title: "eliza-1-2b-trained",
+                path: "/tmp/collection-1/models/2b-trained.json",
                 schema: "eliza1_model_registry_entry",
-                model: "eliza-1-0_8b-trained",
-                tier: "0_8b",
+                model: "eliza-1-2b-trained",
+                tier: "2b",
                 variant: "trained",
-                outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-                baseModel: "eliza-1-0_8b-base",
-                repoId: "elizaos/eliza-1-0_8b-trained",
+                outputPath: "hf://elizaos/eliza-1",
+                baseModel: "google/gemma-4-E2B",
+                repoId: "elizaos/eliza-1",
                 evalImprovementPercent: 25,
               },
             ],
@@ -232,13 +232,13 @@ describe("ElizaClient training collection listing", () => {
             actionBenchmarkPairs: 1,
             benchmarkComparisons: 1,
             caseSamples: 2,
-            tiers: ["0_8b"],
+            tiers: ["2b"],
             comparisonInventory: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 benchmark: "eliza_harness_action_selection",
-                baseModelId: "eliza-1-0_8b-base",
-                trainedModelId: "eliza-1-0_8b-trained",
+                baseModelId: "google/gemma-4-E2B",
+                trainedModelId: "eliza-1-2b-trained",
                 referenceModelId: "cerebras/gpt-oss-120b",
                 baseScore: 0.4,
                 trainedScore: 0.5,
@@ -251,10 +251,10 @@ describe("ElizaClient training collection listing", () => {
               },
             ],
             baselineProgress: {
-              tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
-              establishedTiers: ["0_8b"],
-              remainingTiers: ["2b", "4b", "9b", "27b"],
-              nextTier: "2b",
+              tierOrder: ["2b", "4b", "9b", "27b", "27b-256k"],
+              establishedTiers: ["2b"],
+              remainingTiers: ["4b", "9b", "27b", "27b-256k"],
+              nextTier: "4b",
               smallestTierEstablished: true,
               allTiersEstablished: false,
             },
@@ -294,15 +294,15 @@ describe("ElizaClient training collection listing", () => {
             },
             {
               category: "model",
-              title: "eliza-1-0_8b-trained",
-              path: "/tmp/collection-1/models/0_8b-trained.json",
+              title: "eliza-1-2b-trained",
+              path: "/tmp/collection-1/models/2b-trained.json",
             },
           ],
           training: {
             models: 1,
             modelInventory: [
               {
-                model: "eliza-1-0_8b-trained",
+                model: "eliza-1-2b-trained",
                 evalImprovementPercent: 25,
               },
             ],
@@ -316,7 +316,7 @@ describe("ElizaClient training collection listing", () => {
           benchmarks: {
             comparisonInventory: [
               {
-                tier: "0_8b",
+                tier: "2b",
                 trainedVsReferencePercent: -37.5,
                 modelBacked: true,
               },

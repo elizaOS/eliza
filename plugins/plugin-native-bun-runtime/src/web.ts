@@ -9,11 +9,11 @@ import type {
   LocalTtsStatusResult,
   SendMessageOptions,
   SendMessageResult,
-  SynthesizeLocalTtsOptions,
-  SynthesizeLocalTtsResult,
   StartOptions,
   StartResult,
-} from "./definitions";
+  SynthesizeLocalTtsOptions,
+  SynthesizeLocalTtsResult,
+} from "./definitions.js";
 
 /**
  * Web fallback for `@elizaos/capacitor-bun-runtime`.

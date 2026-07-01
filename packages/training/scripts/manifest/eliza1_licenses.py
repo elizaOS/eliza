@@ -100,14 +100,14 @@ class LicenseAttestation:
         return header + body
 
 
-# The text backbone, the MTP drafter (distilled from the text
-# backbone) and the embedding model are all Apache-2.0 (Qwen3 family on
-# HuggingFace ships the Apache-2.0 LICENSE). Voice artifacts are tiered:
-# 0_8b/2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
+# The text backbone and the MTP drafter (distilled from the text
+# backbone) are Apache-2.0 Gemma-derived artifacts. Voice artifacts are tiered:
+# 2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
 # tiers ship OmniVoice only. Kokoro and OmniVoice weights both declare
 # Apache-2.0; omnivoice.cpp C++ glue is MIT but is a code dependency, not a
-# shipped weight. Qwen3-ASR is Apache-2.0. Silero VAD is MIT. openWakeWord
-# code + feature models are Apache-2.0; the pre-trained wake-phrase head is
+# shipped weight. ASR and any dedicated embedding artifact must be recorded
+# from the verified per-bundle source. Silero VAD is MIT. openWakeWord code
+# + feature models are Apache-2.0; the pre-trained wake-phrase head is
 # CC-BY-NC-SA-4.0 (the bundle only ships the head as an opt-in experimental
 # upstream wake-word head — see wakeword-head-plan.md).
 _APACHE = "Apache-2.0.txt"
@@ -117,9 +117,10 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-# component"). Text tiers use Qwen3.5 0.8B / 2B / 4B / 9B and Qwen3.6 27B.
-# ASR and embedding are deliberate upstream exceptions: they remain published
-# Qwen3-ASR / Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
+# component"). Text tiers use Gemma 4 E2B / E4B / 12B / 31B.
+# ASR and dedicated embedding sources are no longer Qwen exceptions; active
+# bundles must record verified Gemma-compatible sources in manifest lineage /
+# provenance before they can become base-v1 releases.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     LicenseAttestation(
         bundle_file="LICENSE.text",
@@ -127,14 +128,14 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo=(
-            "Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B / "
-            "Qwen/Qwen3.5-9B / Qwen/Qwen3.6-27B (lineage recorded per tier "
+            "google/gemma-4-E2B / google/gemma-4-E2B / google/gemma-4-E4B / "
+            "google/gemma-4-12B / google/gemma-4-31B (lineage recorded per tier "
             "in the manifest)"
         ),
-        upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B",
-        copyright_holder="Alibaba Cloud (Qwen team) and contributors",
+        upstream_url="https://huggingface.co/google/gemma-4-E2B",
+        copyright_holder="Google DeepMind and contributors",
         note=(
-            "The text weights in this bundle are derived from the Qwen3.5/Qwen3.6 family "
+            "The text weights in this bundle are derived from the Gemma 4 family "
             "(GGUF-converted via the elizaOS/llama.cpp fork and Eliza-quantized), "
             "rebranded \"Eliza-1\" in user-facing strings per the project's "
             "branding policy. The upstream lineage and Apache-2.0 terms are "
@@ -148,19 +149,19 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo=(
-            "onnx-community/Kokoro-82M-v1.0-ONNX; "
+            "elizaos/eliza-1 Kokoro-82M GGUF (original hexgrad/Kokoro-82M); "
             "Serveurperso/OmniVoice-GGUF; ServeurpersoCom/omnivoice.cpp"
         ),
-        upstream_url="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder=(
             "the Kokoro authors; the OmniVoice / omnivoice.cpp authors; "
             "Qwen-TTS lineage (Alibaba Cloud)"
         ),
         note=(
-            "The active Eliza-1 TTS policy is tiered: 0_8b, 2b, 4b, and 9b "
+            "The active Eliza-1 TTS policy is tiered: 2b, 4b, and 9b "
             "ship OmniVoice first with Kokoro fallback; 27B-class tiers ship "
-            "OmniVoice only. Kokoro ONNX assets are staged from "
-            "onnx-community/Kokoro-82M-v1.0-ONNX. OmniVoice GGUF assets, when "
+            "OmniVoice only. Kokoro GGUF assets are staged from "
+            "elizaos/eliza-1 (converted from hexgrad/Kokoro-82M). OmniVoice GGUF assets, when "
             "present, are staged from Serveurperso/OmniVoice-GGUF (Qwen3-TTS "
             "lineage), and omnivoice.cpp is a MIT-licensed code dependency, not "
             "a shipped weight. OmniVoice singing/emotion tag data carries "
@@ -170,17 +171,19 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     ),
     LicenseAttestation(
         bundle_file="LICENSE.asr",
-        component="ASR (Qwen3-ASR)",
+        component="ASR (Gemma-compatible local ASR)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="ggml-org/Qwen3-ASR-0.6B-GGUF / ggml-org/Qwen3-ASR-1.7B-GGUF (base: Qwen/Qwen3-ASR-0.6B / Qwen/Qwen3-ASR-1.7B)",
-        upstream_url="https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF",
-        copyright_holder="Alibaba Cloud (Qwen team) and contributors",
+        upstream_repo="configured per bundle in lineage.asr / provenance.sourceModels.asr; Qwen3-ASR is retired",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
+        copyright_holder="source-specific; see the bundle manifest and upstream model card",
         note=(
-            "ASR weights are Qwen3-ASR, GGUF-converted upstream. This is a "
-            "deliberate Qwen3 upstream exception to the Qwen3.5 text-tier "
-            "lineage; do not rewrite it as Qwen3.5. Declared upstream "
-            "license: Apache-2.0."
+            "ASR weights must come from the verified source recorded in the "
+            "bundle manifest. Qwen3-ASR GGUF artifacts are retired for active "
+            "Gemma Eliza-1 bundles; a base-v1 release remains blocked until "
+            "Gemma-compatible ASR model/projector GGUF artifacts are hosted "
+            "and reviewed. Declared upstream license must be verified before "
+            "release."
         ),
     ),
     LicenseAttestation(
@@ -210,7 +213,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         text_file=_APACHE,
         upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
         upstream_url="https://huggingface.co/elizaos/eliza-1",
-        copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
+        copyright_holder="elizaOS / Eliza Labs (drafter); Google DeepMind and contributors (text lineage)",
         note=(
             "The MTP drafter is a small student model aligned to the Eliza-1 "
             "text checkpoint (target sha256 recorded in mtp/target-meta.json). "
@@ -222,20 +225,19 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     ),
     LicenseAttestation(
         bundle_file="LICENSE.embedding",
-        component="embedding (Qwen3-Embedding)",
+        component="embedding (Gemma-compatible dedicated embedding)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Qwen/Qwen3-Embedding-0.6B-GGUF",
-        upstream_url="https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
-        copyright_holder="Alibaba Cloud (Qwen team) and contributors",
+        upstream_repo="configured per bundle in lineage.embedding / provenance.sourceModels.embedding; Qwen3-Embedding is retired",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
+        copyright_holder="source-specific; see the bundle manifest and upstream model card",
         note=(
-            "Qwen3-Embedding-0.6B (1024-dim, Matryoshka, 32k ctx), shipped as a "
-            "separate embedding/ artifact on non-lite tiers. On 0_8b the embedding "
-            "model IS the text backbone with --pooling last — no duplicate weights, "
-            "no separate embedding/ artifact, and this file is absent on 0_8b. "
-            "Declared upstream license: Apache-2.0."
+            "Dedicated embedding artifacts are disabled until a verified "
+            "Gemma-compatible source is configured. Active tiers pool "
+            "embeddings from the text backbone instead of shipping retired "
+            "Qwen3-Embedding weights. Declared upstream license must be "
+            "verified before any dedicated embedding artifact is released."
         ),
-        tiers=("4b",),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.vision",
@@ -243,18 +245,17 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo=(
-            "unsloth/Qwen3.5-{0.8B,2B,4B,9B}-GGUF and "
-            "unsloth/Qwen3.6-27B-GGUF (mmproj-F16.gguf)"
+            "unsloth/gemma-4-{E2B,E4B,12B,31B}-GGUF (mmproj-F16.gguf)"
         ),
-        upstream_url="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF",
-        copyright_holder="Alibaba Cloud (Qwen team) and contributors",
+        upstream_url="https://huggingface.co/unsloth/gemma-4-31B-GGUF",
+        copyright_holder="Google DeepMind and contributors",
         note=(
-            "The vision projector (mmproj) is part of the Qwen3.5/Qwen3.6 "
-            "multimodal lineage; active Eliza-1 release tiers ship a tier-compatible "
+            "The vision projector (mmproj) is part of the Gemma 4 native-vision "
+            "(gemma4v) lineage; active Eliza-1 release tiers ship a tier-compatible "
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("0_8b", "2b", "4b", "9b", "27b"),
+        tiers=("2b", "4b", "9b", "27b"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.emotion",
@@ -345,7 +346,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "and CC-compatible terms; see the per-component LICENSE.* files and the "
             "manifest lineage / provenance blocks for the full breakdown. The "
             "bundle-level term follows the most-restrictive shipped component. "
-            "0_8b/2b/4b mobile bundles include the narrow OmniVoice voice "
+            "2b/4b mobile bundles include the narrow OmniVoice voice "
             "ladder; 9b and 27B-class bundles that include OmniVoice singing/"
             "emotion data carry CC-BY-NC-SA lineage. Individual permissively "
             "licensed components remain usable under their own terms. If the "
@@ -374,14 +375,14 @@ def _voice_attestation_for_components(
             component="voice (Kokoro TTS)",
             spdx="Apache-2.0",
             text_file=_APACHE,
-            upstream_repo="onnx-community/Kokoro-82M-v1.0-ONNX",
-            upstream_url="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+            upstream_repo="elizaos/eliza-1 Kokoro-82M GGUF (original hexgrad/Kokoro-82M)",
+            upstream_url="https://huggingface.co/elizaos/eliza-1",
             copyright_holder="the Kokoro authors",
             note=(
                 "This legacy/no-OmniVoice Eliza-1 bundle is Kokoro-only for TTS. It "
                 "ships no OmniVoice GGUF weights and no OmniVoice quant ladder. "
-                "Kokoro ONNX assets are staged from "
-                "onnx-community/Kokoro-82M-v1.0-ONNX and declare Apache-2.0."
+                "Kokoro GGUF assets are staged from elizaos/eliza-1 and declare "
+                "Apache-2.0 through the original hexgrad/Kokoro-82M lineage."
             ),
         )
     if has_omnivoice and not has_kokoro:

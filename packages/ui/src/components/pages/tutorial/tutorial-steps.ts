@@ -29,6 +29,18 @@ export interface TutorialObservable {
    * i.e. the user sent it. Used by the guided "ask to navigate" frame.
    */
   prefillSent: boolean;
+  /**
+   * True once the active conversation id (read from the live
+   * `data-testid="chat-sheet"`) has changed to a fresh conversation since the
+   * frame began. Used by the "new chat" frame.
+   */
+  newConversationStarted: boolean;
+  /**
+   * True once the active conversation index has changed since the frame began —
+   * i.e. the user swiped to an adjacent conversation. Used by the "swipe between
+   * chats" frame.
+   */
+  conversationSwitched: boolean;
   /** Seconds elapsed on the current frame. */
   secondsOnStep: number;
 }
@@ -87,73 +99,97 @@ const isShrunk = (d: ChatDetent | null): boolean =>
 export function buildTutorialSteps(appName = "Eliza"): TutorialStep[] {
   const name = appName.trim() || "Eliza";
   return [
-  {
-    id: "welcome",
-    title: `Meet ${name}`,
-    body: "Your AI agent. The chat runs everything — here's the quick version.",
-    voiceLine: `Hi, I'm ${name}, your A I agent. The chat runs everything — here's the quick version.`,
-    targetSelector: null,
-    manualContinue: true,
-    continueLabel: "Start",
-  },
-  {
-    id: "open-chat",
-    title: "Open the chat",
-    body: "Tap the pill to open it.",
-    voiceLine: "Tap the pill to open the chat.",
-    targetSelector: '[data-testid="chat-pill"]',
-    enterChat: "pill",
-    isDone: (s) => s.detent != null && s.detent !== "pill",
-  },
-  {
-    id: "resize-chat",
-    title: "Resize it",
-    body: "Drag the handle up to make the chat bigger.",
-    voiceLine: "Drag the handle up to make the chat bigger.",
-    targetSelector: '[data-testid="chat-sheet-grabber"]',
-    enterChat: "rest",
-    isDone: (s) => isExpanded(s.detent),
-    beat2: {
-      body: "Now drag it back down to tuck it away.",
-      voiceLine: "Now drag it back down to tuck it away.",
-      isDone: (s) => isShrunk(s.detent),
+    {
+      id: "welcome",
+      title: `Meet ${name}`,
+      body: "Your AI agent. The chat runs everything — here's the quick version.",
+      voiceLine: `Hi, I'm ${name}, your A I agent. The chat runs everything — here's the quick version.`,
+      targetSelector: null,
+      manualContinue: true,
+      continueLabel: "Start",
     },
-  },
-  {
-    id: "ask-to-navigate",
-    title: "Just ask",
-    body: `You can ask ${name} to go anywhere. I've typed it for you — tap send.`,
-    voiceLine: `You can ask ${name} to go anywhere. I've typed it for you — tap send.`,
-    targetSelector: '[data-testid="chat-composer-action"]',
-    enterChat: "rest",
-    prefill: "open settings",
-    isDone: (s) => s.prefillSent,
-    navigateOnDone: "settings",
-    lockTabs: ["chat", "settings"],
-    doneBody: "Here's Settings.",
-  },
-  {
-    id: "use-voice",
-    title: "Talk to it",
-    body: "Tap the mic and say “go home”.",
-    voiceLine: "You can talk to me, too. Tap the mic and say: go home.",
-    targetSelector: '[data-testid="chat-composer-mic"]',
-    enterChat: "rest",
-    isDone: (s) => /\bhome\b/i.test(s.transcript),
-    navigateOnDone: "chat",
-    lockTabs: ["settings", "chat"],
-    doneBody: "Welcome home.",
-  },
-  {
-    id: "done",
-    title: "You're set",
-    body: "The chat is your remote — tap, drag, type, or talk. Re-run this tour anytime from the Tutorial tile.",
-    voiceLine:
-      "That's it. The chat is your remote — tap, drag, type, or talk. Have fun.",
-    targetSelector: null,
-    manualContinue: true,
-    continueLabel: "Done",
-  },
+    {
+      id: "open-chat",
+      title: "Open the chat",
+      body: "Tap the pill to open it.",
+      voiceLine: "Tap the pill to open the chat.",
+      targetSelector: '[data-testid="chat-pill"]',
+      enterChat: "pill",
+      isDone: (s) => s.detent != null && s.detent !== "pill",
+    },
+    {
+      id: "resize-chat",
+      title: "Resize it",
+      body: "Drag the handle up to make the chat bigger.",
+      voiceLine: "Drag the handle up to make the chat bigger.",
+      targetSelector: '[data-testid="chat-sheet-grabber"]',
+      enterChat: "rest",
+      isDone: (s) => isExpanded(s.detent),
+      beat2: {
+        body: "Now drag it back down to tuck it away.",
+        voiceLine: "Now drag it back down to tuck it away.",
+        isDone: (s) => isShrunk(s.detent),
+      },
+    },
+    {
+      id: "ask-to-navigate",
+      title: "Just ask",
+      body: `You can ask ${name} to go anywhere. I've typed it for you — tap send.`,
+      voiceLine: `You can ask ${name} to go anywhere. I've typed it for you — tap send.`,
+      targetSelector: '[data-testid="chat-composer-action"]',
+      enterChat: "rest",
+      prefill: "open settings",
+      isDone: (s) => s.prefillSent,
+      navigateOnDone: "settings",
+      lockTabs: ["chat", "settings"],
+      doneBody: "Here's Settings.",
+    },
+    {
+      id: "use-voice",
+      title: "Talk to it",
+      body: "Tap the mic and say “go home”.",
+      voiceLine: "You can talk to me, too. Tap the mic and say: go home.",
+      targetSelector: '[data-testid="chat-composer-mic"]',
+      enterChat: "rest",
+      isDone: (s) => /\bhome\b/i.test(s.transcript),
+      navigateOnDone: "chat",
+      lockTabs: ["settings", "chat"],
+      doneBody: "Welcome home.",
+    },
+    {
+      id: "new-chat",
+      title: "Start a fresh chat",
+      body: "Tap to start a clean conversation — your old one stays saved.",
+      voiceLine:
+        "Need a clean slate? Tap to start a fresh conversation. Your old one stays saved.",
+      targetSelector: '[data-testid="shell-new-chat"]',
+      enterChat: "rest",
+      isDone: (s) => s.newConversationStarted,
+      lockTabs: ["chat"],
+      doneBody: "Fresh chat, ready to go.",
+    },
+    {
+      id: "swipe-between-chats",
+      title: "Swipe between chats",
+      body: "Swipe left or right across the chat to move between your conversations.",
+      voiceLine:
+        "And you can swipe left or right across the chat to move between your conversations.",
+      targetSelector: '[data-testid="chat-sheet"]',
+      enterChat: "rest",
+      isDone: (s) => s.conversationSwitched,
+      lockTabs: ["chat"],
+      doneBody: "That's how you move between chats.",
+    },
+    {
+      id: "done",
+      title: "You're set",
+      body: "The chat is your remote — tap, drag, type, or talk. Re-run this tour anytime from Help.",
+      voiceLine:
+        "That's it. The chat is your remote — tap, drag, type, or talk. Have fun.",
+      targetSelector: null,
+      manualContinue: true,
+      continueLabel: "Done",
+    },
   ];
 }
 

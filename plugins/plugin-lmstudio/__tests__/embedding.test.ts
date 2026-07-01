@@ -74,15 +74,13 @@ describe("LM Studio embeddings", () => {
     expect(callArg.value).toHaveLength(32_000);
   });
 
-  it("returns a zero vector when the provider rejects", async () => {
+  it("throws when the embedding provider fails (no fabricated zero vector)", async () => {
     embedMock.mockRejectedValue(new Error("LM Studio embeddings unavailable"));
 
-    const embedding = await handleTextEmbedding(
-      createRuntime({ LMSTUDIO_EMBEDDING_MODEL: "nomic-embed" }),
-      { text: "hello" }
-    );
-
-    expect(embedding).toHaveLength(1536);
-    expect(embedding.every((value) => value === 0)).toBe(true);
+    await expect(
+      handleTextEmbedding(createRuntime({ LMSTUDIO_EMBEDDING_MODEL: "nomic-embed" }), {
+        text: "hello",
+      })
+    ).rejects.toThrow("LM Studio embeddings unavailable");
   });
 });

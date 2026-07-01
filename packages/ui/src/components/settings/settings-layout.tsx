@@ -1,4 +1,4 @@
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 
@@ -21,7 +21,7 @@ export function SettingsStack({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-6", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-8", className)} {...props} />;
 }
 
 export interface SettingsGroupProps
@@ -51,15 +51,15 @@ export function SettingsGroup({
 }: SettingsGroupProps) {
   const hasHeader = Boolean(title || description || action);
   return (
-    <section className={cn("flex flex-col gap-2.5", className)} {...props}>
+    <section className={cn("flex flex-col gap-1.5", className)} {...props}>
       {hasHeader ? (
-        <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+        <div className="flex min-h-[1.5rem] flex-wrap items-end justify-between gap-x-3 gap-y-2">
           <div className="min-w-0">
             {title ? (
-              <h3 className="text-sm font-medium text-txt-strong">{title}</h3>
+              <h3 className="text-xs font-medium text-muted/70">{title}</h3>
             ) : null}
             {description ? (
-              <p className="mt-1 text-xs leading-relaxed text-muted/90">
+              <p className="mt-1 text-xs leading-relaxed text-muted/80">
                 {description}
               </p>
             ) : null}
@@ -67,15 +67,10 @@ export function SettingsGroup({
           {action ? <div className="shrink-0">{action}</div> : null}
         </div>
       ) : null}
-      {bare ? (
-        children
-      ) : (
-        <div className="divide-y divide-border/60 overflow-hidden rounded-lg bg-card">
-          {children}
-        </div>
-      )}
+      {/* Flat list — no card, no dividers; rows breathe via their own spacing. */}
+      {bare ? children : <div className="flex flex-col">{children}</div>}
       {footer ? (
-        <p className="px-1 text-xs leading-relaxed text-muted/80">{footer}</p>
+        <p className="pt-1 text-xs leading-relaxed text-muted/70">{footer}</p>
       ) : null}
     </section>
   );
@@ -84,8 +79,12 @@ export function SettingsGroup({
 type SettingsRowTone = "default" | "danger";
 
 export interface SettingsRowProps {
-  /** Leading icon rendered in a neutral medallion. */
-  icon?: LucideIcon;
+  /**
+   * Leading icon rendered in a neutral medallion. Accepts any component that
+   * takes `className`/`aria-hidden` (lucide icons and the generic provider icons
+   * both satisfy this) — the row only passes those two props.
+   */
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   iconClassName?: string;
   /** Primary label. */
   label: React.ReactNode;
@@ -153,15 +152,14 @@ function SettingsRowBody({
   return (
     <div className="flex w-full items-center gap-3">
       {Icon ? (
-        <span
+        <Icon
           className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface text-txt-strong ring-1 ring-border/70",
-            tone === "danger" && "bg-warn/12 text-warn ring-warn/20",
+            "h-[18px] w-[18px] shrink-0 text-muted/80",
+            tone === "danger" && "text-warn",
             iconClassName,
           )}
-        >
-          <Icon className="h-[18px] w-[18px]" aria-hidden />
-        </span>
+          aria-hidden
+        />
       ) : null}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <LabelTag
@@ -211,8 +209,9 @@ export function SettingsRow({
   disabled = false,
   className,
 }: SettingsRowProps) {
-  const padding = "px-4 py-3";
-
+  // Full-width content (the page owns horizontal padding). Nav rows bleed 0.5rem
+  // into that padding (-mx-2 px-2) so the hover/active wash has breathing room
+  // while the text still lines up with non-button rows.
   if (onClick) {
     return (
       <button
@@ -222,11 +221,10 @@ export function SettingsRow({
         disabled={disabled}
         aria-current={active ? "true" : undefined}
         className={cn(
-          "group flex w-full min-h-[3.25rem] items-center text-left transition-colors",
-          "hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40",
+          "group -mx-2 flex w-[calc(100%+1rem)] min-h-[3rem] items-center rounded-lg px-2 py-2.5 text-left transition-colors",
+          "hover:bg-surface/70    ",
           active && "bg-accent/10 hover:bg-accent/12",
           disabled && "cursor-not-allowed opacity-50",
-          padding,
           className,
         )}
         {...buttonProps}
@@ -248,8 +246,7 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "flex min-h-[3.25rem] flex-col justify-center",
-        padding,
+        "flex min-h-[3rem] flex-col justify-center py-2.5",
         className,
       )}
     >

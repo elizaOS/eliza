@@ -1,0 +1,43 @@
+# Source-build Dockerfile for Eliza Cloud app deploys.
+#
+# Build context: repository root, for example:
+#   docker build -f packages/examples/cloud/edad/Dockerfile.cloud .
+#
+# This mirrors the showcase image workflow: bundle EDAD's Bun server with the
+# Cloud SDK source inlined, then ship only the self-contained runtime files.
+ARG BUN_BASE=oven/bun:canary-alpine
+
+FROM ${BUN_BASE} AS builder
+
+WORKDIR /repo
+ENV NODE_ENV=production
+ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
+
+COPY packages/cloud/sdk ./packages/cloud/sdk
+COPY packages/examples/cloud/edad ./packages/examples/cloud/edad
+
+RUN mkdir -p packages/examples/cloud/edad/node_modules/@elizaos && \
+  ln -s /repo/packages/cloud/sdk packages/examples/cloud/edad/node_modules/@elizaos/cloud-sdk
+RUN cd packages/examples/cloud/edad && \
+  rm -rf ./dist && \
+  bun build --conditions=eliza-source server.ts --outdir=./dist --target=bun --format=esm && \
+  cp -r public ./dist/public && \
+  test -f ./dist/server.js && \
+  ! grep -q "@elizaos/cloud-sdk" ./dist/server.js
+
+FROM ${BUN_BASE}
+
+WORKDIR /app
+
+COPY --from=builder /repo/packages/examples/cloud/edad/dist/server.js ./
+COPY --from=builder /repo/packages/examples/cloud/edad/dist/public ./public
+
+ENV PORT=3000
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/health || exit 1
+
+CMD ["bun", "run", "server.js"]

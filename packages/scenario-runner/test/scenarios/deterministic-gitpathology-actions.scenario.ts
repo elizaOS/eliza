@@ -158,6 +158,7 @@ function expectListTurn(execution: ScenarioTurnExecution): string | undefined {
 
 export default scenario({
   id: "deterministic-gitpathology-actions",
+  lane: "pr-deterministic",
   title: "Deterministic gitpathology GIT_PATHOLOGY action",
   description:
     "Registers @elizaos/plugin-gitpathologist on the shared runtime and exercises the keyless GIT_PATHOLOGY `list` op against an isolated empty cache.",

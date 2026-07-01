@@ -11,7 +11,19 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
+      "@elizaos/plugin-discord": [
+        "../../../plugins/plugin-discord/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-openai": [
+        "../../../plugins/plugin-openai/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../../plugins/plugin-sql/src/dist/index.node.d.ts"
+      ]
+    }
   },
   "include": ["*.ts", "__tests__/**/*.ts"],
   "exclude": ["node_modules"],

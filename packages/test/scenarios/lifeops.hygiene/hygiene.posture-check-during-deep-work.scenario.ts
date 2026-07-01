@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.posture-check-during-deep-work",
   title: "Posture check every 30 minutes during deep work",
   domain: "lifeops.hygiene",

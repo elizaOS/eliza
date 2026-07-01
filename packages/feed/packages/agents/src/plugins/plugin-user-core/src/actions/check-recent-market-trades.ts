@@ -19,18 +19,19 @@ import { agentTrades, db, desc, eq, npcTrades, users } from "@feed/db";
 import { StaticDataRegistry } from "@feed/engine";
 import { getTimeAgo } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 export const checkRecentMarketTradesAction: Action = {
   name: "CHECK_RECENT_MARKET_TRADES",
   description:
     "Check recent trading activity across the platform (NPCs and agents). Help users understand market momentum.",
-  parameters: {
+  parameters: defineActionParameters({
     limit: {
       type: "number",
       description: "Number of trades to show (default: 15, max: 30)",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  }),
   examples: [
     [
       {

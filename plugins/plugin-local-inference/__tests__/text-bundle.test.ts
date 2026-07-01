@@ -6,8 +6,8 @@
  *   - the bundle's text GGUF path is declared (per-tier `textFile`),
  *   - the bundle's embedding GGUF path is declared on tiers that have a
  *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k),
- *   - the bundle's drafter GGUF path is declared only on tiers with a
- *     distilled MTP companion,
+ *   - the bundle's drafter GGUF path is declared only after the hosted
+ *     Gemma MTP companion exists,
  *   - the HuggingFace resolve URL for the text and embedding components
  *     resolves to `elizaos/eliza-1` and includes the expected
  *     per-tier prefix.
@@ -15,11 +15,11 @@
  * Why this matters: the publish pipeline stages a bundle per tier; if a
  * tier loses its embedding region (or a MTP tier's drafter is renamed), the
  * runtime's `useModel(TEXT_EMBEDDING, ...)` falls through to a non-local
- * provider on the desktop path and silently regresses to no MTP on
- * every backend. This test pins the per-tier components catalogue as a
- * single source of truth.
+ * provider on the desktop path. This test pins the per-tier components
+ * catalogue as a single source of truth and prevents the runtime from
+ * chasing missing MTP drafter files.
  *
- * On 0_8b the embedding model is the text backbone pooled with
+ * On the 2b entry tier the embedding model is the text backbone pooled with
  * `--pooling last` (see `services/voice/embedding.ts`), so the catalog
  * does NOT declare a `components.embedding`. The test mirrors that
  * exception explicitly.
@@ -27,8 +27,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrlForPath,
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_HF_REPO,
-	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	findCatalogModel,
 } from "../src/services/catalog.ts";
@@ -38,16 +38,17 @@ import {
  * embeddings on these tiers are served by pooling the text backbone with
  * `--pooling last` via a lazily-started llama-server embedding sidecar
  * (see `services/voice/embedding-server.ts`). Today this is only
- * `eliza-1-0_8b` (the smallest tier, where carrying a separate embedding
- * GGUF would blow the RAM budget on the 2 GB-floor devices it targets).
+ * `eliza-1-2b` (the smallest/entry tier, where carrying a separate embedding
+ * GGUF would blow the RAM budget on the small phones it targets).
  * Every other tier ships `embedding/eliza-1-embedding.gguf` in the
  * bundle.
  */
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
-	"eliza-1-0_8b",
 	"eliza-1-2b",
 ]);
-const MTP_TIERS: ReadonlySet<string> = new Set(ELIZA_1_MTP_TIER_IDS);
+const HOSTED_MTP_TIERS: ReadonlySet<string> = new Set(
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
+);
 
 describe("per-tier text + embedding bundle resolution", () => {
 	for (const tierId of ELIZA_1_TIER_IDS) {
@@ -69,23 +70,31 @@ describe("per-tier text + embedding bundle resolution", () => {
 				);
 			});
 
-			it("declares same-file MTP (no separate drafter component) for MTP tiers", () => {
-				if (!MTP_TIERS.has(tierId)) {
+			it("declares a separate-drafter MTP component only for hosted MTP tiers", () => {
+				if (!HOSTED_MTP_TIERS.has(tierId)) {
 					expect(model?.sourceModel?.components.mtp).toBeUndefined();
 					expect(model?.runtime?.mtp).toBeUndefined();
 					return;
 				}
-				// Same-file MTP: NextN head is embedded in the text GGUF, so
-				// there is no separate drafter component or drafterFile.
-				expect(model?.sourceModel?.components.mtp).toBeUndefined();
+				// Separate-drafter MTP is enabled only after the tier's hosted
+				// Gemma drafter GGUF is present under `mtp/drafter-<tier>.gguf`.
+				const slug = tierId.slice("eliza-1-".length);
+				expect(model?.sourceModel?.components.mtp?.repo).toBe(
+					ELIZA_1_HF_REPO,
+				);
+				expect(model?.sourceModel?.components.mtp?.file).toBe(
+					`bundles/${slug}/mtp/drafter-${slug}.gguf`,
+				);
 				expect(model?.runtime?.mtp?.specType).toBe("draft-mtp");
-				expect(model?.runtime?.mtp?.drafterFile).toBeUndefined();
+				expect(model?.runtime?.mtp?.drafterFile).toBe(
+					`mtp/drafter-${slug}.gguf`,
+				);
 			});
 
 			it("declares the embedding GGUF component on tiers that ship a dedicated 1024-dim region", () => {
 				const components = model?.sourceModel?.components;
 				if (TIERS_WITHOUT_DEDICATED_EMBEDDING.has(tierId)) {
-					// 0_8b serves embeddings by pooling the text backbone.
+					// 2b serves embeddings by pooling the text backbone.
 					expect(components?.embedding).toBeUndefined();
 				} else {
 					expect(components?.embedding).toBeTruthy();
@@ -118,12 +127,10 @@ describe("per-tier text + embedding bundle resolution", () => {
 				expect(url).toContain("embedding/eliza-1-embedding.gguf");
 			});
 
-
-			it("declares a kvCache profile (TurboQuant / QJL / PolarQuant types) — these are wired into llama-server args at boot", () => {
-				expect(model?.runtime?.kvCache).toBeTruthy();
-				expect(model?.runtime?.kvCache?.typeK).toBe("qjl1_256");
-				expect(model?.runtime?.kvCache?.typeV).toBe("tbq3_0");
-				expect(model?.runtime?.kvCache?.requiresFork).toBe("buun-llama-cpp");
+			it("does not declare a default KV-cache override for shipped tiers", () => {
+				// Shipped Gemma tiers stay on F16 KV by default. QJL/TBQ cache
+				// experiments are opt-in per runtime/backend, not catalog defaults.
+				expect(model?.runtime?.kvCache).toBeUndefined();
 			});
 		});
 	}

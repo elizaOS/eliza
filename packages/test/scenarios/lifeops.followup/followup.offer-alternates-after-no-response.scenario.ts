@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "followup.offer-alternates-after-no-response",
   title: "Offer alternate times after a single time slot got no response",
   domain: "lifeops.followup",

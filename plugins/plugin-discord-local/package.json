@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-discord-local",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.0.3",
     "typescript": "^6.0.3"
   },
@@ -66,7 +66,7 @@
     "dev": "bun --hot build.ts",
     "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
-    "clean": "rm -rf dist .turbo",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint:check": "bunx @biomejs/biome check --config-path ./biome.json .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",

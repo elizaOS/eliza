@@ -5,6 +5,7 @@
 
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -51,13 +52,13 @@ export const buySharesAction: Action = {
     );
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -67,7 +68,7 @@ export const buySharesAction: Action = {
           action: "BUY_PREDICTION_SHARES",
         });
       }
-      return;
+      return undefined;
     }
 
     // Parse message to extract parameters
@@ -78,18 +79,19 @@ export const buySharesAction: Action = {
     );
     // const _sideMatch = content.match(/\b(YES|NO)\b/i)
 
-    if (!marketIdMatch || !amountMatch) {
+    const marketId = marketIdMatch?.[1];
+    const amountText = amountMatch?.[1];
+    if (!marketId || !amountText) {
       if (callback) {
         callback({
           text: "Could not parse trade parameters. Please specify market ID and amount.",
           action: "BUY_PREDICTION_SHARES",
         });
       }
-      return;
+      return undefined;
     }
 
-    const marketId = marketIdMatch[1]!;
-    const amount = parseFloat(amountMatch[1]!);
+    const amount = parseFloat(amountText);
     const sideMatch = content.match(/\b(YES|NO)\b/i);
     const side = (sideMatch?.[1]?.toUpperCase() || "YES") as "YES" | "NO";
 
@@ -118,7 +120,8 @@ export const buySharesAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+    return undefined;
+  },
 };
 
 /**
@@ -159,13 +162,13 @@ export const sellSharesAction: Action = {
     );
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -175,7 +178,7 @@ export const sellSharesAction: Action = {
           action: "SELL_PREDICTION_SHARES",
         });
       }
-      return;
+      return undefined;
     }
 
     // Parse message to extract parameters
@@ -183,18 +186,19 @@ export const sellSharesAction: Action = {
     const positionIdMatch = content.match(/position[:\s-]+([a-zA-Z0-9-]+)/);
     const amountMatch = content.match(/(\d+(?:\.\d+)?)\s*(?:shares)/);
 
-    if (!positionIdMatch || !amountMatch) {
+    const positionId = positionIdMatch?.[1];
+    const sharesText = amountMatch?.[1];
+    if (!positionId || !sharesText) {
       if (callback) {
         callback({
           text: "Could not parse trade parameters. Please specify position ID and share amount.",
           action: "SELL_PREDICTION_SHARES",
         });
       }
-      return;
+      return undefined;
     }
 
-    const positionId = positionIdMatch[1]!;
-    const shares = parseFloat(amountMatch[1]!);
+    const shares = parseFloat(sharesText);
 
     const result = (await feedRuntime.a2aClient.sellShares(
       positionId,
@@ -219,7 +223,8 @@ export const sellSharesAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+    return undefined;
+  },
 };
 
 /**
@@ -256,13 +261,13 @@ export const openPerpPositionAction: Action = {
     );
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -272,7 +277,7 @@ export const openPerpPositionAction: Action = {
           action: "OPEN_PERP_POSITION",
         });
       }
-      return;
+      return undefined;
     }
 
     // Parse message to extract parameters
@@ -282,20 +287,22 @@ export const openPerpPositionAction: Action = {
     // const _leverageMatch = content.match(/(\d+)x/)
     // const _sideMatch = content.match(/\b(long|short)\b/i)
 
-    if (!tickerMatch || !amountMatch) {
+    const ticker = tickerMatch?.[1];
+    const amountText = amountMatch?.[1];
+    if (!ticker || !amountText) {
       if (callback) {
         callback({
           text: "Could not parse trade parameters. Please specify ticker and amount.",
           action: "OPEN_PERP_POSITION",
         });
       }
-      return;
+      return undefined;
     }
 
-    const ticker = tickerMatch[1]!;
-    const amount = parseFloat(amountMatch[1]!);
+    const amount = parseFloat(amountText);
     const leverageMatch = content.match(/(\d+)x/);
-    const leverage = leverageMatch ? parseInt(leverageMatch[1]!, 10) : 1;
+    const leverageText = leverageMatch?.[1];
+    const leverage = leverageText ? parseInt(leverageText, 10) : 1;
     const sideMatch = content.match(/\b(long|short)\b/i);
     const side = (sideMatch?.[1]?.toLowerCase() || "long") as "long" | "short";
 
@@ -324,7 +331,8 @@ export const openPerpPositionAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+    return undefined;
+  },
 };
 
 /**
@@ -353,13 +361,13 @@ export const closePerpPositionAction: Action = {
     return content.includes("close") && content.includes("position");
   },
 
-  handler: (async (
+  handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
     _options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<void> => {
+  ): Promise<ActionResult | undefined> => {
     const feedRuntime = runtime as FeedRuntime;
 
     if (!feedRuntime.a2aClient?.isConnected()) {
@@ -369,7 +377,7 @@ export const closePerpPositionAction: Action = {
           action: "CLOSE_PERP_POSITION",
         });
       }
-      return;
+      return undefined;
     }
 
     // Parse message to extract ticker or position ID
@@ -384,7 +392,7 @@ export const closePerpPositionAction: Action = {
           action: "CLOSE_PERP_POSITION",
         });
       }
-      return;
+      return undefined;
     }
 
     const positionId =
@@ -397,7 +405,7 @@ export const closePerpPositionAction: Action = {
           action: "CLOSE_PERP_POSITION",
         });
       }
-      return;
+      return undefined;
     }
 
     const result = (await feedRuntime.a2aClient.closePosition(positionId)) as {
@@ -420,5 +428,6 @@ export const closePerpPositionAction: Action = {
         });
       }
     }
-  }) as unknown as Action["handler"],
+    return undefined;
+  },
 };

@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
+import { escapeHtml, escapeScriptJson } from "./html-escape";
 import {
   applyPrivacyFilter,
   type FilterableTrajectory,
@@ -13,8 +14,9 @@ import {
   uploadTrajectoryJsonlToHuggingFace,
 } from "./trajectory-hf-upload.js";
 import {
-  exportTrajectoryTaskDatasets,
+  buildTaskRecord,
   type ElizaNativeTrainingExample,
+  exportTrajectoryTaskDatasets,
   type TrajectoryTaskDatasetExport,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
@@ -126,6 +128,15 @@ function taskPathMap(
     action_planner: paths.actionPlannerPath,
     response: paths.responsePath,
     media_description: paths.mediaDescriptionPath,
+    view_context: paths.viewContextPath,
+    calendar_extract: paths.calendarExtractPath,
+    schedule_plan: paths.schedulePlanPath,
+    reminder_dispatch: paths.reminderDispatchPath,
+    inbox_triage: paths.inboxTriagePath,
+    meeting_prep: paths.meetingPrepPath,
+    morning_brief: paths.morningBriefPath,
+    health_checkin: paths.healthCheckinPath,
+    screentime_recap: paths.screentimeRecapPath,
   };
 }
 
@@ -172,18 +183,6 @@ function parseJsonlRows(text: string | null): unknown[] {
     }
   }
   return rows;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function escapeScriptJson(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function buildViewerHtml(input: {
@@ -360,7 +359,7 @@ function buildViewerHtml(input: {
   <script type="application/json" id="viewer-data">${escapeScriptJson(data)}</script>
   <script>
     const data = JSON.parse(document.getElementById("viewer-data").textContent);
-    const tasks = ["should_respond", "context_routing", "action_planner", "response", "media_description"];
+    const tasks = ["should_respond", "context_routing", "action_planner", "response", "media_description", "view_context"];
     const pretty = (value) => JSON.stringify(value, null, 2);
     const metric = (label, value) => '<div class="metric"><strong>' + value + '</strong><span>' + label + '</span></div>';
     function renderOverview() {
@@ -494,26 +493,14 @@ function buildTaskFiles(
 }
 
 function emptyTaskCounts(): Record<TrajectoryTrainingTask, number> {
-  return {
-    should_respond: 0,
-    context_routing: 0,
-    action_planner: 0,
-    response: 0,
-    media_description: 0,
-  };
+  return buildTaskRecord<number>(() => 0);
 }
 
 function emptyTaskExamples(): Record<
   TrajectoryTrainingTask,
   ElizaNativeTrainingExample[]
 > {
-  return {
-    should_respond: [],
-    context_routing: [],
-    action_planner: [],
-    response: [],
-    media_description: [],
-  };
+  return buildTaskRecord<ElizaNativeTrainingExample[]>(() => []);
 }
 
 function normalizeRunId(value: unknown): string | null {

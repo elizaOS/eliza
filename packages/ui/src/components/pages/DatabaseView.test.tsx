@@ -25,6 +25,13 @@ vi.mock("../../api", () => ({
   client: clientMock,
 }));
 
+// DatabaseView reads only the translator. It now sources `t` from
+// useTranslation() (a narrower subscription than useApp()), so mock that to the
+// identity translator the assertions expect (keys render verbatim).
+vi.mock("../../state/TranslationContext.hooks", () => ({
+  useTranslation: () => ({ t: (k: string) => k, uiLanguage: "en" }),
+}));
+
 const connectedStatus = {
   provider: "pglite",
   connected: true,
@@ -95,7 +102,9 @@ describe("DatabaseView", () => {
     render(<DatabaseView />);
 
     await waitFor(() => {
-      expect(screen.getByText("databaseview.DatabaseNotAvailab")).toBeTruthy();
+      expect(
+        screen.getByText("databaseview.StartAgentToUseDatabase"),
+      ).toBeTruthy();
     });
     // Disconnected status must NOT trigger a table fetch.
     expect(clientMock.getDatabaseTables).not.toHaveBeenCalled();
@@ -169,7 +178,7 @@ describe("DatabaseView", () => {
     fireEvent.click(await screen.findByText("empty_tbl"));
 
     await waitFor(() => {
-      expect(screen.getByText("databaseview.TableIsEmpty")).toBeTruthy();
+      expect(screen.getByText("databaseview.NoDataInsertViaSql")).toBeTruthy();
     });
   });
 

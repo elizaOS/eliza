@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-line",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,6 +28,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist"
   ],
   "scripts": {
@@ -45,7 +46,7 @@
     "@line/bot-sdk": "^11.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^22.19.17",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"

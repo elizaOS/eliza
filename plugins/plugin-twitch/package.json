@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-twitch",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,6 +28,7 @@
     }
   },
   "files": [
+    "registry-entry.json",
     "dist",
     "auto-enable.ts"
   ],
@@ -43,11 +44,11 @@
   "scripts": {
     "build": "bun run build.ts",
     "test": "bun test",
-    "lint": "echo \"Lint skipped for release\"",
-    "lint:check": "bun run lint",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "echo \"Typecheck skipped for release\""
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@twurple/auth": "^8.0.0",
@@ -57,7 +58,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/bun": "^1.1.0",
     "typescript": "^6.0.3"
   },

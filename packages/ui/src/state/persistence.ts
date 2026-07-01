@@ -11,12 +11,15 @@ import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-  SetupStep,
-} from "./types";
-import type { UiShellMode, UiTheme, UiThemeMode } from "./ui-preferences";
+import type { SetupStep } from "./types";
+import {
+  type BackgroundConfig,
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_CONFIG,
+  type UiShellMode,
+  type UiTheme,
+  type UiThemeMode,
+} from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 
 /* ── Shared localStorage helper ──────────────────────────────────────── */
@@ -55,15 +58,23 @@ export { normalizeUiThemeMode };
  * keep their shape.
  */
 export function getSystemTheme(): UiTheme {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function"
+  ) {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  }
   return "light";
 }
 
 /**
- * Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}. The app is
- * light-only, so every mode resolves to `light`.
+ * Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}: an explicit
+ * `light`/`dark` choice wins; `system` follows the OS color-scheme.
  */
-export function resolveUiTheme(_mode: UiThemeMode): UiTheme {
-  return "light";
+export function resolveUiTheme(mode: UiThemeMode): UiTheme {
+  return mode === "system" ? getSystemTheme() : mode;
 }
 
 /**
@@ -126,148 +137,82 @@ export function saveUiTheme(theme: UiTheme): void {
   }, undefined);
 }
 
-const COMPANION_VRM_POWER_STORAGE_KEY = "eliza:companion-vrm-power";
-/** Legacy; migrated into `eliza:companion-vrm-power` on first read. */
-const LEGACY_COMPANION_EFFICIENCY_KEY = "eliza:companion-efficiency";
-/** Legacy; migrated into `eliza:companion-vrm-power` on first read. */
-const LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY =
-  "eliza:companion-quality-on-battery";
+/* ── Background persistence ───────────────────────────────────────────── */
 
-export function normalizeCompanionVrmPowerMode(
-  value: unknown,
-): CompanionVrmPowerMode {
-  return value === "quality" || value === "efficiency" ? value : "balanced";
+const UI_BACKGROUND_STORAGE_KEY = "eliza:ui-background";
+
+/** Accept a 6-digit hex color; anything else falls back to the default. */
+function normalizeHexColor(value: unknown): string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)
+    ? value.toLowerCase()
+    : DEFAULT_BACKGROUND_COLOR;
 }
 
-/**
- * Persisted 3D companion power preference. Migrates legacy boolean keys once.
- */
-export function loadCompanionVrmPowerMode(): CompanionVrmPowerMode {
-  try {
-    const raw = localStorage.getItem(COMPANION_VRM_POWER_STORAGE_KEY);
-    if (raw === "quality" || raw === "balanced" || raw === "efficiency") {
-      return raw;
-    }
-    const legacyEffPresent =
-      localStorage.getItem(LEGACY_COMPANION_EFFICIENCY_KEY) != null;
-    const legacyQobPresent =
-      localStorage.getItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY) != null;
-    if (legacyEffPresent || legacyQobPresent) {
-      const effOn =
-        localStorage.getItem(LEGACY_COMPANION_EFFICIENCY_KEY) === "1";
-      const qobOn =
-        localStorage.getItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY) === "1";
-      const migrated: CompanionVrmPowerMode = effOn
-        ? "efficiency"
-        : qobOn
-          ? "quality"
-          : "balanced";
-      saveCompanionVrmPowerMode(migrated);
-      localStorage.removeItem(LEGACY_COMPANION_EFFICIENCY_KEY);
-      localStorage.removeItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY);
-      return migrated;
-    }
-    if (raw != null && raw !== "") {
-      saveCompanionVrmPowerMode("balanced");
-    }
-    return "balanced";
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to load companion VRM power mode: ${describePersistenceError(err)}`,
-    );
-    return "balanced";
+export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
+  const record = asRecord(value);
+  if (!record) return { ...DEFAULT_BACKGROUND_CONFIG };
+  const color = normalizeHexColor(record.color);
+  const imageUrl =
+    typeof record.imageUrl === "string" && record.imageUrl.length > 0
+      ? record.imageUrl
+      : undefined;
+  // Image mode without a usable source is meaningless — fall back to the shader.
+  if (record.mode === "image" && imageUrl) {
+    return { mode: "image", color, imageUrl };
   }
+  return { mode: "shader", color };
 }
 
-export function saveCompanionVrmPowerMode(mode: CompanionVrmPowerMode): void {
-  try {
-    const next = normalizeCompanionVrmPowerMode(mode);
-    localStorage.setItem(COMPANION_VRM_POWER_STORAGE_KEY, next);
-    localStorage.removeItem(LEGACY_COMPANION_EFFICIENCY_KEY);
-    localStorage.removeItem(LEGACY_COMPANION_QUALITY_ON_BATTERY_KEY);
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to save companion VRM power mode: ${describePersistenceError(err)}`,
-    );
-  }
-}
-
-const COMPANION_ANIMATE_WHEN_HIDDEN_KEY = "eliza:companion-animate-when-hidden";
-
-/** When true, keep the VRM loop running when the document is hidden; 3D environment is hidden. */
-export function loadCompanionAnimateWhenHidden(): boolean {
-  try {
-    return localStorage.getItem(COMPANION_ANIMATE_WHEN_HIDDEN_KEY) === "1";
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to load companion animate-when-hidden flag: ${describePersistenceError(err)}`,
-    );
-    return false;
-  }
-}
-
-export function saveCompanionAnimateWhenHidden(enabled: boolean): void {
-  try {
-    localStorage.setItem(
-      COMPANION_ANIMATE_WHEN_HIDDEN_KEY,
-      enabled ? "1" : "0",
-    );
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to save companion animate-when-hidden flag: ${describePersistenceError(err)}`,
-    );
-  }
-}
-
-const COMPANION_HALF_FRAMERATE_STORAGE_KEY = "eliza:companion-half-framerate";
-
-const COMPANION_HALF_FRAMERATE_VALUES = new Set<string>([
-  "off",
-  "when_saving_power",
-  "always",
-]);
-
-function isCompanionHalfFramerateMode(
-  value: unknown,
-): value is CompanionHalfFramerateMode {
-  return (
-    typeof value === "string" && COMPANION_HALF_FRAMERATE_VALUES.has(value)
+export function loadBackgroundConfig(): BackgroundConfig {
+  return tryLocalStorage(
+    () => {
+      const raw = localStorage.getItem(UI_BACKGROUND_STORAGE_KEY);
+      return raw
+        ? normalizeBackgroundConfig(JSON.parse(raw))
+        : { ...DEFAULT_BACKGROUND_CONFIG };
+    },
+    { ...DEFAULT_BACKGROUND_CONFIG },
   );
 }
 
-export function normalizeCompanionHalfFramerateMode(
-  raw: string | null | undefined,
-): CompanionHalfFramerateMode {
-  if (isCompanionHalfFramerateMode(raw)) return raw;
-  return "when_saving_power";
-}
-
-export function loadCompanionHalfFramerateMode(): CompanionHalfFramerateMode {
-  try {
-    return normalizeCompanionHalfFramerateMode(
-      localStorage.getItem(COMPANION_HALF_FRAMERATE_STORAGE_KEY),
-    );
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to load companion half-framerate mode: ${describePersistenceError(err)}`,
-    );
-    return "when_saving_power";
-  }
-}
-
-export function saveCompanionHalfFramerateMode(
-  mode: CompanionHalfFramerateMode,
-): void {
-  try {
+export function saveBackgroundConfig(config: BackgroundConfig): void {
+  tryLocalStorage(() => {
     localStorage.setItem(
-      COMPANION_HALF_FRAMERATE_STORAGE_KEY,
-      normalizeCompanionHalfFramerateMode(mode),
+      UI_BACKGROUND_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundConfig(config)),
     );
-  } catch (err) {
-    logger.warn(
-      `[persistence] failed to save companion half-framerate mode: ${describePersistenceError(err)}`,
+  }, undefined);
+}
+
+/**
+ * Bounded undo history for the background. The most recent previous config is
+ * last. Capped so a long session never grows localStorage without bound; image
+ * configs carry a data/media URL so the cap is deliberately small.
+ */
+const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
+export const MAX_BACKGROUND_HISTORY = 10;
+
+export function normalizeBackgroundHistory(value: unknown): BackgroundConfig[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => normalizeBackgroundConfig(entry))
+    .slice(-MAX_BACKGROUND_HISTORY);
+}
+
+export function loadBackgroundHistory(): BackgroundConfig[] {
+  return tryLocalStorage(() => {
+    const raw = localStorage.getItem(UI_BACKGROUND_HISTORY_STORAGE_KEY);
+    return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
+  }, []);
+}
+
+export function saveBackgroundHistory(history: BackgroundConfig[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      UI_BACKGROUND_HISTORY_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundHistory(history)),
     );
-  }
+  }, undefined);
 }
 
 /**
@@ -457,8 +402,8 @@ export function hasStoredUiLanguage(): boolean {
   );
 }
 
-function normalizeUiShellMode(mode: unknown): UiShellMode {
-  return mode === "native" ? "native" : "companion";
+function normalizeUiShellMode(_mode: unknown): UiShellMode {
+  return "native";
 }
 
 export { normalizeUiShellMode };
@@ -466,7 +411,7 @@ export { normalizeUiShellMode };
 export function loadUiShellMode(): UiShellMode {
   return tryLocalStorage(
     () => normalizeUiShellMode(localStorage.getItem(UI_SHELL_MODE_STORAGE_KEY)),
-    "companion",
+    "native",
   );
 }
 
@@ -1053,13 +998,42 @@ export function loadPersistedActiveServer(): PersistedActiveServer | null {
 }
 
 export function savePersistedActiveServer(server: PersistedActiveServer): void {
-  tryLocalStorage(() => {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  // The active-server record carries the sign-in state (kind/apiBase/token) and
+  // the backend the app reconnects to. A swallowed persist failure (quota,
+  // private-mode SecurityError) silently loses a freshly-recovered apiBase, so
+  // backfillCloudApiBase re-runs every boot with no diagnostic. Mirror
+  // savePersistedFirstRunComplete: still no-throw + no-op when unavailable, but
+  // surface the failure instead of swallowing it.
+  try {
     localStorage.setItem(ACTIVE_SERVER_STORAGE_KEY, JSON.stringify(server));
-  }, undefined);
+  } catch (err) {
+    logger.warn(
+      `[persistence] failed to save active server: ${describePersistenceError(err)}`,
+    );
+  }
 }
 
 export function clearPersistedActiveServer(): void {
   tryLocalStorage(() => {
     localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
+}
+
+/**
+ * Drop the bearer access token from the persisted active server while keeping
+ * the server selection (kind/apiBase/label). Call this on sign-out: the token
+ * is a JWT and leaving it in localStorage after sign-out is an at-rest leak,
+ * but clearing the whole record would needlessly forget which backend to
+ * re-authenticate against.
+ */
+export function scrubPersistedActiveServerToken(): void {
+  const current = loadPersistedActiveServer();
+  if (!current?.accessToken) return;
+  const scrubbed = { ...current };
+  delete scrubbed.accessToken;
+  savePersistedActiveServer(scrubbed);
 }

@@ -10,17 +10,8 @@ import {
   normalizeConnectorSendAsContext,
   shouldShowConnectorAccountPicker,
 } from "../components/chat/connector-send-as";
+import type { ActionNoticeFn } from "../state/action-notice";
 import { useConnectorAccounts } from "./useConnectorAccounts";
-
-type ActionTone = "info" | "success" | "error";
-
-type ActionNoticeFn = (
-  text: string,
-  tone?: ActionTone,
-  ttlMs?: number,
-  once?: boolean,
-  busy?: boolean,
-) => void;
 
 export interface UseConnectorSendAsAccountOptions {
   pollMs?: number;

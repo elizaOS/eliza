@@ -72,7 +72,8 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `website_blocker` | `WebsiteBlockerService` | `src/website-blocker/service.ts` | Hosts-file blocking (SelfControl) lifecycle |
 | `activity_tracker` | `ActivityTrackerService` | `src/activity-profile/activity-tracker-service.ts` | Legacy activity projection for assistant context; health/screen-time domain logic belongs in `@elizaos/plugin-health` |
 | `presence_signal_bridge` | `PresenceSignalBridgeService` | `src/activity-profile/presence-signal-bridge-service.ts` | Device presence signal forwarding |
-| `lifeops_scheduled_task_runner` | `ScheduledTaskRunnerService` | `src/lifeops/scheduled-task/service.ts` | Scheduled-task execution engine |
+
+The `lifeops_scheduled_task_runner` service (`ScheduledTaskRunnerService`) is now **registered by the always-loaded `@elizaos/plugin-scheduling`**, not PA. PA is a consumer: `init()` injects its production deps (DB-backed store, production dispatcher, owner-facts / channel-keys / host-capability probes, anchor registry) via `registerLifeOpsScheduledTaskRunnerDeps(runtime)` (see `src/lifeops/scheduled-task/runtime-wiring.ts`). `src/lifeops/scheduled-task/service.ts` is a back-compat re-export of the moved service.
 
 ### Evaluators
 
@@ -250,9 +251,51 @@ bun run --cwd plugins/plugin-personal-assistant clean              # Remove dist
 
 - **OWNER_SCREENTIME is macOS-only.** It is platform-gated via `isDarwin()` in `src/plugin.ts` (`platformGatedActionUmbrellas`). Do not add it unconditionally.
 - **Scheduler task init is deferred.** Task workers are registered inside `init()`, but `ensureTask` calls are scheduled via `runtime.initPromise` so they run after the runtime finishes initializing. Failures are non-fatal to plugin load; check `LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY` in the runtime cache for diagnostics.
-- **The runner never inspects `promptInstructions`.** Routing is done purely on structural `ScheduledTask` fields. See `src/lifeops/scheduled-task/runner.ts`.
+- **The runner never inspects `promptInstructions`.** Routing is done purely on structural `ScheduledTask` fields. The runner lives in `plugins/plugin-scheduling/src/scheduled-task/runner.ts`; the personal-assistant side wires it in via `src/lifeops/scheduled-task/{service,scheduler,runtime-wiring}.ts`.
 - **Approval flows require an approval queue.** Outbound message sends and document signatures go through `PgApprovalQueue` before any external dispatch. Never dispatch directly from action handlers.
 - **`LifeOpsService` is composed from mixins.** Core logic lives in `src/lifeops/service-mixin-*.ts` files. `src/lifeops/service.ts` composes them. Add a new domain capability as a mixin.
 - **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces the rules embedded in `scripts/lint-default-packs.mjs`. CI blocks packs that fail.
 - **plugin-google is auto-registered.** If `@elizaos/plugin-google` is not already in the runtime's plugin list, `init()` dynamically imports and registers it. Ensure it is installed in the workspace.
 - See root `AGENTS.md` for repo-wide architecture commandments, logger conventions, ESM rules, and naming.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — agent behavior / app plugin:**
+- A **live-LLM** scenario trajectory showing the behavior end to end and asserting the **outcome**, not just that routing/an action was selected (see #9970).
+- The artifacts the behavior creates — memories, knowledge, scheduled-task rows, relationships, documents, outputs — inspected after the run.
+- Backend `[ClassName]` logs of the action/service/runner firing, plus error/edge/permission paths.
+- The empty-state and adversarial-input behavior, not just one happy scenario.
+<!-- END: evidence-and-e2e-mandate -->

@@ -18,6 +18,7 @@
     "src/**/*.test.tsx",
     "**/__tests__/**",
     "**/*.test.ts",
-    "**/*.test.tsx"
+    "**/*.test.tsx",
+    "vitest.harness.config.ts"
   ]
 }

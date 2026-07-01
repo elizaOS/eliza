@@ -7,11 +7,11 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 import { desktopMouseMove } from "../platform/desktop.js";
 import { currentPlatform } from "../platform/helpers.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
-import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 
 type RawActionParams = { action: string };
 
@@ -40,7 +40,7 @@ const os = currentPlatform();
 // Check if screenshot/desktop tools actually work (permissions may be missing)
 let hasScreenCapture = false;
 try {
-  captureScreenshot();
+  await captureScreenshot();
   hasScreenCapture = true;
 } catch {
   // permissions not granted

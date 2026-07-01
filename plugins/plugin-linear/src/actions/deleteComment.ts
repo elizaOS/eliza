@@ -11,6 +11,7 @@ import {
 import type { LinearService } from "../services/linear";
 import type { DeleteCommentParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const deleteCommentAction: Action = {
@@ -49,10 +50,7 @@ export const deleteCommentAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["delete", "remove", "linear", "comment"],
-      regexAlternation: "delete|remove|linear|comment",
-    }),
+    validateLinearActionIntent(runtime, message, state),
 
   async handler(
     runtime: IAgentRuntime,
@@ -73,23 +71,23 @@ export const deleteCommentAction: Action = {
 
       if (!commentId) {
         const errorMessage = "Please provide a commentId to delete.";
-        await callback?.({ text: errorMessage, source: message.content.source });
+        await callback?.({ text: errorMessage, source: getMessageSource(message) });
         return { text: errorMessage, success: false };
       }
 
       await linearService.deleteComment(commentId, accountId);
 
       const successMessage = `Deleted comment ${commentId}.`;
-      await callback?.({ text: successMessage, source: message.content.source });
+      await callback?.({ text: successMessage, source: getMessageSource(message) });
       return {
         text: successMessage,
         success: true,
         data: { commentId, accountId },
       };
     } catch (error) {
-      logger.error("Failed to delete comment:", error);
+      logger.error("Failed to delete comment:", formatUnknownError(error));
       const errorMessage = `Failed to delete comment: ${error instanceof Error ? error.message : "Unknown error"}`;
-      await callback?.({ text: errorMessage, source: message.content.source });
+      await callback?.({ text: errorMessage, source: getMessageSource(message) });
       return { text: errorMessage, success: false };
     }
   },

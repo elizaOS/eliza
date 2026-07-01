@@ -17,10 +17,9 @@ import {
 import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
 import { getFreePort } from "../utils/get-free-port.mjs";
 
-type ShellMode = "companion" | "native";
+type ShellMode = "native";
 type ViewId =
   | "first-run"
-  | "companion"
   | "chat"
   | "stream"
   | "character"
@@ -195,17 +194,10 @@ const views: ViewSpec[] = [
     lastNativeTab: "chat",
     firstRunIncomplete: true,
     readyChecks: [
-      { selector: '[data-testid="first-run-shell"]' },
-      { selector: '[data-testid="first-run-runtime-cloud"]' },
+      { selector: '[data-testid="continuous-chat-overlay"]' },
+      { selector: '[data-testid="first-run-runtime-chooser"]' },
+      { selector: '[data-testid="first-run-chooser-cloud"]' },
     ],
-  },
-  {
-    id: "companion",
-    label: "Companion",
-    path: "/companion",
-    shellMode: "companion",
-    lastNativeTab: "chat",
-    readyChecks: [{ selector: '[data-testid="companion-root"]' }],
   },
   {
     id: "chat",
@@ -714,8 +706,8 @@ async function applyState(page: Page, capture: CaptureSpec): Promise<void> {
     });
   }
   if (capture.stateId === "first-run-local") {
-    await page.locator('[data-testid="first-run-runtime-local"]').click();
-    await page.locator('[data-testid="first-run-local-all-local"]').waitFor({
+    await page.locator('[data-testid="first-run-chooser-local"]').click();
+    await page.locator('[data-testid="first-run-provider-on-device"]').waitFor({
       state: "visible",
       timeout: 10_000,
     });

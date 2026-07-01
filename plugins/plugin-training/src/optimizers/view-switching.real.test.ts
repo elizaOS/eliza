@@ -2,9 +2,9 @@
  * REAL-LLM view-switching tests — gated to the post-merge / live lane
  * (`*.real.test.ts`). Runs the actual local eliza-1 model through the real
  * optimizer harness over the eliza llama.cpp fork's `llama-server` (NOT Ollama —
- * stock Ollama can't load the eliza-1 qwen3.5 tiers above 2b), with
+ * the fork carries the Gemma 4 runtime support used by eliza-1), with
  * SCHEMA-CONSTRAINED decoding (json_schema) mirroring the production planner
- * grammar and qwen3.5 thinking disabled.
+ * grammar.
  *
  * Skips automatically when llama-server is unreachable, so it never fails CI
  * lanes without a local model. Run locally with a server up (see
@@ -81,8 +81,8 @@ function schemaAdapter(_model: string): LlmAdapter {
             type: "json_schema",
             json_schema: { name: "out", schema: PLANNER_SCHEMA, strict: true },
           },
-          // eliza-1 is qwen3.5 (a thinking model); disable thinking so the token
-          // budget produces the JSON answer, not reasoning_content.
+          // Disable private reasoning when the served model/build exposes that
+          // switch so the token budget produces the JSON answer.
           chat_template_kwargs: { enable_thinking: false },
           temperature: temperature ?? 0,
           max_tokens: maxTokens ?? 80,

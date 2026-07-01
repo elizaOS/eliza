@@ -13,13 +13,15 @@
  */
 
 import { logger } from "../logger.ts";
-import type {
-	IAgentRuntime,
-	Memory,
-	State,
-	Task,
-	TaskWorker,
-	UUID,
+import {
+	type IAgentRuntime,
+	type Memory,
+	PENDING_USER_ACTION_WEIGHT,
+	type PendingUserAction,
+	type State,
+	type Task,
+	type TaskWorker,
+	type UUID,
 } from "../types/index.ts";
 import { Service, ServiceType } from "../types/service.ts";
 
@@ -364,6 +366,53 @@ export class ApprovalService extends Service {
 			agentIds: [this.runtime.agentId],
 		});
 		return tasks;
+	}
+
+	/**
+	 * Get every pending approval across all rooms for this agent. Powers the
+	 * canonical "needs your response" surface (#9449), which aggregates the
+	 * agent's blocked-on-user decisions rather than scoping to one room.
+	 */
+	async getAllPendingApprovals(): Promise<Task[]> {
+		return this.runtime.getTasks({
+			tags: ["AWAITING_CHOICE", "APPROVAL"],
+			agentIds: [this.runtime.agentId],
+		});
+	}
+
+	/**
+	 * List every in-flight approval as a canonical {@link PendingUserAction} — the
+	 * shared "the agent is waiting on you" shape that a needs-attention UI, a
+	 * provider, and the home-attention ranker all read (see #9449, Pillar C).
+	 *
+	 * Unlike {@link getPendingApprovals} (room-scoped raw `Task`s with no caller),
+	 * this is agent-wide and pre-normalized, so callers don't reshape per surface.
+	 */
+	listPendingUserActions(): PendingUserAction[] {
+		const actions: PendingUserAction[] = [];
+		for (const pending of this.pendingApprovals.values()) {
+			actions.push({
+				id: pending.taskId,
+				kind: "task_approval",
+				source: "approval-service",
+				title: pending.request.description,
+				roomId: pending.request.roomId,
+				options: pending.request.options.map((option) => ({
+					id: option.name,
+					label: option.description ?? option.name,
+					...(option.isDefault ? { isDefault: true } : {}),
+					...(option.isCancel ? { isCancel: true } : {}),
+				})),
+				weight: PENDING_USER_ACTION_WEIGHT.task_approval,
+				resolution: {
+					target: "approval_service",
+					requestId: pending.taskId,
+				},
+				createdAt: pending.createdAt,
+				expiresAt: pending.expiresAt ?? null,
+			});
+		}
+		return actions;
 	}
 
 	/**

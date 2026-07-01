@@ -6,7 +6,7 @@
  *   2. Hetzner mock (in-process, free port)
  *   3. Control-plane mock (in-process, free port, points at Hetzner mock)
  *   4. cloud-api worker subprocess (cloud-api-e2e-server.mjs)
- *   5. cloud-frontend Vite dev subprocess
+ *   5. packages/app (apex) Vite dev subprocess
  *
  * Returns a handle with URLs and a `stop()` that tears everything down.
  */
@@ -26,8 +26,8 @@ import {
   type RunningHetznerMock,
   startHetznerMock,
 } from "@elizaos/cloud-test-mocks/hetzner";
-
 import { buildSharedEnv } from "./env";
+import { type RunningMockLlm, startMockLlm } from "./mock-llm";
 
 /**
  * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
@@ -65,10 +65,22 @@ export interface StackHandle {
     hetzner: string;
     controlPlane: string;
     pglite: string;
+    /** Mock LLM `/v1` base URL — present only when started with `mockLlm`. */
+    mockLlm?: string;
   };
+  /**
+   * True when the frontend Vite dev was NOT booted (API-only stacks started
+   * with `frontend: false`). The apex frontend is packages/app's web dev; when
+   * a stack opts out of it, frontend-dependent fixtures MUST gate on this flag
+   * and skip explicitly, never silently pass on an empty `urls.frontend`.
+   */
+  frontendSkipped: boolean;
+  /** Human-readable reason the frontend was skipped (when frontendSkipped). */
+  frontendSkipReason?: string;
   mocks: {
     hetzner: RunningHetznerMock;
     controlPlane: RunningControlPlaneMock;
+    mockLlm?: RunningMockLlm;
   };
   dataDir: string;
   logDir: string;
@@ -231,11 +243,25 @@ export interface StartCloudStackOptions {
   /** Override frontend port. Default: free port. */
   frontendPort?: number;
   /**
-   * Boot the cloud-frontend Vite dev server. Defaults to true. Set to false for
-   * API-only stacks (e.g. the monetized-app loop) that never drive a browser —
-   * skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
+   * Boot the packages/app (apex) Vite dev server. Defaults to true. Set to false
+   * for API-only stacks (e.g. the monetized-app loop) that never drive a browser
+   * — skips the Vite spawn + health wait, and leaves `urls.frontend` empty.
    */
   frontend?: boolean;
+  /**
+   * Boot an in-process OpenAI-compatible mock LLM and point the worker's
+   * `OPENAI_BASE_URL` / `OPENAI_API_KEY` at it. Lets `POST /api/v1/messages`
+   * run the real billing/markup/earnings seam against an `openai/<model>` id
+   * with no paid provider key. Defaults to false.
+   */
+  mockLlm?: boolean;
+  /**
+   * Boot the mock LLM in context-aware echo mode (implies `mockLlm`). The
+   * assistant reply is derived from the conversation the caller replayed into
+   * the model call instead of a fixed string, so a multi-turn spec can assert
+   * the reply itself reflects retained history. Defaults to false (fixed reply).
+   */
+  mockLlmEchoContext?: boolean;
 }
 
 /**
@@ -265,6 +291,16 @@ export async function startCloudStack(
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
+  const mockLlm =
+    opts.mockLlm || opts.mockLlmEchoContext
+      ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
+      : undefined;
+  const mockLlmEnv: Record<string, string> = mockLlm
+    ? {
+        OPENAI_API_KEY: "mock-llm-key",
+        OPENAI_BASE_URL: mockLlm.url,
+      }
+    : {};
 
   const sharedEnv = buildSharedEnv(
     {
@@ -315,6 +351,10 @@ export async function startCloudStack(
     ...sharedEnv,
     DATABASE_URL: databaseUrl,
     TEST_DATABASE_URL: databaseUrl,
+    // Provider override → the cloud-api dev wrapper syncs OPENAI_API_KEY/
+    // OPENAI_BASE_URL into .dev.vars (providerOverrideKeys), so the worker's
+    // getOpenAIClient() targets the in-process mock for `openai/<model>` ids.
+    ...mockLlmEnv,
   };
   const previousDatabaseUrl = process.env.DATABASE_URL;
   const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -325,7 +365,7 @@ export async function startCloudStack(
     await runLoggedStep(
       "cloud-migrate",
       BUN,
-      ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
+      ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
       {
         env: stackEnv,
         cwd: REPO_ROOT,
@@ -335,7 +375,7 @@ export async function startCloudStack(
   }
 
   // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
-  // cloud:mock stack uses (`bun run --cwd packages/cloud-api dev`). The earlier
+  // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
   // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
   // source, which neither node (it can't load the extensionless `.ts` relative
   // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
@@ -346,7 +386,7 @@ export async function startCloudStack(
     spawnLogged(
       "cloud-api",
       BUN,
-      ["run", "--cwd", "packages/cloud-api", "dev"],
+      ["run", "--cwd", "packages/cloud/api", "dev"],
       {
         env: stackEnv,
         cwd: REPO_ROOT,
@@ -361,25 +401,41 @@ export async function startCloudStack(
     label: "cloud-api",
   });
 
-  // 3. cloud-frontend Vite dev (skipped for API-only stacks)
+  // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
+  // The apex moved to packages/app in the cloud-frontend→packages/app cutover.
+  // packages/app's vite dev does NOT honour VITE_API_PROXY_TARGET; it computes
+  // its own ports from ELIZA_API_PORT/ELIZA_PORT (the /api + /ws proxy target)
+  // and ELIZA_UI_PORT (the dev server listen port). Inject those so the dev
+  // server listens on `frontendPort` and proxies /api at this stack's cloud-api.
   let frontendUrl = "";
+  let frontendSkipReason: string | undefined;
+  const frontendDir = join(REPO_ROOT, "packages", "app");
   if (opts.frontend !== false) {
+    if (!existsSync(frontendDir)) {
+      throw new Error(
+        `[stack] frontend boot requested but ${frontendDir} is missing — ` +
+          "the cloud-e2e harness expects packages/app (the apex web dev). " +
+          "Pass { frontend: false } for API-only stacks.",
+      );
+    }
     const frontendEnv = {
       ...stackEnv,
-      PORT: String(frontendPort),
+      // packages/app vite dev: UI listen port + /api proxy target.
+      ELIZA_UI_PORT: String(frontendPort),
+      ELIZA_API_PORT: String(apiPort),
+      ELIZA_PORT: String(apiPort),
       VITE_API_BASE_URL: apiUrl,
-      VITE_API_PROXY_TARGET: apiUrl,
       NEXT_PUBLIC_API_BASE_URL: apiUrl,
     };
     procs.push(
       spawnLogged(
-        "cloud-frontend",
+        "frontend",
         BUN,
         ["run", "dev", "--", "--host", "127.0.0.1"],
         {
           env: frontendEnv,
-          cwd: join(REPO_ROOT, "packages", "cloud-frontend"),
-          logFile: join(LOG_DIR, "cloud-frontend.log"),
+          cwd: frontendDir,
+          logFile: join(LOG_DIR, "frontend.log"),
         },
       ),
     );
@@ -387,8 +443,15 @@ export async function startCloudStack(
     frontendUrl = `http://127.0.0.1:${frontendPort}`;
     await waitForHttpOk(frontendUrl, {
       timeoutMs: 120_000,
-      label: "cloud-frontend",
+      label: "frontend",
     });
+  } else {
+    // API-only stack: no frontend booted. Record why so the handle's
+    // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
+    // fixtures (authenticatedPage) skip explicitly rather than reading an empty
+    // `urls.frontend` as a pass.
+    frontendSkipReason =
+      "frontend boot disabled (stack started with { frontend: false }).";
   }
 
   let stopped = false;
@@ -417,6 +480,7 @@ export async function startCloudStack(
     }
     await controlPlane.stop().catch(() => undefined);
     await hetzner.stop().catch(() => undefined);
+    await mockLlm?.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
     if (dbCloseError) {
       throw dbCloseError;
@@ -438,8 +502,11 @@ export async function startCloudStack(
       hetzner: hetzner.url,
       controlPlane: controlPlane.url,
       pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
+      ...(mockLlm ? { mockLlm: mockLlm.url } : {}),
     },
-    mocks: { hetzner, controlPlane },
+    frontendSkipped: frontendSkipReason !== undefined,
+    frontendSkipReason,
+    mocks: { hetzner, controlPlane, ...(mockLlm ? { mockLlm } : {}) },
     dataDir,
     logDir: LOG_DIR,
   };

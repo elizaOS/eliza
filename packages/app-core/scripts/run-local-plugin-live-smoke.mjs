@@ -34,21 +34,16 @@ const runtimePackageBuildPrerequisites = [
   {
     name: "@elizaos/app-core",
     packageRoot: path.join(repoRoot, "eliza", "packages", "app-core"),
-    requiredPaths: [
-      path.join("dist", "index.js"),
-      path.join("dist", "registry", "entries", "apps"),
-      path.join("dist", "registry", "entries", "connectors"),
-      path.join("dist", "registry", "entries", "plugins"),
-    ],
-  },
-  {
-    name: "@elizaos/plugin-companion",
-    packageRoot: path.join(repoRoot, "eliza", "plugins", "plugin-companion"),
-    requiredPaths: [path.join("dist", "plugin.js")],
+    requiredPaths: [path.join("dist", "index.js")],
   },
   {
     name: "@elizaos/plugin-personal-assistant",
-    packageRoot: path.join(repoRoot, "eliza", "plugins", "plugin-personal-assistant"),
+    packageRoot: path.join(
+      repoRoot,
+      "eliza",
+      "plugins",
+      "plugin-personal-assistant",
+    ),
     requiredPaths: [path.join("dist", "plugin.js")],
   },
 ];

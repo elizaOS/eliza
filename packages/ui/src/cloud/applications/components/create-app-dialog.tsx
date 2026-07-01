@@ -28,9 +28,9 @@ import {
 } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
+import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { APPS_QUERY_KEY, checkAppNameAvailable, createApp } from "../lib/apps";
-import { useCopyFeedback } from "../lib/use-copy-feedback";
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -107,6 +107,10 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
         name: name.trim(),
         app_url: appUrl.trim(),
         allowed_origins: [appUrl.trim()],
+        // Template app (no repo): the server stamps a first-party template image
+        // so the created app is deployable. Without this, DEPLOY throws
+        // "build-from-repo is disabled / no image to deploy".
+        skipGitHubRepo: true,
       });
       setCreatedApp({ appId: data.app.id, apiKey: data.apiKey });
       await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });

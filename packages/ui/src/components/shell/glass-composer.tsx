@@ -25,6 +25,17 @@ const MIC_GLYPH =
   "M16.5 7H19.5V29H16.5Z" +
   "M22 10H25V26H22Z" +
   "M27 14H30V22H27Z";
+// Eye — almond outline + center pupil dot (vision / "look at my screen"). The
+// almond cuts a hole in the white button; the pupil cuts a hole inside that
+// hole (even-odd) so it fills back to white, reading as an eye.
+const VISION_GLYPH =
+  "M7 18Q18 9 29 18Q18 27 7 18Z" + "M22 18A4 4 0 1 0 14 18A4 4 0 1 0 22 18Z";
+
+function glyphForIcon(icon: "mic" | "send" | "vision"): string {
+  if (icon === "mic") return MIC_GLYPH;
+  if (icon === "vision") return VISION_GLYPH;
+  return SEND_GLYPH;
+}
 
 export function GlassIconButton({
   icon,
@@ -36,10 +47,11 @@ export function GlassIconButton({
   onPointerUp,
   onPointerCancel,
 }: {
-  icon: "mic" | "send";
+  icon: "mic" | "send" | "vision";
   label: string;
   disabled?: boolean;
-  /** Mic only: reflects recording state (adds a pulse + aria-pressed). */
+  /** Mic/vision: reflects recording/capturing state (adds a pulse; mic also
+   * gets aria-pressed). */
   active?: boolean;
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
@@ -82,20 +94,20 @@ export function GlassIconButton({
       onMouseDown={handleMouseDown}
       className={cn(
         "grid h-9 w-9 shrink-0 place-items-center transition-transform",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0",
+        "   ",
         disabled ? "opacity-40" : "hover:scale-105",
         active && "animate-pulse",
       )}
     >
       <svg
         viewBox="0 0 36 36"
-        className="pointer-events-none h-full w-full drop-shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+        className="pointer-events-none h-full w-full"
         aria-hidden="true"
       >
         <path
           fill="#ffffff"
           fillRule="evenodd"
-          d={`${BTN_RECT}${icon === "mic" ? MIC_GLYPH : SEND_GLYPH}`}
+          d={`${BTN_RECT}${glyphForIcon(icon)}`}
         />
       </svg>
     </button>

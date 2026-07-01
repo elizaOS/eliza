@@ -10,7 +10,6 @@ const fullWidgets: CharacterOverviewWidget[] = [
   {
     section: "personality",
     title: "Personality",
-    meta: "8 traits",
     isEmpty: false,
     body: (
       <div className="flex flex-wrap gap-1.5">
@@ -28,7 +27,6 @@ const fullWidgets: CharacterOverviewWidget[] = [
   {
     section: "relationships",
     title: "Relationships",
-    meta: "12 people",
     isEmpty: false,
     body: (
       <div className="flex -space-x-2">
@@ -46,40 +44,35 @@ const fullWidgets: CharacterOverviewWidget[] = [
   {
     section: "documents",
     title: "Documents",
-    meta: "3 docs",
     isEmpty: false,
   },
   {
     section: "skills",
     title: "Skills",
-    meta: "12 skills",
     isEmpty: false,
   },
   {
     section: "experience",
     title: "Experience",
-    meta: "47 memories",
     isEmpty: false,
   },
 ];
 
 const emptyWidgets: CharacterOverviewWidget[] = [
-  { section: "personality", title: "Personality", meta: null, isEmpty: true },
+  { section: "personality", title: "Personality", isEmpty: true },
   {
     section: "relationships",
     title: "Relationships",
-    meta: null,
     isEmpty: true,
   },
-  { section: "documents", title: "Documents", meta: null, isEmpty: true },
-  { section: "skills", title: "Skills", meta: null, isEmpty: true },
-  { section: "experience", title: "Experience", meta: null, isEmpty: true },
+  { section: "documents", title: "Documents", isEmpty: true },
+  { section: "skills", title: "Skills", isEmpty: true },
+  { section: "experience", title: "Experience", isEmpty: true },
 ];
 
 const loadingWidgets: CharacterOverviewWidget[] = fullWidgets.map((w) => ({
   ...w,
   isLoading: true,
-  meta: null,
   body: null,
 }));
 
@@ -126,9 +119,9 @@ export const PartiallyPopulated: Story = {
   args: {
     widgets: [
       fullWidgets[0],
-      { ...fullWidgets[1], meta: null, body: null, isEmpty: true },
+      { ...fullWidgets[1], body: null, isEmpty: true },
       fullWidgets[2],
-      { ...fullWidgets[3], meta: null, body: null, isEmpty: true },
+      { ...fullWidgets[3], body: null, isEmpty: true },
       fullWidgets[4],
     ],
   },

@@ -228,7 +228,7 @@ describe("v5 planner loop skeleton", () => {
 		// SAME ban in plannerTemplate — the planner's messageToUser /
 		// REPLY text path that runs after every tool iteration.
 		expect(plannerTemplate).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
 		);
 		expect(plannerTemplate).toContain('"I\'m fetching X, please hold"');
 		expect(plannerTemplate).toContain(
@@ -236,7 +236,15 @@ describe("v5 planner loop skeleton", () => {
 		);
 		expect(plannerTemplate).toContain("set messageToUser saying so plainly");
 		expect(plannerTemplate).toContain(
-			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
+		);
+		// The ban now also covers task-execution claims (working on / fixing /
+		// wrapping up), not just investigative ones. Live regression 2026-06-28:
+		// in a multi-bot arena the bot claimed it was "wrapping the runtime-identity
+		// fix" with zero TASKS_SPAWN_AGENT this turn — pure narration.
+		expect(plannerTemplate).toContain('"I\'m working on it"');
+		expect(plannerTemplate).toContain(
+			"A claim that you are working on / starting / fixing / building / wrapping up a task is only legitimate when a task-executing tool call",
 		);
 	});
 
@@ -278,10 +286,10 @@ describe("v5 planner loop skeleton", () => {
 			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
 		);
 		expect(systemContent).toContain(
-			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+			"messageToUser and REPLY text must NEVER claim or imply an investigative OR task-execution action is happening",
 		);
 		expect(systemContent).toContain(
-			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+			'"please hold" / "give me a sec" / "be right back" / "almost done" style stalling phrases',
 		);
 	});
 
@@ -391,6 +399,214 @@ describe("v5 planner loop skeleton", () => {
 		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Done.");
+	});
+
+	// #10132: in chat mode the planner's 1024-token output cap is fine, but a
+	// coding sub-agent (ELIZA_PLANNER_FULL_ACTION_SURFACE=1) must emit a whole
+	// file as a single FILE/WRITE tool-call argument — a real single-file app is
+	// ~4.6k+ tokens once JSON-escaped, so 1024 truncates it mid-stream and the
+	// build silently fails. Coding mode lifts the cap.
+	const buildCodingPlannerRuntime = () => ({
+		useModel: vi.fn(async () => ({
+			text: "",
+			toolCalls: [
+				{ id: "call-1", name: "REPLY", arguments: { text: "Built it." } },
+			],
+		})),
+	});
+	const codingPlannerContext = {
+		id: "ctx",
+		events: [
+			{
+				id: "msg",
+				type: "message" as const,
+				message: {
+					role: "user" as const,
+					content: { text: "Build a tip calculator app." },
+				},
+			},
+		],
+	};
+	const codingPlannerTools = [
+		{ name: "FILE", description: "Write a file." },
+		{ name: "REPLY", description: "Reply to the user." },
+	];
+	const codingReply = (id: string, text: string) => ({
+		text: "",
+		toolCalls: [{ id, name: "REPLY", arguments: { text } }],
+	});
+	const codingFileWrite = () => ({
+		text: "",
+		toolCalls: [
+			{
+				id: "file-1",
+				name: "FILE",
+				arguments: {
+					path: "dice.html",
+					content: "<button>Roll</button>",
+				},
+			},
+		],
+	});
+	const withCodingRequiredToolDefaults = async <T>(
+		run: () => Promise<T>,
+	): Promise<T> => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMisses = process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+		try {
+			return await run();
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMisses === undefined)
+				delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
+			else process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES = prevMisses;
+		}
+	};
+
+	it("raises the planner output-token cap in coding/full-surface mode (#10132)", async () => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+		try {
+			const runtime = buildCodingPlannerRuntime();
+			await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "FINISH" as const,
+					thought: "Done.",
+					messageToUser: "Done.",
+				})),
+			});
+			const plannerParams = runtime.useModel.mock.calls[0][1];
+			expect(plannerParams.maxTokens).toBe(16384);
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMax === undefined)
+				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
+		}
+	});
+
+	it("honors ELIZA_CODING_PLANNER_MAX_TOKENS in coding mode (#10132)", async () => {
+		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+		const prevMax = process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+		process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = "32768";
+		try {
+			const runtime = buildCodingPlannerRuntime();
+			await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				executeToolCall: vi.fn(async () => ({ success: true, text: "ok" })),
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "FINISH" as const,
+					thought: "Done.",
+					messageToUser: "Done.",
+				})),
+			});
+			const plannerParams = runtime.useModel.mock.calls[0][1];
+			expect(plannerParams.maxTokens).toBe(32768);
+		} finally {
+			if (prevSurface === undefined)
+				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
+			if (prevMax === undefined)
+				delete process.env.ELIZA_CODING_PLANNER_MAX_TOKENS;
+			else process.env.ELIZA_CODING_PLANNER_MAX_TOKENS = prevMax;
+		}
+	});
+
+	it("requires a non-terminal tool before accepting terminal REPLY in coding mode (#10132)", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(
+						codingReply("reply-1", "Creating the app now."),
+					)
+					.mockResolvedValueOnce(codingFileWrite())
+					.mockResolvedValueOnce(codingReply("reply-2", "Built dice.html.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote dice.html",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Built dice.html.",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: codingPlannerTools,
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			expect(executeToolCall).toHaveBeenCalledWith(
+				{
+					id: "file-1",
+					name: "FILE",
+					params: { path: "dice.html", content: "<button>Roll</button>" },
+				},
+				expect.objectContaining({ iteration: 2 }),
+			);
+			expect(result.finalMessage).toBe("Built dice.html.");
+		});
+	});
+
+	it("lifts the required-tool miss budget in coding mode (#10132)", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const terminalReply = codingReply("reply-1", "Creating the app now.");
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(terminalReply)
+					.mockResolvedValueOnce(terminalReply)
+					.mockResolvedValueOnce(codingFileWrite())
+					.mockResolvedValueOnce(codingReply("reply-2", "Built dice.html.")),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote dice.html",
+			}));
+			const evaluate = vi.fn(async () => ({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "Built dice.html.",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				tools: codingPlannerTools,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall,
+				evaluate,
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(result.finalMessage).toBe("Built dice.html.");
+		});
 	});
 
 	it("evaluates terminal-only planner output without executing tools", async () => {
@@ -752,6 +968,192 @@ describe("v5 planner loop skeleton", () => {
 			name: "TrajectoryLimitExceeded",
 			kind: "required_tool_misses",
 		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("captures a SAFE native-text refusal at required-tool exhaustion instead of a generic apology (#9874)", async () => {
+		// Companion to the guard above. When Stage 1 forced requiresTool but no
+		// exposed tool can satisfy the request, a native-mode model emits an
+		// honest refusal as `text` with no REPLY call / explicit messageToUser.
+		// That text is a genuine user-facing reply (not a pre-tool thought), so it
+		// must reach the user — gated through the user-safe refusal check — rather
+		// than throwing into the caller's generic "something went wrong".
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "I'm not able to search the chat history directly from here.",
+				toolCalls: [],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"I'm not able to search the chat history directly from here.",
+		);
+		// maxRequiredToolMisses=1: the 2nd miss exhausts the cap and returns the
+		// captured native refusal.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("never surfaces a leaked tool-call as a native refusal at exhaustion (#9874)", async () => {
+		// Negative control: native text that is a reasoning/leak must be rejected
+		// by the user-safe gate, so the loop throws rather than leaking it.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "I need to call SEARCH_MESSAGES to find that.",
+				toolCalls: [],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([
+		"Let me check the database for that information.",
+		"Let me pull up your recent messages.",
+		"I'm reviewing the conversation history to answer.",
+		"I'll look that up and get back to you.",
+		"Pulling up the info now, one sec.",
+	])("never surfaces native intent-narration as a refusal: %s (#9874)", async (text) => {
+		// Regression: a native pre-tool/intent-narration text carries no leak
+		// markup and no "thinking through" marker, so a denylist would let it
+		// through and the agent would falsely claim it is doing work it never
+		// did. The positive-allowlist gate (must read as an inability) rejects
+		// it → the loop throws → caller emits the generic apology, never the
+		// phantom action claim.
+		const runtime = {
+			useModel: vi.fn(async () => ({ text, toolCalls: [] })),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+	});
+
+	it("does not surface explicit messageToUser intent-narration at required-tool exhaustion (#9874)", async () => {
+		const runtime = {
+			useModel: vi.fn(async () =>
+				JSON.stringify({
+					messageToUser: "Let me check the database for that information.",
+					toolCalls: [],
+				}),
+			),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not surface terminal REPLY intent-narration at required-tool exhaustion (#9874)", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: {
+							text: "Let me check the database for that information.",
+						},
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("surfaces an explicit honest refusal at required-tool exhaustion (#9874)", async () => {
+		const runtime = {
+			useModel: vi.fn(async () =>
+				JSON.stringify({
+					messageToUser: "That capability is not available this turn.",
+					toolCalls: [],
+				}),
+			),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"That capability is not available this turn.",
+		);
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 

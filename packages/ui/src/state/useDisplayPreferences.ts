@@ -1,33 +1,32 @@
 /**
- * Display preferences — theme and companion rendering settings.
+ * Display preferences — theme and background settings.
  *
  * Extracted from AppContext. Each preference persists to localStorage
  * and normalizes on set.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyUiTheme,
   getSystemTheme,
-  loadCompanionAnimateWhenHidden,
-  loadCompanionHalfFramerateMode,
-  loadCompanionVrmPowerMode,
+  loadBackgroundConfig,
+  loadBackgroundHistory,
   loadUiThemeMode,
-  normalizeCompanionHalfFramerateMode,
-  normalizeCompanionVrmPowerMode,
+  MAX_BACKGROUND_HISTORY,
+  normalizeBackgroundConfig,
   normalizeUiThemeMode,
   resolveUiTheme,
-  saveCompanionAnimateWhenHidden,
-  saveCompanionHalfFramerateMode,
-  saveCompanionVrmPowerMode,
+  saveBackgroundConfig,
+  saveBackgroundHistory,
   saveUiTheme,
   saveUiThemeMode,
 } from "./persistence";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "./types";
-import type { UiTheme, UiThemeMode } from "./ui-preferences";
+import {
+  type BackgroundConfig,
+  backgroundConfigsEqual,
+  type UiTheme,
+  type UiThemeMode,
+} from "./ui-preferences";
 
 export function useDisplayPreferences() {
   const [uiThemeMode, setUiThemeModeState] =
@@ -35,12 +34,18 @@ export function useDisplayPreferences() {
   const [uiTheme, setUiThemeState] = useState<UiTheme>(() =>
     resolveUiTheme(loadUiThemeMode()),
   );
-  const [companionVrmPowerMode, setCompanionVrmPowerModeState] =
-    useState<CompanionVrmPowerMode>(loadCompanionVrmPowerMode);
-  const [companionAnimateWhenHidden, setCompanionAnimateWhenHiddenState] =
-    useState<boolean>(loadCompanionAnimateWhenHidden);
-  const [companionHalfFramerateMode, setCompanionHalfFramerateModeState] =
-    useState<CompanionHalfFramerateMode>(loadCompanionHalfFramerateMode);
+  const [backgroundConfig, setBackgroundConfigState] =
+    useState<BackgroundConfig>(loadBackgroundConfig);
+  // Bounded undo stack: the previous configs, most-recent last. Refs mirror the
+  // latest values so the set/undo callbacks stay identity-stable ([] deps) while
+  // never reading stale state.
+  const [backgroundHistory, setBackgroundHistoryState] = useState<
+    BackgroundConfig[]
+  >(loadBackgroundHistory);
+  const backgroundConfigRef = useRef(backgroundConfig);
+  backgroundConfigRef.current = backgroundConfig;
+  const backgroundHistoryRef = useRef(backgroundHistory);
+  backgroundHistoryRef.current = backgroundHistory;
 
   // Normalize + persist wrappers
   const setUiThemeMode = useCallback((mode: UiThemeMode) => {
@@ -55,25 +60,25 @@ export function useDisplayPreferences() {
     [setUiThemeMode],
   );
 
-  const setCompanionVrmPowerMode = useCallback(
-    (mode: CompanionVrmPowerMode) => {
-      setCompanionVrmPowerModeState(normalizeCompanionVrmPowerMode(mode));
-    },
-    [],
-  );
-
-  const setCompanionAnimateWhenHidden = useCallback((enabled: boolean) => {
-    setCompanionAnimateWhenHiddenState(enabled);
+  // Setting pushes the outgoing config onto the undo stack (unless unchanged).
+  const setBackgroundConfig = useCallback((config: BackgroundConfig) => {
+    const next = normalizeBackgroundConfig(config);
+    const prev = backgroundConfigRef.current;
+    if (backgroundConfigsEqual(prev, next)) return;
+    setBackgroundHistoryState((h) =>
+      [...h, prev].slice(-MAX_BACKGROUND_HISTORY),
+    );
+    setBackgroundConfigState(next);
   }, []);
 
-  const setCompanionHalfFramerateMode = useCallback(
-    (mode: CompanionHalfFramerateMode) => {
-      setCompanionHalfFramerateModeState(
-        normalizeCompanionHalfFramerateMode(mode),
-      );
-    },
-    [],
-  );
+  // Undo restores the most recent previous config and pops it off the stack.
+  // There is no redo — stepping back simply discards the undone config.
+  const undoBackgroundConfig = useCallback(() => {
+    const history = backgroundHistoryRef.current;
+    if (history.length === 0) return;
+    setBackgroundConfigState(history[history.length - 1]);
+    setBackgroundHistoryState((h) => h.slice(0, -1));
+  }, []);
 
   // Resolve mode -> concrete theme. When following the system, track OS
   // color-scheme changes live.
@@ -101,29 +106,23 @@ export function useDisplayPreferences() {
   }, [uiTheme]);
 
   useEffect(() => {
-    saveCompanionVrmPowerMode(companionVrmPowerMode);
-  }, [companionVrmPowerMode]);
+    saveBackgroundConfig(backgroundConfig);
+  }, [backgroundConfig]);
 
   useEffect(() => {
-    saveCompanionAnimateWhenHidden(companionAnimateWhenHidden);
-  }, [companionAnimateWhenHidden]);
-
-  useEffect(() => {
-    saveCompanionHalfFramerateMode(companionHalfFramerateMode);
-  }, [companionHalfFramerateMode]);
+    saveBackgroundHistory(backgroundHistory);
+  }, [backgroundHistory]);
 
   return {
     state: {
       uiTheme,
       uiThemeMode,
-      companionVrmPowerMode,
-      companionAnimateWhenHidden,
-      companionHalfFramerateMode,
+      backgroundConfig,
+      canUndoBackground: backgroundHistory.length > 0,
     },
     setUiTheme,
     setUiThemeMode,
-    setCompanionVrmPowerMode,
-    setCompanionAnimateWhenHidden,
-    setCompanionHalfFramerateMode,
+    setBackgroundConfig,
+    undoBackgroundConfig,
   };
 }

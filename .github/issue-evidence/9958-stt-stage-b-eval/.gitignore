@@ -1,0 +1,3 @@
+# Stage-B STT evaluation audio is listenable evidence (#9958); re-include WAVs ignored by the root *.wav rule.
+!**/*.wav
+!*.wav

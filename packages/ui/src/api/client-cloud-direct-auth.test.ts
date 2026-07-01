@@ -81,6 +81,55 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("creates staging CLI sessions through the staging API host and opens the staging web auth host", async () => {
+    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+
+    const client = new ElizaClient("https://staging.elizacloud.ai");
+    const result = await client.cloudLoginDirect(
+      "https://staging.elizacloud.ai",
+    );
+
+    expect(capacitorMocks.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+        data: expect.objectContaining({ sessionId: expect.any(String) }),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        apiBase: "https://api-staging.elizacloud.ai",
+        browserUrl: expect.stringMatching(
+          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+        ),
+      }),
+    );
+  });
+
+  it("maps staging API bases back to the staging web auth host", async () => {
+    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+
+    const client = new ElizaClient("https://api-staging.elizacloud.ai");
+    const result = await client.cloudLoginDirect(
+      "https://api-staging.elizacloud.ai",
+    );
+
+    expect(capacitorMocks.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        apiBase: "https://api-staging.elizacloud.ai",
+        browserUrl: expect.stringMatching(
+          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+        ),
+      }),
+    );
+  });
+
   it("polls native CLI sessions through the Cloud API host", async () => {
     capacitorMocks.get.mockResolvedValue({
       status: 200,
@@ -263,6 +312,54 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("forwards forceCreate into the create POST body so the backend bypasses the reuse guard", async () => {
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: { id: "dedicated-1", agentName: "My Agent", status: "pending" },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    await client.createCloudCompatAgent({
+      agentName: "My Agent",
+      forceCreate: true,
+    });
+
+    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        method: "POST",
+        data: expect.objectContaining({
+          agentName: "My Agent",
+          forceCreate: true,
+        }),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("omits forceCreate from the body by default (request byte-identical for every existing caller)", async () => {
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: { id: "agent-1", agentName: "My Agent", status: "pending" },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    await client.createCloudCompatAgent({ agentName: "My Agent" });
+
+    const body = capacitorMocks.request.mock.calls[0]?.[0]?.data as Record<
+      string,
+      unknown
+    >;
+    expect(body).not.toHaveProperty("forceCreate");
+  });
+
   it("accepts an async-provisioning create response that returns agentId without id", async () => {
     // The cloud agent-create async branch (202) returns the new agent's id
     // under `agentId` only — no `id` field. The client must read it instead of
@@ -283,7 +380,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
     });
 
     const client = new ElizaClient(undefined, "cloud-api-key");
-    const create = await client.createCloudCompatAgent({ agentName: "My Agent" });
+    const create = await client.createCloudCompatAgent({
+      agentName: "My Agent",
+    });
 
     expect(create).toEqual(
       expect.objectContaining({
@@ -297,49 +396,22 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
-  it("gets pairing tokens and deletes Cloud agents directly on native", async () => {
-    capacitorMocks.request
-      .mockResolvedValueOnce({
-        status: 200,
-        data: {
-          success: true,
-          data: {
-            token: "pair-token",
-            redirectUrl: "https://agent.example.test/pair?token=pair-token",
-            expiresIn: 60,
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        status: 200,
-        data: {
-          success: true,
-          data: { message: "Agent delete complete" },
-        },
-      });
+  it("deletes Cloud agents directly on native", async () => {
+    capacitorMocks.request.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: { message: "Agent delete complete" },
+      },
+    });
 
     const client = new ElizaClient(undefined, "cloud-api-key");
-    const pairing = await client.getCloudCompatPairingToken("agent-1");
     const deleted = await client.deleteCloudCompatAgent("agent-1");
 
-    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/pairing-token",
-        method: "POST",
-      }),
-    );
-    expect(capacitorMocks.request).toHaveBeenNthCalledWith(
-      2,
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
         method: "DELETE",
-      }),
-    );
-    expect(pairing).toEqual(
-      expect.objectContaining({
-        success: true,
-        data: expect.objectContaining({ token: "pair-token" }),
       }),
     );
     expect(deleted).toEqual({
@@ -677,71 +749,6 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
     expect(capacitorMocks.request).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("uses direct Cloud provisioning-agent status and chat endpoints on native", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(
-        new Error("native provisioning agent must not use fetch"),
-      );
-    capacitorMocks.request.mockImplementation(async ({ url, method, data }) => {
-      if (
-        url === "https://api.elizacloud.ai/api/v1/provisioning-agent" &&
-        method === "GET"
-      ) {
-        return {
-          status: 200,
-          data: {
-            success: true,
-            data: {
-              status: "running",
-              bridgeUrl: "https://agent.example.test",
-              agentId: "agent-1",
-            },
-          },
-        };
-      }
-      if (
-        url === "https://api.elizacloud.ai/api/v1/provisioning-agent/chat" &&
-        method === "POST"
-      ) {
-        expect(data).toEqual({ message: "hello", agentId: "agent-1" });
-        return {
-          status: 200,
-          data: {
-            success: true,
-            data: {
-              reply: "Ready when you are.",
-              containerStatus: "running",
-              bridgeUrl: "https://agent.example.test",
-            },
-          },
-        };
-      }
-      throw new Error(`Unexpected native Cloud request: ${method} ${url}`);
-    });
-
-    const client = new ElizaClient(undefined, "cloud-api-key");
-    const status = await client.getProvisioningAgentStatus("agent-1");
-    const chat = await client.sendProvisioningAgentMessage("hello", "agent-1");
-
-    expect(status.data).toEqual(
-      expect.objectContaining({
-        status: "running",
-        bridgeUrl: "https://agent.example.test",
-        agentId: "agent-1",
-      }),
-    );
-    expect(chat.data).toEqual(
-      expect.objectContaining({
-        reply: "Ready when you are.",
-        containerStatus: "running",
-        bridgeUrl: "https://agent.example.test",
-      }),
-    );
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expectNoLocalPersistOrStatusProbe();
   });
 
   it("polls direct Cloud provision jobs on native", async () => {

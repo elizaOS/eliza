@@ -1,8 +1,10 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "passport-visa-consulate-escalation",
-  title: "Assistant escalates a passport and visa blocker before international travel",
+  title:
+    "Assistant escalates a passport and visa blocker before international travel",
   domain: "executive.travel",
   tags: ["lifeops", "executive-assistant", "travel", "documents"],
   isolation: "per-scenario",

@@ -4,6 +4,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 const EVERY_10_DAYS_MINUTES = 14_400;
 
 export default scenario({
+  lane: "live-only",
   id: "todo.create.every-10-days",
   title: "Create an every-10-days Invisalign tray swap todo",
   domain: "todos",

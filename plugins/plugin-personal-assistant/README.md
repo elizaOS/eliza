@@ -10,8 +10,9 @@ for contributors.
 Every reminder, check-in, follow-up, watcher, recap, approval surface, and
 nag-the-user-when-they-go-quiet flow is a **LifeOps scheduled item** stored
 as a `ScheduledTask` record and owned by the runner at
-`src/lifeops/scheduled-task/runner.ts`. There is no second LifeOps scheduling
-mechanism.
+`plugins/plugin-scheduling/src/scheduled-task/runner.ts` (the personal-assistant
+side wires it in via `src/lifeops/scheduled-task/{service,scheduler,runtime-wiring}.ts`).
+There is no second LifeOps scheduling mechanism.
 
 `ScheduledTask` is intentionally not the repository-wide "task" primitive.
 Core runtime tasks are persisted `Task` rows handled by `TaskService`; coding

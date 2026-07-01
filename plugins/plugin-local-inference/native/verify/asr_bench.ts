@@ -32,7 +32,7 @@
  * Usage:
  *   bun packages/inference/verify/asr_bench.ts \
  *     --dylib ~/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so \
- *     --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
+ *     --bundle ~/.eliza/local-inference/models/eliza-1-2b.bundle \
  *     --backend cpu --out packages/inference/verify/bench_results/asr_2026-05-11.json
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -43,6 +43,7 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
 
 import { loadElizaInferenceFfi } from "../../src/services/voice/ffi-bindings";
+import { validateAsrWordTimings } from "@elizaos/shared/transcripts";
 
 /* --------------------------------- args --------------------------------- */
 
@@ -88,7 +89,7 @@ const dylib = arg(
   "--dylib",
   defaultDylib(backend),
 );
-const bundle = arg("--bundle", `${HOME}/.eliza/local-inference/models/eliza-1-0_8b.bundle`);
+const bundle = arg("--bundle", `${HOME}/.eliza/local-inference/models/eliza-1-2b.bundle`);
 const outPath = arg(
   "--out",
   path.resolve(__dirname, "bench_results", `tts_asr_self_labelled_${new Date().toISOString().slice(0, 10)}.json`),
@@ -620,6 +621,12 @@ interface BenchRow {
   roundtripMs: number;
   sampleRateHz: number;
   promptSource: string;
+  /** Per-word ASR timings (fused ABI v12); null on v11/older builds. */
+  timedAsr: {
+    words: number;
+    invariantViolations: number;
+    firstWords: Array<{ text: string; startMs: number; endMs: number }>;
+  } | null;
 }
 
 async function main(): Promise<void> {
@@ -684,6 +691,10 @@ async function main(): Promise<void> {
 
     // 2) transcribe each + accumulate WER / RTF
     ffi.mmapAcquire(ctx, "asr");
+    const timedSupported = ffi.timedAsrSupported();
+    let timedUtterances = 0;
+    let timedTotalWords = 0;
+    let timedTotalViolations = 0;
     const rows: BenchRow[] = [];
     let totalErrors = 0;
     let totalRefWords = 0;
@@ -703,6 +714,31 @@ async function main(): Promise<void> {
       const rtf = audioSeconds / (transcribeMs / 1000);
       const synthRtf = u.synthMs === null ? null : audioSeconds / (u.synthMs / 1000);
       const roundtripMs = (u.synthMs ?? 0) + transcribeMs;
+
+      // Fused ASR v12 per-word timings — validate the playback contract against
+      // the exact decoded audio duration (the single-pipe word-sync source).
+      let timedAsr: BenchRow["timedAsr"] = null;
+      if (timedSupported) {
+        const timed = ffi.asrTranscribeTimed({ ctx, pcm: u.pcm, sampleRateHz: u.sampleRateHz });
+        const audioDurationMs = (u.pcm.length / u.sampleRateHz) * 1000;
+        const validation = validateAsrWordTimings(timed.words, audioDurationMs);
+        timedAsr = {
+          words: timed.words.length,
+          invariantViolations: validation.violations.length,
+          firstWords: timed.words.slice(0, 8),
+        };
+        timedUtterances += 1;
+        timedTotalWords += timed.words.length;
+        timedTotalViolations += validation.violations.length;
+        if (verbose && validation.violations.length > 0) {
+          process.stderr.write(
+            `[asr-bench] ${u.id}: ${validation.violations.length} word-timing violation(s): ${validation.violations
+              .slice(0, 3)
+              .map((v) => `#${v.index} ${v.reason}`)
+              .join("; ")}\n`,
+          );
+        }
+      }
       rows.push({
         id: u.id,
         text: u.reference,
@@ -723,6 +759,7 @@ async function main(): Promise<void> {
         roundtripMs,
         sampleRateHz: u.sampleRateHz,
         promptSource: u.promptSource,
+        timedAsr,
       });
       totalErrors += errors;
       totalRefWords += refW.length;
@@ -805,6 +842,16 @@ async function main(): Promise<void> {
         errors: totalErrors,
         audioSeconds: totalAudioSec,
         wallSeconds: totalWallSec,
+      },
+      timedAsr: {
+        abiVersion: ffi.libraryAbiVersion,
+        supported: timedSupported,
+        utterances: timedUtterances,
+        totalWords: timedTotalWords,
+        invariantViolations: timedTotalViolations,
+        // Every emitted word span is well-formed (ordered, non-overlapping,
+        // within audio duration) — the playback contract the player relies on.
+        invariantsPassed: timedSupported ? timedTotalViolations === 0 : null,
       },
       gate: {
         metric: "asr_wer",

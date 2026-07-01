@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const [packageDirArg, separator, ...command] = process.argv.slice(2);
 
@@ -38,6 +41,12 @@ const packageLockName = path
   .replaceAll(path.sep, "__")
   .replaceAll(/[^a-zA-Z0-9._-]/g, "_");
 const lockDir = path.join(lockRoot, packageLockName);
+const cleanupHelper = path.join(
+  root,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const staleAfterMs = Number.parseInt(
   process.env.ELIZA_PACKAGE_BUILD_LOCK_STALE_MS ?? "1800000",
   10,
@@ -68,6 +77,12 @@ function isProcessAlive(pid) {
   }
 }
 
+async function removeLockDir() {
+  await execFileAsync(process.execPath, [cleanupHelper, lockDir], {
+    cwd: root,
+  });
+}
+
 async function removeStaleLock() {
   const metadata = await readLockMetadata();
   const createdAt = Date.parse(metadata?.createdAt ?? "");
@@ -77,7 +92,7 @@ async function removeStaleLock() {
   const isStaleByPid = Number.isInteger(pid) && !isProcessAlive(pid);
 
   if (isStaleByAge || isStaleByPid) {
-    await fs.rm(lockDir, { recursive: true, force: true });
+    await removeLockDir();
     return true;
   }
   return false;
@@ -126,7 +141,7 @@ let cleaningUp = false;
 async function cleanupLock() {
   if (cleaningUp) return;
   cleaningUp = true;
-  await fs.rm(lockDir, { recursive: true, force: true });
+  await removeLockDir();
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {

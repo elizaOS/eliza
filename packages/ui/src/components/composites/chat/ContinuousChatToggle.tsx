@@ -163,7 +163,7 @@ export function ContinuousChatToggle({
                   onClick={() => handleSelect(modeId)}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg",
+                    "    ",
                     active
                       ? "bg-accent/15 text-accent"
                       : "text-muted hover:text-txt hover:bg-bg-hover",

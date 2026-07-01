@@ -2,10 +2,16 @@
 
 A simple REST API server for chatting with an elizaOS agent using Elysia (Bun's fast web framework).
 
-**No API keys or external services required for local mode.** Uses:
+**Set one inference provider API key.** The server picks a provider by which
+env var is present, in priority order:
 
-- `plugin-sql` with PGLite by default for local storage
-- `plugin-eliza-classic` for pattern-matching responses (no LLM needed)
+1. `OPENAI_API_KEY` → `@elizaos/plugin-openai`
+2. `OPENROUTER_API_KEY` → `@elizaos/plugin-openrouter`
+3. `ANTHROPIC_API_KEY` → `@elizaos/plugin-anthropic`
+4. `ELIZA_API_KEY` → `@elizaos/plugin-elizacloud` (Eliza Cloud)
+
+If none is set, startup fails with a clear error. Storage uses `plugin-sql`
+with PGLite by default — no `POSTGRES_URL` required.
 
 ## Quick Start
 
@@ -13,6 +19,9 @@ A simple REST API server for chatting with an elizaOS agent using Elysia (Bun's 
 # From the monorepo root, install dependencies
 cd /path/to/eliza
 bun install
+
+# Provide one inference provider key (first one present wins)
+export OPENAI_API_KEY=sk-...
 
 # Start the server
 bun run examples/rest-api/elysia/server.ts
@@ -54,11 +63,15 @@ Response:
 
 ```json
 {
-  "response": "How do you do. Please state your problem.",
+  "response": "Hello! How can I help you today?",
   "character": "Eliza",
-  "userId": "generated-uuid"
+  "userId": "generated-uuid",
+  "mode": "openai"
 }
 ```
+
+The `mode` field reports the selected provider
+(`openai` / `openrouter` / `anthropic` / `elizacloud`).
 
 ## Configuration
 

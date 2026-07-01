@@ -9,6 +9,29 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 
+// ─── Logger ─────────────────────────────────────────────────────────────
+//
+// This file is bundled with `--external:@elizaos/*` and runs in a minimal
+// container before any `@elizaos/*` package is statically resolvable, so it
+// cannot import the shared structured logger. This tiny shim gives the same
+// `[ClassName]`-prefixed, level-tagged, single-line structured output the
+// logger commandment requires (message + optional context object), without a
+// hard dependency. All cloud-agent runtime logging goes through it.
+const logger = {
+  info(message: string, context?: Record<string, unknown>): void {
+    if (context) console.log(`[cloud-agent] ${message}`, context);
+    else console.log(`[cloud-agent] ${message}`);
+  },
+  warn(message: string, context?: Record<string, unknown>): void {
+    if (context) console.warn(`[cloud-agent] ${message}`, context);
+    else console.warn(`[cloud-agent] ${message}`);
+  },
+  error(message: string, context?: Record<string, unknown>): void {
+    if (context) console.error(`[cloud-agent] ${message}`, context);
+    else console.error(`[cloud-agent] ${message}`);
+  },
+};
+
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export interface BridgeRpcParams {
@@ -459,11 +482,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         getConfig: () => state.config,
       };
 
-      console.log("[cloud-agent] elizaOS runtime initialized with real agent");
+      logger.info("elizaOS runtime initialized with real agent");
     } else {
-      console.warn(
-        "[cloud-agent] @elizaos/core not available, running in echo mode",
-      );
+      logger.warn("@elizaos/core not available, running in echo mode");
       agentRuntime = {
         processMessage: async (params: BridgeRpcParams): Promise<string> => {
           const normalized = normalizeBridgeMessage(params);
@@ -565,7 +586,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   });
 
   healthServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`[cloud-agent] Health endpoint listening on port ${PORT}`);
+    logger.info(`Health endpoint listening on port ${PORT}`);
   });
 
   // ─── Bridge HTTP server ───────────────────────────────────────────────
@@ -610,7 +631,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       if (incoming.config) state.config = incoming.config;
       if (incoming.workspaceFiles)
         state.workspaceFiles = incoming.workspaceFiles;
-      console.log("[cloud-agent] State restored from snapshot");
+      logger.info("State restored from snapshot");
       res.writeHead(200);
       res.end(JSON.stringify({ success: true }));
       return;
@@ -767,21 +788,21 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
   const bridgeBindAddress = bridgeSecretGenerated ? "127.0.0.1" : "0.0.0.0";
   bridgeServer.listen(BRIDGE_PORT, bridgeBindAddress, () => {
-    console.log(
-      `[cloud-agent] Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
+    logger.info(
+      `Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
     );
     if (bridgeSecretGenerated) {
-      console.warn(
-        "[cloud-agent] CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
+      logger.warn(
+        "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
       );
-      console.log(`[cloud-agent] Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`);
+      logger.info(`Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`);
     }
   });
 
   // ─── Startup ──────────────────────────────────────────────────────────
 
   function shutdown() {
-    console.log("[cloud-agent] Shutting down...");
+    logger.info("Shutting down...");
     healthServer.close();
     bridgeServer.close();
     process.exit(0);
@@ -789,12 +810,38 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
 
+  // Crash guards. This file is bundled by esbuild for the cloud-agent image,
+  // which only installs @elizaos/core + @elizaos/plugin-sql, so we cannot import
+  // @elizaos/shared's installProcessCrashGuards here — the guards are inlined.
+  // A rejected background promise must never take down the container; a truly
+  // uncaught exception exits non-zero so the orchestrator (Docker
+  // `--restart unless-stopped` / K8s `restartPolicy: Always`) relaunches a clean
+  // container. Exit code matches @elizaos/shared RESTART_EXIT_CODE.
+  const CLOUD_AGENT_RESTART_EXIT_CODE = 75;
+  process.on("unhandledRejection", (reason) => {
+    logger.error("Unhandled promise rejection (non-fatal)", {
+      err:
+        reason instanceof Error
+          ? (reason.stack ?? reason.message)
+          : String(reason),
+    });
+  });
+  process.on("uncaughtException", (error) => {
+    logger.error("Uncaught exception — exiting for orchestrator restart", {
+      err:
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
+    });
+    process.exit(CLOUD_AGENT_RESTART_EXIT_CODE);
+  });
+
   initRuntime()
     .then(() => {
-      console.log("[cloud-agent] Ready");
+      logger.info("Ready");
     })
     .catch((err) => {
-      console.error("[cloud-agent] Runtime init failed:", err);
+      logger.error("Runtime init failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
       process.exit(1);
     });
 }

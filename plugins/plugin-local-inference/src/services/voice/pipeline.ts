@@ -126,7 +126,7 @@ export interface VoicePipelineDeps {
 	scheduler: VoiceScheduler;
 	/**
 	 * The live frame-fed ASR adapter (`voice/transcriber.ts` — fused
-	 * `eliza_inference_asr_stream_*`, the whisper.cpp interim adapter, or
+	 * `eliza_inference_asr_stream_*`, the fused batch adapter, or
 	 * `MissingAsrTranscriber` deferring a hard failure). The pipeline drives
 	 * it as a batch: it feeds the whole (VAD-gated) utterance buffer as one
 	 * frame, `flush()`es to finalize, then splits the final transcript into
@@ -310,10 +310,9 @@ export class VoicePipeline {
 		// Drive the live `StreamingTranscriber` as a batch: feed the whole
 		// (already VAD-gated) utterance buffer as one frame, `flush()` to
 		// force-finalize, and split the final transcript into contiguous text
-		// tokens. The fused Qwen3-ASR decoder shares the text vocab (AGENTS.md
-		// §1), so when it reports token ids alongside the transcript they ride
-		// along as `TextToken.id` — the whisper.cpp interim adapter omits them
-		// (different tokenizer) and the word-chunk fallback is used.
+		// tokens. The fused Gemma ASR decoder shares the text-model tokenizer, so
+		// when it reports token ids alongside the transcript they ride along as
+		// `TextToken.id`; when it omits them the word-chunk fallback is used.
 		const asrTokens = await this.transcribeAll(audio, cancel);
 		if (cancel.cancelled) return this.finish("cancelled");
 		// The instant ASR's last token has been emitted: drafter + verifier

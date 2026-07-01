@@ -17,6 +17,7 @@ import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
+import { filesAction } from "../actions/files.ts";
 import { logsAction } from "../actions/logs.ts";
 import { memoryAction } from "../actions/memories.ts";
 import { notifyAction } from "../actions/notify.ts";
@@ -26,6 +27,8 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
+import { backgroundGenerateImageRoute } from "../api/background-routes.ts";
+import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
   registerMediaGcTask,
@@ -51,12 +54,17 @@ import { createOngoingTasksProvider } from "../providers/tasks.ts";
 import { uiCatalogProvider } from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
+import { ApprovalService } from "../services/approval/index.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
+import { LocalFileStorageService } from "../services/file-storage.ts";
+import { GlobalPauseService } from "../services/global-pause/index.ts";
+import { HandoffService } from "../services/handoff/index.ts";
 import {
   KnowledgeGraphService,
   knowledgeGraphSchema,
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
@@ -111,8 +119,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createOngoingTasksProvider(),
   ];
 
-  // PLAY_EMOTE lives in @elizaos/plugin-companion (emote catalog + action).
-
   const plugin: Plugin = {
     name: "eliza",
     description: "Eliza workspace context, session keys, and lifecycle actions",
@@ -128,8 +134,13 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       NotificationPushService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
+      LocalFileStorageService as ServiceClass,
       PermissionRegistry as ServiceClass,
       KnowledgeGraphService as ServiceClass,
+      PendingPromptsService as ServiceClass,
+      GlobalPauseService as ServiceClass,
+      HandoffService as ServiceClass,
+      ApprovalService as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
@@ -220,7 +231,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     // Public media route — only reached on iOS (in-process dispatch, no HTTP
     // server). HTTP platforms serve media via the pre-auth handler in server.ts.
-    routes: [mediaFileRoute],
+    routes: [mediaFileRoute, backgroundGenerateImageRoute, ...filesRoutes],
 
     actions: [
       terminalAction,
@@ -236,6 +247,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       compactConversationAction,
       notifyAction,
       ...promoteSubactionsToActions(memoryAction),
+      filesAction,
       // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
       // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the

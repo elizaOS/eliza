@@ -1,14 +1,24 @@
 /**
- * Brand-surface smoke. Verifies the first-paint surfaces (FOUC HTML, native
- * launch configs, capacitor + Android/iOS resources) agree on the Eliza
- * orange palette so the user never sees a foreign color before the React
- * tree mounts. The actual home / pre-agent screen lives in `@elizaos/ui`'s
- * <App /> (packages/ui/src/App.tsx) and `@elizaos/app-core` window
- * orchestration; this test asserts the shell-owned surfaces this package
- * actually controls.
+ * Brand-surface smoke. Verifies the first-paint / launch surfaces (FOUC HTML,
+ * native launch configs, capacitor + Android/iOS resources) all use the SAME
+ * orange the React home background uses, so the user never sees a foreign
+ * color — or a *different* orange — before the home background paints.
+ *
+ * Two distinct oranges, kept deliberately separate (issue #9565):
+ *  - LAUNCH_ORANGE (#ef5a1f) — every boot/loading/launch surface. This equals
+ *    DEFAULT_BACKGROUND_COLOR (packages/ui/src/state/ui-preferences.ts), the
+ *    default home ShaderBackground, so the native splash → React StartupShell →
+ *    home transition is a single seamless orange.
+ *  - BRAND_ORANGE (#FF5800) — the brand accent (logos, brand surfaces). It may
+ *    persist on brand resources but must NOT be a launch surface.
+ *
+ * The actual home / pre-agent screen lives in `@elizaos/ui`'s <App />
+ * (packages/ui/src/App.tsx) and `@elizaos/app-core` window orchestration; this
+ * test asserts the shell-owned surfaces this package actually controls.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
 const here = import.meta.dirname;
@@ -16,6 +26,21 @@ const root = join(here, "..");
 const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
+const LAUNCH_ORANGE = "#ef5a1f";
+const LAUNCH_ORANGE_RGB = [239, 90, 31];
+const ANDROID_SPLASH_TEMPLATE_FILES = [
+  "android/app/src/main/res/drawable/splash.png",
+  "android/app/src/main/res/drawable-land-hdpi/splash.png",
+  "android/app/src/main/res/drawable-land-mdpi/splash.png",
+  "android/app/src/main/res/drawable-land-xhdpi/splash.png",
+  "android/app/src/main/res/drawable-land-xxhdpi/splash.png",
+  "android/app/src/main/res/drawable-land-xxxhdpi/splash.png",
+  "android/app/src/main/res/drawable-port-hdpi/splash.png",
+  "android/app/src/main/res/drawable-port-mdpi/splash.png",
+  "android/app/src/main/res/drawable-port-xhdpi/splash.png",
+  "android/app/src/main/res/drawable-port-xxhdpi/splash.png",
+  "android/app/src/main/res/drawable-port-xxxhdpi/splash.png",
+];
 
 function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
@@ -32,52 +57,135 @@ function readGeneratedOrTemplate(rel: string): string {
   );
 }
 
+function platformTemplatePath(rel: string): string {
+  const [platform, ...segments] = rel.split("/");
+  return join(appCorePlatformsRoot, platform, ...segments);
+}
+
+async function readPngRgb(path: string, x = 0, y = 0): Promise<number[]> {
+  const { data } = await sharp(path)
+    .ensureAlpha()
+    .extract({ left: x, top: y, width: 1, height: 1 })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return Array.from(data.subarray(0, 3));
+}
+
 describe("brand surfaces", () => {
-  it("app.config web/theme colors are brand orange", () => {
+  it("launch orange equals the default home background color", () => {
+    // The single source of truth for the home ShaderBackground orange. Every
+    // launch surface below must equal this so boot → home is one seamless
+    // color. If the default home background changes, this test forces the
+    // launch surfaces to move with it.
+    const uiPrefs = readFileSync(
+      join(root, "..", "ui", "src", "state", "ui-preferences.ts"),
+      "utf8",
+    );
+    expect(uiPrefs).toMatch(
+      new RegExp(`DEFAULT_BACKGROUND_COLOR\\s*=\\s*"${LAUNCH_ORANGE}"`),
+    );
+  });
+
+  it("app.config web/theme colors are the launch orange (not the brand accent)", () => {
     const src = read("app.config.ts");
-    expect(src).toMatch(/themeColor:\s*"#FF5800"/);
-    expect(src).toMatch(/backgroundColor:\s*"#FF5800"/);
-    expect(BRAND_ORANGE).toBe("#FF5800");
+    expect(src).toMatch(new RegExp(`themeColor:\\s*"${LAUNCH_ORANGE}"`));
+    expect(src).toMatch(new RegExp(`backgroundColor:\\s*"${LAUNCH_ORANGE}"`));
+    expect(src).not.toMatch(/themeColor:\s*"#FF5800"/);
   });
 
-  it("capacitor config and native backgrounds are brand orange", () => {
+  it("capacitor config and native backgrounds are the launch orange", () => {
     const src = read("capacitor.config.ts");
-    expect(src).toMatch(/SplashScreen:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
-    expect(src).toMatch(/ios:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
-    expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
+    expect(src).toMatch(
+      new RegExp(
+        `SplashScreen:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        "s",
+      ),
+    );
+    expect(src).toMatch(
+      new RegExp(`ios:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`, "s"),
+    );
+    expect(src).toMatch(
+      new RegExp(
+        `android:\\s*\\{[^}]*backgroundColor:\\s*"${LAUNCH_ORANGE}"`,
+        "s",
+      ),
+    );
   });
 
-  it("Android colors.xml + styles.xml use brand orange for launch + status bar", () => {
+  it("Android colors.xml + styles.xml: launch surfaces home-orange, accents brand-orange", async () => {
     const colors = readGeneratedOrTemplate(
       "android/app/src/main/res/values/colors.xml",
     );
-    expect(colors).toContain('<color name="eliza_orange">#FF5800</color>');
-    expect(colors).toContain('<color name="splash_background">#FF5800</color>');
-    expect(colors).toContain('<color name="colorPrimary">#FF5800</color>');
+    // Launch splash + launch status bar track the home background; brand
+    // accent tokens stay separate and unchanged.
+    expect(colors).toContain(
+      `<color name="splash_background">${LAUNCH_ORANGE}</color>`,
+    );
+    expect(colors).toContain(
+      `<color name="eliza_orange">${BRAND_ORANGE}</color>`,
+    );
+    expect(colors).toContain(
+      `<color name="colorPrimary">${BRAND_ORANGE}</color>`,
+    );
 
     const styles = readGeneratedOrTemplate(
       "android/app/src/main/res/values/styles.xml",
     );
-    expect(styles).toContain("@color/eliza_orange");
-    expect(styles).toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
+    // The launch status bar follows the splash/home, not the brand accent.
+    expect(styles).toMatch(/statusBarColor[^<]*@color\/splash_background/);
+    expect(styles).not.toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
+
+    for (const rel of ANDROID_SPLASH_TEMPLATE_FILES) {
+      expect(await readPngRgb(platformTemplatePath(rel)), rel).toEqual(
+        LAUNCH_ORANGE_RGB,
+      );
+    }
   });
 
-  it("iOS LaunchScreen.storyboard backdrop is brand orange", () => {
+  it("iOS LaunchScreen.storyboard is a solid home-background-orange launch view", () => {
     const xml = readGeneratedOrTemplate(
       "ios/App/App/Base.lproj/LaunchScreen.storyboard",
     );
-    // 1.0 / 0.345 / 0.0 is #FF5800 in sRGB to 3 decimals.
-    expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
+    // 0.937 / 0.353 / 0.122 is #ef5a1f in sRGB to 3 decimals.
+    expect(xml).toMatch(/red="0\.937"\s+green="0\.353"\s+blue="0\.122"/);
+    expect(xml).not.toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
+    expect(xml).not.toContain("<imageView");
+    expect(xml).not.toContain('image name="Splash"');
   });
 
-  it("index.html FOUC fallback is unified with the dark chat shell, not a foreign color", () => {
+  it("index.html FOUC fallback uses the launch orange, not a foreign color", () => {
     const html = read("index.html");
-    // Either pure black or the brand orange is acceptable. The previous
-    // `#08080a` near-black is a slop value and should not regress.
+    // The FOUC fallback tracks the home background orange (#ef5a1f, #9565) so
+    // boot never flashes a different orange before the home background paints.
+    // The previous `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
+    expect(html).toMatch(new RegExp(`--launch-bg:\\s*${LAUNCH_ORANGE}`));
     expect(html).toMatch(
-      /background-color:\s*var\(--bg,\s*(#000000|#FF5800)\)/,
+      new RegExp(
+        `html,\\s*body,\\s*#root\\s*\\{[^}]*background-color:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
     );
+    expect(html).not.toMatch(/background-color:\s*var\(--bg/);
+    // The pre-#9565 brand-accent fallback must not regress.
+    expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
+  });
+
+  it("renderer root CSS keeps the pre-app surface on the home-background orange", () => {
+    const styles = read("../ui/src/styles/styles.css");
+    expect(styles).toMatch(
+      new RegExp(
+        `body\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
+    );
+    expect(styles).toMatch(
+      new RegExp(
+        `#root\\s*\\{[^}]*background:\\s*var\\(--launch-bg,\\s*${LAUNCH_ORANGE}\\)`,
+        "s",
+      ),
+    );
+    expect(styles).not.toMatch(/#root\s*\{[^}]*background:\s*var\(--bg\)/s);
   });
 
   it("no rounded-lg/xl/2xl/3xl chunky rounding in app shell source", () => {
@@ -127,16 +235,30 @@ describe("brand surfaces", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("desktop OS pill uses the transparent chat-overlay shell", () => {
+  it("desktop chat overlay uses the transparent in-app shell", () => {
     const mainSrc = read("src/main.tsx");
+    const appSrc = read("../ui/src/App.tsx");
     const stylesSrc = read("../ui/src/styles/styles.css");
-    const pillSrc = read("../app-core/platforms/electrobun/src/pill-window.ts");
 
-    expect(pillSrc).toContain('url.search = "?shellMode=chat-overlay"');
+    expect(
+      existsSync(
+        join(root, "../app-core/platforms/electrobun/src/pill-window.ts"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(
+          root,
+          "../app-core/platforms/electrobun/src/desktop-pill-config.ts",
+        ),
+      ),
+    ).toBe(false);
     expect(mainSrc).toContain("isChatOverlayWindowShell");
     expect(mainSrc).toContain(
       'root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell)',
     );
+    expect(appSrc).toContain('data-testid="chat-overlay-shell"');
+    expect(appSrc).toContain("<ContinuousChatOverlay");
     expect(stylesSrc).toContain("html.eliza-chat-overlay-shell #root");
     expect(stylesSrc).toContain("background: transparent");
   });

@@ -1,0 +1,70 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "WebWorker", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["@cloudflare/workers-types", "node", "bun-types"],
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@/api-app/*": ["./src/*"],
+      "@/api-queue/*": ["./src/queue/*"],
+      "@/lib/*": ["../shared/src/lib/*"],
+      "@/db/*": ["../shared/src/db/*"],
+      "@/types/*": ["../shared/src/types/*"],
+      "@/billing/*": ["../shared/src/billing/*"],
+      "@/api/*": ["./*"],
+      "@elizaos/cloud-shared": ["../shared/src/index.ts"],
+      "@elizaos/cloud-shared/billing": ["../shared/src/billing/index.ts"],
+      "@elizaos/cloud-shared/db": ["../shared/src/db/index.ts"],
+      "@elizaos/cloud-shared/db/*": ["../shared/src/db/*"],
+      "@elizaos/cloud-shared/lib": ["../shared/src/lib/index.ts"],
+      "@elizaos/cloud-shared/lib/*": ["../shared/src/lib/*"],
+      "@elizaos/cloud-shared/types": ["../shared/src/types/index.ts"],
+      "@elizaos/cloud-shared/types/*": ["../shared/src/types/*"],
+      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
+      "@elizaos/cloud-routing": ["../routing/src/index.ts"],
+      "@elizaos/contracts": ["../../contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../../contracts/src/*"],
+      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../../packages/core/src/*"],
+      "@elizaos/logger": ["../../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../../packages/logger/src/*"],
+      "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../../packages/shared/src/*"],
+      "@elizaos/security": ["../../security/src/index.ts"],
+      "@elizaos/security/*": ["../../security/src/*"],
+      "@elizaos/plugin-cloud-apps": [
+        "../../../plugins/plugin-cloud-apps/src/index.ts"
+      ],
+      "@elizaos/plugin-cloud-apps/*": [
+        "../../../plugins/plugin-cloud-apps/src/*"
+      ],
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
+      "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": [
+        "../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@/*": ["../shared/*"]
+    }
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../shared/src/db/**/*.ts",
+    "../shared/src/types/**/*"
+  ],
+  "exclude": ["node_modules", "../../../node_modules"]
+}

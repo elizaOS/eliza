@@ -1,7 +1,7 @@
 """Fine-tune all eliza-1 tiers sequentially or in parallel.
 
 Orchestrates full-parameter APOLLO SFT for each of the 5 eliza-1 tiers
-(qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, qwen3.5-9b, qwen3.6-27b), then
+(gemma4-e2b, gemma4-e4b, gemma4-12b, gemma4-31b), then
 optionally runs eval and quantization on each produced checkpoint.
 
 The actual training is delegated to train_local.py (which owns the
@@ -19,7 +19,7 @@ Usage:
 
     # Fine-tune only the two smallest tiers, skip quantization
     uv run --extra train python scripts/finetune_all_tiers.py \
-        --tiers qwen3.5-0.8b,qwen3.5-2b \
+        --tiers gemma4-e2b,gemma4-e4b \
         --data-path data/final --skip-quant
 
     # Route all tiers to Nebius
@@ -51,15 +51,14 @@ log = logging.getLogger("finetune_all_tiers")
 
 # Canonical ordered list of eliza-1 tiers.
 ALL_TIERS: list[str] = [
-    "qwen3.5-0.8b",
-    "qwen3.5-2b",
-    "qwen3.5-4b",
-    "qwen3.5-9b",
-    "qwen3.6-27b",
+    "gemma4-e2b",
+    "gemma4-e4b",
+    "gemma4-12b",
+    "gemma4-31b",
 ]
 
 # Quantization pipeline order matches AGENTS.md §3.
-# fused_turboquant is excluded: incompatible with Qwen3.5 hybrid linear+full
+# fused_turboquant is excluded: incompatible with Gemma 4 dense
 # attention architecture (18 linear + 6 full attention layers).
 QUANT_PIPELINE: list[str] = [
     "turboquant",
@@ -257,7 +256,7 @@ def finetune_tier(
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Fine-tune all eliza-1 tiers (0.8b → 27b) with APOLLO SFT.",
+        description="Fine-tune all active eliza-1 tiers (2B → 27B) with APOLLO SFT.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument(
@@ -265,7 +264,7 @@ def main() -> int:
         default="all",
         help=(
             "Comma-separated list of registry keys to fine-tune. "
-            "Default: all (qwen3.5-0.8b,qwen3.5-2b,qwen3.5-4b,qwen3.5-9b,qwen3.6-27b)."
+            "Default: all (gemma4-e2b,gemma4-e4b,gemma4-12b,gemma4-31b)."
         ),
     )
     ap.add_argument(

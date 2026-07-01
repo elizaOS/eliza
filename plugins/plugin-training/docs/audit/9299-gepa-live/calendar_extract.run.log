@@ -1,0 +1,106 @@
+[gepa-seed] task=calendar_extract dataset=11 model=openai/gpt-oss-120b (cerebras) generations=2 population=4
+
+[gepa-seed] RESULT task=calendar_extract baseline=0.795 optimized=0.864 delta=0.068
+
+[gepa-seed] baseline prompt:
+Plan the calendar action for this request.
+The user may speak in any language.
+Use the current request plus recent conversation context.
+If the current request is vague or a follow-up, recover the subject from recent conversation and apply the new constraint from the current request.
+You are allowed to decide that the assistant should reply naturally without acting yet.
+Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.
+When shouldAct=false, provide a short natural response that asks only for what is missing.
+
+Return JSON only as a single object with exactly these fields:
+  subaction: one of the allowed subactions below, or null when this should be reply-only/no-action
+  shouldAct: boolean
+  response: short natural-language reply when shouldAct is false, otherwise empty or null
+  queries: array or ||-delimited string of up to 3 search queries
+  title: optional event title
+  tripLocation: optional trip location
+  timeMin: optional ISO 8601 datetime
+  timeMax: optional ISO 8601 datetime
+  windowLabel: optional natural-language window label
+
+subactions[7]{name,use}:
+  feed,View schedule for today tomorrow or this week
+  next_event,Check the next upcoming event only
+  search_events,Find events by title attendee location or date range
+  create_event,Schedule a new event
+  update_event,Rename reschedule move or edit an existing event
+  delete_event,Remove or cancel an existing event
+  trip_window,Query what is happening during a trip or stay in a place
+Use only the exact subaction literals listed above.
+Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.
+If the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.
+When the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.
+
+For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.
+For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with my colleague' so the search does not silently narrow away the target event.
+timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.
+windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.
+For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.
+When the user asks whether they have a flight to a place, include the place name as a search query in addition to any flight phrase.
+Preserve names, places, and keywords in their original language or script when useful.
+Convert time constraints into concise searchable dates or windows even if the user phrases them in another language.
+Focus on people, places, flights, itinerary, appointments, and explicit dates.
+If the request is about a date, include a date query like april 12 or 2026-04-12.
+If the request asks what is happening while the user is in a place, use trip_window and include tripLocation.
+For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.
+For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.
+
+Example feed: {"subaction":"feed","shouldAct":true,"response":null,"queries":[],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":"tomorrow"}
+Example search: {"subaction":"search_events","shouldAct":true,"response":null,"queries":["flight to denver","denver"],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}
+Example update: {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup","tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}
+Example clarify: {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar?","queries":[],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}
+
+The user may speak any language. Detect the calendar intent regardless of language.
+When the user asks about what is happening in a specific location or during a trip, detect this as trip_window and extract the location, regardless of language.
+
+Return JSON only as a single object. No prose. No markdown. No hidden reasoning.
+
+[gepa-seed] optimized prompt:
+Plan the calendar action for this request.
+The user may speak in any language.
+Use the current request plus recent conversation context.
+If the current request is vague or a follow‑up, recover the subject from recent conversation and apply the new constraint from the current request.
+You are allowed to decide that the assistant should reply naturally without acting yet.
+Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.
+When shouldAct=false, provide a short natural response that asks only for what is missing.
+
+Return JSON only as a single object with exactly these fields:
+  subaction: one of the allowed subactions below, or null when this should be reply‑only/no‑action
+  shouldAct: boolean
+  response: short natural‑language reply when shouldAct is false, otherwise empty or null
+  queries: array (always present, use [] when no queries) or ||‑delimited string of up to 3 search queries
+  title: optional event title
+  tripLocation: optional trip location
+  timeMin: optional ISO 8601 datetime
+  timeMax: optional ISO 8601 datetime
+  windowLabel: optional natural‑language window label
+
+subactions[7]{name,use}:
+  feed,View schedule for today, tomorrow or this week
+  next_event,Check the next upcoming event only
+  search_events,Find events by title attendee location or date range
+  create_event,Schedule a new event
+  update_event,Rename reschedule move or edit an existing event
+  delete_event,Remove or cancel an existing event
+  trip_window,Query what is happening during a trip or stay in a place
+Use only the exact subaction literals listed above.
+Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.
+If the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.
+When the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.
+
+For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.
+**Special rule for feed**: when the user requests “today”, set timeMin to 00:00 of the current day and timeMax to 00:00 of the following day (ISO 8601). Apply analogous start‑of‑day/end‑of‑day logic for “tomorrow” and other explicit days.
+For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like “find my flight” or “meetings with my colleague” so the search does not silently narrow away the target event.
+timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.
+windowLabel should be a short natural‑language label like on monday, this weekend, next month, or tonight.
+For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.
+When the user asks whether they have a flight to a place, include the place name as a search query in addition to any flight phrase.
+Preserve names, places, and keywords in their original language or script when useful.
+Convert time constraints into concise searchable dates or windows even if the user phrases them in another language
+ Info       [SERVICE:OPTIMIZED_PROMPT] Persisted optimized prompt artifact (task=calendar_extract, optimizer=gepa, score=0.8636363636363636, baselineScore=0.7954545454545454, path=/Users/shawwalters/.local/state/eliza/optimized-prompts/calendar_extract/v1.json, version=1)
+
+[gepa-seed] persisted optimized artifact -> /Users/shawwalters/.local/state/eliza/optimized-prompts/calendar_extract/v1.json

@@ -1,49 +1,37 @@
 // @vitest-environment jsdom
 
 /**
- * TodosView is a data-fetching three-lane todo board (Today / Upcoming /
- * Someday) over the single read-only endpoint PA serves:
+ * Drives the unified TodosView (the single GUI/XR data wrapper) through the
+ * rendered DOM: the same component the bundle exports for both the "gui" and
+ * "xr" modalities. It is a read-only three-lane board (Today / Upcoming /
+ * Someday) over the single endpoint PA serves:
  *   GET {base}/api/lifeops/todos -> { todos: TodoWire[] }
  *
  * The default fetcher hits that URL via `client.getBaseUrl()`; every test here
- * injects the `fetchers` seam so the suite stays offline. We assert the de-facto
- * rendered contract across the four states:
+ * injects the `fetchers` seam so the suite stays offline. We assert the rendered
+ * spatial DOM across the four states:
  *
- *   - loading  (todos-loading)   while the first fetch is in flight,
- *   - error    (todos-error)     + a Retry that refetches into populated,
- *   - empty    (todos-empty)     honest "ask Eliza to add one", no fabricated
- *                                todos, routed through client.sendChatMessage,
- *   - populated(todos-populated) the three lanes, with lane assignment by
- *                                dueDate (<= now+24h incl. overdue -> Today,
- *                                future -> Upcoming, missing/unparseable ->
- *                                Someday), active-only filter (completed
- *                                excluded), per-lane counts, and per-row title.
+ *   - loading  while the first fetch is in flight,
+ *   - error    with a Retry that refetches into populated,
+ *   - empty    honest "ask Eliza to add one", no fabricated todos, routed
+ *              through client.sendChatMessage,
+ *   - populated the three lanes, with lane assignment by dueDate (<= now+24h
+ *              incl. overdue -> Today, future -> Upcoming, missing/unparseable
+ *              -> Someday), active-only filter (completed excluded), and the
+ *              quiet overdue line.
  *
- * There is no manual refresh control: the board stays fresh via a quiet
- * background poll (asserted with fake timers below).
- *
- * External-API contract test: the wire shape { todos: { id, title, status,
- * dueDate } } mirrors the projection PA emits from getOverview().owner
- * occurrences; the populated fixture below is the validated shape. The PA route
- * is covered by PA's own tsc/build; this view test validates the consuming side.
- *
- * TUI / XR contract test: N/A. The plugin declares a single `gui` view
- * (componentExport TodosView) and no interact() capability / no tui|xr
- * viewType, so there is no terminal surface to exercise.
+ * The board stays fresh via a quiet 15s background poll (asserted with fake
+ * timers below) — there is no manual refresh control.
  */
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // `@elizaos/ui` is the giant renderer barrel; TodosView only touches
 // `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
-// `client.sendChatMessage()` (add-a-todo affordance).
+// `client.sendChatMessage()` (add-a-todo affordance). The spatial primitives
+// come from the separate `@elizaos/ui/spatial` subpath, which is not mocked.
 const { sendChatMessage } = vi.hoisted(() => ({ sendChatMessage: vi.fn() }));
 vi.mock("@elizaos/ui", () => ({
   client: {
@@ -113,12 +101,10 @@ function makeFetchers(overrides: Partial<TodosFetchers> = {}): TodosFetchers {
   };
 }
 
-function lane(label: "Today" | "Upcoming" | "Someday"): HTMLElement {
-  return screen.getByRole("article", { name: `${label} lane` });
-}
-
-function laneCount(label: "Today" | "Upcoming" | "Someday"): string {
-  return within(lane(label)).getByLabelText(`${label} count`).textContent ?? "";
+function agent(agentId: string): HTMLElement {
+  const el = document.querySelector(`[data-agent-id="${agentId}"]`);
+  if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
+  return el as HTMLElement;
 }
 
 afterEach(() => {
@@ -129,50 +115,57 @@ afterEach(() => {
 describe("TodosView — states", () => {
   it("shows the loading state while the first fetch is in flight", () => {
     const never = new Promise<never>(() => {});
-    render(<TodosView fetchers={makeFetchers({ fetchTodos: () => never })} />);
-    expect(screen.getByTestId("todos-loading")).toBeTruthy();
+    render(
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({ fetchTodos: () => never }),
+      }),
+    );
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the populated three-lane board", async () => {
-    render(<TodosView fetchers={makeFetchers()} />);
-    expect(await screen.findByTestId("todos-populated")).toBeTruthy();
+    render(React.createElement(TodosView, { fetchers: makeFetchers() }));
+    await screen.findByText("Overdue task");
+    expect(screen.getByText("Today (2)")).toBeTruthy();
+    expect(screen.getByText("Upcoming (1)")).toBeTruthy();
+    expect(screen.getByText("Someday (1)")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Todos" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByText("Three lanes: Today, Upcoming, Someday."),
-    ).toBeTruthy();
+      screen.queryByText("Three lanes: Today, Upcoming, Someday."),
+    ).toBeNull();
   });
 
   it("shows the empty state when the route returns no active todos", async () => {
     render(
-      <TodosView fetchers={makeFetchers({ fetchTodos: async () => ({ todos: [] }) })} />,
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
+      }),
     );
-    expect(await screen.findByTestId("todos-empty")).toBeTruthy();
-    expect(screen.getByText(/No todos/i)).toBeTruthy();
-    expect(screen.queryByTestId("todos-populated")).toBeNull();
+    await screen.findByText("None");
+    expect(screen.queryByText("Overdue task")).toBeNull();
   });
 
   it("treats an all-completed payload as empty (no fabricated lanes)", async () => {
     render(
-      <TodosView
-        fetchers={makeFetchers({
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({
           fetchTodos: async () => ({
             todos: [todo({ title: "Done", status: "completed" })],
           }),
-        })}
-      />,
+        }),
+      }),
     );
-    expect(await screen.findByTestId("todos-empty")).toBeTruthy();
+    await screen.findByText("None");
     expect(screen.queryByText("Done")).toBeNull();
   });
 
   it("routes the add-a-todo affordance through the assistant chat", async () => {
     render(
-      <TodosView fetchers={makeFetchers({ fetchTodos: async () => ({ todos: [] }) })} />,
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({ fetchTodos: async () => ({ todos: [] }) }),
+      }),
     );
-    await screen.findByTestId("todos-empty");
-    fireEvent.click(screen.getByRole("button", { name: /add a todo/i }));
+    await screen.findByText("None");
+    fireEvent.click(agent("add"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -183,58 +176,59 @@ describe("TodosView — states", () => {
       if (attempt === 1) throw new Error("boom");
       return populated();
     };
-    render(<TodosView fetchers={makeFetchers({ fetchTodos })} />);
-    expect(await screen.findByTestId("todos-error")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(await screen.findByTestId("todos-populated")).toBeTruthy();
+    render(
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({ fetchTodos }),
+      }),
+    );
+    await screen.findByText("boom");
+    fireEvent.click(agent("retry"));
+    await screen.findByText("Overdue task");
   });
 });
 
 describe("TodosView — lane assignment + filtering", () => {
   it("routes overdue/within-24h to Today, future to Upcoming, no-due to Someday", async () => {
-    render(<TodosView fetchers={makeFetchers()} />);
-    await screen.findByTestId("todos-populated");
+    render(React.createElement(TodosView, { fetchers: makeFetchers() }));
+    await screen.findByText("Overdue task");
 
-    const today = within(lane("Today"));
-    expect(today.getByText("Overdue task")).toBeTruthy();
-    expect(today.getByText("Due in two hours")).toBeTruthy();
-
-    expect(within(lane("Upcoming")).getByText("Due in five days")).toBeTruthy();
-    expect(within(lane("Today")).queryByText("Due in five days")).toBeNull();
-
-    expect(within(lane("Someday")).getByText("No due date")).toBeTruthy();
-    expect(within(lane("Upcoming")).queryByText("No due date")).toBeNull();
+    expect(screen.getByText("Due in two hours")).toBeTruthy();
+    expect(screen.getByText("Due in five days")).toBeTruthy();
+    expect(screen.getByText("No due date")).toBeTruthy();
+    // Lane counts encode the assignment: Today=2, Upcoming=1, Someday=1.
+    expect(screen.getByText("Today (2)")).toBeTruthy();
+    expect(screen.getByText("Upcoming (1)")).toBeTruthy();
+    expect(screen.getByText("Someday (1)")).toBeTruthy();
   });
 
   it("routes an unparseable dueDate to Someday", async () => {
     render(
-      <TodosView
-        fetchers={makeFetchers({
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({
           fetchTodos: async () => ({
             todos: [todo({ title: "Garbage due", dueDate: "not-a-date" })],
           }),
-        })}
-      />,
+        }),
+      }),
     );
-    await screen.findByTestId("todos-populated");
-    expect(within(lane("Someday")).getByText("Garbage due")).toBeTruthy();
-    expect(within(lane("Today")).queryByText("Garbage due")).toBeNull();
+    await screen.findByText("Garbage due");
+    expect(screen.getByText("Someday (1)")).toBeTruthy();
+    expect(screen.getByText("Today (0)")).toBeTruthy();
   });
 
   it("excludes completed todos from every lane and every count", async () => {
-    render(<TodosView fetchers={makeFetchers()} />);
-    await screen.findByTestId("todos-populated");
-
+    render(React.createElement(TodosView, { fetchers: makeFetchers() }));
+    await screen.findByText("Overdue task");
     expect(screen.queryByText("Done task")).toBeNull();
-    expect(laneCount("Today")).toBe("2");
-    expect(laneCount("Upcoming")).toBe("1");
-    expect(laneCount("Someday")).toBe("1");
+    expect(screen.getByText("Today (2)")).toBeTruthy();
+    expect(screen.getByText("Upcoming (1)")).toBeTruthy();
+    expect(screen.getByText("Someday (1)")).toBeTruthy();
   });
 
-  it("shows 'Nothing here.' in lanes with no active items", async () => {
+  it("keeps empty lanes compact", async () => {
     render(
-      <TodosView
-        fetchers={makeFetchers({
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({
           fetchTodos: async () => ({
             todos: [
               todo({
@@ -243,30 +237,28 @@ describe("TodosView — lane assignment + filtering", () => {
               }),
             ],
           }),
-        })}
-      />,
+        }),
+      }),
     );
-    await screen.findByTestId("todos-populated");
-    expect(within(lane("Today")).queryByText("Nothing here.")).toBeNull();
-    expect(within(lane("Upcoming")).getByText("Nothing here.")).toBeTruthy();
-    expect(within(lane("Someday")).getByText("Nothing here.")).toBeTruthy();
+    await screen.findByText("Only today");
+    // Today has the item, Upcoming + Someday are empty.
+    expect(screen.queryByText("Nothing here.")).toBeNull();
+    expect(screen.getByText("Upcoming (0)")).toBeTruthy();
+    expect(screen.getByText("Someday (0)")).toBeTruthy();
   });
 });
 
 describe("TodosView — proactive overdue line", () => {
   it("surfaces one quiet line when active todos are past due", async () => {
-    render(<TodosView fetchers={makeFetchers()} />);
-    await screen.findByTestId("todos-populated");
-    // The populated fixture has exactly one overdue active todo.
-    expect(screen.getByTestId("todos-proactive").textContent).toBe(
-      "1 todo is overdue.",
-    );
+    render(React.createElement(TodosView, { fetchers: makeFetchers() }));
+    await screen.findByText("Overdue task");
+    expect(screen.getByText("1 todo is overdue.")).toBeTruthy();
   });
 
   it("pluralizes the overdue line for multiple past-due todos", async () => {
     render(
-      <TodosView
-        fetchers={makeFetchers({
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({
           fetchTodos: async () => ({
             todos: [
               todo({
@@ -280,19 +272,17 @@ describe("TodosView — proactive overdue line", () => {
               }),
             ],
           }),
-        })}
-      />,
+        }),
+      }),
     );
-    await screen.findByTestId("todos-populated");
-    expect(screen.getByTestId("todos-proactive").textContent).toBe(
-      "2 todos are overdue.",
-    );
+    await screen.findByText("Late one");
+    expect(screen.getByText("2 todos are overdue.")).toBeTruthy();
   });
 
   it("renders no proactive line when nothing is overdue", async () => {
     render(
-      <TodosView
-        fetchers={makeFetchers({
+      React.createElement(TodosView, {
+        fetchers: makeFetchers({
           fetchTodos: async () => ({
             todos: [
               todo({
@@ -301,19 +291,19 @@ describe("TodosView — proactive overdue line", () => {
               }),
             ],
           }),
-        })}
-      />,
+        }),
+      }),
     );
-    await screen.findByTestId("todos-populated");
-    expect(screen.queryByTestId("todos-proactive")).toBeNull();
+    await screen.findByText("Future");
+    expect(screen.queryByText(/overdue/)).toBeNull();
   });
 });
 
 describe("TodosView — staying fresh", () => {
   it("has no manual refresh control", async () => {
-    render(<TodosView fetchers={makeFetchers()} />);
-    await screen.findByTestId("todos-populated");
-    expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
+    render(React.createElement(TodosView, { fetchers: makeFetchers() }));
+    await screen.findByText("Overdue task");
+    expect(document.querySelector('[data-agent-id="refresh"]')).toBeNull();
   });
 
   it("refetches on the background poll without manual interaction", async () => {
@@ -324,7 +314,11 @@ describe("TodosView — staying fresh", () => {
         calls += 1;
         return populated();
       };
-      render(<TodosView fetchers={makeFetchers({ fetchTodos })} />);
+      render(
+        React.createElement(TodosView, {
+          fetchers: makeFetchers({ fetchTodos }),
+        }),
+      );
       // Flush the initial mount fetch.
       await vi.advanceTimersByTimeAsync(0);
       expect(calls).toBe(1);

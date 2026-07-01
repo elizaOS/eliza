@@ -8,17 +8,17 @@ then optionally evaluates on ScamBench and runs adversarial episodes.
 
 Usage:
     # Local mode (mock simulation bridge)
-    python3 run_continuous_training.py --mock --model Qwen/Qwen3.5-4B --ticks 20
+    python3 run_continuous_training.py --mock --model google/gemma-4-E4B --ticks 20
 
     # Production mode (connect to Feed server)
     python3 run_continuous_training.py \
-        --model Qwen/Qwen3.5-4B \
+        --model google/gemma-4-E4B \
         --bridge-url http://localhost:3001 \
         --ticks 50 --cycles 10
 
     # With adversarial evaluation between cycles
     python3 run_continuous_training.py \
-        --model Qwen/Qwen3.5-4B \
+        --model google/gemma-4-E4B \
         --adversarial \
         --attacker-endpoint http://localhost:8001/v1 \
         --defender-endpoint http://localhost:8002/v1
@@ -49,7 +49,7 @@ logger = logging.getLogger("continuous-training")
 
 def parse_args():
     p = argparse.ArgumentParser(description="Continuous RL training daemon")
-    p.add_argument("--model", default="Qwen/Qwen3.5-4B")
+    p.add_argument("--model", default="google/gemma-4-E4B")
     p.add_argument("--mock", action="store_true", help="Use mock simulation bridge")
     p.add_argument("--bridge-url", default="http://localhost:3001", help="Feed server URL")
     p.add_argument("--ticks", type=int, default=50, help="Training ticks per cycle")
@@ -63,9 +63,9 @@ def parse_args():
     # Adversarial evaluation
     p.add_argument("--adversarial", action="store_true")
     p.add_argument("--attacker-endpoint", default="http://localhost:8001/v1")
-    p.add_argument("--attacker-model", default="Qwen/Qwen3.5-4B")
+    p.add_argument("--attacker-model", default="google/gemma-4-E4B")
     p.add_argument("--defender-endpoint", default="http://localhost:8002/v1")
-    p.add_argument("--defender-model", default="Qwen/Qwen3.5-4B")
+    p.add_argument("--defender-model", default="google/gemma-4-E4B")
     return p.parse_args()
 
 

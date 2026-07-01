@@ -130,6 +130,62 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
     expect(Array.from(out as Uint8Array)).toEqual(Array.from(expected));
   });
 
+  it("returns an AudioStreamResult that yields chunks + resolves full bytes when audioStream is set", async () => {
+    // Multi-chunk body so chunking is observable.
+    const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])];
+    const calls: RecordedCall[] = [];
+    const client: CloudTtsClient = {
+      routes: {
+        async postApiV1VoiceTts<T = unknown>(options: {
+          headers?: Record<string, unknown>;
+          json: { text: string; voiceId?: string; modelId?: string };
+        }): Promise<T> {
+          calls.push({
+            voiceId: options.json.voiceId,
+            modelId: options.json.modelId,
+            text: options.json.text,
+            acceptHeader: options.headers?.Accept as string | undefined,
+          });
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const c of chunks) controller.enqueue(c);
+              controller.close();
+            },
+          });
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            body,
+            text: async () => "",
+          } as unknown as T;
+        },
+      },
+    };
+    setCloudTtsClientFactoryForTesting(() => client);
+
+    const out = (await handleTextToSpeech(makeRuntime(), {
+      text: "stream me",
+      voiceId: "voice-S",
+      audioStream: true,
+    } as never)) as {
+      audioStream: AsyncIterable<Uint8Array>;
+      bytes: Promise<Uint8Array>;
+      mimeType: string;
+    };
+
+    expect(out).not.toBeInstanceOf(Uint8Array);
+    expect(out.mimeType).toBe("audio/mpeg");
+
+    const received: number[] = [];
+    for await (const chunk of out.audioStream) received.push(...chunk);
+    // Audio surfaced incrementally (≥1 chunk; exact boundaries depend on the
+    // web→node stream plumbing) and reassembles to the full clip.
+    expect(received).toEqual([1, 2, 3, 4, 5]);
+    // `bytes` resolves to the full concatenated clip after the stream drains.
+    expect(Array.from(await out.bytes)).toEqual([1, 2, 3, 4, 5]);
+  });
+
   it("throws CloudTtsUnavailableError when cloud is NOT connected", async () => {
     const { client, calls } = makeFakeClient(new Uint8Array([1]));
     setCloudTtsClientFactoryForTesting(() => client);

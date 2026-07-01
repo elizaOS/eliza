@@ -29,7 +29,7 @@
  *   - xcodebuild -create-xcframework failure = hard error.
  */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,9 +41,10 @@ const __dirname = path.dirname(__filename);
 
 // packages/app-core/scripts/ios-xcframework → packages/app-core/scripts
 const SCRIPTS_DIR = path.resolve(__dirname, "..");
-const MTP_BUILD_SCRIPT = path.join(
+const MTP_BUILD_SCRIPT = path.join(SCRIPTS_DIR, "build-llama-cpp-mtp.mjs");
+const RECURSIVE_CLEANUP_SCRIPT = path.resolve(
   SCRIPTS_DIR,
-  "build-llama-cpp-mtp.mjs",
+  "../../scripts/rm-path-recursive.mjs",
 );
 
 // Per AGENTS.md §3, the required kernels for any Eliza-1 binary.
@@ -273,6 +274,20 @@ function run(cmd, args, opts = {}) {
   }
 }
 
+function removeDirectoryRecursive(targetPath) {
+  try {
+    execFileSync("node", [RECURSIVE_CLEANUP_SCRIPT, path.resolve(targetPath)], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+  } catch (error) {
+    const detail = [error?.stdout, error?.stderr].filter(Boolean).join("\n");
+    throw new Error(detail || error?.message || String(error), {
+      cause: error,
+    });
+  }
+}
+
 /**
  * @param {string} cmd
  * @param {string[]} args
@@ -350,7 +365,7 @@ function buildStaticFramework(tmpDir, slice, target) {
     `${target.platform}-arm64${target.isSimulator ? "-simulator" : ""}`,
     "LlamaCpp.framework",
   );
-  fs.rmSync(frameworkDir, { recursive: true, force: true });
+  removeDirectoryRecursive(frameworkDir);
   fs.mkdirSync(frameworkDir, { recursive: true });
 
   // Combine every produced .a into one universal-of-one archive named
@@ -580,11 +595,7 @@ async function main() {
       console.log(
         `[ios-xcframework] simulator slice missing — invoking mtp build`,
       );
-      run("node", [
-        MTP_BUILD_SCRIPT,
-        "--target",
-        "ios-arm64-simulator-metal",
-      ]);
+      run("node", [MTP_BUILD_SCRIPT, "--target", "ios-arm64-simulator-metal"]);
     }
   }
 
@@ -621,7 +632,7 @@ async function main() {
     });
 
     fs.mkdirSync(path.dirname(args.output), { recursive: true });
-    fs.rmSync(args.output, { recursive: true, force: true });
+    removeDirectoryRecursive(args.output);
 
     run("xcodebuild", [
       "-create-xcframework",
@@ -638,7 +649,7 @@ async function main() {
     }
     console.log(`[ios-xcframework] wrote ${args.output}`);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    removeDirectoryRecursive(tmpDir);
   }
 }
 

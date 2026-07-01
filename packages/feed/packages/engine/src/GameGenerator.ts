@@ -37,6 +37,7 @@ import {
   baselineEvent,
   dayEvents,
   getRealityGrounding,
+  getWorldEventExamples,
   groupChatName,
   groupMessage,
   groupMessages,
@@ -271,6 +272,7 @@ Organizations should:
     organizationContext,
     previousScenarios: "",
     richGameContext: richGameContextText,
+    worldEventExamples: getWorldEventExamples(),
   });
 }
 
@@ -934,6 +936,7 @@ export class GameGenerator {
       dateStr,
       eventType: type,
       actorDescriptions,
+      worldEventExamples: getWorldEventExamples(),
     });
 
     const rawResponse = await this.llm.generateJSON<
@@ -2392,6 +2395,7 @@ REMINDER: Generate SCENARIOS only. Do NOT generate questions.`;
       eventCount: eventRequests.length.toString(),
       eventRequestsList,
       organizationBehaviorContext: "",
+      worldEventExamples: getWorldEventExamples(),
     });
 
     const rawResponse = await this.llm.generateJSON<

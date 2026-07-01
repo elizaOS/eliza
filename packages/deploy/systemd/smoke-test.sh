@@ -7,8 +7,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+RM_PATH_RECURSIVE="$REPO_ROOT/packages/scripts/rm-path-recursive.mjs"
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+cleanup() {
+  node "$RM_PATH_RECURSIVE" "$TMP_DIR"
+}
+trap cleanup EXIT
 
 WORKDIR="${ELIZA_SYSTEMD_SMOKE_WORKDIR:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 BUN_BIN="${ELIZA_SYSTEMD_SMOKE_BUN:-$(command -v bun || true)}"

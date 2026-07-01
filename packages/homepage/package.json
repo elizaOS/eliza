@@ -9,8 +9,8 @@
     "build": "bun --bun vite build",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "test": "bun test tests/smoke.node.test.mjs tests/contact.test.ts",
-    "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && ../../node_modules/.bin/playwright test",
-    "test:audit": "node ../app-core/scripts/write-homepage-release-data.mjs && ../../node_modules/.bin/playwright test tests/e2e/aesthetic-audit.spec.ts && ../../node_modules/.bin/playwright test tests/e2e/contact-sheet-capture.spec.ts && node scripts/generate-contact-sheet.mjs",
+    "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test",
+    "test:audit": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test tests/e2e/aesthetic-audit.spec.ts && playwright test tests/e2e/contact-sheet-capture.spec.ts && node scripts/generate-contact-sheet.mjs",
     "typecheck": "node ../app-core/scripts/write-homepage-release-data.mjs && tsc -b",
     "preview": "bun --bun vite preview --port 4444",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -42,7 +42,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^24.0.0",

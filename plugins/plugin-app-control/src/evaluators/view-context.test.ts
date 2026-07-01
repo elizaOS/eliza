@@ -20,7 +20,6 @@ const REGISTERED_VIEW_IDS = [
 	"documents",
 	"relationships",
 	"focus",
-	"companion",
 	"task-coordinator",
 ];
 
@@ -93,10 +92,16 @@ function ctx(
 	} as unknown as EvaluatorRunContext;
 }
 
-async function runProcessor(output: ViewContextOutput) {
+async function runProcessor(
+	output: ViewContextOutput,
+	text = "fix the login bug",
+) {
 	const processor = viewContextEvaluator.processors?.[0];
 	if (!processor) throw new Error("no processor");
-	return processor.process({ output } as never);
+	return processor.process({
+		output,
+		message: { id: "m1", roomId: "r1", content: { text } },
+	} as never);
 }
 
 describe("viewContextEvaluator.shouldRun — contextual gate", () => {
@@ -134,6 +139,13 @@ describe("viewContextEvaluator.shouldRun — contextual gate", () => {
 
 	it("does not run on a trivially short message", async () => {
 		expect(await viewContextEvaluator.shouldRun(ctx("hi"))).toBe(false);
+	});
+
+	it("does not contextually map standalone notes requests to Knowledge", async () => {
+		expect(await viewContextEvaluator.shouldRun(ctx("open notes"))).toBe(false);
+		expect(await viewContextEvaluator.shouldRun(ctx("show me my notes"))).toBe(
+			false,
+		);
 	});
 
 	it("does not run when VIEWS is not registered", async () => {
@@ -231,6 +243,16 @@ describe("viewContextEvaluator processor — navigates on the (mock-LLM) decisio
 			current: "chat",
 		});
 		const result = await runProcessor({ viewId: "task-coordinator" });
+		expect(navigated).toEqual([]);
+		expect(result).toBeUndefined();
+	});
+
+	it("does NOT navigate to documents when the user asked for notes", async () => {
+		const { navigated } = mockLoopback({ current: "chat" });
+		const result = await runProcessor(
+			{ viewId: "documents", reason: "user requested notes" },
+			"open notes",
+		);
 		expect(navigated).toEqual([]);
 		expect(result).toBeUndefined();
 	});

@@ -6,8 +6,6 @@
  * directories. Each plugin is wrapped in an error boundary so a single
  * failing plugin cannot crash the agent startup.
  *
- * Extracted from eliza.ts to reduce file size.
- *
  * @module plugin-resolver
  */
 import crypto from "node:crypto";
@@ -79,16 +77,13 @@ type GlobalWithLastFailedPluginDetails = typeof globalThis & {
 };
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
-  "@elizaos/plugin-companion",
+  "@elizaos/plugin-calendar",
   "@elizaos/plugin-contacts",
-  "@elizaos/plugin-elizamaker",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-phone",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
   "@elizaos/plugin-wifi",
 ]);
 
@@ -642,6 +637,30 @@ async function hasNonSymlinkWorkspaceNodeModulesPackage(
   return false;
 }
 
+async function resolveWorkspaceNodeModulesPackageRoot(
+  packageName: string,
+): Promise<string | null> {
+  for (const workspaceRoot of uniquePaths([
+    process.cwd(),
+    ...resolveWorkspaceRoots(),
+  ])) {
+    const candidate = path.join(
+      workspaceRoot,
+      "node_modules",
+      ...packageName.split("/"),
+    );
+    try {
+      const stat = await fs.lstat(candidate);
+      if (stat.isDirectory() || stat.isSymbolicLink()) return candidate;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin error boundary wrapper
 // ---------------------------------------------------------------------------
@@ -705,6 +724,16 @@ function wrapPluginWithErrorBoundary(
 // ---------------------------------------------------------------------------
 
 /**
+ * Process-local record of plugin package names that have already been imported
+ * in this process. The presence of a name is the decisive, race-free signal
+ * that a module record *may* exist for it — so any subsequent import of the
+ * same name is a hot-reload/re-import that MUST go through staging to bust the
+ * ESM module graph. The cold-boot fast-path is only safe on the very first
+ * import of a name, when this set does not yet contain it.
+ */
+const importedPluginPackageNames = new Set<string>();
+
+/**
  * Import a plugin module from its install directory on disk.
  *
  * Handles two install layouts:
@@ -741,17 +770,37 @@ export async function importPluginModuleFromPath(
 
   const packageRelativePath =
     pkgRoot === absPath ? [] : ["node_modules", ...packageName.split("/")];
-  const stagedPkgRoot = await stagePluginImportRoot({
-    installRoot: absPath,
-    packageRoot: pkgRoot,
-    packageRelativePath,
-    packageName,
-  });
 
-  // Resolve entry point from a staged filesystem snapshot so reloads pick up
-  // updated relative modules and bundled dependencies instead of reusing the
-  // previous ESM module graph from the original path.
-  const entryPoint = await resolvePackageEntry(stagedPkgRoot, exportSubpath);
+  // Cold-boot fast-path: on the FIRST import of this package in this process
+  // there is no ESM module record to bust, so staging's recursive `fs.cp` copy
+  // is pure I/O waste + unbounded `.runtime-imports/` growth. Import in place
+  // from the real package root instead, but ONLY when a stable built `dist/`
+  // exists. Any re-import (name already in the set) falls back to staging so
+  // hot-reloads still force a fresh module evaluation. This is a single
+  // behavior for every boot — local dev and the container resolve plugins
+  // identically.
+  const useColdFastPath =
+    !importedPluginPackageNames.has(packageName) &&
+    existsSync(path.join(pkgRoot, "dist"));
+  const importRoot = useColdFastPath
+    ? pkgRoot
+    : await stagePluginImportRoot({
+        installRoot: absPath,
+        packageRoot: pkgRoot,
+        packageRelativePath,
+        packageName,
+      });
+  // Record the name BEFORE the import() can fail: if a cold in-place import
+  // throws during module evaluation, the caller's retry re-enters here, finds
+  // the name already recorded, and escalates to staging — a fresh staged URL
+  // busts any poisoned ESM module record left by the failed in-place attempt.
+  importedPluginPackageNames.add(packageName);
+
+  // Resolve entry point from the chosen import root. The staged path is a
+  // filesystem snapshot so reloads pick up updated relative modules and bundled
+  // dependencies instead of reusing the previous ESM module graph; the cold
+  // fast-path resolves directly from the real package root.
+  const entryPoint = await resolvePackageEntry(importRoot, exportSubpath);
   return (await import(pathToFileURL(entryPoint).href)) as PluginModuleShape;
 }
 
@@ -1342,42 +1391,71 @@ function computeVerdictFingerprint(
 ): string {
   const env = Object.entries(process.env)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([k, v]) => `${k}=${v ?? ""}`)
+    .map(([k, v]) => (v === undefined ? `${k}=` : `${k}=${v}`))
     .join(" ");
   return `${isNativePlatform ? "1" : "0"}${env}${JSON.stringify(config)}`;
 }
 
 /**
- * Cheap signature over the directories {@link discoverPluginCandidates} scans:
- * the mtimeMs of each `node_modules/@elizaos` and `plugins` root. Adding or
- * removing a package mutates the containing directory's mtime, invalidating the
- * cache. Missing directories contribute a sentinel so the signature still
- * changes when one appears.
+ * Cheap signature over the directories {@link discoverPluginCandidates} scans.
+ * Adding/removing a package mutates either `node_modules`, the package scope
+ * dir, or `plugins`, invalidating the cache. Missing directories contribute a
+ * sentinel so the signature still changes when one appears.
  */
 async function computePluginCandidateSignature(): Promise<string> {
   const parts: string[] = [];
   for (const root of resolveWorkspaceRoots()) {
-    for (const dir of [
-      path.join(root, "node_modules", "@elizaos"),
-      path.join(root, "plugins"),
-    ]) {
-      try {
-        const stat = await fs.stat(dir);
-        parts.push(`${dir}:${stat.mtimeMs}`);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          parts.push(`${dir}:absent`);
-          continue;
-        }
-        throw err;
-      }
+    await addDirectorySignature(parts, path.join(root, "node_modules"));
+    for (const scopeDir of await listNodeModulesScopeDirs(root)) {
+      await addDirectorySignature(parts, scopeDir);
     }
+    await addDirectorySignature(parts, path.join(root, "plugins"));
   }
   return parts.join("|");
 }
 
+async function addDirectorySignature(
+  parts: string[],
+  dir: string,
+): Promise<void> {
+  try {
+    const stat = await fs.stat(dir);
+    parts.push(`${dir}:${stat.mtimeMs}`);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      parts.push(`${dir}:absent`);
+      return;
+    }
+    throw err;
+  }
+}
+
+async function listNodeModulesScopeDirs(root: string): Promise<string[]> {
+  const nodeModulesDir = path.join(root, "node_modules");
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = (await fs.readdir(nodeModulesDir, {
+      withFileTypes: true,
+    })) as import("node:fs").Dirent[];
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+  return entries
+    .filter(
+      (entry) =>
+        entry.name.startsWith("@") &&
+        (entry.isDirectory() || entry.isSymbolicLink()),
+    )
+    .map((entry) => path.join(nodeModulesDir, entry.name));
+}
+
+function isPluginPackageDirName(name: string): boolean {
+  return name.startsWith("plugin-") || name.startsWith("app-");
+}
+
 /**
- * Walk the @elizaos scope in node_modules + workspace `plugins/` dirs and
+ * Walk plugin/app packages in node_modules + workspace `plugins/` dirs and
  * return every package that has a `package.json`. The manifest evaluator
  * filters these down to the ones that actually declare an `elizaos.plugin`
  * block — this discovery step is intentionally cheap (a single readdir + stat
@@ -1407,13 +1485,13 @@ async function discoverPluginCandidatesUncached(): Promise<
     candidates.push({ packageName: pkgName, packageRoot: pkgRoot });
   };
 
-  // 1. node_modules/@elizaos/* — covers npm-installed plugins and dev symlinks
-  //    pointing at workspace packages.
+  // 1. node_modules plugin/app packages — covers npm-installed official and
+  //    third-party plugins plus dev symlinks pointing at workspace packages.
   for (const root of resolveWorkspaceRoots()) {
-    const elizaScope = path.join(root, "node_modules", "@elizaos");
+    const nodeModulesDir = path.join(root, "node_modules");
     let entries: import("node:fs").Dirent[];
     try {
-      entries = (await fs.readdir(elizaScope, {
+      entries = (await fs.readdir(nodeModulesDir, {
         withFileTypes: true,
       })) as import("node:fs").Dirent[];
     } catch (err) {
@@ -1422,15 +1500,30 @@ async function discoverPluginCandidatesUncached(): Promise<
     }
     for (const entry of entries) {
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      if (entry.name.startsWith(".")) continue;
-      // Only plugin/app packages — skip core, shared, agent, ui, etc. (those
-      // aren't auto-enable participants and reading their package.json is
-      // wasted work).
-      if (!entry.name.startsWith("plugin-") && !entry.name.startsWith("app-")) {
+      if (entry.name.startsWith("@")) {
+        const scopeDir = path.join(nodeModulesDir, entry.name);
+        let scopedEntries: import("node:fs").Dirent[];
+        try {
+          scopedEntries = (await fs.readdir(scopeDir, {
+            withFileTypes: true,
+          })) as import("node:fs").Dirent[];
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw err;
+        }
+        for (const scopedEntry of scopedEntries) {
+          if (!scopedEntry.isDirectory() && !scopedEntry.isSymbolicLink()) {
+            continue;
+          }
+          if (!isPluginPackageDirName(scopedEntry.name)) continue;
+          const pkgRoot = path.join(scopeDir, scopedEntry.name);
+          await tryAdd(pkgRoot, `${entry.name}/${scopedEntry.name}`);
+        }
         continue;
       }
-      const pkgRoot = path.join(elizaScope, entry.name);
-      await tryAdd(pkgRoot, `@elizaos/${entry.name}`);
+      if (!isPluginPackageDirName(entry.name)) continue;
+      const pkgRoot = path.join(nodeModulesDir, entry.name);
+      await tryAdd(pkgRoot, entry.name);
     }
   }
 
@@ -1524,8 +1617,8 @@ export async function resolvePlugins(
   // silently dropped. Capture the result and assign back so both the allow
   // list and any downstream config reads see the mutation.
   //
-  // Auto-enable is sourced exclusively from per-plugin manifests: walk every
-  // @elizaos/* package.json on disk and run each plugin's
+  // Auto-enable is sourced exclusively from per-plugin manifests: walk plugin
+  // and app package.json files on disk and run each plugin's
   // autoEnableModule.shouldEnable(ctx). Each plugin owns its own enable
   // conditions in auto-enable.ts — no central map exists.
   //
@@ -1713,6 +1806,21 @@ export async function resolvePlugins(
         (await import(
           resolveRuntimePluginImportSpecifier(pluginName)
         )) as PluginModuleShape;
+    const importPluginFromWorkspaceNodeModules =
+      async (): Promise<PluginModuleShape> => {
+        const packageRoot =
+          await resolveWorkspaceNodeModulesPackageRoot(pluginName);
+        if (!packageRoot) {
+          return (await import(
+            runtimePluginImportSpecifier(pluginName)
+          )) as PluginModuleShape;
+        }
+        return importPluginModuleFromPath(
+          packageRoot,
+          pluginName,
+          exportSubpath,
+        );
+      };
 
     // Pre-flight: opportunistically prepare special plugin dependencies.
     // For plugin-browser, stagehand-server is only needed by the optional
@@ -1836,9 +1944,7 @@ export async function resolvePlugins(
             const staticMod = await resolveStaticElizaPlugin(pluginName);
             mod = staticMod
               ? (staticMod as PluginModuleShape)
-              : ((await import(
-                  runtimePluginImportSpecifier(pluginName)
-                )) as PluginModuleShape);
+              : await importPluginFromWorkspaceNodeModules();
             if (repairBrokenInstallRecord(config, pluginName)) {
               repairedInstallRecords.add(pluginName);
             }
@@ -1860,9 +1966,7 @@ export async function resolvePlugins(
         // node_modules resolution).
         mod = staticElizaPlugin
           ? (staticElizaPlugin as PluginModuleShape)
-          : ((await import(
-              runtimePluginImportSpecifier(pluginName)
-            )) as PluginModuleShape);
+          : await importPluginFromWorkspaceNodeModules();
       }
 
       const pluginInstance = findRuntimePluginExport(mod);

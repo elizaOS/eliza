@@ -1,5 +1,4 @@
 import type { VoiceModelId } from "@elizaos/shared";
-import { CheckCircle2, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -10,38 +9,36 @@ import type {
   InstalledModel,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
-import { useApp } from "../../state";
-import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
+import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
+import { openEventSource } from "../../utils/event-source";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
 import { Button } from "../ui/button";
 import { ActiveModelBar } from "./ActiveModelBar";
-import { CustomModelSearch } from "./CustomModelSearch";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
 import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
-import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import type {
   VoiceModelInstallationView,
   VoiceUpdatePreferencesView,
 } from "./ModelUpdatesPanel";
 import { ModelUpdatesPanel } from "./ModelUpdatesPanel";
-import { SlotAssignments } from "./SlotAssignments";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
-type HubTab = "curated" | "search" | "downloads";
+type HubTab = "curated" | "downloads";
 
 export function LocalInferencePanel() {
   useRenderGuard("LocalInferencePanel");
-  const { setActionNotice, t } = useApp();
-  const branding = useBranding();
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +72,11 @@ export function LocalInferencePanel() {
     // route's `isStreamAuthorized` accepts either source.
     const url = resolveApiUrl("/api/local-inference/downloads/stream");
     const withToken = appendTokenParam(url);
-    const es = new EventSource(withToken, { withCredentials: false });
+    // On-device runtimes are reached over the native IPC base, which
+    // EventSource cannot open; skip live updates there rather than throwing.
+    const es = openEventSource(withToken, { withCredentials: false });
     eventSourceRef.current = es;
+    if (!es) return;
 
     es.onmessage = (event) => {
       try {
@@ -168,23 +168,6 @@ export function LocalInferencePanel() {
         setActionNotice(
           t("localinference.downloadStarted", {
             defaultValue: "Download started",
-          }),
-          "success",
-          2000,
-        );
-      });
-    },
-    [setActionNotice, withBusy, t],
-  );
-
-  const handleDownloadSpec = useCallback(
-    (spec: CatalogModel) => {
-      void withBusy(async () => {
-        await client.startLocalInferenceDownload(spec);
-        setActionNotice(
-          t("localinference.downloadingModel", {
-            model: displayModelName(spec),
-            defaultValue: "Downloading {{model}}",
           }),
           "success",
           2000,
@@ -312,15 +295,6 @@ export function LocalInferencePanel() {
     [refresh, setActionNotice, withBusy, t],
   );
 
-  const handleAssignmentsChange = useCallback(
-    (next: { [slot: string]: string | undefined }) => {
-      setHub((prev) =>
-        prev ? { ...prev, assignments: next as typeof prev.assignments } : prev,
-      );
-    },
-    [],
-  );
-
   if (error && !hub) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -372,10 +346,6 @@ export function LocalInferencePanel() {
           [
             ["curated", "Eliza-1"],
             [
-              "search",
-              t("localinference.tabSearch", { defaultValue: "Search" }),
-            ],
-            [
               "downloads",
               t("localinference.tabDownloads", { defaultValue: "Downloads" }),
             ],
@@ -421,142 +391,27 @@ export function LocalInferencePanel() {
         />
       )}
 
-      {tab === "search" && (
-        <CustomModelSearch
-          installed={hub.installed}
-          downloads={hub.downloads}
-          active={hub.active}
-          hardware={hub.hardware}
-          onDownload={handleDownloadSpec}
-          onCancel={handleCancel}
-          onActivate={handleActivate}
-          onUninstall={handleUninstall}
-          busy={busy}
-        />
-      )}
-
       {tab === "downloads" && (
         <DownloadQueue
           downloads={hub.downloads}
           catalog={hub.catalog}
           onCancel={handleCancel}
+          onRetry={handleDownload}
         />
       )}
 
       <VoiceModelUpdatesSection />
 
       <AdvancedSettingsDisclosure
-        title={t("localinference.assignmentsTitle", {
-          defaultValue: "Local model assignments",
+        title={t("localinference.devicesTitle", {
+          defaultValue: "Local runtime devices",
         })}
         lazy
       >
-        <div className="flex flex-col gap-3">
-          <SlotAssignments
-            installed={hub.installed}
-            assignments={hub.assignments}
-            onChange={handleAssignmentsChange}
-          />
-          <DevicesPanel status={deviceBridgeStatus} />
-          <ExternalInstalledSummary
-            installed={hub.installed}
-            onActivate={handleActivate}
-            active={hub.active}
-            busy={busy}
-            t={t}
-            branding={branding}
-          />
-        </div>
+        <DevicesPanel status={deviceBridgeStatus} />
       </AdvancedSettingsDisclosure>
     </div>
   );
-}
-
-function ExternalInstalledSummary({
-  installed,
-  onActivate,
-  active,
-  busy,
-  t,
-  branding,
-}: {
-  installed: InstalledModel[];
-  onActivate: (id: string) => void;
-  active: ActiveModelState;
-  busy: boolean;
-  t: TranslationContextValue["t"];
-  branding: ReturnType<typeof useBranding>;
-}) {
-  const external = installed.filter((m) => m.source === "external-scan");
-  if (external.length === 0) return null;
-
-  return (
-    <section className="space-y-2 border-t border-border/40 pt-3">
-      <header>
-        <h3
-          className="text-[10px] font-medium uppercase tracking-wider text-muted"
-          title={t("localinference.discoveredTooltip", {
-            defaultValue:
-              "{{appName}} can load these models without re-downloading.",
-            ...appNameInterpolationVars(branding),
-          })}
-        >
-          {t("localinference.discoveredTitle", {
-            defaultValue: "Discovered from other tools",
-          })}
-        </h3>
-      </header>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-        {external.map((m) => {
-          const isActive = active.modelId === m.id && active.status !== "error";
-          return (
-            <div
-              key={m.id}
-              className="flex items-center justify-between gap-2 rounded-sm border border-border/50 bg-card/60 px-2 py-1.5"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-txt">
-                  {displayModelName(m)}
-                </div>
-                <div className="truncate text-xs-tight text-muted">
-                  {m.externalOrigin} · {formatSize(m.sizeBytes)}
-                </div>
-              </div>
-              {isActive ? (
-                <span
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-ok/35 bg-ok/10 text-ok"
-                  title={t("localinference.active", { defaultValue: "Active" })}
-                  role="img"
-                  aria-label={t("localinference.active", {
-                    defaultValue: "Active",
-                  })}
-                >
-                  <CheckCircle2 className="h-4 w-4" aria-hidden />
-                </span>
-              ) : (
-                <Button
-                  size="sm"
-                  className="h-7 rounded-sm px-2 text-xs"
-                  onClick={() => onActivate(m.id)}
-                  disabled={busy}
-                >
-                  <Play className="h-3.5 w-3.5" aria-hidden />
-                  {t("localinference.activate", { defaultValue: "Activate" })}
-                </Button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function formatSize(bytes: number): string {
-  const gb = bytes / 1024 ** 3;
-  return gb >= 1
-    ? `${gb.toFixed(1)} GB`
-    : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
 function appendTokenParam(url: string): string {
@@ -578,7 +433,10 @@ function appendTokenParam(url: string): string {
  * cellular/metered toggles are OWNER-only.
  */
 function VoiceModelUpdatesSection() {
-  const { setActionNotice, t } = useApp();
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
   const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
     autoUpdateOnWifi: true,
     autoUpdateOnCellular: false,

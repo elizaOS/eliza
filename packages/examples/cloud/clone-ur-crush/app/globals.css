@@ -1,5 +1,4 @@
 @import "tailwindcss";
-/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 @config directive processed by @tailwindcss/postcss. */
 @config "../tailwind.config.ts";
 
 :root {
@@ -79,9 +78,9 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Gradient text */
+/* Gradient text — pink → no-blue purple (was indigo #3f51b5), per #9300. */
 .gradient-text {
-  background: linear-gradient(135deg, #ff4081 0%, #3f51b5 100%);
+  background: linear-gradient(135deg, #ff4081 0%, #9c27b0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

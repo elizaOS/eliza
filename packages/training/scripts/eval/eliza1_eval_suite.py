@@ -30,8 +30,8 @@ Honesty rules (mirrors AGENTS.md §3/§7 — no fabricated passes):
 Run it::
 
     uv run --extra train python -m scripts.eval.eliza1_eval_suite \
-        --bundle-dir ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
-        --tier 0_8b
+        --bundle-dir ~/.eliza/local-inference/models/eliza-1-2b.bundle \
+        --tier 2b
 
 Or against the in-repo defaults (auto-discovers the engine bin dir and the
 held-out text-eval corpus).
@@ -74,9 +74,8 @@ _LLAMA_PROCESS_RE = re.compile(
 
 # Held-out text-eval corpus.
 #
-# Source of truth: the eliza-1 training dataset's held-out test split at
-# ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` (also published as
-# ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
+# Source of truth: the eliza-1 training dataset's held-out test split (also
+# published as ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
 # extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
 # uses that concatenation as the perplexity corpus.
 #
@@ -87,10 +86,10 @@ _LLAMA_PROCESS_RE = re.compile(
 # the real publish-time eval.
 
 _DATASET_TEST_RELATIVES: tuple[Path, ...] = (
-    Path("datasets/eliza1-sft-0_8b/test.jsonl"),
-    # The staged training dataset was renamed from the historical 0.6B tier to
-    # 0.8B for release. Keep the old path as a canonical local fallback so
-    # publish evals do not silently degrade to the hand-written mini corpus.
+    Path("data/final/test.jsonl"),
+    Path("data/final-eliza1-smoke/test.jsonl"),
+    # Keep the old 0.6B path as a canonical local fallback so older worktrees
+    # do not silently degrade to the hand-written mini corpus.
     Path("datasets/eliza1-sft-0_6b/test.jsonl"),
 )
 
@@ -178,8 +177,8 @@ def _dataset_test_jsonl() -> Path | None:
     Search order:
       1. ``ELIZA_EVAL_TEXT_CORPUS`` env var (explicit operator override).
       2. The in-repo eliza1 SFT ``test.jsonl`` split next to the training
-         package. ``0_8b`` is preferred; ``0_6b`` is the historical pre-rename
-         path still present in older worktrees.
+         package. Active final data is preferred; ``0_6b`` is retained only as
+         a historical fallback path still present in older worktrees.
     """
     override = os.environ.get("ELIZA_EVAL_TEXT_CORPUS")
     if override:
@@ -216,7 +215,7 @@ DEFAULT_TEXT_EVAL_CORPUS: tuple[str, ...] = _default_text_eval_corpus()
 # Map mean per-token negative log-likelihood to a 0..1 "text quality" score:
 # score = exp(-_NLL_DECAY * meanNll). Lower NLL → higher score. Calibrated so a
 # competent fine-tuned small model (meanNll ≈ 2.0 nats/token ≈ ppl 7.4) lands
-# around the 0_8b gate threshold (0.55), an un-fine-tuned base model
+# around the 2b gate threshold (0.55), an un-fine-tuned base model
 # (meanNll ≈ 4 nats ≈ ppl 55) lands ≈ 0.37, and a strong model (meanNll ≈ 1.3
 # ≈ ppl 3.7) lands ≈ 0.72. The decay is the only knob; the per-tier gate
 # thresholds in eliza1_gates.yaml are what actually decide pass/fail.
@@ -817,7 +816,7 @@ def _kokoro_e2e_loop_bench_path() -> Path | None:
 
 
 def _uses_kokoro_e2e_harness(tier: str) -> bool:
-    return normalize_tier(tier) in {"0_8b", "2b", "4b"}
+    return normalize_tier(tier) in {"2b", "4b"}
 
 
 def _normalize_backend_for_harness(backend: str | None) -> str:
@@ -1052,9 +1051,9 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
             verbose=False,
         )
     except (ValueError, Exception) as exc:  # noqa: BLE001
-        # llama-cpp-python (pip) doesn't support the elizaOS-fork-only qwen35
+        # llama-cpp-python (pip) doesn't support the elizaOS-fork-only gemma4
         # architecture. The fused llama-cli CAN load these GGUFs, but the
-        # llama-cpp-python pip package doesn't know about qwen35 yet. Record
+        # llama-cpp-python pip package doesn't know about gemma4 yet. Record
         # as not-run with a precise blocker note.
         return {
             **base,
@@ -1063,12 +1062,12 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": (
                 f"llama-cpp-python failed to load model ({exc!s}); "
-                "the bundled GGUF uses the elizaOS-fork qwen35 architecture "
+                "the bundled GGUF uses the elizaOS-fork gemma4 architecture "
                 "which is not yet backported to the pip llama-cpp-python release. "
                 "Run text_eval via the fused llama-cli binary or a pip wheel "
                 "built from the elizaOS fork to resolve."
             ),
-            "computeGated": "qwen35-arch-not-in-pip-llama-cpp-python",
+            "computeGated": "gemma4-arch-not-in-pip-llama-cpp-python",
         }
     total_nll = 0.0
     total_tokens = 0
@@ -2101,9 +2100,9 @@ def build_context(args: argparse.Namespace) -> EvalContext:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bundle-dir", type=Path, required=True, help="Staged Eliza-1 bundle directory.")
-    ap.add_argument("--tier", required=True, help="Tier id (0_8b / 2b / 9b / ...) or eliza-1-<tier>.")
+    ap.add_argument("--tier", required=True, help="Tier id (2b / 4b / 9b / 27b / 27b-256k) or eliza-1-<tier>.")
     ap.add_argument("--backend", default=None, help="Prefer this engine backend dir (cpu / vulkan / ...).")
-    ap.add_argument("--text-eval-model", type=Path, default=None, help="Override text GGUF used for the perplexity eval (e.g. a small reference Qwen3 GGUF when the bundle text artifact is a stand-in).")
+    ap.add_argument("--text-eval-model", type=Path, default=None, help="Override text GGUF used for the perplexity eval (e.g. a small reference Gemma GGUF when the bundle text artifact is a stand-in).")
     ap.add_argument("--text-corpus", type=Path, default=None, help="Held-out text-eval corpus (.txt one-per-line or .jsonl with a 'text' field). Defaults to the bundled small set.")
     ap.add_argument("--asr-corpus", type=Path, default=None, help="Directory of labelled ASR test clips: <id>.wav (16 kHz mono PCM) + <id>.txt (ground-truth transcript). When set, the ASR-WER eval transcribes these real clips (a valid WER) instead of the TTS round-trip. Also picked up from ELIZA_EVAL_ASR_CORPUS.")
     ap.add_argument("--threads", type=int, default=min(os.cpu_count() or 4, 8))

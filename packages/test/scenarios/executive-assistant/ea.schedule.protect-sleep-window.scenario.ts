@@ -7,6 +7,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "ea.schedule.protect-sleep-window",
   title: "Protect sleep window unless the user explicitly overrides it",
   domain: "executive-assistant",

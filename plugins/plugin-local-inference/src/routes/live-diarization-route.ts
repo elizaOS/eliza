@@ -12,6 +12,13 @@
  *   POST /api/voice/audio-frames        body: { frames: AudioFrameEvent[],
  *                                               flush?: boolean }
  *                                       → { ok, framesReceived, turnsObserved }
+ *   POST /api/voice/playback-frames     body: { frames?: AudioFrameEvent[],
+ *                                               reset?: boolean }
+ *                                       → { ok, framesPushed }
+ *     The agent's own TTS playback (far-end) in the same base64 LE-s16 16 kHz
+ *     mono wire format, streamed in real time so the session's NLMS canceller
+ *     removes the agent's echo before VAD/attribution (#9455/#9583). Send
+ *     `reset: true` when playback stops / on barge-in.
  *   GET  /api/voice/audio-frames/status → LiveDiarizationStatus (device evidence)
  *
  * Auth follows the compat pattern: trusted-loopback OR the compat API token.
@@ -20,7 +27,10 @@
  */
 
 import type http from "node:http";
-import type { AudioFrameEvent } from "../services/voice/audio-frame-consumer.js";
+import type {
+	AudioFrameEvent,
+	EchoReferenceProvider,
+} from "../services/voice/audio-frame-consumer.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -35,11 +45,42 @@ import {
 
 let session: LiveDiarizationSession | null = null;
 
+type RuntimeEchoReferenceSource = RuntimeEventSink & {
+	/**
+	 * Optional live far-end playback provider. Hosts that can tap agent TTS PCM
+	 * expose this so the diarization consumer can run AEC before VAD.
+	 */
+	voiceEchoReferenceProvider?: EchoReferenceProvider | null;
+	getVoiceEchoReferenceProvider?: () =>
+		| EchoReferenceProvider
+		| null
+		| undefined;
+};
+
+function resolveRuntimeEchoReference(
+	runtime: RuntimeEventSink,
+): EchoReferenceProvider | null {
+	const source = runtime as RuntimeEchoReferenceSource;
+	if (typeof source.getVoiceEchoReferenceProvider === "function") {
+		return source.getVoiceEchoReferenceProvider() ?? null;
+	}
+	return source.voiceEchoReferenceProvider ?? null;
+}
+
 /** Lazily own one session per agent process, bound to the live runtime. */
 function getSession(state: CompatRuntimeState): LiveDiarizationSession | null {
-	const runtime = state.current as unknown as RuntimeEventSink | null;
+	const runtime = state.current as RuntimeEventSink | null;
 	if (!runtime || typeof runtime.emitEvent !== "function") return null;
-	if (!session) session = new LiveDiarizationSession(runtime);
+	if (!session) {
+		// Thread a host-supplied echo reference (if any) into the live AEC path
+		// so the NLMS canceller has a far-end signal without the playback-frames
+		// ingest route (#9583).
+		const echoReference = resolveRuntimeEchoReference(runtime);
+		session = new LiveDiarizationSession(
+			runtime,
+			echoReference ? { echoReference } : {},
+		);
+	}
 	return session;
 }
 
@@ -115,6 +156,41 @@ export async function handleLiveDiarizationRoute(
 			framesDropped: status.framesDropped,
 			turnsObserved: status.turnsObserved,
 		});
+		return true;
+	}
+
+	if (url.pathname === "/api/voice/playback-frames" && method === "POST") {
+		if (!ensureCompatApiAuthorized(req, res)) return true;
+		const current = getSession(state);
+		if (!current) {
+			sendJsonError(res, 503, "Runtime not ready");
+			return true;
+		}
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		if (body.reset === true) current.resetPlayback();
+		const rawFrames = body.frames;
+		if (rawFrames !== undefined && !Array.isArray(rawFrames)) {
+			sendJsonError(
+				res,
+				400,
+				"Expected { frames?: AudioFrameEvent[], reset?: boolean }",
+			);
+			return true;
+		}
+		const frames = Array.isArray(rawFrames)
+			? rawFrames.filter(isAudioFrameEvent)
+			: [];
+		if (Array.isArray(rawFrames) && frames.length !== rawFrames.length) {
+			sendJsonError(
+				res,
+				400,
+				`Malformed playback frame(s): ${rawFrames.length - frames.length} of ${rawFrames.length} did not match AudioFrameEvent`,
+			);
+			return true;
+		}
+		current.pushPlayback(frames);
+		sendJson(res, 200, { ok: true, framesPushed: frames.length });
 		return true;
 	}
 

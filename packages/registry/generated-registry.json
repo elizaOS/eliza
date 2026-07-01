@@ -138,6 +138,53 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@stvor/plugin-agent-commerce": {
+      "git": {
+        "repo": "stvor-hq/plugin-agent-commerce",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@stvor/plugin-agent-commerce",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ERC-8183 agentic commerce for elizaOS: job lifecycle state machine, SHA-256 payload attestation, reputation gating, and prompt-injection protection.",
+      "homepage": "https://github.com/stvor-hq/plugin-agent-commerce",
+      "topics": [
+        "commerce",
+        "erc8183",
+        "escrow",
+        "reputation",
+        "security",
+        "rate-limiting",
+        "prompt-injection"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@thecolony/elizaos-plugin": {
       "git": {
         "repo": "TheColonyCC/elizaos-plugin",
@@ -279,6 +326,100 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@wasmagent/eliza-rollout-plugin": {
+      "git": {
+        "repo": "WasmAgent/wasmagent-js",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@wasmagent/eliza-rollout-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.3"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Captures elizaOS action runs as rollout-wire/v1 training records (DPO/PPO JSONL) for fine-tuning via evomerge. No sandbox layer — elizaOS Bun Worker isolation already covers that.",
+      "homepage": "https://github.com/WasmAgent/wasmagent-js/tree/main/packages/eliza-rollout-plugin",
+      "topics": [
+        "training-data",
+        "rlaif",
+        "dpo",
+        "ppo",
+        "rollout",
+        "fine-tuning",
+        "wasmagent"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "packages/eliza-rollout-plugin"
+    },
+    "@xynqai/plugin-eliza": {
+      "git": {
+        "repo": "visionsXBT/xynq",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@xynqai/plugin-eliza",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "XYNQ decentralized inference for ElizaOS — OpenAI-compatible models, live GPU mesh status, USDC worker earnings, and Solana credit top-ups.",
+      "homepage": "https://github.com/visionsXBT/xynq/tree/main/plugin-eliza",
+      "topics": [
+        "llm",
+        "inference",
+        "decentralized",
+        "solana",
+        "gpu",
+        "crypto",
+        "usdc"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugin-eliza"
+    },
     "blackwall-eliza-guardrail": {
       "git": {
         "repo": "bluetieroperations-create/blackwall-eliza-guardrail",
@@ -311,6 +452,59 @@
         "ai-safety",
         "risk-gate",
         "onchain-safety"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "eliza-plugin-klymax402": {
+      "git": {
+        "repo": "Br0ski777/eliza-plugin-klymax402",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "eliza-plugin-klymax402",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "15 x402 pay-per-call APIs on Base for ElizaOS agents — stock prices, B2B enrichment, web search, crypto funding rates, SEO analysis, NLP, SSL/DNS checks and more. Agents pay USDC per call with no API keys.",
+      "homepage": "https://klymax402.com",
+      "topics": [
+        "x402",
+        "payments",
+        "base",
+        "usdc",
+        "micropayments",
+        "stock-price",
+        "b2b-enrichment",
+        "web-search",
+        "crypto",
+        "defi",
+        "seo",
+        "nlp",
+        "agentic-payments"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",
@@ -462,6 +656,55 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-quantumscan": {
+      "git": {
+        "repo": "quantumscan-io/elizaos-plugin-quantumscan",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-quantumscan",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Post-quantum cryptography (PQC) vulnerability scanner for GitHub, GitLab, and Bitbucket repositories. Detects ECDSA, RSA, DH, AES-128, and other quantum-vulnerable algorithms. Returns risk scores and NIST FIPS 203/204/205 migration targets.",
+      "homepage": "https://quantumscan.io",
+      "topics": [
+        "security",
+        "pqc",
+        "post-quantum",
+        "cryptography",
+        "blockchain",
+        "nist",
+        "cbom",
+        "vulnerability-scanner",
+        "quantum-computing"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-reddit-search": {
       "git": {
         "repo": "xavier-arosemena/elizaos-plugin-reddit-search",
@@ -492,6 +735,196 @@
         "reddit",
         "social",
         "discovery"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-agentscoin": {
+      "git": {
+        "repo": "axiosdevs/plugin-agentscoin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-agentscoin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Give your elizaOS agent an AgentsCoin wallet: create wallet, mine AGENT, check balance, send.",
+      "homepage": "https://agents-coin.com",
+      "topics": [
+        "crypto",
+        "wallet",
+        "ai-agents",
+        "agentic-payments",
+        "evm",
+        "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-raven-verify": {
+      "git": {
+        "repo": "billybotticelli4u-collab/plugin-raven-verify",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-raven-verify",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pre-action Solana token verification via Raven — signed, scope-bounded on-chain evidence receipts (checks performed, checks NOT performed, coverage gaps, ed25519 signature). Reports evidence, not a safe/unsafe verdict.",
+      "homepage": "https://ravenattest.com",
+      "topics": [
+        "solana",
+        "token",
+        "verification",
+        "attestation",
+        "raven",
+        "signed-receipt"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-x402-alpha-data": {
+      "git": {
+        "repo": "sna4an/plugin-x402-alpha-data",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-alpha-data",
+        "v0": null,
+        "v1": null,
+        "v2": "1.0.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Paid alpha data endpoints via x402 protocol — token safety, whale tracking, yield strategies, governance, sentiment.",
+      "homepage": "https://github.com/sna4an/plugin-x402-alpha-data",
+      "topics": [
+        "x402",
+        "defi",
+        "alpha",
+        "whale-tracking",
+        "token-safety",
+        "yield",
+        "solana",
+        "base",
+        "web3",
+        "paid-api"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-x402-endpoints": {
+      "git": {
+        "repo": "digitalweb33333-creator/plugin-x402-endpoints",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-x402-endpoints",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Exposes the x402-endpoints catalogue (28 paid data endpoints: official EU/global registries — GLEIF, VIES, BODACC, EUR-Lex, Companies House, EPO, sanctions, CVE, FDA — plus crypto pre-trade data) as native ElizaOS actions, billed per call via x402 (USDC on Base mainnet).",
+      "homepage": "https://github.com/digitalweb33333-creator/plugin-x402-endpoints",
+      "topics": [
+        "x402",
+        "micropayments",
+        "base",
+        "usdc",
+        "compliance",
+        "crypto",
+        "data",
+        "kyb"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

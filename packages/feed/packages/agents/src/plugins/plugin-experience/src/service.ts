@@ -211,7 +211,7 @@ export class ExperienceService extends Service {
       experienceId: experience.id,
       eventType: "created",
       timestamp: experience.createdAt,
-    } as unknown as EventPayload);
+    } as EventPayload);
 
     logger.info(
       `[ExperienceService] Recorded experience: ${experience.id} (${experience.type})`,

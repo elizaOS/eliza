@@ -1,10 +1,14 @@
 import { useEffect } from "react";
 import { SHARE_TARGET_EVENT } from "../../events";
+import { useFrameBudgetMonitor, useLayoutShiftMonitor } from "../../hooks";
+import { PerfOverlay } from "../../perf/PerfOverlay";
+import { bootPerfHud, installPerfHudHotkey } from "../../perf/perf-hud-control";
 import type { ShareTargetPayload } from "../../platform/init";
 
+import { TOAST_TTL_MS } from "../../state/action-notice";
+import { useAppSelector } from "../../state/app-store";
+import type { AppContextValue } from "../../state/internal";
 import type { ActionNotice } from "../../state/types";
-import { useApp } from "../../state/useApp";
-import { CompanionGlobalOverlay as GlobalEmoteOverlay } from "../companion/injected";
 import { Spinner } from "../ui/spinner";
 import { BugReportModal } from "./BugReportModal";
 import { CommandPalette } from "./CommandPalette";
@@ -44,12 +48,26 @@ function formatSharePayload(payload: ShareTargetPayload): string {
   return fileNames.length > 0 ? fileNames.join(", ") : "";
 }
 
+const selectTab = (s: AppContextValue) => s.tab;
+const selectSetState = (s: AppContextValue) => s.setState;
+const selectSetActionNotice = (s: AppContextValue) => s.setActionNotice;
+
 export function ShellOverlays({
   actionNotice,
 }: {
   actionNotice: ActionNotice | null;
 }) {
-  const { tab, setState, setActionNotice } = useApp();
+  const tab = useAppSelector(selectTab);
+  const setState = useAppSelector(selectSetState);
+  const setActionNotice = useAppSelector(selectSetActionNotice);
+
+  useLayoutShiftMonitor();
+  useFrameBudgetMonitor();
+
+  useEffect(() => {
+    bootPerfHud();
+    return installPerfHudHotkey();
+  }, []);
 
   useEffect(() => {
     const handlePayload = (payload: ShareTargetPayload) => {
@@ -60,7 +78,7 @@ export function ShellOverlays({
         return;
       }
       const preview = text.length > 80 ? `${text.slice(0, 77)}...` : text;
-      setActionNotice(`Shared: ${preview}`, "info", 4000);
+      setActionNotice(`Shared: ${preview}`, "info", TOAST_TTL_MS.notification);
     };
 
     for (const queued of drainShareQueue()) {
@@ -82,12 +100,14 @@ export function ShellOverlays({
 
   return (
     <>
+      {/* Dev-only FPS/long-task overlay (#9141) — self-gates on
+          window.__ELIZA_PERF_HUD__, renders null + starts no loop when off. */}
+      <PerfOverlay />
       <CommandPalette />
       <RestartBanner />
       <BugReportModal />
       <ComputerUseApprovalOverlay />
       <ShortcutsOverlay />
-      <GlobalEmoteOverlay />
       {actionNotice && (
         <div
           className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-sm text-sm font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)] ${

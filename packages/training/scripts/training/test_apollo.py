@@ -1,13 +1,13 @@
 """APOLLO validation harness.
 
-Loads a real Qwen model on the local GPU, runs ONE full training step with
+Loads a real Gemma model on the local GPU, runs ONE full training step with
 both APOLLO and APOLLO-Mini on a real batch from `data/final/train.jsonl`,
 and asserts that the APOLLO optimizer path is actually wired.
 
 Run:
     uv run --extra train python3 scripts/training/test_apollo.py
 
-Default model is `Qwen/Qwen3.5-0.8B`, which fits comfortably on a 16 GB
+Default model is `google/gemma-4-E2B`, which fits comfortably on a 16 GB
 RTX 5080 Laptop in bf16 + activation checkpointing.
 
 This is the load-bearing check that says we are actually calling APOLLO and
@@ -127,7 +127,7 @@ def _run_one_step(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
+    ap.add_argument("--model", default="google/gemma-4-E2B")
     ap.add_argument(
         "--train-file",
         default=str(ROOT / "data" / "final" / "train.jsonl"),

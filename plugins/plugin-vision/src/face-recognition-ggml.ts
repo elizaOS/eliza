@@ -19,14 +19,15 @@
 // `face_embed_distance` / `face_embed_distance_l2`.
 
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
 import {
   BlazeFaceGgmlDetector,
   type MediaPipeFaceDetection,
 } from "./face-detector-ggml";
+import { getSharp } from "./image/sharp-compat";
 import type { BoundingBox, FaceLibrary, FaceProfile } from "./types";
 
 const MODULE_TAG = "[FaceEmbedGgml]";
@@ -63,8 +64,7 @@ function defaultLibraryPath(): string {
 
 function defaultModelDir(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "models", "face-cpp");
 }
 
@@ -131,7 +131,7 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
 
     const { dlopen, FFIType, ptr } = bunFFI;
 
-    let lib;
+    let lib: ReturnType<BunFFIModule["dlopen"]>;
     try {
       lib = dlopen(libPath, {
         face_embed_open: {
@@ -158,14 +158,14 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
     } catch (error) {
       logger.warn(
         `${MODULE_TAG} dlopen failed for ${libPath}:`,
-        error instanceof Error ? error.message : error,
+        error instanceof Error ? error.message : String(error),
       );
       return null;
     }
 
     const bindings: FaceEmbedBindings = {
       open(ggufPath) {
-        const cstr = Buffer.from(ggufPath + "\0", "utf-8");
+        const cstr = Buffer.from(`${ggufPath}\0`, "utf-8");
         const handleSlot = new BigUint64Array(1);
         const rc = lib.symbols.face_embed_open(
           ptr(cstr) as never,
@@ -349,6 +349,7 @@ export class FaceEmbedGgmlRecognizer {
       throw new Error(`${MODULE_TAG} not initialized`);
     }
 
+    const sharp = await getSharp();
     const meta = await sharp(imageBuffer).metadata();
     const w = meta.width ?? 0;
     const h = meta.height ?? 0;
@@ -445,6 +446,7 @@ export class FaceRecognition {
 
     // BlazeFace + the embedder both decode via sharp, so wrap the raw
     // RGBA frame in a sharp-readable PNG once and reuse it for both.
+    const sharp = await getSharp();
     const png = await sharp(imageData, {
       raw: { width, height, channels: 4 },
     })

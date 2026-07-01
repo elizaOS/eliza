@@ -5,15 +5,13 @@ import {
 	actionResultsSuppressPostActionContinuation,
 	extractPlannerActionNames,
 	findWebLookupActionName,
+	findWebLookupActionNames,
 	inferDirectCurrentRequestCandidateActions,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
-	looksLikeSelfPolicyExplanationRequest,
 	shouldPreferDirectCurrentCandidateActions,
 	shouldPromoteExplicitReplyToOwnedAction,
-	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
-	suggestOwnedActionFromMetadata,
 } from "../services/message";
 
 const logger = {
@@ -125,26 +123,6 @@ describe("live routing regressions", () => {
 	});
 
 	it("recognizes current-info requests as web search without spawning work", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "SEARCH",
-					similes: ["WEB_SEARCH", "SEARCH_WEB"],
-					description: "Search the web or other registered backends",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
-
-		const suggestion = suggestOwnedActionFromMetadata(runtime, {
-			content: {
-				text: "what is the current BTC price in USD? answer briefly.",
-			},
-		});
-
-		expect(suggestion).toMatchObject({
-			actionName: "SEARCH",
-			reasons: ["direct:web-search"],
-		});
 		expect(
 			inferWebSearchQueryFromMessageText(
 				"what is the current BTC price in USD? answer briefly.",
@@ -177,6 +155,28 @@ describe("live routing regressions", () => {
 			similes: ["LOOKUP_WEB"],
 		};
 		expect(findWebLookupActionName([simileAction])).toBe("SOME_FETCH");
+	});
+
+	it("surfaces BOTH web tools to the planner, WEB_FETCH first", () => {
+		// The planner-surfacing path offers WEB_FETCH (a constructible live API)
+		// ahead of WEB_SEARCH (open-ended discovery) so a price/weather ask is
+		// fetched live inline rather than answered from a stale search result.
+		expect(
+			findWebLookupActionNames([{ name: "WEB_SEARCH" }, { name: "WEB_FETCH" }]),
+		).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+		// Only one web tool registered → exactly that one is surfaced.
+		expect(findWebLookupActionNames([{ name: "WEB_SEARCH" }])).toEqual([
+			"WEB_SEARCH",
+		]);
+		// A single action that resolves via BOTH a fetch name and a search simile
+		// must surface ONCE (the searchAction !== fetchAction dedupe guard).
+		expect(
+			findWebLookupActionNames([
+				{ name: "WEB_FETCH", similes: ["WEB_SEARCH"] },
+			]),
+		).toEqual(["WEB_FETCH"]);
+		// No web backend → empty, so the turn is not forced toward a web tool.
+		expect(findWebLookupActionNames([{ name: "SHELL" }])).toEqual([]);
 	});
 
 	it("does not promote a coding/spawn request to a web-lookup (stays TASKS)", () => {
@@ -268,27 +268,9 @@ describe("live routing regressions", () => {
 	});
 
 	it("does not promote explanation-only shell questions into execution", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "SHELL_COMMAND",
-					description: "Run local shell commands",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
 		const text = "explain how df -h checks disk space on this VPS";
 		const howToRunText = "explain how to run df -h on this VPS";
 
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: { text },
-			}),
-		).toBeNull();
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: { text: howToRunText },
-			}),
-		).toBeNull();
 		expect(
 			shouldPromoteExplicitReplyToOwnedAction(
 				{ actions: ["REPLY"] },
@@ -316,58 +298,11 @@ describe("live routing regressions", () => {
 	});
 
 	it("does not route generic current status questions to web search", () => {
-		const runtime = {
-			actions: [
-				{
-					name: "SEARCH",
-					similes: ["WEB_SEARCH", "SEARCH_WEB"],
-					description: "Search the web or other registered backends",
-				},
-			],
-		} as Pick<IAgentRuntime, "actions">;
-
-		expect(
-			suggestOwnedActionFromMetadata(runtime, {
-				content: {
-					text: "what is the current status of the build?",
-				},
-			}),
-		).toBeNull();
 		expect(
 			inferWebSearchQueryFromMessageText(
 				"what is the current status of the build?",
 			),
 		).toBeNull();
-	});
-
-	it("does not rescue self-policy explanation questions into task actions", () => {
-		expect(
-			looksLikeSelfPolicyExplanationRequest({
-				content: {
-					text: "for a new monetized ai chat app, what workflow, example app, and sdk should you use? answer in one short sentence. do not build anything.",
-				},
-			}),
-		).toBe(true);
-	});
-
-	it("does not skip document rescue for ordinary second-person questions", () => {
-		expect(
-			shouldSkipDocumentProviderRescue({
-				content: {
-					text: "can you explain the uploaded document?",
-				},
-			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
-		).toBe(false);
-	});
-
-	it("does not skip document rescue for self-policy questions about documents", () => {
-		expect(
-			shouldSkipDocumentProviderRescue({
-				content: {
-					text: "what workflow should you use for processing documents in your knowledge base?",
-				},
-			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
-		).toBe(false);
 	});
 
 	it("stops continuation when an action result blocks the turn", () => {

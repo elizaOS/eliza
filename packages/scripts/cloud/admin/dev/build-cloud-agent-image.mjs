@@ -3,7 +3,7 @@
  * Build the local eliza-cloud-agent Docker image so LocalDockerSandboxProvider
  * has something to spawn.
  *
- *   bun run --cwd packages/cloud-api agent:build
+ *   bun run --cwd packages/cloud/api agent:build
  *
  * The build context root is one level above this repo so
  * the Dockerfile's `COPY eliza/packages/...` paths resolve. The tag is

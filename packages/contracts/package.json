@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/contracts",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Pure type contracts extracted from @elizaos/core — types only, no runtime.",
   "type": "module",
   "main": "dist/index.js",
@@ -40,10 +40,10 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "clean": "rm -rf dist"
+    "clean": "node ../scripts/rm-path-recursive.mjs dist"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

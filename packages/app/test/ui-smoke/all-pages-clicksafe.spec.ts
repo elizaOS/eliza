@@ -185,12 +185,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
-    name: "companion deep link",
-    path: "/companion",
-    readyChecks: [{ selector: "#root" }],
-    timeoutMs: 60_000,
-  },
-  {
     name: "rolodex",
     path: "/rolodex",
     readyChecks: [{ text: "Views" }],
@@ -238,6 +232,12 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "views catalog deep link",
     path: "/views",
     readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "background view deep link",
+    path: "/background",
+    readyChecks: [{ selector: "#root" }, { text: "Background" }],
     timeoutMs: 60_000,
   },
   {
@@ -356,7 +356,7 @@ const SAFE_VIEW_TILES: readonly {
 
 const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Basics$/,
-  /^Providers$/,
+  /^Models & Providers$/,
   /^Runtime$/,
   /^Appearance$/,
   /^Voice$/,
@@ -366,7 +366,7 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Connectors$/,
   /^App Permissions$/,
   /^Permissions$/,
-  /^Secrets storage$/,
+  /^Vault$/,
   /^Security$/,
   /^Updates$/,
   /^Backup & Reset$/,
@@ -682,46 +682,6 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
           releaseManifest: null,
         },
       }),
-    });
-  });
-
-  await page.route("**/api/vincent/status**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        connected: false,
-        connectedAt: null,
-        tradingVenues: [],
-      }),
-    });
-  });
-
-  await page.route("**/api/vincent/strategy**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ connected: false, strategy: null }),
-    });
-  });
-
-  await page.route("**/api/vincent/trading-profile**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ connected: false, profile: null }),
     });
   });
 
@@ -1442,17 +1402,7 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
   await expect(page.locator("body")).not.toContainText(
     /(?:404\s+not\s+found|page not found|route not found)/i,
   );
-  if (
-    route.path === "/" ||
-    route.path === "/chat" ||
-    route.path === "/apps/elizamaker"
-  ) {
-    return;
-  }
-  if (route.path === "/apps/companion") {
-    await expect(page.getByTestId("companion-root").first()).toBeVisible({
-      timeout: route.timeoutMs,
-    });
+  if (route.path === "/" || route.path === "/chat") {
     return;
   }
   await expect(

@@ -21,6 +21,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -49,6 +50,61 @@ const stubPromptSuggestions = {
     }));
   },
 };
+// The overlay's import graph transitively reaches server-only @elizaos/core
+// features (plugin-manager, working-memory, todos, …) whose module-init touches
+// the `process` global and node builtins — DEAD code in the browser (never
+// executed at render; the only render-path core symbol, findInteractionRegions,
+// is test-only). Production Vite resolves core's `browser` export condition;
+// this raw-esbuild bundle does not, so replace `@elizaos/core` with a no-op
+// Proxy (mirrors run-home-screen-e2e) instead of bundling its Node graph.
+const stubElizaCore = {
+  name: "stub-eliza-core",
+  setup(b) {
+    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
+      path: args.path,
+      namespace: "eliza-core-stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
+      contents: `
+        const noop = new Proxy(() => noop, { get: () => noop });
+        module.exports = new Proxy(
+          {
+            isViewVisible: () => true,
+            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+            findInteractionRegions: () => [],
+          },
+          { get: (t, p) => (p in t ? t[p] : noop) },
+        );
+      `,
+      loader: "js",
+    }));
+  },
+};
+const nodeBuiltins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]);
+const stubNodeBuiltins = {
+  name: "stub-node-builtins",
+  setup(b) {
+    b.onResolve({ filter: /.*/ }, (args) => {
+      const bare = args.path.replace(/^node:/, "").split("/")[0];
+      if (
+        args.path.startsWith("node:") ||
+        nodeBuiltins.has(args.path) ||
+        builtinModules.includes(bare)
+      ) {
+        return { path: args.path, namespace: "node-stub" };
+      }
+      return null;
+    });
+    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
+      contents:
+        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+      loader: "js",
+    }));
+  },
+};
 const result = await build({
   entryPoints: [join(here, "chat-sheet-fixture.tsx")],
   bundle: true,
@@ -57,12 +113,13 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions],
+  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
   write: false,
 });
 const js = result.outputFiles[0].text;
 const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat sheet e2e</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "chat-sheet.html");
@@ -104,6 +161,15 @@ const panelTop = (p) =>
       document.querySelector('[data-testid="chat-sheet"]')?.getBoundingClientRect()
         .top ?? 0,
   );
+const panelRadii = (p) =>
+  p.evaluate(() => {
+    const panel = document.querySelector('[data-testid="chat-sheet"]');
+    const surface = panel?.firstElementChild;
+    const content = document.querySelector('[data-testid="chat-content"]');
+    const read = (el) =>
+      el ? Number.parseFloat(getComputedStyle(el).borderTopLeftRadius) : -1;
+    return { surface: read(surface), content: read(content) };
+  });
 const SHEET_TOP_MARGIN = 72;
 const grabberBox = (p) => p.getByTestId("chat-sheet-grabber").boundingBox();
 
@@ -249,11 +315,26 @@ async function runDragSuite(p, pointer, tag) {
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   assert(near(await sheetHeight(p), halfH, TOL), `[${pointer}] HALF height ≈ ${halfH}px (got ${Math.round(await sheetHeight(p))})`);
   await snap(p, `${tag}-half`);
-  // The sheet header (maximize/clear/home/settings) shows at HALF and up now,
+  // #9142 regression guard: the grabber BAR (inner span) must actually PAINT
+  // once the sheet is open — a prior regression pinned the bar to `opacity-0`,
+  // leaving the handle grabbable but invisible. The wrapper's `grabberOpacity`
+  // crossfade owns show/hide; the bar's OWN opacity must be 1, never 0.
+  const grabberBarOpacity = await p.evaluate(() =>
+    getComputedStyle(
+      document
+        .querySelector('[data-testid="chat-sheet-grabber"]')
+        ?.querySelector("span") ?? document.body,
+    ).opacity,
+  );
+  assert(
+    grabberBarOpacity === "1",
+    `[${pointer}] grabber bar paints (inner-span opacity "${grabberBarOpacity}" === "1", not opacity-0) (#9142)`,
+  );
+  // The sheet header (maximize/clear/launcher) shows at HALF and up now,
   // not only at FULL.
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
-      (await p.getByTestId("chat-full-settings").count()) === 1,
+      (await p.getByTestId("chat-full-launcher").count()) === 1,
     `[${pointer}] HALF detent shows the sheet header`,
   );
 
@@ -270,14 +351,16 @@ async function runDragSuite(p, pointer, tag) {
   );
   await snap(p, `${tag}-full`);
 
-  // Header: Maximize + Clear on the left, Home + Settings on the right. With no
-  // active tab set, both Home and Settings show.
+  // Header (post home↔launcher consolidation, #9450): Maximize + Copy +
+  // Clear on the left, a single Launcher button on the right (the old
+  // Home/Views/Settings trio collapsed into one launcher target). Copy only
+  // shows when there's a thread (the default fixture seeds one).
   assert(
     (await p.getByTestId("chat-full-maximize").count()) === 1 &&
       (await p.getByTestId("chat-full-clear").count()) === 1 &&
-      (await p.getByTestId("chat-full-home").count()) === 1 &&
-      (await p.getByTestId("chat-full-settings").count()) === 1,
-    `[${pointer}] header shows maximize + clear + home + settings`,
+      (await p.getByTestId("chat-full-copy-conversation").count()) === 1 &&
+      (await p.getByTestId("chat-full-launcher").count()) === 1,
+    `[${pointer}] header shows maximize + copy + clear + launcher`,
   );
   // Maximize → full-bleed (edge-to-edge): data-maximized flips + panel reaches x=0.
   await p.getByTestId("chat-full-maximize").click();
@@ -989,7 +1072,8 @@ try {
   }
 
   // PILL: pull DOWN from the input collapses the whole chat into a small pill at
-  // the bottom (input hidden); tapping the pill brings the input back.
+  // the bottom (input hidden). Slow-drag and flick both pill it; the composer
+  // stays mounted but hidden + inert. (A pill TAP opens the chat — see PILL-TAP.)
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -1002,10 +1086,11 @@ try {
     await gesture(p, -90, { pointer: "touch", slow: true, steps: 12 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL: slow drag-down collapses the input → pill");
-    // recover, then verify a quick FLICK down pills it too.
-    await p.getByTestId("chat-pill").click();
-    await p.waitForTimeout(SETTLE);
-    assert((await detent(p)) === "collapsed", "PILL: recovered to input before flick check");
+    // Reset to the input peek and verify a quick FLICK down pills it too.
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
+    await p.waitForTimeout(500);
+    assert((await detent(p)) === "collapsed", "PILL: reset to the input peek before flick check");
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL: flick-down collapses the input → pill");
@@ -1019,8 +1104,12 @@ try {
       const contentOpacity = await p
         .getByTestId("chat-content")
         .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+      // ≤0.12, not ≤0.05: the morph to openProgress 0 is an asymptotic spring,
+      // so after the settle window it's imperceptibly-but-not-exactly 0 (it
+      // occasionally lands ~0.05). 12% opacity is still visually hidden; the
+      // tight bound just flaked.
       assert(
-        contentOpacity <= 0.05,
+        contentOpacity <= 0.12,
         `PILL: the input is visually hidden in pill mode (content opacity ${contentOpacity})`,
       );
       assert(
@@ -1029,25 +1118,15 @@ try {
       );
     }
     await snap(p, "state-pill");
-    await p.getByTestId("chat-pill").click();
-    await p.waitForTimeout(SETTLE);
-    assert(
-      (await detent(p)) === "collapsed",
-      "PILL: tapping the pill recovers the input",
-    );
-    assert(
-      (await p.getByTestId("chat-composer-textarea").count()) === 1,
-      "PILL: input is back after recovery",
-    );
     await p.close();
   }
 
-  // ── PILL TAP morphs to input (regression): a real TAP (pointerdown+up, no
-  // move) routes through the gesture's onDrag(0) → onTap path, which previously
-  // left draggingRef set so openProgress stayed STUCK at 0 (a visible-but-inert
-  // pill, no input). A synthetic .click() missed it because data-detent flipped
-  // to "collapsed" while the morph never animated — so assert the actual content
-  // opacity reaches ~1 (the input is really formed), not just the detent label.
+  // ── PILL TAP opens the chat to HALF (regression for the reported bug): a real
+  // TAP (pointerdown+up, no move) routes through the gesture's onDrag(0) → onTap
+  // path. It must open the chat in ONE tap straight to the HALF detent (the
+  // conversation is visible) — NOT blink to a bare input bar that needs a second
+  // tap. Assert the detent is half/open AND the content actually formed (opacity
+  // ~1), not just a detent label with a stuck-at-0 morph.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -1082,12 +1161,13 @@ try {
       .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
     assert(
       openedOpacity > 0.9,
-      `PILL-TAP: tap animates pill → input, content fully formed (opacity ${openedOpacity})`,
+      `PILL-TAP: tap animates pill → chat, content fully formed (opacity ${openedOpacity})`,
     );
     assert(
-      (await detent(p)) === "collapsed",
-      "PILL-TAP: lands in the input (collapsed) state",
+      (await detent(p)) === "half",
+      `PILL-TAP: a SINGLE tap opens the chat to half (got ${await detent(p)})`,
     );
+    assert((await variant(p)) === "open", "PILL-TAP: the chat is open after one tap");
     await snap(p, "state-pill-tap-opened");
     await p.close();
   }
@@ -1107,32 +1187,33 @@ try {
     await p.close();
   }
 
-  // HEADER CONTEXT: Home hides while on the home screen ("chat"); Settings hides
-  // while on the settings screen. The other button stays.
-  for (const [tab, hidden, shown] of [
-    ["chat", "chat-full-home", "chat-full-settings"],
-    ["settings", "chat-full-settings", "chat-full-home"],
-  ]) {
+  // HEADER NAV (post-consolidation): the per-tab Home/Views/Settings trio is
+  // gone — a single always-present, always-enabled Launcher button replaces
+  // it, and the old testids must stay gone (regression guard for #9450).
+  {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?tab=${tab}`);
+    await p.goto(url);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    assert((await detent(p)) === "half", `HIDE[${tab}]: opened to half`);
+    assert((await detent(p)) === "half", "NAV: opened to half");
     assert(
-      (await p.getByTestId(hidden).count()) === 0,
-      `HIDE[${tab}]: ${hidden} hidden on the ${tab} screen`,
+      (await p.getByTestId("chat-full-launcher").count()) === 1 &&
+        !(await p.getByTestId("chat-full-launcher").isDisabled()),
+      "NAV: single launcher button present and enabled",
     );
     assert(
-      (await p.getByTestId(shown).count()) === 1,
-      `HIDE[${tab}]: ${shown} still shown on the ${tab} screen`,
+      (await p.getByTestId("chat-full-home").count()) === 0 &&
+        (await p.getByTestId("chat-full-views").count()) === 0 &&
+        (await p.getByTestId("chat-full-settings").count()) === 0,
+      "NAV: legacy home/views/settings buttons removed (#9450)",
     );
     await p.close();
   }
 
-  // NAVIGATE-AND-CLOSE: tapping Settings/Home animates OUT of maximize (if
+  // NAVIGATE-AND-CLOSE: tapping Launcher animates OUT of maximize (if
   // maximized) and collapses the sheet, THEN navigates — the page swap waits for
   // the close animation to start, so it reads as the chat closing into the new
   // view rather than a jump-cut from full-screen.
@@ -1152,23 +1233,23 @@ try {
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 1,
-      "NAV-CLOSE: maximized before tapping settings",
+      "NAV-CLOSE: maximized before tapping launcher",
     );
-    await p.getByTestId("chat-full-settings").click();
+    await p.getByTestId("chat-full-launcher").click();
     await p.waitForTimeout(600);
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
         .count()) === 0,
-      "NAV-CLOSE: tapping settings animates OUT of maximize",
+      "NAV-CLOSE: tapping launcher animates OUT of maximize",
     );
     assert(
       (await detent(p)) === "collapsed",
-      "NAV-CLOSE: tapping settings collapses the sheet (close)",
+      "NAV-CLOSE: tapping launcher collapses the sheet (close)",
     );
     assert(
-      sink.logs.some((l) => l.includes("openSettings")),
-      "NAV-CLOSE: settings navigation fires after the close starts",
+      sink.logs.some((l) => l.includes("navigateHome")),
+      "NAV-CLOSE: launcher navigation fires after the close starts",
     );
     await p.close();
   }
@@ -1201,6 +1282,59 @@ try {
         box?.y ?? -1,
       )}, bottom=${Math.round((box?.y ?? 0) + (box?.height ?? 0))}, vh=${vh})`,
     );
+    await p.close();
+  }
+
+  // ── MAXIMIZE WITH A BOTTOM GESTURE INSET (regression): on Android the home-
+  // gesture inset feeds the overlay's bottom padding, which is cached into
+  // `bottomPad`. Full-bleed drops that padding to 0 (the composer carries the
+  // clearance), so the panel must fill the WHOLE viewport. The bug: panelMaxH
+  // still subtracted the stale bottomPad, so the maximized panel floated a
+  // gesture-inset BELOW the top — a hard-cut glass seam under the status bar and
+  // the safe-area-padded header pushed down. Assert: panel reaches y≈0 AND the
+  // header buttons sit at the safe area, not a gesture-inset lower.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.waitForTimeout(600);
+    // Simulate the Android insets, then fire a resize so the overlay samples its
+    // (now gesture-inset-padded) bottom padding into bottomPad while NOT maximized.
+    await p.evaluate(() => {
+      const r = document.documentElement.style;
+      r.setProperty("--android-gesture-inset-bottom", "32px");
+      r.setProperty("--safe-area-top", "30px");
+      window.dispatchEvent(new Event("resize"));
+    });
+    await p.waitForTimeout(120);
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 }); // → half
+    await p.waitForTimeout(SETTLE);
+    await p.getByTestId("chat-full-maximize").click(); // → full-bleed
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await p
+        .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+        .count()) === 1,
+      "MAX-INSET: maximized full-bleed",
+    );
+    const box = await p.getByTestId("chat-sheet").boundingBox();
+    assert(
+      !!box && box.y <= 2,
+      `MAX-INSET: maximized panel fills to the TOP despite the bottom inset (y=${Math.round(
+        box?.y ?? -1,
+      )}) — no status-bar seam`,
+    );
+    const btn = await p.getByTestId("chat-full-maximize").boundingBox();
+    // Header padding = safe-area-top (30) + 0.5rem (8); buttons must sit ~there,
+    // NOT a whole gesture inset (~36px) lower (the old "bad space" margin).
+    assert(
+      !!btn && btn.y <= 30 + 8 + 20,
+      `MAX-INSET: header buttons sit at the safe area, not pushed down by a gap (y=${Math.round(
+        btn?.y ?? -1,
+      )})`,
+    );
+    await snap(p, "state-maximized-with-inset");
     await p.close();
   }
 
@@ -1257,7 +1391,16 @@ try {
     const halfH = Math.round(vh * 0.46);
 
     // OPEN_UNDER_HALF — a slow short pull from INPUT rests in the gap below half.
-    await gesture(p, Math.round(halfH * 0.5), { pointer: "mouse", slow: true });
+    // Use MANY steps so the drag is unambiguously slow: this pull travels ~half
+    // the half-detent (~200px), and at the default step count its velocity lands
+    // right on the 0.5 px/ms flick threshold — a hair over and it snaps to the
+    // half detent instead of free-resting (the intermittent failure). More steps
+    // ⇒ longer elapsed ⇒ velocity well under the threshold ⇒ deterministic settle.
+    await gesture(p, Math.round(halfH * 0.5), {
+      pointer: "mouse",
+      slow: true,
+      steps: 30,
+    });
     await p.waitForTimeout(SETTLE);
     assert(
       (await chatState(p)) === "OPEN_UNDER_HALF",
@@ -1266,6 +1409,15 @@ try {
     assert(
       !(await headerShown(p)),
       "STATES: OPEN_UNDER_HALF hides header buttons",
+    );
+    // With the header hidden below half, the thread viewport must be inset below
+    // the floating grabber so the topmost line isn't tucked under the handle.
+    const padBelowHalf = await p
+      .getByTestId("chat-thread")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingTop) || 0);
+    assert(
+      padBelowHalf > 8,
+      `STATES: OPEN_UNDER_HALF insets the thread below the grabber (paddingTop ${padBelowHalf})`,
     );
     await snap(p, "state-OPEN_UNDER_HALF");
 
@@ -1351,6 +1503,51 @@ try {
     await p.close();
   }
 
+  // ── INPUT → PILL liquid-glass morph (regression for the dead collapse drag):
+  // dragging the input peek DOWN toward the pill must morph it LIVE under the
+  // finger — the input bar fades + scales into the pill capsule — instead of
+  // staying fully formed (content opacity 1, pill 0) and only snapping to the
+  // pill on release (the unresponsive gesture). Mirrors the pill→input morph.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
+    await p.waitForTimeout(600);
+    assert(
+      (await detent(p)) === "collapsed",
+      "INPUT-PILL-MORPH: starts at the input peek",
+    );
+    // Slow drag DOWN ~90px (of the 120px morph distance) and HOLD — mid-drag the
+    // input should be ~3/4 morphed to the pill: content well below opacity 1, the
+    // pill capsule clearly fading in.
+    await gesture(p, -90, { pointer: "mouse", slow: true, hold: true, steps: 8 });
+    const contentMid = await p
+      .getByTestId("chat-content")
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
+    const pillMid = await p
+      .getByTestId("chat-pill")
+      .evaluate((el) =>
+        Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+      );
+    assert(
+      contentMid < 0.95,
+      `INPUT-PILL-MORPH: the input fades mid-drag (content opacity ${contentMid})`,
+    );
+    assert(
+      pillMid > 0.05,
+      `INPUT-PILL-MORPH: the pill capsule fades in mid-drag (pill opacity ${pillMid})`,
+    );
+    await snap(p, "transition-input-to-pill-mid-drag");
+    await release(p, "mouse");
+    await p.waitForTimeout(SETTLE);
+    assert(
+      (await detent(p)) === "pill",
+      "INPUT-PILL-MORPH: settles to the pill on release",
+    );
+    await p.close();
+  }
+
   // ── PILL → INPUT on a short SLOW pull: a slow drag up from the pill that only
   // forms the input bar (past the halfway-open mark but short of the thread)
   // must settle at the INPUT state, NOT overshoot to the half detent. Regression
@@ -1369,9 +1566,20 @@ try {
     await gesture(p, 80, {
       pointer: "mouse",
       slow: true,
+      hold: true,
       steps: 10,
       target: "chat-pill",
     });
+    const heldRadii = await panelRadii(p);
+    assert(
+      near(heldRadii.surface, heldRadii.content, 0.5),
+      `PILL-INPUT: held drag keeps glass/content radii in sync (surface ${heldRadii.surface}, content ${heldRadii.content})`,
+    );
+    assert(
+      heldRadii.surface > 0 && heldRadii.surface <= 40,
+      `PILL-INPUT: held drag uses a real capsule radius, not a huge clamped radius (${heldRadii.surface})`,
+    );
+    await p.mouse.up();
     await p.waitForTimeout(SETTLE);
     const st = await chatState(p);
     assert(

@@ -8,14 +8,17 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
+  ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
+  ChatTurnStatus,
   ConnectionTestResult,
   ContentBlock,
   Conversation,
   ConversationChannelType,
   ConversationGreeting,
   ConversationMessage,
+  ConversationMessageSearchResponse,
   ConversationMetadata,
   CreateConversationOptions,
   DatabaseConfigResponse,
@@ -72,6 +75,7 @@ import type {
   WorkbenchVfsQuota,
   WorkbenchVfsSnapshot,
 } from "./client-types";
+import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
 type DocumentListOptions = {
   limit?: number;
@@ -283,7 +287,9 @@ declare module "./client-base" {
       noResponseReason?: "ignored";
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
+    sendChatMessage(text: string, channelType?: ConversationChannelType): void;
     sendChatStream(
       text: string,
       onToken: (token: string, accumulatedText?: string) => void,
@@ -297,6 +303,7 @@ declare module "./client-base" {
       usage?: ChatTokenUsage;
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     listConversations(): Promise<{ conversations: Conversation[] }>;
     createConversation(
@@ -308,7 +315,25 @@ declare module "./client-base" {
     }>;
     getConversationMessages(
       id: string,
+      options?: {
+        signal?: AbortSignal;
+        /**
+         * When set, load a window CENTERED on this message id instead of the
+         * default recent window — so a keyword-search jump can scroll to a hit
+         * older than the most-recent turns (#9955). Bypasses the desktop-bridge
+         * RPC fast path (which only knows the recent window).
+         */
+        around?: string;
+      },
     ): Promise<{ messages: ConversationMessage[] }>;
+    /**
+     * Keyword search across every conversation the user can see, ranked by
+     * relevance then recency. Backs the chat message-search affordance.
+     */
+    searchConversationMessages(
+      query: string,
+      options?: { limit?: number; offset?: number; signal?: AbortSignal },
+    ): Promise<ConversationMessageSearchResponse>;
     /**
      * Fetch the cross-channel inbox. Returns the most recent
      * messages across every connector room the agent participates in,
@@ -404,6 +429,7 @@ declare module "./client-base" {
        */
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     sendConversationMessageStream(
       id: string,
@@ -413,6 +439,8 @@ declare module "./client-base" {
       signal?: AbortSignal,
       images?: ImageAttachment[],
       metadata?: Record<string, unknown>,
+      /** Additive: in-flight phase changes for the rich status indicator. */
+      onStatus?: (status: ChatTurnStatus) => void,
     ): Promise<{
       text: string;
       agentName: string;
@@ -424,6 +452,7 @@ declare module "./client-base" {
       /** See sendConversationMessage above. */
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
+      actionResults?: ChatActionResultSummary[];
     }>;
     abortConversationTurn(
       roomId: string,
@@ -779,6 +808,17 @@ ElizaClient.prototype.sendChatRest = async function (
   }
 };
 
+ElizaClient.prototype.sendChatMessage = function (
+  this: ElizaClient,
+  text,
+  channelType = "DM",
+) {
+  void this.sendChatRest(text, channelType).catch(() => {
+    // View affordances use this as a fire-and-forget "ask Eliza" bridge; the
+    // chat surface owns visible delivery/error state for full composer sends.
+  });
+};
+
 ElizaClient.prototype.sendChatStream = async function (
   this: ElizaClient,
   text,
@@ -848,15 +888,26 @@ function withConversationListDefaults<T extends { conversations?: unknown }>(
   return response;
 }
 
+async function invokeLocalDesktopChatRpc<T>(
+  baseUrl: string,
+  options: { rpcMethod: string; ipcChannel: string; params?: unknown },
+): Promise<T | null> {
+  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  return invokeDesktopBridgeRequest<T>(options);
+}
+
 ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet; we catch and
   // fall through to HTTP so the sidebar's polling loop sees the same
   // "transport not ready" semantic as before RPC was wired.
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopChatRpc<{
       conversations: Conversation[];
-    }>({ rpcMethod: "listConversations", ipcChannel: "agent" });
+    }>(this.getBaseUrl(), {
+      rpcMethod: "listConversations",
+      ipcChannel: "agent",
+    });
     if (viaRpc) return withConversationListDefaults(viaRpc);
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
@@ -905,21 +956,33 @@ ElizaClient.prototype.createConversation = async function (
 ElizaClient.prototype.getConversationMessages = async function (
   this: ElizaClient,
   id,
+  options,
 ) {
   let response: { messages: ConversationMessage[] } | null = null;
-  try {
-    response = await invokeDesktopBridgeRequest<{
-      messages: ConversationMessage[];
-    }>({
-      rpcMethod: "getConversationMessages",
-      ipcChannel: "agent",
-      params: { id },
-    });
-  } catch {
-    response = null;
+  // The desktop-bridge RPC only serves the recent window; an `around` jump must
+  // go straight to HTTP so the server can center the window on the target.
+  if (!options?.around) {
+    try {
+      response = await invokeLocalDesktopChatRpc<{
+        messages: ConversationMessage[];
+      }>(this.getBaseUrl(), {
+        rpcMethod: "getConversationMessages",
+        ipcChannel: "agent",
+        params: { id },
+      });
+    } catch {
+      response = null;
+    }
   }
+  // The HTTP path is abortable (a rapid conversation swipe cancels the prior
+  // in-flight load so stacked requests don't race to set the thread); the
+  // desktop bridge path is local + fast and ignores the signal.
+  const query = options?.around
+    ? `?around=${encodeURIComponent(options.around)}`
+    : "";
   response ??= await this.fetch<{ messages: ConversationMessage[] }>(
-    `/api/conversations/${encodeURIComponent(id)}/messages`,
+    `/api/conversations/${encodeURIComponent(id)}/messages${query}`,
+    options?.signal ? { signal: options.signal } : undefined,
   );
   return {
     messages: response.messages.map((message) => {
@@ -930,6 +993,21 @@ ElizaClient.prototype.getConversationMessages = async function (
   };
 };
 
+ElizaClient.prototype.searchConversationMessages = async function (
+  this: ElizaClient,
+  query,
+  options,
+) {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) params.set("limit", String(options.limit));
+  if (options?.offset !== undefined)
+    params.set("offset", String(options.offset));
+  return this.fetch<ConversationMessageSearchResponse>(
+    `/api/conversations/messages/search?${params}`,
+    options?.signal ? { signal: options.signal } : undefined,
+  );
+};
+
 ElizaClient.prototype.getInboxMessages = async function (
   this: ElizaClient,
   options,
@@ -938,10 +1016,10 @@ ElizaClient.prototype.getInboxMessages = async function (
   const query = params.toString();
   const path = query ? `/api/inbox/messages?${query}` : "/api/inbox/messages";
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopChatRpc<{
       messages: Array<ConversationMessage & { roomId: string; source: string }>;
       count: number;
-    }>({
+    }>(this.getBaseUrl(), {
       rpcMethod: "getInboxMessages",
       ipcChannel: "agent",
       params: buildInboxMessagesRpcParams(options),
@@ -958,10 +1036,13 @@ ElizaClient.prototype.getInboxMessages = async function (
 
 ElizaClient.prototype.getInboxSources = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{ sources: string[] }>({
-      rpcMethod: "getInboxSources",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await invokeLocalDesktopChatRpc<{ sources: string[] }>(
+      this.getBaseUrl(),
+      {
+        rpcMethod: "getInboxSources",
+        ipcChannel: "agent",
+      },
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -977,7 +1058,7 @@ ElizaClient.prototype.getInboxChats = async function (
   const query = params.toString();
   const path = query ? `/api/inbox/chats?${query}` : "/api/inbox/chats";
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<{
+    const viaRpc = await invokeLocalDesktopChatRpc<{
       chats: Array<{
         canSend?: boolean;
         id: string;
@@ -992,7 +1073,7 @@ ElizaClient.prototype.getInboxChats = async function (
         messageCount: number;
       }>;
       count: number;
-    }>({
+    }>(this.getBaseUrl(), {
       rpcMethod: "getInboxChats",
       ipcChannel: "agent",
       params: buildInboxChatsRpcParams(options),
@@ -1067,6 +1148,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
     noResponseReason?: "ignored";
     failureKind?: ChatFailureKind;
     localInference?: LocalInferenceChatMetadata;
+    actionResults?: ChatActionResultSummary[];
   }>(`/api/conversations/${encodeURIComponent(id)}/messages`, {
     method: "POST",
     body: JSON.stringify({
@@ -1094,6 +1176,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   signal?,
   images?,
   metadata?,
+  onStatus?,
 ) {
   return this.streamChatEndpoint(
     `/api/conversations/${encodeURIComponent(id)}/messages/stream`,
@@ -1103,6 +1186,7 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     signal,
     images,
     metadata,
+    onStatus,
   );
 };
 

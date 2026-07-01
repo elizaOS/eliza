@@ -7,10 +7,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "webxr"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
+      "../../node_modules/.bun/node_modules/@types",
       "../../../node_modules/@types",
       "../../../node_modules/.bun/node_modules/@types",
       "../../../node_modules",
@@ -26,8 +27,14 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/tui": ["../../packages/tui/src/index.ts"],
+      "@elizaos/tui/*": ["../../packages/tui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/plugin-health": ["./src/index.ts"],
+      "@elizaos/plugin-health/*": ["./src/*"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
@@ -37,8 +44,7 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ],
-      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
+      ]
     }
   },
   "include": [

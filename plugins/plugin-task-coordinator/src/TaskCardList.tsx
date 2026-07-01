@@ -35,87 +35,65 @@ interface StatusVisual {
   icon: LucideIcon;
   /** Foreground icon tone. */
   fg: string;
-  /** Medallion background tint. */
-  tint: string;
-  /** Medallion ring tone — keeps the circle legible against the card. */
-  ring: string;
   /** Status-dot color for the trailing chip. */
   dot: string;
   pulse: boolean;
 }
 
-// Single source of per-status visuals. Tints lean on theme tokens only — orange
-// accent for in-flight, ok/warn/danger for terminal/attention, muted for idle.
+// Single source of per-status visuals. Use color and iconography instead of
+// boxed badges so the task lists stay dense.
 const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
   open: {
     icon: Circle,
     fg: "text-accent",
-    tint: "bg-accent-subtle",
-    ring: "ring-accent/25",
     dot: "bg-accent",
     pulse: false,
   },
   active: {
     icon: CirclePlay,
     fg: "text-ok",
-    tint: "bg-ok/12",
-    ring: "ring-ok/25",
     dot: "bg-ok",
     pulse: true,
   },
   validating: {
     icon: CircleDashed,
     fg: "text-accent",
-    tint: "bg-accent-subtle",
-    ring: "ring-accent/25",
     dot: "bg-accent",
     pulse: true,
   },
   waiting_on_user: {
     icon: UserRound,
     fg: "text-warn",
-    tint: "bg-warn/12",
-    ring: "ring-warn/25",
     dot: "bg-warn",
     pulse: false,
   },
   blocked: {
     icon: OctagonX,
     fg: "text-warn",
-    tint: "bg-warn/12",
-    ring: "ring-warn/25",
     dot: "bg-warn",
     pulse: false,
   },
   interrupted: {
     icon: CircleAlert,
     fg: "text-warn",
-    tint: "bg-warn/12",
-    ring: "ring-warn/25",
     dot: "bg-warn",
     pulse: false,
   },
   done: {
     icon: CircleCheck,
     fg: "text-ok",
-    tint: "bg-ok/12",
-    ring: "ring-ok/25",
     dot: "bg-ok",
     pulse: false,
   },
   failed: {
     icon: CircleX,
     fg: "text-danger",
-    tint: "bg-danger/12",
-    ring: "ring-danger/25",
     dot: "bg-danger",
     pulse: false,
   },
   archived: {
     icon: Archive,
     fg: "text-muted",
-    tint: "bg-surface",
-    ring: "ring-border",
     dot: "bg-muted",
     pulse: false,
   },
@@ -131,11 +109,11 @@ export function statusLabel(status: string, t: Translate): string {
   });
 }
 
-/** Round status medallion — the card's primary visual anchor. */
+/** Status icon — the row's primary visual anchor. */
 export function TaskStatusMedallion({
   status,
-  size = "h-11 w-11",
-  iconSize = "h-5 w-5",
+  size = "h-8 w-8",
+  iconSize = "h-4 w-4",
 }: {
   status: string;
   size?: string;
@@ -145,7 +123,7 @@ export function TaskStatusMedallion({
   const Icon = visual.icon;
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center rounded-2xl ring-1 ${size} ${visual.tint} ${visual.ring}`}
+      className={`relative inline-flex shrink-0 items-center justify-center ${size}`}
     >
       <Icon
         className={`${iconSize} ${visual.fg}${visual.pulse ? " animate-pulse" : ""}`}
@@ -166,7 +144,7 @@ export function TaskStatusChip({
   const visual = statusVisual(status);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-semibold ${visual.tint} ${visual.fg}`}
+      className={`inline-flex items-center gap-1.5 text-2xs font-medium ${visual.fg}`}
     >
       <span
         className={`h-1.5 w-1.5 rounded-full ${visual.dot}${visual.pulse ? " animate-pulse" : ""}`}
@@ -188,7 +166,7 @@ export function TaskMetaChip({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md bg-surface px-1.5 py-0.5 text-2xs tabular-nums ${
+      className={`inline-flex items-center gap-1 text-2xs tabular-nums ${
         tone === "accent" ? "text-accent" : "text-muted"
       }`}
     >
@@ -200,8 +178,7 @@ export function TaskMetaChip({
   );
 }
 
-/** Softened search field — rounded surface pill with an inset search glyph.
- * Shared so both landings read identically. */
+/** Search field shared so both landings read identically. */
 export function TaskSearchInput({
   value,
   onChange,
@@ -221,10 +198,10 @@ export function TaskSearchInput({
 }) {
   return (
     <div
-      className={`relative flex h-9 items-center rounded-full border border-border/50 bg-surface/60 transition-colors focus-within:border-accent/50 focus-within:bg-surface ${className ?? "flex-1"}`}
+      className={`relative flex h-9 items-center border-border/35 border-b transition-colors focus-within:border-accent/60 ${className ?? "flex-1"}`}
     >
       <Search
-        className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-muted"
+        className="pointer-events-none absolute left-1 h-3.5 w-3.5 text-muted"
         aria-hidden
       />
       <input
@@ -234,7 +211,7 @@ export function TaskSearchInput({
         placeholder={placeholder}
         aria-label={placeholder}
         data-testid={testId}
-        className="h-full w-full bg-transparent pl-9 pr-3 text-sm text-txt outline-none placeholder:text-muted"
+        className="h-full w-full bg-transparent pl-7 pr-1 text-sm text-txt outline-none placeholder:text-muted"
         {...agentProps}
       />
     </div>
@@ -255,7 +232,7 @@ export function SparseWatermark({ icon }: { icon: LucideIcon }) {
   );
 }
 
-/** The shared visual task card. Clicking opens the view's full-pane detail. */
+/** Shared task row. Clicking opens the view's full-pane detail. */
 export function TaskCard({
   id,
   title,
@@ -275,7 +252,6 @@ export function TaskCard({
   onOpen: (id: string) => void;
   t: Translate;
 }) {
-  const visual = statusVisual(status);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `task-card-${id}`,
     role: "list-item",
@@ -289,13 +265,9 @@ export function TaskCard({
       type="button"
       onClick={() => onOpen(id)}
       data-testid="task-card"
-      className="group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl bg-bg-accent/20 p-3 text-left transition-colors hover:bg-bg-hover/50"
+      className="group relative flex w-full items-start gap-2 px-1 py-2 text-left transition-colors hover:bg-bg-hover/30"
       {...agentProps}
     >
-      <span
-        className={`absolute inset-y-0 left-0 w-1 ${visual.dot}`}
-        aria-hidden
-      />
       <TaskStatusMedallion status={status} />
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-center gap-2">
@@ -319,7 +291,7 @@ export function TaskCard({
   );
 }
 
-/** Page header: medallion + title + count chips. Shared across both views. */
+/** Compact page header shared across both views. */
 export function TaskListHeader({
   icon,
   title,
@@ -332,22 +304,20 @@ export function TaskListHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="flex items-center gap-3 px-1 py-1">
-      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-accent-subtle text-accent">
-        {icon}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <h1 className="truncate text-lg font-semibold tracking-tight text-txt-strong">
+    <header className="flex items-center gap-2 px-1 py-0.5">
+      <span className="shrink-0 text-accent">{icon}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <h1 className="truncate text-base font-semibold text-txt-strong">
           {title}
         </h1>
-        <div className="flex flex-wrap items-center gap-1.5">{counts}</div>
+        <div className="flex flex-wrap items-center gap-2">{counts}</div>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </header>
   );
 }
 
-/** A labeled count pill for the header (e.g. "3 active"). */
+/** Labeled count text for the header (e.g. "3 active"). */
 export function TaskCountChip({
   value,
   label,
@@ -359,18 +329,16 @@ export function TaskCountChip({
 }) {
   const toneClass =
     tone === "active"
-      ? "bg-ok/12 text-ok"
+      ? "text-ok"
       : tone === "accent"
-        ? "bg-accent-subtle text-accent"
+        ? "text-accent"
         : tone === "warn"
-          ? "bg-warn/12 text-warn"
-          : "bg-surface text-muted";
+          ? "text-warn"
+          : "text-muted";
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-2xs ${toneClass}`}
-    >
+    <span className={`inline-flex items-baseline gap-1 text-2xs ${toneClass}`}>
       <span className="font-semibold tabular-nums">{value}</span>
-      <span className="uppercase tracking-[0.08em] opacity-70">{label}</span>
+      <span className="opacity-70">{label}</span>
     </span>
   );
 }
@@ -397,13 +365,13 @@ export function TaskEmptyState({
         aria-hidden
       />
       <p className="text-sm font-medium text-muted">{title}</p>
-      <p className="sr-only">{hint}</p>
+      <p className="max-w-xs text-xs text-muted/80">{hint}</p>
       {action ? <div>{action}</div> : null}
     </div>
   );
 }
 
-/** A back-to-list chip used to leave a full-pane detail. */
+/** Back-to-list control used to leave a full-pane detail. */
 export function BackChip({
   label,
   onClick,
@@ -426,7 +394,7 @@ export function BackChip({
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-bg-accent/40 px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-txt"
+      className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-muted transition-colors hover:text-txt"
       {...agentProps}
     >
       <span aria-hidden>←</span>

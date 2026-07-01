@@ -1,7 +1,8 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -9,12 +10,17 @@ const repoRoot = path.resolve(here, "../../..");
 const uiSrc = path.resolve(here, "../src");
 const sharedSrc = path.resolve(here, "../../shared/src");
 const sharedAssets = path.resolve(here, "../../shared/assets");
+const cleanupHelper = path.resolve(
+  repoRoot,
+  "packages/scripts/rm-path-recursive.mjs",
+);
 const coreBrowserShim = path.resolve(here, "src/eliza-core-browser-shim.ts");
 const fastRedactShim = path.resolve(here, "src/fast-redact-browser-shim.ts");
 const nodeBuiltinsShim = path.resolve(
   here,
   "src/node-builtins-browser-shim.ts",
 );
+const tuiBrowserShim = path.resolve(here, "src/elizaos-tui-browser-shim.ts");
 const loggerSrc = path.resolve(repoRoot, "packages/logger/src/index.ts");
 
 // Brand components (ElizaLogo, lockups, …) reference assets under `/brand/*`
@@ -49,7 +55,10 @@ function brandAssetsPlugin(): Plugin {
     },
     closeBundle() {
       const dest = path.resolve(here, "dist/brand");
-      fs.rmSync(dest, { recursive: true, force: true });
+      execFileSync("node", [cleanupHelper, dest], {
+        cwd: repoRoot,
+        stdio: "inherit",
+      });
       fs.cpSync(sharedAssets, dest, { recursive: true });
     },
   };
@@ -65,21 +74,34 @@ export default defineConfig({
   },
   plugins: [react(), brandAssetsPlugin()],
   resolve: {
-    alias: {
-      "@ui-src": uiSrc,
-      "@elizaos/core": coreBrowserShim,
-      "@elizaos/logger": loggerSrc,
-      "@elizaos/shared": sharedSrc,
-      "fast-redact": fastRedactShim,
+    alias: [
+      { find: "@ui-src", replacement: uiSrc },
+      // Resolve @elizaos/ui from THIS package's source (not its built dist) so
+      // the registered-views page and the plugin register modules share ONE
+      // spatial renderer instance — the source one that captures view thunks
+      // (`getSpatialViewThunk`). With a dist resolution they'd hit two different
+      // renderer modules and the thunk registry would come up empty.
+      { find: /^@elizaos\/ui$/, replacement: path.resolve(uiSrc, "index.ts") },
+      { find: /^@elizaos\/ui\/(.+)$/, replacement: `${uiSrc}/$1` },
+      { find: "@elizaos/core", replacement: coreBrowserShim },
+      { find: "@elizaos/logger", replacement: loggerSrc },
+      { find: /^@elizaos\/shared$/, replacement: sharedSrc },
+      { find: /^@elizaos\/shared\/(.+)$/, replacement: `${sharedSrc}/$1` },
+      // The spatial views' register modules import @elizaos/ui/spatial/tui →
+      // @elizaos/tui; the full tui entry pulls a node:child_process access that
+      // throws in the browser. Shim it to the pure registry + width utils so the
+      // GUI/XR registered-views page can populate the registry and render.
+      { find: "@elizaos/tui", replacement: tuiBrowserShim },
+      { find: "fast-redact", replacement: fastRedactShim },
       // The shared barrel re-exports a node-only package-root resolver
       // (utils/eliza-root.ts). The catalog never calls it, but its top-level
       // `node:*` imports throw under Vite's dev externalization; alias to browser shims.
-      "node:url": nodeBuiltinsShim,
-      "node:fs/promises": nodeBuiltinsShim,
-      "node:fs": nodeBuiltinsShim,
-      "node:path": nodeBuiltinsShim,
-      "node:os": nodeBuiltinsShim,
-    },
+      { find: "node:url", replacement: nodeBuiltinsShim },
+      { find: "node:fs/promises", replacement: nodeBuiltinsShim },
+      { find: "node:fs", replacement: nodeBuiltinsShim },
+      { find: "node:path", replacement: nodeBuiltinsShim },
+      { find: "node:os", replacement: nodeBuiltinsShim },
+    ],
   },
   optimizeDeps: {
     esbuildOptions: {

@@ -6,28 +6,33 @@ The recovery table for the failures you'll actually encounter when running the S
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `409 name_collision` from `postApiV1Apps` | Another app on the org or globally already uses this name | Append a 6-char random base36 suffix (`Math.random().toString(36).slice(2, 8)`) and retry once. If the retry also collides, surface to the human — that's a naming conflict the agent shouldn't auto-resolve a second time. |
+| `409 name_collision` from `createApp` | Another app on the org or globally already uses this name | Append a 6-char random base36 suffix (`Math.random().toString(36).slice(2, 8)`) and retry once. If the retry also collides, surface to the human — that's a naming conflict the agent shouldn't auto-resolve a second time. |
 | `400 invalid_app_url` | The placeholder URL doesn't match the cloud's URL-format check | Use `https://placeholder.invalid` (the canonical placeholder); RFC-2606 reserves `.invalid` so it always parses but never resolves. |
 | `403 quota_exceeded` on app creation | Org has hit its `apps_per_org` limit | Tell the human; they need to retire an old app or upgrade the tier. Do not silently delete an existing app. |
 
-## Image build / push failures (step 2)
+## Image failures (step 2)
 
-The agent's job, not the SDK's. Common shapes:
-
-| Symptom | Cause | Recovery |
-|---|---|---|
-| `denied: requested access to the resource is denied` on push | Registry credentials missing or wrong scope | Ask the human to fix registry creds; pause until resolved. |
-| `manifest unknown` / `403` from registry | The image tag doesn't exist (build silently failed) | Re-run the build with `--quiet=false` to see the actual error; surface that to the human if it's a Dockerfile issue. |
-| Image pushes fine but container deploy fails health-check | Image's server doesn't bind to `$PORT`, or binds to `127.0.0.1` instead of `0.0.0.0` | Read `cloud.routes.getApiV1ContainersByIdLogs(id)`, find the bind line, fix the Dockerfile or server.ts. |
-
-## Container deploy failures (step 3)
+You do not build or push an image — apps deploy a prebuilt, allowlisted
+first-party image. These surface as deploy errors (`getAppDeployStatus().error`)
+in step 3:
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `402 insufficient_balance` from `postApiV1Containers` | Org has zero credits AND zero earnings | Tell the human to top up at `/dashboard/billing`. There's no auto-recovery here — an agent that can't pay can't deploy. |
-| Container starts but `status` stays `pending` for >5 min | Image pull is slow (large image) or scheduler is congested | Wait up to 10 min before declaring failure. Past that, pull container logs and surface. |
-| Container hits `crash_loop` immediately | Image runs but exits non-zero on startup | Pull `getApiV1ContainersByIdLogs(id)`, surface the stderr to the human, pause. Common causes: missing env var, server bind issue, missing dependency in the image. |
-| `403 quota_exceeded` on container deploy | Org has hit `containers_per_org` | Tell the human; they need to remove a container or upgrade. |
+| `Image '<ref>' is not permitted ... outside the allowed image namespaces` | `metadata.imageTag` / `APP_DEFAULT_IMAGE` is outside the first-party `ghcr.io/elizaos/*` allowlist (`APPS_DEPLOY_IMAGE_ALLOWLIST`, fail-closed) | Use an allowlisted `ghcr.io/elizaos/*` image — the stamped template default already is. Do NOT push your own image to an arbitrary registry; that path is denied. |
+| `builds from a git repo, but build-from-repo is disabled` | A repo-linked app has no prebuilt image and build-from-repo is off (no `APPS_IMAGE_REGISTRY`) | Register as a template app (`skipGitHubRepo: true`) so the first-party template image is stamped, or set an explicit allowlisted `metadata.imageTag`. |
+| `No image to deploy ... set app.metadata.imageTag, or APP_DEFAULT_IMAGE` | Neither a stamped template image nor a prebuilt override resolved | Re-create the app with `skipGitHubRepo: true` (stamps the template image), or set `APP_DEFAULT_TEMPLATE_IMAGE` on the deploy backend. |
+
+## Deploy failures (step 3)
+
+`cloud.deployApp(appId)` kicks off the managed deploy; poll `cloud.getAppDeployStatus(appId)`.
+
+| Symptom | Cause | Recovery |
+|---|---|---|
+| `503 { code: "apps_deploy_disabled" }` from `deployApp` | `APPS_DEPLOY_ENABLED` is not `1` on the Worker | The apps-deploy backend isn't armed for this environment. Report to the human; do not work around it. |
+| `403` from `deployApp` | Org is not on the production deploy allowlist | Report to the human — the org must be allowlisted for apps deploy. |
+| `402 insufficient_balance` | Org has zero credits AND zero earnings | Tell the human to top up at `/dashboard/billing`. There's no auto-recovery — an agent that can't pay can't deploy. |
+| `getAppDeployStatus().status === "error"` | The deploy failed (image-allowlist reject, image pull, crash on boot) | Read `status.error` and surface it. There is NO per-container logs/health/metrics SDK route; the deploy status error string is the only signal. |
+| `status` stuck on `pending` / `building` for >10 min | Image pull slow or scheduler congested | Wait up to ~10 min before declaring failure, then surface `status.error`. |
 
 ## Monetization configuration (step 4)
 
@@ -43,7 +48,7 @@ Rare:
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `400 invalid_origin` | Container's `load_balancer_url` is nil because container isn't ready yet | Re-poll `getApiV1ContainersById` until `status === "running"` and `load_balancer_url` is populated, then patch. |
+| `400 invalid_origin` | The deployed URL isn't ready yet | Re-poll `getAppDeployStatus(appId)` until `status === "ready"` and `vercelUrl` is populated (else use the app's `*.apps.elizacloud.ai` subdomain), then patch. |
 
 ## Custom domain (post-skill, optional)
 

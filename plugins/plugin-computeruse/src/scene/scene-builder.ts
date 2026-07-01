@@ -62,6 +62,7 @@ import type {
   SceneAxNode,
   SceneFocusedWindow,
   SceneOcrBox,
+  SceneVlmElement,
 } from "./scene-types.js";
 
 const IDLE_THRESHOLD_MS = 2000;
@@ -187,6 +188,26 @@ export class SceneBuilder extends EventEmitter {
     return this.latestScene;
   }
 
+  /**
+   * Populate the VLM annotations on the current scene (#9105 M3). The Brain /
+   * DirtyTileDescriber produce `vlm_scene` (a one-paragraph description) and
+   * `vlm_elements` (described tiles); these were previously always `null`
+   * because nothing ever wrote them. Persisting them here lets the next
+   * provider read carry the cheap understanding instead of re-describing, and
+   * they survive subsequent ticks via the `latestScene?.vlm_*` pass-through.
+   */
+  setVlmAnnotations(
+    vlmScene: string | null,
+    vlmElements: SceneVlmElement[] | null,
+  ): void {
+    if (!this.latestScene) return;
+    this.latestScene = {
+      ...this.latestScene,
+      vlm_scene: vlmScene,
+      vlm_elements: vlmElements,
+    };
+  }
+
   /** Subscribe to scene updates. Returns an unsubscribe function. */
   subscribe(handler: (event: SceneUpdateEvent) => void): () => void {
     const listener = (event: SceneUpdateEvent): void => handler(event);
@@ -271,28 +292,34 @@ export class SceneBuilder extends EventEmitter {
             dims.width,
             dims.height,
           );
-          const crops: Array<{
+          // Capture all dirty regions concurrently — they are independent OS
+          // grabs, so wall-clock is max(region) not sum(region). If ANY region
+          // fails we drop to full-frame OCR for this display (unchanged
+          // semantics). Promise.all preserves order, so OCR id assignment
+          // downstream stays deterministic.
+          let crops: Array<{
             png: Buffer;
             bbox: [number, number, number, number];
           }> = [];
-          for (const rect of rects) {
-            try {
-              const regionCapture = await this.deps.captureRegion(displayId, {
-                x: rect.bbox[0],
-                y: rect.bbox[1],
-                width: rect.bbox[2],
-                height: rect.bbox[3],
-              });
-              crops.push({ png: regionCapture.frame, bbox: rect.bbox });
-            } catch (err) {
-              this.deps.log(
-                `[scene-builder] captureRegion(${displayId}, ${rect.bbox.join(",")}) failed: ${
-                  err instanceof Error ? err.message : String(err)
-                } — falling back to full-frame OCR for this display`,
-              );
-              crops.length = 0;
-              break;
-            }
+          try {
+            crops = await Promise.all(
+              rects.map(async (rect) => {
+                const regionCapture = await this.deps.captureRegion(displayId, {
+                  x: rect.bbox[0],
+                  y: rect.bbox[1],
+                  width: rect.bbox[2],
+                  height: rect.bbox[3],
+                });
+                return { png: regionCapture.frame, bbox: rect.bbox };
+              }),
+            );
+          } catch (err) {
+            this.deps.log(
+              `[scene-builder] captureRegion(${displayId}) failed: ${
+                err instanceof Error ? err.message : String(err)
+              } — falling back to full-frame OCR for this display`,
+            );
+            crops = [];
           }
           if (crops.length > 0) {
             const refreshed = await this.deps.runOcrOnCrops(

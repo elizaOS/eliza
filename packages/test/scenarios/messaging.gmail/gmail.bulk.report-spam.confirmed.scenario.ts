@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.bulk.report-spam.confirmed",
   title: "Report Gmail spam only after destructive confirmation",
   domain: "messaging.gmail",
@@ -71,7 +72,7 @@ export default scenario({
       type: "gmailBatchModify",
       body: {
         addLabelIds: "SPAM",
-        removeLabelIds: "MESSAGE",
+        removeLabelIds: "INBOX",
       },
     },
     {

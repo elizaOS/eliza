@@ -158,6 +158,12 @@ jobs:
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n
 
+      - name: Prepare dev workspace packages
+        # `bun run dev` starts Vite from a clean checkout. Build the app's
+        # workspace dependencies first so Vite can resolve package exports like
+        # @elizaos/core instead of failing before the benchmark can run.
+        run: bun run dev:prepare
+
       - name: Boot dev agent
         env:
           ELIZA_API_PORT: "31337"
@@ -372,7 +378,7 @@ jobs:
 
       - name: Setup Python
         if: ${{ env.PUBLISH_SKIPPED != '1' }}
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.11"
 

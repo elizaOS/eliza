@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { SegmentedControl } from "../ui/segmented-control";
 import { DynamicViewLoader } from "../views/DynamicViewLoader";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -46,7 +46,9 @@ export function DatabasePageView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { t, databaseSubTab, setState } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const databaseSubTab = useAppSelector((s) => s.databaseSubTab);
+  const setState = useAppSelector((s) => s.setState);
   const dbTabs = [
     {
       id: "tables" as const,

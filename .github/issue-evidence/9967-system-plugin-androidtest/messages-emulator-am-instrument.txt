@@ -1,0 +1,8 @@
+
+ai.eliza.plugins.messages.MessagesReaderInstrumentedTest:.
+
+Time: 0.035
+
+OK (1 test)
+
+

@@ -21,14 +21,21 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { logger } from "@elizaos/core";
 import { ensureDefaultAssignment } from "./assignments";
 import {
 	buildHuggingFaceResolveUrl,
 	buildHuggingFaceResolveUrlForPath,
 	findCatalogModel,
 	isDefaultEligibleId,
+	resolveHfDownloadBase,
 } from "./catalog";
 import { deviceCapsFromProbe, probeHardware } from "./hardware";
+import {
+	libStagedName,
+	resolveHostLibTargets,
+	selectBundleLibFiles,
+} from "./lib-target";
 import {
 	type Eliza1DeviceCaps,
 	type Eliza1FileEntry,
@@ -43,12 +50,14 @@ import {
 	localInferenceRoot,
 } from "./paths";
 import { upsertElizaModel } from "./registry";
-import type {
-	CatalogModel,
-	DownloadEvent,
-	DownloadJob,
-	DownloadState,
-	InstalledModel,
+import {
+	type CatalogModel,
+	classifyCatalogModelRuntimeClass,
+	type DownloadEvent,
+	type DownloadJob,
+	type DownloadState,
+	type HardwareProbe,
+	type InstalledModel,
 } from "./types";
 import { hashFile } from "./verify";
 
@@ -97,6 +106,8 @@ export interface DownloaderOptions {
 	probeDeviceCaps?: () => Promise<Eliza1DeviceCaps>;
 	/** Verify-on-device smoke run; see {@link VerifyBundleOnDevice}. */
 	verifyOnDevice?: VerifyBundleOnDevice;
+	/** Override the hardware probe used by the disk-space preflight (tests). */
+	probeHardware?: () => Promise<HardwareProbe>;
 }
 
 async function defaultProbeDeviceCaps(): Promise<Eliza1DeviceCaps> {
@@ -147,6 +158,8 @@ interface DownloadedFile {
 const PROGRESS_THROTTLE_MS = 250;
 const TERMINAL_DOWNLOADS_FILENAME = "download-status.json";
 const TERMINAL_DOWNLOAD_LIMIT = 32;
+/** Headroom kept free above the download size for the disk-space preflight. */
+const DISK_HEADROOM_GB = 0.5;
 
 interface TerminalDownloadsFile {
 	version: 1;
@@ -178,6 +191,26 @@ function stagingFilename(modelId: string): string {
 function finalFilename(model: CatalogModel): string {
 	const safe = model.id.replace(/[^a-zA-Z0-9._-]/g, "_");
 	return `${safe}.gguf`;
+}
+
+/**
+ * GGUF files begin with the ASCII magic `GGUF`. A non-GGUF body (e.g. an HTML
+ * auth/redirect page returned with HTTP 200 by a gated repo) must never be
+ * registered as an installed model.
+ */
+async function hasGgufMagic(filePath: string): Promise<boolean> {
+	try {
+		const handle = await fsp.open(filePath, "r");
+		try {
+			const buffer = Buffer.alloc(4);
+			await handle.read(buffer, 0, 4, 0);
+			return buffer.toString("ascii") === "GGUF";
+		} finally {
+			await handle.close();
+		}
+	} catch {
+		return false;
+	}
 }
 
 function bundleDirname(modelId: string): string {
@@ -286,10 +319,12 @@ export class Downloader {
 	private readonly lastEmit = new Map<string, number>();
 	private readonly probeDeviceCaps: () => Promise<Eliza1DeviceCaps>;
 	private readonly verifyOnDevice?: VerifyBundleOnDevice;
+	private readonly probeHardware: () => Promise<HardwareProbe>;
 
 	constructor(options: DownloaderOptions = {}) {
 		this.probeDeviceCaps = options.probeDeviceCaps ?? defaultProbeDeviceCaps;
 		this.verifyOnDevice = options.verifyOnDevice;
+		this.probeHardware = options.probeHardware ?? probeHardware;
 		this.loadTerminalDownloads();
 	}
 
@@ -319,9 +354,10 @@ export class Downloader {
 	}
 
 	/**
-	 * Start a download for a model. Accepts either a curated catalog id, or
-	 * a full `CatalogModel` spec for ad-hoc HF-search results. Idempotent —
-	 * returns the existing job if one is already running for the same id.
+	 * Start a download for a curated Eliza-1 catalog entry. Object specs are
+	 * accepted only for internal tests that decorate a known Eliza-1 id; ad-hoc
+	 * Hugging Face / ModelScope specs are rejected before any reservation or
+	 * network I/O.
 	 */
 	async start(modelIdOrSpec: string | CatalogModel): Promise<DownloadJob> {
 		const catalogEntry =
@@ -331,6 +367,12 @@ export class Downloader {
 		if (!catalogEntry) {
 			throw new Error(
 				`Unknown model id: ${typeof modelIdOrSpec === "string" ? modelIdOrSpec : "(no id)"}`,
+			);
+		}
+		const curated = findCatalogModel(catalogEntry.id);
+		if (!curated || !isDefaultEligibleId(curated.id)) {
+			throw new Error(
+				"Custom model downloads are disabled; choose an Eliza-1 tier from the curated catalog.",
 			);
 		}
 		const modelId = catalogEntry.id;
@@ -344,7 +386,11 @@ export class Downloader {
 			return { ...existing.job };
 		}
 
-		await ensureDirs();
+		// Reserve the slot SYNCHRONOUSLY — before any await — so a second
+		// concurrent start(sameId) sees it at the check above and returns the same
+		// job instead of racing a second write stream onto the same .part file
+		// (which corrupts the GGUF). All path derivation is synchronous; the resume
+		// offset is filled in after the reservation is held.
 		const stagingPath = path.join(
 			downloadsStagingDir(),
 			stagingFilename(modelId),
@@ -355,7 +401,7 @@ export class Downloader {
 			jobId: randomUUID(),
 			modelId,
 			state: "queued",
-			received: await partialSize(stagingPath),
+			received: 0,
 			total: Math.round(catalogEntry.sizeGb * 1024 ** 3),
 			bytesPerSec: 0,
 			etaMs: null,
@@ -371,6 +417,10 @@ export class Downloader {
 			finalPath,
 		};
 		this.active.set(modelId, record);
+
+		// Slot is held — now safe to await; a concurrent caller short-circuits above.
+		await ensureDirs();
+		job.received = await partialSize(stagingPath);
 
 		// Fire-and-forget; errors are captured and emitted as a "failed" event.
 		void this.runJob(catalogEntry, record).catch(() => {
@@ -479,12 +529,41 @@ export class Downloader {
 		this.emit({ type: "progress", job: { ...record.job } });
 	}
 
+	/**
+	 * Disk-space preflight. The remaining download must fit on the models
+	 * volume with a small headroom margin, or we fail the job up front with an
+	 * actionable message instead of letting it stream gigabytes and die with
+	 * ENOSPC near the end. Best-effort: when free disk can't be probed we let
+	 * the download proceed (the post-hoc ENOSPC handling still catches it).
+	 */
+	private async assertDiskSpaceForJob(record: ActiveJob): Promise<void> {
+		const remainingBytes = Math.max(0, record.job.total - record.job.received);
+		if (remainingBytes <= 0) return;
+		let freeDiskGb: number | undefined;
+		try {
+			const probe = await this.probeHardware();
+			freeDiskGb = probe.freeDiskGb ?? probe.mobile?.freeStorageGb ?? undefined;
+		} catch {
+			return; // probe failure must never block a download
+		}
+		if (freeDiskGb === undefined) return;
+		const requiredGb = remainingBytes / 1024 ** 3 + DISK_HEADROOM_GB;
+		if (freeDiskGb < requiredGb) {
+			throw new Error(
+				`Not enough disk space: this download needs ~${requiredGb.toFixed(1)} GB ` +
+					`but only ${freeDiskGb.toFixed(1)} GB is free on the models volume. ` +
+					"Free up space and retry.",
+			);
+		}
+	}
+
 	private async runJob(
 		catalogEntry: CatalogModel,
 		record: ActiveJob,
 	): Promise<void> {
 		try {
 			this.updateState(record, "downloading");
+			await this.assertDiskSpaceForJob(record);
 			if (catalogEntry.bundleManifestFile) {
 				await this.runBundleJob(catalogEntry, record);
 				return;
@@ -497,6 +576,7 @@ export class Downloader {
 
 			const headers: Record<string, string> = {
 				"user-agent": "Eliza-LocalInference/1.0",
+				...resolveHfDownloadBase().authHeader,
 			};
 			if (startByte > 0) {
 				headers.range = `bytes=${startByte}-`;
@@ -559,6 +639,22 @@ export class Downloader {
 
 			await fsp.rename(record.stagingPath, record.finalPath);
 
+			// Integrity gate: a gated/private repo can answer HTTP 200 with an
+			// HTML login/error body, which would otherwise be renamed `<id>.gguf`
+			// and registered as an installed model. Reject anything that is not a
+			// real GGUF before it enters the registry, and point the user at the
+			// likely cause (gated bundles resolve through the Eliza Cloud HF
+			// proxy, so the device must be linked to Eliza Cloud).
+			if (!(await hasGgufMagic(record.finalPath))) {
+				await fsp.rm(record.finalPath, { force: true }).catch(() => undefined);
+				throw new Error(
+					`Downloaded file for ${catalogEntry.hfRepo ?? catalogEntry.id} is not a valid GGUF ` +
+						"(it looks like an auth/redirect page, not a model). If the bundle is gated, " +
+						"link this device to Eliza Cloud and retry — gated downloads route through " +
+						"the cloud HuggingFace proxy.",
+				);
+			}
+
 			const finalStat = await fsp.stat(record.finalPath);
 			// Compute SHA256 on commit so we have an integrity baseline. The
 			// chunk hasher we maintain during streaming gives the same result
@@ -579,6 +675,7 @@ export class Downloader {
 				source: "eliza-download",
 				sha256,
 				lastVerifiedAt: new Date().toISOString(),
+				runtimeClass: classifyCatalogModelRuntimeClass(catalogEntry),
 				...(catalogEntry.runtimeRole
 					? { runtimeRole: catalogEntry.runtimeRole }
 					: {}),
@@ -586,8 +683,7 @@ export class Downloader {
 			await upsertElizaModel(installed);
 
 			// First-light convenience: only default-eligible Eliza-1 downloads
-			// can fill empty slots. Ad-hoc Hugging Face downloads remain
-			// explicit opt-in even though Eliza owns the downloaded file.
+			// can fill empty slots.
 			if (isDefaultEligibleId(installed.id)) {
 				await ensureDefaultAssignment(installed.id);
 			}
@@ -654,7 +750,8 @@ export class Downloader {
 		// §7: schema version, RAM budget, and kernel-backend availability are
 		// checked against this device BEFORE any weight byte is fetched. An
 		// incompatible bundle aborts here — there is no "download anyway" path.
-		assertBundleInstallable(manifest, await this.probeDeviceCaps());
+		const deviceCaps = await this.probeDeviceCaps();
+		assertBundleInstallable(manifest, deviceCaps);
 
 		let completedBytes = manifestDownloaded.sizeBytes;
 		const downloaded = new Map<string, DownloadedFile>();
@@ -677,6 +774,47 @@ export class Downloader {
 			record.job.received = completedBytes;
 			record.job.total = Math.max(record.job.total, completedBytes);
 			this.throttleEmit(record);
+		}
+
+		// Fused-lib bundle delivery (#9105): fetch the host-matching native-lib
+		// SET into `<bundleRoot>/lib/`, which the desktop FFI runtime resolves
+		// with no env wiring (`resolveFusedLibraryPath` path #2). Only entries
+		// whose `target` matches the host are fetched; no `lib[]` / no host match
+		// ⇒ skipped (the runtime falls back to a host-staged lib dir, else cloud).
+		// Mobile resolves to no targets — phones ship the lib natively.
+		// Prefer the GPU lib target when this device actually has a CUDA backend
+		// (NVIDIA), so a CUDA-capable host pulls the accelerated set when the
+		// bundle hosts one; everything else takes the CPU baseline. macOS arm64
+		// already resolves to the metal set (which carries the CPU fallback).
+		const preferGpu = deviceCaps.availableBackends.includes("cuda");
+		const selectedLib = selectBundleLibFiles(
+			manifest,
+			resolveHostLibTargets({ preferGpu }),
+		);
+		if (selectedLib) {
+			for (const libEntry of selectedLib.files) {
+				const relPath = `lib/${libStagedName(libEntry)}`;
+				const result = await this.downloadRemotePath(
+					catalogEntry,
+					libEntry.path,
+					path.join(
+						downloadsStagingDir(),
+						bundleStagingFilename(catalogEntry.id, relPath),
+					),
+					bundleTargetPath(bundleRoot, relPath),
+					record,
+					completedBytes,
+					libEntry.sha256,
+				);
+				completedBytes += result.sizeBytes;
+				record.job.received = completedBytes;
+				record.job.total = Math.max(record.job.total, completedBytes);
+				this.throttleEmit(record);
+			}
+			logger.info(
+				`[local-inference] staged fused lib set for ${catalogEntry.id} ` +
+					`(target=${selectedLib.target}, ${selectedLib.files.length} file(s)) → ${bundleRoot}/lib`,
+			);
 		}
 
 		const textEntry = manifest.files.text.find(
@@ -731,6 +869,7 @@ export class Downloader {
 			source: "eliza-download",
 			sha256: textFile.sha256,
 			lastVerifiedAt: now,
+			runtimeClass: classifyCatalogModelRuntimeClass(catalogEntry),
 			...bundleMeta,
 		};
 		await upsertElizaModel(installed);
@@ -787,15 +926,16 @@ export class Downloader {
 		let startByte = expectedSha256 ? await partialSize(stagingPath) : 0;
 		record.job.received = baseBytes + startByte;
 
+		const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 		const headers: Record<string, string> = {
 			"user-agent": "Eliza-LocalInference/1.0",
+			...resolveHfDownloadBase().authHeader,
 		};
 		if (startByte > 0) {
 			headers.range = `bytes=${startByte}-`;
 		}
 
 		const httpClient = await this.loadHttpClient();
-		const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
 		const response = await httpClient.request(url, {
 			method: "GET",
 			headers,

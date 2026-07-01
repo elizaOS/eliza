@@ -3,13 +3,22 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetResourceCache } from "./resource-cache";
-import { useAvailableViews, type ViewRegistryEntry } from "./useAvailableViews";
+import {
+  useAvailableViews,
+  useRoutableViews,
+  type ViewRegistryEntry,
+  withBuiltinShellViews,
+} from "./useAvailableViews";
 
-const { fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
+const { client, fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
+  client: {
+    getBaseUrl: vi.fn(() => ""),
+  },
   fetchWithCsrf: vi.fn(),
   getFrontendPlatform: vi.fn(() => "desktop"),
 }));
 
+vi.mock("../api", () => ({ client }));
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
 
@@ -45,6 +54,7 @@ function view(
 describe("useAvailableViews", () => {
   beforeEach(() => {
     __resetResourceCache();
+    client.getBaseUrl.mockReturnValue("");
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
     getFrontendPlatform.mockReturnValue("desktop");
@@ -62,6 +72,46 @@ describe("useAvailableViews", () => {
       await Promise.resolve();
     });
   }
+
+  it("does not fetch or poll views when network access is disabled", async () => {
+    vi.useFakeTimers();
+
+    const { result } = renderHook(() =>
+      useAvailableViews({ networkEnabled: false }),
+    );
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.views).toEqual([]);
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+      result.current.refresh();
+    });
+    await flushHookEffects();
+
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch app-shell views from a limited cloud agent base", async () => {
+    vi.useFakeTimers();
+    client.getBaseUrl.mockReturnValue(
+      "https://37911a1e-ed40-4626-88f5-0e4dcf249a34.elizacloud.ai",
+    );
+
+    const { result } = renderHook(() => useAvailableViews());
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
 
   it("fetches GUI, TUI, and XR views with the platform header and merges by view type/id", async () => {
     fetchWithCsrf
@@ -111,6 +161,48 @@ describe("useAvailableViews", () => {
     expect(fetchWithCsrf).toHaveBeenNthCalledWith(3, "/api/views?viewType=xr", {
       headers: { "X-Eliza-Platform": "desktop" },
     });
+  });
+
+  it("strips native-OS views (phone/messages/contacts/camera) off the AOSP fork", async () => {
+    fetchWithCsrf
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [
+            view("phone"),
+            view("messages"),
+            view("contacts"),
+            view("camera"),
+            view("wallet"),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // jsdom has no ElizaOS UA marker → not the AOSP fork → natives stripped.
+    expect(result.current.views.map((v) => v.id)).toEqual(["wallet"]);
+  });
+
+  it("keeps native-OS views on the AOSP fork (?android=true)", async () => {
+    window.history.replaceState(null, "", "/?android=true");
+    fetchWithCsrf
+      .mockResolvedValueOnce(
+        response(200, { views: [view("phone"), view("wallet")] }),
+      )
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.views.map((v) => v.id).sort()).toEqual([
+      "phone",
+      "wallet",
+    ]);
+    window.history.replaceState(null, "", "/");
   });
 
   it("keeps XR views returned by the explicit XR registry endpoint", async () => {
@@ -167,6 +259,47 @@ describe("useAvailableViews", () => {
 
     expect(result.current.views).toEqual([]);
     expect(result.current.error).toBeNull();
+  });
+
+  it("adds built-in shell entries only for routable consumers", async () => {
+    fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
+
+    const available = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(available.result.current.loading).toBe(false));
+    expect(
+      available.result.current.views.find((v) => v.id === "documents"),
+    ).toBe(undefined);
+    available.unmount();
+
+    const routable = renderHook(() => useRoutableViews());
+    await waitFor(() => expect(routable.result.current.loading).toBe(false));
+
+    expect(routable.result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "documents",
+        path: "/character/documents",
+        builtin: true,
+        visibleInManager: false,
+        desktopTabEnabled: true,
+      }),
+    );
+  });
+
+  it("does not let built-in shell fallbacks override real registry entries", () => {
+    const routable = withBuiltinShellViews([
+      view("documents", {
+        label: "Registered Documents",
+        path: "/apps/registered-documents",
+        pluginName: "@elizaos/plugin-documents",
+      }),
+    ]);
+
+    expect(routable.find((v) => v.id === "documents")).toMatchObject({
+      id: "documents",
+      label: "Registered Documents",
+      path: "/apps/registered-documents",
+      pluginName: "@elizaos/plugin-documents",
+    });
   });
 
   it("silences 404s and clears views without surfacing an error", async () => {

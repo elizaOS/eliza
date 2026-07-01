@@ -830,7 +830,116 @@ static int self_test(void) {
         }
     }
 
-    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f polar_qjl=%.6f (all finite; fused-attn + tbq V-cache parity OK)\n",
+    /* Split-K vs single-chunk online-softmax merge equivalence (#8848).
+     * FlashAttention decode accumulates attention over the KV cache in chunks
+     * and merges the partial (running-max, denominator, V-mix) state with the
+     * online-softmax rescale recurrence. A race / uninitialized-shared-memory
+     * bug in that merge (the Mali split-K corruption class #8848 flags) makes
+     * the chunked result diverge from the single-pass softmax. #8848 calls a
+     * host-side split-K-vs-single-chunk correctness test "currently missing";
+     * this reproduces the merge in pure C and asserts chunked == single-pass
+     * over identical inputs, guarding the algorithm independent of any GPU
+     * backend (runs on this CPU host, no ggml/Metal/Vulkan needed). */
+    {
+        const int nh = 4, nkv_h = 2, nkv = 24, n_chunks = 3; /* 3 chunks of 8 */
+        const int gqa = nh / nkv_h;
+        const float scale = 0.08838834764831845f;
+        const int chunk_len = nkv / n_chunks;
+        float q_sketch[4 * ELIZA_QJL_PROJECTION_DIM];
+        for (int h = 0; h < nh; h++) {
+            float qr[ELIZA_QJL_HEAD_DIM];
+            for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) qr[i] = rand_normal();
+            eliza_qjl_sketch_query(qr, prj, q_sketch + h * ELIZA_QJL_PROJECTION_DIM);
+        }
+        eliza_block_qjl1_256 pk[2 * 24];
+        for (int hk = 0; hk < nkv_h; hk++)
+            for (int t = 0; t < nkv; t++) {
+                float k[ELIZA_QJL_HEAD_DIM];
+                for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) k[i] = rand_normal();
+                eliza_qjl_quantize_row(k, prj, &pk[hk * nkv + t]);
+            }
+        eliza_block_tbq3_0 pv[2 * 24 * 4];
+        for (int hk = 0; hk < nkv_h; hk++)
+            for (int t = 0; t < nkv; t++)
+                for (int c = 0; c < 4; c++) {
+                    float v32[32];
+                    for (int i = 0; i < 32; i++) v32[i] = rand_normal();
+                    eliza_quantize_tbq3_block(v32, &pv[(hk * nkv + t) * 4 + c]);
+                }
+        float scores[4 * 24];
+        eliza_qjl_score_qk(q_sketch, pk, nh, nkv_h, nkv, scores);
+
+        float maxdiff = 0.0f;
+        for (int hq = 0; hq < nh; hq++) {
+            int hk = hq / gqa;
+            /* Single-pass reference: softmax over all nkv at once, then V-mix. */
+            float ref[128];
+            {
+                float m = -INFINITY;
+                for (int t = 0; t < nkv; t++) {
+                    float r = scores[hq * nkv + t] * scale;
+                    if (r > m) m = r;
+                }
+                double l = 0.0;
+                float w[24];
+                for (int t = 0; t < nkv; t++) {
+                    w[t] = expf(scores[hq * nkv + t] * scale - m);
+                    l += w[t];
+                }
+                for (int d = 0; d < 128; d++) ref[d] = 0.0f;
+                for (int t = 0; t < nkv; t++)
+                    for (int c = 0; c < 4; c++) {
+                        float dec[32];
+                        eliza_tbq3_decode_block_uncond(&pv[(hk * nkv + t) * 4 + c], dec);
+                        for (int i = 0; i < 32; i++) ref[c * 32 + i] += w[t] * dec[i];
+                    }
+                for (int d = 0; d < 128; d++) ref[d] /= (float)l;
+            }
+            /* Chunked / split-K accumulation with online-softmax merge. */
+            float acc[128];
+            for (int d = 0; d < 128; d++) acc[d] = 0.0f;
+            float m_glob = -INFINITY;
+            double l_glob = 0.0;
+            for (int ci = 0; ci < n_chunks; ci++) {
+                int t0 = ci * chunk_len, t1 = t0 + chunk_len;
+                float m_ch = -INFINITY;
+                for (int t = t0; t < t1; t++) {
+                    float r = scores[hq * nkv + t] * scale;
+                    if (r > m_ch) m_ch = r;
+                }
+                double l_ch = 0.0;
+                float acc_ch[128];
+                for (int d = 0; d < 128; d++) acc_ch[d] = 0.0f;
+                for (int t = t0; t < t1; t++) {
+                    float wt = expf(scores[hq * nkv + t] * scale - m_ch);
+                    l_ch += wt;
+                    for (int c = 0; c < 4; c++) {
+                        float dec[32];
+                        eliza_tbq3_decode_block_uncond(&pv[(hk * nkv + t) * 4 + c], dec);
+                        for (int i = 0; i < 32; i++) acc_ch[c * 32 + i] += wt * dec[i];
+                    }
+                }
+                /* Merge this chunk into the running (global) state. */
+                float m_new = m_glob > m_ch ? m_glob : m_ch;
+                float s_glob = (m_glob == -INFINITY) ? 0.0f : expf(m_glob - m_new);
+                float s_ch = expf(m_ch - m_new);
+                l_glob = l_glob * s_glob + l_ch * s_ch;
+                for (int d = 0; d < 128; d++) acc[d] = acc[d] * s_glob + acc_ch[d] * s_ch;
+                m_glob = m_new;
+            }
+            for (int d = 0; d < 128; d++) {
+                float chunked = acc[d] / (float)l_glob;
+                float diff = fabsf(chunked - ref[d]);
+                if (diff > maxdiff) maxdiff = diff;
+            }
+        }
+        if (!(maxdiff < 1e-4f)) {
+            fprintf(stderr, "split-K online-softmax merge parity: max |chunked - single| = %g (> 1e-4)\n", (double)maxdiff);
+            return 1;
+        }
+    }
+
+    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f polar_qjl=%.6f (all finite; fused-attn + tbq V-cache + split-K online-softmax merge parity OK)\n",
            (double)s3, (double)s4, (double)stcq, (double)sqjl, (double)spolar, (double)spolar_qjl);
     return 0;
 }

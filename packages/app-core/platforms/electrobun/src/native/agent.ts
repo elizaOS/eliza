@@ -56,7 +56,6 @@ import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
 import { findFirstAvailableLoopbackPort } from "./loopback-port";
-import { applyBundledWhisperEnv } from "./whisper-env";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -116,6 +115,15 @@ type BunSubprocess = ReturnType<typeof Bun.spawn>;
 const HEALTH_POLL_INTERVAL_MS = process.platform === "win32" ? 2_000 : 500;
 const SIGTERM_GRACE_MS = 5_000;
 const AGENT_NAME_FETCH_TIMEOUT_MS = 5_000;
+
+// Crash auto-restart: when the embedded agent child exits unexpectedly (a crash,
+// not a user-initiated stop), relaunch it with exponential backoff. A rolling
+// window guards against a tight crash loop — after the cap we leave the agent in
+// `error` so the renderer can surface a manual recovery action.
+const AGENT_CRASH_RESTART_WINDOW_MS = 60_000;
+const AGENT_CRASH_RESTART_MAX = 5;
+const AGENT_CRASH_RESTART_BASE_DELAY_MS = 1_000;
+const AGENT_CRASH_RESTART_MAX_DELAY_MS = 30_000;
 const WINDOWS_ABS_PATH_RE = /^[A-Za-z]:[\\/]/;
 const ELIZA_CONFIG_FILENAME = "eliza.json";
 
@@ -1271,21 +1279,39 @@ function shouldAutoRecoverPgliteFailure(line: string): boolean {
  * Set ELIZA_AGENT_RECLAIM_STALE_PORT=1 to restore the old "take over default
  * port" behavior.
  */
+/**
+ * PIDs listening on `port`. POSIX uses `lsof`; Windows uses
+ * `Get-NetTCPConnection` (locale-independent and returns the owning PID
+ * directly — `lsof` does not exist on Windows, so the reclaim was a silent
+ * no-op there before).
+ */
+function listListeningPids(port: number): number[] {
+  const result =
+    process.platform === "win32"
+      ? Bun.spawnSync([
+          "powershell.exe",
+          "-NoProfile",
+          "-Command",
+          `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`,
+        ])
+      : Bun.spawnSync(["lsof", "-ti", `tcp:${port}`]);
+  return new TextDecoder()
+    .decode(result.stdout)
+    .trim()
+    .split(/\r?\n/)
+    .map((p) => parseInt(p.trim(), 10))
+    .filter((n) => !Number.isNaN(n));
+}
+
 async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
   const raw = process.env.ELIZA_AGENT_RECLAIM_STALE_PORT?.trim().toLowerCase();
   if (raw !== "1" && raw !== "true" && raw !== "yes") {
     return;
   }
   try {
-    const lsofResult = Bun.spawnSync(["lsof", "-ti", `tcp:${port}`]);
-    const pids = new TextDecoder()
-      .decode(lsofResult.stdout)
-      .trim()
-      .split("\n")
-      .filter(Boolean);
-    for (const pid of pids) {
-      const numPid = parseInt(pid, 10);
-      if (!Number.isNaN(numPid) && numPid !== process.pid) {
+    const pids = listListeningPids(port);
+    for (const numPid of pids) {
+      if (numPid !== process.pid) {
         diagnosticLog(
           `[Agent] Reclaim: killing process ${numPid} on port ${port} (ELIZA_AGENT_RECLAIM_STALE_PORT)`,
         );
@@ -1300,7 +1326,7 @@ async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
       await new Promise((r) => setTimeout(r, 500));
     }
   } catch {
-    // lsof missing — ignore
+    // port-listing tool missing — ignore
   }
 }
 
@@ -1346,6 +1372,10 @@ export class AgentManager {
   private startupPhase = "not_started";
   private databaseSnapshot: DatabaseSnapshot = createUnknownDatabaseSnapshot();
   private databaseStartupLock: DatabaseStartupLock | null = null;
+  /** Timestamps (ms) of recent crash-triggered restarts, for loop detection. */
+  private readonly crashRestartTimestamps: number[] = [];
+  /** Pending crash auto-restart timer, if one is scheduled. */
+  private autoRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.persistStartupDiagnostics();
@@ -1381,6 +1411,9 @@ export class AgentManager {
       `[Agent] start() called, current state: ${this.status.state}`,
     );
     diagnosticLog(`[Agent] Diagnostic log file: ${getDiagnosticLogPath()}`);
+
+    // A start request (manual or auto-restart) supersedes any queued recovery.
+    this.cancelAutoRestart();
 
     if (this.status.state === "running" || this.status.state === "starting") {
       return this.status;
@@ -1550,12 +1583,6 @@ export class AgentManager {
         cwd: runtimeDistPath,
       });
       applyDatabaseResolutionToEnv(childEnv, databaseResolution);
-      const bundledWhisper = applyBundledWhisperEnv(childEnv, runtimeDistPath);
-      if (bundledWhisper) {
-        diagnosticLog(
-          `[Agent] Bundled Whisper ASR: ${bundledWhisper.libraryPath}`,
-        );
-      }
       const effectiveTarget =
         databaseResolution.mode === "postgres"
           ? redactDatabaseTarget(databaseResolution.postgresUrl)
@@ -1905,6 +1932,10 @@ export class AgentManager {
 
   /** Stop the agent runtime. */
   async stop(): Promise<void> {
+    // A deliberate stop cancels any pending crash auto-restart, regardless of
+    // current state (the crash may have already moved us to `error`).
+    this.cancelAutoRestart();
+
     if (this.status.state !== "running" && this.status.state !== "starting") {
       return;
     }
@@ -2289,6 +2320,7 @@ export class AgentManager {
           );
           this.releaseDatabaseStartupLock();
           this.emitStatus();
+          this.scheduleCrashRestart();
         } else {
           // Expected exit (we called stop)
           this.childProcess = null;
@@ -2320,8 +2352,81 @@ export class AgentManager {
           };
           this.setStartupPhase("process_exit_error", shortError(err));
           this.emitStatus();
+          this.scheduleCrashRestart();
         }
       });
+  }
+
+  /**
+   * Cancel any pending crash auto-restart. Called on user-initiated start/stop
+   * so a deliberate action supersedes a queued recovery.
+   */
+  private cancelAutoRestart(): void {
+    if (this.autoRestartTimer) {
+      clearTimeout(this.autoRestartTimer);
+      this.autoRestartTimer = null;
+    }
+  }
+
+  /**
+   * Schedule an automatic restart after an unexpected child exit (a crash).
+   *
+   * Exponential backoff with a rolling-window loop guard: once the agent has
+   * crash-restarted more than {@link AGENT_CRASH_RESTART_MAX} times inside
+   * {@link AGENT_CRASH_RESTART_WINDOW_MS}, we stop and leave the agent in
+   * `error` (a deterministic failure — bad config, corrupt DB — won't fix itself
+   * by relaunching). PGLite errors are excluded entirely: they need the user's
+   * explicit database-recovery action, not a relaunch.
+   */
+  private scheduleCrashRestart(): void {
+    if (this.autoRestartTimer) return;
+    if (this.hasPgliteError) {
+      diagnosticLog(
+        "[Agent] Skipping crash auto-restart — PGLite error needs manual database recovery.",
+      );
+      return;
+    }
+
+    const now = Date.now();
+    this.crashRestartTimestamps.push(now);
+    while (
+      this.crashRestartTimestamps.length > 0 &&
+      this.crashRestartTimestamps[0] < now - AGENT_CRASH_RESTART_WINDOW_MS
+    ) {
+      this.crashRestartTimestamps.shift();
+    }
+    if (this.crashRestartTimestamps.length > AGENT_CRASH_RESTART_MAX) {
+      diagnosticLog(
+        `[Agent] Crash-restart loop detected (${this.crashRestartTimestamps.length} restarts in ${AGENT_CRASH_RESTART_WINDOW_MS / 1000}s) — leaving agent in error. Manual restart required.`,
+      );
+      return;
+    }
+
+    const attempt = this.crashRestartTimestamps.length;
+    const delay = Math.min(
+      AGENT_CRASH_RESTART_MAX_DELAY_MS,
+      AGENT_CRASH_RESTART_BASE_DELAY_MS * 2 ** (attempt - 1),
+    );
+    diagnosticLog(
+      `[Agent] Scheduling automatic restart after crash (attempt ${attempt}/${AGENT_CRASH_RESTART_MAX}) in ${delay}ms`,
+    );
+    this.autoRestartTimer = setTimeout(() => {
+      this.autoRestartTimer = null;
+      // A user-initiated start/stop since the crash supersedes this recovery.
+      if (this.status.state !== "error") {
+        diagnosticLog(
+          `[Agent] Skipping scheduled restart — state is now ${this.status.state}`,
+        );
+        return;
+      }
+      diagnosticLog("[Agent] Auto-restarting crashed agent...");
+      void this.start().catch((err) => {
+        diagnosticLog(
+          `[Agent] Auto-restart failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }, delay);
+    this.autoRestartTimer.unref?.();
   }
 
   /**

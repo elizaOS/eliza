@@ -7,6 +7,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "rolodex.add-contact",
   title: "Add a new contact to the Rolodex",
   domain: "relationships",
@@ -35,9 +36,6 @@ export default scenario({
       room: "main",
       text: "Add Alice Chen to my contacts, she's at Acme Inc.",
       expectedActions: ["ADD_CONTACT"],
-      expectedActionParams: {
-        ADD_CONTACT: { $regex: "Alice" },
-      },
     },
   ],
 
@@ -46,6 +44,11 @@ export default scenario({
       type: "actionCalled",
       actionName: "ADD_CONTACT",
       minCount: 1,
+    },
+    {
+      type: "selectedActionArguments",
+      actionName: "ADD_CONTACT",
+      includesAny: [/Alice/i],
     },
   ],
 });

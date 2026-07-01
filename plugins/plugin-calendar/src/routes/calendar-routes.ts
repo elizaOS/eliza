@@ -64,15 +64,21 @@ export interface CalendarRouteDeps {
   pathname: string;
   url: URL;
   /** Resolve the calendar service (with telemetry + schema bootstrap) and run `fn`. Returns `true` once handled. */
-  runRoute: (fn: (service: CalendarRouteService) => Promise<void>) => Promise<boolean>;
+  runRoute: (
+    fn: (service: CalendarRouteService) => Promise<void>,
+  ) => Promise<boolean>;
   /** Returns `true` when the request is rate-limited (caller should stop). */
   rateLimit: (key: string) => boolean;
   json: (data: unknown, status?: number) => void;
   readJsonBody: <T extends object>() => Promise<T | null>;
   /** Decode a matched path component, writing a 400 + returning null on failure. */
   decodePathComponent: (raw: string, label: string) => string | null;
-  parseConnectorMode: (value: string | null) => LifeOpsConnectorMode | undefined;
-  parseConnectorSide: (value: string | null) => LifeOpsConnectorSide | undefined;
+  parseConnectorMode: (
+    value: string | null,
+  ) => LifeOpsConnectorMode | undefined;
+  parseConnectorSide: (
+    value: string | null,
+  ) => LifeOpsConnectorSide | undefined;
   parseBoolean: (value: string | null, field: string) => boolean | undefined;
   /** Build a host service error carrying an HTTP status (e.g. LifeOpsServiceError). */
   serviceError: (status: number, message: string) => Error;
@@ -125,11 +131,16 @@ export async function handleCalendarRoutes(
 
   const setIncludedMatch =
     method === "PUT"
-      ? pathname.match(/^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/)
+      ? pathname.match(
+          /^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/,
+        )
       : null;
   if (setIncludedMatch) {
     if (deps.rateLimit("google_api_write")) return true;
-    const calendarId = deps.decodePathComponent(setIncludedMatch[1], "calendarId");
+    const calendarId = deps.decodePathComponent(
+      setIncludedMatch[1],
+      "calendarId",
+    );
     if (!calendarId) return true;
     const body = await deps.readJsonBody<SetLifeOpsCalendarIncludedRequest>();
     if (!body) return true;

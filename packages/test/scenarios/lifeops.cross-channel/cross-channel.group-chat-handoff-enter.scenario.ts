@@ -36,6 +36,7 @@ function checkHandoffRoomPersisted(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "cross-channel.group-chat-handoff-enter",
   title: "Agent enters existing group chat as handoff participant",
   domain: "lifeops.cross-channel",

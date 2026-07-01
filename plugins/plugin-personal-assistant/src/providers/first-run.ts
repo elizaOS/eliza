@@ -12,7 +12,7 @@
  * `enabled_skills`.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess, listLocalAgentBackups } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -28,6 +28,11 @@ export interface FirstRunAffordance {
   oneLine: string;
   suggestedWorkflowKey: "first_run";
   paths: ("defaults" | "customize")[];
+  localBackup?: {
+    available: boolean;
+    count: number;
+    latestCreatedAt?: string;
+  };
 }
 
 const QUIET_RESULT: ProviderResult = {
@@ -40,10 +45,20 @@ const ONE_LINE_MAX = 120;
 const FIRST_RUN_REQUEST_RE =
   /\b(?:first[-\s]?run|first\s+run\s+setup|onboarding|initial\s+(?:setup|configuration)|setup\s+(?:this\s+)?(?:agent|bot|assistant)|configure\s+(?:this\s+)?(?:agent|bot|assistant)|use\s+defaults|customi[sz]e\s+(?:setup|first[-\s]?run))\b/iu;
 
-function buildOneLine(inProgress: boolean, partialPath?: string): string {
+function buildOneLine(
+  inProgress: boolean,
+  partialPath: string | undefined,
+  localBackupAvailable: boolean,
+): string {
   if (inProgress) {
     const where = partialPath === "customize" ? " (customize)" : "";
     return `First-run setup is in progress${where}. Continue the first-run workflow.`.slice(
+      0,
+      ONE_LINE_MAX,
+    );
+  }
+  if (localBackupAvailable) {
+    return "First-run setup hasn't run yet. Ask whether to restore the latest local backup or start fresh.".slice(
       0,
       ONE_LINE_MAX,
     );
@@ -126,12 +141,34 @@ export const firstRunProvider: Provider = {
       return QUIET_RESULT;
     }
 
-    const oneLine = buildOneLine(inProgress, record.path);
+    const localBackups = inProgress
+      ? []
+      : await listLocalAgentBackups(runtime.agentId).catch((error: unknown) => {
+          logger.debug(
+            "[first-run-provider] local backup scan failed:",
+            String(error),
+          );
+          return [];
+        });
+    const latestBackup = localBackups[0];
+    const localBackupAvailable = localBackups.length > 0;
+    const oneLine = buildOneLine(inProgress, record.path, localBackupAvailable);
     const affordance: FirstRunAffordance = {
       kind: "first_run_pending",
       oneLine,
       suggestedWorkflowKey: "first_run",
       paths: ["defaults", "customize"],
+      ...(localBackupAvailable
+        ? {
+            localBackup: {
+              available: true,
+              count: localBackups.length,
+              ...(latestBackup?.createdAt
+                ? { latestCreatedAt: latestBackup.createdAt }
+                : {}),
+            },
+          }
+        : {}),
     };
     return {
       text: oneLine,
@@ -139,6 +176,8 @@ export const firstRunProvider: Provider = {
         firstRunPending: true,
         firstRunStatus: record.status,
         firstRunPath: record.path ?? "",
+        firstRunLocalBackupAvailable: localBackupAvailable,
+        firstRunLocalBackupCount: localBackups.length,
       },
       data: { affordance },
     };

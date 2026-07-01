@@ -64,7 +64,14 @@ export type CacheScope =
 	| "none"
 	| (string & {});
 
-export type RoleGateRole = Role | "USER" | (string & {});
+/**
+ * Canonical role tiers for gate declarations (#9948). Spans both historical
+ * vocabularies — the environment `Role` (OWNER/ADMIN/MEMBER/GUEST/NONE) plus the
+ * `USER` alias of MEMBER. `normalizeGateRole` folds USER→MEMBER and uppercases at
+ * runtime. The previous `(string & {})` escape — which let a gate name ANY
+ * string and silently rank it 0 — is removed: a gate must name a real tier.
+ */
+export type RoleGateRole = Role | "USER";
 
 export interface RoleGate {
 	/** Any one of these roles may pass. */

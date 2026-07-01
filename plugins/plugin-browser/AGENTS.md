@@ -10,7 +10,7 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 ### Actions
 
-- **BROWSER** (`src/actions/browser.ts`) — Core browser control. Dispatches to the active `BrowserService` target. Subactions: `open`, `navigate`, `click`, `type`, `press`, `get`, `state`, `snapshot`, `screenshot`, `reload`, `back`, `forward`, `close`, `show`, `hide`, `wait`, `tab`, `realistic-click`, `realistic-fill`, `realistic-type`, `realistic-press`, `cursor-move`, `cursor-hide`, `autofill_login`. Role-gated OWNER only.
+- **BROWSER** (`src/actions/browser.ts`) — Core browser control. Dispatches to the active `BrowserService` target. Subactions: `open`, `navigate`, `click`, `type`, `press`, `get`, `state`, `snapshot`, `screenshot`, `reload`, `back`, `forward`, `close`, `show`, `hide`, `wait`, `wait_for_url`, `tab`, `realistic-click`, `realistic-fill`, `realistic-type`, `realistic-press`, `cursor-move`, `cursor-hide`, `autofill_login`. Role-gated OWNER only. `wait_for_url` (pure predicate + poll loop in `src/actions/wait-for-url*.ts`) optionally opens a `url`, then polls the current tab URL against a `pattern` (substring, or a `/regex/` literal — invalid regex falls back to substring), streaming a `HandlerCallback` status each poll and resolving with a typed match/timeout result (never throws on timeout). Tunables: `timeoutMs` (default 300000) and `pollIntervalMs` (default 2000).
 - **MANAGE_BROWSER_BRIDGE** (`src/actions/manage-browser-bridge.ts`) — Companion extension lifecycle for Chrome/Safari. Subactions: `install`, `reveal_folder`, `open_manager`, `refresh`. Role-gated OWNER only.
 
 ### Providers
@@ -63,6 +63,8 @@ src/
   actions/
     browser.ts                     BROWSER action
     browser-autofill-login.ts      autofill_login subaction (vault-gated)
+    wait-for-url-predicate.ts      Pure URL-match predicate (substring + /regex/)
+    wait-for-url.ts                wait_for_url poll loop (injectable clock/sleep/url source)
     manage-browser-bridge.ts       MANAGE_BROWSER_BRIDGE action
   providers/
     workspace.ts                   browser_workspace provider
@@ -71,6 +73,9 @@ src/
     workspace-setup.ts             Workspace setup routes
     workspace.ts                   Workspace routes
     workspace-account-gate.ts      Account gate middleware
+  parity/
+    browser-matrix.ts              Machine-checkable BROWSER action parity matrix (#9476)
+    index.ts                       Parity tooling barrel
   targets/
     bridge-target.ts               `bridge` BrowserTarget — dispatches to Chrome/Safari companion
     stagehand-target.ts            `stagehand` BrowserTarget — Playwright/Stagehand fallback
@@ -78,6 +83,7 @@ src/
     browser-workspace.ts           Public API surface and main command router (executeBrowserWorkspaceCommand)
     browser-workspace-types.ts     All workspace types and interfaces
     browser-workspace-state.ts     Mutable tab/session state
+    browser-workspace-errors.ts    Structured workspace error codes
     browser-workspace-helpers.ts   Utilities and command normalization
     browser-workspace-desktop.ts   Desktop bridge HTTP client
     browser-workspace-jsdom.ts     JSDOM document loading and DOM setup
@@ -151,3 +157,45 @@ Plugin activation: `config.features.browser` must be truthy (object with `enable
 - **Bundle-safety guard in `src/index.ts`.** The double-import pattern (re-export + local binding in `__bundle_safety_*`) prevents Bun's tree-shaker from collapsing barrel `init` functions into empty functions on mobile. Do not remove it.
 - **`auto-enable.ts` must stay import-free.** The elizaOS auto-enable engine loads this module for every plugin at boot; it must not transitively import the plugin runtime.
 - See the repo root AGENTS.md for global architecture rules (logger-only, ESM, dependency direction, etc.).
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — CLI / tooling:**
+- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
+- Failure paths: bad args, missing deps, partial state, permission/network errors.
+- A recording/log of the actual run end to end — not a unit test of one helper.
+- Any model interaction captured as a live trajectory and reviewed.
+<!-- END: evidence-and-e2e-mandate -->

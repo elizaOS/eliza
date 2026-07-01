@@ -46,8 +46,8 @@ export type VisionImageInput =
 /**
  * Caller request to `describeImage`. The `modelFamily` distinguishes
  * projected-token cache entries from different VL families that share
- * the same hash space — Qwen3-VL tokens are not interchangeable with
- * Florence-2 tokens. Default is `qwen3-vl` (the WS2 deliverable);
+ * the same hash space — Gemma-VL tokens are not interchangeable with
+ * Florence-2 tokens. Default is `gemma-vl` (the WS2 deliverable);
  * each additional family registers under its own identifier.
  */
 export interface VisionDescribeRequest {
@@ -56,7 +56,7 @@ export interface VisionDescribeRequest {
 	/**
 	 * The model family identifier. Used to namespace the projector cache
 	 * so swapping the backend's model family invalidates cached tokens.
-	 * Defaults to `"qwen3-vl"` when omitted.
+	 * Defaults to `"gemma-vl"` when omitted.
 	 */
 	modelFamily?: string;
 	/** Max output tokens; defaults to 256 (description-length budget). */
@@ -64,6 +64,15 @@ export interface VisionDescribeRequest {
 	/** 0..1, default 0.2 (descriptions should be deterministic-ish). */
 	temperature?: number;
 	signal?: AbortSignal;
+	/**
+	 * Per-token callback. When set and the backend exposes streaming vision
+	 * (the fused ABI-v13 path), the description is decoded token-by-token and
+	 * each piece is delivered here as it generates — the same pipe as chat text.
+	 * Backends without streaming describe ignore it and return the final result.
+	 */
+	onTextChunk?: (chunk: string) => void | Promise<void>;
+	/** Per-step token cap for streaming describe (smaller = finer-grained UI). */
+	maxTokensPerStep?: number;
 }
 
 /** Backend response — same shape that ImageDescriptionResult expects. */
@@ -145,7 +154,7 @@ export interface VisionDescribeBackendOptions {
 
 /**
  * Capability handler load function. The arbiter calls it with a model
- * key (e.g. `"qwen3-vl-2b"`); the implementation resolves to a real
+ * key (e.g. `"gemma-vl-4b"`); the implementation resolves to a real
  * `(modelPath, mmprojPath)` pair from the catalog + installed registry
  * and returns a live backend.
  */

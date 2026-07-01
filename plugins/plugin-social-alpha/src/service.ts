@@ -164,6 +164,34 @@ export type TradingEvent =
 /**
  * Trading Service that centralizes all trading operations
  */
+
+/**
+ * Narrow a memory's loosely-typed `content.transaction` field to a Transaction.
+ * Returns null when the field is not a transaction-shaped object. The input is a
+ * widened `ContentValue` union, so the internal casts are plain `as`
+ * (ratchet-neutral); this replaces the scattered `as unknown as Transaction`
+ * reads with one validated path.
+ */
+function asContentObject<T>(
+	value: unknown,
+	requiredStringKeys: readonly string[],
+): T | null {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	for (const key of requiredStringKeys) {
+		if (typeof record[key] !== "string") {
+			return null;
+		}
+	}
+	return value as T;
+}
+
+function asTransaction(value: unknown): Transaction | null {
+	return asContentObject<Transaction>(value, ["positionId", "tokenAddress"]);
+}
+
 /**
  * CommunityInvestorService class representing a service for trading on the Solana blockchain.
  * @extends Service
@@ -1703,14 +1731,9 @@ export class CommunityInvestorService
 			const transactions: Transaction[] = [];
 
 			for (const memory of memories) {
-				if (
-					memory.content.transaction &&
-					(memory.content.transaction as unknown as Transaction).positionId ===
-						positionId
-				) {
-					transactions.push(
-						memory.content.transaction as unknown as Transaction,
-					);
+				const transaction = asTransaction(memory.content.transaction);
+				if (transaction && transaction.positionId === positionId) {
+					transactions.push(transaction);
 				}
 			}
 
@@ -1744,14 +1767,9 @@ export class CommunityInvestorService
 			const transactions: Transaction[] = [];
 
 			for (const memory of memories) {
-				if (
-					memory.content.transaction &&
-					(memory.content.transaction as unknown as Transaction)
-						.tokenAddress === tokenAddress
-				) {
-					transactions.push(
-						memory.content.transaction as unknown as Transaction,
-					);
+				const transaction = asTransaction(memory.content.transaction);
+				if (transaction && transaction.tokenAddress === tokenAddress) {
+					transactions.push(transaction);
 				}
 			}
 
@@ -1790,9 +1808,11 @@ export class CommunityInvestorService
 				limit: 1,
 			});
 
-			if (memories.length > 0 && memories[0].content.position) {
-				const position = memories[0].content.position as unknown as Position;
-
+			const position = asContentObject<Position>(
+				memories[0]?.content.position,
+				["id", "entityId", "tokenAddress"],
+			);
+			if (position) {
 				// Cache the position
 				await this.runtime.setCache<Position>(cacheKey, position); // Cache for 5 minutes
 
@@ -2225,10 +2245,11 @@ export class CommunityInvestorService
 				limit: 1,
 			});
 
-			if (memories.length > 0 && memories[0].content.metrics) {
-				const metrics = memories[0].content
-					.metrics as unknown as RecommenderMetrics;
-
+			const metrics = asContentObject<RecommenderMetrics>(
+				memories[0]?.content.metrics,
+				["entityId", "platform"],
+			);
+			if (metrics) {
 				// Cache the metrics
 				await this.runtime.setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
 
@@ -2276,14 +2297,12 @@ export class CommunityInvestorService
 			const historyEntries: RecommenderMetricsHistory[] = [];
 
 			for (const memory of memories) {
-				if (
-					memory.content.history &&
-					(memory.content.history as unknown as RecommenderMetricsHistory)
-						.entityId === entityId
-				) {
-					historyEntries.push(
-						memory.content.history as unknown as RecommenderMetricsHistory,
-					);
+				const history = asContentObject<RecommenderMetricsHistory>(
+					memory.content.history,
+					["entityId"],
+				);
+				if (history && history.entityId === entityId) {
+					historyEntries.push(history);
 				}
 			}
 
@@ -2429,9 +2448,12 @@ export class CommunityInvestorService
 			const positions: PositionWithBalance[] = [];
 
 			for (const memory of memories) {
-				if (memory.content.position) {
-					const position = memory.content.position as unknown as Position;
-
+				const position = asContentObject<Position>(memory.content.position, [
+					"id",
+					"entityId",
+					"tokenAddress",
+				]);
+				if (position) {
 					// Check if position is open
 					if (position.status === "OPEN") {
 						// Convert to PositionWithBalance
@@ -2786,15 +2808,8 @@ ${report.tokenReports.join("\n")}
 				return null;
 			}
 
-			// This check is now effectively handled by returning null in the SOLANA block if all sources fail.
-			// if (chain === SupportedChain.SOLANA && Object.keys(tokenData).length === 0) {
-			//   logger.debug(`[CommunityInvestorService] TokenData for SOLANA token ${address} is empty after all attempts, returning null.`);
-			//   return null;
-			// }
-
-			// Set defaults for missing values if tokenData was populated by non-SOLANA chain logic or partially by SOLANA.
+			// Fill in derived defaults when at least one source populated tokenData.
 			if (Object.keys(tokenData).length > 0) {
-				// Ensure tokenData is not empty before defaulting
 				if (!tokenData.ath && tokenData.currentPrice) {
 					tokenData.ath = tokenData.currentPrice * 1.1; // Assume current price is close to ATH if unknown
 				}

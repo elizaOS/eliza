@@ -1,6 +1,7 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  lane: "live-only",
   id: "connector.discord.certify-disconnected",
   title: "Certify Discord disconnected degradation handling",
   connector: "discord",

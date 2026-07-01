@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   ANDROID_APP_ACTION_CAPABILITIES,
@@ -11,10 +13,27 @@ import {
   ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
+  injectCopyForkLlamaLibTask,
   patchAndroidAppActionsXmlResource,
   removeInactiveAndroidJavaSourceRoots,
   validateAndroidAppActionsXmlResource,
 } from "./run-mobile-build.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..", "..", "..");
+const cleanupHelperScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function removePathRecursive(targetPath) {
+  execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+}
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -86,7 +105,7 @@ test("Android cloud strip keeps only the active Java package root", () => {
     assert.equal(fs.existsSync(stale), false);
     assert.equal(fs.existsSync(legacy), false);
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    removePathRecursive(tmp);
   }
 });
 
@@ -97,6 +116,32 @@ test("Android cloud strip removes voice capture plugin with its service", () => 
   assert.ok(
     ANDROID_CLOUD_STRIPPED_JAVA_FILES.includes("VoiceCapturePlugin.java"),
   );
+});
+
+test("Android fork llama copy task honors the CI smoke opt-out", () => {
+  const gradle = `plugins { id 'com.android.application' }
+
+android {
+    namespace "ai.elizaos.app"
+}
+`;
+
+  const patched = injectCopyForkLlamaLibTask(gradle);
+
+  assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+  assert.match(patched, /skipped for cloud\/smoke build/);
+
+  const repatched = injectCopyForkLlamaLibTask(
+    patched
+      .replace(
+        "project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'",
+        "project.findProperty('elizaCloudBuild') == 'true'",
+      )
+      .replace("skipped for cloud/smoke build", "skipped for cloud build"),
+  );
+
+  assert.match(repatched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+  assert.doesNotMatch(repatched, /skipped for cloud build/);
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {

@@ -19,6 +19,13 @@ import { argValue, fail, run, runCapture } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
+const rmPathRecursiveScript = path.resolve(
+  packageRoot,
+  "..",
+  "..",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const defaultSourceDir = path.join(packageRoot, "vendor", "bun");
 const defaultArtifact = path.join(
   packageRoot,
@@ -66,6 +73,26 @@ function runMaybeCapture(command, args, options = {}) {
       result.stderr ??
       (result.error ? `${result.error.name}: ${result.error.message}` : ""),
   };
+}
+
+function rmRecursive(pathToRemove) {
+  const result = spawnSync(
+    process.execPath,
+    [rmPathRecursiveScript, path.resolve(pathToRemove)],
+    {
+      cwd: packageRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.stdout?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    fail(`failed to recursively remove ${pathToRemove}: ${reason}`);
+  }
 }
 
 function targetInfo(raw) {
@@ -681,7 +708,7 @@ function stageWebKitIfRequested(info) {
     );
   }
 
-  fs.rmSync(staged, { recursive: true, force: true });
+  rmRecursive(staged);
   fs.mkdirSync(path.join(staged, "lib"), { recursive: true });
   fs.mkdirSync(path.join(staged, "include"), { recursive: true });
   for (const entry of fs.readdirSync(srcLib)) {
@@ -1005,7 +1032,7 @@ function linkFramework({ buildDir, webkitPath, info }) {
     "framework",
   );
   const frameworkDir = path.join(stageRoot, `${frameworkName}.framework`);
-  fs.rmSync(stageRoot, { recursive: true, force: true });
+  rmRecursive(stageRoot);
   fs.mkdirSync(frameworkDir, { recursive: true });
   writeFrameworkMetadata(frameworkDir);
   const exportedSymbolsList = path.join(stageRoot, "exported-symbols.txt");
@@ -1080,7 +1107,7 @@ function createXcframework(frameworkDir) {
     path.dirname(artifact),
     `${path.basename(artifact, ".xcframework")}.tmp-${process.pid}.xcframework`,
   );
-  fs.rmSync(output, { recursive: true, force: true });
+  rmRecursive(output);
   fs.mkdirSync(path.dirname(artifact), { recursive: true });
   const args = ["-create-xcframework", "-framework", frameworkDir];
   for (const reusable of reusableFrameworks) {
@@ -1088,7 +1115,7 @@ function createXcframework(frameworkDir) {
   }
   args.push("-output", output);
   run("xcodebuild", args);
-  fs.rmSync(artifact, { recursive: true, force: true });
+  rmRecursive(artifact);
   fs.renameSync(output, artifact);
   validateXcframework(artifact);
 }
@@ -1111,7 +1138,7 @@ function buildWithCmake() {
     createXcframework(frameworkDir);
     return;
   }
-  if (rebuild) fs.rmSync(buildDir, { recursive: true, force: true });
+  if (rebuild) rmRecursive(buildDir);
   fs.mkdirSync(buildDir, { recursive: true });
 
   prepareBunSourceForCmake();

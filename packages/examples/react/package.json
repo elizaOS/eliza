@@ -17,7 +17,10 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-openrouter": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3",

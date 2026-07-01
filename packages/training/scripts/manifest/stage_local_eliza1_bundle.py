@@ -73,24 +73,32 @@ LOCAL_MODEL_ROOT: Final[Path] = (
 )
 DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-2b.bundle"
 DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp" / "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e2b-official" / "gemma-4-E2B_q4_0-it.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e2b-official" / "gemma-4-E2B-it-Q8_0.gguf",
+    LOCAL_MODEL_ROOT / "gemma-4-E2B_q4_0-it.gguf",
+    # Legacy local cache names from the pre-official-source Gemma smoke runs.
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp.gguf",
 )
 DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
+    LOCAL_MODEL_ROOT / "gemma4-e2b-assistant-mtp" / "drafter-2b.gguf",
     LOCAL_MODEL_ROOT
-    / "qwen3.5-4b-mtp-drafter-q4"
-    / "Qwen3.5-4B-MTP-Q4_K_M.repaired.gguf",
+    / "gemma4-e2b-assistant-mtp"
+    / "gemma-4-E2B-mtp-draft.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e2b-assistant-mtp.gguf",
+    # Legacy local cache names from the pre-official-source Gemma smoke runs.
     LOCAL_MODEL_ROOT
-    / "qwen3.5-4b-mtp-drafter-q4"
-    / "Qwen3.5-4B-MTP-Q4_K_M.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp-drafter-q4.repaired.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp-drafter-q4.gguf",
+    / "gemma4-e4b-mtp-drafter-q4"
+    / "gemma-4-E4B-MTP-Q4_K_M.repaired.gguf",
+    LOCAL_MODEL_ROOT
+    / "gemma4-e4b-mtp-drafter-q4"
+    / "gemma-4-E4B-MTP-Q4_K_M.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4.repaired.gguf",
+    LOCAL_MODEL_ROOT / "gemma4-e4b-mtp-drafter-q4.gguf",
 )
 VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
 MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
     "9b": (10000, 14000),
@@ -371,7 +379,7 @@ _GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
 
 def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
     """Read the target text-checkpoint sha256 the drafter was distilled
-    against, recorded as a GGUF metadata string by ``distill_mtp_drafter.py``.
+    against, recorded as a GGUF metadata string by the drafter producer.
 
     Returns ``None`` for local stand-in drafters (source-converted GGUFs
     have no such key). The publish path treats a missing key as a hard
@@ -519,8 +527,9 @@ def _write_target_meta(
                 "finalElizaWeights": False,
                 "architecture": None,
                 "architectureSource": (
-                    "not validated; run scripts/mtp/validate_drafter.py "
-                    "against the final target and drafter GGUFs before publish"
+                    "not validated; validate the target/drafter GGUF pair out "
+                    "of band before publish (see plugins/plugin-local-inference/"
+                    "docs/gemma4-mtp-drafter-conversion.md)"
                 ),
                 # sha256 of the text checkpoint this drafter was distilled
                 # against, copied from the drafter GGUF's
@@ -535,7 +544,8 @@ def _write_target_meta(
                         "key": "tokenizer.ggml.*",
                         "blockingReason": (
                             "target/drafter tokenizer metadata has not been "
-                            "validated by scripts/mtp/validate_drafter.py"
+                            "validated out of band (see plugins/plugin-local-"
+                            "inference/docs/gemma4-mtp-drafter-conversion.md)"
                         ),
                     }
                 ],

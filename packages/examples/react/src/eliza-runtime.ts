@@ -1,11 +1,13 @@
 /**
  * elizaOS Runtime Service for React
  *
- * This module provides a simplified AgentRuntime instance configured for
- * browser use with PGlite database (in-memory WASM Postgres) and classic
- * ELIZA pattern matching.
+ * This module provides an AgentRuntime instance configured for browser use
+ * with a PGlite database (in-memory WASM Postgres) and a real LLM inference
+ * provider selected from whichever API key env var is set.
  *
- * PGlite runs Postgres entirely in the browser via WASM - no server needed!
+ * Provider priority: OpenAI -> OpenRouter -> Anthropic -> Eliza Cloud.
+ *
+ * PGlite runs Postgres entirely in the browser via WASM - no DB server needed!
  */
 
 import {
@@ -16,15 +18,13 @@ import {
   createCharacter,
   createMessageMemory,
   type Memory,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserPGlite } from "./pglite-browser";
 
-const { elizaClassicPlugin, getElizaGreeting } = await import(
-  "@elizaos/plugin-eliza-classic"
-);
 const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
 
 // ============================================================================
@@ -42,6 +42,86 @@ export interface ChatMessage {
   text: string;
   isUser: boolean;
   timestamp: Date;
+}
+
+// ============================================================================
+// Inference provider selection
+// ============================================================================
+
+export type InferenceProviderName =
+  | "openai"
+  | "openrouter"
+  | "anthropic"
+  | "elizacloud";
+
+interface SelectedProvider {
+  name: InferenceProviderName;
+  plugin: Plugin;
+  /** Character secret key the provider plugin reads at init. */
+  secretKey: string;
+  secretValue: string;
+}
+
+/**
+ * Pick an inference provider based on which API key env var is set.
+ * Priority: OpenAI -> OpenRouter -> Anthropic -> Eliza Cloud.
+ *
+ * The chosen provider plugin is imported lazily so only its code lands in the
+ * loaded chunk. Throws when no key is configured - there is no offline
+ * fallback.
+ */
+async function selectInferenceProvider(): Promise<SelectedProvider> {
+  const env = process.env;
+
+  if (env.OPENAI_API_KEY) {
+    const { openaiPlugin } = await import("@elizaos/plugin-openai");
+    return {
+      name: "openai",
+      plugin: openaiPlugin,
+      secretKey: "OPENAI_API_KEY",
+      secretValue: env.OPENAI_API_KEY,
+    };
+  }
+
+  if (env.OPENROUTER_API_KEY) {
+    const { openrouterPlugin } = await import("@elizaos/plugin-openrouter");
+    return {
+      name: "openrouter",
+      plugin: openrouterPlugin,
+      secretKey: "OPENROUTER_API_KEY",
+      secretValue: env.OPENROUTER_API_KEY,
+    };
+  }
+
+  if (env.ANTHROPIC_API_KEY) {
+    // plugin-anthropic exposes the plugin as both the named `anthropicPlugin`
+    // and the default export; we use the default to match the other repo
+    // examples (browser-extension, rest-api).
+    const { default: anthropicPlugin } = await import(
+      "@elizaos/plugin-anthropic"
+    );
+    return {
+      name: "anthropic",
+      plugin: anthropicPlugin,
+      secretKey: "ANTHROPIC_API_KEY",
+      secretValue: env.ANTHROPIC_API_KEY,
+    };
+  }
+
+  if (env.ELIZA_API_KEY) {
+    const { elizaOSCloudPlugin } = await import("@elizaos/plugin-elizacloud");
+    return {
+      name: "elizacloud",
+      plugin: elizaOSCloudPlugin,
+      // The cloud plugin reads ELIZAOS_CLOUD_API_KEY at init.
+      secretKey: "ELIZAOS_CLOUD_API_KEY",
+      secretValue: env.ELIZA_API_KEY,
+    };
+  }
+
+  throw new Error(
+    "No inference provider configured. Set one of OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or ELIZA_API_KEY.",
+  );
 }
 
 // ============================================================================
@@ -120,6 +200,7 @@ async function preinitializePGlite(): Promise<void> {
 
 let runtimeInstance: AgentRuntime | null = null;
 let initializationPromise: Promise<AgentRuntime> | null = null;
+let selectedProviderName: InferenceProviderName | null = null;
 
 // Session identifiers
 const userId = uuidv4() as UUID;
@@ -149,7 +230,7 @@ export async function getRuntime(): Promise<AgentRuntime> {
 }
 
 /**
- * Initialize a new AgentRuntime with PGlite and ELIZA plugins.
+ * Initialize a new AgentRuntime with PGlite and the selected LLM provider.
  */
 async function initializeRuntime(): Promise<AgentRuntime> {
   console.log("[elizaOS] Initializing AgentRuntime...");
@@ -157,11 +238,26 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   // Pre-initialize PGlite before the SQL plugin runs
   await preinitializePGlite();
 
+  const provider = await selectInferenceProvider();
+  selectedProviderName = provider.name;
+  console.log(`[elizaOS] Inference provider: ${provider.name}`);
+
+  const character: Character = {
+    ...elizaCharacter,
+    settings: {
+      ...elizaCharacter.settings,
+      secrets: {
+        ...elizaCharacter.settings?.secrets,
+        [provider.secretKey]: provider.secretValue,
+      },
+    },
+  };
+
   const runtime = new AgentRuntime({
-    character: elizaCharacter,
+    character,
     plugins: [
       sqlPlugin, // PGlite database for browser (uses our pre-initialized instance)
-      elizaClassicPlugin, // Classic ELIZA pattern matching
+      provider.plugin, // Selected LLM inference provider
     ],
   });
 
@@ -183,14 +279,14 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 }
 
 /**
- * Send a message to ELIZA and get a response.
+ * Send a message to the agent and get a response.
  *
- * This uses the AgentRuntime's model system directly, which routes
- * to our classic ELIZA pattern matching plugin.
+ * This uses the AgentRuntime's model system, which routes to the selected
+ * LLM inference provider.
  *
  * @param text - The user's message
  * @param onChunk - Optional callback for streaming response chunks
- * @returns The complete ELIZA response
+ * @returns The complete agent response
  */
 export async function sendMessage(
   text: string,
@@ -248,10 +344,18 @@ export async function sendMessage(
 }
 
 /**
- * Get the initial ELIZA greeting message.
+ * Get the initial greeting message shown after boot.
  */
 export function getGreeting(): string {
-  return getElizaGreeting();
+  return "Hello! How can I help you today?";
+}
+
+/**
+ * Name of the inference provider selected at runtime init
+ * ("openai" / "openrouter" / "anthropic" / "elizacloud"), or null before init.
+ */
+export function getProviderName(): InferenceProviderName | null {
+  return selectedProviderName;
 }
 
 /**

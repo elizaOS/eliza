@@ -9,39 +9,49 @@ import type { RegistryAppInfo } from "../../api";
 import { userAgentHasElizaOSMarker } from "../../platform/aosp-user-agent";
 import type { OverlayApp } from "./overlay-app-api";
 
-const OVERLAY_APP_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
+declare global {
+  // A single global slot, declared on the shared global scope so it is visible
+  // on both `window` (`Window & typeof globalThis`) and `globalThis`.
+  var __elizaosOverlayAppRegistry__: Map<string, OverlayApp> | undefined;
+}
 
-type OverlayAppRegistryGlobal = typeof globalThis & {
-  [OVERLAY_APP_REGISTRY_KEY]?: Map<string, OverlayApp>;
-};
-
-const overlayRegistryGlobal = globalThis as OverlayAppRegistryGlobal;
+// Anchor the registry on the real browser `window` when present, falling back
+// to `globalThis`. The app build can hand a duplicated or shimmed `globalThis`
+// to different chunks (Node-builtin shims + the `global: globalThis` define),
+// so the copy a plugin uses to REGISTER an app and the copy the shell uses to
+// READ it can otherwise see different `globalThis` objects — stranding the
+// registration on a Map the reader never looks at. `window` is the single
+// object every browser chunk shares. Resolve the host (and the Map) on every
+// access — never freeze a Map reference at module scope — so all copies of this
+// module converge on one shared registry regardless of evaluation order.
+function getOverlayRegistryHost(): typeof globalThis {
+  return typeof window !== "undefined" ? window : globalThis;
+}
 
 function getOverlayRegistry(): Map<string, OverlayApp> {
-  const existing = overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY];
+  const host = getOverlayRegistryHost();
+  const existing = host.__elizaosOverlayAppRegistry__;
   if (existing) {
     return existing;
   }
   const next = new Map<string, OverlayApp>();
-  overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY] = next;
+  host.__elizaosOverlayAppRegistry__ = next;
   return next;
 }
 
-const registry = getOverlayRegistry();
-
 /** Register an overlay app. Call at module scope. */
 export function registerOverlayApp(app: OverlayApp): void {
-  registry.set(app.name, app);
+  getOverlayRegistry().set(app.name, app);
 }
 
 /** Look up a registered overlay app by name. */
 export function getOverlayApp(name: string): OverlayApp | undefined {
-  return registry.get(name);
+  return getOverlayRegistry().get(name);
 }
 
 /** Get all registered overlay apps. */
 export function getAllOverlayApps(): OverlayApp[] {
-  return Array.from(registry.values());
+  return Array.from(getOverlayRegistry().values());
 }
 
 /**
@@ -145,7 +155,7 @@ export function isAospAndroid(
 
 /** Check if an app name belongs to a registered overlay app. */
 export function isOverlayApp(name: string): boolean {
-  return registry.has(name);
+  return getOverlayRegistry().has(name);
 }
 
 /** Convert an OverlayApp to a RegistryAppInfo for the apps catalog. */

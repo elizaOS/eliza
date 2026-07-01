@@ -13,6 +13,11 @@ export interface ChatSurfaceProps {
   greeting?: string;
   recording?: boolean;
   onToggleRecording?: () => void;
+  /** Capture the screen and show it to the agent (plugin-vision). Omit to hide
+   * the VISION button on surfaces without a screen-capture capability. */
+  onVision?: () => void;
+  /** Reflects an in-flight vision capture (pulses the VISION button). */
+  visionActive?: boolean;
 }
 
 export function ChatSurface({
@@ -22,6 +27,8 @@ export function ChatSurface({
   greeting,
   recording = false,
   onToggleRecording,
+  onVision,
+  visionActive = false,
 }: ChatSurfaceProps): React.JSX.Element {
   const { t } = useTranslation();
   const [draft, setDraft] = React.useState("");
@@ -40,7 +47,12 @@ export function ChatSurface({
     void messageCount;
     const node = scrollRef.current;
     if (!node) return;
-    node.scrollTop = node.scrollHeight;
+    // Defer the bottom-follow write to the next frame so appending a message
+    // (every streamed turn) doesn't force a synchronous layout/reflow.
+    const frameId = requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frameId);
   }, [messageCount]);
 
   return (
@@ -116,7 +128,7 @@ export function ChatSurface({
           aria-label={t("chatsurface.messageLabel", {
             defaultValue: "Message {{appName}}",
           })}
-          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50 focus-visible:outline-none focus-visible:ring-0 disabled:opacity-50"
+          className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm text-txt placeholder:text-txt/50   disabled:opacity-50"
         />
         <GlassIconButton
           icon="mic"
@@ -133,6 +145,17 @@ export function ChatSurface({
           disabled={!onToggleRecording}
           onClick={onToggleRecording}
         />
+        {onVision ? (
+          <GlassIconButton
+            icon="vision"
+            label={t("chatsurface.vision", {
+              defaultValue: "Show {{appName}} my screen",
+            })}
+            active={visionActive}
+            disabled={!canSend || visionActive}
+            onClick={onVision}
+          />
+        ) : null}
         <GlassIconButton
           icon="send"
           label={t("chatsurface.send", { defaultValue: "Send message" })}

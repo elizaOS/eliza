@@ -8,6 +8,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
 vi.mock("@elizaos/ui", () => ({
@@ -26,23 +27,23 @@ function message(
 }
 
 function withApp(node: React.ReactElement) {
+  const appValue = {
+    t: (key: string, vars?: Record<string, unknown>) =>
+      String(vars?.defaultValue ?? key),
+    sendActionMessage: vi.fn(),
+  } as never;
+  // MessageContent reads context via the selector store, so seed it too.
+  __setAppValueForTests(appValue);
   return render(
-    <AppContext.Provider
-      value={
-        {
-          t: (key: string, vars?: Record<string, unknown>) =>
-            String(vars?.defaultValue ?? key),
-          sendActionMessage: vi.fn(),
-        } as never
-      }
-    >
-      {node}
-    </AppContext.Provider>,
+    <AppContext.Provider value={appValue}>{node}</AppContext.Provider>,
   );
 }
 
 describe("MessageContent slash-command bolding", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    __setAppValueForTests(null);
+  });
 
   it("renders the leading slash token in bold for a user command", () => {
     withApp(<MessageContent message={message("user", "/imagine a cat")} />);

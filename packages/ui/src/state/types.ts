@@ -75,28 +75,16 @@ import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { AgentProfile } from "./agent-profile-types";
-import type { UiShellMode, UiTheme, UiThemeMode } from "./ui-preferences";
+import type {
+  BackgroundConfig,
+  UiShellMode,
+  UiTheme,
+  UiThemeMode,
+} from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
 
-/** 3D companion render power: full quality, OS/battery-aware default, or always efficient. */
-export type CompanionVrmPowerMode = "quality" | "balanced" | "efficiency";
-
-/** When to cap the companion VRM loop at ~half the display refresh rate. */
-export type CompanionHalfFramerateMode = "off" | "when_saving_power" | "always";
-export type ShellView = "companion" | "character" | "desktop";
-
-/**
- * Optional flags for {@link AppActions.completeFirstRun} when finishing the
- * first-run setup.
- */
-export interface CompleteFirstRunOptions {
-  /**
-   * When true, opens the `@elizaos/plugin-companion` overlay and syncs the URL to
-   * `/apps/companion`. Ignored when companion mode or the apps surface is disabled.
-   */
-  launchCompanionOverlay?: boolean;
-}
+export type ShellView = "character" | "desktop";
 
 /** Deferred work scheduling for multi-step navigation. */
 export interface NavigationEventsApi {
@@ -160,9 +148,9 @@ export const FIRST_RUN_PERMISSION_LABELS: Record<SystemPermissionId, string> = {
 };
 
 import type { ActionBanner } from "./action-banner";
-import type { ActionNotice } from "./action-notice";
+import type { ActionNotice, ActionTone } from "./action-notice";
 
-export type { ActionBanner, ActionNotice };
+export type { ActionBanner, ActionNotice, ActionTone };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
 
@@ -233,6 +221,27 @@ export function deriveAgentReady(agentStatus: AgentStatus | null): boolean {
   return (
     agentStatus.canRespond ??
     (agentStatus.state === "running" && Boolean(agentStatus.model))
+  );
+}
+
+/**
+ * Whether the chat lifecycle should keep polling agent status to clear the
+ * "waking up" banner (#8777). Poll while the agent is NOT ready
+ * ({@link deriveAgentReady}) and NOT in a terminal state — a null/early status
+ * counts as not-ready-yet. The instant `canRespond` flips true (or a local model
+ * resolves), `deriveAgentReady` returns true and polling stops, clearing the
+ * banner. A cloud agent (no local `model`, `canRespond` still absent) keeps
+ * polling until the broadcast carries `canRespond`.
+ */
+export function shouldAwaitAgentReadiness(
+  agentStatus: AgentStatus | null,
+): boolean {
+  const state = agentStatus?.state;
+  return (
+    !deriveAgentReady(agentStatus) &&
+    state !== "error" &&
+    state !== "stopped" &&
+    state !== "not_started"
   );
 }
 
@@ -322,16 +331,11 @@ export interface AppState {
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
   uiThemeMode: UiThemeMode;
+  /** The unified home/app background, shared across the home and every view. */
+  backgroundConfig: BackgroundConfig;
+  /** True when there is a previous background config to undo to. */
+  canUndoBackground: boolean;
   ownerName: string | null;
-  /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
-  companionVrmPowerMode: CompanionVrmPowerMode;
-  /**
-   * When true and the document is hidden, keep the VRM render loop alive
-   * but hide the 3D environment (lower GPU than full scene).
-   */
-  companionAnimateWhenHidden: boolean;
-  /** When to cap companion at ~half display Hz (independent of DPR/shadows). */
-  companionHalfFramerateMode: CompanionHalfFramerateMode;
   connected: boolean;
   agentStatus: AgentStatus | null;
   firstRunComplete: boolean;
@@ -412,6 +416,9 @@ export interface AppState {
   pluginAdvancedOpen: Set<string>;
   pluginSaving: Set<string>;
   pluginSaveSuccess: Set<string>;
+  isLoadingPlugins: boolean;
+  pluginsLoadError: string | null;
+  pluginsLoaded: boolean;
 
   // Skills
   skills: SkillInfo[];
@@ -701,8 +708,6 @@ export interface AppState {
   /** When true, the game iframe persists as a floating overlay across all tabs. */
   gameOverlayEnabled: boolean;
 
-  /** When true, the companion app is actively running (full-screen VRM scene). */
-  companionAppRunning: boolean;
   /** Name of the active full-screen overlay app, or null if none. */
   activeOverlayApp: string | null;
 
@@ -765,9 +770,9 @@ export interface AppActions {
   setUiLanguage: (language: UiLanguage) => void;
   setUiTheme: (theme: UiTheme) => void;
   setUiThemeMode: (mode: UiThemeMode) => void;
-  setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
-  setCompanionAnimateWhenHidden: (enabled: boolean) => void;
-  setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;
+  setBackgroundConfig: (config: BackgroundConfig) => void;
+  /** Restore the most recent previous background config (no-op when empty). */
+  undoBackgroundConfig: () => void;
 
   // Lifecycle
   handleStart: () => Promise<void>;
@@ -802,6 +807,16 @@ export interface AppActions {
   handleNewConversation: (title?: string) => Promise<void>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
   handleSelectConversation: (id: string) => Promise<void>;
+  /**
+   * Replace the active thread with a window CENTERED on `messageId` so a
+   * keyword-search jump can scroll to a hit older than the most-recent window
+   * (#9955). Resolves `true` once the centered window has been committed to the
+   * active conversation, `false` if the load failed or the user navigated away.
+   */
+  loadConversationMessagesAround: (
+    conversationId: string,
+    messageId: string,
+  ) => Promise<boolean>;
   handleDeleteConversation: (id: string) => Promise<void>;
   handleRenameConversation: (id: string, title: string) => Promise<void>;
   /** LLM title from recent messages; persists on the server and updates local list. */
@@ -948,7 +963,6 @@ export interface AppActions {
   handleCharacterMessageExamplesInput: (value: string) => void;
 
   // First-run
-  handleFirstRunNext: (options?: FirstRunNextOptions) => Promise<void>;
   handleFirstRunBack: () => void;
   /** Jump to an earlier step in the active track (sidebar); backward-only. */
   handleFirstRunJumpToStep: (step: SetupStep) => void;
@@ -962,14 +976,8 @@ export interface AppActions {
    * Dispatches FIRST_RUN_COMPLETE to the startup coordinator.
    *
    * The full first-run flow passes an explicit landing tab when needed.
-   *
-   * Passing `{ launchCompanionOverlay: true }` lands first-time setup in
-   * `@elizaos/plugin-companion` at `/apps/companion`.
    */
-  completeFirstRun: (
-    landingTab?: Tab,
-    options?: CompleteFirstRunOptions,
-  ) => void;
+  completeFirstRun: (landingTab?: Tab) => void;
 
   // Cloud
   handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
@@ -979,7 +987,6 @@ export interface AppActions {
 
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;
-  handleCloudFirstRunFinish: () => Promise<void>;
 
   // Updates
   loadUpdateStatus: (force?: boolean) => Promise<void>;
@@ -1002,7 +1009,7 @@ export interface AppActions {
   // Action notice
   setActionNotice: (
     text: string,
-    tone?: "info" | "success" | "error",
+    tone?: ActionTone,
     ttlMs?: number,
     once?: boolean,
     busy?: boolean,

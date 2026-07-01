@@ -20,6 +20,8 @@
 			"@elizaos/plugin-local-inference": ["./src/index.ts"],
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
+			"@elizaos/logger/*": ["../../packages/logger/src/*"],
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
@@ -32,6 +34,12 @@
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/plugin-capacitor-bridge": [
 				"../plugin-capacitor-bridge/src/index.ts"
+			],
+			"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
+				"../plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
+			],
+			"@elizaos/plugin-computeruse/mobile/ios-bridge": [
+				"../plugin-computeruse/src/mobile/ios-bridge.ts"
 			],
 			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
@@ -49,6 +57,11 @@
 			"@elizaos/plugin-task-coordinator/*": [
 				"../plugin-task-coordinator/src/*"
 			],
+			"@elizaos/plugin-health": ["../plugin-health/src/index.ts"],
+			"@elizaos/plugin-health/*": ["../plugin-health/src/*"],
+			"@elizaos/plugin-health/screen-time/mobile-signal-setup": [
+				"../plugin-health/src/screen-time/mobile-signal-setup.ts"
+			],
 			"@elizaos/plugin-remote-manifest": [
 				"../../packages/plugin-remote-manifest/src/index.ts"
 			],
@@ -64,6 +77,9 @@
 			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
 			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
+			"@elizaos/plugin-training": [
+				"../../packages/ui/src/types/host-external-modules.ts"
+			],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
@@ -72,10 +88,13 @@
 			"@elizaos/vault/*": ["../../packages/vault/src/*"],
 			"@elizaos/security": ["../../packages/security/src/index.ts"],
 			"@elizaos/security/*": ["../../packages/security/src/*"],
-			"@elizaos/cloud-sdk": ["../../packages/cloud-sdk/src/index.ts"],
-			"@elizaos/cloud-sdk/*": ["../../packages/cloud-sdk/src/*"],
+			"@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
+			"@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
+			"csstype": [
+				"../../node_modules/.bun/csstype@3.2.3/node_modules/csstype/index.d.ts"
+			],
 			"react": ["../../node_modules/@types/react/index.d.ts"],
 			"react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
 			"react/jsx-dev-runtime": [

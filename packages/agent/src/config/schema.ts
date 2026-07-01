@@ -739,7 +739,7 @@ const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.cache.enabled":
     "Cache chunk embeddings in SQLite to speed up reindexing and frequent updates (default: true).",
   "embedding.model":
-    "GGUF model filename for local embeddings (default: bundles/0_8b/text/eliza-1-0_8b-32k.gguf).",
+    "GGUF model filename for local embeddings (default: bundles/2b/text/eliza-1-2b-32k.gguf).",
   "embedding.modelRepo":
     "HuggingFace repo for auto-downloading the embedding model (default: elizaos/eliza-1).",
   "embedding.dimensions":
@@ -1126,7 +1126,7 @@ function applyConnectorHints(
       continue;
     }
     const basePath = `connectors.${id}`;
-    const current = next[basePath] ?? {};
+    const current = next[basePath];
     const label = connector.label?.trim();
     const help = connector.description?.trim();
     next[basePath] = {
@@ -1190,11 +1190,11 @@ function applyHeartbeatTargetHints(
     "agents.list.*.heartbeat.target",
   ];
   for (const path of paths) {
-    const current = next[path] ?? {};
+    const current = next[path];
     next[path] = {
       ...current,
-      help: current.help ?? help,
-      placeholder: current.placeholder ?? "last",
+      help: current?.help ?? help,
+      placeholder: current?.placeholder ?? "last",
     };
   }
   return next;

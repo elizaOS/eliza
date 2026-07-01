@@ -8,6 +8,7 @@
 // public function here throws a clear error. There is no silent fallback.
 
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
@@ -42,8 +43,7 @@ function defaultLibraryPath(): string {
 /** Where the runtime expects GGUF weights. */
 export function defaultDetWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_DOCTR_DET_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-det.gguf")
@@ -52,8 +52,7 @@ export function defaultDetWeightsPath(): string {
 
 export function defaultRecWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ??
-    path.join(process.env.HOME ?? "/tmp", ".eliza");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_DOCTR_REC_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-rec.gguf")
@@ -147,7 +146,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       // but their `_run` functions return DOCTR_ERR_BACKEND. The TS adapter
       // converts that to a thrown Error so the OCR service falls through to
       // its next backend (apple-vision on darwin) or throws to the caller.
-      let lib;
+      let lib: ReturnType<BunFFIModule["dlopen"]>;
       try {
         lib = dlopen(libPath, {
           doctr_det_init: { args: [FFIType.cstring], returns: FFIType.pointer },
@@ -186,7 +185,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       } catch (error) {
         logger.warn(
           `${MODULE_TAG} dlopen failed for ${libPath}:`,
-          error instanceof Error ? error.message : error,
+          error instanceof Error ? error.message : String(error),
         );
         return null;
       }
@@ -197,7 +196,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       async function ensureDetCtx(gguf: string): Promise<unknown> {
         const cached = detCtxCache.get(gguf);
         if (cached) return cached;
-        const cstr = Buffer.from(gguf + "\0", "utf-8");
+        const cstr = Buffer.from(`${gguf}\0`, "utf-8");
         const handle = lib.symbols.doctr_det_init(ptr(cstr));
         if (!handle) {
           throw new Error(
@@ -211,7 +210,7 @@ export async function loadDoctrBindings(): Promise<DocTRBindings | null> {
       async function ensureRecCtx(gguf: string): Promise<unknown> {
         const cached = recCtxCache.get(gguf);
         if (cached) return cached;
-        const cstr = Buffer.from(gguf + "\0", "utf-8");
+        const cstr = Buffer.from(`${gguf}\0`, "utf-8");
         const handle = lib.symbols.doctr_rec_init(ptr(cstr));
         if (!handle) {
           throw new Error(

@@ -12,14 +12,11 @@ import {
 import { useAgentElement } from "../../agent-surface";
 import type { TriggerSummary } from "../../api/client";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import { detectUiHostCapabilities } from "../../utils/host-capabilities";
-// Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
-// chunk-level circular dependency.
-import { WidgetHost } from "../../widgets/WidgetHost";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
@@ -144,7 +141,25 @@ function useHeartbeatsViewController() {
     },
     t,
     uiLanguage,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    triggers: s.triggers,
+    triggersLoaded: s.triggersLoaded,
+    triggersLoading: s.triggersLoading,
+    triggersSaving: s.triggersSaving,
+    triggerRunsById: s.triggerRunsById,
+    triggerHealth: s.triggerHealth,
+    triggerError: s.triggerError,
+    loadTriggers: s.loadTriggers,
+    createTrigger: s.createTrigger,
+    updateTrigger: s.updateTrigger,
+    deleteTrigger: s.deleteTrigger,
+    runTriggerNow: s.runTriggerNow,
+    loadTriggerRuns: s.loadTriggerRuns,
+    loadTriggerHealth: s.loadTriggerHealth,
+    ensureTriggersLoaded: s.ensureTriggersLoaded,
+    t: s.t,
+    uiLanguage: s.uiLanguage,
+  }));
 
   const [form, setForm] = useState<TriggerFormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -806,7 +821,6 @@ function HeartbeatsLayout() {
         data-testid="heartbeats-shell"
         sidebar={heartbeatsSidebar}
         contentInnerClassName="mx-auto w-full max-w-[96rem]"
-        footer={<WidgetHost slot="heartbeats" className="py-3" />}
         mobileSidebarLabel={mobileSidebarLabel}
       >
         <div className="flex min-h-0 flex-1 flex-col">

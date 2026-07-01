@@ -117,7 +117,7 @@ export interface VoiceModelEvalDeltas {
 /**
  * Runtime backend label for a voice model version.
  * - `"ggml"` — the elizaOS llama.cpp fork (canonical single-runtime policy).
- * - `"onnx"` — onnxruntime-node (one-release deprecation runway only; do not add new models here).
+ * - `"onnx"` — onnxruntime-node (removed; retained only as a historical asset/label for already-published versions — do not add new models here).
  * - `"ffi"` — direct bun:ffi into libelizainference (VAD, wake-word).
  * - `"llama-server"` — fork's llama-server HTTP route (Kokoro, OmniVoice TTS, EOT text model).
  */
@@ -139,9 +139,9 @@ export interface VoiceModelVersion {
   /**
    * Preferred runtime backend for this version. When set, the runtime
    * prefers the named backend over any default. K7 policy: set to `"ggml"` /
-   * `"llama-server"` / `"ffi"` as each model migrates off ONNX. Assets with
-   * `quant: "onnx-*"` that are NOT the preferred backend are on the
-   * one-release deprecation runway.
+   * `"llama-server"` / `"ffi"` as each model migrated off ONNX. onnxruntime-node
+   * has since been removed, so assets with `quant: "onnx-*"` are historical
+   * labels only — the runtime never loads them.
    */
   readonly preferredBackend?: VoiceModelBackend;
   /**
@@ -323,21 +323,21 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
-    hfRevision: "pending",
+    hfRevision: "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
     preferredBackend: "ffi",
     deprecatedBackends: ["onnx"],
-    ggufAssets: [],
-    missingAssets: [
+    ggufAssets: [
       {
         filename: "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
+        sha256:
+          "ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3",
+        sizeBytes: 26_525_824,
         quant: "gguf-fp32",
-        expectedSizeBytes: 27_000_000,
-        reason: "missing-from-hf-repo",
       },
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF.",
+      "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF. GGUF published to HF.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -367,21 +367,21 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
-    hfRevision: "pending",
+    hfRevision: "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
     preferredBackend: "ffi",
     deprecatedBackends: ["onnx"],
-    ggufAssets: [],
-    missingAssets: [
+    ggufAssets: [
       {
         filename: "voice/diarizer/pyannote-segmentation-3.0.gguf",
+        sha256:
+          "30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5",
+        sizeBytes: 5_975_424,
         quant: "gguf-fp32",
-        expectedSizeBytes: 6_000_000,
-        reason: "missing-from-hf-repo",
       },
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF.",
+      "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF. GGUF published to HF.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -516,7 +516,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     // + iSTFTNet inference pipeline (LLM_ARCH_KOKORO arch + GGML graph +
     // CPU iSTFT vocoder). The runtime selector (`pickKokoroRuntimeBackend`)
     // defaults `KOKORO_BACKEND=fork` and POSTs to llama-server's
-    // /v1/audio/speech route; ONNX path remains as one-release deprecation.
+    // /v1/audio/speech route; the old onnxruntime-node ONNX path was removed.
     //
     // Quality gap: the from-scratch port runs at lower acoustic quality
     // vs the ONNX baseline (the predictor convs + ResBlock decoder need
@@ -533,8 +533,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T05:00:00Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
-    // K7: runtime defaults to KOKORO_BACKEND=fork (pick-runtime.ts). ONNX
-    // path is one-release deprecation runway (KOKORO_BACKEND=onnx env only).
+    // K7: runtime runs KOKORO_BACKEND=fork (pick-runtime.ts) exclusively; the
+    // onnxruntime-node ONNX path (formerly KOKORO_BACKEND=onnx) was removed.
     // GGUF conversion pending (K4 scope; missingAssets carries the target).
     preferredBackend: "llama-server",
     deprecatedBackends: ["onnx"],
@@ -667,13 +667,20 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-19T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
-    hfRevision: "pending",
+    hfRevision: "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
     // K7: VAD is fully native through silero-vad-cpp/libsilero_vad.
     // ONNX file removed from HF in this release.
     preferredBackend: "ffi",
     ggufAssets: [
       {
-        filename: "voice/vad/silero-vad-v5.gguf",
+        filename: "voice/vad/silero-vad-v5.1.2.ggml.bin",
+        sha256:
+          "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+        sizeBytes: 885_098,
+        quant: "gguf-fp32",
+      },
+      {
+        filename: "bundles/2b/vad/silero-vad-v5.gguf",
         sha256:
           "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
         sizeBytes: 620_736,
@@ -801,6 +808,26 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "asr",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-06-25T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "voice/asr/eliza-1-gemma-asr-q4_0.gguf",
+        quant: "q4_0",
+        reason: "missing-from-hf-repo",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "Gemma ASR cutover placeholder — pre-Gemma ASR assets retired; downloads stay disabled until Gemma ASR artifacts are published.",
+    minBundleVersion: "1.0.0",
+  },
+  {
+    id: "asr",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
@@ -822,7 +849,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — Qwen3-ASR streaming transcriber Q8_0.",
+    changelogEntry:
+      "Retired pre-Gemma ASR release — streaming transcriber Q8_0.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -870,7 +898,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K added for Qwen3-ASR-1.7B. Enables memory-tier selection. mmproj stays Q8_0 per R8 §3.6.",
+      "Retired pre-Gemma ASR K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K. Kept only as historical release metadata; active downloads remain on the Gemma ASR placeholder until verified artifacts are hosted.",
     minBundleVersion: "0.0.0",
   },
 ];
@@ -924,6 +952,19 @@ export function compareVoiceModelSemver(
     }
   }
   return 0;
+}
+
+/**
+ * The HuggingFace `resolve` URL for one GGUF asset of a voice-model version,
+ * pinned to that version's exact `hfRevision`. This is the canonical download
+ * URL the packaging-verification test and the runtime downloader both use, so
+ * the catalog stays the single source of truth for where bytes come from.
+ */
+export function voiceModelAssetUrl(
+  version: Pick<VoiceModelVersion, "hfRepo" | "hfRevision">,
+  asset: Pick<VoiceModelGgufAsset, "filename">,
+): string {
+  return `https://huggingface.co/${version.hfRepo}/resolve/${version.hfRevision}/${asset.filename}`;
 }
 
 /** Return all versions for a given model id, latest first. */

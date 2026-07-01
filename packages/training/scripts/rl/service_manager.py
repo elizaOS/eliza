@@ -16,7 +16,7 @@ Usage:
     config = ServiceConfig(
         atropos_port=8000,
         vllm_port=9001,
-        model_name="Qwen/Qwen3.5-4B",
+        model_name="google/gemma-4-E4B",
     )
 
     with ServiceManager(config) as services:
@@ -65,7 +65,7 @@ class ServiceConfig:
     # vLLM settings
     vllm_port: int = 9001
     vllm_host: str = "localhost"
-    model_name: str = "Qwen/Qwen3.5-4B"
+    model_name: str = "google/gemma-4-E4B"
     vllm_gpu_memory_utilization: float = 0.85
     vllm_dtype: str = "auto"
     vllm_max_model_len: int = 4096

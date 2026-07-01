@@ -29,6 +29,7 @@ export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
 export * from "./agent-model.ts";
 export * from "./agent-transfer-routes.ts";
+export * from "./approval-routes.ts";
 export * from "./auth-routes.ts";
 export * from "./bug-report-routes.ts";
 export * from "./character-routes.ts";
@@ -55,8 +56,8 @@ export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";
 export * from "./registry-service.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
-// authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
-// and the request-handling helper `tryHandleRuntimePluginRoute` (used by
+// authors and their tests) and the request-handling helper
+// `tryHandleRuntimePluginRoute` (used by
 // agent runtime wiring). Both are part of the public agent surface.
 export {
   matchPluginRoutePath,

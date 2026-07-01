@@ -84,6 +84,58 @@ All under the elizaOS runtime HTTP server:
 - Emits `TASK_AUDIT_EVENT` to persist append-only audit log entries.
 - Wraps `runtime.sendMessageToTarget` to redirect planner replies into the per-task thread when thread support is available.
 
+## Device × backend × auth-mode support matrix
+
+Coding-agent orchestration is gated per device by the same pure classifier the
+runtime uses (`classifyTerminalSupport` / `detectOrchestratorTerminalSupport` in
+`services/terminal-capabilities.ts`). The checked-in source of truth is
+`ORCHESTRATOR_DEVICE_SUPPORT_MATRIX` (`services/orchestrator-device-support-matrix.ts`),
+computed *through that classifier* so it cannot silently drift from the gate — a
+gating change that affects any documented profile fails this package's tests
+(`orchestrator-device-support-matrix.test.ts`). Do not hand-edit the matrix to
+disagree with the classifier; change the classifier and let the matrix follow.
+See issue #9146.
+
+| Device profile | Supported? | Reason | Coding backends |
+|---|---|---|---|
+| Desktop / server (Node, non-store) | ✅ | — | all 5 |
+| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 5 |
+| iOS (vanilla mobile runtime) | ❌ | `vanilla_mobile` | none — stub action only |
+| Store build (sandboxed distribution) | ❌ | `store_build` | none — stub action only |
+| Android Play/store build (not local-yolo) | ❌ | `not_local_yolo` | none — stub action only |
+
+Classifier precedence: `store_build` > `vanilla_mobile` (iOS) > `not_local_yolo`
+(Android non-yolo) > missing staged shell. When a device is supported every
+backend below is reachable; when unsupported only the stub action registers
+(see "Gated by `isLocalCodeExecutionAllowed()` AND terminal support" below).
+
+Topology decision (#9146): local coding-agent subprocess execution is a
+host capability, not a per-client guarantee. Desktop/server Node runtimes and
+Android direct/AOSP `local-yolo` builds may run the orchestrator locally. iOS,
+Android Play/store, Mac App Store, and other sandboxed/store builds do not spawn
+local coding CLIs; they should operate as remote controllers for a desktop/cloud
+host orchestrator via the shared `/api/orchestrator/*` and
+`/api/coding-agents/*` HTTP surfaces. Account selection, subscription token
+materialization, and API-key dropping happen on that host, so web, desktop, and
+Capacitor mobile clients all observe the same selected-account behavior when
+they call the host APIs. Voice is in scope as an input modality: a voice turn
+creates or messages the same orchestrator task/session, and the completion is
+narrated by the normal task transcript/progress path rather than by a separate
+voice-only scheduler.
+
+Backend → auth-mode reach (`ORCHESTRATOR_BACKEND_AUTH`, mirroring
+`AGENT_PROVIDER_CANDIDATES` in
+`packages/app-core/src/services/coding-account-bridge.ts`; subscription is
+preferred over API key):
+
+| Backend | Auth modes (preferred → fallback) |
+|---|---|
+| `elizaos` | runtime-routed |
+| `pi-agent` | runtime-routed |
+| `claude` | anthropic-subscription → anthropic-api |
+| `codex` | openai-codex → openai-api |
+| `opencode` | cerebras-api |
+
 ## Layout
 
 ```
@@ -202,12 +254,13 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |
 | `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Compatibility alias for `ELIZA_ACP_DEFAULT_AGENT` |
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
-| `ELIZA_ELIZAOS_ACP_COMMAND` | `elizaos` | Native elizaOS ACP command |
+| `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap |
+| `ELIZA_MAX_SPAWNS_PER_ORIGIN` | `3` | Max sub-agent spawns per root user message before relaying the best captured result instead of re-spawning (bounds the weak-model re-spawn loop) |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Session state persistence dir when no runtime DB |
 | `ELIZA_ACP_SESSION_STORE_BACKEND` | unset | Override session store backend (`db`, `file`, or `memory`) |
 | `ELIZA_ACP_MCP_SERVERS` | unset | JSON list of MCP servers to pass to spawned sub-agents |
@@ -218,6 +271,7 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `TASK_AGENT_WORKDIR_ROUTES` | unset | JSON routing rules mapping task labels to workdirs |
 | `ELIZA_ORCHESTRATOR_SMITHERS` | `1` (enabled) | Set to `0` to disable the smithers task execution path and fall back to direct prompt |
 | `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
+| `ELIZA_REQUIRE_GOAL_CONTRACT` | `1` (enabled) | Auto-generate 3-5 measurable default acceptance criteria for a criteria-free, non-trivial task so the verifier always fires. Set to `0` to keep criteria-free tasks criteria-free (prior behavior). |
 | `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
 | `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
@@ -292,3 +346,45 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
   from dropping it. Do not convert it back to a bare side-effect import.
 - See the root `AGENTS.md` for repo-wide rules (logger-only, ESM, architecture
   commandments, naming).
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — agent behavior / app plugin:**
+- A **live-LLM** scenario trajectory showing the behavior end to end and asserting the **outcome**, not just that routing/an action was selected (see #9970).
+- The artifacts the behavior creates — memories, knowledge, scheduled-task rows, relationships, documents, outputs — inspected after the run.
+- Backend `[ClassName]` logs of the action/service/runner firing, plus error/edge/permission paths.
+- The empty-state and adversarial-input behavior, not just one happy scenario.
+<!-- END: evidence-and-e2e-mandate -->

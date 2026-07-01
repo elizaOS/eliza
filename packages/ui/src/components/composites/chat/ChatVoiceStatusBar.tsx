@@ -47,6 +47,7 @@ const STATUS_DOT_CLASS: Record<VoiceContinuousStatus, string> = {
   thinking: "bg-warn animate-pulse",
   speaking: "bg-accent",
   interrupting: "bg-danger animate-pulse",
+  transcribing: "bg-accent animate-pulse",
 };
 
 const STATUS_LABEL: Record<VoiceContinuousStatus, string> = {
@@ -55,6 +56,7 @@ const STATUS_LABEL: Record<VoiceContinuousStatus, string> = {
   thinking: "Thinking",
   speaking: "Speaking",
   interrupting: "Interrupting",
+  transcribing: "Transcribing",
 };
 
 function latencyTone(
@@ -165,7 +167,7 @@ export function ChatVoiceStatusBar({
             className={cn(
               "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 font-medium transition-colors",
               "border-warn/40 bg-warn/10 text-warn hover:bg-warn/20",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg",
+              "    ",
             )}
           >
             <VolumeX className="h-3 w-3" aria-hidden="true" />

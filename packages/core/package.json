@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "2.0.3-beta.14",
+	"version": "2.0.3-beta.7",
 	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
@@ -94,16 +94,17 @@
 		}
 	},
 	"files": [
+		"registry-entry.json",
 		"dist"
 	],
 	"scripts": {
-		"prebuild": "bun run --cwd ../contracts build && ([ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts)",
+		"prebuild": "bun run --cwd ../logger build && bun run --cwd ../contracts build && ([ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts)",
 		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",
 		"build:watch": "bun run build.ts --watch",
 		"dev": "bun run build:watch",
-		"clean": "rm -rf dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.mjs",
+		"clean": "node ../scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json *.tsbuildinfo && node scripts/clean-src-artifacts.mjs",
 		"perf:settings": "bun run scripts/perf-settings.ts",
 		"test": "node ../scripts/run-vitest.mjs run",
 		"test:coverage": "mkdir -p coverage/.tmp && node ../scripts/run-vitest.mjs run --coverage",

@@ -37,6 +37,7 @@ type MockNativeClient = {
   cancel: ReturnType<typeof vi.fn>;
   closeSession: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
+  approvesPermissionRequest: ReturnType<typeof vi.fn>;
   setEventHandler: (handler: NativeEventHandler | undefined) => void;
   setTimeoutMs: (timeoutMs: number | undefined) => void;
   emit: (event: AcpJsonRpcMessage, sessionId?: string) => void;
@@ -72,6 +73,10 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
     cancel = vi.fn(async () => undefined);
     closeSession = vi.fn(async () => undefined);
     close = vi.fn(async () => undefined);
+    // Mirrors the real transport's auto-approve decision. Defaults to true to
+    // match the default `autonomous` preset (every op approved); individual
+    // tests override it to exercise the restrictive / cancel paths.
+    approvesPermissionRequest = vi.fn((_params: unknown) => true);
 
     constructor(opts: NativeOptions) {
       this.opts = opts;
@@ -381,7 +386,7 @@ describe("AcpService", () => {
     );
   });
 
-  it("defaults untyped native sessions to the elizaos agent", async () => {
+  it("defaults untyped native sessions to the elizaos agent via eliza-code-acp", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
     await service.start();
 
@@ -393,7 +398,32 @@ describe("AcpService", () => {
     expect(spawned.agentType).toBe("elizaos");
     expect(spawnMock).not.toHaveBeenCalled();
     expect(nativeClientMock.instances).toHaveLength(1);
-    expect(nativeClientMock.instances[0]?.opts.command).toBe("elizaos");
+    // The "elizaos" agent type resolves to the eliza-code ACP server binary
+    // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
+    expect(nativeClientMock.instances[0]?.opts.command).toBe("eliza-code-acp");
+  });
+
+  it("honors explicit elizaos ACP command overrides", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ELIZAOS_ACP_COMMAND: "custom-eliza-acp --stdio",
+      }),
+    );
+    await service.start();
+
+    const spawned = await service.spawnSession({
+      name: "custom-elizaos",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(spawned.agentType).toBe("elizaos");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "custom-eliza-acp --stdio",
+    );
   });
 
   it("supports pi-agent as a configured native default", async () => {
@@ -848,6 +878,89 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  // Fix #2 (PR #9855): a terminal `stopReason === "error"` that nonetheless
+  // captured a real deliverable (the sub-agent edited files / deployed / printed
+  // a verified result before its LAST step errored) must NOT be dropped. The
+  // event is relayed as `task_complete` so the normal completion path runs, and
+  // the durable store is NOT flipped to `errored` (which would show a
+  // false-failed task in history while the user actually got the result).
+  it("native sendPrompt relays a stopReason=error WITH captured deliverable as task_complete, not error", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-error-with-output",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      // Terminal result carries real output but ends with stopReason error.
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "error",
+          content: [
+            { type: "text", text: "Deployed the site to https://x.io" },
+          ],
+        },
+      } as AcpJsonRpcMessage);
+      // client.prompt resolves with the same terminal stopReason.
+      return { stopReason: "error" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "build it");
+
+    const emitted = events.map((e) => e.event);
+    // The deliverable rides the completion path, never a user-facing error.
+    expect(emitted).toContain("task_complete");
+    expect(emitted).not.toContain("error");
+    const completePayload = events.find((e) => e.event === "task_complete")
+      ?.payload as { response?: string; stopReason?: string } | undefined;
+    expect(completePayload?.response).toBe("Deployed the site to https://x.io");
+    // The captured deliverable survives on the result.
+    expect(result.finalText).toBe("Deployed the site to https://x.io");
+    // Durable store is NOT flipped to errored — the work succeeded for the user.
+    expect((await service.getSession(sessionId))?.status).not.toBe("errored");
+  });
+
+  // The other half of Fix #2: a true failure (stopReason error AND no captured
+  // output) still surfaces as a user-facing `error` and marks the store errored.
+  it("native sendPrompt surfaces a stopReason=error with EMPTY deliverable as error", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-error-empty",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      // Terminal result: error with no captured deliverable at all.
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: { stopReason: "error" },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "error" };
+    });
+
+    await service.sendPrompt(sessionId, "build it");
+
+    // No deliverable → genuine failure: error event, errored store status.
+    expect(events).toContain("error");
+    expect(events).not.toContain("task_complete");
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
   it("native sendPrompt re-spaces word-split terminal result text blocks", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();
@@ -1032,6 +1145,64 @@ describe("AcpService", () => {
     expect(events).toEqual(
       expect.arrayContaining(["blocked", "login_required"]),
     );
+  });
+
+  it("does NOT emit blocked for an auto-approved (non-auth) permission request", async () => {
+    // Regression for the phantom-blocked bug: the native transport auto-responds
+    // (approves) to this request per the session preset, so surfacing "blocked"
+    // is a false signal that derails the planner (re-spawn + user-facing block).
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    await service.spawnSession({
+      name: "native-auto-approve",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.approvesPermissionRequest.mockReturnValue(true);
+
+    client.emit({
+      jsonrpc: "2.0",
+      id: "permission",
+      method: "session/request_permission",
+      params: {
+        sessionId: "protocol-session",
+        description: "allow read of file.ts",
+        toolCall: { kind: "read" },
+      },
+    } as AcpJsonRpcMessage);
+
+    expect(events).not.toContain("blocked");
+    expect(events).not.toContain("login_required");
+  });
+
+  it("still emits blocked when the transport will NOT auto-approve the request", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    await service.spawnSession({
+      name: "native-denied",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.approvesPermissionRequest.mockReturnValue(false);
+
+    client.emit({
+      jsonrpc: "2.0",
+      id: "permission",
+      method: "session/request_permission",
+      params: {
+        sessionId: "protocol-session",
+        description: "allow execute of rm -rf",
+        toolCall: { kind: "execute" },
+      },
+    } as AcpJsonRpcMessage);
+
+    expect(events).toContain("blocked");
   });
 
   it("closes one-shot initialTask sessions after completion", async () => {
@@ -1412,11 +1583,18 @@ describe("AcpService", () => {
     await waitForSpawn(create);
     closeOk(create);
     const { sessionId } = await spawned;
+    // A direct spawnSession with no opts.workdir lands on the configured
+    // workspace ROOT, which is now isolated per-session (<root>/task-<id>) so
+    // concurrent tasks can't collide — see computeSessionWorkdir.
+    const isolatedCwd = path.resolve(
+      resolvedWorkspaceRoot,
+      `task-${sessionId}`,
+    );
 
     expect(spawnMock).toHaveBeenCalledWith(
       "acpx",
-      expect.arrayContaining(["--cwd", resolvedWorkspaceRoot, "--deny-all"]),
-      expect.objectContaining({ cwd: resolvedWorkspaceRoot }),
+      expect.arrayContaining(["--cwd", isolatedCwd, "--deny-all"]),
+      expect.objectContaining({ cwd: isolatedCwd }),
     );
 
     const prompt = nextProc();
@@ -1434,7 +1612,7 @@ describe("AcpService", () => {
     expect(spawnMock).toHaveBeenLastCalledWith(
       "acpx",
       expect.arrayContaining(["--timeout", "123"]),
-      expect.objectContaining({ cwd: resolvedWorkspaceRoot }),
+      expect.objectContaining({ cwd: isolatedCwd }),
     );
   });
 

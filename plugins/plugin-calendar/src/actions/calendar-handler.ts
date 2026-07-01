@@ -9,6 +9,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { resolveOptimizedPromptForRuntime } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -46,6 +47,9 @@ import type {
   CalendarTravelBufferResult,
   CalendarTravelIntent,
 } from "./deps.js";
+import { CALENDAR_PLAN_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
+
+export { CALENDAR_PLAN_INSTRUCTIONS } from "./optimized-prompt-instructions.js";
 
 /**
  * Host-supplied dependencies, set once when the calendar action is built via
@@ -1186,7 +1190,72 @@ function resolveStructuredCalendarSubaction(
   return null;
 }
 
-function parseExplicitLocalDate(
+/**
+ * Small spelled-out cardinals so everyday/child/elderly phrasing like "in two
+ * days" or "a week from today" resolves deterministically, not just digits.
+ */
+const RELATIVE_NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
+function relativeCountToNumber(token: string): number | null {
+  if (/^\d{1,3}$/.test(token)) return Number(token);
+  return RELATIVE_NUMBER_WORDS[token] ?? null;
+}
+
+/**
+ * Resolve common relative-date phrasing to a day offset from today, or null.
+ * Handles "today", "tomorrow", "yesterday", "day after tomorrow",
+ * "day before yesterday", "in N days/weeks", and "N days/weeks from now|today"
+ * (#8795). These are everyday phrasings the calendar action's own examples use
+ * (e.g. "Schedule a meeting with Alex at 3pm tomorrow") that the deterministic
+ * resolver previously returned null for, forcing an avoidable LLM round-trip.
+ *
+ * Multi-word and count patterns are checked before the bare "today"/"tomorrow"
+ * words so "3 days from today" is +3, not 0.
+ */
+function parseRelativeDayOffset(text: string): number | null {
+  if (/\bday after tomorrow\b/.test(text)) return 2;
+  if (/\bday before yesterday\b/.test(text)) return -2;
+
+  const inMatch = text.match(
+    /\bin (\d{1,3}|a|an|one|two|three|four|five|six|seven|eight|nine|ten) (days?|weeks?)\b/,
+  );
+  if (inMatch?.[1] && inMatch[2]) {
+    const count = relativeCountToNumber(inMatch[1]);
+    if (count !== null) {
+      return inMatch[2].startsWith("week") ? count * 7 : count;
+    }
+  }
+
+  const fromNowMatch = text.match(
+    /\b(\d{1,3}|a|an|one|two|three|four|five|six|seven|eight|nine|ten) (days?|weeks?) from (?:now|today)\b/,
+  );
+  if (fromNowMatch?.[1] && fromNowMatch[2]) {
+    const count = relativeCountToNumber(fromNowMatch[1]);
+    if (count !== null) {
+      return fromNowMatch[2].startsWith("week") ? count * 7 : count;
+    }
+  }
+
+  if (/\btomorrow\b/.test(text)) return 1;
+  if (/\byesterday\b/.test(text)) return -1;
+  if (/\btoday\b/.test(text)) return 0;
+  return null;
+}
+
+export function parseExplicitLocalDate(
   value: string,
   timeZone: string,
 ): { year: number; month: number; day: number } | null {
@@ -1266,6 +1335,21 @@ function parseExplicitLocalDate(
         delta,
       );
     }
+  }
+
+  // Relative-date phrasing fallback ("tomorrow", "in 2 days", "a week from
+  // today", …) — checked after the specific date patterns so e.g. an ISO date
+  // still wins (#8795).
+  const relativeOffset = parseRelativeDayOffset(normalized);
+  if (relativeOffset !== null) {
+    return addDaysToLocalDate(
+      {
+        year: localToday.year,
+        month: localToday.month,
+        day: localToday.day,
+      },
+      relativeOffset,
+    );
   }
 
   return null;
@@ -1986,62 +2070,13 @@ export async function extractCalendarPlanWithLlm(
     `today = ${formatLocalDate(todayLocal)}`,
     `tomorrow = ${formatLocalDate(tomorrowLocal)}`,
   ].join(", ");
+  const instructions = resolveOptimizedPromptForRuntime(
+    runtime,
+    "calendar_extract",
+    CALENDAR_PLAN_INSTRUCTIONS,
+  );
   const prompt = [
-    "Plan the calendar action for this request.",
-    "The user may speak in any language.",
-    "Use the current request plus recent conversation context.",
-    "If the current request is vague or a follow-up, recover the subject from recent conversation and apply the new constraint from the current request.",
-    "You are allowed to decide that the assistant should reply naturally without acting yet.",
-    "Set shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.",
-    "When shouldAct=false, provide a short natural response that asks only for what is missing.",
-    "",
-    "Return JSON only as a single object with exactly these fields:",
-    "  subaction: one of the allowed subactions below, or null when this should be reply-only/no-action",
-    "  shouldAct: boolean",
-    "  response: short natural-language reply when shouldAct is false, otherwise empty or null",
-    "  queries: array or ||-delimited string of up to 3 search queries",
-    "  title: optional event title",
-    "  tripLocation: optional trip location",
-    "  timeMin: optional ISO 8601 datetime",
-    "  timeMax: optional ISO 8601 datetime",
-    "  windowLabel: optional natural-language window label",
-    "",
-    "subactions[7]{name,use}:",
-    "  feed,View schedule for today tomorrow or this week",
-    "  next_event,Check the next upcoming event only",
-    "  search_events,Find events by title attendee location or date range",
-    "  create_event,Schedule a new event",
-    "  update_event,Rename reschedule move or edit an existing event",
-    "  delete_event,Remove or cancel an existing event",
-    "  trip_window,Query what is happening during a trip or stay in a place",
-    "Use only the exact subaction literals listed above.",
-    "Do not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.",
-    "If the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.",
-    "When the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.",
-    "",
-    "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
-    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with my colleague' so the search does not silently narrow away the target event.",
-    "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
-    "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
-    "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
-    "When the user asks whether they have a flight to a place, include the place name as a search query in addition to any flight phrase.",
-    "Preserve names, places, and keywords in their original language or script when useful.",
-    "Convert time constraints into concise searchable dates or windows even if the user phrases them in another language.",
-    "Focus on people, places, flights, itinerary, appointments, and explicit dates.",
-    "If the request is about a date, include a date query like april 12 or 2026-04-12.",
-    "If the request asks what is happening while the user is in a place, use trip_window and include tripLocation.",
-    "For update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.",
-    "For requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.",
-    "",
-    'Example feed: {"subaction":"feed","shouldAct":true,"response":null,"queries":[],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":"tomorrow"}',
-    'Example search: {"subaction":"search_events","shouldAct":true,"response":null,"queries":["flight to denver","denver"],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}',
-    'Example update: {"subaction":"update_event","shouldAct":true,"response":null,"queries":["meeting"],"title":"standup","tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}',
-    'Example clarify: {"subaction":null,"shouldAct":false,"response":"What do you want to do on your calendar?","queries":[],"title":null,"tripLocation":null,"timeMin":null,"timeMax":null,"windowLabel":null}',
-    "",
-    "The user may speak any language. Detect the calendar intent regardless of language.",
-    "When the user asks about what is happening in a specific location or during a trip, detect this as trip_window and extract the location, regardless of language.",
-    "",
-    "Return JSON only as a single object. No prose. No markdown. No hidden reasoning.",
+    instructions,
     "",
     `Current timezone: ${timeZone}`,
     `LOCAL DATE ANCHORS (authoritative — IGNORE UTC day for date arithmetic): ${localDateAnchors}.`,
@@ -2063,6 +2098,7 @@ export async function extractCalendarPlanWithLlm(
     runtime,
     prompt,
     actionType: "lifeops.calendar.plan",
+    purpose: "calendar_extract",
     failureMessage: "Calendar action planning model call failed",
     source: "action:calendar",
   });
@@ -2099,6 +2135,7 @@ export async function extractCalendarPlanWithLlm(
       localNow,
     }),
     actionType: "lifeops.calendar.plan_repair",
+    purpose: "calendar_extract",
     failureMessage: "Calendar action repair model call failed",
     source: "action:calendar",
   });
@@ -3653,6 +3690,18 @@ const calendarAction: CalendarHandlerAction = {
           }
           resolvedEventId = targetEvent.externalId;
           resolvedCalendarId = targetEvent.calendarId;
+        }
+        if (!resolvedEventId) {
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_target",
+              "i need an event id or a title + date to update an event.",
+              {
+                missing: ["event target"],
+              },
+            ),
+          });
         }
         const newTitle = detailString(details, "newTitle") ?? explicitTitle;
         const explicitStartAtForUpdate = detailString(details, "startAt");

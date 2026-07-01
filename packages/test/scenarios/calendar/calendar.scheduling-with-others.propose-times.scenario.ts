@@ -9,6 +9,7 @@ import {
 } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.scheduling-with-others.propose-times",
   title: "Agent proposes three available time slots for a meeting",
   domain: "calendar",

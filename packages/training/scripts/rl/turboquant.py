@@ -1,3 +1,5 @@
+"""TurboQuant KV-cache."""
+
 from __future__ import annotations
 
 import math
@@ -7,11 +9,6 @@ from typing import Any
 
 import torch
 from transformers.cache_utils import Cache, DynamicLayer
-
-try:
-    from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5DynamicCache
-except ImportError:
-    Qwen3_5DynamicCache = None
 
 
 SQRT_PI_OVER_TWO = math.sqrt(math.pi / 2.0)
@@ -530,98 +527,6 @@ class TurboQuantCache(Cache):
         return self.get_seq_length() > 0
 
 
-if Qwen3_5DynamicCache is None:
-
-    class Qwen35TurboQuantCache(TurboQuantCache):
-        def __init__(self, config: Any, settings: TurboQuantSettings):
-            raise ImportError(
-                "Qwen3.5 TurboQuant cache requires a transformers build with "
-                "transformers.models.qwen3_5 support."
-            )
-else:
-
-    class Qwen35TurboQuantCache(Qwen3_5DynamicCache):
-        def __init__(self, config: Any, settings: TurboQuantSettings):
-            settings.validate()
-            decoder_config = _resolve_decoder_config(config)
-            sliding_window = getattr(decoder_config, "sliding_window", None) or getattr(
-                decoder_config, "attention_chunk_size", None
-            )
-            if sliding_window is not None:
-                raise ValueError(
-                    "TurboQuantCache does not yet support sliding-window attention caches."
-                )
-
-            super().__init__(decoder_config)
-            self.settings = settings
-            self._attention_layers = {
-                layer_idx: TurboQuantLayer(settings=settings, layer_idx=layer_idx)
-                for layer_idx in self.transformer_layers
-            }
-
-        def update(
-            self,
-            key_states: torch.Tensor,
-            value_states: torch.Tensor,
-            layer_idx: int,
-            cache_kwargs: dict[str, Any] | None = None,
-        ) -> tuple[torch.Tensor, torch.Tensor]:
-            if self.layer_types[layer_idx] != "full_attention":
-                return super().update(key_states, value_states, layer_idx, cache_kwargs)
-
-            layer = self._attention_layers[layer_idx]
-            full_keys, full_values = layer.update(key_states, value_states, cache_kwargs)
-            self.key_cache[layer_idx] = layer.keys
-            self.value_cache[layer_idx] = layer.values
-            return full_keys, full_values
-
-        def reorder_cache(self, beam_idx: torch.LongTensor):
-            for layer_idx in range(len(self.layer_types)):
-                if self.layer_types[layer_idx] == "full_attention":
-                    layer = self._attention_layers[layer_idx]
-                    if layer.get_seq_length() > 0:
-                        layer.reorder_cache(beam_idx)
-                        self.key_cache[layer_idx] = layer.keys
-                        self.value_cache[layer_idx] = layer.values
-
-                if self.conv_states[layer_idx] is not None:
-                    device = self.conv_states[layer_idx].device
-                    beam_idx_layer = beam_idx.to(device)
-                    self.conv_states[layer_idx] = self.conv_states[layer_idx].index_select(
-                        0, beam_idx_layer
-                    )
-                    self.recurrent_states[layer_idx] = self.recurrent_states[
-                        layer_idx
-                    ].index_select(0, beam_idx_layer)
-
-        def get_seq_length(self, layer_idx: int | None = 0) -> int:
-            if not self.transformer_layers:
-                return 0
-            selected_layer = (
-                self.transformer_layers[0]
-                if layer_idx not in self.transformer_layers
-                else int(layer_idx)
-            )
-            return self._attention_layers[selected_layer].get_seq_length()
-
-        def get_mask_sizes(
-            self, cache_position: torch.Tensor | int, layer_idx: int
-        ) -> tuple[int, int]:
-            kv_offset = 0
-            query_length = (
-                int(cache_position.shape[0])
-                if isinstance(cache_position, torch.Tensor)
-                else int(cache_position)
-            )
-            past_seen_tokens = self.get_seq_length(layer_idx)
-            kv_length = query_length + past_seen_tokens
-            return kv_length, kv_offset
-
-        @property
-        def has_previous_state(self):
-            return self.conv_states[self.last_linear_layer] is not None
-
-
 def build_generation_cache(
     model_config: Any,
     *,
@@ -634,11 +539,6 @@ def build_generation_cache(
         raise ValueError(f"Unsupported cache implementation: {cache_implementation}")
     decoder_config = _resolve_decoder_config(model_config)
     settings = turboquant_settings or TurboQuantSettings()
-    if getattr(decoder_config, "model_type", None) == "qwen3_5_text":
-        return Qwen35TurboQuantCache(
-            config=decoder_config,
-            settings=settings,
-        )
     return TurboQuantCache(
         config=decoder_config,
         settings=settings,

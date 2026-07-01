@@ -1,12 +1,19 @@
+import { Download, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type QueryResult } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
+import {
+  canShareFiles,
+  downloadAttachment,
+  filenameForMime,
+  shareAttachment,
+} from "../../utils/download-share";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
@@ -207,7 +214,7 @@ function MediaFilterChip({
   );
 }
 
-function MediaListItem({
+const MediaListItem = memo(function MediaListItem({
   item,
   index,
   isActive,
@@ -256,7 +263,7 @@ function MediaListItem({
       </SidebarContent.ItemBody>
     </SidebarContent.Item>
   );
-}
+});
 
 export function MediaGalleryView({
   leftNav,
@@ -265,10 +272,11 @@ export function MediaGalleryView({
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const mountedRef = useRef(true);
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
@@ -340,8 +348,10 @@ export function MediaGalleryView({
         return b.createdAt.localeCompare(a.createdAt);
       });
 
+      if (!mountedRef.current) return;
       setMedia(allMedia);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(
         t("mediagalleryview.LoadFailed", {
           message: err instanceof Error ? err.message : "error",
@@ -349,11 +359,17 @@ export function MediaGalleryView({
         }),
       );
     }
-    setLoading(false);
+    if (mountedRef.current) {
+      setLoading(false);
+    }
   }, [t]);
 
   useEffect(() => {
-    loadMedia();
+    mountedRef.current = true;
+    void loadMedia();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [loadMedia]);
 
   const filtered = useMemo(
@@ -388,6 +404,40 @@ export function MediaGalleryView({
     filtered.find((item) => item.url === selectedMediaUrl) ??
     filtered[0] ??
     null;
+
+  const mediaItemFallbackTitle = t("mediagalleryview.MediaItem", {
+    defaultValue: "Media item",
+  });
+
+  const shareSupported = useMemo(() => canShareFiles(), []);
+
+  const handleDownloadSelected = useCallback(async () => {
+    if (!selectedItem) return;
+    const url = normalizeMediaUrl(selectedItem.url);
+    const mime =
+      selectedItem.type === "image"
+        ? "image/png"
+        : selectedItem.type === "video"
+          ? "video/mp4"
+          : "audio/mpeg";
+    const filename = selectedItem.filename || filenameForMime(mime);
+    try {
+      await downloadAttachment(url, filename);
+    } catch {
+      // Download failed for this transport — nothing more we can do client-side.
+    }
+  }, [selectedItem]);
+
+  const handleShareSelected = useCallback(async () => {
+    if (!selectedItem) return;
+    const url = normalizeMediaUrl(selectedItem.url);
+    const title = selectedItem.filename || mediaItemFallbackTitle;
+    const shared = await shareAttachment(url, {
+      title,
+      filename: selectedItem.filename || undefined,
+    });
+    if (!shared) await handleDownloadSelected();
+  }, [handleDownloadSelected, mediaItemFallbackTitle, selectedItem]);
 
   const mediaSidebar = (
     <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
@@ -451,9 +501,7 @@ export function MediaGalleryView({
                 index={index}
                 isActive={selectedItem?.url === item.url}
                 typeLabel={mediaTypeLabel(t, item.type)}
-                fallbackTitle={t("mediagalleryview.MediaItem", {
-                  defaultValue: "Media item",
-                })}
+                fallbackTitle={mediaItemFallbackTitle}
                 onSelect={setSelectedMediaUrl}
               />
             ))
@@ -517,6 +565,36 @@ export function MediaGalleryView({
                 })}{" "}
                 {selectedItem.source}
                 {selectedItem.createdAt ? ` · ${selectedItem.createdAt}` : ""}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-sm"
+                  data-testid="media-download"
+                  onClick={() => void handleDownloadSelected()}
+                >
+                  <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                  {t("mediagalleryview.Download", {
+                    defaultValue: "Download",
+                  })}
+                </Button>
+                {shareSupported ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm"
+                    data-testid="media-share"
+                    onClick={() => void handleShareSelected()}
+                  >
+                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("mediagalleryview.Share", {
+                      defaultValue: "Share",
+                    })}
+                  </Button>
+                ) : null}
               </div>
             </PagePanel>
 

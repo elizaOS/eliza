@@ -13,6 +13,7 @@ import {
   facewearSwitchViewAction,
 } from "./actions/view-actions.ts";
 import { facewearQueryVisionAction } from "./actions/vision-query.ts";
+import { facewearSetupRuntimeAction } from "./actions/xr-runtime-setup.ts";
 import { facewearContextProvider } from "./providers/facewear-context.ts";
 import { smartglassesStatusProvider } from "./providers/smartglasses-status.ts";
 import { connectRoute } from "./routes/connect.ts";
@@ -25,6 +26,7 @@ import { simulatorRoute } from "./routes/simulator-route.ts";
 import { statusRoute } from "./routes/status.ts";
 import { viewHostRoute } from "./routes/view-host.ts";
 import { viewsRoute } from "./routes/views.ts";
+import { facewearXrRuntimeRoute } from "./routes/xr-runtime.ts";
 import { FacewearService } from "./services/facewear-service.ts";
 import { SmartglassesService } from "./services/smartglasses-service.ts";
 import { XRSessionService } from "./services/xr-session-service.ts";
@@ -48,6 +50,7 @@ export const facewearPlugin: Plugin = {
     facewearListViewsAction,
     facewearResizeViewAction,
     facewearQueryVisionAction,
+    facewearSetupRuntimeAction,
   ],
   providers: [facewearContextProvider, smartglassesStatusProvider],
   routes: [
@@ -59,23 +62,34 @@ export const facewearPlugin: Plugin = {
     facewearDevicesRoute,
     facewearDeviceRoute,
     facewearStatusRoute,
+    facewearXrRuntimeRoute,
   ],
 
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // FacewearSpatialView source (via the FacewearView data wrapper).
+    // `modalities` is a plain literal here (index.ts is not in the view bundle),
+    // so no brand-new `@elizaos/core` runtime export reaches the bundle build.
     {
       id: "facewear",
-      viewType: "gui",
+      viewKind: "preview",
       path: "/apps/facewear",
       label: "Facewear",
       description:
         "Manage all connected XR devices and smartglasses — Meta Quest, XReal, Even Realities, Apple Vision Pro.",
       icon: "Glasses",
       heroImagePath: "assets/hero-facewear.png",
+      // GUI config moved to Settings -> Wearables (register.ts); the served
+      // standalone view keeps only the agent-facing XR + TUI surfaces.
+      modalities: ["xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FacewearView",
       tags: ["facewear", "xr", "smartglasses", "wearable"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Wearables config now lives under Settings → Wearables (see register.ts),
+      // not as standalone launcher views. The view defs are retained only so the
+      // agent keeps serving the XR/TUI surfaces and the in-headset view host.
+      visibleInManager: false,
+      desktopTabEnabled: false,
       capabilities: [
         {
           id: "connect-device",
@@ -95,39 +109,22 @@ export const facewearPlugin: Plugin = {
         },
       ],
     },
-    {
-      id: "facewear",
-      viewType: "tui",
-      path: "/apps/facewear/tui",
-      label: "Facewear TUI",
-      description: "Terminal UI for facewear device management.",
-      heroImagePath: "assets/hero-facewear.png",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FacewearTuiView",
-      tags: ["facewear", "xr", "smartglasses", "tui"],
-    },
-    {
-      id: "facewear",
-      viewType: "xr",
-      path: "/apps/facewear/xr",
-      label: "Facewear XR",
-      description: "XR view for facewear device status and control.",
-      heroImagePath: "assets/hero-facewear.png",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FacewearView",
-      tags: ["facewear", "xr", "smartglasses", "wearable"],
-    },
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // SmartglassesSpatialView source (via the SmartglassesPanelView wrapper).
     {
       id: "smartglasses",
-      viewType: "gui",
+      viewKind: "preview",
       path: "/apps/smartglasses",
       label: "Smartglasses",
       description:
         "Pair, test, configure, and export diagnostics for a complete Even Realities headset.",
       icon: "Glasses",
       heroImagePath: "assets/hero-smartglasses.png",
+      // GUI config moved to Settings -> Wearables (register.ts); the served
+      // standalone view keeps only the agent-facing XR + TUI surfaces.
+      modalities: ["xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "SmartglassesView",
+      componentExport: "SmartglassesPanelView",
       tags: [
         "facewear",
         "smartglasses",
@@ -137,8 +134,11 @@ export const facewearPlugin: Plugin = {
         "hardware",
         "even-realities",
       ],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      // Wearables config now lives under Settings → Wearables (see register.ts),
+      // not as standalone launcher views. The view defs are retained only so the
+      // agent keeps serving the XR/TUI surfaces and the in-headset view host.
+      visibleInManager: false,
+      desktopTabEnabled: false,
       capabilities: [
         {
           id: "connect-headset",
@@ -162,68 +162,7 @@ export const facewearPlugin: Plugin = {
         },
       ],
     },
-    {
-      id: "smartglasses",
-      viewType: "tui",
-      path: "/apps/smartglasses/tui",
-      label: "Smartglasses TUI",
-      description:
-        "Terminal UI for smartglasses setup, status, and diagnostics.",
-      icon: "Glasses",
-      heroImagePath: "assets/hero-smartglasses.png",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "SmartglassesTuiView",
-      tags: [
-        "facewear",
-        "smartglasses",
-        "wearable",
-        "bluetooth",
-        "hardware",
-        "tui",
-      ],
-      visibleInManager: false,
-    },
-    {
-      id: "smartglasses",
-      viewType: "xr",
-      path: "/apps/smartglasses/xr",
-      label: "Smartglasses XR",
-      description:
-        "XR smartglasses setup and diagnostics panel from the same component as the GUI view.",
-      icon: "Glasses",
-      heroImagePath: "assets/hero-smartglasses.png",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "SmartglassesView",
-      tags: [
-        "facewear",
-        "smartglasses",
-        "wearable",
-        "bluetooth",
-        "hardware",
-        "xr",
-      ],
-      visibleInManager: false,
-    },
   ],
-
-  app: {
-    navTabs: [
-      {
-        id: "facewear",
-        label: "Facewear",
-        icon: "Glasses",
-        path: "/apps/facewear",
-        componentExport: "@elizaos/plugin-facewear#FacewearView",
-      },
-      {
-        id: "smartglasses",
-        label: "Smartglasses",
-        icon: "Glasses",
-        path: "/apps/smartglasses",
-        componentExport: "@elizaos/plugin-facewear/register#SmartglassesView",
-      },
-    ],
-  },
 
   async dispose(runtime: IAgentRuntime) {
     await runtime
@@ -240,6 +179,11 @@ export { displayFacewearTextAction as displaySmartglassesTextAction } from "./ac
 export { facewearControlAction as smartglassesControlAction } from "./actions/facewear-control.ts";
 export { facewearStatusAction as smartglassesStatusAction } from "./actions/facewear-status.ts";
 export { facewearMicrophoneAction as smartglassesMicrophoneAction } from "./actions/microphone.ts";
+// NOTE: the React view wrappers (FacewearView / SmartglassesPanelView) are NOT
+// re-exported here — that drags React/@elizaos/ui into the Node agent bundle and
+// fails plugin load. The app loads them via the browser entry (src/register.ts)
+// + the Vite view bundle (componentExport from dist/views/bundle.js).
+export { facewearSetupRuntimeAction } from "./actions/xr-runtime-setup.ts";
 export type {
   FacewearDeviceProfile,
   FacewearDeviceType,
@@ -252,6 +196,17 @@ export {
 export * from "./protocol/smartglasses.ts";
 export type * from "./protocol/xr.ts";
 export { smartglassesStatusProvider } from "./providers/smartglasses-status.ts";
+// Desktop OpenXR runtime detection + install planning (the WebXR-on-desktop seam).
+export { detectOpenXrRuntimeNow } from "./runtime/node-probe.ts";
+export {
+  detectOpenXrRuntime,
+  type OpenXrInstallPlan,
+  type OpenXrInstallStep,
+  type OpenXrRuntimeName,
+  type OpenXrRuntimeStatus,
+  planOpenXrInstall,
+  type RuntimeProbe,
+} from "./runtime/openxr-runtime.ts";
 export { AudioPipeline } from "./services/audio-pipeline.ts";
 export {
   FACEWEAR_SERVICE_TYPE,

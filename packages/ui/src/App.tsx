@@ -2,7 +2,13 @@
  * Root App component — routing shell.
  */
 
-import { X } from "lucide-react";
+import {
+  type AppShellBackgroundPolicy,
+  type EnabledViewKinds,
+  isViewVisible,
+  type ViewKind,
+} from "@elizaos/core";
+import { ArrowLeft, X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -19,7 +25,9 @@ import {
 import {
   type ActiveViewLayout,
   createNavigateViewHandler,
+  type NavigateViewDetail,
 } from "./app-navigate-view";
+import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
@@ -27,6 +35,7 @@ import {
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
+  reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
@@ -42,11 +51,12 @@ import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSec
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
-import { ChatAmbientBackground } from "./components/shell/ChatAmbientBackground";
 import { ChatSurface } from "./components/shell/ChatSurface";
+import { CloudHandoffBanner } from "./components/shell/CloudHandoffBanner";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -57,16 +67,18 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
-import { ErrorBoundary } from "./components/ui/error-boundary";
+import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
+import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
-import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import { CompactOnboarding } from "./first-run/CompactOnboarding";
+import { FirstRunRuntimeChooser } from "./first-run/FirstRunRuntimeChooser";
+import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -74,16 +86,24 @@ import {
   APPS_ENABLED,
   getAppSlugFromPath,
   getWindowNavigationPath,
-  isAndroidPhoneSurfaceEnabled,
   isAospShellEnabled,
   isRouteRootPath,
+  pathForTab,
   shouldUseHashNavigation,
+  TAB_PATHS,
+  tabFromPath,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
-import { type ActionNotice, useApp } from "./state";
+import {
+  type ActionNotice,
+  useAppSelector,
+  useAppSelectorShallow,
+} from "./state";
+import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
+import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px)+var(--eliza-continuous-chat-clearance,5.25rem))]";
@@ -132,18 +152,25 @@ import {
 // remaining page views are lazy-split below.
 import { CharacterEditor } from "./components/character/CharacterEditor";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
+import { LauncherSurface } from "./components/pages/LauncherSurface";
+import {
+  isWalletSectionPath,
+  WalletSectionNav,
+} from "./components/pages/WalletSectionNav";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import {
   useAvailableViews,
+  useRoutableViews,
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
-import { useIsDeveloperMode } from "./state/useDeveloperMode";
+import { useEnabledViewKinds } from "./state/useViewKinds";
+import { WidgetHost } from "./widgets";
 
-const ViewCatalog = lazyNamedView(
-  () => import("./components/pages/ViewCatalog"),
-  "ViewCatalog",
+const BackgroundView = lazyNamedView(
+  () => import("./components/pages/BackgroundView"),
+  "BackgroundView",
 );
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
@@ -152,6 +179,10 @@ const AutomationsFeed = lazyNamedView(
 const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
+);
+const TranscriptsPageView = lazyNamedView(
+  () => import("./components/transcripts/TranscriptsPage"),
+  "TranscriptsPage",
 );
 const CameraPageView = lazyNamedView(
   () => import("./components/pages/CameraPageView"),
@@ -195,6 +226,10 @@ const StreamView = lazyNamedView(
 const DatabasePageView = lazyNamedView(
   () => import("./components/pages/DatabasePageView"),
   "DatabasePageView",
+);
+const FilesView = lazyNamedView(
+  () => import("./components/pages/FilesView"),
+  "FilesView",
 );
 const LogsView = lazyNamedView(
   () => import("./components/pages/LogsView"),
@@ -326,9 +361,9 @@ function useIsPopout(): boolean {
 }
 
 /**
- * Shell mode for the Linux OS overlay windows. The OS launches the same app
- * bundle with `--shell-mode=chat-overlay` (a floating, transparent assistant
- * pill window), `--shell-mode=launcher` (full home view), or
+ * Shell mode for focused native surfaces. The OS launches the same app
+ * bundle with `--shell-mode=chat-overlay` (transparent assistant overlay),
+ * `--shell-mode=launcher` (full home view), or
  * `--shell-mode=kiosk` (the locked appliance shell: a single fullscreen
  * view-manager surface with an always-visible bottom chat pill). The mode is
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
@@ -336,11 +371,18 @@ function useIsPopout(): boolean {
  */
 type ShellMode =
   | "chat-overlay"
-  | "onboarding-overlay"
+  | "tray-popover"
   | "voice-selftest"
+  | "voice-workbench"
   | "launcher"
   | "kiosk"
   | "full";
+
+declare global {
+  interface Window {
+    ELIZAOS_SHELL_MODE?: string;
+  }
+}
 
 function readShellMode(): ShellMode {
   if (typeof window === "undefined") return "full";
@@ -350,11 +392,12 @@ function readShellMode(): ShellMode {
   const raw =
     params.get("shellMode") ??
     params.get("shell-mode") ??
-    (window as unknown as { ELIZAOS_SHELL_MODE?: string }).ELIZAOS_SHELL_MODE ??
+    window.ELIZAOS_SHELL_MODE ??
     "";
   if (raw === "chat-overlay") return "chat-overlay";
-  if (raw === "onboarding-overlay") return "onboarding-overlay";
+  if (raw === "tray-popover") return "tray-popover";
   if (raw === "voice-selftest") return "voice-selftest";
+  if (raw === "voice-workbench") return "voice-workbench";
   if (raw === "launcher") return "launcher";
   if (raw === "kiosk") return "kiosk";
   return "full";
@@ -371,6 +414,9 @@ function useShellMode(): ShellMode {
  * chrome — over a transparent background.
  */
 function ChatOverlayShell() {
+  // The bar has no inline tab system, so "show a view" / "show the launcher"
+  // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
+  useBarSurfaceWindows();
   return (
     <div
       data-testid="chat-overlay-shell"
@@ -382,19 +428,19 @@ function ChatOverlayShell() {
 }
 
 /**
- * First-run onboarding overlay surface. Renders ONLY the floating
- * CompactOnboarding card over a transparent, click-through background — no app
- * chrome. The native overlay window is `transparent` + `passthrough`, so the
- * empty (pointer-events-none) region lets clicks fall through to the desktop
- * behind while the card stays interactive.
+ * Native tray popover surface (#9953 Phase 4). Renders ONLY the widget surface
+ * (reusing the shell widget registry's "home" slot) inside the frameless,
+ * transparent, always-on-top window the native tray anchors near its icon — no
+ * app chrome. Each widget self-hides when it has nothing to show, so the popover
+ * is a compact at-a-glance panel.
  */
-function OnboardingOverlayShell() {
+function TrayPopoverShell() {
   return (
     <div
-      data-testid="onboarding-overlay-shell"
-      className="pointer-events-none fixed inset-0 bg-transparent"
+      data-testid="tray-popover-shell"
+      className="fixed inset-0 overflow-y-auto bg-transparent p-3"
     >
-      <CompactOnboarding />
+      <WidgetHost slot="home" layout="stack" />
     </div>
   );
 }
@@ -425,14 +471,16 @@ function KioskShell() {
 function TabScrollView({
   children,
   className = "",
+  nav,
 }: {
   children: ReactNode;
   className?: string;
+  nav?: ReactNode;
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
-      chatDisabled
+      nav={nav}
       main={
         <div
           data-shell-scroll-region="true"
@@ -445,11 +493,20 @@ function TabScrollView({
   );
 }
 
-function TabContentView({ children }: { children: ReactNode }) {
+function TabContentView({
+  children,
+  surface = "opaque",
+  nav,
+}: {
+  children: ReactNode;
+  surface?: "opaque" | "transparent";
+  nav?: ReactNode;
+}) {
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
-      chatDisabled
+      surface={surface}
+      nav={nav}
       main={
         <div
           data-shell-content-region="true"
@@ -466,6 +523,8 @@ interface ResolvedDynamicPage {
   id: string;
   pluginId: string;
   developerOnly: boolean;
+  viewKind?: ViewKind;
+  backgroundPolicy?: AppShellBackgroundPolicy;
   registration?: AppShellPageRegistration;
   componentExport?: string;
 }
@@ -484,7 +543,7 @@ function useAppShellPageRegistryVersion(): number {
  * `app.navTabs` declaration. Returns `null` when no plugin claims the tab.
  */
 function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
-  const { plugins } = useApp();
+  const plugins = useAppSelector((s) => s.plugins);
   const registryVersion = useAppShellPageRegistryVersion();
   return useMemo(() => {
     void registryVersion;
@@ -495,6 +554,8 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
         id: registered.id,
         pluginId: registered.pluginId,
         developerOnly: registered.developerOnly === true,
+        viewKind: registered.viewKind,
+        backgroundPolicy: registered.backgroundPolicy,
         registration: registered,
       };
     }
@@ -511,6 +572,9 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
           pluginId: plugin.id,
           developerOnly:
             plugin.app?.developerOnly === true || navTab.developerOnly === true,
+          // A nav tab's own kind wins; otherwise inherit the app's kind.
+          viewKind: navTab.viewKind ?? plugin.app?.viewKind,
+          backgroundPolicy: navTab.backgroundPolicy,
           registration: reg,
           componentExport: navTab.componentExport,
         };
@@ -530,6 +594,34 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  * a small loading fallback until the import resolves. Plugins can avoid this
  * path by self-registering with `registerAppShellPage` at boot.
  */
+/**
+ * Props every app-shell page view receives, mirroring the OverlayAppContext that
+ * `DynamicViewLoader` injects on web/desktop. Overlay-app views (polymarket,
+ * …) read `t` / `exitToApps` from props and crash ("t is not a
+ * function") if mounted with none — which is exactly what happens on iOS/Android
+ * where these views render through the in-process app-shell path instead of
+ * DynamicViewLoader. Views that read translations from hooks ignore the extras.
+ */
+function exitAppShellPageToViews(): void {
+  if (typeof window !== "undefined") {
+    window.history.pushState(null, "", "/views");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
+const APP_SHELL_VIEW_PROPS = {
+  exitToApps: exitAppShellPageToViews,
+  t: (
+    key: string,
+    options?: { defaultValue?: string } | Record<string, unknown>,
+  ): string =>
+    typeof options === "object" &&
+    options !== null &&
+    "defaultValue" in options &&
+    typeof options.defaultValue === "string"
+      ? options.defaultValue
+      : key,
+};
+
 function RegisteredAppShellPage({
   registration,
 }: {
@@ -543,7 +635,8 @@ function RegisteredAppShellPage({
     return (
       <RetainedLazyComponent
         loader={registration.loader}
-        componentProps={{}}
+        cacheKey={registration.id}
+        componentProps={APP_SHELL_VIEW_PROPS}
         fallback={
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
             Loading {registration.label}…
@@ -594,9 +687,9 @@ function WalletInventoryPage() {
 
 function visibleDynamicPage(
   page: ResolvedDynamicPage | null,
-  developerModeEnabled: boolean,
+  enabledKinds: EnabledViewKinds,
 ): page is ResolvedDynamicPage {
-  return Boolean(page && (developerModeEnabled || !page.developerOnly));
+  return Boolean(page && isViewVisible(page, enabledKinds));
 }
 
 /**
@@ -613,6 +706,122 @@ function useTabIsFullBleed(tab: string): boolean {
       (entry) => entry.id === tab && entry.fullBleed === true,
     );
   }, [registryVersion, tab]);
+}
+
+function useCurrentNavigationPath(): string {
+  const [navigationPath, setNavigationPath] = useState(() =>
+    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigationChange = () => {
+      setNavigationPath(getWindowNavigationPath());
+    };
+    window.addEventListener("hashchange", handleNavigationChange);
+    window.addEventListener("popstate", handleNavigationChange);
+    return () => {
+      window.removeEventListener("hashchange", handleNavigationChange);
+      window.removeEventListener("popstate", handleNavigationChange);
+    };
+  }, []);
+
+  return navigationPath;
+}
+
+function normalizeBackgroundPolicy(
+  policy: AppShellBackgroundPolicy | undefined,
+): AppShellBackgroundPolicy {
+  return policy === "shared" ? "shared" : "opaque";
+}
+
+function builtinRouteBackgroundPolicy(
+  tab: string,
+  navigationPath: string,
+): AppShellBackgroundPolicy | null {
+  const normalizedPath = trimmedNavigationPath(navigationPath);
+  if (tab === "chat" || tab === "background") return "shared";
+  if (tab === "settings") return "shared";
+  if (tab === "views" && normalizedPath === "/views") return "shared";
+  if (tab === "apps" && normalizedPath === "/apps") return "shared";
+  return null;
+}
+
+function resolveActiveScreenBackgroundPolicy({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): AppShellBackgroundPolicy {
+  if (viewLayout) return "opaque";
+
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (appShellPageForRoute) {
+    return normalizeBackgroundPolicy(appShellPageForRoute.backgroundPolicy);
+  }
+
+  const appSlug =
+    tab === "apps" || tab === "views"
+      ? getAppSlugFromPath(navigationPath)
+      : null;
+  const remoteView = findRemoteViewForRoute(
+    availableViews,
+    navigationPath,
+    tab,
+    appSlug,
+  );
+  if (remoteView) return normalizeBackgroundPolicy(remoteView.backgroundPolicy);
+
+  const appShellPageForTab = listAppShellPages().find(
+    (entry) => entry.id === tab,
+  );
+  if (appShellPageForTab) {
+    return normalizeBackgroundPolicy(appShellPageForTab.backgroundPolicy);
+  }
+
+  const builtinPolicy = builtinRouteBackgroundPolicy(tab, navigationPath);
+  if (builtinPolicy) return builtinPolicy;
+
+  const registeredView = availableViews.find(
+    (view) =>
+      view.builtin !== true &&
+      (view.id === tab ||
+        view.path === navigationPath ||
+        view.path === trimmedNavigationPath(navigationPath)),
+  );
+  if (registeredView) {
+    return normalizeBackgroundPolicy(registeredView.backgroundPolicy);
+  }
+
+  return "opaque";
+}
+
+function useActiveScreenBackgroundPolicy({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): AppShellBackgroundPolicy {
+  const registryVersion = useAppShellPageRegistryVersion();
+  return useMemo(() => {
+    void registryVersion;
+    return resolveActiveScreenBackgroundPolicy({
+      tab,
+      navigationPath,
+      availableViews,
+      viewLayout,
+    });
+  }, [availableViews, navigationPath, registryVersion, tab, viewLayout]);
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -646,6 +855,7 @@ function remoteViewMatchesTab(
 const SHELL_RESERVED_PATHS = new Set([
   "/views",
   "/apps",
+  "/character/documents",
   "/apps/plugins",
   "/apps/skills",
   "/apps/trajectories",
@@ -657,6 +867,8 @@ const SHELL_RESERVED_PATHS = new Set([
   "/apps/tasks",
 ]);
 
+const SHELL_RESERVED_TABS = new Set(Object.keys(TAB_PATHS));
+
 function findRemoteViewForRoute(
   views: ViewRegistryEntry[],
   navigationPath: string,
@@ -665,6 +877,9 @@ function findRemoteViewForRoute(
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (SHELL_RESERVED_PATHS.has(normalizedPath)) return undefined;
+  if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
+    return undefined;
+  }
   return (
     views.find(
       (view) => remoteViewAvailable(view) && view.path === normalizedPath,
@@ -676,10 +891,10 @@ function findRemoteViewForRoute(
   );
 }
 
-function renderRemoteView(view: ViewRegistryEntry): ReactNode {
+function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl) return null;
   return (
-    <TabContentView>
+    <TabContentView nav={nav}>
       <DynamicViewLoader
         bundleUrl={view.bundleUrl}
         componentExport={view.componentExport}
@@ -733,6 +948,19 @@ function ViewLayoutSurface({
     .filter((view): view is ViewRegistryEntry => Boolean(view));
   const paneClassName =
     "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border border-border/45 bg-bg";
+  const routeOverrideForView = (
+    view: ViewRegistryEntry,
+  ): ViewRouterRouteOverride => {
+    const navigationPath =
+      view.path ??
+      (SHELL_RESERVED_TABS.has(view.id)
+        ? pathForTab(view.id)
+        : `/apps/${view.id}`);
+    return {
+      navigationPath,
+      tab: tabFromPath(navigationPath) ?? view.id,
+    };
+  };
 
   return (
     <TabContentView>
@@ -755,7 +983,7 @@ function ViewLayoutSurface({
             title="Close layout"
             data-testid="view-layout-close"
             onClick={onClear}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt    "
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -787,9 +1015,7 @@ function ViewLayoutSurface({
                       viewType={view.viewType}
                     />
                   ) : (
-                    <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-sm text-muted">
-                      {view.label} is not available as a dynamic view.
-                    </div>
+                    <ViewRouter routeOverride={routeOverrideForView(view)} />
                   )}
                 </div>
               </section>
@@ -808,15 +1034,11 @@ function ViewLayoutSurface({
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
  * ContinuousChatOverlay that floats over every view — views never embed an
- * inline ChatView — so an unavailable view falls back to the app/view
- * launcher, not a chat surface.
+ * inline ChatView — so an unavailable view falls back to the Launcher page
+ * of the retained Home/Launcher surface, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
-  return (
-    <TabContentView>
-      <ViewCatalog />
-    </TabContentView>
-  );
+  return <HomeScreenMount initialPage="launcher" />;
 }
 
 function renderPhoneSurface(
@@ -834,23 +1056,28 @@ function renderPhoneSurface(
 
 function renderAppsSurface(navigationPath: string): ReactNode {
   if (!APPS_ENABLED) return <ViewUnavailableFallback />;
+  if (!getAppSlugFromPath(navigationPath)) {
+    return <HomeScreenMount initialPage="launcher" />;
+  }
   return (
     <TabContentView>
-      {getAppSlugFromPath(navigationPath) ? <AppsPageView /> : <ViewCatalog />}
+      <AppsPageView />
     </TabContentView>
   );
 }
 
 function renderStaticViewRouterTab({
   tab,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   navigationPath,
   settingsInitialSection,
+  walletNav,
 }: {
   tab: string;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   navigationPath: string;
   settingsInitialSection?: string | null;
+  walletNav?: ReactNode;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     tutorial: (
@@ -863,14 +1090,8 @@ function renderStaticViewRouterTab({
         <HelpView />
       </TabContentView>
     ),
-    camera: (
-      <TabContentView>
-        <CameraPageView />
-      </TabContentView>
-    ),
     chat: <ViewUnavailableFallback />,
     browser: <BrowserWorkspaceView />,
-    companion: <ViewUnavailableFallback />,
     stream: <StreamView />,
     tasks: (
       <TabContentView>
@@ -879,13 +1100,8 @@ function renderStaticViewRouterTab({
     ),
     automations: <AutomationsFeed />,
     triggers: <AutomationsFeed />,
-    voice: (
-      <TabContentView>
-        <SettingsView key="settings-identity" initialSection="identity" />
-      </TabContentView>
-    ),
     settings: (
-      <TabContentView>
+      <TabContentView surface="transparent">
         <SettingsView
           key="settings-root"
           initialSection={settingsInitialSection ?? undefined}
@@ -907,6 +1123,11 @@ function renderStaticViewRouterTab({
         <TrajectoriesView />
       </TabContentView>
     ),
+    transcripts: (
+      <TabContentView>
+        <TranscriptsPageView />
+      </TabContentView>
+    ),
     relationships: (
       <TabContentView>
         <RelationshipsView />
@@ -916,6 +1137,11 @@ function renderStaticViewRouterTab({
       <TabContentView>
         <MemoryViewerView />
       </TabContentView>
+    ),
+    files: (
+      <TabScrollView>
+        <FilesView />
+      </TabScrollView>
     ),
     runtime: (
       <TabContentView>
@@ -938,17 +1164,28 @@ function renderStaticViewRouterTab({
       </TabContentView>
     ),
   };
+  if (tab === "camera") {
+    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
+    // marker as the home tile, so a deep-link off the fork falls back to
+    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
+    return renderPhoneSurface(isAospShellEnabled(), CameraPageView);
+  }
   if (tab === "phone") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, PhonePageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, PhonePageView);
   }
   if (tab === "messages") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, MessagesPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, MessagesPageView);
   }
   if (tab === "contacts") {
-    return renderPhoneSurface(androidPhoneSurfaceEnabled, ContactsPageView);
+    return renderPhoneSurface(nativeOsSurfaceEnabled, ContactsPageView);
   }
   if (tab === "views" || tab === "apps") {
     return renderAppsSurface(navigationPath);
+  }
+  if (tab === "background") {
+    // Rendered directly (no opaque TabContentView chrome) so the live app
+    // background shows through behind the controls.
+    return <BackgroundView />;
   }
   if (
     tab === "character" ||
@@ -957,13 +1194,15 @@ function renderStaticViewRouterTab({
   ) {
     return (
       <TabContentView>
-        <CharacterEditor />
+        <CharacterEditor
+          initialPage={tab === "documents" ? "documents" : undefined}
+        />
       </TabContentView>
     );
   }
   if (tab === "inventory") {
     return (
-      <TabScrollView>
+      <TabScrollView nav={walletNav}>
         <WalletInventoryPage />
       </TabScrollView>
     );
@@ -982,44 +1221,50 @@ function renderViewRouterContent({
   tab,
   dynamicPage,
   dynamicAppPage,
-  developerModeEnabled,
+  enabledKinds,
   navigationPath,
   availableViews,
   appSlug,
-  androidPhoneSurfaceEnabled,
+  nativeOsSurfaceEnabled,
   settingsInitialSection,
 }: {
   tab: string;
   dynamicPage: ResolvedDynamicPage | null;
   dynamicAppPage: ResolvedDynamicPage | null;
-  developerModeEnabled: boolean;
+  enabledKinds: EnabledViewKinds;
   navigationPath: string;
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
-  androidPhoneSurfaceEnabled: boolean;
+  nativeOsSurfaceEnabled: boolean;
   settingsInitialSection?: string | null;
 }): ReactNode {
-  if (visibleDynamicPage(dynamicPage, developerModeEnabled)) {
+  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
       <TabContentView>
         <DynamicPluginPage resolved={dynamicPage} />
       </TabContentView>
     );
   }
-  if (visibleDynamicPage(dynamicAppPage, developerModeEnabled)) {
+  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
     return (
       <TabContentView>
         <DynamicPluginPage resolved={dynamicAppPage} />
       </TabContentView>
     );
   }
+  // Hyperliquid + Polymarket are sub-views of Wallet: the wallet family of
+  // routes shares one sub-nav rendered in the workspace chrome nav slot.
+  const walletNav = isWalletSectionPath(navigationPath) ? (
+    <WalletSectionNav activePath={navigationPath} />
+  ) : undefined;
+
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
-    (developerModeEnabled || appShellPageForRoute.developerOnly !== true)
+    isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
-      <TabContentView>
+      <TabContentView nav={walletNav}>
         <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
@@ -1030,34 +1275,53 @@ function renderViewRouterContent({
     tab,
     appSlug,
   );
-  if (remoteView?.bundleUrl) return renderRemoteView(remoteView);
+  if (remoteView?.bundleUrl) return renderRemoteView(remoteView, walletNav);
   return renderStaticViewRouterTab({
     tab,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     navigationPath,
     settingsInitialSection,
+    walletNav,
   });
 }
 
+type ViewRouterRouteOverride = {
+  tab: string;
+  navigationPath: string;
+};
+
 function ViewRouter({
+  routeOverride,
   settingsInitialSection,
 }: {
+  routeOverride?: ViewRouterRouteOverride;
   settingsInitialSection?: string | null;
 }) {
-  const { tab } = useApp();
-  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
+  const activeTab = useAppSelector((s) => s.tab);
+  const tab = routeOverride?.tab ?? activeTab;
+  // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
+  // camera + the home tiles + the launcher tiles) — never rendered on web,
+  // desktop, iOS, or stock Play-Store Android, even via a deep link.
+  const nativeOsSurfaceEnabled = isAospShellEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
-  const [navigationPath, setNavigationPath] = useState(() =>
-    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  const [navigationPath, setNavigationPath] = useState(
+    () =>
+      routeOverride?.navigationPath ??
+      (typeof window === "undefined" ? "/" : getWindowNavigationPath()),
   );
+  const routeOverridePath = routeOverride?.navigationPath;
   const appSlug =
     tab === "apps" || tab === "views"
       ? getAppSlugFromPath(navigationPath)
       : null;
   const dynamicAppPage = useResolvedDynamicPage(appSlug ?? "");
-  const developerModeEnabled = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
 
   useEffect(() => {
+    if (routeOverridePath) {
+      setNavigationPath(routeOverridePath);
+      return;
+    }
     if (typeof window === "undefined") return;
     const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
     const handleNavigationChange = () => {
@@ -1065,7 +1329,7 @@ function ViewRouter({
     };
     window.addEventListener(navEvt, handleNavigationChange);
     return () => window.removeEventListener(navEvt, handleNavigationChange);
-  }, []);
+  }, [routeOverridePath]);
 
   // Available views from /api/views — used to route to DynamicViewLoader
   // when a tab ID matches a view entry that ships a remote bundle URL.
@@ -1074,18 +1338,44 @@ function ViewRouter({
     tab,
     dynamicPage,
     dynamicAppPage,
-    developerModeEnabled,
+    enabledKinds,
     navigationPath,
     availableViews,
     appSlug,
-    androidPhoneSurfaceEnabled,
+    nativeOsSurfaceEnabled,
     settingsInitialSection,
   });
 
+  // A distinct lifecycle identity per routed surface: builtin tab id, or
+  // tab:slug for a remote/app route so two remote views get independent
+  // boundaries + telemetry.
+  const activeViewId = appSlug ? `${tab}:${appSlug}` : tab;
+
+  // Split-view panes (routeOverride) keep a simple per-pane crash boundary; only
+  // the PRIMARY router drives the single global view-lifecycle controller +
+  // keep-alive host, so multiple ViewRouters never fight over the active id.
+  if (routeOverride) {
+    return (
+      <ViewErrorBoundary viewId={`pane:${activeViewId}`}>
+        <LazyViewBoundary>{view}</LazyViewBoundary>
+      </ViewErrorBoundary>
+    );
+  }
+
+  // The keep-alive host wraps the active view in a per-view ViewErrorBoundary +
+  // ViewTelemetryProfiler + ViewLifecycleSlot and drives the lifecycle
+  // controller (pause on app-background / tab-hidden / memory-pressure). With
+  // the default unmount-on-hide policy the host mounts exactly the active view —
+  // behaviorally identical to the prior single-branch ViewRouter.
   return (
-    <ErrorBoundary>
-      <LazyViewBoundary>{view}</LazyViewBoundary>
-    </ErrorBoundary>
+    <KeepAliveViewHost
+      activeViewId={activeViewId}
+      renderView={(viewId) =>
+        viewId === activeViewId ? (
+          <LazyViewBoundary>{view}</LazyViewBoundary>
+        ) : null
+      }
+    />
   );
 }
 
@@ -1099,15 +1389,35 @@ function greetingForTimeOfDay(): string {
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
+// Home/Launcher and Background opt into the unified app background (mounted
+// once at the shell root), so their shell is transparent — no `bg-bg` to paint
+// over it. Every other view keeps the opaque shell (its own background).
+const APP_SHELL_CLASS_TRANSPARENT =
+  "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
+
+function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
+  return (
+    <button
+      type="button"
+      aria-label="Go back"
+      title="Go back"
+      data-testid="shell-back-button"
+      onClick={onBack}
+      className="fixed left-[calc(var(--safe-area-left,0px)+0.75rem)] top-[calc(var(--safe-area-top,0px)+0.75rem)] z-[60] grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-bg/90 text-txt shadow-sm transition-colors hover:bg-muted/70"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden />
+    </button>
+  );
+}
+
 type ShellContentProps = {
-  CompanionShell: ComponentType<CompanionShellComponentProps> | undefined;
   actionNotice: ActionNotice | null;
   availableViewsForLayout: ViewRegistryEntry[];
   customActionsPanelOpen: boolean;
   desktopTabBar: ReactNode;
   isChat: boolean;
-  isCompanionTab: boolean;
   isFullBleed: boolean;
+  screenBackgroundPolicy: AppShellBackgroundPolicy;
   setCustomActionsEditorOpen: (open: boolean) => void;
   setCustomActionsPanelOpen: (open: boolean) => void;
   setEditingAction: (action: import("./api").CustomActionDef | null) => void;
@@ -1116,32 +1426,20 @@ type ShellContentProps = {
   uiShellMode: string;
   viewLayout: ActiveViewLayout | null;
   onClearViewLayout: () => void;
+  onNavigateBack: () => void;
 };
-
-function CompanionShellContent(props: ShellContentProps): ReactNode {
-  if (
-    props.uiShellMode === "companion" &&
-    props.isCompanionTab &&
-    props.CompanionShell
-  ) {
-    const CompanionShell = props.CompanionShell;
-    return <CompanionShell tab="companion" actionNotice={props.actionNotice} />;
-  }
-  if (!props.isCompanionTab) return null;
-  return <div key="companion-shell" className={APP_SHELL_CLASS} />;
-}
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
   // always-present ContinuousChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
-  // me the coding view") which surfaces over this base. The home is wordless —
-  // a warm, gently pulsing orange field, no greeting text.
+  // me the coding view") which surfaces over this base. The home is wordless,
+  // sitting directly on the unified app background (mounted once at the shell
+  // root) — its shell is transparent so that background shows through.
   return (
-    <div key="chat-shell" className={APP_SHELL_CLASS}>
+    <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
-        <ChatAmbientBackground />
-        <HomeScreenMount />
+        <HomeScreenMount initialPage="home" />
         <CustomActionsPanel
           open={props.customActionsPanelOpen}
           onClose={() => props.setCustomActionsPanelOpen(false)}
@@ -1158,9 +1456,12 @@ function ChatRouteShellContent(props: ShellContentProps): ReactNode {
 function routedShellMainClass(tab: string): string {
   // One tight page gutter for every routed view: minimal top so headers sit
   // right under the chrome, a small side gutter, modest bottom. Views that own
-  // their full surface (browser/apps/views) still get zero padding.
+  // their full surface (browser/apps/views/background) still get zero padding.
   const pagePadding =
-    tab === "browser" || tab === "apps" || tab === "views"
+    tab === "browser" ||
+    tab === "apps" ||
+    tab === "views" ||
+    tab === "background"
       ? ""
       : "px-2 sm:px-3 pt-2 pb-4";
   const mobilePadding = tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS;
@@ -1175,8 +1476,17 @@ function routedShellMainClass(tab: string): string {
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
+  // Routes with `backgroundPolicy: "shared"` intentionally sit on the unified
+  // Home/Launcher background. Every other route is opaque; the shell root
+  // also paints a full-window underlay so status/home-indicator safe areas do
+  // not expose the shared background around app views.
+  const shellClass =
+    props.screenBackgroundPolicy === "shared"
+      ? APP_SHELL_CLASS_TRANSPARENT
+      : APP_SHELL_CLASS;
   return (
-    <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+    <div key={`tab-shell-${props.tab}`} className={shellClass}>
+      <ShellBackButton onBack={props.onNavigateBack} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
@@ -1200,6 +1510,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
+      <ShellBackButton onBack={props.onNavigateBack} />
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <ViewRouter />
       </main>
@@ -1217,8 +1528,6 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
 function ShellContent(props: ShellContentProps): ReactNode {
   if (props.isFullBleed) return <FullBleedShellContent {...props} />;
   if (props.isChat) return <ChatRouteShellContent {...props} />;
-  const companionContent = CompanionShellContent(props);
-  if (companionContent) return companionContent;
   return <RoutedShellContent {...props} />;
 }
 
@@ -1241,6 +1550,8 @@ function ShellFoundationMount() {
           greeting={greetingForTimeOfDay()}
           recording={controller.recording}
           onToggleRecording={controller.toggleRecording}
+          onVision={controller.captureVision}
+          visionActive={controller.visionCapturing}
         />
       </AssistantOverlay>
     </>
@@ -1256,7 +1567,12 @@ function ShellFoundationMount() {
  */
 function ContinuousChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus } = useApp();
+  const { characterData, agentStatus, firstRunComplete } =
+    useAppSelectorShallow((s) => ({
+      characterData: s.characterData,
+      agentStatus: s.agentStatus,
+      firstRunComplete: s.firstRunComplete,
+    }));
   const slash = useSlashCommandController();
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
@@ -1269,18 +1585,24 @@ function ContinuousChatOverlayMount(): ReactNode {
       controller={controller}
       agentName={agentName}
       slash={slash}
+      firstRunOpen={firstRunComplete === false}
     />
   );
 }
 
 /**
- * The iOS-style home dashboard for the /chat route — clock, recent activity,
- * recent messages, a customizable widget area, and pinned view tiles. Sits
- * behind the always-present chat overlay. Wires tile taps to the real nav:
+ * The iOS-style home dashboard for the /chat route — recent activity, recent
+ * messages, and a customizable widget area. Sits beside the retained
+ * Launcher page behind the always-present chat overlay. Wires tile taps to the real nav:
  * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
  */
-function HomeScreenMount(): ReactNode {
-  const { setTab } = useApp();
+function HomeScreenMount({
+  initialPage = "home",
+}: {
+  initialPage?: "home" | "launcher";
+}): ReactNode {
+  const setTab = useAppSelector((s) => s.setTab);
+  const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
   const { homeScreen: HomeScreenOverride } = useBootConfig();
@@ -1288,19 +1610,40 @@ function HomeScreenMount(): ReactNode {
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
         setTab(target.tab);
+        // Report the tab id as a surface so the proactive decider reacts to
+        // user-initiated tile navigation (#8792). Fire-and-forget.
+        reportUserViewSwitch(target.tab);
       } else {
         window.dispatchEvent(
           new CustomEvent("eliza:navigate:view", {
             detail: { viewPath: target.path },
           }),
         );
+        // The tile only carries a path; resolve the registered view id so the
+        // decider keys off the same id the rest of the navigation bus uses
+        // (#8792). Skip the report when no view is registered at that path.
+        const viewId = views.find((v) => v.path === target.path)?.id;
+        if (viewId) reportUserViewSwitch(viewId, target.path);
       }
     },
-    [setTab],
+    [setTab, views],
   );
   const Home = HomeScreenOverride ?? HomeScreen;
+  const home = useMemo(
+    () => (
+      <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
+    ),
+    [Home, onOpenTile],
+  );
+  const launcher = useMemo(() => <LauncherSurface />, []);
   return (
-    <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
+    <div className="relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden">
+      <HomeLauncherSurface
+        home={home}
+        launcher={launcher}
+        initialPage={initialPage}
+      />
+    </div>
   );
 }
 
@@ -1320,9 +1663,22 @@ export function App() {
     gameOverlayEnabled,
     uiShellMode,
     t,
-  } = useApp();
-  const { companionShell: CompanionShell } = useBootConfig();
-
+  } = useAppSelectorShallow((s) => ({
+    startupError: s.startupError,
+    startupCoordinator: s.startupCoordinator,
+    retryStartup: s.retryStartup,
+    tab: s.tab,
+    setTab: s.setTab,
+    setState: s.setState,
+    actionNotice: s.actionNotice,
+    activeOverlayApp: s.activeOverlayApp,
+    uiTheme: s.uiTheme,
+    backendConnection: s.backendConnection,
+    activeGameViewerUrl: s.activeGameViewerUrl,
+    gameOverlayEnabled: s.gameOverlayEnabled,
+    uiShellMode: s.uiShellMode,
+    t: s.t,
+  }));
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
   // Auth gate — only active after the coordinator reaches "ready".
@@ -1330,15 +1686,24 @@ export function App() {
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
   // The live shell may MOUNT once the backend is reached and the agent boot is
-  // underway (starting-runtime / hydrating / ready) — first-turn capability then
-  // fades in behind it (see useShellController's agentReady). Only the truly
-  // pre-shell phases (session restore, backend polling, first-run, pairing,
-  // error) keep the full-screen StartupScreen. Runtime-dependent effects and
-  // overlay apps below stay gated on `isCoordinatorReady` and defer safely.
+  // underway (first-run-required / starting-runtime / hydrating / ready) —
+  // first-turn capability then fades in behind it (see useShellController's
+  // agentReady). first-run-required paints the shell so onboarding can run IN
+  // the live chat. Only the truly pre-shell phases (session restore, backend
+  // polling, pairing, error) keep the full-screen StartupScreen.
+  // Runtime-dependent effects and overlay apps below stay gated on
+  // `isCoordinatorReady` and defer safely.
   const isShellPaintableNow = isShellPaintable(startupCoordinator.phase);
 
+  // Skip the auth probe during first-run-required: there is no agent/session
+  // yet, so /api/auth/me would spuriously trip server_unavailable/unauthenticated
+  // on top of the in-chat onboarding (see useAuthStatus's own skip-during-first-run
+  // note). The in-chat conductor owns the first-run flow.
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isShellPaintableNow || isPopout,
+    skip:
+      !isShellPaintableNow ||
+      startupCoordinator.phase === "first-run-required" ||
+      isPopout,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -1349,6 +1714,7 @@ export function App() {
     overlayAppActive && activeOverlayApp
       ? getOverlayApp(activeOverlayApp)
       : undefined;
+  const overlayAppSurfaceActive = Boolean(resolvedOverlayApp);
   const contextMenu = useContextMenu();
 
   useSecretsManagerShortcut();
@@ -1440,17 +1806,27 @@ export function App() {
   const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
     null,
   );
-  const { views: availableViewsForDesktopTabs } = useAvailableViews();
+  const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
+  const navigationPath = useCurrentNavigationPath();
+  const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
+    tab,
+    navigationPath,
+    availableViews: availableViewsForDesktopTabs,
+    viewLayout,
+  });
+  const renderSharedAppBackground =
+    screenBackgroundPolicy === "shared" && !overlayAppSurfaceActive;
+  const renderOpaqueAppBackground =
+    screenBackgroundPolicy === "opaque" || overlayAppSurfaceActive;
 
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null
   >(null);
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
 
-  const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
-  const isSettingsPage = tab === "settings" || tab === "voice";
+  const isSettingsPage = tab === "settings";
   const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
@@ -1501,12 +1877,12 @@ export function App() {
   // Handle agent-dispatched view navigation events.
   // The VIEWS action (and future agent commands) dispatch this event to navigate
   // the user to a specific view by path or view ID.
-  // When the target is "/views" or "/apps" (the ViewCatalog), we also
+  // When the target is "/views" or "/apps" (legacy launcher aliases), we also
   // directly set the tab so the nav bar becomes visible.
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleNavigateView = createNavigateViewHandler({
+    const baseHandler = createNavigateViewHandler({
       availableViewsForDesktopTabs,
       closeDesktopTab,
       desktopTabs,
@@ -1516,6 +1892,25 @@ export function App() {
       setTab,
       setViewLayout,
     });
+    // An agent-dispatched navigate to the Settings view that carries a `subview`
+    // deep-links a section. Route it through the same settings state the
+    // slash-command path uses (initialSection + #hash) instead of the generic
+    // path nav, which would drop the requested section.
+    const handleNavigateView = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (
+        detail?.subview &&
+        (detail.viewId === "settings" || detail.viewPath === "/settings")
+      ) {
+        console.debug(
+          `[SettingsNavigate] routing subview "${detail.subview}" to SettingsView initialSection`,
+        );
+        setSettingsInitialSection(detail.subview);
+        setTab("settings");
+        return;
+      }
+      baseHandler(event);
+    };
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
@@ -1585,6 +1980,7 @@ export function App() {
       } catch {
         // sandboxed — ignore
       }
+      reportUserViewSwitch(viewId, dtab.path);
     },
     [desktopTabs],
   );
@@ -1609,6 +2005,30 @@ export function App() {
   const handleClearViewLayout = useCallback(() => {
     setViewLayout(null);
   }, []);
+
+  const handleShellBack = useCallback(() => {
+    setViewLayout(null);
+    setActiveDesktopTabId(null);
+
+    if (typeof window !== "undefined") {
+      const currentPath = getWindowNavigationPath();
+      if (!isRouteRootPath(currentPath) && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+
+      const chatPath = pathForTab("chat");
+      if (shouldUseHashNavigation()) {
+        window.location.hash = chatPath;
+      } else if (getWindowNavigationPath() !== chatPath) {
+        window.history.pushState(null, "", chatPath);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+    }
+
+    setTab("chat");
+    goHome();
+  }, [setTab]);
 
   // desktopTabBar is computed here (after handlers) so the memo below can
   // reference a stable value. Rendered inside each shell variant, not at the
@@ -1646,18 +2066,17 @@ export function App() {
 
   // shellContent is memoized before early returns to satisfy the Rules of Hooks.
   // Deps are local state/callbacks — not high-frequency AppContext fields like
-  // ptySessions/agentStatus — so CompanionSceneHost stays stable across polls.
+  // ptySessions/agentStatus — so the shell subtree stays stable across polls.
   const shellContent = useMemo(
     () => (
       <ShellContent
-        CompanionShell={CompanionShell}
         actionNotice={actionNotice}
         availableViewsForLayout={availableViewsForDesktopTabs}
         customActionsPanelOpen={customActionsPanelOpen}
         desktopTabBar={desktopTabBar}
         isChat={isChat}
-        isCompanionTab={isCompanionTab}
         isFullBleed={isFullBleed}
+        screenBackgroundPolicy={screenBackgroundPolicy}
         setCustomActionsEditorOpen={setCustomActionsEditorOpen}
         setCustomActionsPanelOpen={setCustomActionsPanelOpen}
         setEditingAction={setEditingAction}
@@ -1666,22 +2085,23 @@ export function App() {
         uiShellMode={uiShellMode}
         viewLayout={viewLayout}
         onClearViewLayout={handleClearViewLayout}
+        onNavigateBack={handleShellBack}
       />
     ),
     [
-      CompanionShell,
       tab,
       uiShellMode,
-      isCompanionTab,
       actionNotice,
       isChat,
       isFullBleed,
+      screenBackgroundPolicy,
       customActionsPanelOpen,
       settingsInitialSection,
       desktopTabBar,
       availableViewsForDesktopTabs,
       viewLayout,
       handleClearViewLayout,
+      handleShellBack,
     ],
   );
 
@@ -1704,6 +2124,13 @@ export function App() {
     return <VoiceSelfTestShell />;
   }
 
+  // Multi-turn voice SCENARIO player — drives a declarative VoiceScenario through
+  // the real STT->agent->TTS loop turn-by-turn and reports a per-turn verdict.
+  // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
+  if (shellMode === "voice-workbench") {
+    return <VoiceWorkbenchShell />;
+  }
+
   // OS chat-overlay window — render JUST the floating assistant pill +
   // waveform over a transparent background, no app chrome or onboarding gate.
   if (shellMode === "chat-overlay") {
@@ -1717,15 +2144,13 @@ export function App() {
     );
   }
 
-  // First-run onboarding overlay window — render JUST the floating onboarding
-  // card over a transparent, click-through background, no app chrome or
-  // startup gate.
-  if (shellMode === "onboarding-overlay") {
+  // Native tray popover window — render JUST the widget surface, no app chrome
+  // or onboarding gate. The native tray anchors this transparent, always-on-top
+  // window beside its icon (#9953 Phase 4).
+  if (shellMode === "tray-popover") {
     return (
       <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <OnboardingOverlayShell />
-        </ShellControllerProvider>
+        <TrayPopoverShell />
         <BugReportModal />
       </BugReportProvider>
     );
@@ -1744,7 +2169,11 @@ export function App() {
   // check /api/auth/me. "loading": wait (fall through to the main shell render).
   // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
-  if (isShellPaintableNow && !isPopout) {
+  if (
+    isShellPaintableNow &&
+    !isPopout &&
+    startupCoordinator.phase !== "first-run-required"
+  ) {
     if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>
@@ -1797,16 +2226,61 @@ export function App() {
     <BugReportProvider value={bugReport}>
       <ShellControllerProvider>
         <div
-          className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
-          // Reserve the status-bar safe area so view headers + back buttons sit
-          // below the status bar. Top banners bleed their bg back up through it
-          // via `.mobile-top-banner:first-child` (see styles.css). No-op on web.
-          style={{ paddingTop: "var(--safe-area-top, 0px)" }}
+          // SAFE-AREA FILL INVARIANT (do not break): this root stays
+          // `position: relative` ONLY. It must NEVER acquire compositor,
+          // filter, perspective, or containment declarations. Any of those
+          // makes this element the containing block for the fixed background
+          // layers below (the opaque `app-opaque-background` underlay and the
+          // `AppBackground` wallpaper), so instead of anchoring to the viewport
+          // they would anchor to this padded box (top = safe-area-top) — leaving
+          // an unfilled band under the notch (the WKWebView host color, brand
+          // orange, would show through). Keeping the backgrounds viewport-fixed
+          // is what lets every view fill edge-to-edge under the notch while the
+          // `paddingTop` below keeps CONTENT notch-aware. Locked by
+          // App.safe-area-fill.test.ts.
+          className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
+          // Reserve a TIGHT status-bar inset: enough to clear the notch/Dynamic
+          // Island but no oversized empty band above the content (the repeated
+          // "too much space at the top" report). Shave the inset down from the
+          // full safe area, with a 1.25rem floor so notch-less phones still
+          // clear their status bar. Top banners bleed their bg back up via
+          // `.mobile-top-banner:first-child` (styles.css). No-op on web.
+          style={{
+            paddingTop:
+              "max(calc(var(--safe-area-top, 0px) - 1.25rem), 1.25rem)",
+          }}
         >
-          <ConnectionFailedBanner />
-          <SystemWarningBanner />
-          <ActionBanner />
-          {shellContent}
+          {/* The unified app background, mounted once here so it persists
+              seamlessly across shared-background routes. It keeps the
+              background event channel mounted for the whole session, but only
+              renders the visual wallpaper when the active route opts into the
+              Home/Launcher background. */}
+          <AppBackground visible={renderSharedAppBackground} />
+          {/* Readability scrim for text-dense shared-background views. It sits
+              between the wallpaper (z-0) and content (z-10) and covers safe
+              areas too. Opaque or overlay-app routes use the plain underlay
+              instead, so the wallpaper cannot leak through. */}
+          {renderSharedAppBackground && isSettingsPage ? (
+            <div
+              aria-hidden="true"
+              data-testid="app-background-scrim"
+              className="pointer-events-none fixed inset-0 z-[1] bg-bg/55"
+            />
+          ) : null}
+          {renderOpaqueAppBackground ? (
+            <div
+              aria-hidden="true"
+              data-testid="app-opaque-background"
+              className="pointer-events-none fixed inset-0 z-0 bg-bg"
+            />
+          ) : null}
+          <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
+            <ConnectionFailedBanner />
+            <SystemWarningBanner />
+            <ActionBanner />
+            <CloudHandoffBanner />
+            {shellContent}
+          </div>
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
         {resolvedOverlayApp &&
@@ -1844,6 +2318,12 @@ export function App() {
           behind stays live.
         */}
         <ContinuousChatOverlayMount />
+        {/* In-chat first-run conductor (headless) — while firstRunComplete is
+            false it seeds the onboarding greeting + choices into the SAME live
+            transcript the overlay renders and routes first-run picks to the
+            headless finish use case. Renders null. */}
+        <FirstRunConductorMount />
+        <FirstRunRuntimeChooser />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial

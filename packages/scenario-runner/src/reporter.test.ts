@@ -137,6 +137,56 @@ describe("writeScenarioRunViewer", () => {
     expect(data).toContain("traj-1.json");
     expect(payload.report.artifactPaths).toEqual(aggregate.artifactPaths);
   });
+
+  it("renders an <audio controls> cell for turns carrying audioArtifacts (#8934)", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-viewer-audio-"));
+    tempDirs.push(runDir);
+
+    const aggregate = aggregateReport();
+    aggregate.scenarios[0] = {
+      ...aggregate.scenarios[0],
+      id: "voice.workbench-room",
+      domain: "voice",
+      turns: [
+        {
+          ...aggregate.scenarios[0].turns[0],
+          name: "multi-speaker voice scenario",
+          kind: "voice",
+          audioArtifacts: [
+            {
+              turnIndex: 0,
+              kind: "generated",
+              path: "audio/voice-room-demo/corpus.wav",
+              sampleRate: 16000,
+              durationMs: 4200,
+            },
+            {
+              turnIndex: 0,
+              kind: "consumed",
+              path: "audio/voice-room-demo/turn-0.wav",
+              sampleRate: 16000,
+              durationMs: 1500,
+              speakerLabel: "alice",
+            },
+          ],
+        },
+      ],
+    };
+
+    const paths = writeScenarioRunViewer(aggregate, runDir);
+    const html = readFileSync(paths.viewerIndex, "utf-8");
+    const data = readFileSync(paths.viewerData, "utf-8");
+
+    // The viewer builds an <audio controls> element per artifact at render time.
+    expect(html).toContain("audioArtifactsCell");
+    expect(html).toContain("<audio controls");
+    // The embedded run data carries the run-dir-relative artifact paths so the
+    // viewer (served from the run dir) can resolve and play them.
+    expect(data).toContain("audio/voice-room-demo/corpus.wav");
+    expect(data).toContain("audio/voice-room-demo/turn-0.wav");
+    expect(data).toContain('"kind":"generated"');
+    expect(data).toContain('"kind":"consumed"');
+  });
 });
 
 describe("scenario report aggregation", () => {

@@ -1,23 +1,21 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  rmSync,
-  statSync,
-  watch,
-} from "node:fs";
+import { cpSync, existsSync, mkdirSync, statSync, watch } from "node:fs";
 import path from "node:path";
 
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
-const ROOT = process.cwd();
+const ROOT = resolveRepoRootFromImportMeta(import.meta.url, {
+  fallbackToCwd: true,
+});
 const ARGS = process.argv.slice(2);
 
-const APP_DIR = path.join(ROOT, "apps", "app");
+const APP_DIR = resolveMainAppDir(ROOT, "app");
 const DIST_DIR = path.join(APP_DIR, "dist");
+const CLEANUP_HELPER_SCRIPT = resolveCleanupHelperScript();
 const APP_PATH_ARG =
   getArgValue("app-path") || process.env.ELIZA_DESKTOP_APP_PATH || null;
 const RENDERER_PATH_ARG =
@@ -44,6 +42,43 @@ let rendererWatcher = null;
 let activeBuildProcess = null;
 
 const WATCH_SYNC_DEBOUNCE_MS = 250;
+
+function resolveCleanupHelperScript() {
+  const candidates = [
+    path.join(ROOT, "packages", "scripts", "rm-path-recursive.mjs"),
+    path.join(ROOT, "eliza", "packages", "scripts", "rm-path-recursive.mjs"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function removePathRecursive(targetPath) {
+  if (!existsSync(targetPath)) {
+    return;
+  }
+
+  const result = spawnSync(
+    "node",
+    [CLEANUP_HELPER_SCRIPT, path.relative(ROOT, targetPath)],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `cleanup helper failed for ${targetPath}${output ? `:\n${output}` : ""}`,
+    );
+  }
+}
 
 function fail(message, code = 1) {
   console.error(`[eliza-ui-sync] ${message}`);
@@ -247,7 +282,7 @@ function syncRendererBundle() {
     // Renderer path will be created below.
   }
 
-  rmSync(TARGET_RENDERER, { recursive: true, force: true });
+  removePathRecursive(TARGET_RENDERER);
   mkdirSync(TARGET_RENDERER, { recursive: true });
   cpSync(DIST_DIR, TARGET_RENDERER, { recursive: true, force: true });
   console.log(`[eliza-ui-sync] Synced ${DIST_DIR} -> ${TARGET_RENDERER}`);
@@ -301,7 +336,13 @@ function main() {
     return;
   }
 
-  runBuild();
+  if (SKIP_BUILD) {
+    console.log(
+      "[eliza-ui-sync] --skip-build set: syncing existing dist folder only",
+    );
+  } else {
+    runBuild();
+  }
   syncRendererBundle();
 }
 

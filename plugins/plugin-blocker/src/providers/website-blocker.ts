@@ -6,7 +6,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { getSelfControlAccess } from "../services/website-blocker/access.ts";
-import { getCachedSelfControlStatus } from "../services/website-blocker/engine.ts";
+import {
+  getCachedSelfControlStatus,
+  type SelfControlStatus,
+} from "../services/website-blocker/engine.ts";
 
 export const websiteBlockerProvider: Provider = {
   name: "websiteBlocker",
@@ -38,7 +41,7 @@ export const websiteBlockerProvider: Provider = {
       };
     }
 
-    let status;
+    let status: SelfControlStatus;
     try {
       status = await getCachedSelfControlStatus();
     } catch (error) {

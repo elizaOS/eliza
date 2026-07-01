@@ -51,12 +51,21 @@ runs:
     # build / lint / format:check results keyed by task inputs, so unchanged
     # packages are replayed from cache instead of rerun — which keeps the full
     # 14-way typecheck off the runner (it was OOM/SIGTERM-killing the test job on
-    # cold runs). Cache failures are non-fatal; a miss just means no speedup.
+    # cold runs). The primary key is derived from Turbo-relevant content instead
+    # of github.sha so it can hit across commits while still rotating after real
+    # input changes; Turbo's own task hashes still decide whether each restored
+    # cache entry is reusable. Cache failures are non-fatal; a miss just means no
+    # speedup.
+    - name: Compute Turbo cache key
+      id: turbo_cache_key
+      shell: bash
+      run: node packages/scripts/turbo-cache-key.mjs --github-output
+
     - name: Restore Turbo cache (GitHub Actions)
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
       with:
         path: .turbo
-        key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+        key: turbo-${{ runner.os }}-${{ github.job }}-${{ steps.turbo_cache_key.outputs.turbo_cache_key }}
         restore-keys: |
           turbo-${{ runner.os }}-${{ github.job }}-
           turbo-${{ runner.os }}-
@@ -197,7 +206,7 @@ runs:
             exit "$install_status"
           fi
           echo "Dependency install failed; retrying once after cleaning Bun's install cache."
-          rm -rf ~/.bun/install/cache
+          node packages/scripts/rm-path-recursive.mjs ~/.bun/install/cache
           sleep 5
         done
       env:

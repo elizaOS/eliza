@@ -17,7 +17,9 @@ The graph fuses duration + in-graph fixed-bucket alignment + real F0/N
 prosody + real AdaIN decoder + hn-NSF (injected phase) + CustomSTFT iSTFT.
 """
 from __future__ import annotations
-import argparse, importlib.util, json, os, sys
+import argparse
+import importlib.util
+import os
 from pathlib import Path
 import numpy as np
 import torch
@@ -31,7 +33,8 @@ SAMPLES_PER_FRAME = 600  # measured: audio.numel() / pred_dur.sum()
 
 def load_kokoro():
     spec = importlib.util.spec_from_file_location("k_eu", REF / "kokoro/_export_utils.py")
-    eu = importlib.util.module_from_spec(spec); spec.loader.exec_module(eu)
+    eu = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(eu)
     return eu.load_kokoro_for_export(repo_root=str(REF), suffix="_e2e")
 
 ISTFT, MODS, MDL = load_kokoro()
@@ -150,32 +153,40 @@ class MaskedBidirectionalLSTM(nn.Module):
     def _cell(self, x_t, h, c, wih, whh, bih, bhh):
         g = F.linear(x_t, wih, bih) + F.linear(h, whh, bhh)
         i, f, gg, o = g.chunk(4, dim=1)
-        i = torch.sigmoid(i); f = torch.sigmoid(f); gg = torch.tanh(gg); o = torch.sigmoid(o)
+        i = torch.sigmoid(i)
+        f = torch.sigmoid(f)
+        gg = torch.tanh(gg)
+        o = torch.sigmoid(o)
         c_new = f * c + i * gg
         return o * torch.tanh(c_new), c_new
     def forward(self, x, attention_mask):
         b, steps, _ = x.shape
         m = attention_mask.to(dtype=x.dtype)
-        hf = x.new_zeros((b, self.hidden_size)); cf = x.new_zeros((b, self.hidden_size))
+        hf = x.new_zeros((b, self.hidden_size))
+        cf = x.new_zeros((b, self.hidden_size))
         fout = []
         for t in range(steps):
             a = m[:, t].unsqueeze(1)
             h_new, c_new = self._cell(x[:, t, :], hf, cf, self.weight_ih_l0, self.weight_hh_l0, self.bias_ih_l0, self.bias_hh_l0)
-            hf = h_new * a + hf * (1 - a); cf = c_new * a + cf * (1 - a)
+            hf = h_new * a + hf * (1 - a)
+            cf = c_new * a + cf * (1 - a)
             fout.append(hf * a)
-        hb = x.new_zeros((b, self.hidden_size)); cb = x.new_zeros((b, self.hidden_size))
+        hb = x.new_zeros((b, self.hidden_size))
+        cb = x.new_zeros((b, self.hidden_size))
         brev = []
         for t in range(steps - 1, -1, -1):
             a = m[:, t].unsqueeze(1)
             h_new, c_new = self._cell(x[:, t, :], hb, cb, self.weight_ih_l0_reverse, self.weight_hh_l0_reverse, self.bias_ih_l0_reverse, self.bias_hh_l0_reverse)
-            hb = h_new * a + hb * (1 - a); cb = c_new * a + cb * (1 - a)
+            hb = h_new * a + hb * (1 - a)
+            cb = c_new * a + cb * (1 - a)
             brev.append(hb * a)
         return torch.cat([torch.stack(fout, 1), torch.stack(list(reversed(brev)), 1)], dim=2)
 
 class CMLTextEncoder(nn.Module):
     def __init__(self, enc):
         super().__init__()
-        self.embedding = enc.embedding; self.cnn = enc.cnn
+        self.embedding = enc.embedding
+        self.cnn = enc.cnn
         self.lstm = MaskedBidirectionalLSTM(enc.lstm)
     def forward(self, x, input_lengths, m):
         valid = (~m).to(torch.long)
@@ -183,7 +194,8 @@ class CMLTextEncoder(nn.Module):
         m1 = m.unsqueeze(1)
         x = x.masked_fill(m1, 0.0)
         for c in self.cnn:
-            x = c(x); x = x.masked_fill(m1, 0.0)
+            x = c(x)
+            x = x.masked_fill(m1, 0.0)
         x = x.transpose(1, 2)
         x = self.lstm(x, valid)
         x = x.transpose(-1, -2)
@@ -196,7 +208,8 @@ class CMLDurationEncoder(nn.Module):
             MaskedBidirectionalLSTM(b) if isinstance(b, nn.LSTM) else b for b in enc.lstms)
         self.dropout = enc.dropout
     def forward(self, x, style, text_lengths, m):
-        masks = m; valid = (~masks).to(torch.long)
+        masks = m
+        valid = (~masks).to(torch.long)
         x = x.permute(2, 0, 1)
         seq_len = x.shape[0]
         s = style.unsqueeze(0).repeat(seq_len, 1, 1)
@@ -323,8 +336,10 @@ def spectral_parity(a1, a2):
     """Phase-invariant parity: STFT magnitude correlation + log-mel L1."""
     import numpy as _np
     n = min(len(a1), len(a2))
-    a1 = a1[:n].astype(_np.float64); a2 = a2[:n].astype(_np.float64)
-    win = 1024; hop = 256
+    a1 = a1[:n].astype(_np.float64)
+    a2 = a2[:n].astype(_np.float64)
+    win = 1024
+    hop = 256
     w = _np.hanning(win)
     def mag(a):
         frames = [a[i:i+win] * w for i in range(0, len(a) - win, hop)]
@@ -351,9 +366,11 @@ def rep_voice_embedding(voice_pt: Path, n_avg=64) -> np.ndarray:
 def make_inputs(T, n_tokens, ref_s_vec, seed=0):
     g = torch.Generator().manual_seed(seed)
     ids = torch.zeros(1, T, dtype=torch.int32)
-    ids[0, 0] = 0; ids[0, n_tokens-1] = 0
+    ids[0, 0] = 0
+    ids[0, n_tokens-1] = 0
     ids[0, 1:n_tokens-1] = torch.randint(1, 170, (n_tokens-2,), generator=g, dtype=torch.int32)
-    mask = torch.zeros(1, T, dtype=torch.int32); mask[0, :n_tokens] = 1
+    mask = torch.zeros(1, T, dtype=torch.int32)
+    mask[0, :n_tokens] = 1
     ref_s = torch.tensor(ref_s_vec, dtype=torch.float32).view(1, 256)
     phases = torch.rand(1, 9, generator=g, dtype=torch.float32)
     speed = torch.tensor([1.0], dtype=torch.float32)
@@ -396,10 +413,12 @@ def main():
     print(f"[torch] e2e audio={tuple(a_e2e.shape)} valid_len={valid} pred_sum={int(pdur.sum())} "
           f"ref_len={a_ref.numel()} pdur_e2e={pdur[0,:n_tokens].tolist()} pdur_ref={pdur_ref.reshape(-1).tolist()}")
     n = min(valid, a_ref.numel())
-    a1 = a_e2e[0, :n].numpy(); a2 = a_ref.reshape(-1)[:n].numpy()
+    a1 = a_e2e[0, :n].numpy()
+    a2 = a_ref.reshape(-1)[:n].numpy()
     mae = float(_np.mean(_np.abs(a1 - a2)))
     corr = float(_np.corrcoef(a1, a2)[0, 1]) if n > 1 else 0.0
-    rms1 = float(_np.sqrt(_np.mean(a1**2))); rms2 = float(_np.sqrt(_np.mean(a2**2)))
+    rms1 = float(_np.sqrt(_np.mean(a1**2)))
+    rms2 = float(_np.sqrt(_np.mean(a2**2)))
     print(f"[parity torch fused-vs-truth] n={n} MAE={mae:.5f} wav_corr={corr:.5f} rms_fused={rms1:.4f} rms_ref={rms2:.4f}")
     sc, ld = spectral_parity(a1, a2)
     print(f"[spectral parity] stft_mag_corr={sc:.5f} logmel_L1={ld:.5f}")
@@ -419,7 +438,6 @@ def main():
     from coremltools.converters.mil.frontend.torch.ops import _get_inputs
     from coremltools.converters.mil.frontend.torch.torch_op_registry import register_torch_op, _TORCH_OPS_REGISTRY
     from coremltools.converters.mil import Builder as mb
-    from coremltools.converters.mil.frontend.torch.ops import logical_and as _logical_and
     if "new_ones" not in _TORCH_OPS_REGISTRY.name_to_func_mapping:
         @register_torch_op
         def new_ones(context, node):
@@ -462,7 +480,8 @@ def main():
         compute_precision=(ct.precision.FLOAT32 if args.precision == "fp32" else ct.precision.FLOAT16),
         compute_units=ct.ComputeUnit.ALL,
     )
-    out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
     pkg = out / f"kokoro_{args.seconds}s.mlpackage"
     mlmodel.save(str(pkg))
     print(f"[saved] {pkg}")

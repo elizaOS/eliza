@@ -100,8 +100,10 @@ type TodoSeed = {
 type ContactSeedHandle = {
   platform?: unknown;
   identifier?: unknown;
+  handle?: unknown;
   displayLabel?: unknown;
   isPrimary?: unknown;
+  realPerson?: unknown;
 };
 
 type ContactSeed = {
@@ -129,18 +131,127 @@ type GmailInboxSeed = {
   fixtures?: unknown;
   requiredMessageIds?: unknown;
   clearLedger?: unknown;
+  faultInjection?: unknown;
+};
+
+type GmailFaultInjectionSeed = {
+  mode?: unknown;
+  method?: unknown;
+  path?: unknown;
+  endpoint?: unknown;
+  limit?: unknown;
+};
+
+type GmailFaultInjectionConfig = {
+  mode: "auth_expired" | "rate_limit" | "server_error" | "partial_failure";
+  method: string;
+  path: string;
+  remaining?: number;
+};
+
+type ConnectorSeed = {
+  type: "connectorStatus" | "connectorAuthSession" | "transportFault";
+  connector?: unknown;
+  provider?: unknown;
+  state?: unknown;
+  capabilities?: unknown;
+  scopes?: unknown;
+  limit?: unknown;
 };
 
 type MemoryContactSeed = {
   kind?: unknown;
   type?: unknown;
   name?: unknown;
+  displayName?: unknown;
+  id?: unknown;
   notes?: unknown;
+  company?: unknown;
+  handles?: unknown;
+  platform?: unknown;
+  handle?: unknown;
+  oldHandle?: unknown;
+  newHandle?: unknown;
+  platformUserId?: unknown;
+  tags?: unknown;
+  primaryChannel?: unknown;
+  telegramHandle?: unknown;
+  recentNews?: unknown;
+  renameConfirmed?: unknown;
+  mergedAccidentally?: unknown;
   relationshipGoal?: unknown;
   followupThresholdDays?: unknown;
   lastContactedAt?: unknown;
   relationshipStatus?: unknown;
 };
+
+type ConnectorStatusLike = {
+  state: "ok" | "degraded" | "disconnected";
+  message?: string;
+  observedAt: string;
+};
+
+type DispatchResultLike =
+  | { ok: true; messageId?: string }
+  | {
+      ok: false;
+      reason:
+        | "disconnected"
+        | "rate_limited"
+        | "auth_expired"
+        | "unknown_recipient"
+        | "transport_error";
+      retryAfterMinutes?: number;
+      userActionable: boolean;
+      message?: string;
+    };
+
+type ConnectorModeLike = "local" | "cloud";
+
+type ConnectorRegistryFilterLike = {
+  capability?: string;
+  mode?: ConnectorModeLike;
+};
+
+type ConnectorContributionLike = {
+  kind: string;
+  capabilities: string[];
+  modes: ConnectorModeLike[];
+  describe: { label: string };
+  start: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  verify: () => Promise<boolean>;
+  status: () => Promise<ConnectorStatusLike>;
+  send?: (payload: unknown) => Promise<DispatchResultLike>;
+  read?: (query: unknown) => Promise<unknown>;
+  requiresApproval?: boolean;
+  oauth?: unknown;
+  apiBaseUrl?: string;
+};
+
+type ConnectorRegistryLike = {
+  register: (contribution: ConnectorContributionLike) => void;
+  list: (filter?: ConnectorRegistryFilterLike) => ConnectorContributionLike[];
+  get: (kind: string) => ConnectorContributionLike | null;
+  byCapability: (capability: string) => ConnectorContributionLike[];
+};
+
+type ConnectorRegistryModule = {
+  createConnectorRegistry: () => ConnectorRegistryLike;
+  getConnectorRegistry: (runtime: AgentRuntime) => ConnectorRegistryLike | null;
+  registerConnectorRegistry: (
+    runtime: AgentRuntime,
+    registry: ConnectorRegistryLike,
+  ) => void;
+};
+
+async function loadConnectorRegistry(): Promise<ConnectorRegistryModule> {
+  const specifier = new URL(
+    "../../../plugins/plugin-personal-assistant/src/lifeops/connectors/registry.ts",
+    import.meta.url,
+  ).href;
+  return import(specifier) as Promise<ConnectorRegistryModule>;
+}
 
 type RelationshipsServiceLike = {
   getContact: (entityId: UUID) => Promise<unknown>;
@@ -205,6 +316,12 @@ function readOptionalNumber(value: unknown): number | undefined {
 
 function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function readScenarioNow(ctx: ScenarioContext): Date {
@@ -295,24 +412,23 @@ async function seedTodo(
   return undefined;
 }
 
-function normalizeContactHandles(value: unknown): Array<{
+type NormalizedContactHandle = {
   platform: string;
   identifier: string;
   displayLabel?: string;
   isPrimary?: boolean;
-}> {
+};
+
+function normalizeContactHandles(value: unknown): NormalizedContactHandle[] {
   if (!Array.isArray(value)) return [];
-  const handles: Array<{
-    platform: string;
-    identifier: string;
-    displayLabel?: string;
-    isPrimary?: boolean;
-  }> = [];
+  const handles: NormalizedContactHandle[] = [];
   for (const entry of value) {
     if (!entry || typeof entry !== "object") continue;
     const handle = entry as ContactSeedHandle;
     const platform = readNonEmptyString(handle.platform);
-    const identifier = readNonEmptyString(handle.identifier);
+    const identifier =
+      readNonEmptyString(handle.identifier) ??
+      readNonEmptyString(handle.handle);
     if (!platform || !identifier) continue;
     handles.push({
       platform,
@@ -322,6 +438,133 @@ function normalizeContactHandles(value: unknown): Array<{
     });
   }
   return handles;
+}
+
+function dedupeContactHandles(
+  handles: NormalizedContactHandle[],
+): NormalizedContactHandle[] {
+  const seen = new Set<string>();
+  const deduped: NormalizedContactHandle[] = [];
+  for (const handle of handles) {
+    const key = `${handle.platform}:${handle.identifier}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(handle);
+  }
+  return deduped;
+}
+
+function normalizeEntityHandles(
+  seed: MemoryContactSeed,
+): NormalizedContactHandle[] {
+  const handles = normalizeContactHandles(seed.handles);
+  const displayLabel =
+    readNonEmptyString(seed.displayName) ??
+    readNonEmptyString(seed.name) ??
+    undefined;
+  const platform = readNonEmptyString(seed.platform);
+  if (platform) {
+    const primaryHandle = readNonEmptyString(seed.handle);
+    for (const identifier of [
+      primaryHandle,
+      readNonEmptyString(seed.newHandle),
+      readNonEmptyString(seed.oldHandle),
+    ]) {
+      if (!identifier) continue;
+      handles.push({
+        platform,
+        identifier,
+        displayLabel,
+        isPrimary: primaryHandle ? identifier === primaryHandle : undefined,
+      });
+    }
+  }
+  const telegramHandle = readNonEmptyString(seed.telegramHandle);
+  if (telegramHandle) {
+    handles.push({
+      platform: readNonEmptyString(seed.primaryChannel) ?? "telegram",
+      identifier: telegramHandle,
+      displayLabel,
+      isPrimary: true,
+    });
+  }
+  return dedupeContactHandles(handles);
+}
+
+function entityMemoryNotes(seed: MemoryContactSeed): string | undefined {
+  const notes: string[] = [];
+  const authoredNotes = readNonEmptyString(seed.notes);
+  if (authoredNotes) notes.push(authoredNotes);
+  const scenarioEntityId = readNonEmptyString(seed.id);
+  if (scenarioEntityId) notes.push(`Scenario entity id: ${scenarioEntityId}`);
+  const company = readNonEmptyString(seed.company);
+  if (company) notes.push(`Company: ${company}`);
+  const recentNews = readNonEmptyString(seed.recentNews);
+  if (recentNews) notes.push(`Recent news: ${recentNews}`);
+  const platformUserId = readNonEmptyString(seed.platformUserId);
+  if (platformUserId) notes.push(`Platform user ID: ${platformUserId}`);
+  const oldHandle = readNonEmptyString(seed.oldHandle);
+  const newHandle = readNonEmptyString(seed.newHandle);
+  if (oldHandle || newHandle) {
+    notes.push(
+      `Handle rename: ${oldHandle ?? "(unknown)"} -> ${newHandle ?? "(unknown)"}`,
+    );
+  }
+  const renameConfirmed = readOptionalBoolean(seed.renameConfirmed);
+  if (renameConfirmed !== undefined) {
+    notes.push(`Rename confirmed: ${renameConfirmed}`);
+  }
+  const mergedAccidentally = readOptionalBoolean(seed.mergedAccidentally);
+  if (mergedAccidentally !== undefined) {
+    notes.push(`Merged accidentally: ${mergedAccidentally}`);
+  }
+  if (Array.isArray(seed.handles)) {
+    for (const entry of seed.handles) {
+      if (!entry || typeof entry !== "object") continue;
+      const handle = entry as ContactSeedHandle;
+      const platform = readNonEmptyString(handle.platform);
+      const identifier =
+        readNonEmptyString(handle.identifier) ??
+        readNonEmptyString(handle.handle);
+      const realPerson = readNonEmptyString(handle.realPerson);
+      if (platform && identifier && realPerson) {
+        notes.push(`${platform} ${identifier} real person: ${realPerson}`);
+      }
+    }
+  }
+  return notes.length > 0 ? notes.join("\n") : undefined;
+}
+
+function memoryEntityToContactSeed(
+  seed: MemoryContactSeed,
+  memoryType: string,
+): ContactSeed {
+  const handles = normalizeEntityHandles(seed);
+  const authoredTags = readStringArray(seed.tags);
+  const isMerged = memoryType === "merged-entity";
+  return {
+    type: "contact",
+    name:
+      readNonEmptyString(seed.displayName) ??
+      readNonEmptyString(seed.name) ??
+      readNonEmptyString(seed.handle) ??
+      readNonEmptyString(seed.telegramHandle) ??
+      handles[0]?.identifier ??
+      (isMerged ? "Merged entity" : "Rolodex entity"),
+    notes: entityMemoryNotes(seed),
+    categories: isMerged ? ["merged-entity"] : undefined,
+    tags:
+      authoredTags.length > 0
+        ? authoredTags
+        : isMerged
+          ? ["merged-entity"]
+          : undefined,
+    handles,
+    relationshipGoal: seed.relationshipGoal,
+    followupThresholdDays: seed.followupThresholdDays,
+    lastContactedAt: seed.lastContactedAt,
+    relationshipStatus: seed.relationshipStatus,
+  };
 }
 
 function normalizeRelationshipStatus(
@@ -439,18 +682,14 @@ async function seedMemory(
   }
   const memoryType =
     readNonEmptyString(content.kind) ?? readNonEmptyString(content.type);
-  if (memoryType !== "contact") {
-    return undefined;
+  if (
+    memoryType === "contact" ||
+    memoryType === "rolodex-entity" ||
+    memoryType === "merged-entity"
+  ) {
+    return seedContact(ctx, memoryEntityToContactSeed(content, memoryType));
   }
-  return seedContact(ctx, {
-    type: "contact",
-    name: content.name,
-    notes: content.notes,
-    relationshipGoal: content.relationshipGoal,
-    followupThresholdDays: content.followupThresholdDays,
-    lastContactedAt: content.lastContactedAt,
-    relationshipStatus: content.relationshipStatus,
-  });
+  return undefined;
 }
 
 const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
@@ -483,6 +722,97 @@ async function clearGmailMockLedger(baseUrl: string): Promise<void> {
   }
 }
 
+async function clearGmailMockFault(baseUrl: string): Promise<void> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+    method: "DELETE",
+  });
+  if (response.ok || response.status === 404) {
+    return;
+  }
+  throw new Error(`Gmail mock fault reset failed with HTTP ${response.status}`);
+}
+
+function normalizeGmailFaultMode(
+  value: unknown,
+): GmailFaultInjectionConfig["mode"] | null {
+  const mode = readNonEmptyString(value);
+  if (
+    mode === "auth_expired" ||
+    mode === "rate_limit" ||
+    mode === "server_error" ||
+    mode === "partial_failure"
+  ) {
+    return mode;
+  }
+  return null;
+}
+
+function defaultGmailFaultPath(
+  mode: GmailFaultInjectionConfig["mode"],
+): string {
+  return mode === "partial_failure"
+    ? "/gmail/v1/users/me/messages/batchModify"
+    : "/gmail/v1/users/me/messages";
+}
+
+function normalizeGmailFaultInjection(
+  value: unknown,
+): GmailFaultInjectionConfig | string | null {
+  if (value === undefined || value === null || value === false) {
+    return null;
+  }
+  if (!value || typeof value !== "object") {
+    return "gmailInbox faultInjection must be an object";
+  }
+  const seed = value as GmailFaultInjectionSeed;
+  const mode = normalizeGmailFaultMode(seed.mode);
+  if (!mode) {
+    return "gmailInbox faultInjection.mode must be auth_expired, rate_limit, server_error, or partial_failure";
+  }
+  const rawMethod = readNonEmptyString(seed.method);
+  const rawPath =
+    readNonEmptyString(seed.path) ?? readNonEmptyString(seed.endpoint);
+  const path = rawPath
+    ? rawPath.startsWith("/")
+      ? rawPath
+      : `/${rawPath}`
+    : defaultGmailFaultPath(mode);
+  let remaining: number | undefined;
+  if (seed.limit !== undefined && seed.limit !== null) {
+    if (
+      typeof seed.limit !== "number" ||
+      !Number.isFinite(seed.limit) ||
+      seed.limit < 0
+    ) {
+      return "gmailInbox faultInjection.limit must be a non-negative number";
+    }
+    remaining = Math.floor(seed.limit);
+  }
+  return {
+    mode,
+    method: (
+      rawMethod ?? (mode === "partial_failure" ? "POST" : "GET")
+    ).toUpperCase(),
+    path,
+    ...(remaining !== undefined ? { remaining } : {}),
+  };
+}
+
+async function configureGmailMockFault(
+  baseUrl: string,
+  fault: GmailFaultInjectionConfig,
+): Promise<string | undefined> {
+  const response = await fetch(`${baseUrl}/__mock/google/gmail/fault`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fault),
+  });
+  if (response.ok) {
+    return undefined;
+  }
+  return `Gmail mock faultInjection setup failed with HTTP ${response.status}`;
+}
+
 async function requireMockGmailMessage(
   baseUrl: string,
   messageId: string,
@@ -504,6 +834,12 @@ async function seedGmailInbox(
     return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
   const mockBaseUrl = baseUrl;
+  const faultInjection = normalizeGmailFaultInjection(seed.faultInjection);
+  if (typeof faultInjection === "string") {
+    return faultInjection;
+  }
+
+  await clearGmailMockFault(mockBaseUrl);
 
   const requiredIds = new Set(readStringArray(seed.requiredMessageIds));
   for (const fixture of gmailSeedFixtureNames(seed)) {
@@ -527,6 +863,216 @@ async function seedGmailInbox(
     await clearGmailMockLedger(mockBaseUrl);
   }
 
+  if (faultInjection) {
+    return configureGmailMockFault(mockBaseUrl, faultInjection);
+  }
+
+  return undefined;
+}
+
+function normalizeConnectorKind(value: unknown): string | null {
+  const raw = readNonEmptyString(value);
+  return raw ? raw.toLowerCase().replace(/[\s_]+/g, "-") : null;
+}
+
+function connectorStateText(seed: ConnectorSeed): string {
+  return readNonEmptyString(seed.state)?.replace(/[-_]+/g, " ") ?? "degraded";
+}
+
+function connectorLabel(seed: ConnectorSeed, connector: string): string {
+  return readNonEmptyString(seed.provider) ?? connector;
+}
+
+function connectorStatusFromSeed(
+  seed: ConnectorSeed,
+  connector: string,
+): ConnectorStatusLike {
+  const state = readNonEmptyString(seed.state);
+  const disconnected =
+    seed.type === "connectorAuthSession" ||
+    state === "auth-expired" ||
+    state === "session-revoked" ||
+    state === "disconnected" ||
+    state === "helper-disconnected";
+  return {
+    state: disconnected ? "disconnected" : "degraded",
+    message: `${connectorLabel(seed, connector)} seeded ${connectorStateText(seed)}`,
+    observedAt: new Date().toISOString(),
+  };
+}
+
+function dispatchFailureFromSeed(seed: ConnectorSeed): DispatchResultLike {
+  const state = readNonEmptyString(seed.state);
+  const message = `${connectorLabel(
+    seed,
+    readNonEmptyString(seed.connector) ?? "connector",
+  )} seeded ${connectorStateText(seed)}`;
+  if (state === "rate-limited") {
+    return {
+      ok: false,
+      reason: "rate_limited",
+      retryAfterMinutes: 5,
+      userActionable: false,
+      message,
+    };
+  }
+  if (
+    seed.type === "connectorAuthSession" ||
+    state === "auth-expired" ||
+    state === "session-revoked" ||
+    state === "missing-scope"
+  ) {
+    return {
+      ok: false,
+      reason: "auth_expired",
+      userActionable: true,
+      message,
+    };
+  }
+  if (
+    state === "disconnected" ||
+    state === "helper-disconnected" ||
+    state === "transport-offline" ||
+    state === "blocked-resume"
+  ) {
+    return {
+      ok: false,
+      reason: "disconnected",
+      userActionable: true,
+      message,
+    };
+  }
+  return {
+    ok: false,
+    reason: "transport_error",
+    userActionable: state === "hold-expired",
+    message,
+  };
+}
+
+function connectorMatchesFilter(
+  contribution: ConnectorContributionLike,
+  filter?: ConnectorRegistryFilterLike,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+  if (
+    filter.capability &&
+    !contribution.capabilities.includes(filter.capability)
+  ) {
+    return false;
+  }
+  if (filter.mode && !contribution.modes.includes(filter.mode)) {
+    return false;
+  }
+  return true;
+}
+
+function seededConnectorContribution(
+  seed: ConnectorSeed,
+  connector: string,
+  base: ConnectorContributionLike | null,
+): ConnectorContributionLike {
+  const capabilities = readStringArray(seed.capabilities);
+  const scopedCapabilities = readStringArray(seed.scopes);
+  const allCapabilities =
+    capabilities.length > 0 || scopedCapabilities.length > 0
+      ? [...capabilities, ...scopedCapabilities]
+      : (base?.capabilities ?? [`${connector}.scenario-seeded`]);
+  const limit = readPositiveInteger(seed.limit);
+  let failuresRemaining =
+    seed.type === "transportFault"
+      ? (limit ?? Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+  const failure = () => dispatchFailureFromSeed(seed);
+
+  return {
+    ...(base ?? {}),
+    kind: base?.kind ?? connector,
+    capabilities: allCapabilities,
+    modes: base?.modes ?? ["local"],
+    describe: base?.describe ?? { label: connectorLabel(seed, connector) },
+    start: base?.start ?? (async () => undefined),
+    disconnect: base?.disconnect ?? (async () => undefined),
+    verify: async () => false,
+    status: async () => connectorStatusFromSeed(seed, connector),
+    ...(base?.read ? { read: base.read.bind(base) } : {}),
+    ...(base?.requiresApproval !== undefined
+      ? { requiresApproval: base.requiresApproval }
+      : {}),
+    ...(base?.oauth ? { oauth: base.oauth } : {}),
+    ...(base?.apiBaseUrl ? { apiBaseUrl: base.apiBaseUrl } : {}),
+    send: async (payload: unknown) => {
+      if (failuresRemaining > 0) {
+        failuresRemaining -= 1;
+        return failure();
+      }
+      if (base?.send) {
+        return base.send(payload);
+      }
+      return failure();
+    },
+  };
+}
+
+function createSeededConnectorRegistry(
+  base: ConnectorRegistryLike,
+  seed: ConnectorSeed,
+  connector: string,
+): ConnectorRegistryLike {
+  const getSeeded = (): ConnectorContributionLike =>
+    seededConnectorContribution(seed, connector, base.get(connector));
+
+  return {
+    register(contribution) {
+      base.register(contribution);
+    },
+    get(kind) {
+      return kind === connector ? getSeeded() : base.get(kind);
+    },
+    list(filter) {
+      const listed = base.list(filter).flatMap((contribution) => {
+        if (contribution.kind !== connector) {
+          return [contribution];
+        }
+        const seeded = getSeeded();
+        return connectorMatchesFilter(seeded, filter) ? [seeded] : [];
+      });
+      if (!listed.some((contribution) => contribution.kind === connector)) {
+        const seeded = getSeeded();
+        if (connectorMatchesFilter(seeded, filter)) {
+          listed.push(seeded);
+        }
+      }
+      return listed;
+    },
+    byCapability(capability) {
+      return this.list({ capability });
+    },
+  };
+}
+
+async function seedConnector(
+  ctx: ScenarioContext,
+  seed: ConnectorSeed,
+): Promise<string | undefined> {
+  const connector = normalizeConnectorKind(seed.connector);
+  if (!connector) {
+    return `${seed.type} seed requires a connector`;
+  }
+  const runtime = requireRuntime(ctx);
+  const {
+    createConnectorRegistry,
+    getConnectorRegistry,
+    registerConnectorRegistry,
+  } = await loadConnectorRegistry();
+  const currentRegistry =
+    getConnectorRegistry(runtime) ?? createConnectorRegistry();
+  registerConnectorRegistry(
+    runtime,
+    createSeededConnectorRegistry(currentRegistry, seed, connector),
+  );
   return undefined;
 }
 
@@ -549,6 +1095,13 @@ export async function applyScenarioSeedStep(
   }
   if (seed.type === "gmailInbox") {
     return seedGmailInbox(seed as GmailInboxSeed);
+  }
+  if (
+    seed.type === "connectorStatus" ||
+    seed.type === "connectorAuthSession" ||
+    seed.type === "transportFault"
+  ) {
+    return seedConnector(ctx, seed as ConnectorSeed);
   }
 
   return undefined;

@@ -8,7 +8,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "composite": true,
     "emitDeclarationOnly": true,
@@ -25,7 +25,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false,
-    "noImplicitAny": false,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
     "types": ["node", "bun-types"]

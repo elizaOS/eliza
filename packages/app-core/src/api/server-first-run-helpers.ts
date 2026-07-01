@@ -324,9 +324,6 @@ export function deriveFirstRunReplayBody(body: Record<string, unknown>): {
   const isCloudMode = deploymentTarget?.runtime === "cloud";
 
   const replayBody = { ...body };
-  for (const key of DEPRECATED_FIRST_RUN_REQUEST_KEYS) {
-    delete replayBody[key];
-  }
 
   if (deploymentTarget) {
     replayBody.deploymentTarget = deploymentTarget;

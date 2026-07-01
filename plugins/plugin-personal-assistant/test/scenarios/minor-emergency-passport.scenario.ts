@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "minor-emergency-passport",
   title: "Assistant coordinates a minor's emergency passport appointment",
   domain: "executive.family",
@@ -22,7 +23,12 @@ export default scenario({
       name: "assemble-minor-passport-packet",
       text: "The child's passport expires before travel. Assemble DS-11 requirements, birth certificate, parent consent, photo appointment, travel proof, and agency appointment windows.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "calendar_action", "travel"],
-      responseIncludesAny: ["DS-11", "birth certificate", "consent", "appointment"],
+      responseIncludesAny: [
+        "DS-11",
+        "birth certificate",
+        "consent",
+        "appointment",
+      ],
       plannerExcludes: ["OWNER_HEALTH"],
     },
     {

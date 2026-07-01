@@ -1,32 +1,40 @@
 // @vitest-environment jsdom
 
+/**
+ * Drives the unified HealthView (the single GUI/XR data wrapper) through the
+ * rendered spatial DOM: the same component the bundle exports for both the
+ * "gui" and "xr" modalities. It is a read-only sleep summary over the three
+ * endpoints the host serves:
+ *   GET {base}/api/lifeops/sleep/{history,regularity,baseline}
+ *
+ * The default fetchers hit those URLs via `client.getBaseUrl()`; every test
+ * here injects the `fetchers` seam so the suite stays offline. We assert the
+ * rendered spatial DOM across the four states (loading / error / empty /
+ * populated), the window-range control, and the quiet 20s background poll.
+ */
+
 import {
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// `@elizaos/ui` is the giant renderer barrel; HealthView only touches
+// `client.getBaseUrl()` (default fetcher seam, overridden in every test). The
+// spatial primitives come from the separate `@elizaos/ui/spatial` subpath,
+// which is not mocked.
+vi.mock("@elizaos/ui", () => ({
+  client: { getBaseUrl: () => "http://test.local" },
+}));
 
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
 } from "../../contracts/health.js";
-
-// `@elizaos/ui` is the giant renderer barrel; the component only touches
-// `client.getBaseUrl()` on its default fetcher seam, which every test
-// overrides. `@elizaos/ui/agent-surface` is mocked to an inert hook so the
-// agent-instrumented controls render outside a provider.
-vi.mock("@elizaos/ui", () => ({
-  client: { getBaseUrl: () => "http://test.local" },
-}));
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
-}));
-
 import { HealthView, type SleepFetchers } from "./HealthView.js";
 
 // ---------------------------------------------------------------------------
@@ -107,6 +115,12 @@ function makeFetchers(history: LifeOpsSleepHistoryResponse): SleepFetchers {
   };
 }
 
+function agent(agentId: string): HTMLElement {
+  const el = document.querySelector(`[data-agent-id="${agentId}"]`);
+  if (!el) throw new Error(`no element with data-agent-id="${agentId}"`);
+  return el as HTMLElement;
+}
+
 describe("HealthView (fetch-driven)", () => {
   afterEach(() => {
     cleanup();
@@ -120,9 +134,7 @@ describe("HealthView (fetch-driven)", () => {
       fetchBaseline: () => new Promise(() => {}),
     };
     render(<HealthView fetchers={fetchers} />);
-
-    expect(screen.getByTestId("health-loading")).toBeTruthy();
-    expect(screen.getByText(/Loading sleep data/i)).toBeTruthy();
+    expect(screen.getByText("Loading")).toBeTruthy();
   });
 
   it("renders the error state and refetches when Retry is clicked", async () => {
@@ -140,55 +152,46 @@ describe("HealthView (fetch-driven)", () => {
 
     render(<HealthView fetchers={fetchers} />);
 
-    const error = await screen.findByTestId("health-error");
-    expect(within(error).getByText("network down")).toBeTruthy();
+    await screen.findByText("network down");
+    fireEvent.click(agent("retry"));
 
-    fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
-
-    expect(await screen.findByTestId("health-empty")).toBeTruthy();
+    await screen.findByText("None");
     expect(fetchHistory).toHaveBeenCalledTimes(2);
   });
 
   it("renders the empty (connect-a-source) state when no episodes exist", async () => {
     render(<HealthView fetchers={makeFetchers(emptyHistory())} />);
 
-    const empty = await screen.findByTestId("health-empty");
-    expect(within(empty).getByText(/No sleep data yet/i)).toBeTruthy();
-    expect(
-      within(empty).getByText(/Connect a\s+health source \(Apple Health/i),
-    ).toBeTruthy();
-    expect(
-      within(empty).getByText(/connect a health source.*get started/i),
-    ).toBeTruthy();
+    await screen.findByText("None");
+    expect(screen.queryByText("14d empty")).toBeNull();
   });
 
-  it("renders the populated state with latest night, regularity, and baseline", async () => {
+  it("renders the populated state with last sleep, regularity, baseline, and window summary", async () => {
     render(<HealthView fetchers={makeFetchers(populatedHistory())} />);
 
-    const populated = await screen.findByTestId("health-populated");
+    // Last-sleep summary: duration, type, source, confidence.
+    await screen.findByText("7h 45m");
+    expect(screen.getByText("overnight")).toBeTruthy();
+    expect(screen.getByText("health")).toBeTruthy();
+    expect(screen.getByText("92%")).toBeTruthy();
 
-    // Latest-night summary: duration, bedtime, wake, type, source, confidence.
-    const latest = within(populated).getByTestId("health-latest-night");
-    expect(within(latest).getByText("7h 45m")).toBeTruthy();
-    expect(within(latest).getByText("overnight")).toBeTruthy();
-    expect(within(latest).getByText("health")).toBeTruthy();
-    expect(within(latest).getByText("92%")).toBeTruthy();
+    // Regularity.
+    expect(screen.getByText("Regular")).toBeTruthy();
+    expect(screen.getByText("78")).toBeTruthy();
 
-    // Regularity score.
-    const regularity = within(populated).getByTestId("health-regularity");
-    expect(within(regularity).getByText("Regular")).toBeTruthy();
-    expect(within(regularity).getByText("78")).toBeTruthy();
+    // Baseline.
+    expect(screen.getByText("23:30")).toBeTruthy();
+    expect(screen.getByText("07:15")).toBeTruthy();
 
-    // Personal baseline.
-    const baseline = within(populated).getByTestId("health-baseline");
-    expect(within(baseline).getByText("23:30")).toBeTruthy();
-    expect(within(baseline).getByText("07:15")).toBeTruthy();
+    // Window summary: "Nights recorded" + cycleCount 6 (averageDurationMin 452
+    // also formats "7h 32m" but so does the baseline typical-duration row, so
+    // assert the labels unique to this section instead).
+    expect(screen.getByText("Nights recorded")).toBeTruthy();
+    expect(screen.getByText("Average duration")).toBeTruthy();
 
-    // Window summary derived from the history summary DTO (averageDurationMin
-    // 452 → "7h 32m" is unique to this card).
-    const summary = within(populated).getByTestId("health-window-summary");
-    expect(within(summary).getByText("7h 32m")).toBeTruthy();
-    expect(within(summary).getByText("Nights recorded")).toBeTruthy();
+    // Section dividers are present.
+    expect(screen.getByText("Last sleep")).toBeTruthy();
+    expect(screen.getByText("Window summary")).toBeTruthy();
   });
 
   it("shows a quiet proactive line only when regularity reads as off-rhythm", async () => {
@@ -203,28 +206,29 @@ describe("HealthView (fetch-driven)", () => {
     };
     render(<HealthView fetchers={fetchers} />);
 
-    const populated = await screen.findByTestId("health-populated");
+    // "Very irregular" appears both as the classification value and inside the
+    // proactive sentence; assert the full proactive line, which is unique.
     expect(
-      within(populated).getByTestId("health-proactive").textContent,
-    ).toMatch(/very irregular/i);
+      await screen.findByText(/Sleep was very irregular this window/i),
+    ).toBeTruthy();
   });
 
   it("renders no proactive line when regularity is regular", async () => {
     render(<HealthView fetchers={makeFetchers(populatedHistory())} />);
 
-    const populated = await screen.findByTestId("health-populated");
-    expect(within(populated).queryByTestId("health-proactive")).toBeNull();
+    await screen.findByText("7h 45m");
+    expect(screen.queryByText(/irregular/i)).toBeNull();
   });
 
   it("refetches all three endpoints when the window-range control changes", async () => {
     const fetchers = makeFetchers(populatedHistory());
     render(<HealthView fetchers={fetchers} initialWindowDays={14} />);
 
-    await screen.findByTestId("health-populated");
+    await screen.findByText("7h 45m");
     expect(fetchers.fetchHistory).toHaveBeenCalledTimes(1);
     expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(14);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show last 30 days" }));
+    fireEvent.click(agent("window-30"));
 
     await waitFor(() => expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2));
     expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(30);
@@ -252,18 +256,5 @@ describe("HealthView (fetch-driven)", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("interpolates the supplied ownerName into the subtitle", async () => {
-    render(
-      <HealthView ownerName="Dana" fetchers={makeFetchers(emptyHistory())} />,
-    );
-
-    await screen.findByTestId("health-empty");
-    expect(
-      screen.getByText(
-        "Sleep, circadian rhythm, and the rolling baseline for Dana.",
-      ),
-    ).toBeTruthy();
   });
 });

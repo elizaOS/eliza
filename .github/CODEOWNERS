@@ -22,13 +22,12 @@
 /.github/dependabot.yml                 @elizaos/security-team
 
 # Cloud / backend — billing, auth, hosted APIs.
-/packages/cloud-api/                    @elizaos/backend-leads
-/packages/cloud-shared/                 @elizaos/backend-leads
-/packages/cloud-frontend/               @elizaos/backend-leads
-/packages/cloud-services/               @elizaos/backend-leads
-/packages/cloud-infra/                  @elizaos/backend-leads @elizaos/platform-team
-/packages/cloud-routing/                @elizaos/backend-leads
-/packages/cloud-sdk/                    @elizaos/backend-leads
+/packages/cloud/api/                    @elizaos/backend-leads
+/packages/cloud/shared/                 @elizaos/backend-leads
+/packages/cloud/services/               @elizaos/backend-leads
+/packages/cloud/infra/                  @elizaos/backend-leads @elizaos/platform-team
+/packages/cloud/routing/                @elizaos/backend-leads
+/packages/cloud/sdk/                    @elizaos/backend-leads
 
 # Security and crypto-handling code — mandatory security review.
 /packages/security/                     @elizaos/security-team
@@ -36,17 +35,15 @@
 /packages/contracts/                    @elizaos/security-team @elizaos/backend-leads
 
 # Plugin runtime / sandboxing surface.
-/packages/plugin-host-shim/             @elizaos/runtime-team
-/packages/plugin-host-shim-android/     @elizaos/runtime-team
-/packages/plugin-host-shim-electrobun/  @elizaos/runtime-team
-/packages/plugin-host-shim-ios/         @elizaos/runtime-team
+# The host-shim cluster (base + android/ios/electrobun) now lives under
+# plugin-remote-manifest/src/host-shim/ (subpath exports).
 /packages/plugin-worker-runtime/        @elizaos/runtime-team
 /packages/plugin-sub-agent-claude-code/ @elizaos/runtime-team @elizaos/security-team
 /packages/plugin-remote-manifest/       @elizaos/runtime-team @elizaos/security-team
 
 # ML / training / hardware.
 /packages/training/                     @elizaos/ml-hw-lead
-/packages/chip/                         @elizaos/ml-hw-lead
+/packages/research/chip/                         @elizaos/ml-hw-lead
 /packages/feed/                         @elizaos/ml-hw-lead
 
 # Deployment artifacts.

@@ -11,6 +11,7 @@ import { db, eq, trainedModels } from "@feed/db";
 import type { JsonValue } from "@feed/shared";
 import { logger } from "@feed/shared";
 import { del, list, put } from "@vercel/blob";
+import { FEED_DEFAULT_BASE_MODEL } from "../RLModelConfig";
 
 export interface ModelMetadata {
   trainingBatch?: string;
@@ -80,7 +81,7 @@ export class ModelStorageService {
       modelId: `feed-agent-${options.version}`,
       version: options.version,
       baseModel:
-        (options.metadata?.baseModel as string) || "unsloth/Qwen3-4B-128K",
+        (options.metadata?.baseModel as string) || FEED_DEFAULT_BASE_MODEL,
       storagePath: blob.url,
       accuracy: (options.metadata?.accuracy as number) || null,
       avgReward: (options.metadata?.avgReward as number) || null,
@@ -92,7 +93,7 @@ export class ModelStorageService {
     return {
       version: options.version,
       baseModel:
-        (options.metadata?.baseModel as string) || "unsloth/Qwen3-4B-128K",
+        (options.metadata?.baseModel as string) || FEED_DEFAULT_BASE_MODEL,
       blobUrl: blob.url,
       size: (blob as { size?: number }).size || 0,
       uploadedAt: new Date(),

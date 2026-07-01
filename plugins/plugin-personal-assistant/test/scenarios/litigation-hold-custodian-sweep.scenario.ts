@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "litigation-hold-custodian-sweep",
   title: "Assistant coordinates a litigation hold custodian sweep",
   domain: "executive.legal",
@@ -22,7 +23,12 @@ export default scenario({
       name: "map-custodians-and-sources",
       text: "Outside counsel sent a litigation hold. Map likely custodians, shared drives, calendar ranges, messaging threads, and missing acknowledgements without opening privileged attachments.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "privacy", "delegation"],
-      responseIncludesAny: ["custodians", "shared drives", "calendar", "acknowledgements"],
+      responseIncludesAny: [
+        "custodians",
+        "shared drives",
+        "calendar",
+        "acknowledgements",
+      ],
       plannerExcludes: ["OWNER_HEALTH"],
     },
     {

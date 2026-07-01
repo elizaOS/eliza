@@ -8,10 +8,12 @@ export const walletAppPlugin: Plugin = {
     category: "wallet",
     icon: "Wallet",
     visibleInAppStore: true,
+    viewKind: "system",
     developerOnly: false,
     navTabs: [
       {
         id: "wallet.inventory",
+        viewKind: "system",
         label: "Wallet",
         icon: "Wallet",
         path: "/inventory",
@@ -21,41 +23,21 @@ export const walletAppPlugin: Plugin = {
     ],
   },
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single InventoryView
+    // spatial source. `modalities` is a plain literal here (plugin.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build.
     {
       id: "wallet",
+      viewKind: "system",
       label: "Wallet",
       description: "Non-custodial wallet inventory and token balances",
       icon: "Wallet",
       path: "/wallet",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "InventoryView",
       tags: ["finance", "crypto", "wallet"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "wallet",
-      label: "Wallet XR",
-      description: "Non-custodial wallet inventory and token balances",
-      icon: "Wallet",
-      path: "/wallet",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "InventoryView",
-      tags: ["finance", "crypto", "wallet"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "wallet",
-      label: "Wallet TUI",
-      description: "Terminal wallet inventory and balance surface",
-      icon: "Wallet",
-      path: "/wallet/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "InventoryTuiView",
-      tags: ["finance", "crypto", "wallet", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

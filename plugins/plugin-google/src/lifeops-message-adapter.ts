@@ -17,6 +17,15 @@ import type {
 } from "./types.js";
 
 const DEFAULT_GOOGLE_ACCOUNT_ID = "default";
+const GMAIL_ADAPTER_METHODS = [
+  "listGmailTriageMessages",
+  "searchGmailMessages",
+  "sendGmailReply",
+  "modifyGmailMessages",
+  "createGmailFilterForSender",
+] as const satisfies readonly (keyof IGoogleGmailService)[];
+
+type GoogleGmailAdapterService = Pick<IGoogleGmailService, (typeof GMAIL_ADAPTER_METHODS)[number]>;
 
 interface GmailDraftContext {
   readonly request: DraftRequest;
@@ -124,9 +133,17 @@ function toGmailOperation(op: ManageOperation): {
   }
 }
 
-function getGoogleService(runtime: IAgentRuntime): IGoogleGmailService | null {
+function isGoogleGmailAdapterService(service: object): service is GoogleGmailAdapterService {
+  return GMAIL_ADAPTER_METHODS.every(
+    (method) => typeof Reflect.get(service, method) === "function"
+  );
+}
+
+function getGoogleService(runtime: IAgentRuntime): GoogleGmailAdapterService | null {
   const service = runtime.getService("google");
-  return service && typeof service === "object" ? (service as IGoogleGmailService) : null;
+  return service && typeof service === "object" && isGoogleGmailAdapterService(service)
+    ? service
+    : null;
 }
 
 function messageAccountId(message: MessageRef | null | undefined): string {
@@ -283,7 +300,7 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
     return { ok: true };
   }
 
-  private requireService(runtime: IAgentRuntime): IGoogleGmailService {
+  private requireService(runtime: IAgentRuntime): GoogleGmailAdapterService {
     const service = getGoogleService(runtime);
     if (!service) {
       throw new Error("[GoogleGmailAdapter] Google service is unavailable");

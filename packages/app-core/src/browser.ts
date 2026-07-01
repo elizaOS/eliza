@@ -32,13 +32,6 @@ export type {
   OverlayAppContext,
 } from "@elizaos/ui/components/apps/overlay-app-api";
 export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
-export {
-  type GameOperatorAction,
-  type GameOperatorEvent,
-  GameOperatorShell,
-} from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
-export { registerOperatorSurface } from "@elizaos/ui/components/apps/surfaces/registry";
-export type { AppOperatorSurfaceProps } from "@elizaos/ui/components/apps/surfaces/types";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";

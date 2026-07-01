@@ -1,7 +1,7 @@
 {
   "name": "4x L40 GPUs (192GB total)",
-  "description": "Multi-GPU L40 cluster for production Qwen3 30B training",
-  "model": "Qwen/Qwen3-30B-A3B",
+  "description": "Multi-GPU L40 cluster for production Gemma 4 31B training",
+  "model": "google/gemma-4-31B",
   "vllm_gpu_memory": 0.45,
   "tensor_parallel_size": 4,
   "batch_size": 16,
@@ -15,7 +15,5 @@
   "kl_coefficient": 0.05,
   "use_flash_attention": true,
   "fsdp_enabled": true,
-  "notes": "4x L40 with tensor parallelism. Target for Qwen3 30B production runs. Adjust model to Qwen/Qwen3-30B when available."
+  "notes": "4x L40 with tensor parallelism. Target for Gemma 4 31B production runs."
 }
-
-

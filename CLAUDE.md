@@ -23,7 +23,7 @@ say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
 - **Monorepo:** [Turbo](https://turbo.build) drives `build` / `typecheck` /
   `lint` / `test` across workspaces. Workspace globs are in `package.json`
   (`packages/*`, `plugins/*`, `packages/native/*`, `packages/os/*`,
-  `packages/examples/*`, `packages/cloud-services/*`, …).
+  `packages/examples/*`, `packages/cloud/services/*`, …).
 - **Lint/format:** [Biome](https://biomejs.dev) (`biome.json`). Ignore globs in
   `.biomeignore`.
 - **Tests:** Vitest, orchestrated by `packages/scripts/run-all-tests.mjs`.
@@ -34,6 +34,7 @@ say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
 
 ```bash
 bun install            # workspace install (runs postinstall: submodules, patches)
+bun run install:light  # install without downloading the large artifact bundle
 bun run dev            # boot the API + dashboard UI (packages/app-core dev-ui)
 bun run build          # turbo build across the workspace
 bun run verify         # typecheck + lint (alias: bun run check) — run before "done"
@@ -42,7 +43,7 @@ bun run format         # biome format via turbo
 bun run typecheck      # tsc across workspace (8 GB heap)
 bun run test           # full suite (run-all-tests.mjs)
 bun run test:server    # core/agent/app-core/shared/vault/elizaos/skills/scenario-runner
-bun run test:client    # app/ui + lifeops/companion/training plugins
+bun run test:client    # app/ui + lifeops/training plugins
 bun run test:e2e       # end-to-end lane
 bun run start          # run an agent (packages/agent start)
 bun run clean          # nuke dist/.turbo/node_modules, reinstall, rebuild
@@ -68,16 +69,15 @@ packages/        framework, shared libraries, and product surfaces
   tui/           terminal UI
   skills/        runtime skills knowledge base (USE_SKILL)
   scenario-runner/ scenario + eval harness
-  sweagent/      SWE-bench style coding-agent harness
-  cloud-api/     managed backend API (Hono on Cloudflare Workers)
-  cloud-frontend/ cloud dashboard (Vite + React) — see visual-review gate below
-  cloud-shared/  shared cloud backend: db (Drizzle), billing, services, types
-  cloud-sdk/ cloud-routing/ cloud-infra/  cloud client SDK, model routing, IaC
+  cloud/api/     managed backend API (Hono on Cloudflare Workers)
+  app/           web + desktop dashboard; also hosts the current cloud apex UI
+  cloud/shared/  shared cloud backend: db (Drizzle), billing, services, types
+  cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
   security/ vault/ soc2-verify/  secrets, key management, compliance tooling
-  os/ os-homepage/ robot/        device/OS images, OS landing, robotics
-  plugin-host-shim*/ plugin-worker-runtime/ plugin-remote-manifest/
-                 plugin loading shims for native/electrobun/ios/android/worker targets
+  os/ robot/                     device/OS images, OS landing, robotics
+  plugin-remote-manifest/ plugin-worker-runtime/
+                 remote plugin manifests, host shims, and worker runtime support
   homepage/ docs/ docs-elizacloud-redirect/  marketing site, docs site, redirects
   examples/      30+ standalone runnable examples (each has its own README)
   benchmarks/    30+ evaluation suites (each has its own README + harness)
@@ -88,7 +88,7 @@ plugins/         runtime plugins and app plugins
   plugin-native-*/     native device bridges (camera, contacts, calendar, location, …)
   plugin-local-inference/  on-device llama.cpp / omnivoice / whisper (git submodules under native/)
   plugin-sql/ plugin-localdb/ plugin-inmemorydb/  storage adapters
-  plugin-companion/ plugin-documents/ plugin-lifeops/ plugin-health/ …  app plugins
+  plugin-documents/ plugin-lifeops/ plugin-health/ …  app plugins
 
 scripts/         repo automation        patches/   dependency patches
 skills/          runtime skill packages turbo.json knip.json  build + dead-code config
@@ -133,26 +133,25 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
-## Cloud frontend visual review — REQUIRED for any UI change in `packages/cloud-frontend/`
+## App visual review — REQUIRED for UI changes in `packages/app/`
 
-Any change in `packages/cloud-frontend/` (or a shared package whose UI bleeds
-into it) MUST pass the screenshot + manual-review loop before it is "done":
+Any change in `packages/app/` (or a shared package whose UI bleeds into it) MUST
+pass the screenshot + manual-review loop before it is "done":
 
 ```bash
-bun run --cwd packages/cloud-frontend audit:cloud
+bun run --cwd packages/app audit:app
 ```
 
-This walks every route in `src/App.tsx` (desktop + mobile, rest + hover), logs
-in with the synthetic injected-ethereum JWT, captures the populated UI, and
-auto-stubs `aesthetic-audit-output/manual-review/<slug>.md` per route. Fill in
-the verdict (`good` · `needs-work` · `needs-eyeball` · `broken`) for every page
-you touched or can reach via shared layout/theme/components.
+This walks the app views (desktop + mobile, rest + hover), captures the
+populated UI, and auto-stubs `aesthetic-audit-output/manual-review/<slug>.md`
+per view. Fill in the verdict (`good` · `needs-work` · `needs-eyeball` ·
+`broken`) for every page you touched or can reach via shared
+layout/theme/components.
 
 - No page may stay `needs-work` / `broken` when a UI task is declared done.
 - Iterate the loop ≥5× for any meaningful redesign.
 - Orange is accent only; no blue anywhere; orange-resting → darker-orange hover
-  (never orange→black). Full rules: `packages/cloud-frontend/AGENTS.md`,
-  `packages/cloud-frontend/docs/HOVER_SYSTEM.md`.
+  (never orange→black). Full package rules: `packages/app/AGENTS.md`.
 
 ## LifeOps + health: one scheduler, structural behavior
 
@@ -171,7 +170,98 @@ dispatch (use the typed `DispatchResult`), or an identity-merge that bypasses
 the merge engine. Architecture, frozen contracts, and contribution paths live in
 `plugins/plugin-personal-assistant/README.md` and `plugins/plugin-health/README.md`.
 
+## Attachments & files: one content-addressed store, additive model
+
+Attachment bytes live in a **single content-addressed store** —
+`packages/agent/src/api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`,
+served at `/api/media/<sha256>.<ext>`). The sha256 URL is the canonical,
+unguessable, deduped handle; `Media` (`packages/core/src/types/primitives.ts`)
+is the in-message reference and is widened **additively only**. Bytes are served
+pre-auth (the hash is the capability), with `nosniff` + a download
+`Content-Disposition` for SVG/active types; every server-side attachment fetch
+must go through the SSRF guard (`packages/core/src/network` + `media/fetch.ts`).
+
+**Do not add:** a second file store or storage abstraction/selector; a
+`files`/`file_references` DB table or a refcount/GC engine (the store already
+GCs via `gcUnreferencedMedia` + a grace window); a `fileId` on `Media`; a
+rewrite/rehost on the pre-auth serve path (rehost only on authenticated write);
+or a repurpose/removal of a `ContentType` enum value (it is **frozen,
+append-only** — derive fine-grained kind from `mimeType` at read time). Scope,
+deferrals, and rationale live in issue #8876.
+
+## Definition of Done — sync, PR, and human-verifiable evidence
+
+Every fix/feature ships through a **PR against `develop`**, and a reviewer must
+be able to confirm it works **without reading the code**. Full standard:
+[`PR_EVIDENCE.md`](PR_EVIDENCE.md) — read it; it is binding. **The same standard
+is restated in every package's `CLAUDE.md` / `AGENTS.md` and is non-negotiable.**
+
+**The three laws of "done"** (the whole standard expands these):
+
+1. **Prove the real thing happened — and look at it yourself.** Record the
+   actual model trajectories (inputs *and* outputs from a **live** model, not the
+   proxy, not a mock), the real client + server logs, the real pixels/audio, and
+   the real domain artifacts (memories, knowledge, DB rows, scheduled tasks,
+   wallet balance, on-chain results, generated files). Then **open every artifact
+   and review it by hand.** Capturing is not reviewing; green CI is not proof.
+2. **Test everything for real — no larp.** Every change ships detailed,
+   full-featured **end-to-end** tests that drive the *real* path — not the happy
+   "front door" only. Cover error paths, edges, empty/invalid input, concurrency,
+   roles/permissions, and adversarial input. A test asserting against a
+   mock/stub standing in for the thing under test does **not** count; if the real
+   model/device/chain/connector is hard to reach, make it reachable — that's the
+   work. If the existing tests you touch are shallow or mocked, fixing them is
+   part of your change. (See the standing backlog: #9943, #9950, #9954, #9958,
+   #9967, #9970.)
+3. **No residuals, no shortcuts.** The goal is not "done," it is *everything*
+   done. Clear blockers by the **hard path** — build the real architecture, stand
+   up the real model/device/service, actually test it. No TODOs, stubs,
+   stepping-stones, or "follow-ups." When unsure, research, weigh options, and
+   ship the best production-ready version. Keep going until every possibility is
+   exhausted.
+
+The non-negotiables in practice:
+
+- **Always PR; never push feature/fix work straight to `develop`.** Branch as
+  `feat|fix|docs|chore/<slug>`; open an issue first for anything non-trivial.
+- **Always sync before opening or updating a PR.** `git fetch origin &&
+  git rebase origin/develop`, resolve **every** conflict, `bun install`, then
+  `bun run verify`. A branch that can't fast-forward onto `develop` is not ready.
+- **Attach complete, real, manually-reviewed evidence** — prove the real thing
+  happened, not a mock of it:
+  - **Real-LLM trajectories** for agent/action/prompt/model changes —
+    `packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`
+    against a **live** model (JSON report + run viewer + native jsonl) — **and
+    read them.**
+  - **Backend logs** (structured `[ClassName] …`) and **frontend logs**
+    (console + network) showing the actual code path firing.
+  - **Before/after full-page screenshots** (desktop + mobile) + a **video
+    walkthrough** of the whole flow — `bun run test:e2e:record`; for app UI,
+    `bun run --cwd packages/app audit:app`.
+  - **Per-platform capture** (screenshot + recording + logs) for native/mobile/
+    desktop changes — `bun run --cwd packages/app capture:ios-sim` /
+    `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`,
+    electrobun `GET /api/dev/cursor-screenshot`. Run native features on the real
+    device/simulator/platform matrix, not mocked-bridge desktop Chromium. Full
+    surface→command matrix in `PR_EVIDENCE.md`.
+  - **Always build + deploy the latest before capturing.** Capture helpers
+    screenshot whatever is **already installed/running** — they do not build.
+    Before any on-device/simulator/desktop capture, rebuild and redeploy the
+    current tree (mobile: `build:android` / `build:ios` cap sync **and
+    reinstall** — a Capacitor app bakes the web bundle into the APK/IPA at build
+    time, so restarting the old app never picks up a renderer change). Confirm
+    the running build is yours (`versionName` / a known on-screen change) — a
+    screenshot of a stale install proves nothing.
+  - **Audio + narrated walkthrough** for voice/transcript/TTS/STT changes.
+  - **Domain artifacts** — the things the change produced (memory/knowledge/DB
+    rows, scheduled tasks, wallet balance before/after, on-chain tx hashes,
+    generated files, device output) — inspected by hand and shown.
+  - Artifacts land in `.github/issue-evidence/<issue#>-<slug>.<ext>` (see that
+    dir's `README.md`). Each evidence type is attached **or** explicitly marked
+    N/A with a reason — never left blank. If `develop` moved and changed
+    behavior, **re-capture** evidence; stale proof is worse than none.
+
 ## Contributing
 
 Open an issue before a non-trivial PR. License: MIT (`LICENSE`). Security
-policy: `SECURITY.md`.
+policy: `SECURITY.md`. Shipping standard: `PR_EVIDENCE.md`.

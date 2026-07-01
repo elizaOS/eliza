@@ -96,7 +96,7 @@ export class VisionServiceLifecycleManager {
     if (!arbiter) return;
     this.unsubscribePressure = arbiter.onPressure((holders) => {
       this.handlePressure(holders).catch((error) => {
-        logger.error("[VisionLifecycle] pressure handler failed:", error);
+        logger.error({ error }, "[VisionLifecycle] pressure handler failed:");
       });
     });
   }
@@ -146,8 +146,8 @@ export class VisionServiceLifecycleManager {
       return true;
     } catch (error) {
       logger.error(
+        { error },
         `[VisionLifecycle] re-acquire failed for ${sub.handle.id}:`,
-        error,
       );
       if (this.arbiter) await this.arbiter.release(sub.handle.id);
       return false;
@@ -159,11 +159,11 @@ export class VisionServiceLifecycleManager {
    */
   async release(id: string): Promise<void> {
     const sub = this.subs.get(id);
-    if (!sub || !sub.loaded) return;
+    if (!sub?.loaded) return;
     try {
       await sub.handle.unload();
     } catch (error) {
-      logger.error(`[VisionLifecycle] unload failed for ${id}:`, error);
+      logger.error({ error }, `[VisionLifecycle] unload failed for ${id}:`);
     }
     sub.loaded = false;
     if (this.arbiter) await this.arbiter.release(id);
@@ -203,7 +203,7 @@ export class VisionServiceLifecycleManager {
     if (this.watchdogTimer || this.stopped) return;
     this.watchdogTimer = setInterval(() => {
       this.runWatchdog().catch((error) => {
-        logger.error("[VisionLifecycle] watchdog failed:", error);
+        logger.error({ error }, "[VisionLifecycle] watchdog failed:");
       });
     }, this.watchdogIntervalMs);
     // Don't keep the event loop alive on the watchdog alone.

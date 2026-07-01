@@ -115,6 +115,7 @@ export type {
   ComputerUseApprovalSnapshot,
   ComputerUsePendingApproval,
 } from "./client-computeruse";
+export type { StoredFile } from "./client-files";
 export type {
   GetIMessageMessagesOptions,
   IMessageApiChat,
@@ -229,17 +230,22 @@ export {
 // ---------------------------------------------------------------------------
 
 import "./client-agent";
+import "./client-approvals";
 import "./client-automations";
+import "./client-background";
 import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
+import "./client-files";
 import "./client-imessage";
 import "./client-local-inference";
 import "./client-notifications";
+import "./client-scheduled-tasks";
 import "./client-voice-models";
 import "./client-workflow";
 import "./client-skills";
+import "./client-transcripts";
 import "./client-vault";
 import "./client-wallet";
 import "./client-xr";
@@ -254,4 +260,4 @@ import { ElizaClient as _ElizaClient } from "./client-base";
 // Annotating with ElizaClient (which TypeScript normalizes to the canonical
 // @elizaos/ui export) makes augmented methods visible to callers. The
 // prototype has all methods at runtime via the augmenting side-effect imports.
-export const client: ElizaClient = new _ElizaClient() as unknown as ElizaClient;
+export const client: ElizaClient = new _ElizaClient();

@@ -82,11 +82,28 @@ import type { ScenarioDefinition, ScenarioTurn, CapturedAction }
 ```
 eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>]
                             [--report <jsonPath>] [--report-dir <dir>]
-                            [--runId <id>] [--scenario id1,id2] [fileGlob ...]
-eliza-scenarios list <dir> [fileGlob ...]
+                            [--runId <id>] [--scenario id1,id2]
+                            [--lane pr-deterministic|live-only] [fileGlob ...]
+eliza-scenarios list <dir> [--lane pr-deterministic|live-only] [fileGlob ...]
 ```
 
 Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
+
+### Lanes
+
+A scenario declares its CI lane via the optional `lane` field
+(`@elizaos/scenario-runner/schema`):
+
+- `pr-deterministic` — runs on every PR under the deterministic LLM proxy with
+  zero credentials. Claim this lane **only** if the scenario passes keyless: no
+  live external service, no secret, every LLM call either backed by a registered
+  proxy fixture or satisfied by the proxy's default reply.
+- `live-only` — needs live model credentials and/or connector services. This is
+  the default for any scenario that does not declare a lane.
+
+`--lane <lane>` filters `run`/`list` to one lane. The big `packages/test/scenarios`
+corpus is `live-only` by default; the keyless subset is run on PRs via
+`test:corpus:pr:e2e` (`run ../test/scenarios --lane pr-deterministic`).
 
 ## Commands
 
@@ -182,3 +199,45 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 - **Template tokens in turn text.** `{{now}}`, `{{now+1h}}`, `{{now-2d}}`, `{{definitionId:<title>}}`, `{{occurrenceId:<title>}}` are resolved at execution time.
 - **Clock seeding.** `seed` steps of type `advanceClock` shift `ctx.now`; all subsequent template tokens are relative to the shifted clock.
 - **Schema vs dist exports.** `ScenarioDefinition` and schema types come from `@elizaos/scenario-runner/schema` (the `schema/` directory, not `dist/`). Do not import them from `@elizaos/scenario-runner` directly.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — eval / trajectory harness:**
+- A live-model scenario run producing the JSON report + run viewer + native jsonl, with the trajectory **opened and reviewed**.
+- The harness's own e2e tests against a real `AgentRuntime` — not a mocked runtime; assert **outcomes**, not routing (see #9970).
+- Determinism/seed handling and the failure/partial-run reporting paths.
+- The shape of the corpus/records emitted, inspected by hand.
+<!-- END: evidence-and-e2e-mandate -->

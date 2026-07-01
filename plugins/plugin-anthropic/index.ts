@@ -188,7 +188,7 @@ export const anthropicPlugin: Plugin = {
     ANTHROPIC_REASONING_LARGE_MODEL: env.ANTHROPIC_REASONING_LARGE_MODEL ?? null,
   },
 
-  async init(config, runtime) {
+  async init(config: Record<string, string>, runtime: IAgentRuntime) {
     initializeAnthropic(config as PluginConfig, runtime);
   },
 

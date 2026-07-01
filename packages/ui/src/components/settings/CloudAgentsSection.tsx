@@ -10,11 +10,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
-import { resolveCloudAgentApiBase } from "../../api/client-cloud";
+import {
+  getCloudAuthToken,
+  resolveCloudAgentApiBase,
+} from "../../api/client-cloud";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -24,7 +27,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
 import {
-  statusLabelForState,
+  agentLifecycleLabel,
   statusToneForState,
 } from "../ui/status-badge.helpers";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -62,15 +65,20 @@ function activeCloudAgentId(): string | null {
   return id && !id.includes("/") ? id : null;
 }
 
-/** The cloud access token for the current session (persisted, or runtime). */
+/** The cloud access token for the current session. */
 function currentCloudToken(): string {
+  // Canonical Steward-first resolution (matches getCloudAuthToken: Steward JWT →
+  // runtime global → client), then fall back to the persisted active-server
+  // token for sessions without a Steward session. The old order read the
+  // persisted token first and skipped the Steward JWT entirely, which could send
+  // a stale/missing token from the agent manager.
+  const canonical = getCloudAuthToken();
+  if (canonical) return canonical;
   const persisted = loadPersistedActiveServer();
   if (persisted?.kind === "cloud" && persisted.accessToken) {
     return persisted.accessToken;
   }
-  const runtime = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  return typeof runtime === "string" ? runtime : "";
+  return "";
 }
 
 /**
@@ -79,7 +87,8 @@ function currentCloudToken(): string {
  * one — the in-app counterpart to the cloud web dashboard.
  */
 export function CloudAgentsSection() {
-  const { elizaCloudConnected, setActionNotice } = useApp();
+  const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const { appName } = useBranding();
   const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -298,6 +307,16 @@ export function CloudAgentsSection() {
 
   const deleteAgent = useCallback(
     async (agent: CloudCompatAgent) => {
+      // Destructive + irreversible — tears down the container and its data.
+      // Confirm first (matches the window.confirm pattern in the other settings
+      // sections: wallet keys, vault profiles, remote plugin hosts).
+      if (
+        !window.confirm(
+          `Delete "${agent.agent_name || agent.agent_id}"? This permanently removes the agent and its data and can't be undone.`,
+        )
+      ) {
+        return;
+      }
       setBusyId(agent.agent_id);
       try {
         const res = await client.deleteCloudCompatAgent(agent.agent_id);
@@ -467,17 +486,14 @@ export function CloudAgentsSection() {
   if (!elizaCloudConnected && !hasToken) {
     return (
       <p className="text-sm text-txt-muted">
-        Sign in to Eliza Cloud (AI Model settings) to manage your cloud agents.
+        Sign in to Eliza Cloud to manage your cloud agents.
       </p>
     );
   }
 
   return (
     <SettingsStack>
-      <SettingsGroup
-        title="Your cloud agents"
-        description="Switch the active agent, shut one down (or start it back up), rename, or remove one you no longer need."
-      >
+      <SettingsGroup title="Your cloud agents">
         {loading ? (
           <div
             className="flex items-center gap-2 px-4 py-3 text-sm text-txt-muted"
@@ -516,6 +532,11 @@ export function CloudAgentsSection() {
           agents.map((agent) => {
             const isActive = agent.agent_id === activeId;
             const busy = busyId === agent.agent_id;
+            // Show "Waking…" for a locally-driven resume (wakingId). The
+            // first-run shared→dedicated handoff no longer surfaces here: it
+            // re-points the live client SILENTLY (no row-level "waking" state),
+            // and its in-flight progress is shown by the chat-shell handoff
+            // toast (CloudHandoffBanner), not this Settings row.
             const waking = wakingId === agent.agent_id;
             const status = (agent.status || "").toLowerCase();
             const canSuspend = status === "running";
@@ -592,7 +613,7 @@ export function CloudAgentsSection() {
                               ? "danger"
                               : statusToneForState(agent.status)
                           }
-                          label={statusLabelForState(agent.status)}
+                          label={agentLifecycleLabel(agent.status)}
                           data-testid={`cloud-agent-status-${agent.agent_id}`}
                         />
                       )}
@@ -683,10 +704,7 @@ export function CloudAgentsSection() {
         />
       </SettingsGroup>
 
-      <SettingsGroup
-        title="Create a new agent"
-        description="Spin up a fresh cloud agent and switch to it."
-      >
+      <SettingsGroup title="Create a new agent">
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
           <Input
             value={newName}

@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "executive.finance-dispute",
   title: "Finance dispute collects receipts, messages, and approval path",
   domain: "lifeops.executive-assistant",

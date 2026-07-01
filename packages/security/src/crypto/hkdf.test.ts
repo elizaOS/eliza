@@ -47,18 +47,25 @@ describe("hkdfSha256", () => {
 
   it("changes output when salt or info changes", () => {
     const ikm = Buffer.from("ikm");
-    const base = hkdfSha256(ikm, 32, Buffer.from("info-a"), Buffer.from("salt-a"));
+    const base = hkdfSha256(
+      ikm,
+      32,
+      Buffer.from("info-a"),
+      Buffer.from("salt-a"),
+    );
 
-    expect(hex(hkdfSha256(ikm, 32, Buffer.from("info-b"), Buffer.from("salt-a")))).not.toBe(
-      hex(base),
-    );
-    expect(hex(hkdfSha256(ikm, 32, Buffer.from("info-a"), Buffer.from("salt-b")))).not.toBe(
-      hex(base),
-    );
+    expect(
+      hex(hkdfSha256(ikm, 32, Buffer.from("info-b"), Buffer.from("salt-a"))),
+    ).not.toBe(hex(base));
+    expect(
+      hex(hkdfSha256(ikm, 32, Buffer.from("info-a"), Buffer.from("salt-b"))),
+    ).not.toBe(hex(base));
   });
 
   it("rejects invalid output lengths", () => {
-    expect(() => hkdfSha256(Buffer.from("ikm"), 0)).toThrow("hkdf length out of range: 0");
+    expect(() => hkdfSha256(Buffer.from("ikm"), 0)).toThrow(
+      "hkdf length out of range: 0",
+    );
     expect(() => hkdfSha256(Buffer.from("ikm"), 255 * 32 + 1)).toThrow(
       `hkdf length out of range: ${255 * 32 + 1}`,
     );

@@ -15,6 +15,7 @@ import { judgeRubric } from "../_helpers/action-assertions.ts";
 const TARGET = "msg-julia";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.modify-label-add-priority",
   title: "Add Priority label to a specific Gmail message",
   domain: "lifeops.gmail",
@@ -67,7 +68,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        addLabelIds: "MESSAGE",
+        addLabelIds: "Priority",
       },
     },
     {

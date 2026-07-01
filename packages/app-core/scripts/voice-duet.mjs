@@ -3,7 +3,7 @@
  * Two-agents-talking-endlessly voice harness for Eliza-1 (`bun run voice:duet`).
  *
  * Agent A and agent B are two `LocalInferenceEngine` instances on the **same
- * tier bundle** (`eliza-1-0_8b` by default, then `eliza-1-2b`) but with
+ * tier bundle** (`eliza-1-2b` by default — the smallest/entry tier) but with
  * **different characters** — A's `replyText` → A's OmniVoice TTS →
  * `InMemoryAudioSink`-shaped `DuetSink` (24 kHz → 16 kHz) → a ring →
  * B's `PushMicSource` → B's VAD + streaming ASR → B's `VoiceTurnController`
@@ -60,7 +60,7 @@ const __filename = fileURLToPath(import.meta.url);
 
 function parseArgs(argv) {
   const out = {
-    model: "eliza-1-0_8b",
+    model: "eliza-1-2b",
     turns: Infinity,
     characterA: null,
     characterB: null,
@@ -126,7 +126,7 @@ function intArg(s) {
 
 const USAGE = `Usage: bun run voice:duet [-- <options>]
 
-  --model <id>            tier bundle (default eliza-1-0_8b; also eliza-1-2b)
+  --model <id>            tier bundle (default eliza-1-2b; also eliza-1-4b)
   --turns <N>             stop after N round-trips (default: endless)
   --character-a <path>    agent A's Character JSON (default: a baked-in persona)
   --character-b <path>    agent B's Character JSON (default: a baked-in persona)
@@ -622,12 +622,9 @@ async function main() {
   }
   const bundlePath = target.path;
 
-  const [{ PushMicSource }, vadMod] = await Promise.all([
-    import(
-      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
-    ),
-    import("../../../plugins/plugin-local-inference/src/services/voice/vad.ts"),
-  ]);
+  const { PushMicSource } = await import(
+    "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+  );
   const {
     markVoiceLatency,
     endVoiceLatencyTurn,
@@ -729,16 +726,8 @@ async function main() {
   });
 
   // ── Boot agent A's engine (sink → aToB ring) ───────────────────────────
-  const vadA = await vadMod.createSileroVadDetector({
-    sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-    modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-  });
-  const vadB = args.twoProcess
-    ? null
-    : await vadMod.createSileroVadDetector({
-        sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-        modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-      });
+  // Each engine constructs the fused Silero VAD (via the libelizainference VAD
+  // ABI) from its own bridge ffi/ctx when no `vad` is supplied.
 
   // The cross-agent loop bookkeeping.
   let completedTurns = 0;
@@ -800,7 +789,7 @@ async function main() {
     let perceived = null;
     if (perceivedRaw) {
       perceived = asrEmotionToTag(perceivedRaw) ?? null;
-      emotionPerceiver = "qwen3-asr-emotion";
+      emotionPerceiver = "local-asr-emotion";
     } else {
       emotionPerceiver = "fallback-classifier:unavailable";
     }
@@ -884,7 +873,6 @@ async function main() {
     bundlePath,
     sink: bridge.sinkForA(),
     roomId: roomA,
-    vad: vadA,
     micSource: pushA,
     generate: wrapGenerate(bootedA, roomA, "A"),
     prewarm: async (rid) => {
@@ -908,7 +896,6 @@ async function main() {
       bundlePath,
       sink: bridge.sinkForB(),
       roomId: roomB,
-      vad: vadB,
       micSource: pushB,
       generate: wrapGenerate(bootedB, roomB, "B"),
       prewarm: async (rid) => {
@@ -1052,7 +1039,7 @@ async function main() {
         },
         notes:
           accuracy == null
-            ? "emotionFidelity.accuracy is null — the GGUF-converted Qwen3-ASR did not surface an emotion label in this run and no fallback emotion-from-audio classifier was available; recorded as null per the honesty contract, not fabricated. structured-decode token-savings % is null when the running llama-server's /metrics did not expose the guided-decode counter."
+            ? "emotionFidelity.accuracy is null — the GGUF-converted local ASR did not surface an emotion label in this run and no fallback emotion-from-audio classifier was available; recorded as null per the honesty contract, not fabricated. structured-decode token-savings % is null when the running llama-server's /metrics did not expose the guided-decode counter."
             : `emotionFidelity perceiver: ${emotionPerceiver}.`,
         turns: turnLog,
       };
@@ -1111,7 +1098,7 @@ async function main() {
 }
 
 // ---------------------------------------------------------------------------
-// Best-effort transcript emotion extraction (Qwen3-ASR `<emotion>…</emotion>`
+// Best-effort transcript emotion extraction (local ASR `<emotion>…</emotion>`
 // or a `[emotion:happy]`-style tag, if the GGUF-ASR surfaces one). Returns the
 // raw label or null. Honest: if the transcript has no emotion marker, null —
 // the fidelity metric records "perceiver: fallback-classifier (unavailable)".
@@ -1235,9 +1222,6 @@ async function runAsPeerB(args) {
     const { PushMicSource } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
     );
-    const vadMod = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
-    );
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
     const roomB = "voice-duet-B";
@@ -1263,14 +1247,11 @@ async function runAsPeerB(args) {
     await engine.load(bundlePath);
     engine.startVoice({ bundleRoot, useFfiBackend: true, sink: replySink });
     await engine.armVoice();
-    const vad = await vadMod.createSileroVadDetector({
-      sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
-      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-    });
+    // The engine constructs the fused Silero VAD (via the libelizainference VAD
+    // ABI) from its own bridge ffi/ctx when no `vad` is supplied.
     await engine.startVoiceSession({
       roomId: roomB,
       micSource: push,
-      vad,
       generate: async (request) => {
         process.stderr.write(`[peer-b] heard: "${request.transcript}"\n`);
         return booted.generate(request, async () => {});

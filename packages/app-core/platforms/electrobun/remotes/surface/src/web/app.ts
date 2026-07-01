@@ -7,11 +7,11 @@ import {
   appendPtyOutput,
   applyRuntimeEvent,
   createInitialState,
+  type SurfaceRuntimeStatus,
   selectAgent,
   selectConversation,
   setPtyOutput,
   setPtySession,
-  type SurfaceRuntimeStatus,
 } from "./state.ts";
 
 const RUNTIME_EVENTS = [

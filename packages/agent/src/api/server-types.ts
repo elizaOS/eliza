@@ -163,6 +163,8 @@ export interface ServerState {
   adminEntityId: UUID | null;
   /** Conversation metadata by conversation id. */
   conversations: Map<string, ConversationMeta>;
+  /** Active foreground chat turns; proactive interaction comments stay silent while nonzero. */
+  activeChatTurnCount: number;
   /** Pending restore of persisted conversations into the in-memory map. */
   conversationRestorePromise: Promise<void> | null;
   /** Tombstones for conversation IDs explicitly deleted by the user. */
@@ -206,6 +208,15 @@ export interface ServerState {
    * are tracked inside the WebSocket layer, not here.
    */
   activeConversationId: string | null;
+  /**
+   * Cross-path delivery idempotency guard. A single assistant reply can fan out
+   * through more than one delivery sink (client_chat send handler + autonomy/
+   * coordinator relay), each of which createMemory()s + broadcasts the same
+   * text. This bounded, time-windowed (roomId+text) tracker lets each sink
+   * suppress a duplicate delivery of a reply already delivered moments ago.
+   * See {@link import("./delivery-dedupe.ts").beginDelivery}.
+   */
+  deliveryDedupe?: import("./delivery-dedupe.ts").DeliveryDedupeState;
   /** Transient OAuth flow state for subscription auth. */
   _anthropicFlow?: import("../auth/anthropic.ts").AnthropicFlow;
   _codexFlow?: import("../auth/openai-codex.ts").CodexFlow;

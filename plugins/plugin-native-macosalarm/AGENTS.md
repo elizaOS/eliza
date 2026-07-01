@@ -10,7 +10,7 @@ Adds the `ALARM` action to an Eliza agent so it can schedule, cancel, and list m
 
 | Kind | Name | Description |
 |------|------|-------------|
-| Action | `ALARM` | Schedule (`set`), remove (`cancel`), or enumerate (`list`) macOS alarms. Subaction is inferred from message text when not explicitly passed as a parameter. Role-gated to `ADMIN`. |
+| Action | `ALARM` | Schedule (`set`), remove (`cancel`), or enumerate (`list`) macOS alarms. Subaction comes from structured parameters (`action` / `subaction` / `op`) or from the structured parameter shape. Role-gated to `ADMIN`. |
 
 No providers, services, evaluators, routes, or events are registered.
 
@@ -60,7 +60,7 @@ No runtime config keys are read from the agent runtime settings object. The only
 
 | Parameter | Required for | Description |
 |-----------|-------------|-------------|
-| `action` / `subaction` / `op` | — | `set`, `cancel`, or `list` (inferred from text if absent) |
+| `action` / `subaction` / `op` | — | `set`, `cancel`, or `list` (if absent, inferred from structured parameter shape: schedule payload → `set`, id → `cancel`, otherwise `list`) |
 | `timeIso` | `set` | ISO-8601 timestamp for the alarm |
 | `title` | `set` | Notification title |
 | `body` | `set` (optional) | Notification body |
@@ -88,5 +88,47 @@ No runtime config keys are read from the agent runtime settings object. The only
 - **IPC protocol is line-delimited JSON.** The Swift process reads one JSON object from stdin and writes exactly one JSON object to stdout. The TS layer takes the last non-empty line of stdout as the response.
 - **Notification permission.** `schedule` calls `ensureAuthorization()` in Swift, which requests the `UNUserNotificationCenter` permission prompt on first use. If the user has denied notifications, the binary exits with code `3` and returns `{ "success": false, "error": "permission-denied: ..." }`.
 - **Role gate.** The `ALARM` action has `roleGate: { minRole: "ADMIN" }`, so only admin-role users can trigger it.
-- **Context gate.** The action matches the `tasks`, `calendar`, and `automation` contexts; `hasAlarmSignal` also fires on keyword matching (supports several languages including Spanish, French, German, Chinese, Japanese, Korean, Vietnamese).
+- **Context gate.** The action matches the `tasks`, `calendar`, and `automation` contexts from canonical turn routing plus legacy `activeContexts` / `selectedContexts` signals. It does not validate from alarm keywords in raw message text.
 - **Testing the Swift layer.** Use the `spawnImpl` and `binPathOverride` options in `HelperRunOptions` to inject a mock process in tests without needing a compiled binary.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — native / on-device bridge:**
+- The capability run on a **real device or simulator** — not desktop Chromium against a mocked bridge (see #9967/#9580): device logs + the captured output (photo, OCR text, detection boxes, transcript, sensor reading).
+- Parity vs the reference implementation where one exists (e.g. the Python/Ultralytics reference), with the numeric tolerances actually met.
+- Permission-denied, no-hardware, and background/foreground lifecycle paths.
+- A short recording of the on-device run; confirm the build under test is yours (versionName / a known on-screen change), not a stale install.
+<!-- END: evidence-and-e2e-mandate -->

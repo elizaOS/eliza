@@ -1,10 +1,4 @@
-export const ELIZA_ONE_BENCHMARK_TIERS = [
-  "0_8b",
-  "2b",
-  "4b",
-  "9b",
-  "27b",
-] as const;
+export const ELIZA_ONE_BENCHMARK_TIERS = ["2b", "4b", "9b", "27b"] as const;
 
 export type ElizaOneBenchmarkTier = (typeof ELIZA_ONE_BENCHMARK_TIERS)[number];
 export type ElizaOneBenchmarkVariant = "base" | "trained";
@@ -22,16 +16,6 @@ export function normalizeElizaOneBenchmarkTier(
   if (normalized.includes("9b")) return "9b";
   if (normalized.includes("4b")) return "4b";
   if (normalized.includes("2b")) return "2b";
-  if (
-    normalized === "0" ||
-    normalized === "0b" ||
-    normalized === "0_8b" ||
-    normalized.includes("0.8b") ||
-    normalized.includes("0-8b") ||
-    normalized.includes("0_8b")
-  ) {
-    return "0_8b";
-  }
   return raw;
 }
 
@@ -57,7 +41,7 @@ export function canonicalElizaOneTierSort(
 
 export function parseElizaOneBenchmarkTiers(
   value: string | undefined,
-  fallback: readonly string[] = ["0_8b"],
+  fallback: readonly string[] = ["2b"],
 ): string[] {
   const raw = value?.trim();
   const tiers = (raw ? raw.split(/\r?\n|,/) : [...fallback])

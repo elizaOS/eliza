@@ -60,18 +60,18 @@ The plugin enables automatically when `ELIZA_AINEX_BRIDGE_URL` is set in the env
 
 ## Starting the bridge
 
-The bridge is a Python process in `packages/robot/`:
+The bridge is a Python process in `packages/research/robot/`:
 
 ```bash
 python -m eliza_robot.bridge.server --backend mujoco --port 9100  # MuJoCo simulator
 python -m eliza_robot.bridge.server --backend mock --port 9100    # in-memory mock
 ```
 
-`packages/robot` also ships convenience scripts: `bun run --cwd packages/robot robot:bridge:mujoco` and `robot:bridge:mock`. See `packages/robot/README.md` for the full `--backend` list (mock, mujoco, ros, isaac, ...).
+`packages/research/robot` also ships convenience scripts: `bun run --cwd packages/research/robot robot:bridge:mujoco` and `robot:bridge:mock`. See `packages/research/robot/README.md` for the full `--backend` list (mock, mujoco, ros, isaac, ...).
 
 The plugin tolerates a missing bridge at agent startup and recovers automatically when the bridge comes up (exponential-backoff reconnect, 250 ms to 5 s).
 
 ## Related packages
 
-- `packages/robot/` — Python robotics stack: MuJoCo simulation, Brax-PPO RL training, bridge server, perception, trajectory database, and shared TypeScript re-exports. See [`packages/robot/README.md`](../../packages/robot/README.md).
+- `packages/research/robot/` — Python robotics stack: MuJoCo simulation, Brax-PPO RL training, bridge server, perception, trajectory database, and shared TypeScript re-exports. See [`packages/research/robot/README.md`](../../packages/research/robot/README.md).
 - `plugins/plugin-vision/` — camera and scene-analysis plugin that consumes the robot camera as a pluggable frame source.

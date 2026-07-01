@@ -86,7 +86,9 @@ async function resolveProtonPass(path: string): Promise<string> {
     }
     if (err instanceof PasswordManagerError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
-    if (/not signed in|not authenticated|not logged in|login required/i.test(msg)) {
+    if (
+      /not signed in|not authenticated|not logged in|login required/i.test(msg)
+    ) {
       throw new PasswordManagerError(
         "protonpass",
         "`pass-cli` is not signed in. Authenticate with Proton Pass CLI before resolving vault references.",

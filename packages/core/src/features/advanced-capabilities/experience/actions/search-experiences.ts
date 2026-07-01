@@ -124,12 +124,6 @@ export const searchExperiencesAction: Action = {
 				/\b(search|find|explore|what|show|recall|know)\b/.test(text)) ||
 			hasActionContext(message, _state, {
 				contexts: ["memory", "documents", "agent_internal"],
-				keywords: [
-					"search experiences",
-					"find experiences",
-					"memory graph",
-					"what have you learned",
-				],
 			})
 		);
 	},

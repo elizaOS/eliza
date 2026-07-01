@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
-  Gamepad2,
+  LayoutGrid,
   MessageSquare,
   Monitor,
   Phone,
@@ -36,11 +36,6 @@ export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
 
 /** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
 export const STREAM_ENABLED = true;
-/** Companion tab — enabled by default; opt-out via VITE_ENABLE_COMPANION_MODE=false. */
-export const COMPANION_ENABLED = viteEnvFlagEnabled(
-  "VITE_ENABLE_COMPANION_MODE",
-  true,
-);
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
@@ -52,7 +47,6 @@ export type BuiltinTab =
   | "tasks"
   | "automations"
   | "browser"
-  | "companion"
   | "stream"
   | "apps"
   | "views"
@@ -60,23 +54,25 @@ export type BuiltinTab =
   | "character-select"
   | "inventory"
   | "documents"
+  | "files"
   | "triggers"
   | "plugins"
   | "skills"
   | "advanced"
   | "fine-tuning"
   | "trajectories"
+  | "transcripts"
   | "relationships"
   | "memories"
   | "rolodex"
-  | "voice"
   | "runtime"
   | "database"
   | "desktop"
   | "settings"
   | "tutorial"
   | "help"
-  | "logs";
+  | "logs"
+  | "background";
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
@@ -89,8 +85,10 @@ export const APPS_TOOL_TABS = [
   "skills",
   "fine-tuning",
   "trajectories",
+  "transcripts",
   "relationships",
   "memories",
+  "files",
   "runtime",
   "database",
   "logs",
@@ -216,17 +214,18 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
       "Conversations with your agent, inbound messages from every connector, and connector management",
   },
   {
+    // AOSP ElizaOS-fork only — the native dialer/SMS/contact tiles are gated to
+    // the fork in the launcher (see launcher-curation LAUNCHER_AOSP_ONLY_IDS).
     label: "Phone",
     tabs: ["phone", "messages", "contacts"],
     icon: Phone,
     description: "ElizaOS dialer, SMS, and contact book",
   },
   {
-    label: "Views",
-    tabs: ["views", "apps", ...APPS_TOOL_TABS],
-    icon: Gamepad2,
-    description:
-      "Agent-provided views, games, LifeOps, integrations, and app tools",
+    label: "Launcher",
+    tabs: ["views", ...APPS_TOOL_TABS],
+    icon: LayoutGrid,
+    description: "The Launcher — agent views, integrations, and app tools",
   },
   {
     label: "Character",
@@ -235,10 +234,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Avatar identity, style, examples, and knowledge",
   },
   {
+    // Hyperliquid + Polymarket are sub-views of Wallet, not standalone apps.
     label: "Wallet",
-    tabs: ["inventory"],
+    tabs: ["inventory", "hyperliquid", "polymarket"],
     icon: Wallet,
-    description: "Crypto wallets and token balances",
+    description:
+      "Crypto wallets, token balances, perps, and prediction markets",
   },
   {
     label: "Browser",
@@ -253,10 +254,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
+    // One consolidated surface — scheduled tasks + recurring workflows share the
+    // Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
     label: "Automations",
-    tabs: ["automations", "triggers", "tasks"],
+    tabs: ["automations"],
     icon: Clock3,
-    description: "Tasks, scheduled tasks, and recurring workflows",
+    description: "Scheduled tasks and recurring workflows",
   },
   {
     label: "Settings",
@@ -282,7 +285,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   camera: "/camera",
   tasks: "/apps/tasks",
   browser: "/browser",
-  companion: "/companion",
   stream: "/stream",
   apps: "/apps",
   views: "/views",
@@ -292,15 +294,16 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   triggers: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   advanced: "/apps/fine-tuning",
   "fine-tuning": "/apps/fine-tuning",
   trajectories: "/apps/trajectories",
+  transcripts: "/apps/transcripts",
   relationships: "/apps/relationships",
   memories: "/apps/memories",
   rolodex: "/rolodex",
-  voice: "/settings/voice",
   runtime: "/apps/runtime",
   database: "/apps/database",
   desktop: "/desktop",
@@ -308,6 +311,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   tutorial: "/tutorial",
   help: "/help",
   logs: "/apps/logs",
+  background: "/background",
 };
 
 const PATH_TO_TAB = new Map(
@@ -367,19 +371,18 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   skills: "skills",
   "fine-tuning": "fine-tuning",
   trajectories: "trajectories",
+  transcripts: "transcripts",
   relationships: "relationships",
   memories: "memories",
+  files: "files",
   runtime: "runtime",
   database: "database",
   logs: "logs",
   // Internal-tool window targets that hit non-`/apps/` shell tabs. The window
   // path is `/apps/<slug>` so the route stays consistent with other internal
   // tools, but the renderer mounts the tab the original `targetTab` pointed
-  // at (e.g. wallet for steward, chat for elizamaker).
+  // at (e.g. wallet for steward).
   inventory: "inventory",
-  elizamaker: "chat",
-  // Note: "companion" is intentionally NOT here — /apps/companion is an app slug
-  // that AppsView auto-launches as an overlay, not a tool tab.
 };
 
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
@@ -396,14 +399,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "automations";
   }
 
-  // Companion disabled unless explicitly feature-flagged
-  if (
-    !COMPANION_ENABLED &&
-    (normalized === "/character-select" || normalized === "/character/select")
-  ) {
-    return "chat";
-  }
-
   // Apps disabled in production builds — redirect to chat
   if (
     !APPS_ENABLED &&
@@ -416,9 +411,17 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return "chat";
   }
 
-  // /views — the views tab (ViewCatalog)
+  // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
+  }
+
+  // /character/<sub> — resolve nested character paths
+  if (normalized.startsWith("/character/")) {
+    const sub = normalized.slice("/character/".length);
+    if (sub === "documents") return "documents";
+    if (sub === "select") return "character-select";
+    return "character";
   }
 
   const appShellAlias = APP_SHELL_PATH_TAB_ALIASES[normalized];
@@ -440,18 +443,11 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return APPS_SUB_TABS[sub] ?? "apps";
   }
 
-  // /character/<sub> — resolve nested character paths
-  if (normalized.startsWith("/character/")) {
-    const sub = normalized.slice("/character/".length);
-    if (sub === "documents") return "documents";
-    if (sub === "select") return "character-select";
-    return "character";
-  }
-
   // /settings/<sub> — resolve nested settings paths
+  // /settings/<sub> (including /settings/voice) — the Settings view selects the
+  // matching section from the URL hash; the route always resolves to the
+  // Settings tab.
   if (normalized.startsWith("/settings/")) {
-    const sub = normalized.slice("/settings/".length);
-    if (sub === "voice") return "settings";
     return "settings";
   }
 
@@ -463,7 +459,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // `/contacts/tui` that are not built-in tabs; the Views tab can then match
   // the exact registry path and mount the remote bundle.
   const knownTab = PATH_TO_TAB.get(normalized);
-  if (knownTab === "companion") return "views";
   if (knownTab) return knownTab;
   if (APPS_ENABLED && normalized.startsWith("/") && normalized !== "/") {
     return "views";
@@ -517,12 +512,10 @@ export function titleForTab(tab: Tab): string {
       return "Camera";
     case "browser":
       return "Browser";
-    case "companion":
-      return "Companion";
     case "apps":
-      return "Views";
+      return "Launcher";
     case "views":
-      return "Views";
+      return "Launcher";
     case "character":
       return "Character";
     case "character-select":
@@ -545,14 +538,16 @@ export function titleForTab(tab: Tab): string {
       return "Fine-Tuning";
     case "trajectories":
       return "Trajectories";
+    case "transcripts":
+      return "Transcripts";
     case "relationships":
       return "Relationships";
     case "memories":
       return "Memories";
+    case "files":
+      return "Files";
     case "rolodex":
       return "Rolodex";
-    case "voice":
-      return "Voice";
     case "runtime":
       return "Runtime";
     case "database":
@@ -561,6 +556,8 @@ export function titleForTab(tab: Tab): string {
       return "Settings";
     case "logs":
       return "Logs";
+    case "background":
+      return "Background";
     case "stream":
       return "Stream";
     default:

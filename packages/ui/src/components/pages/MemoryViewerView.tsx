@@ -6,6 +6,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
+  memo,
   type ReactNode,
   useCallback,
   useDeferredValue,
@@ -24,8 +25,9 @@ import type {
 } from "../../api/client-types-chat";
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -145,14 +147,14 @@ function formatRelativeTime(timestamp: number, t: TranslateFn): string {
 
 // ── Memory Card ──────────────────────────────────────────────────────────
 
-function MemoryCard({
+const MemoryCard = memo(function MemoryCard({
   memory,
   expanded,
   onToggle,
 }: {
   memory: MemoryBrowseItem;
   expanded: boolean;
-  onToggle: () => void;
+  onToggle: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const typeKey = memoryTypeKey(memory.type);
@@ -163,7 +165,7 @@ function MemoryCard({
     <button
       type="button"
       className="w-full text-left rounded-sm px-3.5 py-3 transition-colors hover:bg-bg-hover"
-      onClick={onToggle}
+      onClick={() => onToggle(memory.id)}
       data-testid={`memory-card-${memory.id}`}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -219,7 +221,7 @@ function MemoryCard({
       ) : null}
     </button>
   );
-}
+});
 
 // ── Memory Feed ──────────────────────────────────────────────────────────
 
@@ -238,6 +240,10 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const loadingMore = useRef(false);
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
 
   const loadFeed = useCallback(
     async (before?: number, options?: { silent?: boolean }) => {
@@ -281,16 +287,17 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   );
 
   useEffect(() => {
-    // Revalidate silently when a cached page is already on screen, then poll
-    // for fresh memories so the feed stays current without a manual refresh.
+    // Revalidate silently when a cached page is already on screen.
     void loadFeed(undefined, {
       silent: getCached<MemoryFeedResponse>(feedCacheKey) != null,
     });
-    const interval = setInterval(() => {
-      if (!loadingMore.current) void loadFeed(undefined, { silent: true });
-    }, FEED_POLL_MS);
-    return () => clearInterval(interval);
   }, [loadFeed, feedCacheKey]);
+
+  // Poll for fresh memories so the feed stays current without a manual refresh;
+  // pauses while the document is hidden and resumes on visibilitychange.
+  useIntervalWhenDocumentVisible(() => {
+    if (!loadingMore.current) void loadFeed(undefined, { silent: true });
+  }, FEED_POLL_MS);
 
   const loadMore = () => {
     const last = feed[feed.length - 1];
@@ -302,11 +309,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   }
 
   if (error) {
-    return (
-      <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-        {error}
-      </div>
-    );
+    return <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>;
   }
 
   if (feed.length === 0) {
@@ -333,9 +336,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           key={memory.id}
           memory={memory}
           expanded={expandedId === memory.id}
-          onToggle={() =>
-            setExpandedId((prev) => (prev === memory.id ? null : memory.id))
-          }
+          onToggle={toggleExpanded}
         />
       ))}
       {hasMore ? (
@@ -395,6 +396,10 @@ function MemoryBrowserPanel({
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
 
   const loadMemories = useCallback(
     async (pageOffset: number, options?: { silent?: boolean }) => {
@@ -472,9 +477,7 @@ function MemoryBrowserPanel({
       {loading && !result ? (
         <ListSkeleton rows={6} />
       ) : error ? (
-        <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {error}
-        </div>
+        <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>
       ) : !result || result.memories.length === 0 ? (
         <PagePanel.FeatureEmpty
           icon={Search}
@@ -538,9 +541,7 @@ function MemoryBrowserPanel({
               key={memory.id}
               memory={memory}
               expanded={expandedId === memory.id}
-              onToggle={() =>
-                setExpandedId((prev) => (prev === memory.id ? null : memory.id))
-              }
+              onToggle={toggleExpanded}
             />
           ))}
         </>
@@ -593,7 +594,7 @@ function TypeFilterButton({
   );
 }
 
-function PersonItem({
+const PersonItem = memo(function PersonItem({
   person,
   active,
   onSelect,
@@ -601,9 +602,10 @@ function PersonItem({
 }: {
   person: RelationshipsPersonSummary;
   active: boolean;
-  onSelect: () => void;
+  onSelect: (person: RelationshipsPersonSummary) => void;
   noPlatformsLabel: string;
 }) {
+  const handleSelect = () => onSelect(person);
   const { ref, agentProps } = useAgentElement<HTMLElement>({
     id: `memory-person-${person.primaryEntityId}`,
     role: "list-item",
@@ -611,13 +613,13 @@ function PersonItem({
     group: "memory-people",
     status: active ? "active" : "inactive",
     description: `Filter memories to ${person.displayName}`,
-    onActivate: onSelect,
+    onActivate: handleSelect,
   });
   return (
     <SidebarContent.Item
       ref={ref}
       active={active}
-      onClick={onSelect}
+      onClick={handleSelect}
       aria-current={active ? "page" : undefined}
       {...agentProps}
     >
@@ -635,7 +637,7 @@ function PersonItem({
       <MetaPill compact>{person.factCount}</MetaPill>
     </SidebarContent.Item>
   );
-}
+});
 
 // ── Main View ────────────────────────────────────────────────────────────
 
@@ -644,7 +646,8 @@ export function MemoryViewerView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { t, setTab } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setTab = useAppSelector((s) => s.setTab);
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
@@ -683,10 +686,13 @@ export function MemoryViewerView({
   // All entity IDs for the selected person (multi-identity support)
   const selectedEntityIds = selectedPerson?.memberEntityIds ?? null;
 
-  const handleSelectPerson = (person: RelationshipsPersonSummary) => {
-    setSelectedPersonId(person.primaryEntityId);
-    setViewMode("browse");
-  };
+  const handleSelectPerson = useCallback(
+    (person: RelationshipsPersonSummary) => {
+      setSelectedPersonId(person.primaryEntityId);
+      setViewMode("browse");
+    },
+    [],
+  );
 
   const handleClearPerson = () => {
     setSelectedPersonId(null);
@@ -840,7 +846,7 @@ export function MemoryViewerView({
                   key={person.groupId}
                   person={person}
                   active={person.primaryEntityId === selectedPersonId}
-                  onSelect={() => handleSelectPerson(person)}
+                  onSelect={handleSelectPerson}
                   noPlatformsLabel={t("memoryviewer.noPlatforms", {
                     defaultValue: "No platforms",
                   })}

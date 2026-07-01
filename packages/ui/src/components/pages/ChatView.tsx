@@ -1,5 +1,8 @@
+import { logger } from "@elizaos/logger";
+import { Check, Copy, RotateCcw } from "lucide-react";
 import {
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
   useCallback,
@@ -10,30 +13,37 @@ import {
   useState,
 } from "react";
 import { type CodingAgentSession, client } from "../../api/client";
-import type { ConversationMessage } from "../../api/client-types-chat";
+import {
+  type ConversationMessage,
+  isConversationMessage,
+} from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
 } from "../../slots/task-coordinator-slots.js";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
+import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
   saveContinuousChatMode,
 } from "../../state/persistence";
-import { useApp } from "../../state/useApp";
+import { deriveAgentReady } from "../../state/types";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
 import {
+  buildDroppedAttachmentNotice,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
-  filesToImageAttachments,
+  classifyComposerPaste,
+  intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
 } from "../../utils/image-attachment";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
@@ -47,6 +57,7 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { conversationTranscriptText } from "../chat/message-parser-helpers";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
@@ -56,8 +67,9 @@ import { ChatEmptyState } from "../composites/chat/chat-empty-state";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
-import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import type { ChatMessageData } from "../composites/chat/chat-types";
+import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
+import { useConversationReset } from "../shell/use-conversation-reset";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -138,7 +150,36 @@ export function ChatView({
   onPtySessionClick,
   hideComposer = false,
 }: ChatViewProps) {
-  const app = useApp();
+  // Granular shallow selection instead of useApp() so the main chat view only
+  // re-renders when one of the fields it actually reads changes — not on every
+  // one of the ~300 app-store fields (#9141 gap 2). typecheck enforces that this
+  // list stays complete (any `app.x` not selected here is a type error).
+  const app = useAppSelectorShallow((s) => ({
+    agentStatus: s.agentStatus,
+    activeConversationId: s.activeConversationId,
+    activeInboxChat: s.activeInboxChat,
+    activeTerminalSessionId: s.activeTerminalSessionId,
+    characterData: s.characterData,
+    chatFirstTokenReceived: s.chatFirstTokenReceived,
+    companionMessageCutoffTs: s.companionMessageCutoffTs,
+    handleChatSend: s.handleChatSend,
+    handleChatStop: s.handleChatStop,
+    handleChatEdit: s.handleChatEdit,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    elizaCloudHasPersistedKey: s.elizaCloudHasPersistedKey,
+    setState: s.setState,
+    copyToClipboard: s.copyToClipboard,
+    droppedFiles: s.droppedFiles,
+    analysisMode: s.analysisMode,
+    shareIngestNotice: s.shareIngestNotice,
+    chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+    selectedVrmIndex: s.selectedVrmIndex,
+    uiLanguage: s.uiLanguage,
+    sendChatText: s.sendChatText,
+    t: s.t,
+    setActionNotice: s.setActionNotice,
+  }));
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
@@ -149,7 +190,6 @@ export function ChatView({
     characterData,
     chatFirstTokenReceived,
     companionMessageCutoffTs,
-    conversationMessages,
     handleChatSend,
     handleChatStop,
     handleChatEdit,
@@ -168,6 +208,12 @@ export function ChatView({
     t: appTranslate,
   } = app;
   const { ptySessions } = usePtySessions();
+  // Reset to a fresh greeted thread. Same path as the overlay header reset.
+  const resetConversation = useConversationReset();
+  // Per-token streaming messages come from the isolated context so token updates
+  // don't ride on the giant AppContext value identity.
+  const { conversationMessages, removeConversationMessage } =
+    useConversationMessages();
   const {
     chatInput: rawChatInput,
     chatSending,
@@ -228,13 +274,19 @@ export function ChatView({
     if (isGameModal || typeof window === "undefined") return;
 
     const consumeLaunchPayload = () => {
-      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
-        allowedRoutes: ["chat"],
-        onSendFailure: (payload) => {
-          setChatInput(payload.text);
+      // Prefill the composer instead of auto-sending. An assistant-launch /
+      // deep-link / shortcut `text` is attacker-authorable (a crafted link can
+      // set it), so it must NOT be sent to the agent without the user reviewing
+      // it and pressing send. claim* dedupes by launchId and clears the hash.
+      const payload = claimAssistantLaunchPayloadFromHash(
+        window.location.hash,
+        {
+          allowedRoutes: ["chat"],
         },
-        sendText: sendChatText,
-      });
+      );
+      if (payload) {
+        setChatInput(payload.text);
+      }
     };
 
     consumeLaunchPayload();
@@ -242,7 +294,7 @@ export function ChatView({
     return () => {
       window.removeEventListener("hashchange", consumeLaunchPayload);
     };
-  }, [isGameModal, sendChatText, setChatInput]);
+  }, [isGameModal, setChatInput]);
 
   const focusTerminalSession = useCallback(
     (sessionId: string) => {
@@ -266,14 +318,15 @@ export function ChatView({
   // ── Derived composer state ──────────────────────────────────────
   const isAgentStarting =
     agentStatus?.state === "starting" || agentStatus?.state === "restarting";
-  // The agent is up but has no inference model wired — no point letting the
-  // user hit send. Surfaced as a composer lock + a pointer to Settings.
-  const agentModel =
-    typeof agentStatus?.model === "string" ? agentStatus.model.trim() : "";
+  // The agent is up but genuinely can't respond (no inference provider wired) —
+  // no point letting the user hit send. Use the server-authoritative readiness
+  // (`canRespond`) via deriveAgentReady, NOT a raw `model` string: a dedicated
+  // cloud agent reports canRespond:true with no local `model` (server-side
+  // inference), so the old model-empty check wrongly hard-locked its composer.
   const isMobileLocalRuntime = readPersistedMobileRuntimeMode() === "local";
   const isMissingInferenceProvider =
     agentStatus?.state === "running" &&
-    agentModel.length === 0 &&
+    !deriveAgentReady(agentStatus) &&
     !isMobileLocalRuntime;
   // First-turn capability fades in: the composer stays usable while the agent
   // warms up (a turn submitted during warmup is held server-side until the
@@ -353,7 +406,7 @@ export function ChatView({
         // with connector messages. Live-streamed turns flow through
         // the SSE path and don't carry the server-side default from
         // conversation-routes.ts, so we catch them here too.
-        .map((msg) => (msg.source ? msg : { ...msg, source: "eliza" })),
+        .map(withDefaultSource),
     [chatFirstTokenReceived, chatSending, msgs],
   );
   const {
@@ -466,12 +519,28 @@ export function ChatView({
 
   const addImageFiles = useCallback(
     (files: FileList | File[]) => {
-      void filesToImageAttachments(files)
-        .then((attachments) => {
-          if (!attachments.length) return;
-          setChatPendingImages((prev) =>
-            [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
-          );
+      void intakeAttachmentFiles(files)
+        .then(({ attachments, droppedTooLarge }) => {
+          setChatPendingImages((prev) => {
+            const merged = [...prev, ...attachments];
+            const kept = merged.slice(0, MAX_CHAT_IMAGES);
+            const overCount = Math.max(0, merged.length - kept.length);
+            const notice = buildDroppedAttachmentNotice(
+              {
+                acceptedCount: kept.length,
+                droppedTooLarge,
+                droppedOverCount: Array.from({ length: overCount }, () => ({
+                  name: "",
+                  reason: "over-count" as const,
+                })),
+              },
+              app.t,
+            );
+            // Defer the side-effect out of the state updater so it fires once.
+            if (notice)
+              queueMicrotask(() => app.setActionNotice?.(notice, "info"));
+            return kept;
+          });
         })
         .catch((err: unknown) => {
           // A failed image read leaves nothing attached; tell the user rather
@@ -497,6 +566,31 @@ export function ChatView({
       }
     },
     [addImageFiles],
+  );
+
+  // Paste-to-attachment, matching the mobile overlay: a pasted image/file
+  // attaches; a large text block becomes a collapsed text-attachment chip;
+  // small text falls through to the textarea. Shared classification lives in
+  // utils/image-attachment.ts so both surfaces behave identically.
+  const handleComposerPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const intent = classifyComposerPaste({
+        files: Array.from(e.clipboardData?.files ?? []),
+        text: e.clipboardData?.getData("text") ?? "",
+      });
+      if (intent.kind === "files") {
+        e.preventDefault();
+        addImageFiles(intent.files);
+        return;
+      }
+      if (intent.kind === "text-attachment") {
+        e.preventDefault();
+        setChatPendingImages((prev) =>
+          [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
+        );
+      }
+    },
+    [addImageFiles, setChatPendingImages],
   );
 
   const handleFileInputChange = useCallback(
@@ -529,12 +623,70 @@ export function ChatView({
       saving: t("common.saving", {
         defaultValue: "Saving...",
       }),
+      suggestion: t("chatmessage.suggestion", {
+        defaultValue: "Suggestion",
+      }),
+      dismiss: t("chatmessage.dismissSuggestion", {
+        defaultValue: "Dismiss suggestion",
+      }),
+      acceptSuggestion: t("chatmessage.acceptSuggestion", {
+        defaultValue: "Do it",
+      }),
     }),
     [t],
   );
-  const handleCopyMessageText = useCallback((text: string) => {
-    void copyToClipboard(text);
-  }, []);
+  // Proactive suggestions (#8792) are dismissed locally — remove the bubble from
+  // the live transcript. The per-surface cooldown in the server-side gate keeps
+  // the same offer from immediately re-appearing.
+  const handleDismissSuggestion = useCallback(
+    (messageId: string) => {
+      removeConversationMessage(messageId);
+    },
+    [removeConversationMessage],
+  );
+  // Accept ("Do it") sends the implied action as a normal turn, then clears the
+  // suggestion bubble so it doesn't linger after the user acted on it.
+  const handleAcceptSuggestion = useCallback(
+    (message: ChatMessageData) => {
+      void sendChatText("Yes, let's do it.");
+      handleDismissSuggestion(message.id);
+    },
+    [sendChatText, handleDismissSuggestion],
+  );
+  const handleCopyMessageText = useCallback(
+    (text: string) => {
+      void copyToClipboard(text);
+    },
+    [copyToClipboard],
+  );
+  // Copy the whole thread as a plain-text transcript (`Speaker: text`, blank
+  // line between turns) via the shared clipboard helper — parity with the
+  // overlay's full-state header. Flashes a check on success.
+  const [conversationCopied, setConversationCopied] = useState(false);
+  const conversationCopiedTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  useEffect(
+    () => () => {
+      if (conversationCopiedTimerRef.current) {
+        clearTimeout(conversationCopiedTimerRef.current);
+      }
+    },
+    [],
+  );
+  const handleCopyConversation = useCallback(() => {
+    const transcript = conversationTranscriptText(visibleMsgs, { agentName });
+    if (!transcript) return;
+    void copyToClipboard(transcript);
+    setConversationCopied(true);
+    if (conversationCopiedTimerRef.current) {
+      clearTimeout(conversationCopiedTimerRef.current);
+    }
+    conversationCopiedTimerRef.current = setTimeout(
+      () => setConversationCopied(false),
+      2000,
+    );
+  }, [agentName, copyToClipboard, visibleMsgs]);
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
@@ -563,6 +715,9 @@ export function ChatView({
         onEdit={handleEditMessage}
         onSpeak={handleSpeakMessage}
         onCopy={handleCopyMessageText}
+        onDelete={removeConversationMessage}
+        onDismissSuggestion={handleDismissSuggestion}
+        onAcceptSuggestion={handleAcceptSuggestion}
         renderMessageContent={renderChatMessageContent}
         typingIndicator={
           chatSending && !chatFirstTokenReceived && !typingStalled ? (
@@ -676,6 +831,47 @@ export function ChatView({
       "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
   } as const;
 
+  // Reset-to-fresh-thread control for the main ChatView header row (#8930).
+  // Visible only when there are messages to clear; routes through the shared
+  // reset path. Neutral resting -> neutral-with-opacity hover (no orange, no
+  // blue), matching nearby controls.
+  const resetConversationButton =
+    visibleMsgs.length > 0 ? (
+      <button
+        type="button"
+        data-testid="chat-view-reset-button"
+        aria-label="Reset conversation"
+        title="Reset conversation"
+        onClick={resetConversation}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
+      >
+        <RotateCcw className="h-[18px] w-[18px]" aria-hidden />
+      </button>
+    ) : null;
+
+  // Copy-the-whole-thread control, shown alongside Reset when there are
+  // messages. Same neutral resting → neutral-hover language as Reset (no orange,
+  // no blue), flashing a check on copy.
+  const copyConversationButton =
+    visibleMsgs.length > 0 ? (
+      <button
+        type="button"
+        data-testid="chat-view-copy-conversation-button"
+        aria-label={
+          conversationCopied ? "Conversation copied" : "Copy conversation"
+        }
+        title={conversationCopied ? "Conversation copied" : "Copy conversation"}
+        onClick={handleCopyConversation}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
+      >
+        {conversationCopied ? (
+          <Check className="h-[18px] w-[18px] text-ok" aria-hidden />
+        ) : (
+          <Copy className="h-[18px] w-[18px]" aria-hidden />
+        )}
+      </button>
+    ) : null;
+
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -683,15 +879,19 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible ? (
-            <div className="flex justify-end px-1 pb-0.5">
-              <ContinuousChatToggle
-                compact
-                value={continuousChatMode}
-                onChange={handleContinuousChatModeChange}
-                disabled={isComposerLocked}
-                data-testid="chat-view-continuous-chat-toggle-game-modal"
-              />
+          {continuousChatToggleVisible || resetConversationButton ? (
+            <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {copyConversationButton}
+              {resetConversationButton}
+              {continuousChatToggleVisible ? (
+                <ContinuousChatToggle
+                  compact
+                  value={continuousChatMode}
+                  onChange={handleContinuousChatModeChange}
+                  disabled={isComposerLocked}
+                  data-testid="chat-view-continuous-chat-toggle-game-modal"
+                />
+              ) : null}
             </div>
           ) : null}
           <AgentActivityBox
@@ -727,6 +927,7 @@ export function ChatView({
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
         onKeyDown={handleKeyDown}
+        onPaste={handleComposerPaste}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -743,15 +944,19 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {continuousChatToggleVisible ? (
-            <div className="flex justify-end px-1 pb-0.5">
-              <ContinuousChatToggle
-                compact
-                value={continuousChatMode}
-                onChange={handleContinuousChatModeChange}
-                disabled={isComposerLocked}
-                data-testid="chat-view-continuous-chat-toggle"
-              />
+          {continuousChatToggleVisible || resetConversationButton ? (
+            <div className="flex items-center justify-end gap-1 px-1 pb-0.5">
+              {copyConversationButton}
+              {resetConversationButton}
+              {continuousChatToggleVisible ? (
+                <ContinuousChatToggle
+                  compact
+                  value={continuousChatMode}
+                  onChange={handleContinuousChatModeChange}
+                  disabled={isComposerLocked}
+                  data-testid="chat-view-continuous-chat-toggle"
+                />
+              ) : null}
             </div>
           ) : null}
         </>
@@ -784,6 +989,7 @@ export function ChatView({
         onAttachImage={() => fileInputRef.current?.click()}
         onChatInputChange={(value) => setState("chatInput", value)}
         onKeyDown={handleKeyDown}
+        onPaste={handleComposerPaste}
         onSend={() => void handleChatSend()}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
@@ -898,6 +1104,28 @@ export function TerminalChannelPanel({
  * uses, and routes outbound replies back through the runtime's
  * source-specific send handlers.
  */
+// Default-tag a message's source to "eliza", memoized per message identity so an
+// un-sourced message isn't re-cloned every token frame (the input array identity
+// changes per token; the individual prior messages don't). A real new message
+// misses and is tagged once; a WeakMap lets dropped messages GC.
+const defaultSourceCache = new WeakMap<object, unknown>();
+function withDefaultSource<T extends { source?: string }>(msg: T): T {
+  if (msg.source) return msg;
+  const cached = defaultSourceCache.get(msg);
+  if (cached) return cached as T;
+  const tagged = { ...msg, source: "eliza" } as T;
+  defaultSourceCache.set(msg, tagged);
+  return tagged;
+}
+
+// Module-level stable identity: an inline arrow here would change every render
+// and break ChatMessage's arePropsEqual (renderContent compare), re-parsing
+// markdown for every inbox message on any panel re-render. (Inbox doesn't use
+// analysisMode, so unlike the main path this needs no closure.)
+function renderInboxMessageContent(message: ChatMessageData) {
+  return <MessageContent message={message as ConversationMessage} />;
+}
+
 function InboxChatPanel({
   activeInboxChat,
   variant,
@@ -914,8 +1142,15 @@ function InboxChatPanel({
   };
   variant: ChatViewVariant;
 }) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? fallbackTranslate;
+  // Granular shallow selection instead of useApp() so this inbox panel only
+  // re-renders on changes to the two fields it reads (#9141 gap 2). InboxChatPanel
+  // is only ever rendered inside ChatView (always within AppProvider), so the
+  // previous defensive `| undefined` was vestigial.
+  const app = useAppSelectorShallow((s) => ({
+    t: s.t,
+    setActionNotice: s.setActionNotice,
+  }));
+  const t = app.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1019,7 +1254,7 @@ function InboxChatPanel({
     ],
   );
   const connectorSendAs = useConnectorSendAsAccount(sendAsContext, {
-    setActionNotice: app?.setActionNotice,
+    setActionNotice: app.setActionNotice,
   });
   const {
     accountRequired,
@@ -1140,10 +1375,19 @@ function InboxChatPanel({
         });
 
         if (response.message) {
-          setMessages((current) => [
-            ...current,
-            response.message as ConversationMessage,
-          ]);
+          // Validate the server/connector payload at the boundary instead of
+          // `as`-casting it: a malformed message (missing id/role/timestamp)
+          // would break list keying/rendering if appended blindly. If it's
+          // valid we append it; if not, the send still succeeded, so we just
+          // skip the optimistic append and let the next message reload reconcile.
+          if (isConversationMessage(response.message)) {
+            const validMessage = response.message;
+            setMessages((current) => [...current, validMessage]);
+          } else {
+            logger.warn(
+              "[ChatView] sendInboxMessage returned a malformed message; skipping optimistic append",
+            );
+          }
         }
 
         setReplyText("");
@@ -1245,9 +1489,7 @@ function InboxChatPanel({
             variant={variant}
             messages={messages}
             userMessagesOnRight={false}
-            renderMessageContent={(message) => (
-              <MessageContent message={message as ConversationMessage} />
-            )}
+            renderMessageContent={renderInboxMessageContent}
           />
         )}
       </div>

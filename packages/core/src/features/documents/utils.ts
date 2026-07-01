@@ -390,43 +390,6 @@ export function normalizeS3Url(url: string): string {
 	}
 }
 
-export async function fetchUrlContent(
-	url: string,
-): Promise<{ content: string; contentType: string }> {
-	try {
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-		const response = await fetch(url, {
-			signal: controller.signal,
-			headers: {
-				"User-Agent": "Eliza-Documents-Plugin/1.0",
-			},
-		});
-		clearTimeout(timeoutId);
-
-		if (!response.ok) {
-			throw new Error(
-				`Failed to fetch URL: ${response.status} ${response.statusText}`,
-			);
-		}
-
-		const contentType =
-			response.headers.get("content-type") || "application/octet-stream";
-		const arrayBuffer = await response.arrayBuffer();
-		const buffer = Buffer.from(arrayBuffer);
-		const base64Content = buffer.toString("base64");
-
-		return {
-			content: base64Content,
-			contentType,
-		};
-	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		throw new Error(`Failed to fetch content from URL: ${errorMessage}`);
-	}
-}
-
 export function looksLikeBase64(content?: string | null): boolean {
 	if (!content || content.length === 0) return false;
 

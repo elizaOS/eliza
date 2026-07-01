@@ -28,7 +28,7 @@ export function ProductSwitcher({
     <nav
       aria-label={ariaLabel}
       className={cn(
-        "flex flex-wrap items-center justify-end gap-1 rounded-full border border-border/70 bg-card/82 p-1 text-sm text-muted-strong backdrop-blur-md",
+        "flex flex-wrap items-center justify-end gap-1 rounded-full border border-border/70 bg-card/82 p-1 text-sm text-muted-strong",
         className,
       )}
     >

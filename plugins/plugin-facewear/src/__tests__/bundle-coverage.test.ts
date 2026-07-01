@@ -43,7 +43,11 @@ function bundlePathFor(pluginDir: string): string {
   return `${pluginDir}/dist/views/bundle.js`;
 }
 
-// Parses viewType/id/componentExport/bundlePath from plugin source
+// Parses id/componentExport/bundlePath for every view that serves the XR
+// modality. A view declares XR either the legacy way (`viewType: "xr"`) or the
+// collapsed way (`modalities: ["gui","xr","tui"]` — one declaration, many
+// surfaces drawn from one spatial source). Both forms must put the declared
+// componentExport in the built bundle.
 function extractXrViews(
   source: string,
 ): Array<{ id: string; componentExport: string; bundlePath: string }> {
@@ -52,7 +56,6 @@ function extractXrViews(
     componentExport: string;
     bundlePath: string;
   }> = [];
-  // Match view objects with viewType: "xr"
   const viewsStart = source.indexOf("views:");
   if (viewsStart === -1) return results;
   const arrayStart = source.indexOf("[", viewsStart);
@@ -87,7 +90,13 @@ function extractXrViews(
   }
   for (const obj of objects) {
     const viewType = obj.match(/viewType:\s*"([^"]+)"/)?.[1];
-    if (viewType !== "xr") continue;
+    const modalities =
+      obj
+        .match(/modalities:\s*\[([^\]]*)\]/)?.[1]
+        ?.match(/"(gui|tui|xr)"/g)
+        ?.map((m) => m.replace(/"/g, "")) ?? [];
+    const servesXr = viewType === "xr" || modalities.includes("xr");
+    if (!servesXr) continue;
     const id = obj.match(/\bid:\s*"([^"]+)"/)?.[1];
     const componentExport = obj.match(/componentExport:\s*"([^"]+)"/)?.[1];
     const bundlePath = obj.match(/bundlePath:\s*"([^"]+)"/)?.[1];

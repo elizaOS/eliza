@@ -2,6 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LAUNCHER_DOCK_LIMIT } from "../state/launcher-layout";
 import type { ViewRegistryEntry } from "./useAvailableViews";
 import { useDesktopTabs } from "./useDesktopTabs";
 
@@ -153,6 +154,57 @@ describe("useDesktopTabs", () => {
         pinned: true,
       },
     ]);
+  });
+
+  it("caps pinned tabs at the iOS-style dock limit, evicting the oldest pinned", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+
+    // Pin six views in order; the dock caps at LAUNCHER_DOCK_LIMIT (4), so the
+    // two oldest pinned (a, b) get unpinned — never the one just pinned.
+    act(() => {
+      for (const id of ["a", "b", "c", "d", "e", "f"]) {
+        result.current.openTab(view(id), { pinned: true });
+      }
+    });
+
+    const pinned = result.current.tabs
+      .filter((t) => t.pinned)
+      .map((t) => t.viewId);
+    expect(pinned).toHaveLength(LAUNCHER_DOCK_LIMIT);
+    expect(pinned).toEqual(["c", "d", "e", "f"]);
+    // Evicted tabs stay open (just unpinned), so they leave the dock, not the app.
+    expect(result.current.tabs.map((t) => t.viewId)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+    ]);
+    // Only the four pinned tabs persist.
+    expect(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]").map(
+        (t: { viewId: string }) => t.viewId,
+      ),
+    ).toEqual(["c", "d", "e", "f"]);
+  });
+
+  it("caps pinned tabs when promoting an open tab via pinTab", () => {
+    const { result } = renderHook(() => useDesktopTabs());
+    act(() => {
+      for (const id of ["a", "b", "c", "d"]) {
+        result.current.openTab(view(id), { pinned: true });
+      }
+      result.current.openTab(view("e")); // open, unpinned
+    });
+    act(() => {
+      result.current.pinTab("e");
+    });
+    const pinned = result.current.tabs
+      .filter((t) => t.pinned)
+      .map((t) => t.viewId);
+    expect(pinned).toHaveLength(LAUNCHER_DOCK_LIMIT);
+    expect(pinned).toEqual(["b", "c", "d", "e"]);
   });
 
   it("is inert outside the Electrobun runtime", () => {

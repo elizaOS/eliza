@@ -3,7 +3,7 @@
 This example runs an elizaOS **AgentRuntime in the Electron main process** and exposes a tiny IPC bridge to a React renderer chat UI.
 
 - **Persistence**: `@elizaos/plugin-localdb` using a JSON data directory under Electron `userData/`
-- **LLM selection**: if the chosen provider has no credentials configured, it falls back to **ELIZA classic**
+- **LLM selection**: pick a provider in the UI and supply its API key. If the selected provider has no credentials, the app falls back to whichever provider has an API key in the environment, in priority order (`OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `ANTHROPIC_API_KEY` → `ELIZA_API_KEY`), and errors if none is set
 
 ## Structure
 

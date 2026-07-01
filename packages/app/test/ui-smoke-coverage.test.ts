@@ -9,203 +9,207 @@ import { describe, expect, it } from "vitest";
  * Sibling to the action-coverage and route-coverage gates. Those gates prove
  * that every action/route is *enumerated* in the smoke matrix — but a spec that
  * is enumerated yet never executed in CI is false confidence. This gate closes
- * that hole on the spec axis: every Playwright spec under test/ui-smoke must be
- * accounted for as exactly one of
+ * that hole on the spec axis.
  *
- *   1. wired into the keyless CI workflow (scenario-pr.yml) — proven to run on
- *      every PR with no API keys, OR
- *   2. live-only — it genuinely cannot run keyless (needs a live agent runtime,
- *      a cloud sandbox, provider keys, or a running fixture endpoint), with the
- *      hard dependency named, OR
- *   3. tracked keyless debt — fixture-capable and *should* run keyless but is not
- *      yet wired. This bucket is a ratchet: it may only shrink.
+ * The keyless PR lane (scenario-pr.yml) is DIRECTORY-DRIVEN (issue #9943): it
+ * runs every ui-smoke spec under test/ui-smoke, including nested specs, EXCEPT
+ * the entries recorded in the
+ * checked-in deny-list (test/ui-smoke/.pr-deny-list.json). Most specs are
+ * hand-named in slice jobs for parallelism; the `app-browser-auto-discovered`
+ * job runs the remainder via scripts/ui-smoke-pr-specs.mjs --list-auto. The net
+ * effect: a NEW spec is on the PR path by default, and the ONLY way to exclude
+ * one is to record it in the deny-list with a category and a reason.
  *
- * A new spec that is wired nowhere and classified nowhere fails test #1. Growing
- * the debt bucket past its recorded ceiling fails test #2. Wiring a debt spec
- * into the keyless workflow forces its removal from the debt list (test #2),
- * so coverage can only move forward.
+ * This gate enforces that contract:
+ *   1. The deny-list is well-formed (real specs, valid category, non-empty
+ *      reason, no duplicates).
+ *   2. The keyless-debt bucket is a non-growing ratchet (MAX_KEYLESS_DEBT).
+ *   3. A spec that is hand-named in the workflow is never simultaneously
+ *      deny-listed (that would run it despite the exclusion).
+ *   4. The directory-driven catch-all job stays wired into scenario-pr.yml, so
+ *      every non-denied spec actually runs (named slices ∪ auto-discovered =
+ *      all non-denied specs).
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI_SMOKE_DIR = path.join(HERE, "ui-smoke");
+const DENY_LIST_PATH = path.join(UI_SMOKE_DIR, ".pr-deny-list.json");
 const REPO_ROOT = path.resolve(HERE, "../../..");
 const KEYLESS_WORKFLOW = path.join(
   REPO_ROOT,
   ".github/workflows/scenario-pr.yml",
 );
 
-/**
- * Specs that legitimately cannot run in keyless CI. Each entry names the hard
- * dependency that blocks keyless execution. Verified against the spec source:
- * an entry here must guard itself behind that dependency (env flag, baseURL,
- * cloud sandbox, or running endpoint), not merely be unwired.
- */
-const LIVE_ONLY: Readonly<Record<string, string>> = {
-  "cloud-live.spec.ts":
-    "real cloud login + provisioning + chat against real Eliza Cloud; needs " +
-    "ELIZA_UI_SMOKE_CLOUD_LIVE=1 + ELIZA_UI_SMOKE_LIVE_STACK=1 + " +
-    "ELIZAOS_CLOUD_API_KEY and spends real cloud credits, so it never runs in a " +
-    "keyless PR lane — wired only into the nightly app-live-e2e.yml workflow.",
-  "multi-client-desync.spec.ts":
-    "needs a live shared messaging backend so two independent browser contexts " +
-    "(separate localStorage/page.route mocks) converge on one server-side " +
-    "channel; the keyless helper route layer echoes a fresh per-request fixture " +
-    "with no shared store, so the spec is skipped until a shared agent + " +
-    "channel stack (ELIZA_UI_SMOKE_LIVE_STACK=1) is available.",
-  "multi-window-sync.spec.ts":
-    "needs the cross-window sync layer (packages/ui/src/state/useTabSync.ts + " +
-    "BroadcastChannel) which does not exist in the renderer yet; the spec is " +
-    "skipped against the desired theme-toggle broadcast behavior and only " +
-    "activates once that feature ships.",
-  "vault-routing.spec.ts":
-    "deep routing-config write→reload→read-back needs the real on-disk vault " +
-    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub's GET /api/secrets/routing " +
-    "is a static {rules:[]} and its PUT does not persist, so a saved rule never " +
-    "reloads. Guarded by test.skip(!LIVE_STACK).",
-  "wallet-keys.spec.ts":
-    "deep wallet-key add→reveal→delete round-trip needs the real on-disk vault " +
-    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub returns a fixed wallet " +
-    "inventory and does not persist PUT/DELETE on /api/secrets/inventory/:key. " +
-    "Guarded by test.skip(!LIVE_STACK).",
-  "provider-config.spec.ts":
-    "real provider switch needs the app-core runtime to service POST " +
-    "/api/provider/switch and re-derive the active provider " +
-    "(ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless stub neither restarts the agent " +
-    "nor reflects the switched provider. Guarded by test.skip(!LIVE_STACK).",
-  "view-switching-local-llm-e2e.spec.ts":
-    "drives real chat through a local llama.cpp model planner and requires a " +
-    "running llama-server (LLAMACPP_URL, usually with an eliza-1 GGUF loaded); " +
-    "the keyless PR lane cannot provide that model daemon or GPU/CPU budget, so " +
-    "it is a manual/live local-model report spec rather than a secret-free PR gate.",
-};
+const VALID_CATEGORIES = [
+  "live-only",
+  "dedicated-tool",
+  "keyless-debt",
+] as const;
+type DenyCategory = (typeof VALID_CATEGORIES)[number];
+
+interface DenyEntry {
+  spec: string;
+  category: DenyCategory;
+  reason: string;
+}
 
 /**
- * Fixture-capable specs that SHOULD run in keyless CI but are not yet wired into
- * scenario-pr.yml. RATCHET: this list may only shrink. To wire one, add a
- * Playwright step for it in scenario-pr.yml, delete it here, and decrement
- * MAX_KEYLESS_DEBT. Never add a new spec here without also lowering the ceiling
- * back down as you pay debt off elsewhere — the ceiling is the forcing function.
- */
-const KEYLESS_DEBT: Readonly<Record<string, string>> = {
-  "apps-personal-assistant-feed-interactions.spec.ts":
-    "Fixture-driven personal-assistant feed smoke; needs keyless wiring after " +
-    "the lifeops decomposition refactor settles the new view-bearing plugins.",
-  "sensitive-request-in-chat.spec.ts":
-    "Fixture-driven sensitive-request chat smoke; needs keyless wiring after " +
-    "the lifeops decomposition refactor settles the new view-bearing plugins.",
-  "task-widget-in-chat.spec.ts":
-    "Fixture-driven task-widget chat smoke; needs keyless wiring after " +
-    "the lifeops decomposition refactor settles the new view-bearing plugins.",
-};
-
-/**
- * Hard ceiling on the keyless-debt bucket. Decrement every time a spec is wired
- * into keyless CI. This is the ratchet that prevents new dark specs from being
- * parked in debt indefinitely.
+ * Hard ceiling on the keyless-debt bucket — specs that are fixture-capable and
+ * SHOULD run keyless but are not yet verified. Decrement every time a debt spec
+ * is wired into the keyless lane (remove it from the deny-list). This is the
+ * ratchet that prevents new dark specs from being parked in debt indefinitely.
  */
 const MAX_KEYLESS_DEBT = 3;
 
 function specFileNames(): string[] {
-  return readdirSync(UI_SMOKE_DIR)
-    .filter((name) => name.endsWith(".spec.ts"))
-    .sort();
+  const specs: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(".spec.ts")) {
+        specs.push(
+          path.relative(UI_SMOKE_DIR, fullPath).split(path.sep).join("/"),
+        );
+      }
+    }
+  };
+  walk(UI_SMOKE_DIR);
+  return specs.sort();
 }
 
-function keylessWiredSpecs(): Set<string> {
+function denyList(): DenyEntry[] {
+  const parsed = JSON.parse(readFileSync(DENY_LIST_PATH, "utf8")) as {
+    specs?: DenyEntry[];
+  };
+  if (!Array.isArray(parsed.specs)) {
+    throw new Error(`${DENY_LIST_PATH}: expected a "specs" array`);
+  }
+  return parsed.specs;
+}
+
+/** Spec paths hand-named in scenario-pr.yml (test/ui-smoke/<path>.spec.ts). */
+function namedInWorkflow(): Set<string> {
   const workflow = readFileSync(KEYLESS_WORKFLOW, "utf8");
   return new Set(
-    [...workflow.matchAll(/test\/ui-smoke\/([a-z0-9-]+\.spec\.ts)/g)].map(
+    [...workflow.matchAll(/test\/ui-smoke\/([A-Za-z0-9_./-]+\.spec\.ts)/g)].map(
       (match) => match[1] ?? "",
     ),
   );
 }
 
 describe("ui-smoke spec coverage gate", () => {
-  it("every ui-smoke spec is wired keyless, live-only, or tracked debt", () => {
-    const wired = keylessWiredSpecs();
-    const unclassified = specFileNames().filter(
-      (name) =>
-        !wired.has(name) && !(name in LIVE_ONLY) && !(name in KEYLESS_DEBT),
-    );
+  it("the deny-list is the single source of truth: every excluded spec is real, categorized, and justified", () => {
+    const specs = new Set(specFileNames());
+    const entries = denyList();
+    const seen = new Set<string>();
 
+    const stale = entries.map((e) => e.spec).filter((spec) => !specs.has(spec));
     expect(
-      unclassified,
-      `Unclassified ui-smoke specs (wire into .github/workflows/scenario-pr.yml, ` +
-        `or record in LIVE_ONLY with its hard dependency, or in KEYLESS_DEBT): ` +
-        `${unclassified.join(", ")}`,
+      stale,
+      `Deny-list references specs that no longer exist (remove them): ${stale.join(", ")}`,
+    ).toEqual([]);
+
+    const badCategory = entries.filter(
+      (e) => !VALID_CATEGORIES.includes(e.category),
+    );
+    expect(
+      badCategory.map((e) => `${e.spec}:${e.category}`),
+      `Deny-list entries with an invalid category (expected ${VALID_CATEGORIES.join(", ")})`,
+    ).toEqual([]);
+
+    const missingReason = entries.filter(
+      (e) => typeof e.reason !== "string" || e.reason.trim().length === 0,
+    );
+    expect(
+      missingReason.map((e) => e.spec),
+      "Every deny-list entry must name its reason for being off the keyless PR path",
+    ).toEqual([]);
+
+    const duplicates = entries
+      .map((e) => e.spec)
+      .filter((spec) => {
+        const dup = seen.has(spec);
+        seen.add(spec);
+        return dup;
+      });
+    expect(
+      duplicates,
+      `Duplicate deny-list entries: ${duplicates.join(", ")}`,
     ).toEqual([]);
   });
 
-  it("keyless-debt bucket is a non-growing ratchet of real, unwired specs", () => {
-    const wired = keylessWiredSpecs();
-    const specs = new Set(specFileNames());
-    const debt = Object.keys(KEYLESS_DEBT);
-
+  it("keyless-debt bucket is a non-growing ratchet", () => {
+    const debt = denyList().filter((e) => e.category === "keyless-debt");
     expect(
       debt.length,
-      `KEYLESS_DEBT (${debt.length}) exceeds its ceiling (${MAX_KEYLESS_DEBT}). ` +
-        `Do not park new dark specs in debt — wire them into keyless CI instead.`,
+      `keyless-debt entries (${debt.length}) exceed the ceiling (${MAX_KEYLESS_DEBT}). ` +
+        `Do not park new dark specs in debt — wire them into keyless CI instead, or pay ` +
+        `off existing debt and lower the ceiling.`,
     ).toBeLessThanOrEqual(MAX_KEYLESS_DEBT);
+  });
 
-    const stale = debt.filter((name) => !specs.has(name));
+  it("a hand-named slice spec is never also deny-listed", () => {
+    const denied = new Set(denyList().map((e) => e.spec));
+    const named = namedInWorkflow();
+    const conflict = [...named].filter((spec) => denied.has(spec));
     expect(
-      stale,
-      `KEYLESS_DEBT references specs that no longer exist: ${stale.join(", ")}`,
-    ).toEqual([]);
-
-    const alreadyWired = debt.filter((name) => wired.has(name));
-    expect(
-      alreadyWired,
-      `These specs are wired into keyless CI but still listed as debt — ` +
-        `remove them from KEYLESS_DEBT and decrement MAX_KEYLESS_DEBT: ` +
-        `${alreadyWired.join(", ")}`,
+      conflict,
+      `These specs are both hand-named in scenario-pr.yml AND deny-listed — a ` +
+        `deny-listed spec must not run, so remove it from the workflow or the ` +
+        `deny-list: ${conflict.join(", ")}`,
     ).toEqual([]);
   });
 
-  it("live-only entries are real specs and excluded from the keyless gate", () => {
-    const wired = keylessWiredSpecs();
+  it("every spec hand-named in the workflow resolves to a real spec file", () => {
     const specs = new Set(specFileNames());
-    const liveOnly = Object.keys(LIVE_ONLY);
-
-    const stale = liveOnly.filter((name) => !specs.has(name));
-    expect(
-      stale,
-      `LIVE_ONLY references specs that no longer exist: ${stale.join(", ")}`,
-    ).toEqual([]);
-
-    const wiredLive = liveOnly.filter((name) => wired.has(name));
-    expect(
-      wiredLive,
-      `LIVE_ONLY specs must not be in the keyless workflow (they need a live ` +
-        `stack): ${wiredLive.join(", ")}`,
-    ).toEqual([]);
-
-    const everyLiveOnlyHasReason = liveOnly.every(
-      (name) => LIVE_ONLY[name]?.trim().length,
-    );
-    expect(
-      everyLiveOnlyHasReason,
-      "Every LIVE_ONLY entry must name its hard dependency",
-    ).toBe(true);
-  });
-
-  it("no spec is classified in more than one bucket", () => {
-    const inBoth = Object.keys(LIVE_ONLY).filter(
-      (name) => name in KEYLESS_DEBT,
-    );
-    expect(
-      inBoth,
-      `Specs in both LIVE_ONLY and KEYLESS_DEBT: ${inBoth.join(", ")}`,
-    ).toEqual([]);
-  });
-
-  it("every keyless-wired spec name resolves to a real spec file", () => {
-    const specs = new Set(specFileNames());
-    const missing = [...keylessWiredSpecs()].filter((name) => !specs.has(name));
+    const missing = [...namedInWorkflow()].filter((name) => !specs.has(name));
     expect(
       missing,
       `scenario-pr.yml references ui-smoke specs that do not exist ` +
         `(rename/typo?): ${missing.join(", ")}`,
     ).toEqual([]);
+  });
+
+  it("the directory-driven auto-discovered catch-all job stays wired into scenario-pr.yml", () => {
+    const workflow = readFileSync(KEYLESS_WORKFLOW, "utf8");
+    expect(
+      workflow.includes("ui-smoke-pr-specs.mjs --list-auto"),
+      "scenario-pr.yml must invoke `ui-smoke-pr-specs.mjs --list-auto` so every " +
+        "non-denied ui-smoke spec runs on the PR path. Without it, new specs run nowhere.",
+    ).toBe(true);
+    expect(
+      workflow.includes("app-browser-auto-discovered"),
+      "The app-browser-auto-discovered job must exist and be gated by the " +
+        "deterministic-scenario aggregate.",
+    ).toBe(true);
+  });
+
+  it("named slices ∪ auto-discovered = every non-denied spec (nothing runs nowhere)", () => {
+    const denied = new Set(denyList().map((e) => e.spec));
+    const named = namedInWorkflow();
+    const allSpecs = specFileNames();
+    const runnable = allSpecs.filter((name) => !denied.has(name));
+
+    // The auto-discovered job runs exactly the runnable specs not hand-named in a
+    // slice (mirror of scripts/ui-smoke-pr-specs.mjs --list-auto). Together with
+    // the named slices this must cover every runnable spec, with no overlap gaps.
+    const autoDiscovered = runnable.filter((name) => !named.has(name));
+    const covered = new Set<string>([
+      ...[...named].filter((name) => runnable.includes(name)),
+      ...autoDiscovered,
+    ]);
+    const uncovered = runnable.filter((name) => !covered.has(name));
+    expect(
+      uncovered,
+      `Runnable specs covered by neither a named slice nor the auto-discovered ` +
+        `job: ${uncovered.join(", ")}`,
+    ).toEqual([]);
+
+    // Sanity: the deny-list never swallows the whole directory.
+    expect(denied.size).toBeLessThan(allSpecs.length);
   });
 });

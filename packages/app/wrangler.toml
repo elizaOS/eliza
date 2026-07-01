@@ -1,17 +1,19 @@
-# Cloudflare Pages config for the hosted-web Eliza app (the agent app).
+# Cloudflare Pages config for the hosted-web Eliza app.
 #
-# The Eliza app is its own Pages project (`eliza-app`) served at
-# app.elizacloud.ai (prod) / app-staging.elizacloud.ai (develop). It is the
-# same web UI as `bun run dev`. The elizacloud.ai APEX is a SEPARATE Pages
-# project (`eliza-cloud`) serving packages/cloud-frontend (the lander +
-# dashboard) — see packages/cloud-frontend/wrangler.toml and
-# .github/workflows/cloud-cf-deploy.yml. Custom-domain attachment + DNS for
-# this project: docs/cloud-into-eliza/CUTOVER-RUNBOOK.md.
+# packages/app is the SINGLE web build that serves BOTH Cloudflare Pages
+# projects (it mounts the whole cloud UI via @elizaos/ui/cloud):
+#   - `eliza-app`   -> app.elizacloud.ai / app-staging.elizacloud.ai (the agent
+#                      app — the same web UI as `bun run dev`). This config.
+#   - `eliza-cloud` -> the elizacloud.ai APEX (the cloud console origin).
+# Both deploy the same `build:web` output; they differ only in the canonical-
+# origin env baked into each bundle (apex = elizacloud.ai, this subdomain =
+# app.elizacloud.ai). packages/cloud-frontend has been DELETED — see
+# DECISIONS.md D6 and .github/workflows/cloud-cf-deploy.yml (deploy-console +
+# deploy-app jobs). Custom-domain attachment + DNS: CUTOVER-RUNBOOK.md.
 #
-# Mirrors packages/cloud-frontend/wrangler.toml (same _proxy.ts same-origin
-# /api + /steward forwarding). The Steward session cookie is scoped to the
-# parent `.elizacloud.ai` zone (cloud-shared auth/cookie-domain.ts), so a login
-# on the apex console carries over to this app subdomain automatically.
+# The Steward session cookie is scoped to the parent `.elizacloud.ai` zone
+# (cloud-shared auth/cookie-domain.ts), so a login on the apex console carries
+# over to this app subdomain automatically.
 
 name = "eliza-app"
 pages_build_output_dir = "./dist"
@@ -19,12 +21,14 @@ compatibility_date = "2026-04-29"
 
 [vars]
 API_UPSTREAM = "https://api.elizacloud.ai"
+VITE_ELIZA_CLOUD_BASE = "https://www.elizacloud.ai"
 # Per-env signal consumed by isomorphic code so the SPA can branch on
 # deployment env. Mirrors the cloud-frontend convention.
 VITE_ENVIRONMENT = "production"
 
 [env.preview.vars]
 API_UPSTREAM = "https://api-staging.elizacloud.ai"
+VITE_ELIZA_CLOUD_BASE = "https://staging.elizacloud.ai"
 # Pin the Steward tenant for the staging build so the SPA initialises the SDK
 # with tenantId=elizacloud-staging and OAuth /authorize carries
 # tenant_id=elizacloud-staging (Steward resolves the OAuth tenant from the

@@ -1,5 +1,10 @@
 # abliteration-robustness
 
+> **What this measures:** a generic provider/model robustness eval — the
+> refusal/abliteration behavior of the underlying model — **not** anything
+> specific to the Eliza agent. It does not exercise the AgentRuntime, plugins,
+> or agent loop.
+
 Over-refusal benchmark for **abliterated** model variants. Uses the same
 harmless prompt set fed to `training/scripts/training/abliterate.py` (default:
 HuggingFace `mlabonne/harmless_alpaca`) and asserts the model does **not**

@@ -35,6 +35,7 @@ function checkBatchedNotIndividual(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.batch-modify-50-messages",
   title:
     "Bulk archive of ~50 messages goes through batchModify, not per-message",
@@ -82,7 +83,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "MESSAGE",
+        removeLabelIds: "INBOX",
       },
     },
     {

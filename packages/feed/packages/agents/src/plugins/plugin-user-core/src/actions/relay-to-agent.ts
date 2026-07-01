@@ -18,16 +18,13 @@
 import type {
   Action,
   ActionResult,
-  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  type BroadcastFn,
-  dispatchAgentChat,
-} from "../../../../services/AgentChatService";
+import { defineActionParameters } from "../../../shared/action-parameters";
+import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 export const relayToAgentAction: Action = {
   name: "RELAY_TO_AGENT",
@@ -35,7 +32,7 @@ export const relayToAgentAction: Action = {
     "Dispatch to an agent with context from previous agent responses. Use after gathering information from other agents to pass their findings to an execution agent.",
 
   // Cast needed: alpha elizaos expects ActionParameter[] (protobuf array).
-  parameters: {
+  parameters: defineActionParameters({
     agentId: {
       type: "string",
       required: true,
@@ -53,7 +50,7 @@ export const relayToAgentAction: Action = {
       description:
         'Structured context from other agents to pass along (e.g., "Agent A found: X, Agent B found: Y")',
     },
-  } as unknown as Action["parameters"],
+  }),
 
   examples: [
     [
@@ -97,6 +94,9 @@ export const relayToAgentAction: Action = {
       | undefined;
 
     const broadcastFn = state?.data?.broadcastFn as BroadcastFn | undefined;
+    const dispatchAgentChat = state?.data?.dispatchAgentChat as
+      | DispatchAgentChatFn
+      | undefined;
     const ownerId = state?.values?.ownerId as string | undefined;
     const teamChatId = state?.values?.teamChatId as string | undefined;
     const ownerName = state?.values?.ownerName as string | undefined;
@@ -106,13 +106,20 @@ export const relayToAgentAction: Action = {
     const command = actionParams?.command;
     const relayContext = actionParams?.relayContext;
 
-    if (!agentId || !command || !ownerId || !teamChatId || !broadcastFn) {
+    if (
+      !agentId ||
+      !command ||
+      !ownerId ||
+      !teamChatId ||
+      !broadcastFn ||
+      !dispatchAgentChat
+    ) {
       const failResult = {
         success: false,
         text: "Missing required parameters for relay dispatch.",
       };
-      _callback?.({ content: failResult as unknown as Content });
-      return failResult as unknown as ActionResult;
+      _callback?.({ text: failResult.text });
+      return failResult;
     }
 
     // Build enriched command with relay context prepended
@@ -136,8 +143,8 @@ export const relayToAgentAction: Action = {
         text: `Failed to relay to agent: ${result.error ?? "Unknown error"}`,
         values: { agentId, command, relayContext, error: result.error },
       };
-      _callback?.({ content: failResult as unknown as Content });
-      return failResult as unknown as ActionResult;
+      _callback?.({ text: failResult.text, agentId, command, relayContext });
+      return failResult;
     }
 
     const successResult = {
@@ -151,8 +158,14 @@ export const relayToAgentAction: Action = {
         agentResponse: result.response,
         actionsExecuted: result.actionsExecuted,
       },
-    } as unknown as ActionResult;
-    _callback?.({ content: successResult as unknown as Content });
+    };
+    _callback?.({
+      text: successResult.text,
+      agentId: result.agentId,
+      agentUsername: result.agentUsername,
+      dispatchedCommand: command,
+      actionsExecuted: result.actionsExecuted,
+    });
     return successResult;
   },
 };

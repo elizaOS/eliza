@@ -104,16 +104,7 @@ async function expectNoIssues(
 }
 
 async function openAppWindow(page: Page, routeCase: RouteCase): Promise<void> {
-  if (routeCase.name === "companion") {
-    await page.goto(
-      `/?appWindow=1&qaApp=${encodeURIComponent(routeCase.name)}#${routeCase.path}`,
-      {
-        waitUntil: "domcontentloaded",
-      },
-    );
-  } else {
-    await openAppPath(page, routeCase.path);
-  }
+  await openAppPath(page, routeCase.path);
   await expect(page.locator("#root")).toBeVisible({
     timeout: routeTimeout(routeCase),
   });
@@ -210,126 +201,6 @@ test.beforeEach(async ({ page }) => {
   await hideContinuousChatOverlay(page);
 });
 
-test("companion app controls are interactive and error-free", async ({
-  page,
-}) => {
-  test.skip(
-    !DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === "companion"),
-    "Companion app route is not registered in this smoke stack.",
-  );
-  const issues = installIssueGuards(page);
-  let newConversationRequests = 0;
-  let lastEmoteId: string | null = null;
-
-  await page.route("**/api/conversations", async (route) => {
-    if (route.request().method() === "POST") {
-      newConversationRequests += 1;
-    }
-    await route.fallback();
-  });
-
-  await page.route("**/api/emote", async (route) => {
-    const raw = route.request().postData();
-    const body = raw ? (JSON.parse(raw) as { emoteId?: string }) : {};
-    lastEmoteId = typeof body.emoteId === "string" ? body.emoteId : null;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ ok: true, emoteId: lastEmoteId }),
-    });
-  });
-
-  const companion = DIRECT_ROUTE_CASES.find(
-    (routeCase) => routeCase.name === "companion",
-  );
-  expect(companion).toBeTruthy();
-  await openAppWindow(page, companion as RouteCase);
-
-  await expect(page.getByTestId("companion-vrm-canvas")).toBeVisible();
-  await expect(page.getByTestId("companion-vrm-stage")).toHaveAttribute(
-    "data-vrm-loaded",
-    "true",
-    { timeout: 90_000 },
-  );
-  await expect(page.getByTestId("companion-root")).toHaveAttribute(
-    "data-avatar-ready",
-    "true",
-    { timeout: 90_000 },
-  );
-
-  const headerShell = page.getByTestId("companion-header-shell");
-  if ((await headerShell.count()) > 0) {
-    await expect(headerShell).toBeVisible();
-
-    const voiceToggle = page.getByTestId("companion-voice-toggle");
-    const initialVoicePressed = await voiceToggle.getAttribute("aria-pressed");
-    await voiceToggle.click();
-    await expect(voiceToggle).not.toHaveAttribute(
-      "aria-pressed",
-      initialVoicePressed ?? "",
-    );
-
-    await page.getByTestId("companion-new-chat").click();
-    await expect
-      .poll(() => newConversationRequests, {
-        message: "new chat posts a conversation request",
-      })
-      .toBeGreaterThan(0);
-
-    await page.getByTestId("companion-shell-toggle-settings").click();
-    await expect(page.getByTestId("companion-settings-panel")).toBeVisible();
-    await page.getByTestId("settings-companion-vrm-power-efficiency").click();
-    await expect(
-      page.getByTestId("settings-companion-vrm-power-efficiency"),
-    ).toHaveAttribute("aria-pressed", "true");
-    await page.getByTestId("settings-companion-half-framerate-always").click();
-    await expect(
-      page.getByTestId("settings-companion-half-framerate-always"),
-    ).toHaveAttribute("aria-pressed", "true");
-    const backgroundToggle = page.getByTestId(
-      "settings-companion-animate-when-hidden-toggle",
-    );
-    const initialBackgroundChecked =
-      await backgroundToggle.getAttribute("aria-checked");
-    await backgroundToggle.focus();
-    await backgroundToggle.press("Space");
-    await expect(backgroundToggle).not.toHaveAttribute(
-      "aria-checked",
-      initialBackgroundChecked ?? "",
-    );
-
-    await page.getByTestId("companion-shell-toggle-character").click();
-    await expect(page.getByTestId("companion-character-editor")).toBeVisible();
-    await page.getByTestId("companion-shell-toggle-companion").click();
-    await expect(page.getByTestId("companion-vrm-stage")).toBeVisible();
-
-    await page.getByTestId("companion-emote-toggle").click();
-    await expect(page.getByTestId("emote-picker")).toBeVisible();
-    await page.getByTestId("emote-picker-search").fill("wave");
-    await page.getByTestId("emote-picker-item-wave").click();
-    await expect.poll(() => lastEmoteId).toBe("wave");
-    await page.getByTestId("emote-picker-stop").click();
-    await page.getByTestId("emote-picker-close").click();
-    await expect(page.getByTestId("emote-picker")).toBeHidden();
-  }
-
-  const canvas = page.getByTestId("companion-vrm-canvas");
-  const canvasBox = await canvas.boundingBox();
-  if (!canvasBox) {
-    throw new Error("Companion VRM canvas did not produce a bounding box");
-  }
-  const dragStart = {
-    x: canvasBox.x + canvasBox.width * 0.5,
-    y: canvasBox.y + canvasBox.height * 0.35,
-  };
-  await page.mouse.move(dragStart.x, dragStart.y);
-  await page.mouse.down();
-  await page.mouse.move(dragStart.x + 60, dragStart.y - 20, { steps: 5 });
-  await page.mouse.up();
-
-  await expectNoIssues(page, issues, "companion interactions");
-});
-
 test("utility app-window routes render without red errors or overflow", async ({
   page,
 }) => {
@@ -403,33 +274,28 @@ test("vector browser controls search and switch projection modes", async ({
   await expectNoIssues(page, issues, "vector browser interactions");
 });
 
-test("market utility controls refresh and show fixture data", async ({
-  page,
-}) => {
+test("market utility controls show fixture data on load", async ({ page }) => {
+  // The minimal redesign dropped the GUI Refresh buttons: market data loads on
+  // mount and stays current via a quiet background poll. Assert the loaded
+  // fixture state (no user-facing refresh control to click).
   skipUnlessRoutesRegistered(["hyperliquid", "polymarket"]);
   const issues = installIssueGuards(page);
 
   const hyperliquid = routeCaseByName("hyperliquid");
   await openAppWindow(page, hyperliquid);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Hyperliquid refresh",
-  );
   await expect(page.getByRole("heading", { name: "Markets" })).toBeVisible();
-  await expect(page.getByText("BTC", { exact: true })).toBeVisible();
-  await expect(page.getByText("ETH", { exact: true })).toBeVisible();
+  // BTC/ETH appear in both the markets table and the positions list — assert
+  // the symbol is present (first match) rather than requiring a single node.
+  await expect(page.getByText("BTC", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("ETH", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Orders" })).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "hyperliquid refresh");
+  await expectNoIssues(page, issues.splice(0), "hyperliquid load");
 
   const polymarket = routeCaseByName("polymarket");
   await openAppWindow(page, polymarket);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Polymarket refresh",
-  );
   await expect(page.getByRole("heading", { name: "Polymarket" })).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "polymarket refresh");
+  await expectNoIssues(page, issues.splice(0), "polymarket load");
 });
 
 test("shopify utility controls exercise commerce workflows", async ({
@@ -440,17 +306,16 @@ test("shopify utility controls exercise commerce workflows", async ({
 
   const shopify = routeCaseByName("shopify");
   await openAppWindow(page, shopify);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Shopify refresh",
-  );
+  // Store data loads on mount (the manual Refresh button was dropped).
   await expect(page.getByText("smoke-store.example").first()).toBeVisible();
   await clickRequired(
     page.getByRole("tab", { name: /Products/i }),
     "Shopify products tab",
   );
+  // Per-view product search moved to the chat composer — the panel shows a
+  // hint, not a search box. Both fixture products render in the unfiltered list.
+  await expect(page.getByTestId("chat-search-hint")).toBeVisible();
   await expect(page.getByText("Example Hoodie")).toBeVisible();
-  await page.getByPlaceholder("Search products…").fill("Sticker");
   await expect(page.getByText("Agent Sticker Pack")).toBeVisible();
   await clickRequired(
     page.getByRole("button", { name: /^Create$/ }),
@@ -493,40 +358,11 @@ test("shopify utility controls exercise commerce workflows", async ({
     page.getByRole("tab", { name: /Customers/i }),
     "Shopify customers tab",
   );
-  await page
-    .getByPlaceholder("Search customers by name or email…")
-    .fill("Grace");
+  // Per-view customer search also moved to the chat composer — the panel shows
+  // a hint, and the fixture customer renders in the unfiltered list.
+  await expect(page.getByTestId("chat-search-hint")).toBeVisible();
   await expect(page.getByText("Grace Hopper")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "shopify interactions");
-});
-
-test("vincent utility controls refresh and disconnect deterministic state", async ({
-  page,
-}) => {
-  skipUnlessRoutesRegistered(["vincent"]);
-  const issues = installIssueGuards(page);
-
-  const vincent = routeCaseByName("vincent");
-  await openAppWindow(page, vincent);
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Vincent refresh",
-  );
-  await expect(page.getByTestId("vincent-status-card")).toContainText(
-    "Connected",
-  );
-  await expect(page.getByText("Wallet")).toBeVisible();
-  await expect(page.getByText("Strategy")).toBeVisible();
-  await expect(page.getByText("P&L").first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open Vincent" })).toBeVisible();
-  await clickRequired(
-    page.getByRole("button", { name: "Disconnect" }),
-    "Vincent disconnect",
-  );
-  await expect(page.getByTestId("vincent-status-card")).toContainText(
-    "Disconnected",
-  );
-  await expectNoIssues(page, issues.splice(0), "vincent interactions");
 });
 
 test("wallet inventory controls update visible deterministic state", async ({
@@ -555,14 +391,14 @@ test("wallet inventory controls update visible deterministic state", async ({
     walletSidebar.getByText("USDC", { exact: true }).first(),
   ).toBeVisible();
 
+  // The minimal redesign dropped the manual "Refresh wallet" button: balances
+  // stay current via a quiet ~20s background poll. Assert the poll re-requests
+  // the deterministic balances (no user-facing refresh control).
   const requestCountBeforeRefresh = balanceRequestCount;
-  await clickRequired(
-    walletSidebar.getByRole("button", { name: "Refresh wallet" }),
-    "Wallet refresh",
-  );
   await expect
     .poll(() => balanceRequestCount, {
-      message: "wallet refresh should request deterministic balances",
+      message: "wallet poll should request deterministic balances",
+      timeout: 30_000,
     })
     .toBeGreaterThan(requestCountBeforeRefresh);
 
@@ -600,64 +436,4 @@ test("wallet inventory controls update visible deterministic state", async ({
     page.locator("#wallet-rpc").getByText("Wallet & RPC"),
   ).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "wallet inventory interactions");
-});
-
-test("steward approvals and history controls consume deterministic API stubs", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1600, height: 900 });
-  const issues = installIssueGuards(page);
-
-  await openAppPath(page, "/steward");
-  const stewardView = visibleByTestId(page, "steward-view");
-  await expect(stewardView).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
-  await expect(
-    page.getByText("Manual approval required for UI smoke.").first(),
-  ).toBeVisible();
-
-  await clickRequired(
-    page.getByRole("button", { name: "Refresh" }),
-    "Steward approvals refresh",
-  );
-  await clickRequired(
-    page.getByRole("button", { name: "Approve" }).first(),
-    "Steward approve pending transaction",
-  );
-  await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(1);
-
-  await clickRequired(
-    page.getByRole("button", { name: "Reject" }).first(),
-    "Steward reject pending transaction",
-  );
-  await page
-    .getByPlaceholder("e.g., Unauthorized recipient")
-    .fill("UI smoke deterministic rejection");
-  await clickRequired(
-    page.getByRole("button", { name: "Confirm Reject" }),
-    "Steward confirm reject",
-  );
-  await expect(page.getByText("No pending approvals")).toBeVisible();
-
-  await clickRequired(
-    stewardView.getByRole("tab", {
-      name: /History/,
-    }),
-    "Steward history tab",
-  );
-  await expect(
-    stewardView.getByRole("heading", { name: "History" }),
-  ).toBeVisible();
-  await expect(page.getByText("2 transactions")).toBeVisible();
-  const transactionTable = page.getByRole("table");
-  await expect(transactionTable.getByText("Confirmed")).toBeVisible();
-  await expect(transactionTable.getByText("Base")).toBeVisible();
-
-  await page.locator("select").first().selectOption("pending");
-  await expect(page.getByText("1 transaction")).toBeVisible();
-  await expect(transactionTable.getByText("BSC")).toBeVisible();
-
-  await page.locator("select").nth(1).selectOption("8453");
-  await expect(page.getByText("No transactions yet")).toBeVisible();
-  await expectNoIssues(page, issues.splice(0), "steward interactions");
 });

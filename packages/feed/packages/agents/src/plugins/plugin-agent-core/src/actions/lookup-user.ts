@@ -14,19 +14,20 @@ import type {
 } from "@elizaos/core";
 import { db, ilike, or, users } from "@feed/db";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 export const lookupUserAction: Action = {
   name: "LOOKUP_USER",
   description:
     "Look up a user by username or display name to get their ID. Use the returned userId with CHECK_RECENT_POSTS or CHECK_RECENT_COMMENTS.",
-  parameters: {
+  parameters: defineActionParameters({
     username: {
       type: "string",
       description:
         'Username or display name to search for (e.g., "ThunderGrid" or "tcm0843")',
       required: true,
     },
-  } as unknown as Action["parameters"],
+  }),
   examples: [
     [
       {

@@ -72,9 +72,15 @@ describe.skipIf(!LIVE)("goals semantic evaluator — LIVE local LLM", () => {
       evidence: {
         recentTasks: [
           { title: "10km long run", completedAt: "2026-06-15", status: "done" },
-          { title: "Interval session", completedAt: "2026-06-12", status: "done" },
+          {
+            title: "Interval session",
+            completedAt: "2026-06-12",
+            status: "done",
+          },
         ],
-        measurements: [{ metric: "longest_run_km", value: 16, at: "2026-06-15" }],
+        measurements: [
+          { metric: "longest_run_km", value: 16, at: "2026-06-15" },
+        ],
         notes: "Consistent training the past two weeks; longest run now 16km.",
       },
       goal,

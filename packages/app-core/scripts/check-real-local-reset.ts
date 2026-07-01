@@ -23,6 +23,7 @@
  */
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -43,6 +44,14 @@ import {
 } from "../test/helpers/http.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
+
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 
 async function getJson(url: string): Promise<Record<string, unknown>> {
   const res = await fetch(url);
@@ -223,7 +232,10 @@ async function main(): Promise<void> {
   } finally {
     await configEnv.restore().catch(() => undefined);
     try {
-      fs.rmSync(dataRoot, { recursive: true, force: true });
+      execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, dataRoot], {
+        cwd: REPO_ROOT,
+        stdio: "ignore",
+      });
     } catch {
       // best-effort temp cleanup
     }

@@ -21,8 +21,8 @@ import {
   Clock,
   History,
   Layers,
-  Pause,
   Play,
+  PlayCircle,
   Plus,
   Workflow,
   Zap,
@@ -42,6 +42,8 @@ import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
+import { isApiError } from "../../api/client-types-core";
+import { dispatchChatPrefill } from "../../events";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
@@ -51,6 +53,7 @@ import {
   passesFilter,
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
+import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
 import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -58,6 +61,7 @@ import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { ScheduledTaskEditor } from "./ScheduledTaskEditor";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
 import {
@@ -67,12 +71,11 @@ import {
 
 export type { FeedFilter } from "../../utils/automation-feed-filter";
 
-type ChooserState = "closed" | "task" | "workflow";
-
 type EditorState =
   | { kind: "none" }
   | { kind: "task"; taskId: string | null }
-  | { kind: "workflow"; workflowId: string | null };
+  | { kind: "workflow"; workflowId: string | null }
+  | { kind: "scheduled"; itemId: string };
 
 export interface AutomationsFeedProps {
   /**
@@ -106,6 +109,25 @@ const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
 };
 const NEW_AUTOMATION_LINK_ID = "__new__";
+const NEW_AUTOMATION_PROMPT = "Create an automation that ";
+
+// On mobile the workflow runtime (and its `GET /api/automations` route) is
+// intentionally absent — phones cannot host it — even though the Automations
+// tile is registered via plugin-task-coordinator. A 404 therefore means the
+// feature is unavailable, not an error, so we render the empty state instead
+// of a red banner.
+const EMPTY_AUTOMATIONS: AutomationListResponse = {
+  automations: [],
+  summary: {
+    total: 0,
+    coordinatorCount: 0,
+    workflowCount: 0,
+    scheduledCount: 0,
+    draftCount: 0,
+  },
+  workflowStatus: null,
+  workflowFetchError: null,
+};
 
 interface FeedRow {
   key: string;
@@ -116,7 +138,23 @@ interface FeedRow {
   status: string;
   lastUpdated: string | null;
   lastRunStatus: NonNullable<AutomationItem["lastExecution"]>["status"] | null;
+  lastRunError: string | null;
   source: AutomationItem;
+}
+
+/** Derive a schedule label from a scheduled-task item's synthesized summary. */
+function scheduledRowSchedule(item: AutomationItem): string | null {
+  return (
+    item.schedules
+      .map((trigger) => {
+        if (trigger.cronExpression)
+          return formatSchedule(trigger.cronExpression);
+        if (trigger.displayName) return trigger.displayName;
+        return null;
+      })
+      .filter((s): s is string => Boolean(s))
+      .join(", ") || null
+  );
 }
 
 function automationToRow(
@@ -124,6 +162,7 @@ function automationToRow(
   t: ReturnType<typeof useTranslation>["t"],
 ): FeedRow {
   const isWorkflow = item.type === "workflow";
+  const isScheduledTask = item.source === "scheduled_task";
   const schedule = isWorkflow
     ? item.schedules
         .map((trigger) => {
@@ -134,19 +173,21 @@ function automationToRow(
         })
         .filter((s): s is string => Boolean(s))
         .join(", ") || null
-    : (() => {
-        const decoded = decodeScheduleTags(item.task?.tags);
-        if (decoded.kind === "recurring" && decoded.cronExpression) {
-          return formatSchedule(decoded.cronExpression);
-        }
-        if (decoded.kind === "event" && decoded.eventName) {
-          return t("automationsfeed.onEvent", {
-            event: decoded.eventName,
-            defaultValue: "On {{event}}",
-          });
-        }
-        return null;
-      })();
+    : isScheduledTask
+      ? scheduledRowSchedule(item)
+      : (() => {
+          const decoded = decodeScheduleTags(item.task?.tags);
+          if (decoded.kind === "recurring" && decoded.cronExpression) {
+            return formatSchedule(decoded.cronExpression);
+          }
+          if (decoded.kind === "event" && decoded.eventName) {
+            return t("automationsfeed.onEvent", {
+              event: decoded.eventName,
+              defaultValue: "On {{event}}",
+            });
+          }
+          return null;
+        })();
 
   return {
     key: item.id,
@@ -158,6 +199,7 @@ function automationToRow(
     status: item.status,
     lastUpdated: item.updatedAt,
     lastRunStatus: item.lastExecution?.status ?? null,
+    lastRunError: item.lastExecution?.errorMessage ?? null,
     source: item,
   };
 }
@@ -176,20 +218,32 @@ export function AutomationsFeed({
   const [loading, setLoading] = useState(!cachedAutomations);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
-  const [chooser, setChooser] = useState<ChooserState>("closed");
   const { link, setLink } = useAutomationDeepLink();
+  // Scheduled-task rows open a LifeOps verb panel. They are not part of the
+  // workflow/task deep-link schema (they route to the runner, not workflow
+  // CRUD), so a small local id selects the scheduled editor and takes
+  // precedence over the deep-link-derived editor.
+  const [scheduledEditorId, setScheduledEditorId] = useState<string | null>(
+    null,
+  );
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  const focusAutomationChat = useCallback(() => {
+    dispatchChatPrefill({ text: NEW_AUTOMATION_PROMPT, select: false });
+  }, []);
 
   const newAgent = useAgentElement<HTMLButtonElement>({
     id: "action-new",
     role: "button",
     label: t("automationsfeed.new", { defaultValue: "New" }),
     group: "automations-actions",
-    description: "Create a new automation",
-    onActivate: () => setChooser("task"),
+    description: "Focus Automations chat to create a task or workflow",
+    onActivate: focusAutomationChat,
   });
 
   const editor: EditorState = useMemo(() => {
+    if (scheduledEditorId)
+      return { kind: "scheduled", itemId: scheduledEditorId };
     if (link.kind === "list") return { kind: "none" };
     if (link.kind === "workflow")
       return {
@@ -200,10 +254,15 @@ export function AutomationsFeed({
       kind: "task",
       taskId: link.id === NEW_AUTOMATION_LINK_ID ? null : link.id,
     };
-  }, [link]);
+  }, [link, scheduledEditorId]);
 
   const setEditor = useCallback(
     (next: EditorState) => {
+      if (next.kind === "scheduled") {
+        setScheduledEditorId(next.itemId);
+        return;
+      }
+      setScheduledEditorId(null);
       if (next.kind === "none") setLink({ kind: "list" });
       else if (next.kind === "workflow")
         setLink({
@@ -224,10 +283,30 @@ export function AutomationsFeed({
       if (!options?.silent) setLoading(true);
       setError(null);
       try {
-        const res = await client.listAutomations();
-        setData(res);
-        setCached("automations:list", res);
+        // Unified read: automations (workflows + workbench tasks + triggers)
+        // merged client-side with LifeOps scheduled tasks. The scheduled-task
+        // fetch degrades to empty where the runner isn't hosted, so a missing
+        // LifeOps surface never breaks the automations list.
+        const [res, scheduled] = await Promise.all([
+          client.listAutomations(),
+          client
+            .listScheduledTasks({ ownerVisibleOnly: true })
+            .catch(() => ({ tasks: [] })),
+        ]);
+        const merged: AutomationListResponse = {
+          ...res,
+          automations: mergeUnifiedTasks(res.automations, scheduled.tasks),
+        };
+        setData(merged);
+        setCached("automations:list", merged);
       } catch (e) {
+        // A 404 means the workflow runtime isn't hosted here (e.g. mobile) —
+        // render the clean empty state, not an error banner. Any other failure
+        // is surfaced so a broken endpoint doesn't masquerade as "no automations".
+        if (isApiError(e) && e.status === 404) {
+          setData(EMPTY_AUTOMATIONS);
+          return;
+        }
         setError(
           e instanceof Error
             ? e.message
@@ -298,7 +377,49 @@ export function AutomationsFeed({
     [allRows],
   );
 
+  const overviewStats = useMemo(
+    () => [
+      {
+        key: "total",
+        label: t("automationsfeed.statTotal", { defaultValue: "Total" }),
+        value: allRows.length,
+      },
+      {
+        key: "active",
+        label: t("automationsfeed.statActive", { defaultValue: "Active" }),
+        value: filterCounts.active,
+      },
+      {
+        key: "passed",
+        label: t("automationsfeed.statPassed", { defaultValue: "Passed" }),
+        value: allRows.filter((row) => row.lastRunStatus === "success").length,
+      },
+      {
+        key: "failed",
+        label: t("automationsfeed.statFailed", { defaultValue: "Failed" }),
+        value: allRows.filter((row) => row.lastRunStatus === "error").length,
+      },
+    ],
+    [allRows, filterCounts.active, t],
+  );
+
   // Editor mode
+  if (editor.kind === "scheduled") {
+    const item = data?.automations.find((a) => a.id === editor.itemId) ?? null;
+    if (item) {
+      return (
+        <ScheduledTaskEditor
+          item={item}
+          onApplied={() => {
+            setEditor({ kind: "none" });
+            void refresh();
+          }}
+          onCancel={() => setEditor({ kind: "none" })}
+        />
+      );
+    }
+    // Item vanished (e.g. refreshed away) — fall through to the list.
+  }
   if (editor.kind === "task") {
     const existing =
       editor.taskId && data
@@ -358,12 +479,23 @@ export function AutomationsFeed({
             ref={newAgent.ref}
             variant="default"
             size="sm"
-            onClick={() => setChooser("task")}
+            onClick={focusAutomationChat}
             {...newAgent.agentProps}
           >
             <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
             {t("automationsfeed.new", { defaultValue: "New" })}
           </Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {overviewStats.map((stat) => (
+            <OverviewStat
+              key={stat.key}
+              statKey={stat.key}
+              label={stat.label}
+              value={stat.value}
+            />
+          ))}
         </div>
 
         {/* Filter chips */}
@@ -408,11 +540,7 @@ export function AutomationsFeed({
                   })}
                 </p>
               </div>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => setChooser("task")}
-              >
+              <Button variant="default" size="sm" onClick={focusAutomationChat}>
                 <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
                 {t("automationsfeed.createFirst", {
                   defaultValue: "Create your first automation",
@@ -432,7 +560,12 @@ export function AutomationsFeed({
                     else rowRefs.current.delete(id);
                   }}
                   onOpen={() => {
-                    if (row.kind === "task") {
+                    if (row.source.source === "scheduled_task") {
+                      setEditor({
+                        kind: "scheduled",
+                        itemId: row.source.id,
+                      });
+                    } else if (row.kind === "task") {
                       setEditor({
                         kind: "task",
                         taskId: row.source.task?.id ?? null,
@@ -465,26 +598,35 @@ export function AutomationsFeed({
             </ul>
           )}
         </PagePanel>
-
-        {/* Chooser */}
-        {chooser !== "closed" && (
-          <ChooserSheet
-            onChooseTask={() => {
-              setChooser("closed");
-              setEditor({ kind: "task", taskId: null });
-            }}
-            onChooseWorkflow={() => {
-              setChooser("closed");
-              setEditor({ kind: "workflow", workflowId: null });
-            }}
-            onClose={() => setChooser("closed")}
-          />
-        )}
       </div>
     </ShellViewAgentSurface>
   );
 
   return feedContent;
+}
+
+function OverviewStat({
+  statKey,
+  label,
+  value,
+}: {
+  statKey: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div
+      className="rounded-sm border border-border/40 bg-bg-accent/25 px-3 py-2"
+      data-testid={`automation-stat-${statKey}`}
+    >
+      <div className="text-2xs font-medium uppercase tracking-normal text-muted-strong">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold leading-none tabular-nums text-txt">
+        {value}
+      </div>
+    </div>
+  );
 }
 
 function FilterChipButton({
@@ -558,15 +700,52 @@ function FeedRowItem({
   const medallionClasses = isWorkflow
     ? "border-accent/30 bg-gradient-to-br from-accent/20 to-accent/5 text-accent"
     : "border-border/60 bg-bg-accent text-muted-strong";
+  const workflowId = row.source.workflowId ?? row.source.id;
+  const openAction = useAgentElement<HTMLButtonElement>({
+    id: `open-${row.kind}-${row.source.workflowId ?? row.source.taskId ?? row.key}`,
+    role: "button",
+    label: `Open ${row.title}`,
+    group: "automations-list",
+    description:
+      row.kind === "workflow"
+        ? "Open workflow graph, runs, logs, and JSON"
+        : "Open task schedule and prompt",
+    status: row.active ? "active" : "inactive",
+    onActivate: onOpen,
+  });
+  const runAction = useAgentElement<HTMLButtonElement>({
+    id: `run-workflow-${workflowId}`,
+    role: "button",
+    label: `Run ${row.title} now`,
+    group: "workflow-actions",
+    description: "Run this workflow once and refresh the automation dashboard",
+    status:
+      row.lastRunStatus === "running" || row.lastRunStatus === "waiting"
+        ? "busy"
+        : isWorkflow
+          ? "active"
+          : "inactive",
+    onActivate: onRunNow,
+  });
+  const lastRunLabel =
+    row.lastRunStatus === "error" && row.lastRunError
+      ? `Failed: ${row.lastRunError}`
+      : row.lastRunStatus
+        ? t(`automationsfeed.run.${row.lastRunStatus}`, {
+            defaultValue: row.lastRunStatus,
+          })
+        : null;
   return (
     <li
       ref={registerRef}
       className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
     >
       <button
+        ref={openAction.ref}
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        {...openAction.agentProps}
       >
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${medallionClasses}`}
@@ -597,12 +776,10 @@ function FeedRowItem({
                 tone="accent"
               />
             )}
-            {row.lastRunStatus && (
+            {lastRunLabel && row.lastRunStatus && (
               <RowChip
                 icon={<History className="h-3 w-3" />}
-                label={t(`automationsfeed.run.${row.lastRunStatus}`, {
-                  defaultValue: row.lastRunStatus,
-                })}
+                label={lastRunLabel}
                 tone={
                   row.lastRunStatus === "error"
                     ? "danger"
@@ -628,24 +805,17 @@ function FeedRowItem({
       </button>
       {row.kind === "workflow" && (
         <button
+          ref={runAction.ref}
           type="button"
-          aria-label={
-            row.active
-              ? t("automationsfeed.deactivateWorkflow", {
-                  defaultValue: "Deactivate workflow",
-                })
-              : t("automationsfeed.activateWorkflow", {
-                  defaultValue: "Activate workflow",
-                })
-          }
+          aria-label={t("automationsfeed.runWorkflowNow", {
+            name: row.title,
+            defaultValue: "Run {{name}} now",
+          })}
           onClick={onRunNow}
-          className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
+          className="rounded-sm border border-border/40 p-1.5 text-muted-strong transition-colors hover:border-border hover:bg-bg-accent "
+          {...runAction.agentProps}
         >
-          {row.active ? (
-            <Pause className="h-3 w-3" aria-hidden />
-          ) : (
-            <Play className="h-3 w-3" aria-hidden />
-          )}
+          <PlayCircle className="h-3.5 w-3.5" aria-hidden />
         </button>
       )}
     </li>
@@ -763,87 +933,6 @@ function AutomationEmptyIllustration() {
         />
       </g>
     </svg>
-  );
-}
-
-function ChooserSheet({
-  onChooseTask,
-  onChooseWorkflow,
-  onClose,
-}: {
-  onChooseTask: () => void;
-  onChooseWorkflow: () => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 lg:items-center">
-      <button
-        type="button"
-        aria-label={t("automationsfeed.close", { defaultValue: "Close" })}
-        onClick={onClose}
-        className="absolute inset-0 cursor-default"
-      />
-      <dialog
-        open
-        className="relative m-0 w-full max-w-md rounded-sm border border-border/40 bg-bg p-4 "
-        aria-modal="true"
-      >
-        <h3 className="mb-3 text-base font-semibold text-txt">
-          {t("automationsfeed.chooserTitle", {
-            defaultValue: "What do you want to create?",
-          })}
-        </h3>
-        <div className="grid gap-2">
-          <button
-            type="button"
-            onClick={onChooseTask}
-            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
-          >
-            <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-muted-strong"
-              aria-hidden
-            />
-            <div>
-              <div className="text-sm font-medium text-txt">
-                {t("automationsfeed.taskOption", {
-                  defaultValue: "Task (simple prompt)",
-                })}
-              </div>
-              <div className="text-xs text-muted-strong">
-                {t("automationsfeed.taskOptionDesc", {
-                  defaultValue:
-                    "One prompt, run once or on a schedule. Pick this if you're not sure.",
-                })}
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={onChooseWorkflow}
-            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
-          >
-            <Workflow
-              className="mt-0.5 h-5 w-5 shrink-0 text-accent"
-              aria-hidden
-            />
-            <div>
-              <div className="text-sm font-medium text-txt">
-                {t("automationsfeed.workflowOption", {
-                  defaultValue: "Workflow (node graph)",
-                })}
-              </div>
-              <div className="text-xs text-muted-strong">
-                {t("automationsfeed.workflowOptionDesc", {
-                  defaultValue:
-                    "Multi-step. Draft in chat, then review the graph, run it, and inspect logs.",
-                })}
-              </div>
-            </div>
-          </button>
-        </div>
-      </dialog>
-    </div>
   );
 }
 

@@ -10,8 +10,10 @@ import {
   addSessionSpendUsd,
   decideSpendAuthorization,
   getSessionSpendUsd,
+  hydrateSessionSpendUsd,
   readSpendCapUsd,
   stripSpendHints,
+  withSessionSpendLock,
 } from "./spend-allowance.js";
 import type { SessionInfo } from "./types.js";
 
@@ -1072,20 +1074,43 @@ async function runCloudCommand(args: {
   const log = getLogger(args.runtime);
   const params = args.params ?? {};
   const capUsd = readSpendCapUsd();
-  const spendDecision = decideSpendAuthorization({
-    command: definition.command,
-    risk: definition.risk,
-    capUsd,
-    alreadySpentUsd: getSessionSpendUsd(args.sessionId),
-    params,
-  });
+  // Read the session's DURABLE spend total back before enforcing the cap, so a
+  // configured cap survives a process restart (the in-memory ledger is empty
+  // after a restart) and reflects spend from other instances sharing the same
+  // task store (#8924). No-op (keeps the cached value) when no durable backend
+  // is installed; skipped entirely when the allowance is disabled so the
+  // default confirm-everything path stays zero-overhead.
+  // Hydrate -> decide -> commit must be atomic per session so two concurrent
+  // commands can't both self-authorize within a budget the other is consuming.
+  const { spendDecision, runningTotalUsd } = await withSessionSpendLock(
+    args.sessionId,
+    async () => {
+      if (capUsd > 0) {
+        await hydrateSessionSpendUsd(args.sessionId);
+      }
+      const decision = decideSpendAuthorization({
+        command: definition.command,
+        risk: definition.risk,
+        capUsd,
+        alreadySpentUsd: getSessionSpendUsd(args.sessionId),
+        params,
+      });
+      const committedUsd =
+        decision.autoAuthorize &&
+        decision.estimatedCostUsd &&
+        decision.estimatedCostUsd > 0
+          ? addSessionSpendUsd(args.sessionId, decision.estimatedCostUsd)
+          : null;
+      return { spendDecision: decision, runningTotalUsd: committedUsd };
+    },
+  );
 
   if (spendDecision.autoAuthorize) {
-    if (spendDecision.estimatedCostUsd && spendDecision.estimatedCostUsd > 0) {
-      const runningTotalUsd = addSessionSpendUsd(
-        args.sessionId,
-        spendDecision.estimatedCostUsd,
-      );
+    if (
+      spendDecision.estimatedCostUsd &&
+      spendDecision.estimatedCostUsd > 0 &&
+      runningTotalUsd != null
+    ) {
       log?.info?.(
         {
           src: LOG_PREFIX,

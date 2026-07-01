@@ -1,3 +1,4 @@
+import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import {
   getElizaCuratedAppCatalogOrder,
   isElizaCuratedAppName,
@@ -59,30 +60,19 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 
 const FEATURED_APP_NAMES = new Set<string>([
   "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-companion",
-  "@elizaos/plugin-defense-of-the-agents",
-  "@elizaos/plugin-clawville",
 ]);
 
-const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-companion",
-  "@elizaos/plugin-defense-of-the-agents",
-  "@elizaos/plugin-clawville",
-]);
+const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-elizamaker",
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-shopify-ui",
-  "@elizaos/plugin-steward-app",
-  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
+  "@elizaos/plugin-shopify",
 ]);
 
 const WALLET_SCOPED_APP_NAMES = new Set<string>([
-  "@elizaos/plugin-hyperliquid-app",
-  "@elizaos/plugin-polymarket-app",
-  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-hyperliquid",
+  "@elizaos/plugin-polymarket",
 ]);
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
@@ -134,10 +124,12 @@ interface AppsCatalogFilterOptions {
   showActiveOnly?: boolean;
   walletEnabled?: boolean;
   /**
-   * When false (or omitted), apps marked `developerOnly: true` are hidden.
-   * Pass the current value from `useIsDeveloperMode()` to opt in.
+   * Which view kinds the user/​build has enabled (system + release always on;
+   * developer + preview follow the Settings toggles). Apps whose kind is not
+   * enabled are hidden. Pass the value from `useEnabledViewKinds()`. When
+   * omitted, only system/release apps are shown.
    */
-  developerMode?: boolean;
+  enabledKinds?: EnabledViewKinds;
 }
 
 function parseBooleanEnvValue(value: unknown): boolean {
@@ -241,7 +233,7 @@ export function filterAppsForCatalog(
     showAllApps,
     showActiveOnly = false,
     walletEnabled,
-    developerMode = false,
+    enabledKinds = { developer: false, preview: false },
   }: AppsCatalogFilterOptions = {},
 ): RegistryAppInfo[] {
   const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -276,8 +268,9 @@ export function filterAppsForCatalog(
     if (!shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })) {
       return false;
     }
-    // Developer-only apps are hidden unless Developer Mode is on.
-    if (app.developerOnly && !developerMode) {
+    // Apps are gated by their view kind: developer apps need Developer views on,
+    // preview apps need Preview views on; system/release always show.
+    if (!isViewVisible(app, enabledKinds)) {
       return false;
     }
     // Apps that opt out of the catalog are always hidden, regardless of Developer Mode.
@@ -334,34 +327,17 @@ export function getAppCatalogSectionKey(
     return "featured";
   }
 
-  if (
-    app.name === "@elizaos/plugin-steward-app" ||
-    app.name === "@elizaos/plugin-elizamaker"
-  ) {
-    return "finance";
-  }
-
   if (isInternalToolApp(app.name)) {
     return "developerUtilities";
   }
 
   const canonicalName = normalizeElizaCuratedAppName(app.name) ?? app.name;
   switch (canonicalName) {
-    case "@elizaos/plugin-companion":
-      return "games";
-    case "@elizaos/plugin-vincent":
-    case "@elizaos/plugin-shopify-ui":
-    case "@elizaos/plugin-hyperliquid-app":
-    case "@elizaos/plugin-polymarket-app":
+    case "@elizaos/plugin-shopify":
+    case "@elizaos/plugin-hyperliquid":
+    case "@elizaos/plugin-polymarket":
       return "finance";
     case "@elizaos/plugin-feed":
-      return "games";
-    case "@hyperscape/plugin-hyperscape":
-    case "@elizaos/plugin-hyperscape":
-    case "@elizaos/plugin-2004scape":
-    case "@elizaos/plugin-scape":
-    case "@elizaos/plugin-defense-of-the-agents":
-    case "@elizaos/plugin-clawville":
       return "games";
   }
 

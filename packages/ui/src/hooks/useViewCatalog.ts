@@ -1,5 +1,5 @@
 /**
- * useViewCatalog — data source for the unified `/views` launcher.
+ * useViewCatalog — data source for the unified Launcher.
  *
  * Merges three sources into one {@link ViewEntry} list:
  *  - loaded views (`GET /api/views`, via {@link useAvailableViews}),
@@ -15,9 +15,10 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
-import { useIsDeveloperMode } from "../state/useDeveloperMode";
+import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useAvailableViews } from "./useAvailableViews";
 import { useCachedResource } from "./useCachedResource";
 import { mergeViewCatalog, type ViewEntry } from "./view-catalog";
@@ -42,20 +43,24 @@ export function useViewCatalog(): UseViewCatalogResult {
     error: viewsError,
     refresh: refreshViews,
   } = useAvailableViews();
-  const isDeveloperMode = useIsDeveloperMode();
+  const enabledKinds = useEnabledViewKinds();
   const activeModality = useMemo(() => getActiveViewModality(), []);
+  const appShellRoutesSupported = supportsFullAppShellRoutes(
+    client.getBaseUrl(),
+  );
 
   const catalogRes = useCachedResource(
-    CATALOG_CACHE_KEY,
+    appShellRoutesSupported ? CATALOG_CACHE_KEY : null,
     () => loadAppsCatalog(),
     {
       staleTime: CATALOG_STALE_MS,
+      enabled: appShellRoutesSupported,
     },
   );
   const installedRes = useCachedResource(
-    INSTALLED_CACHE_KEY,
+    appShellRoutesSupported ? INSTALLED_CACHE_KEY : null,
     () => client.listInstalledApps(),
-    { staleTime: CATALOG_STALE_MS },
+    { staleTime: CATALOG_STALE_MS, enabled: appShellRoutesSupported },
   );
 
   // Per-entry transient state for the get→open flow (keyed by ViewEntry.key).
@@ -72,13 +77,13 @@ export function useViewCatalog(): UseViewCatalogResult {
       catalog,
       installed,
       activeModality,
-      isDeveloperMode,
+      enabledKinds,
     });
     if (Object.keys(pending).length === 0) return merged;
     return merged.map((e) =>
       pending[e.key] ? { ...e, state: pending[e.key] } : e,
     );
-  }, [views, catalog, installed, activeModality, isDeveloperMode, pending]);
+  }, [views, catalog, installed, activeModality, enabledKinds, pending]);
 
   const refresh = useCallback(() => {
     refreshViews();

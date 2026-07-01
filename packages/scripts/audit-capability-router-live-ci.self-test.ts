@@ -768,6 +768,14 @@ assertFails(
 );
 
 assertFails(
+  "cloud live report prune only runs after checkout-backed live runs",
+  workflow.replace(
+    "      - name: Prune remote capability cloud report\n        if: always() && steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud",
+    "      - name: Prune remote capability cloud report\n        if: always()\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/cloud",
+  ),
+);
+
+assertFails(
   "provider live smoke writes reports to the validated directory",
   workflow.replace(
     "ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/providers",
@@ -891,6 +899,14 @@ assertFails(
   workflow.replace(
     " --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers",
     " --require-ci --require-file-identity reports/remote-capabilities/providers",
+  ),
+);
+
+assertFails(
+  "provider live report prune only runs after checkout-backed live runs",
+  workflow.replace(
+    "      - name: Prune remote capability provider reports\n        if: always() && steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers",
+    "      - name: Prune remote capability provider reports\n        if: always()\n        run: node packages/scripts/rm-path-recursive.mjs reports/remote-capabilities/providers",
   ),
 );
 

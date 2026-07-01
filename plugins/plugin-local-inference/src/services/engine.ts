@@ -13,6 +13,7 @@
  *      `ensure-local-inference-handler.ts`).
  */
 
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import {
 	logger,
@@ -21,6 +22,10 @@ import {
 } from "@elizaos/core";
 import { isMobilePlatform } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
+import {
+	bundleHasAsrModelFiles,
+	readBundleAsrProvenanceBlockers,
+} from "./asr-provenance";
 import { readEffectiveAssignments } from "./assignments";
 import type {
 	GenerateArgs as BackendGenerateArgs,
@@ -40,6 +45,7 @@ import {
 } from "./conversation-registry";
 import { desktopFusedFfiBackendRuntime } from "./desktop-fused-ffi-backend-runtime";
 import { FfiStreamingBackend } from "./ffi-streaming-backend";
+import { estimateDecodeTokens, recordDecodeThroughput } from "./live-signals";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import { resolveDefaultPoolSize } from "./session-pool";
@@ -50,14 +56,13 @@ import {
 	createKokoroTtsBackend,
 	EngineVoiceBridge,
 	type EngineVoiceBridgeOptions,
-	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
+import type { AsrWordTiming } from "./voice/ffi-bindings";
 import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import {
 	readVoiceBackendModeFromEnv,
 	selectVoiceBackend,
-	type VoiceBackendChoice,
 } from "./voice/kokoro/runtime-selection";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import { type MtpTextRunner, mtpTextRunner } from "./voice/pipeline-impls";
@@ -137,6 +142,9 @@ function skeletonHasFreeStringKey(
 const DEFAULT_IDLE_UNLOAD_MS = 15 * 60 * 1000;
 /** How often the idle-unload timer checks the activity clock. */
 const IDLE_UNLOAD_CHECK_INTERVAL_MS = 60 * 1000;
+const BYTES_PER_MIB = 1024 * 1024;
+const GIB_PER_GB = 1024;
+const TEXT_RESIDENT_OVERHEAD_MB = 512;
 
 export function resolveIdleUnloadMs(): number {
 	const raw = process.env.ELIZA_LOCAL_IDLE_UNLOAD_MS?.trim();
@@ -177,32 +185,69 @@ export type GenerateArgs = BackendGenerateArgs;
 interface ActiveEliza1Bundle {
 	root: string;
 	tierId: Eliza1TierId;
-	voiceBackends?: ReadonlyArray<VoiceBackendChoice>;
 }
 
 function resolveActiveEliza1Bundle(
 	target: InstalledModel | undefined,
-	catalog: ReturnType<typeof findCatalogModel>,
 ): ActiveEliza1Bundle | null {
 	if (!target?.bundleRoot) return null;
 	if (!ELIZA_1_PLACEHOLDER_IDS.has(target.id)) return null;
 	return {
 		root: target.bundleRoot,
 		tierId: target.id as Eliza1TierId,
-		voiceBackends: catalog?.voiceBackends,
 	};
 }
 
 function resolveDirectEliza1Bundle(
 	args: LocalInferenceLoadArgs | undefined,
-	catalog: ReturnType<typeof findCatalogModel>,
 ): ActiveEliza1Bundle | null {
 	if (!args?.modelId || !ELIZA_1_PLACEHOLDER_IDS.has(args.modelId)) return null;
 	return {
 		root: path.dirname(path.dirname(args.modelPath)),
 		tierId: args.modelId as Eliza1TierId,
-		voiceBackends: catalog?.voiceBackends,
 	};
+}
+
+function estimateTextResidentMb(
+	installed: InstalledModel | undefined,
+	catalog: ReturnType<typeof findCatalogModel>,
+): number {
+	const installedMb =
+		typeof installed?.sizeBytes === "number" && installed.sizeBytes > 0
+			? Math.ceil(installed.sizeBytes / BYTES_PER_MIB)
+			: 0;
+	const catalogMb =
+		typeof catalog?.sizeGb === "number" && catalog.sizeGb > 0
+			? Math.ceil(catalog.sizeGb * GIB_PER_GB)
+			: 0;
+	const baseMb = Math.max(installedMb, catalogMb);
+	return baseMb > 0 ? baseMb + TEXT_RESIDENT_OVERHEAD_MB : 0;
+}
+
+function stagedLitertModelPath(
+	bundleRoot: string,
+	modelId: string | undefined,
+): string | undefined {
+	const textDir = path.join(bundleRoot, "text");
+	if (!existsSync(textDir) || !statSync(textDir).isDirectory()) {
+		return undefined;
+	}
+
+	if (modelId?.startsWith("eliza-1-")) {
+		const expected = path.join(textDir, `${modelId}.litertlm`);
+		if (existsSync(expected) && statSync(expected).isFile()) {
+			return expected;
+		}
+	}
+
+	const candidates = readdirSync(textDir)
+		.filter((name) => name.endsWith(".litertlm"))
+		.sort();
+	if (candidates.length === 1) {
+		const candidate = path.join(textDir, candidates[0]);
+		if (statSync(candidate).isFile()) return candidate;
+	}
+	return undefined;
 }
 
 /**
@@ -234,6 +279,8 @@ function toBackendLoadOverrides(
 		const bundleRoot = path.dirname(path.dirname(args.modelPath));
 		overrides.bundleRoot = bundleRoot;
 		overrides.manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+		const litertModelPath = stagedLitertModelPath(bundleRoot, args.modelId);
+		if (litertModelPath) overrides.litertModelPath = litertModelPath;
 	}
 	return overrides;
 }
@@ -255,7 +302,7 @@ export class LocalInferenceEngine {
 	/**
 	 * In-process FFI backend — the sole text runtime, served by the FUSED
 	 * `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`). Text gen,
-	 * same-file MTP speculative decoding, KV-cache quant, native tokenization,
+	 * MTP speculative decoding, KV-cache quant, native tokenization,
 	 * and vision-describe all run through the one fused lib the voice subsystem
 	 * already loads (ABI v9). libllama has been retired: a fused lib that is
 	 * absent or lacks the v9 capabilities is a loud `LocalInferenceUnavailable`
@@ -278,6 +325,7 @@ export class LocalInferenceEngine {
 	 */
 	private voiceBridge: EngineVoiceBridge | null = null;
 	private voiceReadyPromise: Promise<EngineVoiceBridge> | null = null;
+	private asrReadyPromise: Promise<EngineVoiceBridge> | null = null;
 
 	/**
 	 * The general onload/offload coordinator (W10 / J5). One registry per
@@ -315,6 +363,14 @@ export class LocalInferenceEngine {
 	private idleUnloadTimer: NodeJS.Timeout | null = null;
 	/** Evictable text-target role id registered on `sharedResources`, or null. */
 	private textTargetRoleId: string | null = null;
+	/**
+	 * Ids of evictable roles THIS engine registered on `sharedResources`
+	 * (text-target today). `getResidentFootprintMb()` sums only these so the
+	 * arbiter never double-counts its own vision/image-gen registry roles.
+	 */
+	private readonly ownedEvictableRoleIds = new Set<string>();
+	/** Best-effort resident footprint for the active text bundle, in MiB. */
+	private textTargetEstimatedMb = 0;
 	/** Evictable drafter role id registered on `sharedResources`, or null. */
 
 	/**
@@ -334,6 +390,28 @@ export class LocalInferenceEngine {
 	 */
 	getSharedResources(): SharedResourceRegistry {
 		return this.sharedResources;
+	}
+
+	/**
+	 * Resident RAM footprint (MB) of the model weights this engine owns on the
+	 * shared registry — the active text/embedding bundle today, plus any future
+	 * engine-registered role (drafter, voice). This is the term `service.ts`
+	 * feeds into the `MemoryArbiter` as `externalFootprintMb` so the arbiter's
+	 * proactive `evictToFit` path accounts for the dominant resident consumer
+	 * (the text target) instead of seeing only its own vision/image-gen handles
+	 * and never tripping (#8809 AC#1). Summed by role id so it never
+	 * double-counts the arbiter's own registry roles (vision/image-gen), which
+	 * the arbiter already counts in its resident map.
+	 */
+	getResidentFootprintMb(): number {
+		if (this.ownedEvictableRoleIds.size === 0) return 0;
+		let mb = 0;
+		for (const role of this.sharedResources.evictableRoles()) {
+			if (this.ownedEvictableRoleIds.has(role.id)) {
+				mb += role.estimatedResidentMb();
+			}
+		}
+		return mb;
 	}
 
 	/** The RAM-pressure monitor. Exposed for diagnostics / tests. */
@@ -371,6 +449,7 @@ export class LocalInferenceEngine {
 		if (this.textTargetRoleId === null) {
 			const role = createEvictableModelRole({
 				role: "text-target",
+				estimatedMb: this.textTargetEstimatedMb,
 				isResident: () => this.hasLoadedModel(),
 				evict: async () => {
 					// Last thing to go. Evicting the text target = unload it; the
@@ -380,6 +459,7 @@ export class LocalInferenceEngine {
 			});
 			this.sharedResources.acquire(role);
 			this.textTargetRoleId = role.id;
+			this.ownedEvictableRoleIds.add(role.id);
 		}
 	}
 
@@ -389,6 +469,7 @@ export class LocalInferenceEngine {
 		);
 		this.textTargetRoleId = null;
 		for (const id of ids) {
+			this.ownedEvictableRoleIds.delete(id);
 			try {
 				await this.sharedResources.release(id);
 			} catch {
@@ -479,7 +560,7 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "capacitor-llama" | "llama-cpp" | null {
+	activeBackendId(): "llama-cpp" | null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -488,23 +569,28 @@ export class LocalInferenceEngine {
 		return this.dispatcher.currentRuntimeLoadConfig();
 	}
 
+	private async disposeVoiceBridge(bridge: EngineVoiceBridge): Promise<void> {
+		try {
+			await bridge.disarm();
+			await bridge.settle();
+		} finally {
+			bridge.dispose();
+			if (this.voiceBridge === bridge) this.voiceBridge = null;
+		}
+	}
+
 	async unload(): Promise<void> {
 		// Stop the memory monitor + idle timer and deregister evictable roles
 		// before anything else — they reference the model that's about to go.
 		await this.stopBackgroundManagement();
 		this.activeEliza1Bundle = null;
+		this.textTargetEstimatedMb = 0;
 		const bridge = this.voiceBridge;
 		if (bridge) {
 			// Drop voice resources before tearing down text. Disarm is a
 			// no-op when the lifecycle is already in voice-off, so this is
 			// safe even if the caller never called startVoice().
-			try {
-				await bridge.disarm();
-				await bridge.settle();
-			} finally {
-				bridge.dispose();
-				if (this.voiceBridge === bridge) this.voiceBridge = null;
-			}
+			await this.disposeVoiceBridge(bridge);
 		}
 		await this.dispatcher.unload();
 	}
@@ -517,6 +603,7 @@ export class LocalInferenceEngine {
 		const target = installed.find((m) => m.path === modelPath);
 		const modelId = target?.id ?? resolved?.modelId;
 		const catalog = modelId ? findCatalogModel(modelId) : undefined;
+		this.textTargetEstimatedMb = estimateTextResidentMb(target, catalog);
 
 		// Resolve the active Eliza-1 bundle (root + tier) so voice setup can
 		// find the bundle-relative Kokoro TTS root and the per-tier EOT
@@ -524,8 +611,7 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it.
 		this.activeEliza1Bundle =
-			resolveActiveEliza1Bundle(target, catalog) ??
-			resolveDirectEliza1Bundle(resolved, catalog);
+			resolveActiveEliza1Bundle(target) ?? resolveDirectEliza1Bundle(resolved);
 
 		// Resolved args (when provided) carry the merged catalog defaults +
 		// per-load overrides from the active-model coordinator. Project them
@@ -542,10 +628,8 @@ export class LocalInferenceEngine {
 			overrides,
 		};
 
-		// The in-process FFI runtime (fused libelizainference, or the
-		// libllama + eliza-llama-shim fallback) is the sole text backend. A
-		// load failure surfaces directly — there is no second runtime to fall
-		// back to.
+		// The local stack is Eliza-1 only: the dispatcher routes every load to the
+		// fused libelizainference runtime. A load failure surfaces directly.
 		await this.dispatcher.load(plan);
 		this.startBackgroundManagement();
 	}
@@ -553,7 +637,15 @@ export class LocalInferenceEngine {
 	async generate(args: GenerateArgs): Promise<string> {
 		this.markActivity();
 		const streaming = this.voiceStreamingArgs(args);
+		const startedAt = Date.now();
 		const text = await this.dispatcher.generate(streaming.args);
+		// Decode-throughput routing signal. `generate()` returns only text, so the
+		// decoded-token count is approximated from the output length (the exact
+		// usage block is only available on the `generateInConversation` path).
+		recordDecodeThroughput({
+			tokens: estimateDecodeTokens(text),
+			elapsedMs: Date.now() - startedAt,
+		});
 		await streaming.finish(text);
 		return text;
 	}
@@ -574,6 +666,9 @@ export class LocalInferenceEngine {
 		maxTokens?: number;
 		temperature?: number;
 		signal?: AbortSignal;
+		/** Per-token callback for streaming vision describe (ABI v13). */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		maxTokensPerStep?: number;
 	}): Promise<{
 		text: string;
 		projectorMs?: number;
@@ -667,12 +762,25 @@ export class LocalInferenceEngine {
 		const cacheKey = `conv:${handle.conversationId}`;
 		const streaming = this.voiceStreamingArgs(args);
 		if (this.activeBackendId() === "llama-cpp") {
+			const startedAt = Date.now();
 			const result: LocalGenerateWithUsageResult =
 				await this.dispatcher.generateWithUsage({
 					...streaming.args,
 					cacheKey,
 					slotId: handle.slotId,
 				});
+			const elapsedMs = Date.now() - startedAt;
+			// Decode-throughput routing signal. Prefer the exact decoded-token count
+			// from the backend usage block; estimate from the text only if the
+			// backend omitted it.
+			const decodedTokens = Number(result.usage?.completion_tokens);
+			recordDecodeThroughput({
+				tokens:
+					Number.isFinite(decodedTokens) && decodedTokens > 0
+						? decodedTokens
+						: estimateDecodeTokens(result.text),
+				elapsedMs,
+			});
 			await streaming.finish(result.text);
 			return {
 				text: result.text,
@@ -856,6 +964,15 @@ export class LocalInferenceEngine {
 				"[voice] Voice session is already active. Call stopVoice() before starting a new one.",
 			);
 		}
+		if (opts.useFfiBackend && bundleHasAsrModelFiles(opts.bundleRoot)) {
+			const blockers = readBundleAsrProvenanceBlockers(opts.bundleRoot);
+			if (blockers.length > 0) {
+				throw new VoiceStartupError(
+					"blocked-asr-provenance",
+					`[voice] Cannot start fused local voice: ${blockers.join("; ")}`,
+				);
+			}
+		}
 		// Pass the engine's shared-resource registry through so voice ref-counts
 		// against the same canonical resources as text and the `MemoryMonitor`
 		// sees voice's evictable roles too. The engine's registry is canonical —
@@ -918,34 +1035,143 @@ export class LocalInferenceEngine {
 		}
 	}
 
+	private async activateAssignedBundleForVoice(): Promise<void> {
+		if (this.activeEliza1Bundle || this.dispatcher.hasLoadedModel()) return;
+		try {
+			const assignments = await readEffectiveAssignments();
+			const textModelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
+			if (!textModelId) return;
+			const installed = await listInstalledModels();
+			const target = installed.find((m) => m.id === textModelId);
+			if (!target) return;
+			logger.info(
+				`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
+			);
+			await this.load(target.path);
+		} catch (err) {
+			logger.warn(
+				`[voice] Failed to pre-load text model for bundle activation: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
+	}
+
+	private localAsrBlockersForBundle(bundle: ActiveEliza1Bundle): string[] {
+		const blockers: string[] = [];
+		if (!bundleHasAsrModelFiles(bundle.root)) {
+			blockers.push(
+				`files.asr: no ASR model artifacts are staged under ${path.join(
+					bundle.root,
+					"asr",
+				)}`,
+			);
+		}
+		blockers.push(...readBundleAsrProvenanceBlockers(bundle.root));
+		return blockers;
+	}
+
+	private assertLocalAsrEligible(bundle: ActiveEliza1Bundle): void {
+		const blockers = this.localAsrBlockersForBundle(bundle);
+		if (blockers.length === 0) return;
+		const code = blockers.some((blocker) => blocker.startsWith("files.asr:"))
+			? "missing-asr-model"
+			: "blocked-asr-provenance";
+		throw new VoiceStartupError(
+			code,
+			`[voice] Cannot start local Gemma ASR for ${bundle.tierId}: ${blockers.join("; ")}`,
+		);
+	}
+
+	private async assignedLocalAsrBundle(): Promise<ActiveEliza1Bundle | null> {
+		if (this.activeEliza1Bundle) return this.activeEliza1Bundle;
+		const assignments = await readEffectiveAssignments();
+		const modelId =
+			assignments.TRANSCRIPTION ??
+			assignments.TEXT_LARGE ??
+			assignments.TEXT_SMALL;
+		if (!modelId) return null;
+		const installed = await listInstalledModels();
+		const target = installed.find((m) => m.id === modelId);
+		return resolveActiveEliza1Bundle(target);
+	}
+
+	async canTranscribeLocally(): Promise<boolean> {
+		try {
+			const bridge = this.voiceBridge;
+			if (bridge?.asrAvailable) return true;
+			const bundle = await this.assignedLocalAsrBundle();
+			return (
+				bundle !== null && this.localAsrBlockersForBundle(bundle).length === 0
+			);
+		} catch (err) {
+			logger.warn(
+				`[voice] Local ASR readiness check failed: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+			return false;
+		}
+	}
+
+	async ensureActiveBundleAsrReady(): Promise<EngineVoiceBridge> {
+		if (this.asrReadyPromise) return this.asrReadyPromise;
+		this.asrReadyPromise = this.ensureActiveBundleAsrReadyOnce();
+		try {
+			return await this.asrReadyPromise;
+		} finally {
+			this.asrReadyPromise = null;
+		}
+	}
+
+	private async ensureActiveBundleAsrReadyOnce(): Promise<EngineVoiceBridge> {
+		await this.activateAssignedBundleForVoice();
+		const bundle = this.activeEliza1Bundle;
+		if (!bundle) {
+			throw new VoiceStartupError(
+				"missing-bundle-root",
+				"[voice] Cannot start local ASR: no active Eliza-1 bundle is loaded. Install and activate a Gemma ASR-capable Eliza-1 bundle.",
+			);
+		}
+		this.assertLocalAsrEligible(bundle);
+
+		let bridge = this.voiceBridge;
+		if (bridge?.asrAvailable) {
+			await bridge.arm();
+			return bridge;
+		}
+		if (bridge) {
+			await this.disposeVoiceBridge(bridge);
+		}
+
+		const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
+		const kokoro =
+			resolveKokoroEngineConfig(bundleKokoroRoot) ??
+			resolveKokoroEngineConfig();
+		const kokoroOverrides = kokoro
+			? {
+					ttsBackendOverride: createKokoroTtsBackend(kokoro, {
+						bundleRoot: bundle.root,
+					}),
+					speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
+				}
+			: {};
+		bridge = this.startVoice({
+			bundleRoot: bundle.root,
+			useFfiBackend: true,
+			...kokoroOverrides,
+		});
+		await bridge.arm();
+		return bridge;
+	}
+
 	private async ensureActiveBundleVoiceReadyOnce(): Promise<EngineVoiceBridge> {
 		let bridge = this.voiceBridge;
 		if (!bridge) {
 			// If no text model is loaded yet, try to load the assigned one so
 			// the Eliza-1 bundle activates before voice needs it. This covers
 			// the boot-time warmup race where TTS fires before any text request.
-			if (!this.activeEliza1Bundle && !this.dispatcher.hasLoadedModel()) {
-				try {
-					const assignments = await readEffectiveAssignments();
-					const textModelId = assignments.TEXT_LARGE ?? assignments.TEXT_SMALL;
-					if (textModelId) {
-						const installed = await listInstalledModels();
-						const target = installed.find((m) => m.id === textModelId);
-						if (target) {
-							logger.info(
-								`[voice] Pre-loading text model ${textModelId} to activate Eliza-1 bundle for voice`,
-							);
-							await this.load(target.path);
-						}
-					}
-				} catch (err) {
-					logger.warn(
-						`[voice] Failed to pre-load text model for bundle activation: ${
-							err instanceof Error ? err.message : String(err)
-						}`,
-					);
-				}
-			}
+			await this.activateAssignedBundleForVoice();
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
@@ -957,67 +1183,21 @@ export class LocalInferenceEngine {
 					mode,
 					mobile: isMobilePlatform(),
 					kokoroAvailable: kokoro !== null,
-					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
-					tierVoiceBackends: bundle.voiceBackends,
 				});
-				console.info(
+				logger.info(
 					`[voice] Selected ${decision.backend} backend for ${bundle.tierId}: ${decision.reason}`,
 				);
-				if (decision.backend === "kokoro") {
-					if (!kokoro) {
-						throw new VoiceStartupError(
-							"missing-bundle-root",
-							"[voice] Kokoro was selected but its model artifacts are not staged under <stateDir>/local-inference/models/kokoro/.",
-						);
-					}
-					bridge = this.startVoice({
-						bundleRoot: "",
-						useFfiBackend: false,
-						kokoroOnly: kokoro,
-					});
-				} else {
-					const { ensureSamanthaPresetReady } = await import(
-						"./voice/samantha-preset-regenerator"
+				if (!kokoro) {
+					throw new VoiceStartupError(
+						"missing-bundle-root",
+						"[voice] Kokoro was selected but its model artifacts are not staged under <stateDir>/local-inference/models/kokoro/.",
 					);
-					const outcome = await ensureSamanthaPresetReady(bundle.root);
-					if (outcome.kind === "regenerated") {
-						logger.info(
-							`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
-						);
-					} else if (outcome.kind === "placeholder-no-regen") {
-						logger.warn(
-							`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
-						);
-						if (
-							mode !== "omnivoice" &&
-							kokoro &&
-							bundle.voiceBackends?.includes("kokoro")
-						) {
-							logger.warn(
-								`[voice] Falling back to bundled Kokoro voice ${kokoro.defaultVoiceId} from ${kokoro.layout.root} because OmniVoice has only the placeholder Samantha preset.`,
-							);
-							bridge = this.startVoice({
-								bundleRoot: bundle.root,
-								useFfiBackend: true,
-								speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
-								ttsBackendOverride: createKokoroTtsBackend(kokoro, {
-									bundleRoot: bundle.root,
-								}),
-							});
-						} else if (mode !== "omnivoice") {
-							throw new VoiceStartupError(
-								"missing-speaker-preset",
-								`[voice] OmniVoice selected for ${bundle.tierId}, but its Samantha preset is still the placeholder and no bundle-supported Kokoro fallback is staged. ${outcome.detail}`,
-							);
-						}
-					}
-					if (!bridge) {
-						bridge = this.startVoice({
-							bundleRoot: bundle.root,
-							useFfiBackend: true,
-						});
-					}
 				}
+				bridge = this.startVoice({
+					bundleRoot: "",
+					useFfiBackend: false,
+					kokoroOnly: kokoro,
+				});
 			} else {
 				// No Eliza-1 bundle. Fall back to the Kokoro-only path when its
 				// artifacts are staged. No silent degrade: when both are absent
@@ -1052,8 +1232,8 @@ export class LocalInferenceEngine {
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
 	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
-	 *     `AsrUnavailableError` when neither the fused decoder nor whisper.cpp
-	 *     is available),
+	 *     `AsrUnavailableError` when the fused decoder is unavailable — the
+	 *     fused build is the sole on-device ASR runtime),
 	 *   - a real OmniVoice TTS backend on the bridge (the `StubOmniVoiceBackend`
 	 *     is rejected — it emits zeros).
 	 * Any missing piece fails loudly with the specific component named.
@@ -1085,7 +1265,7 @@ export class LocalInferenceEngine {
 		/**
 		 * Use the already-loaded eliza-1 text model as the EOT classifier — see
 		 * `voice/eliza1-eot-scorer.ts`. When set, the runtime skips the
-		 * separate LiveKit/Turnsense ONNX and reads P(`<|im_end|>`) directly
+		 * separate LiveKit/Turnsense ONNX and reads P(`<end_of_turn>`) directly
 		 * off the live model.
 		 *
 		 * `"auto"` (default): use eliza-1 EOT when `ELIZA_VOICE_EOT_BACKEND=eliza-1`
@@ -1124,6 +1304,14 @@ export class LocalInferenceEngine {
 			threshold?: number;
 			/** Called once per detected utterance (refractory-debounced). */
 			onWake?: () => void;
+			/**
+			 * Forward each fused-wake stage to the renderer (#10351). The host
+			 * wires this to its transport, where `emitFusedWake` dispatches the
+			 * `eliza:fused-wake` window event so `useWakeController` activates the
+			 * bottom bar and starts a turn. A native head-fire maps to the
+			 * terminal `head-fired` stage with the firing confidence.
+			 */
+			onFusedWake?: import("./voice/fused-wake-bridge").FusedWakeSink;
 		};
 		/**
 		 * Runtime reference for cancellation coordination (W3-9 F1).
@@ -1189,14 +1377,14 @@ export class LocalInferenceEngine {
 					: undefined,
 			}));
 
-		// ASR — throws `AsrUnavailableError` when neither the fused decoder nor
-		// whisper.cpp is present. Gated on the VAD so silent frames aren't
-		// decoded.
+		// ASR — throws `AsrUnavailableError` when the fused decoder is
+		// unavailable (the fused build is the sole on-device ASR runtime). Gated
+		// on the VAD so silent frames aren't decoded.
 		const transcriber = bridge.createStreamingTranscriber({ vad });
 		// Voice Wave 2 (2026-05-14): tier-aware turn-detector revision selection.
-		// `0_8b` / `2b` ship the ~66 MB EN-only SmolLM2-135M distill
+		// `2b` (the entry tier) ships the ~66 MB EN-only SmolLM2-135M distill
 		// (`v1.2.2-en`); `4b`+ ship the ~396 MB multilingual pruned
-		// Qwen2.5-0.5B (`v0.4.1-intl`). The on-disk layout is per-tier so the
+		// semantic detector (`v0.4.1-intl`). The on-disk layout is per-tier so the
 		// bundle dir already contains the matching ONNX — `revision` here is a
 		// telemetry label (the upstream tag the bundle was staged from). When no
 		// active bundle is resolvable we omit the hint and the resolver falls
@@ -1224,7 +1412,7 @@ export class LocalInferenceEngine {
 		}
 		// Fused end-of-turn scorer (ABI v11): the model-based turn detector now
 		// runs in-process through libelizainference — a composite of the fused
-		// semantic scorer (P(<|im_end|>) over the loaded text model) and the
+		// semantic scorer (P(<end_of_turn>) over the loaded text model) and the
 		// heuristic syntactic co-signal. Built only when the loaded fused build
 		// wires the v11 EOT symbol; null on a pre-v11 library, in which case the
 		// resolver falls through to the heuristic-only classifier.
@@ -1346,6 +1534,9 @@ export class LocalInferenceEngine {
 				OPENWAKEWORD_DEFAULT_HEAD,
 				OpenWakeWordDetector,
 			} = await import("./voice/wake-word");
+			const { bridgeDetectorToFusedWake } = await import(
+				"./voice/fused-wake-bridge"
+			);
 			const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
 			if (isPlaceholderWakeWordHead(headName)) {
 				console.warn(
@@ -1375,14 +1566,20 @@ export class LocalInferenceEngine {
 				...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
 			});
 			if (model) {
+				const forwardFusedWake = opts.wakeWord.onFusedWake
+					? bridgeDetectorToFusedWake(opts.wakeWord.onFusedWake)
+					: null;
 				const detector = new OpenWakeWordDetector({
 					model,
 					...(opts.wakeWord.threshold !== undefined
 						? { config: { threshold: opts.wakeWord.threshold } }
 						: {}),
-					onWake: () => {
+					onWake: (info) => {
 						void this.prewarmConversation(opts.roomId, "");
 						opts.wakeWord?.onWake?.();
+						// Bridge the real native firing to the renderer (#10351):
+						// the bar activates and a turn starts via useWakeController.
+						forwardFusedWake?.(info);
 					},
 				});
 				wakeWord = detector;
@@ -1523,6 +1720,7 @@ export class LocalInferenceEngine {
 	async transcribePcm(
 		args: TranscriptionAudio,
 		signal?: AbortSignal,
+		onPartial?: (delta: string) => void,
 	): Promise<string> {
 		this.markActivity();
 		if (signal?.aborted) {
@@ -1532,13 +1730,30 @@ export class LocalInferenceEngine {
 		}
 		const transcript = await this.requireVoiceBridge(
 			"transcribe audio",
-		).transcribePcm(args, signal);
+		).transcribePcm(args, signal, onPartial);
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
 		}
 		return transcript;
+	}
+
+	/** Transcribe + per-word timings (fused ASR v12) through the voice bridge. */
+	async transcribePcmTimed(
+		args: TranscriptionAudio,
+		signal?: AbortSignal,
+	): Promise<{ text: string; words: AsrWordTiming[] }> {
+		this.markActivity();
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
+		return this.requireVoiceBridge("transcribe audio").transcribePcmTimed(
+			args,
+			signal,
+		);
 	}
 
 	/**
@@ -1551,6 +1766,13 @@ export class LocalInferenceEngine {
 	 * (the iOS/Android FFI path or the desktop FFI runtime) supply its own
 	 * {@link MtpTextRunner}. When omitted, the active local dispatcher is
 	 * used.
+	 *
+	 * Production caller: the on-device device bridge, via `runDeviceVoiceTurn`
+	 * (`adapters/capacitor-llama/voice-turn.ts`), which wraps the loaded
+	 * `CapacitorLlamaContext` in an `MtpTextRunner` and passes it here so the
+	 * draft/verify loop runs on the on-device text model. The native mic
+	 * capture hands `runDeviceVoiceTurn` the PCM; everything downstream is
+	 * in-process JS + the fused FFI (no HTTP, no second voice path).
 	 *
 	 * Resolves with the turn's exit reason (`done` / `token-cap` /
 	 * `cancelled`). A missing ASR region in voice mode surfaces as a

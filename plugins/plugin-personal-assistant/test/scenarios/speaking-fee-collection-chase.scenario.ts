@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "speaking-fee-collection-chase",
   title: "Assistant chases speaking fee collection",
   domain: "executive.money",
@@ -30,7 +31,12 @@ export default scenario({
       name: "stage-collection-note",
       text: "Draft a polite collection note and escalation schedule. Ask before sending payment instructions or copying legal.",
       plannerIncludesAny: ["owner_send_message", "approval", "SCHEDULED_TASKS"],
-      responseIncludesAny: ["collection", "escalation", "payment instructions", "legal"],
+      responseIncludesAny: [
+        "collection",
+        "escalation",
+        "payment instructions",
+        "legal",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
   ],

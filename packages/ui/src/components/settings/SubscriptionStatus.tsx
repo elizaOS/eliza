@@ -13,7 +13,7 @@ import {
   getStoredSubscriptionProvider,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
   formatSubscriptionRequestError,
@@ -196,7 +196,7 @@ function SubscriptionProviderPanel({
   onDisconnect,
   bodyOverride,
 }: SubscriptionProviderPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const slug = `sub-${providerId.replace(/-subscription$/, "")}`;
   const { ref: oauthCodeRef, agentProps: oauthCodeAgentProps } =
     useAgentElement<HTMLInputElement>({
@@ -327,7 +327,7 @@ export function SubscriptionStatus({
   loadSubscriptionStatus,
 }: SubscriptionStatusProps) {
   const { setTimeout } = useTimeout();
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
 
   /* ── Anthropic ─────────────────────────────────────────────────── */
   const [subscriptionTab, setSubscriptionTab] = useState<"token" | "oauth">(
@@ -679,7 +679,7 @@ export function SubscriptionStatus({
   const genericStatus = selectRepresentativeSubscriptionStatus(genericStatuses);
 
   return (
-    <div className="border-t border-border/40 pt-4">
+    <div className="pt-2">
       {resolvedSelectedId === "anthropic-subscription" && (
         <SubscriptionProviderPanel
           providerId="anthropic-subscription"

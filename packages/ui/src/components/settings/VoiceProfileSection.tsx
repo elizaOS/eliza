@@ -4,7 +4,7 @@
  * comes from `VoiceProfilesClient`; an empty list renders the empty state.
  */
 
-import { Crown, Download, Mic, Pencil, Trash2, Users } from "lucide-react";
+import { Crown, Download, Mic, Pencil, Trash2 } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import type {
@@ -14,14 +14,14 @@ import type {
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsSelectTrigger } from "../ui/settings-controls";
 
 export interface VoiceProfileSectionProps {
   /** Adapter supplied by the parent that holds the `ElizaClient`. */
   profilesClient: VoiceProfilesClient;
   /** Pre-loaded profiles (skips initial fetch — useful for tests). */
   initialProfiles?: VoiceProfile[];
-  /** Render the panel inside a settings card chrome (default true). */
-  framed?: boolean;
   className?: string;
 }
 
@@ -51,6 +51,14 @@ function relationshipRank(cohort: VoiceProfile["cohort"]): number {
   }
 }
 
+/**
+ * Sentinel for the "(no label)" relationship choice. The profile stores a
+ * relationship as `string | null`; Radix Select forbids an empty-string item
+ * value, so this sentinel stands in for "no relationship" and maps back to
+ * `null` at the value/onChange boundary.
+ */
+const NO_RELATIONSHIP_VALUE = "__none__";
+
 const COMMON_RELATIONSHIPS = [
   "wife",
   "husband",
@@ -64,14 +72,13 @@ const COMMON_RELATIONSHIPS = [
   "roommate",
 ];
 
-function VoiceProfileRow({
+const VoiceProfileRow = React.memo(function VoiceProfileRow({
   profile,
   isEditingThis,
   renameValue,
   setRenameValue,
   setRenameId,
   dispatch,
-  t,
 }: {
   profile: VoiceProfile;
   isEditingThis: boolean;
@@ -79,8 +86,8 @@ function VoiceProfileRow({
   setRenameValue: (value: string) => void;
   setRenameId: (id: string | null) => void;
   dispatch: (action: ProfileAction) => void;
-  t: ReturnType<typeof useTranslation>["t"];
 }) {
+  const { t } = useTranslation();
   const { ref: nameRef, agentProps: nameAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `voice-profile-name-${profile.id}`,
@@ -106,21 +113,22 @@ function VoiceProfileRow({
       onFill: setRenameValue,
     });
   const { ref: relationshipRef, agentProps: relationshipAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: `voice-profile-relationship-${profile.id}`,
       role: "select",
       label: t("voiceprofile.setRelationship", {
         defaultValue: "Set relationship",
       }),
       group: "voice-profiles-list",
-      getValue: () => profile.relationshipLabel ?? "",
+      getValue: () => profile.relationshipLabel ?? NO_RELATIONSHIP_VALUE,
       onFill: (value) =>
         dispatch({
           type: "set-relationship",
           id: profile.id,
-          relationshipLabel: value || null,
+          relationshipLabel:
+            value && value !== NO_RELATIONSHIP_VALUE ? value : null,
         }),
-      options: ["", ...COMMON_RELATIONSHIPS],
+      options: [NO_RELATIONSHIP_VALUE, ...COMMON_RELATIONSHIPS],
     });
   const { ref: renameBtnRef, agentProps: renameBtnAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -151,7 +159,7 @@ function VoiceProfileRow({
       data-testid={`voice-profile-row-${profile.id}`}
       data-is-owner={profile.isOwner ? "true" : "false"}
       data-cohort={profile.cohort}
-      className="flex items-center gap-3 px-4 py-3"
+      className="flex items-center gap-3 py-2.5"
     >
       {profile.isOwner ? (
         <Crown
@@ -191,7 +199,7 @@ function VoiceProfileRow({
             }}
             // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
             autoFocus
-            className="h-11 w-full rounded-md border border-border bg-card px-3 text-sm transition-colors focus:border-accent focus:outline-none"
+            className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm transition-colors  "
             data-testid={`voice-profile-rename-input-${profile.id}`}
             aria-label={t("voiceprofile.renameAria", {
               defaultValue: "Rename voice profile",
@@ -239,32 +247,39 @@ function VoiceProfileRow({
 
       {!profile.isOwner ? (
         <div className="flex items-center gap-1">
-          <select
-            ref={relationshipRef}
-            value={profile.relationshipLabel ?? ""}
-            onChange={(e) =>
+          <Select
+            value={profile.relationshipLabel ?? NO_RELATIONSHIP_VALUE}
+            onValueChange={(value) =>
               dispatch({
                 type: "set-relationship",
                 id: profile.id,
-                relationshipLabel: e.target.value || null,
+                relationshipLabel:
+                  value === NO_RELATIONSHIP_VALUE ? null : value,
               })
             }
-            className="h-11 rounded-md border border-border bg-card px-2 text-xs transition-colors focus:border-accent focus:outline-none"
-            data-testid={`voice-profile-relationship-select-${profile.id}`}
-            aria-label={t("voiceprofile.setRelationship", {
-              defaultValue: "Set relationship",
-            })}
-            {...relationshipAgentProps}
           >
-            <option value="">
-              {t("voiceprofile.noLabel", { defaultValue: "(no label)" })}
-            </option>
-            {COMMON_RELATIONSHIPS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={relationshipRef}
+              variant="soft"
+              data-testid={`voice-profile-relationship-select-${profile.id}`}
+              aria-label={t("voiceprofile.setRelationship", {
+                defaultValue: "Set relationship",
+              })}
+              {...relationshipAgentProps}
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_RELATIONSHIP_VALUE}>
+                {t("voiceprofile.noLabel", { defaultValue: "(no label)" })}
+              </SelectItem>
+              {COMMON_RELATIONSHIPS.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             ref={renameBtnRef}
             type="button"
@@ -300,12 +315,11 @@ function VoiceProfileRow({
       ) : null}
     </li>
   );
-}
+});
 
 export function VoiceProfileSection({
   profilesClient,
   initialProfiles,
-  framed = true,
   className,
 }: VoiceProfileSectionProps): React.ReactElement {
   const { t } = useTranslation();
@@ -346,10 +360,15 @@ export function VoiceProfileSection({
     void refresh();
   }, [initialProfiles, refresh]);
 
-  const sorted = React.useMemo(
-    () => [...profiles].sort(compareProfiles),
-    [profiles],
-  );
+  const { sorted, ownerCount, otherCount } = React.useMemo(() => {
+    const next = [...profiles].sort(compareProfiles);
+    const owners = next.filter((p) => p.isOwner).length;
+    return {
+      sorted: next,
+      ownerCount: owners,
+      otherCount: next.length - owners,
+    };
+  }, [profiles]);
 
   const dispatch = React.useCallback(
     async (action: ProfileAction) => {
@@ -407,6 +426,11 @@ export function VoiceProfileSection({
     [profiles, profilesClient, t],
   );
 
+  const dispatchAction = React.useCallback(
+    (action: ProfileAction) => void dispatch(action),
+    [dispatch],
+  );
+
   const onExport = React.useCallback(async () => {
     try {
       const { downloadUrl } = await profilesClient.exportAll();
@@ -439,9 +463,6 @@ export function VoiceProfileSection({
     }
   }, [profilesClient, t]);
 
-  const ownerCount = sorted.filter((p) => p.isOwner).length;
-  const otherCount = sorted.length - ownerCount;
-
   const { ref: exportRef, agentProps: exportAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "voice-profile-export",
@@ -466,39 +487,27 @@ export function VoiceProfileSection({
   return (
     <div
       data-testid="voice-profile-section"
-      className={cn(
-        framed && "overflow-hidden rounded-lg border border-border bg-card",
-        className,
-      )}
+      className={cn("flex flex-col", className)}
     >
-      <header className="flex items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">
-            {t("voiceprofile.title", { defaultValue: "Voice profiles" })}
-          </h3>
-          <span
-            className="rounded-full bg-bg/60 px-1.5 py-0.5 text-xs text-muted"
-            data-testid="voice-profile-count"
-          >
-            {ownerCount > 0
-              ? t("voiceprofile.ownerCount", {
-                  count: ownerCount,
-                  defaultValue: "{{count}} owner · ",
-                })
-              : ""}
-            {otherCount === 1
-              ? t("voiceprofile.otherCountOne", {
-                  count: otherCount,
-                  defaultValue: "{{count}} other",
-                })
-              : t("voiceprofile.otherCount", {
-                  count: otherCount,
-                  defaultValue: "{{count}} others",
-                })}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
+      <header className="flex items-center justify-between gap-3 py-1">
+        <span className="text-xs text-muted" data-testid="voice-profile-count">
+          {ownerCount > 0
+            ? t("voiceprofile.ownerCount", {
+                count: ownerCount,
+                defaultValue: "{{count}} owner · ",
+              })
+            : ""}
+          {otherCount === 1
+            ? t("voiceprofile.otherCountOne", {
+                count: otherCount,
+                defaultValue: "{{count}} other",
+              })
+            : t("voiceprofile.otherCount", {
+                count: otherCount,
+                defaultValue: "{{count}} others",
+              })}
+        </span>
+        <div className="flex items-center gap-1">
           <Button
             ref={exportRef}
             variant="ghost"
@@ -532,7 +541,7 @@ export function VoiceProfileSection({
 
       {error ? (
         <div
-          className="mx-4 mb-2 rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+          className="py-2 text-xs text-warn"
           data-testid="voice-profile-error"
         >
           {error}
@@ -541,39 +550,39 @@ export function VoiceProfileSection({
 
       {loading ? (
         <div
-          className="px-4 py-6 text-center text-xs text-muted"
+          className="py-6 text-center text-xs text-muted"
           data-testid="voice-profile-loading"
         >
           {t("voiceprofile.loading", { defaultValue: "Loading profiles…" })}
         </div>
       ) : sorted.length === 0 ? (
         <div
-          className="px-4 py-6 text-center text-xs text-muted"
+          className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted"
           data-testid="voice-profile-empty"
         >
-          <Mic className="mx-auto mb-2 h-5 w-5 text-muted" aria-hidden />
+          <Mic className="h-5 w-5 text-muted" aria-hidden />
           {t("voiceprofile.empty", {
-            defaultValue:
-              "No voice profiles yet — they appear automatically when the agent hears a new voice.",
+            defaultValue: "No voice profiles yet.",
           })}
         </div>
       ) : (
-        <ul
-          className="divide-y divide-border/30"
-          data-testid="voice-profile-list"
-        >
-          {sorted.map((profile) => (
-            <VoiceProfileRow
-              key={profile.id}
-              profile={profile}
-              isEditingThis={renameId === profile.id}
-              renameValue={renameValue}
-              setRenameValue={setRenameValue}
-              setRenameId={setRenameId}
-              dispatch={(action) => void dispatch(action)}
-              t={t}
-            />
-          ))}
+        <ul className="flex flex-col" data-testid="voice-profile-list">
+          {sorted.map((profile) => {
+            const isEditingThis = renameId === profile.id;
+            return (
+              <VoiceProfileRow
+                key={profile.id}
+                profile={profile}
+                isEditingThis={isEditingThis}
+                // Only the editing row needs the live draft; passing "" to the
+                // rest keeps their props stable so memo skips them per keystroke.
+                renameValue={isEditingThis ? renameValue : ""}
+                setRenameValue={setRenameValue}
+                setRenameId={setRenameId}
+                dispatch={dispatchAction}
+              />
+            );
+          })}
         </ul>
       )}
     </div>

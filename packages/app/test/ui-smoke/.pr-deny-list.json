@@ -1,0 +1,80 @@
+{
+  "description": "Single source of truth for ui-smoke specs that are deliberately NOT on the keyless PR path. The PR lane is directory-driven: it runs every test/ui-smoke/*.spec.ts EXCEPT the entries below, so any new spec is on the PR path by default and every exclusion is recorded here with a category and reason. Wiring is enforced by test/ui-smoke-coverage.test.ts; discovery is implemented by scripts/ui-smoke-pr-specs.mjs. Categories: live-only (genuinely cannot run keyless — needs real cloud credits, a model daemon, or a live stack and would fail/cost money), dedicated-tool (a long-running reporting/audit harness with its own package script and a broad/destructive walk), keyless-debt (fixture-capable, SHOULD run keyless but is not yet verified — a non-growing ratchet, see MAX_KEYLESS_DEBT).",
+  "specs": [
+    {
+      "spec": "cloud-live.spec.ts",
+      "category": "live-only",
+      "reason": "Real cloud login + provisioning + chat against real Eliza Cloud; needs ELIZA_UI_SMOKE_CLOUD_LIVE=1 + ELIZA_UI_SMOKE_LIVE_STACK=1 + ELIZAOS_CLOUD_API_KEY and spends real cloud credits, so it must never run in a keyless PR lane — wired only into the nightly app-live-e2e.yml workflow."
+    },
+    {
+      "spec": "provider-config.spec.ts",
+      "category": "live-only",
+      "reason": "Provider switching must hit the real app-core provider/runtime pipeline with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless route layer cannot restart the agent or re-derive the active provider and the spec self-skips without the live stack."
+    },
+    {
+      "spec": "vault-routing.spec.ts",
+      "category": "live-only",
+      "reason": "Routing config must persist through the real on-disk vault with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless stub returns a static routing config and does not persist PUTs, so the spec self-skips in PR smoke."
+    },
+    {
+      "spec": "wallet-keys.spec.ts",
+      "category": "live-only",
+      "reason": "Wallet key add/reveal/delete must round-trip through the real vault-backed /api/secrets/inventory endpoints with ELIZA_UI_SMOKE_LIVE_STACK=1; the keyless stub exposes fixed inventory and the spec self-skips in PR smoke."
+    },
+    {
+      "spec": "view-switching-local-llm-e2e.spec.ts",
+      "category": "live-only",
+      "reason": "Drives real chat through a local llama.cpp model planner and requires a running llama-server (LLAMACPP_URL, usually with an eliza-1 GGUF loaded); the keyless PR lane cannot provide that model daemon or GPU/CPU budget, so it is a manual/live local-model report spec rather than a secret-free PR gate."
+    },
+    {
+      "spec": "all-views-aesthetic-audit.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Runs via `bun run --cwd packages/app audit:app` (--project=audit-app); it walks every app view at desktop and mobile, captures artifacts, and writes manual-review stubs, so it is a deliberate visual-audit tool rather than default smoke (also testIgnore'd in the chromium project of playwright.ui-smoke.config.ts)."
+    },
+    {
+      "spec": "all-views-interaction.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Generic per-control interaction harness (#8796); for every built-in view it fills inputs and clicks every control. Run on demand via `E2E_RECORD=1 bun run --cwd packages/app test:e2e test/ui-smoke/all-views-interaction.spec.ts`; it exercises destructive controls broadly so it is a coverage tool, not a narrow keyless PR gate."
+    },
+    {
+      "spec": "plugin-views-interaction.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Generic per-control interaction harness for dynamically-loaded plugin GUI views (#8796). Run on demand via `bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-interaction.spec.ts`, not default smoke."
+    },
+    {
+      "spec": "launcher-interaction.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Drives Launcher view-catalog controls (#8796; renamed from springboard-interaction in #10001). Run on demand, not as a keyless PR gate."
+    },
+    {
+      "spec": "settings-spacing-audit.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Runs on demand via `ELIZA_SETTINGS_SPACING=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/settings-spacing-audit.spec.ts`; it measures per-section safe-area/spacing and writes a JSON verdict plus notch-simulated screenshots to reports/settings-spacing, so it is a deliberate layout-audit harness (self-skips unless ELIZA_SETTINGS_SPACING=1)."
+    },
+    {
+      "spec": "settings-theme-audit.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Runs on demand via `ELIZA_SETTINGS_THEME=1 node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/settings-theme-audit.spec.ts`; it flips every settings section through light and dark themes and writes findings to reports/settings-theme, so it is a deliberate visual audit (self-skips unless ELIZA_SETTINGS_THEME=1)."
+    },
+    {
+      "spec": "chat-view-memory-stability.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Chat-view re-render / memory-stability harness (#9048) that cycles heap/DOM/listener growth. Run on demand via `bun run --cwd packages/app test:e2e test/ui-smoke/chat-view-memory-stability.spec.ts`."
+    },
+    {
+      "spec": "sensitive-request-in-chat.spec.ts",
+      "category": "keyless-debt",
+      "reason": "Fixture-driven sensitive-request chat smoke; needs keyless wiring + verification after the lifeops decomposition refactor settles the new view-bearing plugins. Tracked debt — wire into keyless CI then remove this entry."
+    },
+    {
+      "spec": "multi-client-desync.spec.ts",
+      "category": "keyless-debt",
+      "reason": "Desired two-client convergence contract, but the current keyless route layer creates per-page mocks with no shared message store, so the spec self-skips until a shared fixture backend or live shared agent/channel path is wired."
+    },
+    {
+      "spec": "multi-window-sync.spec.ts",
+      "category": "keyless-debt",
+      "reason": "Desired cross-window preference sync contract, but the renderer does not yet ship the BroadcastChannel/useTabSync layer the spec asserts, so it self-skips until that feature lands and can run keyless."
+    }
+  ]
+}

@@ -159,6 +159,44 @@ def test_server_manager_maps_cerebras_env_to_openai_compatible_settings(
     assert env["OPENAI_ACTION_PLANNER_MODEL"] == "gpt-oss-120b"
 
 
+def test_server_manager_autowires_current_cerebras_model_without_provider(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    server = tmp_path / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
+    server.parent.mkdir(parents=True)
+    server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProcess()
+
+    manager = ElizaServerManager(repo_root=tmp_path, port=0)
+    monkeypatch.setattr(manager.client, "is_ready", lambda: True)
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
+    monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
+    monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "zai-glm-4.7")
+
+    manager.start()
+    manager._proc = None
+
+    env = captured["kwargs"]["env"]
+    assert env["ELIZA_PROVIDER"] == "cerebras"
+    assert env["OPENAI_API_KEY"] == "csk-test"
+    assert env["OPENAI_BASE_URL"] == "https://api.cerebras.ai/v1"
+    assert env["CEREBRAS_MODEL"] == "zai-glm-4.7"
+    assert env["OPENAI_SMALL_MODEL"] == "zai-glm-4.7"
+    assert env["OPENAI_LARGE_MODEL"] == "zai-glm-4.7"
+    assert env["OPENAI_RESPONSE_HANDLER_MODEL"] == "zai-glm-4.7"
+    assert env["OPENAI_ACTION_PLANNER_MODEL"] == "zai-glm-4.7"
+
+
 def test_server_manager_maps_elizaos_task_agent_to_native_adapter(
     monkeypatch,
     tmp_path: Path,
@@ -199,7 +237,7 @@ def test_server_manager_prefers_bun_for_typescript_server(monkeypatch, tmp_path:
     monkeypatch.delenv("ELIZA_BENCH_SERVER_CMD", raising=False)
     monkeypatch.setattr("eliza_adapter.server_manager.shutil.which", lambda name: "/usr/bin/bun" if name == "bun" else None)
 
-    assert _server_command(server) == ["bun", "run", str(server)]
+    assert _server_command(server) == ["bun", "--no-env-file", "run", str(server)]
 
 
 def test_server_manager_falls_back_to_node_tzx(monkeypatch, tmp_path: Path) -> None:

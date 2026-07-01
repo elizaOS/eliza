@@ -172,9 +172,6 @@ export * from "./apps/GameView.helpers";
 export * from "./apps/GameViewOverlay";
 export * from "./apps/overlay-app-api";
 export * from "./apps/overlay-app-registry";
-export * from "./apps/surfaces/GameOperatorShell";
-export * from "./apps/surfaces/registry";
-export * from "./apps/surfaces/types";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/CharacterRoster.helpers";
@@ -187,6 +184,10 @@ export * from "./chat/MessageAttachments";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
+export {
+  OrchestratorAccountsView,
+  type OrchestratorAccountsViewProps,
+} from "./chat/widgets/agent-orchestrator-accounts-view";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
@@ -216,16 +217,18 @@ export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ConfigPageView";
-export * from "./pages/DatabasePageView";
+// DatabasePageView omitted — App.tsx lazy-loads it by path and app-core imports
+// the direct subpath; re-exporting it here forms a barrel cycle with
+// DynamicViewLoader (issue #9154).
 export * from "./pages/DatabaseView";
 export * from "./pages/DocumentsView";
 export * from "./pages/ElizaCloudDashboard";
+export * from "./pages/FilesView";
 export * from "./pages/HeartbeatsView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
 export * from "./pages/MemoryDetailPanel";
 export * from "./pages/MemoryViewerView";
-export * from "./pages/PageScopedChatPane";
 export * from "./pages/PluginsPageView";
 export * from "./pages/PluginsView";
 export * from "./pages/RelationshipsView";
@@ -245,9 +248,11 @@ export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 // DesktopWorkspaceSection omitted — App.tsx lazy-loads it.
 export * from "./permissions/PermissionRecoveryCallout";
+export * from "./RoleGate.tsx";
+export * from "./ShellModalityProvider.tsx";
+export * from "./ShellRoleProvider.tsx";
 export * from "./settings/ApiKeyConfig";
 export * from "./settings/PermissionsSection";
-export * from "./settings/PolicyControlsView";
 export * from "./settings/ProviderSwitcher";
 export * from "./settings/permission-types";
 export * from "./settings/SubscriptionStatus";
@@ -283,6 +288,7 @@ export * from "./ui/carousel";
 export * from "./ui/chart";
 export * from "./ui/checkbox";
 export * from "./ui/collapsible";
+export * from "./ui/confirm-dialog";
 export {
   ConfirmDialog as ConfirmModal,
   type ConfirmDialogProps as ConfirmModalProps,
@@ -298,22 +304,25 @@ export * from "./ui/input";
 export * from "./ui/input-group";
 export * from "./ui/label";
 export * from "./ui/pagination";
+export * from "./ui/popover";
 export * from "./ui/progress";
 export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
 export * from "./ui/scroll-area";
+export * from "./ui/segmented-control";
 export * from "./ui/select";
 export * from "./ui/separator";
 export * from "./ui/skeleton";
 export * from "./ui/skeleton-layouts";
 export * from "./ui/slider";
+export * from "./ui/spinner";
 export * from "./ui/status-badge";
 export * from "./ui/status-badge.helpers";
 export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/tabs";
+export * from "./ui/tag-editor";
 export * from "./ui/textarea";
 export * from "./ui/toggle";
 export * from "./ui/tooltip";
 export * from "./ui/tooltip-extended";
 export * from "./workspace/AppWorkspaceChrome";
-export * from "./workspace/AppWorkspaceChrome.hooks";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { ChatConversationRenameDialog } from "../composites/chat/chat-conversation-rename-dialog";
 
 export interface ConversationRenameDialogProps {
@@ -16,7 +16,13 @@ export function ConversationRenameDialog({
   initialTitle,
   onClose,
 }: ConversationRenameDialogProps) {
-  const { handleRenameConversation, suggestConversationTitle, t } = useApp();
+  const handleRenameConversation = useAppSelector(
+    (s) => s.handleRenameConversation,
+  );
+  const suggestConversationTitle = useAppSelector(
+    (s) => s.suggestConversationTitle,
+  );
+  const t = useAppSelector((s) => s.t);
   const [draft, setDraft] = useState(initialTitle);
   const [suggesting, setSuggesting] = useState(false);
   const [saving, setSaving] = useState(false);

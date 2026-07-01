@@ -1,4 +1,5 @@
 import type {
+	AccessContext,
 	Agent,
 	AppendConnectorAccountAuditEventParams,
 	Component,
@@ -240,12 +241,21 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		roomId?: UUID;
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
+		textContains?: string;
+		orderBy?: "createdAt";
+		orderDirection?: "asc" | "desc";
+		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	abstract getMemoriesByRoomIds(params: {
 		roomIds: UUID[];
 		tableName: string;
 		limit?: number;
+		offset?: number;
+		textContains?: string;
+		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	/**
@@ -322,12 +332,14 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		unique?: boolean;
 		query?: string;
 		roomId?: UUID;
 		worldId?: UUID;
 		entityId?: UUID;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	// ── Memory CRUD (batch-only) ─────────────────────────────────────────

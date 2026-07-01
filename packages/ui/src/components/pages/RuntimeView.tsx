@@ -15,8 +15,9 @@ import {
   type RuntimeServiceOrderItem,
 } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
@@ -160,7 +161,7 @@ function TreeNode(props: {
   expanded: Set<string>;
   onToggle: (path: string) => void;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { label, value, path, depth, expanded, onToggle } = props;
   const canExpand = isExpandable(value);
   const open = expanded.has(path);
@@ -210,7 +211,7 @@ function TreeNode(props: {
 }
 
 function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { title, entries } = props;
 
   return (
@@ -238,7 +239,7 @@ function OrderCard(props: { title: string; entries: RuntimeOrderItem[] }) {
 }
 
 function ServicesOrderCard(props: { entries: RuntimeServiceOrderItem[] }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const { entries } = props;
 
   return (
@@ -403,7 +404,7 @@ export function RuntimeView({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [depth, setDepth] = useState(10);
   const [maxArrayLength, setMaxArrayLength] = useState(1000);
   const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
@@ -469,13 +470,14 @@ export function RuntimeView({
     void loadSnapshot({
       silent: getCached<RuntimeDebugSnapshot>(snapshotCacheKey) != null,
     });
-    // Keep the snapshot live without a manual refresh button: poll silently
-    // while the view is mounted so registration order/state stays current.
-    const interval = window.setInterval(() => {
-      void loadSnapshot({ silent: true });
-    }, 5000);
-    return () => window.clearInterval(interval);
   }, [loadSnapshot, snapshotCacheKey]);
+
+  // Keep the snapshot live without a manual refresh button: poll silently while
+  // the view is mounted and the window is visible so a backgrounded window goes
+  // quiet, then resumes on return.
+  useIntervalWhenDocumentVisible(() => {
+    void loadSnapshot({ silent: true });
+  }, 5000);
 
   useEffect(() => {
     setExpandedPaths(buildInitialExpanded(rootPath, sectionData));
@@ -700,9 +702,7 @@ export function RuntimeView({
       >
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {error ? (
-            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-              {error}
-            </div>
+            <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>
           ) : null}
 
           {loading && !snapshot ? (

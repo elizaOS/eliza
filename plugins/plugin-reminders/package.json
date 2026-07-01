@@ -1,17 +1,17 @@
 {
   "name": "@elizaos/plugin-reminders",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "type": "module",
   "description": "Reminder delivery + escalation data layer for elizaOS agents: owns the app_reminders schema (reminder plans, per-channel delivery attempts, escalation states) carved out of @elizaos/plugin-personal-assistant, with a non-destructive migration from app_lifeops. The delivery/escalation engine is host-wired during the decomposition.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
-    "clean": "rm -rf dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "bunx tsc --noCheck -p tsconfig.build.json"
+    "build:types": "bunx tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -64,7 +64,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.0.6",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

@@ -4,19 +4,19 @@ Adds authenticated desktop screen-streaming and remote mouse/keyboard control to
 
 ## Purpose / role
 
-This plugin exposes the local machine's desktop as a streamable, interactable session accessible from any authenticated viewer. It is loaded as an elizaOS app plugin (kind: `app`, `launchType: connect`) and registered through `gatePluginSessionForHostedApp`, which gates the plugin surface behind a valid app session. No agent actions or providers are registered — the plugin surface is entirely HTTP routes plus three UI views.
+This plugin exposes the local machine's desktop as a streamable, interactable session accessible from any authenticated viewer. It is loaded as an elizaOS app plugin (kind: `app`, `launchType: connect`) and registered through `gatePluginSessionForHostedApp`, which gates the plugin surface behind a valid app session. No agent actions or providers are registered — the plugin surface is entirely HTTP routes plus one adaptive UI view.
 
 ## Plugin surface
 
 ### Views (registered in `plugin.views`)
 
-| id | label | viewType | componentExport | path |
-|----|-------|----------|-----------------|------|
-| screenshare | Screen Share | (default) | `ScreenshareOperatorSurface` | `/screenshare` |
-| screenshare | Screen Share XR | `xr` | `ScreenshareOperatorSurface` | `/screenshare` |
-| screenshare | Screen Share TUI | `tui` | `ScreenshareTuiView` | `/screenshare/tui` |
+ONE declaration drives all three modalities from a single authored source.
 
-Views are bundled via Vite into `dist/views/bundle.js`.
+| id | label | modalities | componentExport | path | bundlePath |
+|----|-------|------------|-----------------|------|------------|
+| screenshare | Screen Share | gui, xr, tui | `ScreenshareView` | `/screenshare` | `dist/views/bundle.js` |
+
+`ScreenshareView` (`components/ScreenshareView.tsx`) is the single GUI/XR data wrapper — it owns the live operator data (capability fetch/poll, host start/stop/rotate, copy/open-viewer, remote connect, refresh) and renders the one presentational `ScreenshareSpatialView` (`components/ScreenshareSpatialView.tsx`) inside a `SpatialSurface`. The same `ScreenshareSpatialView` is registered for terminal/TUI rendering via `register-terminal-view.tsx`. Views are bundled via Vite into `dist/views/bundle.js` (entry `ui/screenshare-view-bundle.ts`, which re-exports `ScreenshareView` plus the `interact` TUI capability handler).
 
 ### HTTP routes (handled via `handleAppRoutes`)
 
@@ -43,7 +43,7 @@ Token is accepted via: `?token=` query param, `X-Screenshare-Token` header, or `
 - `refreshRunSession` — returns current `AppSessionState` or `null` if session is gone/stopped
 - `stopRun` — stops the session by ID
 
-### Registered TUI capabilities (via `interact` export in `ui/ScreenshareOperatorSurface.interact.ts`)
+### Registered TUI capabilities (via `interact` export in `ui/screenshare-interact.ts`)
 
 - `terminal-screenshare-state`
 - `terminal-screenshare-start`
@@ -61,18 +61,16 @@ src/
   session-store.ts             In-process session store (globalThis-keyed); session CRUD + capability detection
   register-terminal-view.tsx   Registers ScreenshareSpatialView as the terminal/TUI view
   components/
-    ScreenshareSpatialView.tsx       Shared spatial operator surface component (used by TUI and other views)
+    ScreenshareView.tsx              Single GUI/XR data wrapper (owns fetch/poll + host/remote actions); renders ScreenshareSpatialView in a SpatialSurface
+    ScreenshareView.test.tsx         Unit tests for ScreenshareView (the GUI/XR surface)
+    ScreenshareSpatialView.tsx       The one presentational spatial component (GUI DOM, scaled XR DOM, terminal TUI)
     ScreenshareSpatialView.test.tsx  Unit tests for ScreenshareSpatialView
   ui/
-    index.ts                              Registers ScreenshareOperatorSurface with @elizaos/ui registerOperatorSurface
-    ScreenshareOperatorSurface.tsx        React operator surface (host panel + connect panel + TUI view)
-    ScreenshareOperatorSurface.helpers.ts Helper utilities for the operator surface
-    ScreenshareOperatorSurface.interact.ts  interact() TUI capability handler (split from main component file)
-    ScreenshareOperatorSurface.interact.test.ts  Tests for interact()
-    ScreenshareOperatorSurface.contract.test.ts  Contract tests for the operator surface
-    ScreenshareOperatorSurface.test.tsx   Unit tests for ScreenshareOperatorSurface
-    ScreenshareTuiView.test.tsx           Unit tests for TUI view
-    screenshare-view-bundle.ts            View bundle entry point
+    screenshare-view-bundle.ts                 View bundle entry: re-exports ScreenshareView + interact
+    screenshare-helpers.ts                     Shared data contracts + fetch helpers (used by ScreenshareView and interact)
+    screenshare-interact.ts                    interact() TUI capability handler (kept out of the component file)
+    screenshare-interact.test.ts               Tests for interact() (all capabilities + dispatch types + guards)
+    screenshare-capabilities.contract.test.ts  Contract test: real detectDesktopControlCapabilities() shape vs the helper types
 ```
 
 ## Commands
@@ -102,9 +100,9 @@ The `GET /capabilities` route reports all three capability flags along with whic
 
 **Add a new input type:** Add a branch in `executeInput` in `src/routes.ts`. Dispatch to the appropriate `@elizaos/plugin-computeruse` primitive (e.g. `performDesktopScroll`, `performDesktopKeypress`).
 
-**Add a new TUI capability:** Add a branch in the `interact` function in `src/ui/ScreenshareOperatorSurface.interact.ts`.
+**Add a new TUI capability:** Add a branch in the `interact` function in `src/ui/screenshare-interact.ts`.
 
-**Add operator UI controls:** Add `ScreenshareActionButton` or `ScreenshareField` elements inside `ScreenshareOperatorSurface` in `src/ui/ScreenshareOperatorSurface.tsx`.
+**Add UI controls:** Edit the one presentational `ScreenshareSpatialView` (`src/components/ScreenshareSpatialView.tsx`) — it renders for GUI, XR, and TUI. Wire any new control through `ScreenshareView`'s `onAction` handler (`src/components/ScreenshareView.tsx`).
 
 ## Conventions / gotchas
 
@@ -117,5 +115,48 @@ The `GET /capabilities` route reports all three capability flags along with whic
 - **Desktop primitives come from `@elizaos/plugin-computeruse`.** Do not reach into OS APIs directly. All screenshot and input calls go through that package.
 - **Views build separately from the runtime.** `build:js` (tsup) and `build:views` (Vite) are independent steps. Both must run for a complete build.
 - **Viewer HTML is inline.** `renderViewerHtml()` in `routes.ts` returns a self-contained HTML string with embedded CSS and JS — no external assets needed. It polls for frames at 500 ms intervals.
-- **`interact` is a separate module.** The TUI capability handler lives in `ScreenshareOperatorSurface.interact.ts`, not in the main component file, so the component file exports only React components.
+- **One component, all modalities.** `ScreenshareView` is the single authored view: DOM in GUI, scaled DOM in XR, terminal in TUI. There is no separate operator-surface / TUI-view duplicate — `ScreenshareSpatialView` is the only presentational source, registered for TUI via `register-terminal-view.tsx`.
+- **`interact` is a separate module.** The TUI capability handler lives in `ui/screenshare-interact.ts`, not in a component file, so component files export only React components (keeping them Fast-Refresh-compatible).
 - See root `AGENTS.md` for architecture rules (logger-only, ESM, naming, layer boundaries) that apply repo-wide.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — native / on-device bridge:**
+- The capability run on a **real device or simulator** — not desktop Chromium against a mocked bridge (see #9967/#9580): device logs + the captured output (photo, OCR text, detection boxes, transcript, sensor reading).
+- Parity vs the reference implementation where one exists (e.g. the Python/Ultralytics reference), with the numeric tolerances actually met.
+- Permission-denied, no-hardware, and background/foreground lifecycle paths.
+- A short recording of the on-device run; confirm the build under test is yours (versionName / a known on-screen change), not a stale install.
+<!-- END: evidence-and-e2e-mandate -->

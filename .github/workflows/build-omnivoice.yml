@@ -1,7 +1,8 @@
 name: Build libomnivoice
 
-# Builds the libomnivoice shared library used by @elizaos/plugin-omnivoice
-# via bun:ffi on each supported runner class and uploads the resulting
+# Builds the libomnivoice shared library (the native voice engine; source at
+# plugins/plugin-local-inference/native/omnivoice.cpp) loaded via bun:ffi on each
+# supported runner class and uploads the resulting
 # native artifact so end users don't have to compile locally.
 #
 # Triggers:
@@ -169,7 +170,7 @@ jobs:
           git -C "${TARGET_DIR}" rev-parse HEAD
 
       - name: Cache omnivoice cmake build dir
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8
         with:
           path: plugins/plugin-local-inference/native/omnivoice.cpp/build
           key: omnivoice-build-${{ matrix.target }}-${{ hashFiles('plugins/plugin-local-inference/native/build-omnivoice.mjs') }}

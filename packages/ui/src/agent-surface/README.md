@@ -36,9 +36,22 @@ so the hook resolves to the host singleton and shares the loader's React context
 | `agent-scroll-to` | `{id}`              | `{ok}`                                   |
 | `set-highlight`   | `{on}`              | `{highlighting}`                         |
 
-The legacy standard caps (`get-state`, `focus-element`, `click-element`,
-`fill-input`) also accept `{agentId}` and route through the registry; `get-state`
-returns the registry snapshot when elements are registered.
+### Standard view-interact caps
+
+Alongside the agent-surface caps above, every view accepts the protocol's
+standard caps — `get-state`, `refresh`, `focus-element`, `get-text`,
+`click-element`, `fill-input` (`STANDARD_CAPABILITIES` in
+`packages/ui/src/views/view-interact-protocol.ts`). `get-state` returns the
+registry snapshot when elements are registered; `focus-element` /
+`click-element` / `fill-input` accept `{agentId}` and route through the registry.
+
+The interact route's bypass allowlist
+(`STANDARD_CAPABILITY_IDS` in `packages/agent/src/api/views-routes.ts`) is the
+**union** of these two sets — `AGENT_SURFACE_CAPABILITY_IDS` ∪
+`STANDARD_CAPABILITIES` — derived directly from these canonical sources, so a
+view with its own declared `capabilities` allowlist still accepts every cap the
+shell dispatches generically. Edit the ids in the two source files; the route
+follows.
 
 ## Converting a view
 
@@ -83,3 +96,39 @@ common cases.
 scoped actions at full parameter detail in the planner prompt (set by
 `POST /api/views/:id/navigate`), so the agent can act on whatever the user is
 looking at even with no intent keyword.
+
+## Canonical reachability contract (#8798)
+
+Every interactive control in a view must be reachable by the agent through
+**exactly one** of three layers — and the audit (`validateViewCoverage` in
+`view-action-affinity.ts`, the per-view e2e harness) enforces that none is left
+unreachable:
+
+1. **Universal agent-surface element** (`useAgentElement`) — the default, and the
+   right answer for any clickable/fillable control. Do **not** add a
+   `capabilities` array for these; the verbs (`list-elements`, `agent-click`,
+   `agent-fill`, …) are universal.
+2. **Declared `ViewCapability` + handler** — only for view-specific *compound*
+   operations that can't be expressed as a single click/fill (e.g.
+   `terminal-list-views`). Dispatched via `POST /api/views/:id/interact`.
+3. **Runtime action in `VIEW_ACTION_MAP`** — domain actions the agent runs
+   directly (e.g. `wallet → EVM_SWAP`); these get full-param weighting while the
+   view is foreground.
+
+**Standard capability sets, reconciled.** Two legacy "standard capability" lists
+exist: `views/view-interact-protocol.ts` `STANDARD_CAPABILITIES`
+(`get-state`, `refresh`, `focus-element`, `get-text`) and
+`AGENT_SURFACE_CAPABILITY_IDS` (`list-elements`, `agent-click`, …). The
+**agent-surface set is canonical** for element-level control; the legacy set is a
+thin compatibility alias that still routes through the same registry
+(`view-interact-registry.ts`). New views should rely on the agent-surface verbs;
+the legacy ids remain only for the few callers that predate the registry.
+
+**`serverInteract` (kept, not dead).** `ViewDeclaration.serverInteract` lets a
+view answer a `ViewCapability` *without a mounted frontend* (the route in
+`views-routes.ts` calls it before any WS round-trip). It is a live extension
+point — see the reference implementation on `plugin-app-control`'s views-manager
+TUI view (`terminal-list-views` / `terminal-open-view` answered over loopback),
+which lets a headless terminal host list/open views with no responding frontend.
+Use it for headless/connector-driven capabilities; for ordinary in-view controls
+prefer the universal agent-surface (layer 1).

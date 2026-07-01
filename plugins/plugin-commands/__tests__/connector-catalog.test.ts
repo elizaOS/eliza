@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { getConnectorCommands } from "../src/connector-catalog";
+import {
+	commandVisibleForView,
+	getConnectorCommands,
+} from "../src/connector-catalog";
+import {
+	findCommandByKey,
+	initForRuntime,
+	registerCommand,
+	useRuntime,
+} from "../src/registry";
 
 /**
  * The navigation half of the catalog must point at real app routes and expose
@@ -100,5 +109,99 @@ describe("connector catalog — client command surface filtering", () => {
 		expect(
 			clear?.target.kind === "client" ? clear.target.clientAction : null,
 		).toBe("clear-chat");
+	});
+});
+
+describe("connector catalog — runtime-scoped registry projection", () => {
+	it("projects runtime-registered commands and per-runtime enablement", () => {
+		initForRuntime("connector-agent-a");
+		useRuntime("connector-agent-a");
+		const restart = findCommandByKey("restart");
+		if (!restart) throw new Error("missing restart command");
+		registerCommand({ ...restart, enabled: false });
+		registerCommand({
+			key: "skill-weather",
+			description: "Answer weather questions with the weather skill",
+			textAliases: ["/weather"],
+			scope: "both",
+			category: "skills",
+			acceptsArgs: true,
+		});
+
+		const agentA = new Set(
+			getConnectorCommands("discord", { agentId: "connector-agent-a" }).map(
+				(command) => command.name,
+			),
+		);
+		expect(agentA.has("restart")).toBe(false);
+		expect(agentA.has("skill-weather")).toBe(true);
+
+		initForRuntime("connector-agent-b");
+		const agentB = new Set(
+			getConnectorCommands("discord", { agentId: "connector-agent-b" }).map(
+				(command) => command.name,
+			),
+		);
+		expect(agentB.has("restart")).toBe(true);
+		expect(agentB.has("skill-weather")).toBe(false);
+	});
+});
+
+describe("connector catalog — view-scoped command visibility (#8798)", () => {
+	it("treats global commands (no views) as always visible", () => {
+		expect(commandVisibleForView(undefined, null)).toBe(true);
+		expect(commandVisibleForView(undefined, "calendar")).toBe(true);
+		expect(commandVisibleForView([], "calendar")).toBe(true);
+	});
+
+	it("shows a view-scoped command only while its view is active", () => {
+		expect(commandVisibleForView(["calendar"], "calendar")).toBe(true);
+		expect(commandVisibleForView(["calendar", "todos"], "todos")).toBe(true);
+		expect(commandVisibleForView(["calendar"], "wallet")).toBe(false);
+		// No active view → scoped commands are hidden.
+		expect(commandVisibleForView(["calendar"], null)).toBe(false);
+		expect(commandVisibleForView(["calendar"], undefined)).toBe(false);
+	});
+
+	it("never drops a global command when a view is active", () => {
+		const noView = new Set(getConnectorCommands("gui").map((c) => c.name));
+		const withView = new Set(
+			getConnectorCommands("gui", { activeViewId: "wallet" }).map(
+				(c) => c.name,
+			),
+		);
+		// Every global command available with no active view stays available with
+		// one (the active view only *adds* its scoped commands).
+		for (const name of noView) expect(withView.has(name)).toBe(true);
+	});
+
+	it("surfaces a view-scoped command only while its view is foreground", () => {
+		const calendarOnly = getConnectorCommands("gui", {
+			activeViewId: "calendar",
+		});
+		const todosOnly = getConnectorCommands("gui", { activeViewId: "todos" });
+		const noView = getConnectorCommands("gui");
+
+		// calendar-add appears only under the calendar view, carrying its scope.
+		const calAdd = calendarOnly.find((c) => c.name === "calendar-add");
+		expect(calAdd).toBeDefined();
+		expect(calAdd?.views).toEqual(["calendar"]);
+		expect(noView.some((c) => c.name === "calendar-add")).toBe(false);
+		expect(todosOnly.some((c) => c.name === "calendar-add")).toBe(false);
+
+		// The todos view exposes its own pair and not the calendar command.
+		const todosNames = new Set(todosOnly.map((c) => c.name));
+		expect(todosNames.has("todos-add")).toBe(true);
+		expect(todosNames.has("todos-done")).toBe(true);
+		expect(todosNames.has("calendar-add")).toBe(false);
+	});
+
+	it("keeps view-dependent commands off chat connectors (no foreground view)", () => {
+		// Even claiming a view active, Discord has no in-app view surface, so the
+		// scoped commands are filtered by surface before the view filter applies.
+		const discord = getConnectorCommands("discord", {
+			activeViewId: "calendar",
+		});
+		expect(discord.some((c) => c.name === "calendar-add")).toBe(false);
 	});
 });

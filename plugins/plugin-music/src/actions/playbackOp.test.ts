@@ -59,6 +59,20 @@ describe("PLAYBACK action", () => {
     ).resolves.toBe(true);
   });
 
+  it("does not validate transport prose without a structured op", async () => {
+    const musicService = createMusicService();
+    const runtime = createRuntime(musicService);
+
+    await expect(
+      validatePlaybackControl(
+        runtime,
+        createMessage("pause the music"),
+        undefined,
+        undefined,
+      ),
+    ).resolves.toBe(false);
+  });
+
   it("dispatches schema-declared subaction without relying on message text", async () => {
     const musicService = createMusicService();
     const runtime = createRuntime(musicService);
@@ -82,6 +96,53 @@ describe("PLAYBACK action", () => {
     expect(musicService.pause).toHaveBeenCalledWith(musicService.guildId);
     expect(callback).toHaveBeenCalledWith({
       text: expect.stringContaining("Paused"),
+      source: "discord",
+    });
+  });
+
+  it("does not dispatch transport prose without a structured op", async () => {
+    const musicService = createMusicService();
+    const runtime = createRuntime(musicService);
+    const callback = vi.fn(async () => undefined);
+
+    const result = await playbackOp.handler?.(
+      runtime,
+      createMessage("pause the music"),
+      undefined,
+      undefined,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining("Could not determine playback op"),
+    });
+    expect(musicService.pause).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith({
+      text: expect.stringContaining("Could not determine playback op"),
+      source: "discord",
+    });
+  });
+
+  it("does not use message text as the queue query", async () => {
+    const musicService = createMusicService();
+    const runtime = createRuntime(musicService);
+    const callback = vi.fn(async () => undefined);
+
+    const result = await playbackOp.handler?.(
+      runtime,
+      createMessage("add bohemian rhapsody to queue"),
+      undefined,
+      { subaction: "queue" },
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "Missing queue query",
+    });
+    expect(callback).toHaveBeenCalledWith({
+      text: expect.stringContaining("Please tell me what song"),
       source: "discord",
     });
   });

@@ -4,13 +4,12 @@
  * Wraps the `handler` of every registered Action that the cache registry
  * marks as `cacheable: true` so the result of a (toolName, args) pair is
  * served from the two-tier `ToolCallCache` instead of re-running the
- * underlying tool. Side-effect tools and any tool not listed in
- * `CACHEABLE_TOOL_REGISTRY` pass through unchanged.
+ * underlying tool. Side-effect tools and any tool not in the cacheable-tool
+ * registry pass through unchanged.
  *
- * Hooked into the runtime via `wrapActionsWithCache(actions, cache)` which
- * the eliza loader calls after collecting plugin actions and before handing
- * them to `AgentRuntime`. Per-tool TTL overrides come from the `tools.cache`
- * config block (see `zod-schema.agent-runtime.ts`).
+ * `plugin-lifecycle.ts` calls `wrapActionWithCache(action, cache, cfg)` per
+ * action after building the cache from config. Per-tool TTL overrides come
+ * from the `tools.cache` config block (see `zod-schema.agent-runtime.ts`).
  */
 
 import type {
@@ -20,7 +19,6 @@ import type {
   HandlerOptions,
 } from "@elizaos/core";
 import {
-  CACHEABLE_TOOL_REGISTRY,
   type CacheableToolDescriptor,
   defaultPrivacyRedactor,
   isCacheable,
@@ -33,6 +31,8 @@ interface PerToolOverride {
   ttlMinutes?: number;
   version?: string;
 }
+
+type CachedActionResult = ActionResult & { [key: string]: ToolOutput };
 
 export interface ToolCacheConfig {
   enabled?: boolean;
@@ -79,6 +79,42 @@ function extractArgs(options: unknown): Record<string, unknown> {
   return {};
 }
 
+function isToolOutput(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): value is ToolOutput {
+  if (
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (!value || typeof value !== "object") return false;
+
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.every((entry) => isToolOutput(entry, seen));
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+
+  return Object.values(value).every((entry) => isToolOutput(entry, seen));
+}
+
+function isCachedActionResult(value: ToolOutput): value is CachedActionResult {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof value.success === "boolean"
+  );
+}
+
 /**
  * Wrap an Action's handler so cacheable tools route through the cache.
  * Non-cacheable actions are returned unchanged.
@@ -101,24 +137,14 @@ export function wrapActionWithCache(
   ) => {
     const args = extractArgs(options);
     const hit = cache.get(descriptor, args);
-    if (hit) return hit.output as unknown as ActionResult;
+    if (hit && isCachedActionResult(hit.output)) return hit.output;
 
     const result = await original(runtime, message, state, options, ...rest);
-    if (result !== undefined) {
-      cache.set(descriptor, args, result as unknown as ToolOutput);
+    if (result !== undefined && isToolOutput(result)) {
+      cache.set(descriptor, args, result);
     }
     return result;
   };
 
   return { ...action, handler: wrapped };
 }
-
-export function wrapActionsWithCache(
-  actions: Action[],
-  cache: ToolCallCache,
-  cfg: ToolCacheConfig | undefined,
-): Action[] {
-  return actions.map((a) => wrapActionWithCache(a, cache, cfg));
-}
-
-export { CACHEABLE_TOOL_REGISTRY };

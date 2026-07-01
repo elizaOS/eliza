@@ -1,132 +1,36 @@
-import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { type ComponentType, createElement, useEffect, useState } from "react";
+import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
+import { Glasses } from "lucide-react";
+import { WearablesSettingsSection } from "./components/WearablesSettingsSection.tsx";
 
-type DeferredViewComponent = ComponentType<Record<string, unknown>>;
-type DeferredViewModule = { default: DeferredViewComponent };
-type DeferredViewLoader = () => Promise<DeferredViewModule>;
-
-function loadFacewearView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearView.tsx").then((module) => ({
-    default: module.FacewearView as DeferredViewComponent,
-  }));
-}
-
-function loadFacewearTuiView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearView.tsx").then((module) => ({
-    default: module.FacewearTuiView as DeferredViewComponent,
-  }));
-}
-
-function loadSmartglassesView(): Promise<DeferredViewModule> {
-  return import("./ui/SmartglassesView.tsx").then((module) => ({
-    default: module.SmartglassesView as DeferredViewComponent,
-  }));
-}
-
-function loadSmartglassesTuiView(): Promise<DeferredViewModule> {
-  return import("./ui/FacewearView.tsx").then((module) => ({
-    default: module.SmartglassesTuiView as DeferredViewComponent,
-  }));
-}
-
-function deferredComponent(loader: DeferredViewLoader): DeferredViewComponent {
-  let cached: DeferredViewComponent | null = null;
-  let pending: Promise<DeferredViewComponent> | null = null;
-
-  function load(): Promise<DeferredViewComponent> {
-    if (cached) return Promise.resolve(cached);
-    pending ??= loader().then(
-      (module) => {
-        cached = module.default;
-        return cached;
-      },
-      (error) => {
-        pending = null;
-        throw error;
-      },
-    );
-    return pending;
-  }
-
-  return function DeferredComponent(props: Record<string, unknown>) {
-    const [Component, setComponent] = useState<DeferredViewComponent | null>(
-      cached,
-    );
-
-    useEffect(() => {
-      if (Component) return;
-      let cancelled = false;
-      void load()
-        .then((nextComponent) => {
-          if (!cancelled) setComponent(() => nextComponent);
-        })
-        .catch(() => {
-          if (!cancelled) setComponent(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [Component]);
-
-    return Component ? createElement(Component, props) : null;
-  };
-}
-
-export const FacewearView = deferredComponent(loadFacewearView);
-export const FacewearTuiView = deferredComponent(loadFacewearTuiView);
-export const SmartglassesView = deferredComponent(loadSmartglassesView);
-export const SmartglassesTuiView = deferredComponent(loadSmartglassesTuiView);
-
-registerAppShellPage({
-  id: "facewear.tui",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Facewear TUI",
-  icon: "Terminal",
-  path: "/apps/facewear/tui",
-  order: 80.1,
-  group: "hardware",
-  loader: loadFacewearTuiView,
-});
-
-registerAppShellPage({
-  id: "facewear",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Facewear",
-  icon: "Glasses",
-  path: "/apps/facewear",
+// Wearable hardware (XR headsets + Even Realities smartglasses) is configuration,
+// so it lives under Settings → Wearables instead of as two standalone launcher
+// views. One settings section hosts both as tabs. The agent's XR/TUI view
+// surfaces and FACEWEAR_*/SMARTGLASSES_*/XR_* actions are unaffected.
+registerSettingsSection({
+  id: "wearables",
+  label: "settings.section.wearables",
+  defaultLabel: "Wearables",
+  icon: Glasses,
+  tone: "neutral",
+  hue: "slate",
+  titleKey: "settings.section.wearables.title",
+  defaultTitle: "Wearables",
+  group: "system",
   order: 80,
-  group: "hardware",
-  loader: loadFacewearView,
+  viewKind: "preview",
+  Component: WearablesSettingsSection,
 });
 
-registerAppShellPage({
-  id: "smartglasses.tui",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Smartglasses TUI",
-  icon: "Terminal",
-  path: "/apps/smartglasses/tui",
-  order: 81.1,
-  group: "hardware",
-  loader: loadSmartglassesTuiView,
-});
-
-registerAppShellPage({
-  id: "smartglasses",
-  pluginId: "@elizaos/plugin-facewear",
-  label: "Smartglasses",
-  icon: "Glasses",
-  path: "/apps/smartglasses",
-  order: 81,
-  group: "hardware",
-  loader: loadSmartglassesView,
-});
-
-// In a terminal host (the Node agent, no DOM), register the smartglasses view
-// so it renders inline in the terminal as the unified SmartglassesSpatialView.
+// In a terminal host (the Node agent, no DOM), register the facewear and
+// smartglasses views so they render inline in the terminal as the unified
+// FacewearSpatialView / SmartglassesSpatialView.
 // Lazy + DOM-guarded so the terminal engine stays out of browser/mobile bundles.
 if (typeof window === "undefined") {
   void import("./register-terminal-view.tsx")
-    .then((m) => m.registerSmartglassesTerminalView())
+    .then((m) => {
+      m.registerFacewearTerminalView();
+      m.registerSmartglassesTerminalView();
+    })
     .catch(() => {
       // Terminal rendering is best-effort; never block plugin load.
     });

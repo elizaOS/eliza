@@ -7,27 +7,32 @@ import {
 } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  type BrowserBridgeCompanionStatus,
-  type BrowserBridgePageContext,
-  type BrowserBridgePermissionState,
-  type BrowserBridgeSettings,
-  type BrowserBridgeTabSummary,
-  browserBridgeSchema,
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgePermissionState,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser";
-import { inboxDbSchema } from "@elizaos/plugin-inbox";
+// Pull runtime values from the carved plugins' server-safe DB subpaths rather
+// than their package barrels: the barrels re-export React views (→ @elizaos/ui),
+// which a DB repository must never drag into server or unit-test graphs.
+import { browserBridgeSchema } from "@elizaos/plugin-browser/schema";
 import type {
   LifeOpsScheduleMergedState,
   LifeOpsScheduleObservation,
 } from "@elizaos/plugin-elizacloud/cloud/lifeops-schedule-sync-contracts";
-import {
-  FinancesRepository,
-  type LifeOpsPaymentSource,
-  type LifeOpsPaymentTransaction,
-  type LifeOpsSubscriptionAudit,
-  type LifeOpsSubscriptionCancellation,
-  type LifeOpsSubscriptionCandidate,
-} from "@elizaos/plugin-finances";
+import { FinancesRepository } from "@elizaos/plugin-finances/db/finances-repository";
+import type {
+  LifeOpsPaymentSource,
+  LifeOpsPaymentTransaction,
+} from "@elizaos/plugin-finances/payment-types";
+import type {
+  LifeOpsSubscriptionAudit,
+  LifeOpsSubscriptionCancellation,
+  LifeOpsSubscriptionCandidate,
+} from "@elizaos/plugin-finances/subscriptions-types";
+import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -47,8 +52,6 @@ import {
   type LifeOpsCircadianState,
   type LifeOpsConnectorGrant,
   type LifeOpsConnectorSide,
-  type LifeOpsCrossChannelDraft,
-  type LifeOpsFollowUp,
   type LifeOpsGmailMessageSummary,
   type LifeOpsGmailSpamReviewItem,
   type LifeOpsGmailSpamReviewStatus,
@@ -62,14 +65,12 @@ import {
   type LifeOpsHealthWorkout,
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
-  type LifeOpsMessageChannel,
   type LifeOpsNegotiationState,
   type LifeOpsOccurrence,
   type LifeOpsOccurrenceView,
   type LifeOpsPersonalBaseline,
   type LifeOpsProposalProposer,
   type LifeOpsProposalStatus,
-  type LifeOpsRelationship,
   type LifeOpsRelationshipInteraction,
   type LifeOpsReminderAttempt,
   type LifeOpsReminderPlan,
@@ -192,22 +193,24 @@ export interface LifeOpsScheduleObservationRecord
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
 
-// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`,
-// re-exported here so existing app-lifeops importers keep resolving via the
-// repository module.
-export type {
-  LifeOpsPersistedSleepEpisodeSource,
-  LifeOpsSleepEpisodeRecord,
-} from "@elizaos/plugin-health";
 export {
   createLifeOpsHealthMetricSample,
   createLifeOpsHealthSleepEpisode,
   createLifeOpsHealthSyncState,
   createLifeOpsHealthWorkout,
-  createLifeOpsSleepEpisode,
-} from "@elizaos/plugin-health";
+} from "@elizaos/plugin-health/health-bridge/health-records";
+// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`,
+// re-exported here so existing app-lifeops importers keep resolving via the
+// repository module. Sourced from the leaf modules (not the package barrel)
+// because Vite's dep-optimizer scans even these type-only barrel specifiers and
+// chokes on the dist-less @elizaos/plugin-health entry in the keyless lane.
+export type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health/sleep/sleep-episode-types";
+export { createLifeOpsSleepEpisode } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 
-import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health";
+import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health/sleep/sleep-episode-types";
 
 export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   cachedAt: string;
@@ -438,62 +441,6 @@ function parseChannelPolicy(
     requireConfirmationForActions: toBoolean(
       row.require_confirmation_for_actions,
     ),
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parseRelationship(row: Record<string, unknown>): LifeOpsRelationship {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    name: toText(row.name),
-    primaryChannel: toText(row.primary_channel) as LifeOpsMessageChannel,
-    primaryHandle: toText(row.primary_handle),
-    email: row.email ? toText(row.email) : null,
-    phone: row.phone ? toText(row.phone) : null,
-    notes: toText(row.notes, ""),
-    tags: parseJsonArray(row.tags_json) as string[],
-    relationshipType: toText(row.relationship_type),
-    lastContactedAt: row.last_contacted_at
-      ? toText(row.last_contacted_at)
-      : null,
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parseRelationshipInteraction(
-  row: Record<string, unknown>,
-): LifeOpsRelationshipInteraction {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    relationshipId: toText(row.relationship_id),
-    channel: toText(row.channel) as LifeOpsMessageChannel,
-    direction: toText(row.direction) as "inbound" | "outbound",
-    summary: toText(row.summary),
-    occurredAt: toText(row.occurred_at),
-    metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-  };
-}
-
-function parseFollowUp(row: Record<string, unknown>): LifeOpsFollowUp {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    relationshipId: toText(row.relationship_id),
-    dueAt: toText(row.due_at),
-    reason: toText(row.reason),
-    status: toText(row.status) as LifeOpsFollowUp["status"],
-    priority: toNumber(row.priority, 3),
-    draft: row.draft_json
-      ? parseJsonValue<LifeOpsCrossChannelDraft | null>(row.draft_json, null)
-      : null,
-    completedAt: row.completed_at ? toText(row.completed_at) : null,
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
@@ -2357,7 +2304,9 @@ export class LifeOpsRepository {
    * factories resolve the per-agent stores from the registered
    * `KnowledgeGraphService` rather than constructing them directly.
    */
-  private knowledgeGraph(): ReturnType<typeof resolveKnowledgeGraphService> {
+  private knowledgeGraph(): NonNullable<
+    ReturnType<typeof resolveKnowledgeGraphService>
+  > {
     const service = resolveKnowledgeGraphService(this.runtime);
     if (!service) {
       throw new Error(
@@ -6016,84 +5965,10 @@ export class LifeOpsRepository {
   }
 
   // -----------------------------------------------------------------------
-  // Relationships, interactions & follow-ups
+  // Relationship interactions (per-edge audit log; keyed by graph entityId).
+  // Contacts themselves live in the runtime knowledge graph
+  // (EntityStore / RelationshipStore) — there is no life_relationships table.
   // -----------------------------------------------------------------------
-
-  async upsertRelationship(rel: LifeOpsRelationship): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_relationships (
-         id, agent_id, name, primary_channel, primary_handle, email, phone,
-         notes, tags_json, relationship_type, last_contacted_at, metadata_json,
-         created_at, updated_at
-       ) VALUES (
-         ${sqlQuote(rel.id)},
-         ${sqlQuote(rel.agentId)},
-         ${sqlQuote(rel.name)},
-         ${sqlQuote(rel.primaryChannel)},
-         ${sqlQuote(rel.primaryHandle)},
-         ${sqlText(rel.email)},
-         ${sqlText(rel.phone)},
-         ${sqlQuote(rel.notes)},
-         ${sqlJson(rel.tags)},
-         ${sqlQuote(rel.relationshipType)},
-         ${sqlText(rel.lastContactedAt)},
-         ${sqlJson(rel.metadata)},
-         ${sqlQuote(rel.createdAt)},
-         ${sqlQuote(rel.updatedAt)}
-       )
-       ON CONFLICT (agent_id, primary_channel, primary_handle) DO UPDATE SET
-         id = EXCLUDED.id,
-         name = EXCLUDED.name,
-         primary_channel = EXCLUDED.primary_channel,
-         primary_handle = EXCLUDED.primary_handle,
-         email = EXCLUDED.email,
-         phone = EXCLUDED.phone,
-         notes = EXCLUDED.notes,
-         tags_json = EXCLUDED.tags_json,
-         relationship_type = EXCLUDED.relationship_type,
-         last_contacted_at = EXCLUDED.last_contacted_at,
-         metadata_json = EXCLUDED.metadata_json,
-         updated_at = EXCLUDED.updated_at`,
-    );
-  }
-
-  async getRelationship(
-    agentId: string,
-    id: string,
-  ): Promise<LifeOpsRelationship | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_relationships
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseRelationship(row) : null;
-  }
-
-  async listRelationships(
-    agentId: string,
-    opts?: { primaryChannel?: string; limit?: number },
-  ): Promise<LifeOpsRelationship[]> {
-    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
-    if (opts?.primaryChannel) {
-      clauses.push(`primary_channel = ${sqlQuote(opts.primaryChannel)}`);
-    }
-    const limitClause =
-      typeof opts?.limit === "number" ? `LIMIT ${sqlInteger(opts.limit)}` : "";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_relationships
-        WHERE ${clauses.join(" AND ")}
-        ORDER BY name ASC
-        ${limitClause}`,
-    );
-    return rows.map(parseRelationship);
-  }
 
   async logRelationshipInteraction(
     interaction: LifeOpsRelationshipInteraction,
@@ -6114,151 +5989,6 @@ export class LifeOpsRepository {
          ${sqlJson(interaction.metadata)},
          ${sqlQuote(interaction.createdAt)}
        )`,
-    );
-  }
-
-  async listInteractions(
-    agentId: string,
-    relationshipId: string,
-    opts?: { limit?: number },
-  ): Promise<LifeOpsRelationshipInteraction[]> {
-    const limitClause =
-      typeof opts?.limit === "number" ? `LIMIT ${sqlInteger(opts.limit)}` : "";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_relationship_interactions
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND relationship_id = ${sqlQuote(relationshipId)}
-        ORDER BY occurred_at DESC
-        ${limitClause}`,
-    );
-    return rows.map(parseRelationshipInteraction);
-  }
-
-  async updateRelationshipLastContactedAt(
-    agentId: string,
-    relationshipId: string,
-    timestamp: string,
-  ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_relationships
-          SET last_contacted_at = ${sqlQuote(timestamp)},
-              updated_at = ${sqlQuote(timestamp)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(relationshipId)}
-          AND (last_contacted_at IS NULL OR last_contacted_at < ${sqlQuote(timestamp)})`,
-    );
-  }
-
-  async upsertFollowUp(fu: LifeOpsFollowUp): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_follow_ups (
-         id, agent_id, relationship_id, due_at, reason, status, priority,
-         draft_json, completed_at, metadata_json, created_at, updated_at
-       ) VALUES (
-         ${sqlQuote(fu.id)},
-         ${sqlQuote(fu.agentId)},
-         ${sqlQuote(fu.relationshipId)},
-         ${sqlQuote(fu.dueAt)},
-         ${sqlQuote(fu.reason)},
-         ${sqlQuote(fu.status)},
-         ${sqlInteger(fu.priority)},
-         ${fu.draft ? sqlJson(fu.draft) : "NULL"},
-         ${sqlText(fu.completedAt)},
-         ${sqlJson(fu.metadata)},
-         ${sqlQuote(fu.createdAt)},
-         ${sqlQuote(fu.updatedAt)}
-       )
-       ON CONFLICT (id) DO UPDATE SET
-         relationship_id = EXCLUDED.relationship_id,
-         due_at = EXCLUDED.due_at,
-         reason = EXCLUDED.reason,
-         status = EXCLUDED.status,
-         priority = EXCLUDED.priority,
-         draft_json = EXCLUDED.draft_json,
-         completed_at = EXCLUDED.completed_at,
-         metadata_json = EXCLUDED.metadata_json,
-         updated_at = EXCLUDED.updated_at`,
-    );
-  }
-
-  async getFollowUp(
-    agentId: string,
-    id: string,
-  ): Promise<LifeOpsFollowUp | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_follow_ups
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
-    const row = rows[0];
-    return row ? parseFollowUp(row) : null;
-  }
-
-  async listFollowUps(
-    agentId: string,
-    opts?: { status?: string; dueOnOrBefore?: string; limit?: number },
-  ): Promise<LifeOpsFollowUp[]> {
-    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
-    if (opts?.status) {
-      clauses.push(`status = ${sqlQuote(opts.status)}`);
-    }
-    if (opts?.dueOnOrBefore) {
-      clauses.push(`due_at <= ${sqlQuote(opts.dueOnOrBefore)}`);
-    }
-    const limitClause =
-      typeof opts?.limit === "number" ? `LIMIT ${sqlInteger(opts.limit)}` : "";
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_follow_ups
-        WHERE ${clauses.join(" AND ")}
-        ORDER BY due_at ASC
-        ${limitClause}`,
-    );
-    return rows.map(parseFollowUp);
-  }
-
-  async updateFollowUpStatus(
-    agentId: string,
-    id: string,
-    status: string,
-    completedAt?: string,
-  ): Promise<void> {
-    const now = isoNow();
-    const completedClause = completedAt
-      ? `, completed_at = ${sqlQuote(completedAt)}`
-      : "";
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_follow_ups
-          SET status = ${sqlQuote(status)},
-              updated_at = ${sqlQuote(now)}
-              ${completedClause}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}`,
-    );
-  }
-
-  async updateFollowUpDueAt(
-    agentId: string,
-    id: string,
-    dueAt: string,
-  ): Promise<void> {
-    const now = isoNow();
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_follow_ups
-          SET due_at = ${sqlQuote(dueAt)},
-              updated_at = ${sqlQuote(now)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}`,
     );
   }
 

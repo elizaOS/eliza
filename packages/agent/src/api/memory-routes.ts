@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {
   type AgentRuntime,
+  BM25,
   ChannelType,
   composePrompt,
   createMessageMemory,
@@ -21,10 +22,10 @@ import {
   getDocumentsService,
 } from "./documents-service-loader.ts";
 
-const HASH_MEMORY_SOURCE = "hash_memory";
+export const HASH_MEMORY_SOURCE = "hash_memory";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MEMORY_SEARCH_SCAN_LIMIT = 500;
+const MEMORY_SEARCH_SCAN_LIMIT = 2_000;
 const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
 const QUICK_CONTEXT_DEFAULT_LIMIT = 8;
@@ -101,26 +102,57 @@ async function ensureMemoryConnection(
   return { roomId, entityId };
 }
 
-function scoreMemoryText(text: string, query: string): number {
+/**
+ * Rank a candidate set against `query` with Okapi BM25 + Porter2 stemming,
+ * returning each item with a [0,1] max-normalized relevance score in input order.
+ *
+ * Corpus-aware IDF down-weights filler/stop words and TF saturation + length
+ * normalization rank genuinely-relevant text first; the previous `scoreMemoryText`
+ * was a pairwise substring count with no IDF, so a doc that merely contained a
+ * common query word ("the") tied with a real hit. We use the `search.ts` BM25
+ * (not the documents `bm25Scores`) specifically for its **Porter2 stemming** —
+ * short typed chat queries are usually base forms ("configure") while stored
+ * messages carry inflected forms ("configuring"/"configured"/"configuration"),
+ * and stemming is the standard keyword answer to that mismatch. It also brings
+ * stop-word removal and proper Unicode/accent/CJK normalization (the documents
+ * tokenizer strips non-ASCII, silently dropping accented + non-Latin text).
+ */
+export function rankByKeyword<T>(
+  query: string,
+  items: T[],
+  getText: (item: T) => string,
+): Array<{ item: T; score: number }> {
+  if (items.length === 0) return [];
+  // Single `content` field per doc so only the text is indexed; items are
+  // tracked by array index (the BM25 result `index`).
+  const bm25 = new BM25(
+    items.map((item) => ({ content: getText(item) })),
+    { stemming: true },
+  );
+  const results = bm25.search(query, items.length);
+  if (results.length === 0) return items.map((item) => ({ item, score: 0 }));
+  const maxScore = results[0]?.score ?? 0;
+  const scoreByIndex = new Map(results.map((r) => [r.index, r.score]));
+  return items.map((item, i) => ({
+    item,
+    score: maxScore > 0 ? (scoreByIndex.get(i) ?? 0) / maxScore : 0,
+  }));
+}
+
+/**
+ * Boolean keyword match for *filtering* (not ranking): does the text contain the
+ * whole query or any query term (≥2 chars)? Used where the caller wants
+ * "messages matching this text", not a relevance ranking.
+ */
+export function matchesKeyword(text: string, query: string): boolean {
   const normalizedText = text.toLowerCase();
-  const normalizedQuery = query.toLowerCase();
-  if (!normalizedText || !normalizedQuery) return 0;
-
-  const terms = normalizedQuery
+  const normalizedQuery = query.toLowerCase().trim();
+  if (!normalizedText || !normalizedQuery) return false;
+  if (normalizedText.includes(normalizedQuery)) return true;
+  return normalizedQuery
     .split(/\s+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 2);
-
-  const containsWhole = normalizedText.includes(normalizedQuery) ? 1 : 0;
-  if (terms.length === 0) {
-    return containsWhole;
-  }
-
-  let termMatches = 0;
-  for (const term of terms) {
-    if (normalizedText.includes(term)) termMatches += 1;
-  }
-  return containsWhole + termMatches / terms.length;
+    .filter((term) => term.length >= 2)
+    .some((term) => normalizedText.includes(term));
 }
 
 async function searchMemoryNotes(
@@ -136,7 +168,8 @@ async function searchMemoryNotes(
     includeEmbedding: false, // only reads content.text
   });
 
-  const hits: MemorySearchHit[] = [];
+  // Gather hash-memory candidates first, then BM25-rank them as a corpus.
+  const candidates: Array<{ id: UUID; text: string; createdAt: number }> = [];
   for (const memory of memories) {
     const text = (
       memory.content as { text?: string } | undefined
@@ -144,15 +177,26 @@ async function searchMemoryNotes(
     if (!text) continue;
     const source = (memory.content as { source?: string } | undefined)?.source;
     if (source !== HASH_MEMORY_SOURCE) continue;
-    const score = scoreMemoryText(text, query);
-    if (score <= 0) continue;
-    hits.push({
-      id: memory.id ?? crypto.randomUUID(),
+    if (!memory.id || typeof memory.createdAt !== "number") continue;
+    candidates.push({
+      id: memory.id,
       text,
-      createdAt: memory.createdAt ?? 0,
-      score,
+      createdAt: memory.createdAt,
     });
   }
+
+  const hits: MemorySearchHit[] = rankByKeyword(
+    query,
+    candidates,
+    (c) => c.text,
+  )
+    .filter(({ score }) => score > 0)
+    .map(({ item, score }) => ({
+      id: item.id,
+      text: item.text,
+      createdAt: item.createdAt,
+      score,
+    }));
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
@@ -530,7 +574,7 @@ export async function handleMemoryRoutes(
     if (searchQuery) {
       filtered = allMemories.filter((m) => {
         const text = (m.content as { text?: string } | undefined)?.text ?? "";
-        return scoreMemoryText(text, searchQuery) > 0;
+        return matchesKeyword(text, searchQuery);
       });
     }
 

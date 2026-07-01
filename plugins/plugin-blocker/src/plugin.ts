@@ -47,6 +47,7 @@ export const blockerPlugin: Plugin = {
         "Website + app blocking schedule and active session controls",
       icon: "ShieldOff",
       path: "/focus",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FocusView",
       tags: ["focus", "blocker", "distraction-control"],

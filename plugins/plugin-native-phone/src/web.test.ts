@@ -92,7 +92,7 @@ describe("PhoneWeb fallback", () => {
       phone.saveCallTranscript({
         callId: "__proto__",
         transcript: "<script>alert(1)</script>",
-        summary: "{\"polluted\":true}",
+        summary: '{"polluted":true}',
       }),
     ).rejects.toThrow("Call transcripts are only available on Android.");
   });

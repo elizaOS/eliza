@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
+import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
 import { StatusBadge } from "../ui/status-badge";
@@ -32,7 +34,11 @@ function approvalStreamUrl(): string {
 }
 
 export function ComputerUseApprovalOverlay() {
-  const { setActionNotice, t } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const t = useAppSelector((s) => s.t);
+  const appShellRoutesSupported = supportsFullAppShellRoutes(
+    client.getBaseUrl(),
+  );
   const [snapshot, setSnapshot] =
     useState<ComputerUseApprovalSnapshot>(EMPTY_SNAPSHOT);
   const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
@@ -42,14 +48,22 @@ export function ComputerUseApprovalOverlay() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!appShellRoutesSupported) {
+      setSnapshot(EMPTY_SNAPSHOT);
+      return;
+    }
     try {
       setSnapshot(await client.getComputerUseApprovals());
     } catch {
       setSnapshot(EMPTY_SNAPSHOT);
     }
-  }, []);
+  }, [appShellRoutesSupported]);
 
   useEffect(() => {
+    if (!appShellRoutesSupported) {
+      setSnapshot(EMPTY_SNAPSHOT);
+      return undefined;
+    }
     let cancelled = false;
     let pollingTimer: number | null = null;
     let eventSource: EventSource | null = null;
@@ -74,8 +88,11 @@ export function ComputerUseApprovalOverlay() {
       pollingTimer = window.setInterval(pollRefresh, POLL_MS);
     };
 
-    try {
-      eventSource = new EventSource(approvalStreamUrl());
+    // On-device runtimes use the native IPC base, which EventSource cannot
+    // open; openEventSource returns null there so we fall straight through to
+    // polling instead of throwing a synchronous SecurityError.
+    eventSource = openEventSource(approvalStreamUrl());
+    if (eventSource) {
       eventSource.onmessage = (event) => {
         if (cancelled) {
           return;
@@ -101,8 +118,6 @@ export function ComputerUseApprovalOverlay() {
         eventSource = null;
         startPolling();
       };
-    } catch {
-      startPolling();
     }
 
     if (!eventSource) {
@@ -116,7 +131,7 @@ export function ComputerUseApprovalOverlay() {
       }
       eventSource?.close();
     };
-  }, [refresh]);
+  }, [appShellRoutesSupported, refresh]);
 
   // Defensive: the snapshot can be partially populated during reconnect/
   // recovery windows, so `pendingApprovals` may be momentarily undefined.
@@ -291,7 +306,9 @@ export function ComputerUseApprovalOverlay() {
                       {approval.command}
                     </div>
                     <div className="mt-2 text-xs text-muted">
-                      {new Date(approval.requestedAt).toLocaleTimeString()}
+                      {new Date(approval.requestedAt).toLocaleTimeString(
+                        "en-US",
+                      )}
                     </div>
                     <pre className="mt-4 max-h-56 overflow-auto rounded-sm bg-bg/60 p-3 text-xs leading-relaxed text-txt">
                       {approval.parametersText || "{}"}

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision a Vast.ai GPU instance, sync the training tree, and run a
 # full-parameter SFT (APOLLO), DPO warmup, or GRPO RL pipeline on a
-# Qwen3.5/Qwen3.6 model.
+# Gemma 4 model.
 #
 # Pipeline selection (--pipeline sft|dpo|grpo, default sft):
 #   sft   — run train_local.py with APOLLO + Liger + FSDP (the historical
@@ -19,9 +19,9 @@
 #
 # Default GPU target is auto-selected from REGISTRY_KEY (override via
 # VAST_GPU_TARGET):
-#   qwen3.5-2b  → blackwell6000-1x   (96 GB; 15.5 GB budget = 16% util)
-#   qwen3.5-9b  → blackwell6000-1x   (96 GB; 80 GB budget   = 83% util)
-#   qwen3.6-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
+#   gemma4-e2b  → blackwell6000-1x   (96 GB; 15.5 GB budget = 16% util)
+#   gemma4-12b  → blackwell6000-1x   (96 GB; 80 GB budget   = 83% util)
+#   gemma4-31b → b200-2x            (~366 GB; 190 GB budget = 52% util)
 #
 # Other targets (use VAST_GPU_TARGET=...):
 #   blackwell6000-2x — 2× RTX PRO 6000 Blackwell, 192 GB total. Safe for
@@ -37,16 +37,16 @@
 # computed via scripts/training/memory_calc.py time mode):
 #
 #                                wall    cost
-#   qwen3.5-2b:
+#   gemma4-e2b:
 #     1× Blackwell 6000 (96 GB)  ~31 h   ~$41    DEFAULT  (cheapest)
 #     1× H100 SXM      (80 GB)   ~11 h   ~$27    fastest cheap
 #     2× B200          (366 GB)   ~3 h   ~$19    overkill but fast
-#   qwen3.5-9b:
+#   gemma4-12b:
 #     1× Blackwell 6000 (96 GB) ~139 h  ~$186    DEFAULT  (cheapest)
 #     1× H100 SXM      (80 GB)   ~51 h  ~$121    nearly 3× faster; 80 GB tight
 #     1× H200 SXM     (141 GB)   ~51 h  ~$162    same wall, more headroom
 #     2× B200          (366 GB)  ~11 h   ~$84    fastest, also cheapish
-#   qwen3.6-27b:
+#   gemma4-31b:
 #     2× B200          (366 GB)  ~33 h  ~$253    DEFAULT (fast + safe)
 #     2× H200 SXM     (282 GB)   ~76 h  ~$485    2× as slow, 2× as expensive
 #     2× Blackwell 6000 (192 GB) ~208 h ~$558    cheapest $/hr, slowest;
@@ -59,10 +59,10 @@
 #                                pass it through the env. ``vastai set
 #                                api-key`` also works (writes to
 #                                ~/.config/vastai/vast_api_key).
-#   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access
+#   HUGGING_FACE_HUB_TOKEN     # for gated Gemma access
 #
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3.6-27b
+#   REGISTRY_KEY               # default: gemma4-31b
 #   RUN_NAME                   # default: <registry-key>-apollo
 #   VAST_GPU_TARGET            # default: auto-picked from REGISTRY_KEY
 #   VAST_INSTANCE_LABEL        # default: eliza-train-vast-${REGISTRY_KEY//./-}
@@ -93,8 +93,7 @@
 #   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
-#   FSDP_WRAP_CLS              # default: Qwen3_5DecoderLayer for Qwen3.5 tiers,
-#                                Qwen3_6DecoderLayer for qwen3.6-27b
+#   FSDP_WRAP_CLS              # default: Gemma4DecoderLayer for all Gemma 4 tiers
 #   CONFIRM_TEARDOWN           # set to 1 to allow `teardown` to actually
 #                                destroy the instance (or pass --yes).
 #   FORCE_REPROVISION          # set to 1 to allow `provision` to spin up
@@ -119,7 +118,7 @@
 #   bash scripts/train_vast.sh quantize                         # remote: run QUANTIZE_AFTER list (SFT only)
 #   bash scripts/train_vast.sh bench                            # remote: base + fine-tuned bench
 #   bash scripts/train_vast.sh fetch                            # rsync checkpoints + benchmarks back
-#   bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1 [--bootstrap rsync|hf] [--pipeline sft|dpo|grpo] [--dry-run]
+#   bash scripts/train_vast.sh provision-and-train --registry-key gemma4-12b --epochs 1 [--bootstrap rsync|hf] [--pipeline sft|dpo|grpo] [--dry-run]
 #                                                               # provision + sync (or HF download) + run in one shot
 #   bash scripts/train_vast.sh bootstrap-from-hf [--data-repo elizaos/eliza-1-training] \
 #                                                [--pipeline-repo elizaos/eliza-1-training]
@@ -132,9 +131,9 @@
 #
 # Pipeline-specific examples (--pipeline / PIPELINE env defaults to sft):
 #   bash scripts/train_vast.sh --pipeline grpo provision-and-train \
-#       --registry-key qwen3.5-2b --dry-run
-#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/qwen3-5-9b-dpo/final \
-#       bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b
+#       --registry-key gemma4-e2b --dry-run
+#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/gemma4-12b-dpo/final \
+#       bash scripts/train_vast.sh provision-and-train --registry-key gemma4-12b
 #
 # Or `bash scripts/train_vast.sh full` for the whole flow.
 #
@@ -232,7 +231,7 @@ if [ -n "$_seen_registry_key" ]; then
 fi
 unset _seen_pipeline _seen_registry_key
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-gemma4-31b}"
 # PIPELINE selects which training stage the launcher drives end-to-end on the
 # remote box. Default = SFT (the historical behaviour); --pipeline dpo|grpo
 # overrides via the CLI pre-scan above or via the PIPELINE env var.
@@ -252,11 +251,11 @@ PIPELINE="${PIPELINE:-sft}"
 case "$PIPELINE" in
   sft|dpo)
     case "$REGISTRY_KEY" in
-      qwen3.5-2b|qwen3.5-9b)
+      gemma4-e2b|gemma4-12b)
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
-      qwen3.6-27b)
+      gemma4-31b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -268,15 +267,15 @@ case "$PIPELINE" in
     ;;
   grpo)
     case "$REGISTRY_KEY" in
-      qwen3.5-2b)
+      gemma4-e2b)
         DEFAULT_GPU_TARGET="h200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
-      qwen3.5-9b)
+      gemma4-12b)
         DEFAULT_GPU_TARGET="h200-4x"
         DEFAULT_FSDP_WORLD_SIZE=4
         ;;
-      qwen3.6-27b)
+      gemma4-31b)
         DEFAULT_GPU_TARGET="h200-8x"
         DEFAULT_FSDP_WORLD_SIZE=8
         ;;
@@ -304,10 +303,8 @@ case "$VAST_GPU_TARGET" in
   *)    FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_FSDP_WORLD_SIZE}" ;;
 esac
 
-case "$REGISTRY_KEY" in
-  qwen3.6-27b) DEFAULT_FSDP_WRAP_CLS="Qwen3_6DecoderLayer" ;;
-  *)           DEFAULT_FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
-esac
+# All Gemma 4 tiers (E2B/E4B/12B/31B) share the single dense Gemma4DecoderLayer.
+DEFAULT_FSDP_WRAP_CLS="Gemma4DecoderLayer"
 FSDP_WRAP_CLS="${FSDP_WRAP_CLS:-$DEFAULT_FSDP_WRAP_CLS}"
 
 case "$PIPELINE" in
@@ -340,7 +337,7 @@ BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 # 100/bucket for 27B unless caller overrides.
 if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
   case "$REGISTRY_KEY" in
-    qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
+    gemma4-31b) BENCH_MAX_PER_BUCKET=100 ;;
     *)           BENCH_MAX_PER_BUCKET=200 ;;
   esac
 fi
@@ -626,7 +623,7 @@ sync_tree() {
   # don't ship every old run to the remote. If RESUME_FROM_CHECKPOINT is set,
   # ship ONLY that one checkpoint dir on top so HF Trainer can pick it up via
   # --resume-from-checkpoint. The path is interpreted RELATIVE to packages/training/
-  # (e.g. checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
+  # (e.g. checkpoints/eliza-1-2b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
   if [ -n "${RESUME_FROM_CHECKPOINT:-}" ]; then
     local _resume_local="$ROOT/$RESUME_FROM_CHECKPOINT"
     if [ ! -d "$_resume_local" ]; then
@@ -672,7 +669,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
+  if [ "$REGISTRY_KEY" = "gemma4-31b" ] \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
@@ -997,8 +994,8 @@ provision_and_train() {
         # against the same auto-pick table as the runtime default block.
         local _sft_default
         case "$REGISTRY_KEY" in
-          qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.6-27b)           _sft_default="b200-2x" ;;
+          gemma4-e2b|gemma4-12b) _sft_default="blackwell6000-1x" ;;
+          gemma4-31b)           _sft_default="b200-2x" ;;
           *)                     _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
@@ -1285,7 +1282,7 @@ Global flags (recognized at any position, also captured into PIPELINE env):
   --pipeline sft|dpo|grpo                      Default: sft. Selects training stage.
                                                grpo allocates h200-{2,4,8}x (or b200
                                                fallback) and runs train_grpo_verl.sh.
-  --registry-key K                             Override REGISTRY_KEY (e.g. qwen3.5-9b)
+  --registry-key K                             Override REGISTRY_KEY (e.g. gemma4-12b)
   --dry-run                                    Print the planned GPU SKU + remote
                                                command and exit (no Vast spend).
 

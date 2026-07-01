@@ -36,6 +36,13 @@ export {
 	loadAospVisionBackend,
 } from "./aosp-unavailable";
 export {
+	getVisionContextAugmenter,
+	registerVisionContextAugmenter,
+	type VisionAugmentResult,
+	type VisionContextAugmenter,
+	type VisionFusedContext,
+} from "./augmenter";
+export {
 	type CapacitorLlamaMtmdBinding,
 	type CapacitorLlamaMtmdHandle,
 	type CapacitorLlamaVisionBackendOptions,
@@ -119,7 +126,7 @@ export interface CreateVisionCapabilityRegistrationOptions {
 	 */
 	arbiterCache?: VisionEmbeddingCacheLike;
 	loader: VisionDescribeBackendLoader;
-	/** Default model family for the cache key. Defaults to `qwen3-vl`. */
+	/** Default model family for the cache key. Defaults to `gemma-vl`. */
 	modelFamily?: string;
 	estimatedMb?: number;
 }
@@ -138,7 +145,7 @@ export function createVisionCapabilityRegistration(
 	VisionDescribeResult
 > {
 	const capability: ArbiterCapability = "vision-describe";
-	const family = opts.modelFamily ?? "qwen3-vl";
+	const family = opts.modelFamily ?? "gemma-vl";
 	const cache = opts.arbiterCache;
 	const loader = opts.loader;
 	return {

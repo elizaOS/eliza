@@ -16,6 +16,7 @@ import {
 } from "./components/FeedSpatialView.tsx";
 
 const EMPTY: FeedSnapshot = {
+  hasSession: false,
   agentStatus: null,
   portfolio: null,
   goal: null,

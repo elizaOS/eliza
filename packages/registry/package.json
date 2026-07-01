@@ -11,7 +11,11 @@
     "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/registry"
   },
-  "keywords": ["elizaos", "registry", "plugins"],
+  "keywords": [
+    "elizaos",
+    "registry",
+    "plugins"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },
@@ -21,18 +25,32 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
-    }
+    },
+    "./first-party": {
+      "types": "./src/first-party/index.ts",
+      "import": "./src/first-party/index.ts",
+      "default": "./src/first-party/index.ts"
+    },
+    "./first-party/generated.json": "./src/first-party/generated.json",
+    "./first-party/curated-app-definitions.json": "./src/first-party/curated-app-definitions.json",
+    "./first-party/channel-plugin-map.json": "./src/first-party/channel-plugin-map.json",
+    "./first-party/provider-plugin-map.json": "./src/first-party/provider-plugin-map.json"
   },
   "scripts": {
     "validate": "bun run src/validate-cli.ts",
     "generate": "bun run src/generate.ts",
-    "build": "bun run src/generate.ts",
+    "generate:first-party": "bun run src/first-party/generate.ts",
+    "generate:first-party:check": "bun run src/first-party/generate.ts --check",
+    "build": "bun run src/generate.ts && bun run src/first-party/generate.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"

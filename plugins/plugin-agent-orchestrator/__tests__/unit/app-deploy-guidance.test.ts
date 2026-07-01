@@ -3,6 +3,7 @@ import {
   augmentTaskWithDeployGuidance,
   buildAppDeployGuidance,
   isAppBuildTask,
+  isMonetizedAppTask,
 } from "../../src/services/app-deploy-guidance.js";
 
 describe("app-deploy-guidance", () => {
@@ -24,6 +25,73 @@ describe("app-deploy-guidance", () => {
       expect(isAppBuildTask("")).toBe(false);
       expect(isAppBuildTask(undefined)).toBe(false);
       expect(isAppBuildTask(null)).toBe(false);
+    });
+  });
+
+  describe("isMonetizedAppTask", () => {
+    it("matches money-earning app builds", () => {
+      expect(isMonetizedAppTask("build a monetized web app")).toBe(true);
+      expect(
+        isMonetizedAppTask("an app that charges $2 per use with a markup"),
+      ).toBe(true);
+      expect(isMonetizedAppTask("a paid app with premium tiers")).toBe(true);
+    });
+    it("does NOT match a plain static/fun app", () => {
+      expect(isMonetizedAppTask("build me a magic 8-ball web app")).toBe(false);
+      expect(isMonetizedAppTask("a quick countdown timer page")).toBe(false);
+      expect(isMonetizedAppTask("")).toBe(false);
+    });
+  });
+
+  describe("agent-home publish note (structural, always attached)", () => {
+    const cfg = {
+      target: "agent-home" as const,
+      agentHomeAppsDir: "/data/apps",
+      agentHomeBaseUrl: "https://example.test",
+    };
+    it("attaches the self-gating publish note with both CREATE and EDIT paths", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "build a magic 8-ball web app",
+        cfg,
+      );
+      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("To CREATE a new app");
+      // The whole point of this PR: an existing deployed app can be edited in
+      // place instead of being re-created under a fresh slug.
+      expect(out).toContain("To EDIT an existing app");
+      expect(out).toContain("/data/apps/<slug>/");
+      expect(out).toContain("https://example.test/apps/<slug>/");
+      expect(out).toContain(
+        "If your task is not a web app, ignore this section",
+      );
+    });
+    it("routes monetization through the build-monetized-app skill, not an edad/cloud.json branch", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "build a monetized web app that charges $3 per use",
+        cfg,
+      );
+      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("also register it with Eliza Cloud");
+      expect(out).toContain("build-monetized-app");
+      // The old monetized-vs-static branching (edad template, cloud.json,
+      // "Do NOT use Eliza Cloud for this one") is gone — the note is now a
+      // single structural capability description the model applies by judgment.
+      expect(out).not.toContain("App Deployment (Eliza Cloud)");
+      expect(out).not.toContain("packages/examples/cloud/edad");
+      expect(out).not.toContain("cloud.json");
+      expect(out).not.toContain("Do NOT use Eliza Cloud for this one");
+    });
+    it("is attached structurally, even to a task the old keyword regex would not match as an app build", () => {
+      // "add a dark mode toggle and redeploy it" never matched isAppBuildTask's
+      // build-verb pattern, so the agent previously got no apps-dir context and
+      // could not find the deployed app. The note is now always present.
+      const out = augmentTaskWithDeployGuidance(
+        "add a dark mode toggle to the coinflip app and redeploy it",
+        cfg,
+      );
+      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("Otherwise do not involve Eliza Cloud");
+      expect(out).not.toContain("App Deployment (Eliza Cloud)");
     });
   });
 
@@ -60,16 +128,35 @@ describe("app-deploy-guidance", () => {
         agentHomeAppsDir: "/data/apps",
         agentHomeBaseUrl: "https://example.test",
       });
-      expect(out).toContain("App Deployment (agent-home)");
+      expect(out).toContain("Publishing web apps (agent-home)");
       expect(out).toContain("/data/apps/<slug>/");
       expect(out).toContain("https://example.test/apps/<slug>/");
-      // The Cloud contract header must not appear (the agent-home block only
-      // references Cloud to say "do NOT use it for this one").
+      // The Cloud contract header must not appear — the agent-home note only
+      // references Cloud conditionally for the monetized case.
       expect(out).not.toContain("App Deployment (Eliza Cloud)");
     });
   });
 
   describe("buildAppDeployGuidance", () => {
+    it("a MONETIZED Eliza-Cloud build starts from the edad template (no from-scratch)", () => {
+      const out = buildAppDeployGuidance(
+        { target: "eliza-cloud" },
+        "build a monetized app that charges $2 per use",
+      );
+      expect(out).toContain("packages/examples/cloud/edad");
+      expect(out).toContain("START FROM THE TEMPLATE");
+      // forwards to the org-balance endpoint, not the stranded per-app pool
+      expect(out).toContain("/api/v1/messages");
+      expect(out).not.toContain("/api/v1/apps/<appId>/chat");
+    });
+    it("a NON-monetized build keeps the generic Cloud contract (no edad)", () => {
+      const out = buildAppDeployGuidance(
+        { target: "eliza-cloud" },
+        "build a website about cats",
+      );
+      expect(out).toContain("App Deployment (Eliza Cloud)");
+      expect(out).not.toContain("packages/examples/cloud/edad");
+    });
     it("defaults to Eliza Cloud for an unspecified/empty config", () => {
       expect(buildAppDeployGuidance({ target: "eliza-cloud" })).toContain(
         "Eliza Cloud",

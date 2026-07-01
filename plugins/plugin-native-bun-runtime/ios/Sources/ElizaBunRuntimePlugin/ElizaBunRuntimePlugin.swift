@@ -459,7 +459,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             "kokoroGgufVoice": describeFile(bundle.appendingPathComponent("tts/kokoro/voices/af_bella.bin")),
             "legacyOmniVoiceBase": describeFile(bundle.appendingPathComponent("tts/omnivoice-base-Q4_K_M.gguf")),
             "legacyOmniVoiceTokenizer": describeFile(bundle.appendingPathComponent("tts/omnivoice-tokenizer-Q4_K_M.gguf")),
-            "text": describeFile(bundle.appendingPathComponent("text/eliza-1-0_8b-128k.gguf")),
+            "text": describeFile(bundle.appendingPathComponent("text/eliza-1-2b-128k.gguf")),
             "asr": describeFile(bundle.appendingPathComponent("asr/eliza-1-asr.gguf")),
             "manifest": describeFile(bundle.appendingPathComponent("eliza-1.manifest.json")),
         ]

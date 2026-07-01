@@ -13,8 +13,6 @@ export default defineConfig({
       "**/*.real.test.*",
       "**/*.real.e2e.test.*",
     ],
-    // Skip tests gracefully when native dependencies are missing
-    passWithNoTests: true,
     // Give more time for tests that load heavy dependencies
     testTimeout: 30000,
   },

@@ -38,6 +38,17 @@ interface TrajectoryServiceLike {
   getTrajectoryDetail: (id: string) => Promise<Trajectory | null>;
 }
 
+function isTrajectoryService(
+  service: unknown,
+): service is TrajectoryServiceLike {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<TrajectoryServiceLike>;
+  return (
+    typeof candidate.listTrajectories === "function" &&
+    typeof candidate.getTrajectoryDetail === "function"
+  );
+}
+
 /**
  * Public training API service. Reads trajectories from the runtime
  * `trajectories` DB service and builds privacy-filtered export bundles via
@@ -65,15 +76,8 @@ export class TrainingService implements TrainingServiceWithRuntime {
 
   private trajectoryService(): TrajectoryServiceLike {
     const runtime = this.options.getRuntime();
-    const service = runtime?.getService("trajectories") as unknown as
-      | TrajectoryServiceLike
-      | null
-      | undefined;
-    if (
-      !service ||
-      typeof service.listTrajectories !== "function" ||
-      typeof service.getTrajectoryDetail !== "function"
-    ) {
+    const service = runtime?.getService("trajectories");
+    if (!isTrajectoryService(service)) {
       throw new NotImplementedError(
         "The trajectories service is not available on the current runtime.",
       );
@@ -109,14 +113,43 @@ export class TrainingService implements TrainingServiceWithRuntime {
     minLlmCallsPerTrajectory?: number;
   }): Promise<Record<string, unknown>> {
     const service = this.trajectoryService();
-    const listed = await service.listTrajectories({
-      limit: options.limit ?? 500,
-    });
-    const trajectories = (
-      await Promise.all(
-        listed.trajectories.map((item) => service.getTrajectoryDetail(item.id)),
+
+    // When no explicit limit is given, the dataset covers the FULL set: the
+    // reader caps each page at 500, so a single call silently dropped every
+    // trajectory beyond the most-recent 500. Page through with an offset loop
+    // until the set is drained. An explicit `options.limit` is honored as a
+    // hard cap (the prior behavior).
+    const PAGE_SIZE = 500;
+    const items: TrajectoryListResult["trajectories"] = [];
+    let offset = 0;
+    while (true) {
+      const remaining =
+        options.limit !== undefined ? options.limit - items.length : PAGE_SIZE;
+      if (options.limit !== undefined && remaining <= 0) break;
+      const pageLimit = Math.min(PAGE_SIZE, Math.max(1, remaining));
+      const page = await service.listTrajectories({ limit: pageLimit, offset });
+      items.push(...page.trajectories);
+      offset += page.trajectories.length;
+      if (
+        page.trajectories.length < pageLimit ||
+        page.trajectories.length === 0
       )
-    ).filter((t): t is Trajectory => t !== null);
+        break;
+    }
+
+    // Bound the detail fan-out: hydrate in chunks instead of one unbounded
+    // Promise.all over a potentially very large set.
+    const DETAIL_CHUNK = 100;
+    const hydrated: (Trajectory | null)[] = [];
+    for (let i = 0; i < items.length; i += DETAIL_CHUNK) {
+      const chunk = items.slice(i, i + DETAIL_CHUNK);
+      hydrated.push(
+        ...(await Promise.all(
+          chunk.map((item) => service.getTrajectoryDetail(item.id)),
+        )),
+      );
+    }
+    const trajectories = hydrated.filter((t): t is Trajectory => t !== null);
     const minCalls = options.minLlmCallsPerTrajectory ?? 0;
     const eligible =
       minCalls > 0
@@ -138,7 +171,8 @@ export class TrainingService implements TrainingServiceWithRuntime {
       source: {
         kind: "training-build-dataset",
         metadata: {
-          requestedLimit: options.limit ?? 500,
+          // null = no cap (full dataset); a number is the explicit hard cap.
+          requestedLimit: options.limit ?? null,
           minLlmCallsPerTrajectory: minCalls,
           consideredTrajectories: trajectories.length,
           eligibleTrajectories: eligible.length,

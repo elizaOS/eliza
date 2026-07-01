@@ -1,3 +1,4 @@
+import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import {
@@ -14,6 +15,7 @@ import {
   type LifeOpsXFeedItem,
   type LifeOpsXFeedType,
 } from "@elizaos/shared";
+import { computeOverdueFollowups } from "../../followup/followup-tracker.js";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,
@@ -1093,29 +1095,45 @@ async function collectContactSection(
   const agentId = String(runtime.agentId);
   const day = localDayWindow(now, timezone);
   try {
+    // Interactions are keyed by the graph entityId; resolve display names from
+    // the runtime knowledge graph (there is no flat life_relationships table).
     const rows = await executeRawSql(
       runtime,
-      `SELECT COALESCE(rel.name, interaction.relationship_id) AS name,
-              interaction.channel,
-              interaction.direction,
-              interaction.summary,
-              interaction.occurred_at
-         FROM app_lifeops.life_relationship_interactions interaction
-         LEFT JOIN app_lifeops.life_relationships rel
-           ON rel.agent_id = interaction.agent_id
-          AND rel.id = interaction.relationship_id
-        WHERE interaction.agent_id = ${sqlQuote(agentId)}
-          AND interaction.occurred_at >= ${sqlQuote(day.start.toISOString())}
-          AND interaction.occurred_at < ${sqlQuote(day.end.toISOString())}
-        ORDER BY interaction.occurred_at DESC
+      `SELECT relationship_id,
+              channel,
+              direction,
+              summary,
+              occurred_at
+         FROM app_lifeops.life_relationship_interactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurred_at >= ${sqlQuote(day.start.toISOString())}
+          AND occurred_at < ${sqlQuote(day.end.toISOString())}
+        ORDER BY occurred_at DESC
         LIMIT 30`,
     );
-    const uniqueNames = new Set(
-      rows.map((row) => toText(row.name)).filter(Boolean),
+    const entityStore = resolveKnowledgeGraphService(runtime)?.getEntityStore(
+      runtime.agentId,
     );
+    const nameByEntityId = new Map<string, string>();
+    if (entityStore) {
+      const entityIds = new Set(
+        rows.map((row) => toText(row.relationship_id)).filter(Boolean),
+      );
+      for (const entityId of entityIds) {
+        const entity = await entityStore.get(entityId);
+        if (entity) {
+          nameByEntityId.set(entityId, entity.preferredName);
+        }
+      }
+    }
+    const nameFor = (row: Record<string, unknown>): string => {
+      const entityId = toText(row.relationship_id);
+      return nameByEntityId.get(entityId) || entityId;
+    };
+    const uniqueNames = new Set(rows.map(nameFor).filter(Boolean));
     const items = sortBriefingItems(
       rows.map((row) => ({
-        title: `${toText(row.name) || "Unknown"} (${
+        title: `${nameFor(row) || "Unknown"} (${
           toText(row.channel) || "unknown"
         })`,
         detail: clip(toText(row.summary) || toText(row.direction)),
@@ -1148,71 +1166,32 @@ async function collectContactSection(
 async function collectPromiseSection(
   runtime: IAgentRuntime,
   now: Date,
-  timezone: string,
 ): Promise<CheckinBriefingSection> {
-  const agentId = String(runtime.agentId);
-  const day = localDayWindow(now, timezone);
-  const tomorrowIso = day.end.toISOString();
   try {
-    const rows = await executeRawSql(
-      runtime,
-      `SELECT followup.reason,
-              followup.status,
-              followup.priority,
-              followup.due_at,
-              followup.completed_at,
-              followup.updated_at,
-              COALESCE(rel.name, followup.relationship_id) AS name
-         FROM app_lifeops.life_follow_ups followup
-         LEFT JOIN app_lifeops.life_relationships rel
-           ON rel.agent_id = followup.agent_id
-          AND rel.id = followup.relationship_id
-        WHERE followup.agent_id = ${sqlQuote(agentId)}
-          AND (
-            followup.status = 'pending'
-            OR followup.due_at < ${sqlQuote(tomorrowIso)}
-            OR followup.updated_at >= ${sqlQuote(day.start.toISOString())}
-          )
-        ORDER BY
-          CASE followup.status WHEN 'pending' THEN 0 ELSE 1 END,
-          followup.priority ASC,
-          followup.due_at ASC
-        LIMIT 30`,
-    );
-    const pendingCount = rows.filter(
-      (row) => toText(row.status) === "pending",
-    ).length;
-    const completedToday = rows.filter((row) => {
-      const completedMs = parseMs(toText(row.completed_at));
-      return (
-        completedMs !== null &&
-        completedMs >= day.start.getTime() &&
-        completedMs < day.end.getTime()
-      );
-    }).length;
+    // Overdue follow-ups are derived from the runtime knowledge graph
+    // (contacts past their cadence), the single canonical source shared with
+    // the follow-up tracker and the LIST_OVERDUE_FOLLOWUPS action. There is no
+    // separate LifeOps follow-up table.
+    const digest = await computeOverdueFollowups(runtime, now.getTime());
     const items = sortBriefingItems(
-      rows.map((row) => {
-        const status = toText(row.status);
-        const priority = Number(row.priority ?? 3);
-        return {
-          title: `${toText(row.name) || "Follow-up"}: ${status}`,
-          detail: clip(toText(row.reason)),
-          occurredAt: toText(row.due_at) || toText(row.updated_at) || null,
-          href: null,
-          reason:
-            status === "pending"
-              ? "open promise/follow-up"
-              : status === "completed"
-                ? "completed"
-                : status || null,
-          score: (status === "pending" ? 40 : 10) + Math.max(0, 10 - priority),
-        };
-      }),
+      digest.overdue.map((entry) => ({
+        title: `${entry.displayName}: ${entry.daysOverdue}d overdue`,
+        detail: clip(
+          `Last contacted ${entry.lastContactedAt} (cadence ${entry.thresholdDays}d)`,
+        ),
+        occurredAt: entry.lastContactedAt,
+        href: null,
+        reason: "overdue follow-up",
+        score: 40 + Math.min(20, entry.daysOverdue),
+      })),
     );
     return {
       key: "promises",
       title: "Promises, agreements, and follow-ups",
-      summary: `${summarizeCount(pendingCount, "open follow-up")} tracked; ${summarizeCount(completedToday, "completed today", "completed today")}.`,
+      summary:
+        digest.overdue.length === 0
+          ? "No overdue follow-ups."
+          : `${summarizeCount(digest.overdue.length, "overdue follow-up")} to reconnect.`,
       items,
       error: null,
     };
@@ -1246,7 +1225,7 @@ async function collectBriefingSections(args: {
     collectGitHubSection(args.runtime, args.now, args.timezone),
     collectCalendarChangeSection(args.runtime, args.now, args.timezone),
     collectContactSection(args.runtime, args.now, args.timezone),
-    collectPromiseSection(args.runtime, args.now, args.timezone),
+    collectPromiseSection(args.runtime, args.now),
   ]);
 }
 

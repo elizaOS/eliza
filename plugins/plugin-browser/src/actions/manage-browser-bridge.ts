@@ -35,7 +35,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -62,216 +62,6 @@ export const BROWSER_BRIDGE_SUBACTIONS = [
   "refresh",
 ] as const;
 export type BrowserBridgeSubaction = (typeof BROWSER_BRIDGE_SUBACTIONS)[number];
-
-const BROWSER_BRIDGE_KEYWORDS = [
-  // English — concept
-  "browser",
-  "browsers",
-  "browser bridge",
-  "agent browser bridge",
-  "bridge",
-  "extension",
-  "extensions",
-  "companion",
-  "companions",
-  "connection",
-  "pair",
-  "paired",
-  "pairing",
-  // English — browser brands
-  "chrome",
-  "safari",
-  "firefox",
-  "brave",
-  "edge",
-  "arc",
-  "opera",
-  "vivaldi",
-  // English — actions
-  "install",
-  "installer",
-  "installed",
-  "uninstall",
-  "reveal",
-  "show folder",
-  "open folder",
-  "open manager",
-  "manager",
-  "refresh",
-  "reload",
-  "reconnect",
-  "connect",
-  "disconnect",
-  "status",
-  "settings",
-  "setting",
-  "configuration",
-  "config",
-  "folder",
-  "load unpacked",
-  "chrome://extensions",
-  // Spanish
-  "navegador",
-  "navegadores",
-  "extensión",
-  "extensiones",
-  "instalar",
-  "instalador",
-  "desinstalar",
-  "carpeta",
-  "actualizar",
-  "conectar",
-  "conexión",
-  "puente",
-  // French
-  "navigateur",
-  "navigateurs",
-  "installer",
-  "désinstaller",
-  "dossier",
-  "actualiser",
-  "rafraîchir",
-  "connexion",
-  "pont",
-  // German
-  "browser",
-  "erweiterung",
-  "erweiterungen",
-  "installieren",
-  "deinstallieren",
-  "ordner",
-  "aktualisieren",
-  "verbindung",
-  "brücke",
-  // Italian
-  "navigatore",
-  "estensione",
-  "estensioni",
-  "installare",
-  "disinstallare",
-  "cartella",
-  "aggiornare",
-  "collegamento",
-  "ponte",
-  // Portuguese
-  "navegador",
-  "extensão",
-  "extensões",
-  "instalar",
-  "pasta",
-  "atualizar",
-  "conexão",
-  "ponte",
-  // Russian
-  "браузер",
-  "расширение",
-  "установить",
-  "обновить",
-  "папка",
-  "соединение",
-  "мост",
-  // Japanese
-  "ブラウザ",
-  "拡張機能",
-  "インストール",
-  "フォルダ",
-  "更新",
-  "接続",
-  "ブリッジ",
-  // Chinese (simplified + traditional)
-  "浏览器",
-  "瀏覽器",
-  "扩展",
-  "擴充",
-  "安装",
-  "安裝",
-  "文件夹",
-  "資料夾",
-  "刷新",
-  "重新整理",
-  "连接",
-  "連線",
-  "桥",
-  "橋",
-  // Korean
-  "브라우저",
-  "확장",
-  "설치",
-  "폴더",
-  "새로고침",
-  "연결",
-  "브리지",
-  // Arabic
-  "متصفح",
-  "إضافة",
-  "تثبيت",
-  "مجلد",
-  "تحديث",
-  "اتصال",
-  "جسر",
-  // Hindi
-  "ब्राउज़र",
-  "एक्सटेंशन",
-  "इंस्टॉल",
-  "फ़ोल्डर",
-  "रिफ्रेश",
-  "कनेक्शन",
-  // Turkish
-  "tarayıcı",
-  "uzantı",
-  "yükle",
-  "klasör",
-  "yenile",
-  "bağlantı",
-  "köprü",
-  // Vietnamese
-  "trình duyệt",
-  "tiện ích",
-  "cài đặt",
-  "thư mục",
-  "làm mới",
-  "kết nối",
-  "cầu nối",
-  // Thai
-  "เบราว์เซอร์",
-  "ส่วนขยาย",
-  "ติดตั้ง",
-  "โฟลเดอร์",
-  "รีเฟรช",
-  "เชื่อมต่อ",
-  // Polish
-  "przeglądarka",
-  "rozszerzenie",
-  "zainstaluj",
-  "folder",
-  "odśwież",
-  "połączenie",
-  "most",
-  // Dutch
-  "browser",
-  "extensie",
-  "installeer",
-  "map",
-  "vernieuw",
-  "verbinding",
-  "brug",
-  // Indonesian / Malay
-  "peramban",
-  "penjelajah",
-  "ekstensi",
-  "pasang",
-  "folder",
-  "muat ulang",
-  "koneksi",
-  "jembatan",
-  // Hebrew
-  "דפדפן",
-  "הרחבה",
-  "התקנה",
-  "תיקייה",
-  "רענון",
-  "חיבור",
-] as const;
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -327,23 +117,6 @@ function hasSelectedContext(state: State | undefined): boolean {
   return SELECTED_CONTEXT_KEYS.some((context) => selected.has(context));
 }
 
-function hasBrowserBridgeIntent(
-  message: Memory,
-  state: State | undefined,
-): boolean {
-  const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return BROWSER_BRIDGE_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
-}
-
 type ManageBrowserBridgeParameters = {
   action?: BrowserBridgeSubaction;
   subaction?: BrowserBridgeSubaction;
@@ -362,29 +135,47 @@ function normalizeSubaction(
     : null;
 }
 
-function inferSubactionFromMessage(text: string): BrowserBridgeSubaction {
-  const normalized = text.toLowerCase();
-  if (
-    /\b(reveal|show|open).{0,12}(folder|build folder|directory)\b/.test(
-      normalized,
-    ) &&
-    !/\bextension manager\b/.test(normalized)
-  ) {
-    return "reveal_folder";
-  }
-  if (
-    /\bopen.{0,8}(extensions?|extension manager|chrome:\/\/extensions)\b/.test(
-      normalized,
-    )
-  ) {
-    return "open_manager";
-  }
-  if (
-    /\b(refresh|reload|reconnect|status|settings?|config(?:uration)?|update|sync|update status|connection state)\b/.test(
-      normalized,
-    )
-  ) {
-    return "refresh";
+/**
+ * Pick the bridge subaction the user wants via the model's structured output
+ * instead of English-only regex (#10470) — only consulted when the caller did
+ * not pass an explicit `action`/`subaction` param. Defaults to "install" on any
+ * failure (the safe first-time-setup operation).
+ */
+async function extractBrowserBridgeSubaction(
+  runtime: IAgentRuntime,
+  text: string,
+): Promise<BrowserBridgeSubaction> {
+  if (!text.trim()) return "install";
+  const prompt = `The user is managing the browser companion extension. Pick the single operation they want — this must work in any language, so do not rely on English keywords.
+
+- install: set up / install / pair the companion extension (the default)
+- reveal_folder: reveal the extension's build folder in the file manager
+- open_manager: open the browser's extension manager page
+- refresh: refresh / reconnect / sync / check the companion status
+
+Request:
+${text}
+
+Return ONLY:
+<response><subaction>install|reveal_folder|open_manager|refresh</subaction></response>`;
+  try {
+    const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const cleaned = raw.replace(/```(?:xml)?/gi, "").trim();
+    const wrapped = cleaned.includes("<response>")
+      ? cleaned
+      : `<response>${cleaned}</response>`;
+    const parsed = parseKeyValueXml(wrapped) ?? {};
+    const sub =
+      typeof parsed.subaction === "string" ? parsed.subaction.trim() : "";
+    if ((BROWSER_BRIDGE_SUBACTIONS as readonly string[]).includes(sub)) {
+      return sub as BrowserBridgeSubaction;
+    }
+  } catch (error) {
+    logger.warn(
+      `[${ACTION_NAME}] subaction extraction failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
   return "install";
 }
@@ -571,10 +362,10 @@ export const manageBrowserBridgeAction: Action = {
     "Browser Bridge: refresh|install|reveal_folder|open_manager chrome://extensions",
   validate: async (
     _runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     state?: State,
   ): Promise<boolean> => {
-    return hasSelectedContext(state) || hasBrowserBridgeIntent(message, state);
+    return hasSelectedContext(state);
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -587,9 +378,10 @@ export const manageBrowserBridgeAction: Action = {
     const subaction =
       normalizeSubaction(params?.action) ??
       normalizeSubaction(params?.subaction) ??
-      inferSubactionFromMessage(
+      (await extractBrowserBridgeSubaction(
+        runtime,
         typeof message.content?.text === "string" ? message.content.text : "",
-      );
+      ));
     try {
       switch (subaction) {
         case "install":

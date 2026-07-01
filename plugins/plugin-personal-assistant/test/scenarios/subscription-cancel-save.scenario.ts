@@ -1,8 +1,10 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "subscription-cancel-save",
-  title: "Assistant identifies a renewal, drafts cancellation, and protects approval",
+  title:
+    "Assistant identifies a renewal, drafts cancellation, and protects approval",
   domain: "executive.money",
   tags: ["lifeops", "executive-assistant", "money", "documents"],
   isolation: "per-scenario",

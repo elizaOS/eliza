@@ -1,7 +1,7 @@
 import type { CustomActionDef } from "@elizaos/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -46,33 +46,42 @@ export function CustomActionsPanel({
   onClose,
   onOpenEditor,
 }: CustomActionsPanelProps) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [actions, setActions] = useState<CustomActionDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const mountedRef = useRef(true);
 
   const loadActions = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       const result = await client.listCustomActions();
+      if (!mountedRef.current) return;
       setActions(result || []);
     } catch {
+      if (!mountedRef.current) return;
       setError(
         t("customactionspanel.LoadFailed", {
           defaultValue: "Couldn't load custom actions. Try again.",
         }),
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [t]);
 
   useEffect(() => {
+    mountedRef.current = true;
     if (open) {
       void loadActions();
     }
+    return () => {
+      mountedRef.current = false;
+    };
   }, [open, loadActions]);
 
   const filteredActions = useMemo(() => {
@@ -241,7 +250,7 @@ export function CustomActionsPanel({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("customactionspanel.SearchByNameDesc")}
-                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50 focus-visible:ring-1 focus-visible:ring-accent"
+                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50  "
               />
             </div>
 

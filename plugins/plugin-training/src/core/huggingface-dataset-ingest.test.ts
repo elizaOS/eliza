@@ -40,7 +40,7 @@ describe("huggingface dataset ingest", () => {
   it("downloads selected dataset files and writes an analysis manifest", async () => {
     const outputDir = await makeTempDir();
     const fetcher = vi.fn(async (url: string) => {
-      if (url.endsWith("/sft/0_8b/train.jsonl")) {
+      if (url.endsWith("/sft/2b/train.jsonl")) {
         return mockResponse(
           [
             JSON.stringify({
@@ -62,14 +62,14 @@ describe("huggingface dataset ingest", () => {
     const result = await ingestHuggingFaceDataset({
       repoId: "elizaos/eliza-1-training",
       revision: "main",
-      files: ["sft/0_8b/train.jsonl", "sft/0_8b/manifest.json"],
+      files: ["sft/2b/train.jsonl", "sft/2b/manifest.json"],
       outputDir,
       now: () => new Date("2026-05-18T12:00:00.000Z"),
       fetcher: fetcher as unknown as typeof fetch,
     });
 
     expect(fetcher).toHaveBeenCalledWith(
-      "https://huggingface.co/datasets/elizaos/eliza-1-training/resolve/main/sft/0_8b/train.jsonl",
+      "https://huggingface.co/datasets/elizaos/eliza-1-training/resolve/main/sft/2b/train.jsonl",
       { headers: undefined },
     );
     expect(result.manifest.schema).toBe(HUGGINGFACE_DATASET_INGEST_SCHEMA);
@@ -80,13 +80,13 @@ describe("huggingface dataset ingest", () => {
       jsonlRows: 2,
     });
     expect(result.manifest.files[0]).toMatchObject({
-      hfPath: "sft/0_8b/train.jsonl",
+      hfPath: "sft/2b/train.jsonl",
       rows: 2,
       status: "downloaded",
     });
 
     const jsonl = await readFile(
-      join(outputDir, "sft", "0_8b", "train.jsonl"),
+      join(outputDir, "sft", "2b", "train.jsonl"),
       "utf8",
     );
     expect(jsonl).toContain("traj-1");
@@ -101,7 +101,7 @@ describe("huggingface dataset ingest", () => {
     const fetcher = vi.fn();
 
     const result = await ingestHuggingFaceDataset({
-      files: ["sft/0_8b/train.jsonl"],
+      files: ["sft/2b/train.jsonl"],
       outputDir,
       dryRun: true,
       fetcher: fetcher as unknown as typeof fetch,
@@ -129,7 +129,7 @@ describe("huggingface dataset ingest", () => {
     });
 
     expect(fetcher).not.toHaveBeenCalled();
-    expect(DEFAULT_ELIZA1_HF_DATASET_FILES).toContain("sft/0_8b/train.jsonl");
+    expect(DEFAULT_ELIZA1_HF_DATASET_FILES).toContain("sft/2b/train.jsonl");
     expect(DEFAULT_ELIZA1_HF_DATASET_FILES).toContain("sft/2b/train.jsonl");
     expect(DEFAULT_ELIZA1_HF_DATASET_FILES).toContain("sft/4b/train.jsonl");
     expect(DEFAULT_ELIZA1_HF_DATASET_FILES).toContain("sft/9b/train.jsonl");

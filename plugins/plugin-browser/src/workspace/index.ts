@@ -24,3 +24,4 @@
 
 export * from "./browser-capture.js";
 export * from "./browser-workspace.js";
+export * from "./browser-workspace-errors.js";

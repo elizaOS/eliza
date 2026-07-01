@@ -259,7 +259,7 @@ class FeedRLAIFEnv(BaseEnv):
     def config_init(cls) -> tuple[FeedEnvConfig, list[APIServerConfig]]:
         """Initialize configuration with defaults"""
         env_config = FeedEnvConfig(
-            tokenizer_name="Qwen/Qwen2.5-3B-Instruct",
+            tokenizer_name="google/gemma-4-E2B",
             group_size=4,  # Match Atropos default for stable GRPO training
             use_wandb=True,
             max_num_workers=64,
@@ -277,7 +277,7 @@ class FeedRLAIFEnv(BaseEnv):
         # Server config for the training model (will be updated by vLLM)
         server_configs = [
             APIServerConfig(
-                model_name="Qwen/Qwen2.5-3B-Instruct",
+                model_name="google/gemma-4-E2B",
                 base_url="http://localhost:9001/v1",
                 api_key="x",
                 num_requests_for_eval=64,

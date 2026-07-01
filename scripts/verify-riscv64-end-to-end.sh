@@ -181,7 +181,7 @@ fi
 # the test having passed — chip team's evidence-recording wrapper
 # always writes a log, success or failure. Parse the status= line for
 # the truth.
-smoke_log="$repo_root/packages/chip/docs/evidence/android/cuttlefish_riscv64_smoke.log"
+smoke_log="$repo_root/packages/research/chip/docs/evidence/android/cuttlefish_riscv64_smoke.log"
 if [ -f "$smoke_log" ]; then
     smoke_status="$(grep -oE 'eliza-evidence: status=[A-Z]+' "$smoke_log" | tail -1 | sed 's/.*status=//')"
     if [ "$smoke_status" = "PASS" ]; then

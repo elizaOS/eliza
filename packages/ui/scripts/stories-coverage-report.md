@@ -1,9 +1,9 @@
 # Story coverage
 
-- Components scanned: **405**
-- With stories: **259**
+- Components scanned: **404**
+- With stories: **258**
 - Missing stories: **146**
-- Coverage: **64.0%**
+- Coverage: **63.9%**
 
 ## Missing stories by area
 

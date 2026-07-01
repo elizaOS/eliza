@@ -6,21 +6,21 @@ import {
   BENCHMARK_MATRIX_ARTIFACT_SCHEMA,
   BENCHMARK_MATRIX_ARTIFACT_VERSION,
 } from "./benchmark-matrix-artifact.js";
+import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import {
   EVAL_COMPARISON_ARTIFACT_SCHEMA,
   EVAL_COMPARISON_ARTIFACT_VERSION,
 } from "./eval-comparison-artifact.js";
-import { ELIZA1_BUNDLE_STAGE_SCHEMA } from "./eliza1-bundle-stager.js";
 import {
   buildTrainingAnalysisIndex,
   TRAINING_ANALYSIS_INDEX_SCHEMA,
 } from "./training-analysis-index.js";
+import type { TrainingRunRecord } from "./training-orchestrator.js";
 import {
   TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
   TRAJECTORY_EXPORT_BUNDLE_VERSION,
   type TrajectoryExportBundleManifest,
 } from "./trajectory-export-bundle.js";
-import type { TrainingRunRecord } from "./training-orchestrator.js";
 
 const tempDirs: string[] = [];
 
@@ -73,7 +73,13 @@ describe("training analysis index", () => {
         bundleDir: join(root, "bundles", "run-1"),
         manifestPath: join(root, "bundles", "run-1", "manifest.json"),
         viewerHtmlPath: join(root, "bundles", "run-1", "index.html"),
-        rawJsonlPath: join(root, "bundles", "run-1", "raw", "trajectories.jsonl"),
+        rawJsonlPath: join(
+          root,
+          "bundles",
+          "run-1",
+          "raw",
+          "trajectories.jsonl",
+        ),
         sanitizedJsonlPath: join(
           root,
           "bundles",
@@ -99,6 +105,15 @@ describe("training analysis index", () => {
           action_planner: 1,
           response: 1,
           media_description: 0,
+          view_context: 0,
+          calendar_extract: 0,
+          schedule_plan: 0,
+          reminder_dispatch: 0,
+          inbox_triage: 0,
+          meeting_prep: 0,
+          morning_brief: 0,
+          health_checkin: 0,
+          screentime_recap: 0,
         },
         taskFiles: 2,
         taskExamples: 2,
@@ -165,7 +180,7 @@ describe("training analysis index", () => {
               {
                 callId: "call-response-1",
                 purpose: "response",
-                model: "eliza-1-0.8b-test",
+                model: "eliza-1-2b-test",
                 systemPrompt: "Reply as Eliza.",
                 userPrompt: "user asks for help",
                 response: "agent gives a useful answer",
@@ -173,7 +188,7 @@ describe("training analysis index", () => {
               {
                 callId: "call-action-1",
                 purpose: "action_planner",
-                modelType: "eliza-1-0.8b-test",
+                modelType: "eliza-1-2b-test",
                 systemPrompt: "Pick one action.",
                 userPrompt: "choose the next action",
                 response: "SEND_MESSAGE",
@@ -188,7 +203,7 @@ describe("training analysis index", () => {
         run_id: "run-1-canonical",
         kind: "action",
         model: "gpt-oss-120b",
-        prompt: "channel_type: dm\nincoming_message: \"good morning\"",
+        prompt: 'channel_type: dm\nincoming_message: "good morning"',
         response: "Action completed.",
         actions: ["REPLY"],
       },
@@ -304,7 +319,7 @@ describe("training analysis index", () => {
         generatedAt: "2026-01-02T03:25:00.000Z",
         source: { kind: "training_benchmark_matrix" },
         referenceModelId: "cerebras/gpt-oss-120b",
-        tiers: ["0b"],
+        tiers: ["2b"],
         benchmarks: ["eliza_harness_action_reason"],
         counts: {
           rows: 3,
@@ -314,11 +329,11 @@ describe("training analysis index", () => {
         },
         rows: [
           {
-            modelId: "eliza-1-0b-base",
+            modelId: "eliza-1-2b-base",
             benchmark: "eliza_harness_action_reason",
             score: 0.4,
             variant: "base",
-            tier: "0b",
+            tier: "2b",
             provider: "local-llama-cpp",
             metrics: { total: 1, passed: 0, failed: 1, useMocks: false },
             raw: {
@@ -327,11 +342,11 @@ describe("training analysis index", () => {
             },
           },
           {
-            modelId: "eliza-1-0b-trained",
+            modelId: "eliza-1-2b-trained",
             benchmark: "eliza_harness_action_reason",
             score: 0.5,
             variant: "trained",
-            tier: "0b",
+            tier: "2b",
             provider: "local-llama-cpp",
             metrics: { total: 1, passed: 1, failed: 0, useMocks: false },
             raw: {
@@ -358,7 +373,7 @@ describe("training analysis index", () => {
         ],
         comparisons: [
           {
-            tier: "0b",
+            tier: "2b",
             benchmark: "eliza_harness_action_reason",
             baseScore: 0.4,
             trainedScore: 0.5,
@@ -405,8 +420,8 @@ describe("training analysis index", () => {
         command: ["python3", "stage_hf_eliza1_bundle.py"],
         exitCode: 0,
         repoId: "elizaos/eliza-1",
-        tier: "0_8b",
-        bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+        tier: "4b",
+        bundleDir: "/tmp/eliza-1-bundles/eliza-1-4b.bundle",
         fileCount: 87,
         plannedBytes: 5_939_381_241,
         maxBytes: 8_589_934_592,
@@ -414,8 +429,8 @@ describe("training analysis index", () => {
         stagedCount: 0,
         plan: {
           repoId: "elizaos/eliza-1",
-          tier: "0_8b",
-          bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+          tier: "4b",
+          bundleDir: "/tmp/eliza-1-bundles/eliza-1-4b.bundle",
         },
       },
     );
@@ -648,7 +663,13 @@ describe("training analysis index", () => {
           providerSnapshots: [],
         },
         actions: [],
-        events: [{ type: "RUN_ENDED", timestamp: Date.UTC(2026, 0, 2, 3, 16, 4), data: {} }],
+        events: [
+          {
+            type: "RUN_ENDED",
+            timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
+            data: {},
+          },
+        ],
         memoriesWritten: [
           {
             timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
@@ -683,7 +704,7 @@ describe("training analysis index", () => {
         output: "agent replied with current status",
       },
     ]);
-    await writeJsonl(join(root, "hf", "sft", "0_8b", "train.jsonl"), [
+    await writeJsonl(join(root, "hf", "sft", "4b", "train.jsonl"), [
       {
         schema: "eliza.eliza1_sft_record.v1",
         source_dataset: "huggingface_sft",
@@ -724,9 +745,9 @@ describe("training analysis index", () => {
       },
       files: [
         {
-          hfPath: "sft/0_8b/train.jsonl",
-          url: "https://huggingface.co/datasets/elizaos/eliza-1-training/resolve/main/sft/0_8b/train.jsonl",
-          localPath: join(root, "hf", "sft", "0_8b", "train.jsonl"),
+          hfPath: "sft/4b/train.jsonl",
+          url: "https://huggingface.co/datasets/elizaos/eliza-1-training/resolve/main/sft/4b/train.jsonl",
+          localPath: join(root, "hf", "sft", "4b", "train.jsonl"),
           bytes: 1000,
           sha256: "abc",
           rows: 12,
@@ -781,7 +802,7 @@ describe("training analysis index", () => {
         comparisons: 1,
         scoredComparisons: 1,
         caseSamples: 1,
-        tiers: ["0_8b"],
+        tiers: ["2b"],
         allEliza1TiersCovered: false,
       },
       models: {
@@ -791,7 +812,7 @@ describe("training analysis index", () => {
     expect(index.manifest.coverage.benchmarks.tierCoverage).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          tier: "0_8b",
+          tier: "2b",
           hasBase: true,
           hasTrained: true,
           hasReference: true,
@@ -882,7 +903,7 @@ describe("training analysis index", () => {
     expect(html).toContain("Feed Generation");
     expect(html).toContain("Feed Trajectory Samples");
     expect(html).toContain("feed-export.jsonl");
-    expect(html).toContain("target = \"_blank\"");
+    expect(html).toContain('target = "_blank"');
     expect(html).toContain("market odds moved");
     expect(html).toContain("opened long position");
     expect(html).toContain("app_core_test_trajectory");
@@ -896,8 +917,8 @@ describe("training analysis index", () => {
     expect(html).toContain("runtime_trajectory_boundary");
     expect(html).toContain("hf-traj-1");
     expect(html).toContain("huggingface_dataset");
-    expect(html).toContain("sft/0_8b/train.jsonl");
-    expect(html).toContain("hf-sft/0_8b/train.jsonl");
+    expect(html).toContain("sft/4b/train.jsonl");
+    expect(html).toContain("hf-sft/4b/train.jsonl");
     expect(html).toContain("hf-sft-traj-1");
     expect(html).toContain("hello from hf sft");
     expect(html).toContain("eliza-1-0b-trained");
@@ -948,7 +969,7 @@ describe("training analysis index", () => {
           agentId: "agent-1",
           purpose: "response",
           callId: "call-response-1",
-          model: "eliza-1-0.8b-test",
+          model: "eliza-1-2b-test",
           systemPrompt: "Reply as Eliza.",
           input: "user asks for help",
           output: "agent gives a useful answer",
@@ -971,7 +992,7 @@ describe("training analysis index", () => {
           trajectoryId: "run-1-traj-1",
           callId: "call-response-1",
           purpose: "response",
-          model: "eliza-1-0.8b-test",
+          model: "eliza-1-2b-test",
           systemPrompt: "Reply as Eliza.",
           input: "user asks for help",
           output: "agent gives a useful answer",
@@ -980,7 +1001,7 @@ describe("training analysis index", () => {
           trajectoryId: "run-1-traj-1",
           callId: "call-action-1",
           purpose: "action_planner",
-          model: "eliza-1-0.8b-test",
+          model: "eliza-1-2b-test",
           systemPrompt: "Pick one action.",
           input: "choose the next action",
           output: "SEND_MESSAGE",
@@ -1128,16 +1149,16 @@ describe("training analysis index", () => {
     expect(huggingFaceArtifact?.summary).toMatchObject({
       hfFiles: [
         expect.objectContaining({
-          hfPath: "sft/0_8b/train.jsonl",
-          localPath: join(root, "hf", "sft", "0_8b", "train.jsonl"),
+          hfPath: "sft/4b/train.jsonl",
+          localPath: join(root, "hf", "sft", "4b", "train.jsonl"),
           rows: 12,
           status: "downloaded",
         }),
       ],
       hfSamplePreviews: [
         expect.objectContaining({
-          hfPath: "sft/0_8b/train.jsonl",
-          localPath: join(root, "hf", "sft", "0_8b", "train.jsonl"),
+          hfPath: "sft/4b/train.jsonl",
+          localPath: join(root, "hf", "sft", "4b", "train.jsonl"),
           task: "response",
           trajectoryId: "hf-sft-traj-1",
           sourceDataset: "huggingface_sft",
@@ -1260,7 +1281,12 @@ describe("training analysis index", () => {
       latencyDeltaMs: 10,
       promptCount: 12,
       distinctResponseCount: 9,
-      reportPath: join(root, "evals", "comparison", "local_model_comparison.json"),
+      reportPath: join(
+        root,
+        "evals",
+        "comparison",
+        "local_model_comparison.json",
+      ),
       evalSamplePreviews: [
         expect.objectContaining({
           prompt: "choose a tool for sending an update",
@@ -1352,11 +1378,11 @@ describe("training analysis index", () => {
     );
     expect(bundleStageArtifact?.summary).toMatchObject({
       schema: ELIZA1_BUNDLE_STAGE_SCHEMA,
-      tier: "0_8b",
+      tier: "4b",
       repoId: "elizaos/eliza-1",
       fileCount: 87,
       plannedBytes: 5_939_381_241,
-      bundleDir: "/tmp/eliza-1-bundles/eliza-1-0_8b.bundle",
+      bundleDir: "/tmp/eliza-1-bundles/eliza-1-4b.bundle",
     });
   });
 
@@ -1409,7 +1435,7 @@ describe("training analysis index", () => {
             token: "should-not-be-generated-by-runner",
           },
           actionBenchmarkPair: null,
-          actionBenchmarkPairs: [{ tier: "0_8b" }, { tier: "2b" }],
+          actionBenchmarkPairs: [{ tier: "4b" }, { tier: "2b" }],
           benchmarkVsCerebras: {},
           benchmarkMatrix: {},
         },
@@ -1456,7 +1482,7 @@ describe("training analysis index", () => {
                 path: join(
                   collectionDir,
                   "action_benchmark",
-                  "0_8b",
+                  "4b",
                   "trained",
                   "action-benchmark-report.json",
                 ),
@@ -1466,7 +1492,7 @@ describe("training analysis index", () => {
                 path: join(
                   collectionDir,
                   "action_benchmark",
-                  "0_8b",
+                  "4b",
                   "trained",
                   "trajectories",
                 ),
@@ -1540,7 +1566,11 @@ describe("training analysis index", () => {
           huggingFace: [
             {
               title: "hf",
-              path: join(collectionDir, "hf", "huggingface-dataset-manifest.json"),
+              path: join(
+                collectionDir,
+                "hf",
+                "huggingface-dataset-manifest.json",
+              ),
               schema: "eliza_huggingface_dataset_ingest",
               sourceKind: "huggingface_dataset",
               trajectoryId: "hf-sft-traj-1",
@@ -1588,21 +1618,21 @@ describe("training analysis index", () => {
           models: 2,
           modelInventory: [
             {
-              title: "eliza-1-0_8b-trained",
+              title: "eliza-1-4b-trained",
               path: join(
                 collectionDir,
                 "eliza1_model_registry",
-                "0_8b-model-manifest.json",
+                "4b-model-manifest.json",
               ),
               schema: "eliza1_model_registry_entry",
-              model: "eliza-1-0_8b-trained",
-              tier: "0_8b",
+              model: "eliza-1-4b-trained",
+              tier: "4b",
               variant: "trained",
-              outputPath: "hf://elizaos/eliza-1-0_8b-trained",
-              baseModel: "eliza-1-0_8b-base",
+              outputPath: "hf://elizaos/eliza-1-4b-trained",
+              baseModel: "eliza-1-4b-base",
               baseEvalScore: 0.4,
               trainedEvalScore: 0.6,
-              repoId: "elizaos/eliza-1-0_8b-trained",
+              repoId: "elizaos/eliza-1-4b-trained",
               evalImprovementPercent: null,
             },
             {
@@ -1630,13 +1660,13 @@ describe("training analysis index", () => {
           actionBenchmarkMatrixSources: 4,
           benchmarkRows: 4,
           benchmarkComparisons: 2,
-          tiers: ["0_8b", "2b"],
+          tiers: ["4b", "2b"],
           comparisonInventory: [
             {
-              tier: "0_8b",
+              tier: "4b",
               benchmark: "eliza_harness_action_selection",
-              baseModelId: "eliza-1-0_8b-base",
-              trainedModelId: "eliza-1-0_8b-trained",
+              baseModelId: "eliza-1-4b-base",
+              trainedModelId: "eliza-1-4b-trained",
               referenceModelId: null,
               baseScore: 0.4,
               trainedScore: 0.6,
@@ -1661,7 +1691,7 @@ describe("training analysis index", () => {
           ],
           improvementComparisons: [
             {
-              tier: "0_8b",
+              tier: "4b",
               benchmark: "eliza_harness_action_selection",
               baseScore: 0.4,
               trainedScore: 0.6,
@@ -1694,11 +1724,11 @@ describe("training analysis index", () => {
             category: "eval",
             kind: "eval",
             schema: "eliza_action_selection_benchmark_report",
-            title: "0_8b trained action benchmark",
+            title: "4b trained action benchmark",
             path: join(
               collectionDir,
               "action_benchmark",
-              "0_8b",
+              "4b",
               "trained",
               "action-benchmark-report.json",
             ),
@@ -1725,20 +1755,20 @@ describe("training analysis index", () => {
             outputDir: join(collectionDir, "action_benchmark"),
             pairs: [
               {
-                label: "0_8b",
-                tier: "0_8b",
+                label: "4b",
+                tier: "4b",
                 runs: {
                   base: {
                     outputDir: join(
                       collectionDir,
                       "action_benchmark",
-                      "0_8b",
+                      "4b",
                       "base",
                     ),
                     reportJsonPath: join(
                       collectionDir,
                       "action_benchmark",
-                      "0_8b",
+                      "4b",
                       "base",
                       "action-benchmark-report.json",
                     ),
@@ -1746,26 +1776,26 @@ describe("training analysis index", () => {
                       path: join(
                         collectionDir,
                         "action_benchmark",
-                        "0_8b",
+                        "4b",
                         "base",
                         "action-benchmark-report.json",
                       ),
-                      modelId: "eliza-1-0_8b-base",
+                      modelId: "eliza-1-4b-base",
                       variant: "base",
-                      tier: "0_8b",
+                      tier: "4b",
                     },
                   },
                   trained: {
                     outputDir: join(
                       collectionDir,
                       "action_benchmark",
-                      "0_8b",
+                      "4b",
                       "trained",
                     ),
                     reportJsonPath: join(
                       collectionDir,
                       "action_benchmark",
-                      "0_8b",
+                      "4b",
                       "trained",
                       "action-benchmark-report.json",
                     ),
@@ -1773,13 +1803,13 @@ describe("training analysis index", () => {
                       path: join(
                         collectionDir,
                         "action_benchmark",
-                        "0_8b",
+                        "4b",
                         "trained",
                         "action-benchmark-report.json",
                       ),
-                      modelId: "eliza-1-0_8b-trained",
+                      modelId: "eliza-1-4b-trained",
                       variant: "trained",
-                      tier: "0_8b",
+                      tier: "4b",
                     },
                   },
                 },
@@ -1848,10 +1878,10 @@ describe("training analysis index", () => {
               },
             ],
             matrixSources: [
-              { path: "base-0_8b.json", modelId: "eliza-1-0_8b-base" },
+              { path: "base-4b.json", modelId: "eliza-1-4b-base" },
               {
-                path: "trained-0_8b.json",
-                modelId: "eliza-1-0_8b-trained",
+                path: "trained-4b.json",
+                modelId: "eliza-1-4b-trained",
               },
               { path: "base-2b.json", modelId: "eliza-1-2b-base" },
               { path: "trained-2b.json", modelId: "eliza-1-2b-trained" },
@@ -1868,7 +1898,7 @@ describe("training analysis index", () => {
         generatedAt: "2026-01-02T03:25:00.000Z",
         source: { kind: "training_collection_benchmark_matrix" },
         referenceModelId: "cerebras/gpt-oss-120b",
-        tiers: ["0_8b", "2b"],
+        tiers: ["4b", "2b"],
         benchmarks: ["eliza_harness_action_selection"],
         counts: {
           rows: 4,
@@ -1878,20 +1908,20 @@ describe("training analysis index", () => {
         },
         rows: [
           {
-            modelId: "eliza-1-0_8b-base",
+            modelId: "eliza-1-4b-base",
             benchmark: "eliza_harness_action_selection",
             score: 0.4,
             variant: "base",
-            tier: "0_8b",
+            tier: "4b",
             provider: "local-llama-cpp",
             datasetVersion: "eliza-native-v1",
           },
           {
-            modelId: "eliza-1-0_8b-trained",
+            modelId: "eliza-1-4b-trained",
             benchmark: "eliza_harness_action_selection",
             score: 0.6,
             variant: "trained",
-            tier: "0_8b",
+            tier: "4b",
             provider: "local-llama-cpp",
             datasetVersion: "eliza-native-v1",
           },
@@ -1916,7 +1946,7 @@ describe("training analysis index", () => {
         ],
         comparisons: [
           {
-            tier: "0_8b",
+            tier: "4b",
             benchmark: "eliza_harness_action_selection",
             baseScore: 0.4,
             trainedScore: 0.6,
@@ -1987,11 +2017,11 @@ describe("training analysis index", () => {
     expect(html).toContain("natural assistant output");
     expect(html).toContain("Benchmark Rows");
     expect(html).toContain("Benchmark Model Stats");
-    expect(html).toContain("eliza-1-0_8b-base");
-    expect(html).toContain("eliza-1-0_8b-trained");
+    expect(html).toContain("eliza-1-4b-base");
+    expect(html).toContain("eliza-1-4b-trained");
     expect(html).toContain("eliza-1-2b-base");
     expect(html).toContain("eliza-1-2b-trained");
-    expect(html).toContain("hf://elizaos/eliza-1-0_8b-trained");
+    expect(html).toContain("hf://elizaos/eliza-1-4b-trained");
     expect(html).toContain("hf://elizaos/eliza-1-2b-trained");
     expect(html).toContain("feed-traj-1");
     expect(html).toContain("feed_train_archetype_export");
@@ -2027,9 +2057,9 @@ describe("training analysis index", () => {
       models: 4,
       modelStats: expect.arrayContaining([
         expect.objectContaining({
-          modelId: "eliza-1-0_8b-base",
+          modelId: "eliza-1-4b-base",
           variant: "base",
-          tier: "0_8b",
+          tier: "4b",
           benchmarkCount: 1,
           scoreCount: 1,
           averageScore: 0.4,
@@ -2246,9 +2276,9 @@ describe("training analysis index", () => {
     const outputDir = join(root, "analysis");
     const cwdRelativeLocalPath = relative(
       process.cwd(),
-      join(hfDir, "sft", "0_8b", "train.jsonl"),
+      join(hfDir, "sft", "4b", "train.jsonl"),
     );
-    await writeJsonl(join(hfDir, "sft", "0_8b", "train.jsonl"), [
+    await writeJsonl(join(hfDir, "sft", "4b", "train.jsonl"), [
       {
         schema: "eliza.eliza1_sft_record.v1",
         source_dataset: "huggingface_sft",
@@ -2277,7 +2307,7 @@ describe("training analysis index", () => {
       },
       files: [
         {
-          hfPath: "sft/0_8b/train.jsonl",
+          hfPath: "sft/4b/train.jsonl",
           localPath: cwdRelativeLocalPath,
           rows: 1,
           bytes: 128,
@@ -2300,16 +2330,16 @@ describe("training analysis index", () => {
     expect(huggingFaceArtifact?.summary).toMatchObject({
       hfFiles: [
         expect.objectContaining({
-          hfPath: "sft/0_8b/train.jsonl",
-          localPath: join(hfDir, "sft", "0_8b", "train.jsonl"),
+          hfPath: "sft/4b/train.jsonl",
+          localPath: join(hfDir, "sft", "4b", "train.jsonl"),
           rows: 1,
           status: "downloaded",
         }),
       ],
       hfSamplePreviews: [
         expect.objectContaining({
-          hfPath: "sft/0_8b/train.jsonl",
-          localPath: join(hfDir, "sft", "0_8b", "train.jsonl"),
+          hfPath: "sft/4b/train.jsonl",
+          localPath: join(hfDir, "sft", "4b", "train.jsonl"),
           trajectoryId: "hf-cwd-relative-traj-1",
           input: "cwd relative hf input",
           output: "cwd relative hf output",
@@ -2335,26 +2365,29 @@ describe("training analysis index", () => {
       process.cwd(),
       join(bundleDir, "tasks", "response.jsonl"),
     );
-    await writeJsonl(join(bundleDir, "sanitized", "trajectories.sanitized.jsonl"), [
-      {
-        trajectoryId: "natural-cwd-relative-traj-1",
-        agentId: "agent-natural",
-        steps: [
-          {
-            stepId: "step-1",
-            llmCalls: [
-              {
-                callId: "call-1",
-                purpose: "response",
-                model: "eliza-1-0_8b-trained",
-                userPrompt: "cwd relative natural input",
-                response: "cwd relative natural output",
-              },
-            ],
-          },
-        ],
-      },
-    ]);
+    await writeJsonl(
+      join(bundleDir, "sanitized", "trajectories.sanitized.jsonl"),
+      [
+        {
+          trajectoryId: "natural-cwd-relative-traj-1",
+          agentId: "agent-natural",
+          steps: [
+            {
+              stepId: "step-1",
+              llmCalls: [
+                {
+                  callId: "call-1",
+                  purpose: "response",
+                  model: "eliza-1-4b-trained",
+                  userPrompt: "cwd relative natural input",
+                  response: "cwd relative natural output",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    );
     await writeJsonl(join(bundleDir, "tasks", "response.jsonl"), [
       {
         task: "response",
@@ -2517,7 +2550,11 @@ describe("training analysis index", () => {
       runDir,
       viewerHtmlPath: join(runDir, "viewer", "index.html"),
       nativeJsonlPath: join(runDir, "native", "scenario-native.jsonl"),
-      nativeManifestPath: join(runDir, "native", "scenario-native.manifest.json"),
+      nativeManifestPath: join(
+        runDir,
+        "native",
+        "scenario-native.manifest.json",
+      ),
       turnPreviews: [
         expect.objectContaining({
           scenarioId: "scenario.cwd",

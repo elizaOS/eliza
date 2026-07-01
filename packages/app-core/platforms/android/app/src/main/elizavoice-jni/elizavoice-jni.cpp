@@ -226,6 +226,7 @@ struct PipelineSession {
     // read them without re-parsing big JSON.
     std::vector<std::vector<float>> turnEmbeddings;
     std::vector<std::vector<int8_t>> turnLabels;
+    std::vector<std::vector<float>> turnPcms;
 };
 
 // Append `n` samples to a bounded pre-roll ring, dropping oldest beyond cap.
@@ -321,6 +322,7 @@ bool finalize_turn(PipelineSession* s, char** outError) {
                                               : std::vector<float>{});
     s->turnLabels.push_back(haveLabels ? std::move(labels)
                                        : std::vector<int8_t>{});
+    s->turnPcms.push_back(std::move(s->turnPcm));
     s->turnPcm.clear();
     return true;
 }
@@ -390,6 +392,76 @@ void cleanup_session_for_selftest(PipelineSession* s, EliInferenceContext* ctx) 
     if (s->vad) eliza_inference_vad_close(s->vad);
     delete s;
     if (ctx) eliza_inference_destroy(ctx);
+}
+
+// True unless the env var is explicitly "0"/"false"/"no"/"off" (case-insensitive).
+// Absent / unrecognized → the `fallback`.
+bool bionic_bool_env_or_default(const char* name, bool fallback) {
+    const char* v = std::getenv(name);
+    if (!v || v[0] == '\0') return fallback;
+    std::string s(v);
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (s == "0" || s == "false" || s == "no" || s == "off") return false;
+    if (s == "1" || s == "true" || s == "yes" || s == "on") return true;
+    return fallback;
+}
+
+int bionic_int_env_or_default(const char* name, int fallback) {
+    const char* v = std::getenv(name);
+    if (!v || v[0] == '\0') return fallback;
+    int parsed = std::atoi(v);
+    return parsed > 0 ? parsed : fallback;
+}
+
+// Arm the eliza-1 text-model bionic config for runtime optimizations that are
+// correct for the shipped model.
+//
+// KV-quant stays OFF by default. The shipped Eliza-1 tiers are Gemma 4, whose
+// KV is already minimal by construction (MQA + windowed-SWA + shared-KV, dual
+// head dims 512 global / 256 SWA) and runs on stock f16/q8_0 KV. The legacy
+// QJL1_256 / fused QJL-TBQ kernels are head_dim=128 and dimensionally
+// inapplicable to Gemma, so cache_type_k=qjl1_256/cache_type_v=tbq3_0 is not a
+// shipping path; F16 KV is correct. ELIZA_BIONIC_KV_QUANT=1 is left as an
+// explicit lab override for head_dim=128 test bundles only.
+//
+// MTP is enabled only when the caller supplies a Gemma separate-drafter GGUF.
+// Omitting cfg.mtp_drafter_path would select the retired same-file NextN path,
+// so shipped Gemma bundles without a staged drafter run plain decode even if
+// ELIZA_BIONIC_MTP is set in the app process.
+//
+// The two static names below outlive the cfg they're attached to (cfg is a
+// stack struct consumed synchronously by eliza_inference_llm_stream_open).
+void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg,
+                         const char* bundle_dir = nullptr) {
+    static const char* kKvTypeK = "qjl1_256";
+    static const char* kKvTypeV = "tbq3_0";
+    if (bionic_bool_env_or_default("ELIZA_BIONIC_KV_QUANT", false)) {
+        cfg.cache_type_k = kKvTypeK;
+        cfg.cache_type_v = kKvTypeV;
+        LOGI("bionic text cfg: KV-quant ON by explicit override (k=%s v=%s)",
+             kKvTypeK, kKvTypeV);
+    } else {
+        LOGI("bionic text cfg: KV-quant OFF (stock f16/q8_0 KV; Gemma 4 KV is "
+             "already minimal)");
+    }
+
+    (void)bundle_dir;
+    const bool has_drafter =
+        cfg.mtp_drafter_path && cfg.mtp_drafter_path[0] != '\0';
+    if (has_drafter && bionic_bool_env_or_default("ELIZA_BIONIC_MTP", true)) {
+        int draft_min = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MIN", 1);
+        int draft_max = bionic_int_env_or_default("ELIZA_BIONIC_MTP_DRAFT_MAX", 1);
+        if (draft_min < 1) draft_min = 1;
+        if (draft_max < draft_min) draft_max = draft_min;
+        cfg.draft_min = draft_min;
+        cfg.draft_max = draft_max;
+        LOGI("bionic text cfg: MTP ON (draft_min=%d draft_max=%d, drafter=%s)",
+             draft_min, draft_max, cfg.mtp_drafter_path);
+    } else {
+        LOGI("bionic text cfg: MTP OFF (%s)",
+             has_drafter ? "disabled by ELIZA_BIONIC_MTP" : "no drafter");
+    }
 }
 
 }  // namespace
@@ -738,6 +810,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineProcess(JNIEnv* env, jclass,
     s->turns.clear();
     s->turnEmbeddings.clear();
     s->turnLabels.clear();
+    s->turnPcms.clear();
 
     const std::vector<float> pcm = read_float_array(env, jPcm);
     s->pending.insert(s->pending.end(), pcm.begin(), pcm.end());
@@ -766,6 +839,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineFlush(JNIEnv* env, jclass,
     s->turns.clear();
     s->turnEmbeddings.clear();
     s->turnLabels.clear();
+    s->turnPcms.clear();
     if (s->seg.forceEnd()) {
         s->capturing = false;
         char* outError = nullptr;
@@ -821,6 +895,26 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnLabels(JNIEnv* env,
     return out;
 }
 
+// Read the segmented turn PCM for the i-th turn. Empty array when unavailable.
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnPcm(JNIEnv* env,
+                                                           jclass,
+                                                           jlong handle,
+                                                           jint index) {
+    auto* s = reinterpret_cast<PipelineSession*>(handle);
+    if (!s || index < 0 ||
+        static_cast<size_t>(index) >= s->turnPcms.size()) {
+        return env->NewFloatArray(0);
+    }
+    const auto& pcm = s->turnPcms[static_cast<size_t>(index)];
+    jfloatArray out = env->NewFloatArray(static_cast<jsize>(pcm.size()));
+    if (out && !pcm.empty()) {
+        env->SetFloatArrayRegion(out, 0, static_cast<jsize>(pcm.size()),
+                                 pcm.data());
+    }
+    return out;
+}
+
 JNIEXPORT void JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
                                                          jlong handle) {
@@ -829,6 +923,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
     s->seg.reset();
     s->pending.clear();
     s->turnPcm.clear();
+    s->turnPcms.clear();
     s->preRoll.clear();
     s->capturing = false;
     char* outError = nullptr;
@@ -1040,6 +1135,495 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadSelfTest(JNIEnv* env, jclass,
     LOGI("nativeVadSelfTest ok: probability=%f abi=%s supported=%d", probability,
          abiStr.c_str(), supported);
     return to_jstring(env, j);
+}
+
+// ── Text generation (LLM) ops — the GPU-accelerated text path ────────────
+//
+// Wrap the fused streaming-LLM ABI (eliza_inference_llm_stream_*), pooled
+// embeddings (eliza_inference_embed), end-of-turn scoring
+// (eliza_inference_llm_eot_score, ABI v11), and the tokenizer. When this JNI
+// host is built against the DYNAMIC-Vulkan libelizainference (libggml-vulkan.so
+// staged alongside it), llm_stream_open offloads the model to the GPU in the
+// bionic app process automatically — the path the musl bun agent cannot take.
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_llm_stream_supported());
+}
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_embed_supported());
+}
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEotSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_llm_eot_supported());
+}
+
+// Tokenize text -> int[] token ids. addSpecial adds BOS; parseSpecial renders
+// special tokens (<|im_start|> etc.) from the input.
+JNIEXPORT jintArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenize(JNIEnv* env, jclass,
+                                                    jlong ctxHandle,
+                                                    jstring jText,
+                                                    jboolean addSpecial,
+                                                    jboolean parseSpecial) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const std::string text = from_jstring(env, jText);
+    int* toks = nullptr;
+    size_t n = 0;
+    char* outError = nullptr;
+    const int rc = eliza_inference_tokenize(
+        ctx, text.c_str(), text.size(), addSpecial ? 1 : 0,
+        parseSpecial ? 1 : 0, &toks, &n, &outError);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "tokenize", outError);
+        return nullptr;
+    }
+    jintArray out = env->NewIntArray(static_cast<jsize>(n));
+    if (out && n > 0) {
+        env->SetIntArrayRegion(out, 0, static_cast<jsize>(n),
+                               reinterpret_cast<const jint*>(toks));
+    }
+    if (toks) eliza_inference_free_tokens(toks);
+    return out;
+}
+
+// Pooled, L2-normalized sentence embedding (pooling: 1=MEAN default) ->
+// float[n_embd].
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbed(JNIEnv* env, jclass,
+                                                 jlong ctxHandle, jstring jText,
+                                                 jint pooling) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const std::string text = from_jstring(env, jText);
+    std::vector<float> out(4096, 0.0f);
+    int dim = 0;
+    char* outError = nullptr;
+    const int rc = eliza_inference_embed(ctx, text.c_str(), text.size(),
+                                         pooling > 0 ? pooling : 1, out.data(),
+                                         out.size(), &dim, &outError);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "embed", outError);
+        return nullptr;
+    }
+    jfloatArray ja = env->NewFloatArray(dim);
+    if (ja && dim > 0) env->SetFloatArrayRegion(ja, 0, dim, out.data());
+    return ja;
+}
+
+// End-of-turn score: next-token P(targetToken | tokens) -> float.
+JNIEXPORT jfloat JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeEotScore(JNIEnv* env, jclass,
+                                                    jlong ctxHandle,
+                                                    jintArray jTokens,
+                                                    jint targetToken) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const jsize n = env->GetArrayLength(jTokens);
+    std::vector<int32_t> toks(static_cast<size_t>(n));
+    if (n > 0) {
+        env->GetIntArrayRegion(jTokens, 0, n,
+                               reinterpret_cast<jint*>(toks.data()));
+    }
+    float prob = 0.0f, topProb = 0.0f;
+    int32_t topTok = -1;
+    char* outError = nullptr;
+    const int rc = eliza_inference_llm_eot_score(ctx, toks.data(), toks.size(),
+                                                 targetToken, &prob, &topTok,
+                                                 &topProb, &outError);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "eot_score", outError);
+        return 0.0f;
+    }
+    return prob;
+}
+
+// Open a streaming-LLM session. nGpuLayers: -1 = all-GPU (default), 0 = CPU
+// (the lib ignores 0 when libggml-vulkan is linked; the CPU/GPU choice is the
+// staged LIB VARIANT, see the per-device selection). drafterPath ("" = none)
+// enables MTP speculative decoding.
+JNIEXPORT jlong JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
+    JNIEnv* env, jclass, jlong ctxHandle, jint maxTokens, jfloat temperature,
+    jfloat topP, jint topK, jint nGpuLayers, jstring jDrafterPath) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    const std::string drafter = from_jstring(env, jDrafterPath);
+    eliza_llm_stream_config_t cfg;
+    std::memset(&cfg, 0, sizeof(cfg));
+    cfg.max_tokens = maxTokens;
+    cfg.temperature = temperature;
+    cfg.top_p = topP > 0 ? topP : 1.0f;
+    cfg.top_k = topK;
+    cfg.repeat_penalty = 1.0f;
+    cfg.n_gpu_layers = nGpuLayers;
+    cfg.mtp_drafter_path = drafter.empty() ? nullptr : drafter.c_str();
+    // Arm safe runtime optimizations: stock f16/q8_0 KV for the shipped Gemma 4
+    // tiers, and separate-drafter MTP only when the caller passes a drafter.
+    arm_bionic_text_cfg(cfg);
+    if (!drafter.empty() && cfg.draft_min <= 0) {
+        // Separate drafter supplied but env left the window 0; give it the
+        // single-head default so the drafter actually drives speculation.
+        cfg.draft_min = 1;
+        cfg.draft_max = 1;
+    }
+    char* outError = nullptr;
+    EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
+    if (!s) {
+        throw_runtime(env, "llm_stream_open returned null", outError);
+        return 0;
+    }
+    return reinterpret_cast<jlong>(s);
+}
+
+JNIEXPORT void JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamPrefill(JNIEnv* env, jclass,
+                                                            jlong streamHandle,
+                                                            jintArray jTokens) {
+    auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
+    const jsize n = env->GetArrayLength(jTokens);
+    std::vector<int32_t> toks(static_cast<size_t>(n));
+    if (n > 0) {
+        env->GetIntArrayRegion(jTokens, 0, n,
+                               reinterpret_cast<jint*>(toks.data()));
+    }
+    char* outError = nullptr;
+    const int rc = eliza_inference_llm_stream_prefill(s, toks.data(),
+                                                      toks.size(), &outError);
+    if (rc != ELIZA_OK) throw_runtime(env, "llm_stream_prefill", outError);
+}
+
+// Pull the next decode step. Returns JSON {text, done, drafted, accepted}:
+// `text` is the detokenized chunk (may span multiple committed tokens via MTP),
+// `done` true at the final step. `text` is JSON-escaped.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamNext(JNIEnv* env, jclass,
+                                                         jlong streamHandle) {
+    auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
+    int32_t toks[256];
+    char text[4096];
+    size_t nout = 0;
+    int32_t drafted = 0, accepted = 0;
+    char* outError = nullptr;
+    const int rc = eliza_inference_llm_stream_next(
+        s, toks, 256, &nout, text, sizeof(text), &drafted, &accepted, &outError);
+    if (rc < 0) {
+        throw_runtime(env, "llm_stream_next", outError);
+        return nullptr;
+    }
+    std::string esc;
+    for (const char* p = text; *p; ++p) {
+        switch (*p) {
+            case '"': esc += "\\\""; break;
+            case '\\': esc += "\\\\"; break;
+            case '\n': esc += "\\n"; break;
+            case '\r': esc += "\\r"; break;
+            case '\t': esc += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(*p) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x",
+                                  static_cast<unsigned char>(*p));
+                    esc += buf;
+                } else {
+                    esc += *p;
+                }
+        }
+    }
+    std::string json = "{\"text\":\"" + esc +
+                       "\",\"done\":" + (rc == 1 ? "true" : "false") +
+                       ",\"nout\":" + std::to_string(nout) +
+                       ",\"drafted\":" + std::to_string(drafted) +
+                       ",\"accepted\":" + std::to_string(accepted) + "}";
+    return to_jstring(env, json);
+}
+
+JNIEXPORT void JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamClose(JNIEnv*, jclass,
+                                                          jlong streamHandle) {
+    eliza_inference_llm_stream_close(
+        reinterpret_cast<EliLlmStream*>(streamHandle));
+}
+
+// Reset a persistent stream (clear KV + sampler + counters) for warm reuse.
+// Returns 1 on success, 0 if the stream can't be reset (MTP / null).
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamReset(JNIEnv*, jclass,
+                                                          jlong streamHandle) {
+    const int rc = eliza_inference_llm_stream_reset(
+        reinterpret_cast<EliLlmStream*>(streamHandle));
+    return static_cast<jint>(rc == ELIZA_OK ? 1 : 0);
+}
+
+// Prefix-preserving reset: keep the first nKeep tokens of KV resident, drop the
+// rest. Returns the n_keep actually applied (>= 0), or a negative ELIZA_* on a
+// NULL / MTP / unopened stream (caller falls back to a full reset + prefill).
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamResetKeep(JNIEnv*, jclass,
+                                                              jlong streamHandle,
+                                                              jint nKeep) {
+    const int rc = eliza_inference_llm_stream_reset_keep(
+        reinterpret_cast<EliLlmStream*>(streamHandle), static_cast<int32_t>(nKeep));
+    return static_cast<jint>(rc);
+}
+
+// ── LLM self-test (one native call: ctx→tokenize→stream→generate) ─────────
+//
+// THE KEYSTONE PROOF: runs a whole greedy text generation in ONE native call,
+// in the bionic app process, against whatever libelizainference.so is staged
+// into jniLibs. When that lib is the dynamic-Vulkan variant, ggml-vulkan logs
+// "Found 1 Vulkan devices: Mali-G715" + "offloaded N/N layers to GPU" to
+// logcat (the in-process GPU evidence). Returns JSON {ok,text,tokens,ms,tokS}.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
+                                                       jstring jBundleDir,
+                                                       jstring jPrompt,
+                                                       jint maxTokens) {
+    const std::string bundleDir = from_jstring(env, jBundleDir);
+    const std::string prompt = from_jstring(env, jPrompt);
+    const int genCap = maxTokens > 0 ? maxTokens : 32;
+    char* outError = nullptr;
+
+    EliInferenceContext* ctx =
+        eliza_inference_create(bundleDir.c_str(), &outError);
+    if (!ctx) { throw_runtime(env, "llmSelfTest: create", outError); return nullptr; }
+
+    int* tok = nullptr; size_t tn = 0;
+    if (eliza_inference_tokenize(ctx, prompt.c_str(), prompt.size(), 1, 1, &tok,
+                                 &tn, &outError) != ELIZA_OK) {
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "llmSelfTest: tokenize", outError);
+        return nullptr;
+    }
+
+    eliza_llm_stream_config_t cfg;
+    std::memset(&cfg, 0, sizeof(cfg));
+    cfg.max_tokens = genCap;
+    cfg.temperature = 0.0f;  // greedy, deterministic
+    cfg.top_k = 1;
+    cfg.top_p = 1.0f;
+    cfg.repeat_penalty = 1.0f;
+    cfg.n_gpu_layers = -1;   // all-GPU when the vulkan lib is staged
+    // Arm safe runtime optimizations (stock f16/q8_0 KV for shipped Gemma 4
+    // tiers; no MTP here because nativeLlmSelfTest has no drafter argument).
+    arm_bionic_text_cfg(cfg, bundleDir.c_str());
+    EliLlmStream* s = eliza_inference_llm_stream_open(ctx, &cfg, &outError);
+    if (!s) {
+        if (tok) eliza_inference_free_tokens(tok);
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "llmSelfTest: stream_open", outError);
+        return nullptr;
+    }
+
+    const double t0 = []() {
+        timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+        return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+    }();
+    if (eliza_inference_llm_stream_prefill(s, reinterpret_cast<int32_t*>(tok),
+                                           tn, &outError) != ELIZA_OK) {
+        eliza_inference_llm_stream_close(s);
+        if (tok) eliza_inference_free_tokens(tok);
+        eliza_inference_destroy(ctx);
+        throw_runtime(env, "llmSelfTest: prefill", outError);
+        return nullptr;
+    }
+
+    std::string text;
+    int produced = 0;
+    while (produced < genCap) {
+        int32_t toks[256]; char chunk[4096]; size_t nout = 0;
+        int32_t dd = 0, da = 0;
+        const int rc = eliza_inference_llm_stream_next(
+            s, toks, 256, &nout, chunk, sizeof(chunk), &dd, &da, &outError);
+        if (rc < 0) break;
+        text += chunk;
+        produced += static_cast<int>(nout);
+        if (rc == 1) break;
+    }
+    const double t1 = []() {
+        timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+        return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+    }();
+    eliza_inference_llm_stream_close(s);
+    if (tok) eliza_inference_free_tokens(tok);
+    eliza_inference_destroy(ctx);
+
+    const double ms = t1 - t0;
+    const double tokS = ms > 0 ? produced * 1000.0 / ms : 0.0;
+    LOGI("LLM SELFTEST: generated %d tokens in %.0fms (%.2f tok/s) — \"%.80s\"",
+         produced, ms, tokS, text.c_str());
+
+    // JSON-escape the generated text.
+    std::string esc;
+    for (char c : text) {
+        switch (c) {
+            case '"': esc += "\\\""; break;
+            case '\\': esc += "\\\\"; break;
+            case '\n': esc += "\\n"; break;
+            case '\r': esc += "\\r"; break;
+            case '\t': esc += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char b[8]; std::snprintf(b, sizeof(b), "\\u%04x",
+                                             static_cast<unsigned char>(c));
+                    esc += b;
+                } else esc += c;
+        }
+    }
+    std::string json = "{\"ok\":true,\"tokens\":" + std::to_string(produced) +
+                       ",\"ms\":" + std::to_string(ms) + ",\"tokS\":" +
+                       std::to_string(tokS) + ",\"text\":\"" + esc + "\"}";
+    return to_jstring(env, json);
+}
+
+// ── Kokoro TTS (ABI v10) ─────────────────────────────────────────────────
+// Synthesize speech in-process via the fused Kokoro-82M head. This is what lets
+// the Android app speak with the real on-device voice instead of falling back to
+// the platform TextToSpeech: TalkMode (this bionic process) → bionic host "tts"
+// op → here. Returns a float[] of 24 kHz PCM (the model's native rate).
+
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSampleRate(JNIEnv*, jclass,
+                                                            jlong ctxHandle) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    return ctx ? eliza_inference_kokoro_sample_rate(ctx) : -1;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
+                                                            jlong ctxHandle,
+                                                            jstring jGguf,
+                                                            jstring jVoiceBin,
+                                                            jstring jText,
+                                                            jfloat speed) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "kokoroSynthesize: null context", nullptr);
+        return nullptr;
+    }
+    const std::string gguf = from_jstring(env, jGguf);
+    const std::string voiceBin = from_jstring(env, jVoiceBin);
+    const std::string text = from_jstring(env, jText);
+    char* err = nullptr;
+    // style_dim 256 for Kokoro v1.0. Reloads only when the model/voice changed
+    // (the FFI caches the resident model + voice preset).
+    if (eliza_inference_kokoro_load(ctx, gguf.c_str(), voiceBin.c_str(), 256, &err) != 0) {
+        throw_runtime(env, "kokoro_load failed", err);
+        return nullptr;
+    }
+    // Cap at 30 s @ 24 kHz — far longer than any single reply phrase.
+    const size_t cap = 24000u * 30u;
+    std::vector<float> pcm(cap);
+    err = nullptr;
+    int n = eliza_inference_kokoro_synthesize(
+        ctx, text.c_str(), text.size(), speed, pcm.data(), cap, &err);
+    if (n < 0) {
+        throw_runtime(env, "kokoro_synthesize failed", err);
+        return nullptr;
+    }
+    jfloatArray out = env->NewFloatArray(n);
+    if (!out) return nullptr;
+    env->SetFloatArrayRegion(out, 0, n, pcm.data());
+    LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
+    return out;
+}
+
+// ── Batch ASR (synchronous, VAD-free) ────────────────────────────────────
+//
+// The streaming pipeline (nativePipelineProcess) is VAD-gated and needs the
+// VAD/diariz/speaker GGUFs staged; this is the DIRECT audio-in/text-out
+// transcribe the fused lib exposes (eliza_inference_asr_transcribe), which
+// only mmap-acquires the `asr/` weights on the resident context. The bionic
+// host's op="asr" calls this so the agent's TRANSCRIPTION delegate gets a
+// real on-device transcript without the full attribution pipeline.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
+                                                         jlong ctxHandle,
+                                                         jfloatArray jPcm,
+                                                         jint sampleRate) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "asrTranscribe: null context", nullptr);
+        return nullptr;
+    }
+    const jsize n = env->GetArrayLength(jPcm);
+    jfloat* pcm = env->GetFloatArrayElements(jPcm, nullptr);
+    if (!pcm) {
+        throw_runtime(env, "asrTranscribe: null PCM", nullptr);
+        return nullptr;
+    }
+    // The ASR weights are a voice-only mmap region that must be armed before
+    // transcribe (VoiceLifecycle normally does this on voice-on). The agent's
+    // one-shot transcribe path has no lifecycle, so arm it here (idempotent if
+    // already acquired).
+    char* acqErr = nullptr;
+    if (eliza_inference_mmap_acquire(ctx, "asr", &acqErr) != 0) {
+        env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+        throw_runtime(env, "asr mmap_acquire", acqErr);
+        return nullptr;
+    }
+    // 64 KiB transcript cap — far longer than any single utterance.
+    std::vector<char> out(65536, 0);
+    char* err = nullptr;
+    const int rc = eliza_inference_asr_transcribe(
+        ctx, reinterpret_cast<const float*>(pcm), static_cast<size_t>(n),
+        sampleRate > 0 ? sampleRate : kSampleRate, out.data(), out.size(),
+        &err);
+    env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+    if (rc < 0) {
+        throw_runtime(env, "asr_transcribe", err);
+        return nullptr;
+    }
+    LOGI("nativeAsrTranscribe: %d samples @ %d Hz -> %d transcript bytes",
+         (int)n, (int)sampleRate, rc);
+    return to_jstring(env, std::string(out.data()));
+}
+
+// ── mmproj vision (ABI v9) ───────────────────────────────────────────────
+JNIEXPORT jint JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeVisionSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_vision_supported());
+}
+
+// Describe a raw PNG/JPEG/WebP image with the resident TEXT model + an mmproj
+// projector (eliza_inference_describe_image). The bionic host's op="image"
+// calls this so the agent's IMAGE_DESCRIPTION delegate runs screen/vision
+// recognition fully on-device.
+JNIEXPORT jstring JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeDescribeImage(JNIEnv* env, jclass,
+                                                         jlong ctxHandle,
+                                                         jbyteArray jImage,
+                                                         jstring jMmproj,
+                                                         jstring jPrompt) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "describeImage: null context", nullptr);
+        return nullptr;
+    }
+    const std::string mmproj = from_jstring(env, jMmproj);
+    const std::string prompt = from_jstring(env, jPrompt);
+    const jsize n = env->GetArrayLength(jImage);
+    jbyte* img = env->GetByteArrayElements(jImage, nullptr);
+    if (!img) {
+        throw_runtime(env, "describeImage: null image bytes", nullptr);
+        return nullptr;
+    }
+    std::vector<char> out(16384, 0);
+    char* err = nullptr;
+    const int rc = eliza_inference_describe_image(
+        ctx, reinterpret_cast<const unsigned char*>(img),
+        static_cast<size_t>(n),
+        mmproj.empty() ? nullptr : mmproj.c_str(),
+        prompt.empty() ? nullptr : prompt.c_str(), out.data(), out.size(),
+        &err);
+    env->ReleaseByteArrayElements(jImage, img, JNI_ABORT);
+    if (rc < 0) {
+        throw_runtime(env, "describe_image", err);
+        return nullptr;
+    }
+    LOGI("nativeDescribeImage: %d image bytes -> %d description bytes", (int)n,
+         rc);
+    return to_jstring(env, std::string(out.data()));
 }
 
 }  // extern "C"

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useSignalPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { ConnectorQrPairingOverlay } from "./ConnectorQrPairingOverlay";
 
 interface SignalQrOverlayProps {
@@ -14,7 +14,7 @@ export function SignalQrOverlay({
   onConnected,
 }: SignalQrOverlayProps) {
   const pairing = useSignalPairing(accountId);
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const steps = useMemo(
     () => [
       {

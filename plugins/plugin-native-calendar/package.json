@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-calendar",
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "description": "Reads and writes Apple Calendar events through EventKit.",
   "keywords": [
     "calendar",
@@ -14,9 +14,18 @@
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
+      "eliza-source": "./src/index.ts",
       "bun": "./src/index.ts",
       "development": "./src/index.ts",
       "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./macos-bridge-policy": {
+      "types": "./dist/esm/macos-bridge-policy.d.ts",
+      "eliza-source": "./src/macos-bridge-policy.ts",
+      "bun": "./src/macos-bridge-policy.ts",
+      "development": "./src/macos-bridge-policy.ts",
+      "import": "./dist/esm/macos-bridge-policy.js",
       "require": "./dist/plugin.cjs.js"
     },
     "./package.json": "./package.json"

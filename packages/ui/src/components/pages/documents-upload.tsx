@@ -18,7 +18,7 @@ import {
 } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { DocumentScope } from "../../api/client-types-chat";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -85,7 +85,9 @@ function ScopeButton({
   uploading: boolean;
   onSelect: (value: DocumentScope) => void;
 }) {
-  const { t } = useApp();
+  // Granular selector instead of useApp() so this only re-renders on locale
+  // change, not on every app-store field (#9141 gap 2).
+  const t = useAppSelector((s) => s.t);
   const { value, labelKey, defaultLabel, titleKey, defaultTitle, Icon } =
     option;
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -142,7 +144,7 @@ export function UploadZone({
   uploading: boolean;
   uploadStatus: { current: number; total: number; filename: string } | null;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const [dragOver, setDragOver] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [textInput, setTextInput] = useState("");
@@ -316,8 +318,8 @@ export function UploadZone({
       <div
         className={`rounded-sm border px-3 py-3 transition-colors ${
           dragOver
-            ? "border-accent/45 bg-accent/8 "
-            : "border-border/35 bg-card/62"
+            ? "border-accent/40 bg-accent/8 "
+            : "border-transparent bg-card/12"
         } ${uploading ? "opacity-60" : ""}`}
       >
         <div className="flex items-center gap-2">

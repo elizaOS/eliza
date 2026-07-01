@@ -112,6 +112,39 @@ Read by the runtime (see README for the full WHY of each):
 
 Prefer the canonical env reader in `utils/read-env.ts` over raw `process.env` (it handles legacy aliases).
 
+### Setting / env resolution — precedence & the multi-tenant rule
+
+Two canonical helpers own all setting/env resolution; everything else delegates:
+
+| Helper | Source order | Use when |
+| --- | --- | --- |
+| `runtime.getSetting(key)` (`runtime.ts`) | character secrets → character settings → `settings.extra` → `settings.secrets` → `character.env.vars` → the constructor-provided `settings` map. **Never `process.env`.** | Inside the runtime / framework code. |
+| `readEnv(key, opts)` (`utils/read-env.ts`) | `process.env[key]` (trimmed; empty string treated as unset) → `defaultValue`. | Reading an env var with no runtime in scope. |
+| `resolveSetting(runtime, key, opts)` (`utils/resolve-setting.ts`) | `runtime.getSetting(key)` (coerced to string) → `readEnv(key)` → `defaultValue`. | Single-tenant / headless plugins that still want a dotenv fallback. |
+
+**Resolution order:** runtime/character setting → env alias → default. The
+per-agent runtime value always wins; the env fallback is the deployment default.
+
+**WHY core `getSetting()` deliberately does NOT read `process.env`:** in a
+multi-tenant process many agents share one OS environment. If `getSetting()`
+fell through to `process.env`, a host secret (`OPENAI_API_KEY`,
+`POSTGRES_URL`, …) set for the *box* would silently leak into *every* agent,
+including ones the operator never granted it to. Keeping `getSetting()`
+per-agent makes each agent's config explicit and isolated. `resolveSetting`
+re-adds an opt-in env fallback for single-tenant/headless plugins **without**
+changing `getSetting()` semantics — multi-tenant hosts that never call it are
+unaffected.
+
+**Host obligation (how to make dotenv values visible to `getSetting()`):**
+because `getSetting()` reads the constructor-provided `settings` map and not
+`process.env`, a host that wants `.env` / `process.env` values honored must fold
+them into the runtime's settings at construction. `getBasicCapabilitiesSettings(character, env)`
+(`runtime-composition.ts`) does exactly this — it flattens `character.settings`,
+`character.secrets`, and `env` into the `Record<string,string>` handed to
+adapter factories and the `AgentRuntime` constructor. Construct the runtime with
+those settings and dotenv is honored; skip it and only character config is
+visible.
+
 ## How to extend
 
 - **Add an action/provider/evaluator/service to the built-in bundle:** implement against the `Action`/`Provider`/`Evaluator`/`Service` types in `types/`, then add it to the relevant array in `src/features/basic-capabilities/index.ts` (`basicActions`, `basicProviders`, `basicEvaluators`, `basicServices`). Most new capabilities should live in their own plugin package instead of here.
@@ -130,3 +163,45 @@ Prefer the canonical env reader in `utils/read-env.ts` over raw `process.env` (i
 - `runtime.ts` is very large (~9000 lines / ~259 KB) — navigate by symbol, not by reading top-to-bottom.
 - `src/generated/` and parts of `src/i18n/generated/` are build artifacts; regenerate via prebuild rather than editing.
 - Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../AGENTS.md) — not restated here.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — runtime / framework:**
+- A **live-LLM** scenario trajectory for the runtime path you touched — provider → model → action → evaluator — with the raw `<response>` XML and every tool/action call visible and **read**.
+- Backend `[ClassName]` logs proving the message loop, task scheduler, or service actually fired end to end.
+- The memory/state artifacts produced — rows written, embeddings, room/world/entity records, scheduled-task rows — inspected, not assumed.
+- For shared modules: `build:node` vs full `build` so the browser/edge bundles still compile.
+<!-- END: evidence-and-e2e-mandate -->

@@ -5,9 +5,9 @@
  *   - `VadDetector`: speech state machine driven by a *deterministic fake
  *     Silero* (probability scripted per window), asserting the full
  *     `VadEvent` sequence (start → active → pause → end / blip).
- *   - `GgmlSileroVad`: the temporary fused libelizainference fallback.
- *     Exercised here via the fake FFI fixture; the standalone silero-vad-cpp
- *     resolver is covered with path and provider-selection tests below.
+ *   - `GgmlSileroVad`: the fused libelizainference VAD — the sole on-device
+ *     VAD runtime. Exercised here via the fake FFI fixture; provider
+ *     resolution and fail-fast paths are covered below.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -22,15 +22,12 @@ import {
 	GgmlSileroVad,
 	NativeSileroVad,
 	RmsEnergyGate,
-	resolveSileroVadCppGgufPath,
 	resolveVadProvider,
 	rms,
-	SILERO_VAD_BUNDLE_REL_PATH,
 	VadDetector,
 	VadUnavailableError,
 	vadProviderOrder,
 } from "./vad";
-import { resolveSileroVadGgmlLibrary } from "./vad-ggml";
 
 const SR = 16_000;
 const FRAME = 512; // one Silero window
@@ -327,100 +324,20 @@ describe("VadDetector", () => {
 });
 
 describe("GgmlSileroVad", () => {
-	it("uses the canonical bundled silero-cpp GGUF path", () => {
-		const root = mkdtempSync(path.join(os.tmpdir(), "vad-bundle-"));
-		try {
-			const gguf = path.join(root, SILERO_VAD_BUNDLE_REL_PATH);
-			mkdirSync(path.dirname(gguf), { recursive: true });
-			writeFileSync(gguf, "gguf");
-			expect(SILERO_VAD_BUNDLE_REL_PATH).toBe(
-				path.join("vad", "silero-vad-v5.gguf"),
-			);
-			expect(resolveSileroVadCppGgufPath({ bundleRoot: root })).toBe(gguf);
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("prefers the platform-native silero-vad-cpp library name", () => {
-		const root = mkdtempSync(path.join(os.tmpdir(), "vad-lib-"));
-		try {
-			const build = path.join(
-				root,
-				"packages",
-				"native",
-				"plugins",
-				"silero-vad-cpp",
-				"build",
-			);
-			mkdirSync(build, { recursive: true });
-			for (const name of [
-				"libsilero_vad.so",
-				"libsilero_vad.dylib",
-				"silero_vad.dll",
-			]) {
-				writeFileSync(path.join(build, name), "");
-			}
-			const expected =
-				process.platform === "darwin"
-					? "libsilero_vad.dylib"
-					: process.platform === "win32"
-						? "silero_vad.dll"
-						: "libsilero_vad.so";
-			expect(resolveSileroVadGgmlLibrary({ repoRoot: root })).toBe(
-				path.join(build, expected),
-			);
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("does not auto-select a non-native silero-vad-cpp library name", () => {
-		const root = mkdtempSync(path.join(os.tmpdir(), "vad-lib-"));
-		try {
-			const build = path.join(
-				root,
-				"packages",
-				"native",
-				"plugins",
-				"silero-vad-cpp",
-				"build",
-			);
-			mkdirSync(build, { recursive: true });
-			const nonNativeNames =
-				process.platform === "darwin"
-					? ["libsilero_vad.so", "silero_vad.dll"]
-					: process.platform === "win32"
-						? ["libsilero_vad.so", "libsilero_vad.dylib"]
-						: ["libsilero_vad.dylib", "silero_vad.dll"];
-			for (const name of nonNativeNames) {
-				writeFileSync(path.join(build, name), "");
-			}
-			expect(resolveSileroVadGgmlLibrary({ repoRoot: root })).toBeNull();
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("documents the auto provider order: Qwen toolkit → fused native Silero → standalone Silero", () => {
-		// Fused `silero-ggml` (the one libelizainference handle) is preferred
-		// over the standalone `silero-cpp` bun:ffi-musl lib per the
-		// single-fused-engine directive.
-		expect(vadProviderOrder()).toEqual([
-			"qwen-toolkit",
-			"silero-ggml",
-			"silero-cpp",
-		]);
+	it("documents the auto provider order: optional external VAD adapter → fused native Silero", () => {
+		// Fused `silero-ggml` (the one libelizainference handle) is the sole
+		// on-device VAD runtime; the optional injected `external-vad` adapter is
+		// tried first only when a caller supplies one.
+		expect(vadProviderOrder()).toEqual(["external-vad", "silero-ggml"]);
 		expect(vadProviderOrder("silero-ggml")).toEqual(["silero-ggml"]);
-		expect(vadProviderOrder("silero-cpp")).toEqual(["silero-cpp"]);
 	});
 
 	it("exposes NativeSileroVad as a back-compat alias for GgmlSileroVad", () => {
 		expect(NativeSileroVad).toBe(GgmlSileroVad);
 	});
 
-	it("prefers a supplied Qwen toolkit VAD adapter over the native provider", async () => {
-		const qwenVad = new ScriptedSilero([
+	it("prefers a supplied external VAD adapter over the native provider", async () => {
+		const externalVad = new ScriptedSilero([
 			0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
 		]);
 		const ffi = fakeFfi("x", {
@@ -428,20 +345,20 @@ describe("GgmlSileroVad", () => {
 			vadProbs: [0.01],
 		});
 		const resolved = await resolveVadProvider({
-			qwenToolkitVad: {
+			externalVad: {
 				isAvailable: () => true,
-				loadVad: async () => qwenVad,
+				loadVad: async () => externalVad,
 			},
 			ffi,
 			ctx: 1n,
 		});
 
-		expect(resolved.id).toBe("qwen-toolkit");
-		expect(resolved.vad).toBe(qwenVad);
+		expect(resolved.id).toBe("external-vad");
+		expect(resolved.vad).toBe(externalVad);
 
 		const det = await createVadDetector({
-			qwenToolkitVad: {
-				loadVad: async () => qwenVad,
+			externalVad: {
+				loadVad: async () => externalVad,
 			},
 			ffi,
 			ctx: 1n,
@@ -471,15 +388,15 @@ describe("GgmlSileroVad", () => {
 	});
 
 	it("createSileroVadDetector goes through the unified resolver", async () => {
-		// The Qwen toolkit adapter short-circuits resolution before any
+		// The external adapter short-circuits resolution before any
 		// FFI / model-file checks run, which exercises the unified resolver
 		// end-to-end without needing a libelizainference build.
-		const qwenVad = new ScriptedSilero([
+		const externalVad = new ScriptedSilero([
 			0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
 		]);
 		const det = await createSileroVadDetector({
-			qwenToolkitVad: {
-				loadVad: async () => qwenVad,
+			externalVad: {
+				loadVad: async () => externalVad,
 			},
 			config: {
 				onsetThreshold: 0.5,
@@ -540,16 +457,33 @@ describe("GgmlSileroVad", () => {
 		expect(err.code).toBe("ffi-missing");
 	});
 
-	it("prefers the fused silero-ggml over standalone silero-cpp when the fused FFI advertises VAD", async () => {
-		// The fused handle advertises VAD support; the bundle carries the legacy
-		// GGML model. silero-cpp is tried second (no standalone lib/GGUF on this
-		// host) so resolution lands on the fused `silero-ggml` — the one
-		// libelizainference handle — per the single-fused-engine directive.
+	it("resolves to the fused silero-ggml when the fused FFI advertises VAD and the model is staged", async () => {
+		// The fused handle advertises VAD support and the bundle carries the
+		// GGML model, so resolution lands on the fused `silero-ggml` — the one
+		// libelizainference handle and the sole on-device VAD runtime.
 		const dir = mkdtempSync(path.join(os.tmpdir(), "fused-vad-"));
 		try {
 			const ggml = path.join(dir, "vad", "silero-vad-v5.1.2.ggml.bin");
 			mkdirSync(path.dirname(ggml), { recursive: true });
 			writeFileSync(ggml, "");
+			const ffi = fakeFfi("x", { vadSupported: true, vadProbs: [0.1] });
+			const resolved = await resolveVadProvider({
+				ffi,
+				ctx: 1n,
+				bundleRoot: dir,
+			});
+			expect(resolved.id).toBe("silero-ggml");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("accepts the bundled silero-vad-v5.gguf alias used by published bundles", async () => {
+		const dir = mkdtempSync(path.join(os.tmpdir(), "fused-vad-gguf-"));
+		try {
+			const gguf = path.join(dir, "vad", "silero-vad-v5.gguf");
+			mkdirSync(path.dirname(gguf), { recursive: true });
+			writeFileSync(gguf, "");
 			const ffi = fakeFfi("x", { vadSupported: true, vadProbs: [0.1] });
 			const resolved = await resolveVadProvider({
 				ffi,

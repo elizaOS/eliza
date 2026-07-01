@@ -4,13 +4,14 @@
  */
 
 import { ChannelType, type IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { FirstRunService } from "../src/lifeops/first-run/service.ts";
 import {
   createFirstRunStateStore,
   createOwnerFactStore,
 } from "../src/lifeops/first-run/state.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
+import { resetAgentBackupStubState } from "./stubs/agent.ts";
 
 function newService(runtime: IAgentRuntime): FirstRunService {
   return new FirstRunService(runtime, {
@@ -35,6 +36,10 @@ function firstRunMessage(
 }
 
 describe("first-run abandon / resume e2e", () => {
+  beforeEach(() => {
+    resetAgentBackupStubState();
+  });
+
   it("partial answers persist between runService calls", async () => {
     const runtime = createMinimalRuntimeStub();
     let service = newService(runtime);

@@ -242,6 +242,28 @@ function json(res: http.ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+function eventStream(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  messages: unknown[],
+): void {
+  applyCors(res);
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.write("retry: 60000\n\n");
+  for (const message of messages) {
+    res.write(`data: ${JSON.stringify(message)}\n\n`);
+  }
+  const keepAlive = setInterval(() => {
+    res.write(": keepalive\n\n");
+  }, 25_000);
+  req.on("close", () => {
+    clearInterval(keepAlive);
+  });
+}
+
 async function readJson(req: http.IncomingMessage): Promise<JsonObject> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -428,6 +450,39 @@ export async function startMockApiServer(
     type: "stream-tab",
   };
   let overlayLayout: unknown = null;
+  const emptyComputerUseApprovalSnapshot = {
+    mode: "off",
+    pendingCount: 0,
+    pendingApprovals: [],
+  };
+  const emptyOrchestratorUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+    usageState: "unavailable",
+  };
+  const emptyOrchestratorStatus = {
+    taskCount: 0,
+    activeTaskCount: 0,
+    pausedTaskCount: 0,
+    blockedTaskCount: 0,
+    validatingTaskCount: 0,
+    sessionCount: 0,
+    activeSessionCount: 0,
+    usage: emptyOrchestratorUsage,
+    byStatus: {
+      active: 0,
+      paused: 0,
+      blocked: 0,
+      validating: 0,
+      completed: 0,
+      failed: 0,
+      archived: 0,
+    },
+  };
 
   let config: JsonObject = {
     settings: { avatarIndex: 1 },
@@ -501,6 +556,23 @@ export async function startMockApiServer(
         json(res, 401, { error: "Unauthorized" });
         return;
       }
+    }
+
+    if (method === "GET" && pathname === "/api/auth/me") {
+      json(res, 200, {
+        identity: {
+          id: "local-agent",
+          displayName: "Local Agent",
+          kind: "machine",
+        },
+        session: { id: "local", kind: "local", expiresAt: null },
+        access: {
+          mode: "local",
+          passwordConfigured: false,
+          ownerConfigured: false,
+        },
+      });
+      return;
     }
 
     if (method === "GET" && pathname === "/api/permissions") {
@@ -759,6 +831,106 @@ export async function startMockApiServer(
         totalBuffered: 0,
         replayed: true,
       });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/views") {
+      json(res, 200, { views: [] });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/views/current") {
+      json(res, 200, { currentView: null, justSwitched: false });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/views/platform-info") {
+      json(res, 200, {
+        platform: "desktop",
+        dynamicLoadingAllowed: true,
+      });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/views/search") {
+      json(res, 200, { views: [], query: searchParams.get("q") ?? "" });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/commands") {
+      json(res, 200, {
+        commands: [],
+        surface: searchParams.get("surface"),
+        activeViewId: null,
+        agentId: "agent-1",
+        generatedAt: nowIso(),
+      });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/notifications") {
+      json(res, 200, { notifications: [], unreadCount: 0 });
+      return;
+    }
+    if (method === "POST" && pathname === "/api/notifications/read-all") {
+      json(res, 200, { changed: 0 });
+      return;
+    }
+    if (method === "DELETE" && pathname === "/api/notifications") {
+      json(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/computer-use/approvals") {
+      json(res, 200, emptyComputerUseApprovalSnapshot);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/computer-use/approvals/stream") {
+      eventStream(req, res, [
+        { type: "snapshot", snapshot: emptyComputerUseApprovalSnapshot },
+      ]);
+      return;
+    }
+    if (method === "POST" && pathname === "/api/computer-use/approval-mode") {
+      json(res, 200, { mode: emptyComputerUseApprovalSnapshot.mode });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/inbox/chats") {
+      json(res, 200, { chats: [], count: 0 });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/inbox/sources") {
+      json(res, 200, { sources: [] });
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/coding-agents") {
+      json(res, 200, []);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/coding-agents/preflight") {
+      json(res, 200, { installed: [], available: false });
+      return;
+    }
+    if (
+      method === "GET" &&
+      pathname === "/api/coding-agents/coordinator/status"
+    ) {
+      json(res, 200, {
+        supervisionLevel: "unavailable",
+        taskCount: 0,
+        tasks: [],
+        pendingConfirmations: 0,
+        taskThreadCount: 0,
+        taskThreads: [],
+        frameworks: [],
+      });
+      return;
+    }
+    if (method === "GET" && pathname === "/api/orchestrator/status") {
+      json(res, 200, emptyOrchestratorStatus);
+      return;
+    }
+    if (method === "GET" && pathname === "/api/orchestrator/tasks") {
+      json(res, 200, { tasks: [] });
       return;
     }
 
@@ -1153,8 +1325,8 @@ export async function startMockApiServer(
     if (method === "GET" && pathname === "/api/apps") {
       json(res, 200, [
         {
-          name: "@hyperscape/plugin-hyperscape",
-          displayName: "Hyperscape",
+          name: "@elizaos/plugin-mock-app",
+          displayName: "Mock App",
           description: "Mock app",
           category: "game",
           launchType: "viewer",
@@ -1163,11 +1335,11 @@ export async function startMockApiServer(
           heroImage: null,
           capabilities: [],
           stars: 100,
-          repository: "https://github.com/HyperscapeAI/hyperscape",
+          repository: "https://github.com/elizaOS/mock-app",
           latestVersion: "1.0.0",
           supports: { v0: false, v1: false, v2: true },
           npm: {
-            package: "@hyperscape/plugin-hyperscape",
+            package: "@elizaos/plugin-mock-app",
             v0Version: null,
             v1Version: null,
             v2Version: "1.0.0",
@@ -1181,15 +1353,27 @@ export async function startMockApiServer(
       ]);
       return;
     }
+    if (method === "GET" && pathname === "/api/catalog/apps") {
+      json(res, 200, []);
+      return;
+    }
     if (method === "GET" && pathname === "/api/apps/installed") {
       json(res, 200, []);
+      return;
+    }
+    if (method === "POST" && pathname === "/api/apps/overlay-presence") {
+      const body = await readJson(req);
+      json(res, 200, {
+        ok: true,
+        appName: typeof body.appName === "string" ? body.appName : null,
+      });
       return;
     }
     if (method === "POST" && pathname === "/api/apps/launch") {
       json(res, 200, {
         pluginInstalled: true,
         needsRestart: false,
-        displayName: "Hyperscape",
+        displayName: "Mock App",
         launchType: "viewer",
         launchUrl: null,
         viewer: {
@@ -1199,13 +1383,6 @@ export async function startMockApiServer(
           authMessage: null,
         },
       });
-      return;
-    }
-    if (
-      method === "GET" &&
-      pathname === "/api/apps/hyperscape/embedded-agents"
-    ) {
-      json(res, 200, { success: true, agents: [], count: 0 });
       return;
     }
 
@@ -1468,7 +1645,7 @@ export async function startMockApiServer(
       // Catch-all for any unmatched API route (GET, POST, PUT, DELETE).
       // Returning 200 prevents the startup coordinator from seeing a 404
       // on routes that the upstream runtime adds but this mock doesn't
-      // explicitly handle (e.g. /api/agent/* lifecycle routes, /api/vincent/*).
+      // explicitly handle (e.g. /api/agent/* lifecycle routes).
       json(res, 200, { ok: true });
       return;
     }

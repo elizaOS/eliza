@@ -39,6 +39,7 @@ import {
 } from "./cancellation-coordinator";
 import { VoiceStartupError } from "./errors";
 import type {
+	AsrWordTiming,
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
 	NativeVerifierEvent,
@@ -77,6 +78,7 @@ import {
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
+import { AgentSelfVoiceImprint } from "./self-voice-imprint";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
@@ -92,6 +94,10 @@ import {
 import { FusedDiarizer } from "./speaker/diarizer-fused";
 import type { SpeakerEncoder } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
+import {
+	SPEAKER_GGML_EMBEDDING_DIM,
+	SPEAKER_GGML_SAMPLE_RATE,
+} from "./speaker/encoder-ggml";
 import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
@@ -115,6 +121,7 @@ import type {
 	TranscriptionAudio,
 	VadEventSource,
 } from "./types";
+import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
@@ -532,6 +539,25 @@ export class FfiOmniVoiceBackend
 			sampleRateHz: args.sampleRate,
 		});
 	}
+
+	/** Transcribe + per-word timings when the fused build is ABI v12+; otherwise
+	 *  the text with empty `words` (the caller degrades to segment highlight). */
+	async transcribeTimed(
+		args: TranscriptionAudio,
+	): Promise<{ text: string; words: AsrWordTiming[] }> {
+		if (this.ffi.timedAsrSupported()) {
+			const res = this.ffi.asrTranscribeTimed({
+				ctx: this.getContext(),
+				pcm: args.pcm,
+				sampleRateHz: args.sampleRate,
+			});
+			return { text: res.text.trim(), words: res.words };
+		}
+		logger.debug(
+			"[FfiOmniVoiceBackend] timedAsrSupported()===false on the active fused build — per-word timings dropped, transcript player degrades to segment-level highlight",
+		);
+		return { text: (await this.transcribe(args)).trim(), words: [] };
+	}
 }
 
 export interface EngineVoiceBridgeOptions {
@@ -581,7 +607,7 @@ export interface EngineVoiceBridgeOptions {
 	/**
 	 * Override only the TTS backend while keeping the fused bundle lifecycle
 	 * and ASR FFI loaded. Used when a bundle falls back from OmniVoice speech
-	 * to Kokoro speech but still needs bundled Qwen3-ASR for mic input.
+	 * to Kokoro speech but still needs bundled Gemma ASR for mic input.
 	 */
 	ttsBackendOverride?: OmniVoiceBackend;
 	/** Optional speaker preset paired with `ttsBackendOverride`. */
@@ -796,13 +822,25 @@ function isEventRuntime(
  * Flatten the (possibly lazy) `LiveAttributionConfig` into the plain options
  * the runtime helper consumes. Resolved per turn so a changing household roster
  * is picked up without re-arming voice.
+ *
+ * `transcript` is the turn's joined ASR text. The in-process engine owns ASR, so
+ * it threads the real transcript through to `handleLiveVoiceAttribution` — the
+ * merge engine's live name/partner extraction (`VoiceObserver.ingestTurn`) needs
+ * *what* was said, not just *who* said it (#8786). When empty it is omitted, so
+ * the helper falls back to "" exactly as before and diarization-only callers are
+ * unaffected.
  */
-function resolveLiveAttributionOptions(cfg: LiveAttributionConfig | null): {
+function resolveLiveAttributionOptions(
+	cfg: LiveAttributionConfig | null,
+	transcript = "",
+): {
 	ownerEntityId?: string | null;
 	knownSpeakerEntityIds?: readonly string[];
 	wakeWordActive?: boolean;
+	transcript?: string;
 } {
-	if (!cfg) return {};
+	const transcriptOpt = transcript !== "" ? { transcript } : {};
+	if (!cfg) return transcriptOpt;
 	const ownerEntityId =
 		typeof cfg.ownerEntityId === "function"
 			? cfg.ownerEntityId()
@@ -819,6 +857,7 @@ function resolveLiveAttributionOptions(cfg: LiveAttributionConfig | null): {
 		...(ownerEntityId !== undefined ? { ownerEntityId } : {}),
 		...(knownSpeakerEntityIds !== undefined ? { knownSpeakerEntityIds } : {}),
 		...(wakeWordActive !== undefined ? { wakeWordActive } : {}),
+		...transcriptOpt,
 	};
 }
 
@@ -922,6 +961,7 @@ export class EngineVoiceBridge {
 		asrAvailable: boolean,
 		phraseCache: PhraseCache,
 		attributionPipeline: VoiceAttributionPipeline | null = null,
+		private readonly selfVoiceImprint: AgentSelfVoiceImprint | null = null,
 		cancellationCoordinator: VoiceCancellationCoordinator | null = null,
 		optimisticGenerationPolicy: OptimisticGenerationPolicy | null = null,
 		eventRuntime: IAgentRuntime | null = null,
@@ -1109,12 +1149,30 @@ export class EngineVoiceBridge {
 		};
 
 		const sinkOverride = opts.sink;
+		let selfVoiceImprint: AgentSelfVoiceImprint | null = null;
+		const schedulerEvents: SchedulerEvents = {
+			...(opts.events ?? {}),
+			onAudio(chunk) {
+				opts.events?.onAudio?.(chunk);
+				if (!selfVoiceImprint) return;
+				void selfVoiceImprint
+					.observeAudio(chunk.pcm, chunk.sampleRate)
+					.catch((err: unknown) => {
+						logger.warn(
+							{
+								error: err instanceof Error ? err.message : String(err),
+							},
+							"[voice-bridge] agent self-voice imprint update failed",
+						);
+					});
+			},
+		};
 		const scheduler = new VoiceScheduler(
 			config,
 			sinkOverride
 				? { backend, sink: sinkOverride, phraseCache }
 				: { backend, phraseCache },
-			opts.events ?? {},
+			schedulerEvents,
 		);
 
 		// Wire the voice lifecycle. The lifecycle starts in `voice-off` —
@@ -1126,42 +1184,54 @@ export class EngineVoiceBridge {
 		const registry = opts.sharedResources ?? new SharedResourceRegistry();
 		const loaders =
 			opts.lifecycleLoaders ??
-			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
+			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef, {
+				skipTtsRegion: Boolean(opts.ttsBackendOverride),
+			});
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
-		// Wire speaker-attribution when a profile store is provided.
-		// The attribution pipeline wraps the encoder + diarizer + profile-store;
-		// encoder errors (SpeakerEncoderGgmlUnavailableError) are caught at the
-		// runVoiceTurn level and treated as attribution-miss rather than turn
-		// failure (AGENTS.md §3: attribution is best-effort, voice turn is not).
-		// The GGML encoder is loaded lazily on first encode() call.
+		// Wire speaker-attribution when a profile store is provided. The
+		// attribution pipeline wraps the fused encoder + diarizer + profile-store.
+		// Both run through the ONE fused `libelizainference` handle via its
+		// `eliza_inference_speaker_*` / `_diariz_*` ABI — there is no standalone
+		// `libvoice_classifier` runtime.
+		//
+		// Fail-fast at ARM time: the fused speaker ABI is probed synchronously
+		// here (`FusedSpeakerEncoder.isSupported`). When the build does not
+		// advertise it, this throws `VoiceStartupError` rather than silently
+		// degrading attribution to "unknown speaker" on the first turn. The
+		// native session `load()` runs lazily on first encode/diarize, but the
+		// capability is decided up front.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
-			const bundleRootForEncoder = opts.bundleRoot;
 			const fusedFfi = ffiHandle;
 			const fusedCtx = ffiContextRef;
-			// Lazy encoder: resolves on first encode() call. Prefers the FUSED
-			// `eliza_inference_speaker_*` path off the same `ffi`/`ctx` as
-			// VAD / TTS / ASR (the user directive: one native engine, no separate
-			// bun:ffi-musl libs). Falls back to the standalone
-			// `SpeakerEncoderGgmlImpl` (`voice/speaker-encoder/...gguf` via
-			// libvoice_classifier) only when the fused build does not advertise
-			// the speaker ABI.
-			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
-				null;
+			if (!fusedFfi || !fusedCtx) {
+				throw new VoiceStartupError(
+					"missing-fused-build",
+					"[voice] Speaker-attribution requires the fused libelizainference handle (useFfiBackend). No standalone speaker runtime exists.",
+				);
+			}
+			if (!FusedSpeakerEncoder.isSupported(fusedFfi)) {
+				throw new VoiceStartupError(
+					"missing-fused-build",
+					"[voice] The loaded libelizainference build lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in (eliza_inference_speaker_* symbols).",
+				);
+			}
+			// Fused encoder: probe passed above; the native session opens lazily
+			// on first encode() so voice-off does not keep the model resident.
+			let resolvedEncoder: SpeakerEncoder | null = null;
 			let encoderLoadError: Error | null = null;
-			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
-				embeddingDim: 256,
-				sampleRate: 16_000,
+			const lazyEncoder: SpeakerEncoder = {
+				embeddingDim: SPEAKER_GGML_EMBEDDING_DIM,
+				sampleRate: SPEAKER_GGML_SAMPLE_RATE,
 				async encode(pcm: Float32Array): Promise<Float32Array> {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
 						try {
-							resolvedEncoder = await resolveSpeakerEncoder(
-								fusedFfi,
-								fusedCtx,
-								bundleRootForEncoder,
-							);
+							resolvedEncoder = await FusedSpeakerEncoder.load({
+								ffi: fusedFfi,
+								ctx: () => fusedCtx.ensure(),
+							});
 						} catch (err) {
 							encoderLoadError =
 								err instanceof Error ? err : new Error(String(err));
@@ -1174,31 +1244,30 @@ export class EngineVoiceBridge {
 					await resolvedEncoder?.dispose();
 				},
 			};
-			// Lazy diarizer. Prefers the FUSED `eliza_inference_diariz_*` path off
-			// the shared `ffi`/`ctx`; only when the fused build lacks it does it
-			// fall back to the standalone `PyannoteDiarizer`
-			// (`voice/diarizer/...gguf` via libvoice_classifier), and only when
-			// that GGUF is on disk. The diarizer is optional — a single-speaker
-			// turn collapses to one segment without it (attribution-pipeline's
-			// localSpeakerId=0 fallback).
-			const diarizerGgufPath = `${opts.bundleRoot}/voice/diarizer/pyannote-segmentation-3.0.gguf`;
-			const fusedDiarizerAvailable = FusedDiarizer.isSupported(fusedFfi);
+			selfVoiceImprint = new AgentSelfVoiceImprint({
+				encoder: lazyEncoder,
+			});
+			// Fused diarizer (optional). When the build does not advertise the
+			// diarizer ABI, attribution runs without it — a single-speaker turn
+			// collapses to one segment (the attribution-pipeline localSpeakerId=0
+			// path). The diarizer is NOT a fail-fast gate (unlike the encoder):
+			// it refines multi-speaker windows, it is not required to attribute a
+			// single speaker.
 			let lazyDiarizer: Diarizer | undefined;
-			if (fusedDiarizerAvailable || existsSync(diarizerGgufPath)) {
+			if (FusedDiarizer.isSupported(fusedFfi)) {
 				let resolvedDiarizer: Diarizer | null = null;
 				let diarizerLoadError: Error | null = null;
 				lazyDiarizer = {
 					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
-					sampleRate: 16_000,
+					sampleRate: SPEAKER_GGML_SAMPLE_RATE,
 					async diarizeWindow(pcm: Float32Array) {
 						if (diarizerLoadError) throw diarizerLoadError;
 						if (!resolvedDiarizer) {
 							try {
-								resolvedDiarizer = await resolveDiarizer(
-									fusedFfi,
-									fusedCtx,
-									diarizerGgufPath,
-								);
+								resolvedDiarizer = await FusedDiarizer.load({
+									ffi: fusedFfi,
+									ctx: () => fusedCtx.ensure(),
+								});
 							} catch (err) {
 								diarizerLoadError =
 									err instanceof Error ? err : new Error(String(err));
@@ -1235,6 +1304,7 @@ export class EngineVoiceBridge {
 			asrAvailable,
 			phraseCache,
 			attributionPipeline,
+			selfVoiceImprint,
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
 			isEventRuntime(opts.runtime) ? opts.runtime : null,
@@ -1329,6 +1399,7 @@ export class EngineVoiceBridge {
 			false, // ASR is not served from this path
 			phraseCache,
 			null, // no profile store on Kokoro-only
+			null, // no self-voice imprint without live attribution
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
 		);
@@ -1654,15 +1725,120 @@ export class EngineVoiceBridge {
 	 * `flush()`ing. Throws `AsrUnavailableError` when no ASR backend is
 	 * available — never a silent empty string.
 	 */
+	/** Transcribe + per-word timings through the fused ASR (v12). Prefers the
+	 *  backend's timed path; falls back to the plain transcript with empty
+	 *  `words` when timing isn't available. */
+	async transcribePcmTimed(
+		args: TranscriptionAudio,
+		signal?: AbortSignal,
+	): Promise<{ text: string; words: AsrWordTiming[] }> {
+		this.assertVoiceOn("transcribe audio");
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
+		const backendTimed = this.backend as OmniVoiceBackend & {
+			transcribeTimed?: (
+				args: TranscriptionAudio,
+			) => Promise<{ text: string; words: AsrWordTiming[] }>;
+		};
+		if (typeof backendTimed.transcribeTimed === "function") {
+			const result = await backendTimed.transcribeTimed(args);
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return result;
+		}
+		if (
+			this.ffi &&
+			this.ffiContextRef &&
+			this.asrAvailable &&
+			this.ffi.timedAsrSupported()
+		) {
+			const pcm =
+				args.sampleRate === ASR_SAMPLE_RATE
+					? args.pcm
+					: resampleLinear(args.pcm, args.sampleRate, ASR_SAMPLE_RATE);
+			const res = this.ffi.asrTranscribeTimed({
+				ctx: this.ffiContextRef.ensure(),
+				pcm,
+				sampleRateHz: ASR_SAMPLE_RATE,
+			});
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return { text: res.text.trim(), words: res.words };
+		}
+		// No timed path available — degrade to the text-only transcript.
+		logger.debug(
+			"[EngineVoiceBridge] timedAsrSupported()===false on the active fused build — per-word timings dropped, transcript player degrades to segment-level highlight",
+		);
+		return { text: await this.transcribePcm(args, signal), words: [] };
+	}
+
 	async transcribePcm(
 		args: TranscriptionAudio,
 		signal?: AbortSignal,
+		onPartial?: (delta: string) => void,
 	): Promise<string> {
 		this.assertVoiceOn("transcribe audio");
 		if (signal?.aborted) {
 			throw signal.reason instanceof Error
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
+		}
+		// Streaming path: when the caller wants partial transcripts (the
+		// TRANSCRIPTION model handler forwards the runtime's onStreamChunk here),
+		// drive the fused streaming-ASR session and emit each running partial as a
+		// delta — the same per-token pipe as chat text. Feed in ~1s windows so the
+		// decode surfaces partials progressively. Degrades gracefully: when the
+		// fused build's streaming-ASR decoder is a stub, createStreamingTranscriber
+		// resolves the fused batch adapter and the final transcript is emitted once.
+		if (onPartial) {
+			const transcriber = this.createStreamingTranscriber();
+			let shown = 0;
+			const emit = (full: string): void => {
+				if (typeof full === "string" && full.length > shown) {
+					const delta = full.slice(shown);
+					shown = full.length;
+					onPartial(delta);
+				}
+			};
+			const unsub = transcriber.on((ev) => {
+				if (ev.kind === "partial" || ev.kind === "final") {
+					emit(ev.update.partial);
+				}
+			});
+			const abort = () => transcriber.dispose();
+			try {
+				signal?.addEventListener("abort", abort, { once: true });
+				const win = Math.max(1600, Math.round(args.sampleRate));
+				for (let off = 0; off < args.pcm.length; off += win) {
+					if (signal?.aborted) break;
+					transcriber.feed({
+						pcm: args.pcm.subarray(off, Math.min(off + win, args.pcm.length)),
+						sampleRate: args.sampleRate,
+						timestampMs: Math.round((off / args.sampleRate) * 1000),
+					});
+				}
+				const final = await transcriber.flush();
+				emit(final.partial);
+				if (signal?.aborted) {
+					throw signal.reason instanceof Error
+						? signal.reason
+						: new DOMException("Aborted", "AbortError");
+				}
+				return final.partial;
+			} finally {
+				unsub();
+				signal?.removeEventListener("abort", abort);
+				transcriber.dispose();
+			}
 		}
 		const backendBatch = this.backend as OmniVoiceBackend & {
 			transcribe?: (args: TranscriptionAudio) => Promise<string>;
@@ -1747,6 +1923,26 @@ export class EngineVoiceBridge {
 		events?: VoiceTurnEvents,
 	): Promise<"done" | "token-cap" | "cancelled"> {
 		this.assertVoiceOn("run a voice turn");
+		// The turn's ASR transcript materializes inside `pipeline.run` (the
+		// `onAsrComplete` event) while attribution runs in parallel, so the two
+		// have to be correlated. `transcriptReady` resolves with the joined ASR
+		// text the instant ASR finalizes; the attribution `.then` awaits it before
+		// emitting `VOICE_TURN_OBSERVED` so the merge engine sees *what* was said,
+		// not just *who* said it (#8786). The pipeline's `finally` resolves it with
+		// the captured text (or "") so a cancelled/no-ASR turn never hangs the await.
+		let asrTranscript = "";
+		let resolveTranscript: (text: string) => void = () => {};
+		const transcriptReady = new Promise<string>((resolve) => {
+			resolveTranscript = resolve;
+		});
+		const turnEvents: VoiceTurnEvents = {
+			...events,
+			onAsrComplete(tokens) {
+				asrTranscript = tokens.map((t) => t.text).join("");
+				resolveTranscript(asrTranscript);
+				events?.onAsrComplete?.(tokens);
+			},
+		};
 		// If a profileStore was wired, kick off speaker-attribution in parallel
 		// with ASR. The attribution uses the same PCM buffer as the transcriber
 		// but runs through the diarizer + encoder + profile-store independently.
@@ -1754,9 +1950,9 @@ export class EngineVoiceBridge {
 		// arrives via `onAttribution` asynchronously (possibly after onComplete).
 		if (
 			this.attributionPipeline &&
-			(events?.onAttribution || this.eventRuntime)
+			(turnEvents.onAttribution || this.eventRuntime)
 		) {
-			const onAttribution = events?.onAttribution;
+			const onAttribution = turnEvents.onAttribution;
 			const attribution = this.attributionPipeline;
 			const eventRuntime = this.eventRuntime;
 			const liveAttribution = this.liveAttribution;
@@ -1773,14 +1969,23 @@ export class EngineVoiceBridge {
 					// output to the caller. Any caller with a profileStore +
 					// runtime gets diarization-driven gating for free.
 					if (eventRuntime) {
+						const transcript = await transcriptReady;
 						const { handleLiveVoiceAttribution } = await import(
 							"../../runtime/voice-entity-binding.js"
 						);
-						await handleLiveVoiceAttribution(
-							eventRuntime,
-							output,
-							resolveLiveAttributionOptions(liveAttribution),
-						);
+						const selfVoiceSimilarity =
+							output.observation?.embedding && this.selfVoiceImprint
+								? await this.selfVoiceImprint.similarity(
+										output.observation.embedding,
+									)
+								: null;
+						await handleLiveVoiceAttribution(eventRuntime, output, {
+							...resolveLiveAttributionOptions(liveAttribution, transcript),
+							agentSpeaking: this.scheduler.bargeIn.isAgentSpeaking,
+							...(typeof selfVoiceSimilarity === "number"
+								? { selfVoiceSimilarity }
+								: {}),
+						});
 					}
 					onAttribution?.(output);
 				})
@@ -1795,11 +2000,14 @@ export class EngineVoiceBridge {
 					);
 				});
 		}
-		const pipeline = this.buildPipeline(textRunner, config, events);
+		const pipeline = this.buildPipeline(textRunner, config, turnEvents);
 		this.activePipeline = pipeline;
 		try {
 			return await pipeline.run(audio);
 		} finally {
+			// Settle the transcript promise so a cancelled/no-ASR turn (where
+			// `onAsrComplete` never fired) cannot leave the attribution await pending.
+			resolveTranscript(asrTranscript);
 			if (this.activePipeline === pipeline) this.activePipeline = null;
 		}
 	}
@@ -1864,97 +2072,10 @@ export class EngineVoiceBridge {
 	}
 }
 
-export function encodeMonoPcm16Wav(
-	pcm: Float32Array,
-	sampleRate: number,
-): Uint8Array {
-	const channels = 1;
-	const bytesPerSample = 2;
-	const dataBytes = pcm.length * bytesPerSample;
-	const out = new Uint8Array(44 + dataBytes);
-	const view = new DataView(out.buffer);
-	writeAscii(out, 0, "RIFF");
-	view.setUint32(4, 36 + dataBytes, true);
-	writeAscii(out, 8, "WAVE");
-	writeAscii(out, 12, "fmt ");
-	view.setUint32(16, 16, true);
-	view.setUint16(20, 1, true);
-	view.setUint16(22, channels, true);
-	view.setUint32(24, sampleRate, true);
-	view.setUint32(28, sampleRate * channels * bytesPerSample, true);
-	view.setUint16(32, channels * bytesPerSample, true);
-	view.setUint16(34, bytesPerSample * 8, true);
-	writeAscii(out, 36, "data");
-	view.setUint32(40, dataBytes, true);
-
-	let offset = 44;
-	for (const sample of pcm) {
-		const clamped = Math.max(-1, Math.min(1, sample));
-		const value = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
-		view.setInt16(offset, Math.round(value), true);
-		offset += bytesPerSample;
-	}
-	return out;
-}
-
-export function decodeMonoPcm16Wav(bytes: Uint8Array): TranscriptionAudio {
-	if (bytes.byteLength < 44) {
-		throw new Error("[voice] WAV input is too short to contain a header");
-	}
-	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-	if (
-		readAscii(bytes, 0, 4) !== "RIFF" ||
-		readAscii(bytes, 8, 4) !== "WAVE" ||
-		readAscii(bytes, 12, 4) !== "fmt "
-	) {
-		throw new Error("[voice] Local transcription expects mono PCM16 WAV bytes");
-	}
-	const audioFormat = view.getUint16(20, true);
-	const channels = view.getUint16(22, true);
-	const sampleRate = view.getUint32(24, true);
-	const bitsPerSample = view.getUint16(34, true);
-	if (audioFormat !== 1 || channels !== 1 || bitsPerSample !== 16) {
-		throw new Error(
-			`[voice] Local transcription expects mono PCM16 WAV (format=1 channels=1 bits=16); got format=${audioFormat} channels=${channels} bits=${bitsPerSample}`,
-		);
-	}
-
-	let pos = 36;
-	while (pos + 8 <= bytes.byteLength) {
-		const chunkId = readAscii(bytes, pos, 4);
-		const chunkBytes = view.getUint32(pos + 4, true);
-		const dataStart = pos + 8;
-		if (chunkId === "data") {
-			if (dataStart + chunkBytes > bytes.byteLength) {
-				throw new Error("[voice] WAV data chunk exceeds input length");
-			}
-			if (chunkBytes % 2 !== 0) {
-				throw new Error("[voice] WAV PCM16 data chunk has odd byte length");
-			}
-			const pcm = new Float32Array(chunkBytes / 2);
-			for (let i = 0; i < pcm.length; i++) {
-				pcm[i] = view.getInt16(dataStart + i * 2, true) / 0x8000;
-			}
-			return { pcm, sampleRate };
-		}
-		pos = dataStart + chunkBytes + (chunkBytes % 2);
-	}
-	throw new Error("[voice] WAV input is missing a data chunk");
-}
-
-function writeAscii(out: Uint8Array, offset: number, text: string): void {
-	for (let i = 0; i < text.length; i++) {
-		out[offset + i] = text.charCodeAt(i);
-	}
-}
-
-function readAscii(bytes: Uint8Array, offset: number, length: number): string {
-	let out = "";
-	for (let i = 0; i < length; i++) {
-		out += String.fromCharCode(bytes[offset + i]);
-	}
-	return out;
-}
+// The mono PCM16 WAV codec lives in the dependency-light `wav-codec.ts` so
+// corpus / fixture / test code can encode + decode WAV without dragging in this
+// heavy module. Re-exported here for the existing callers.
+export { decodeMonoPcm16Wav, encodeMonoPcm16Wav };
 
 function readPositiveIntEnv(name: string): number | undefined {
 	const raw = process.env[name]?.trim();
@@ -1998,51 +2119,14 @@ function ensureContext(
 }
 
 /**
- * Resolve the speaker encoder, preferring the FUSED `libelizainference`
- * path (`eliza_inference_speaker_*`) off the same `ffi`/`ctx` the rest of the
- * voice pipeline uses. Only when the fused build does not advertise the
- * speaker ABI does it fall back to the standalone `SpeakerEncoderGgmlImpl`
- * (libvoice_classifier), and only when that GGUF is on disk.
- */
-async function resolveSpeakerEncoder(
-	ffi: ElizaInferenceFfi | null,
-	ctxRef: FfiContextRef | null,
-	bundleRoot: string | undefined,
-): Promise<SpeakerEncoder> {
-	if (ffi && ctxRef && FusedSpeakerEncoder.isSupported(ffi)) {
-		return FusedSpeakerEncoder.load({ ffi, ctx: () => ctxRef.ensure() });
-	}
-	const { SpeakerEncoderGgmlImpl } = await import("./speaker/encoder-ggml");
-	const ggufPath = `${bundleRoot}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
-	return new SpeakerEncoderGgmlImpl({ ggufPath });
-}
-
-/**
- * Resolve the diarizer, preferring the FUSED `libelizainference` path
- * (`eliza_inference_diariz_*`). Falls back to the standalone `PyannoteDiarizer`
- * (libvoice_classifier) when the fused build lacks the diarizer ABI.
- */
-async function resolveDiarizer(
-	ffi: ElizaInferenceFfi | null,
-	ctxRef: FfiContextRef | null,
-	standaloneGgufPath: string,
-): Promise<Diarizer> {
-	if (ffi && ctxRef && FusedDiarizer.isSupported(ffi)) {
-		return FusedDiarizer.load({ ffi, ctx: () => ctxRef.ensure() });
-	}
-	const { PyannoteDiarizer } = await import("./speaker/diarizer");
-	return PyannoteDiarizer.load(standaloneGgufPath);
-}
-
-/**
  * No-op lifecycle loaders for the Kokoro-only bridge. ORT owns the
  * model memory; nothing to mmap-acquire or evict. ASR is not served
  * from this path — callers that need ASR construct
- * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
- * supports `openvino-whisper` and `whisper.cpp` without a bundle).
+ * `createStreamingTranscriber` directly (the fused-only chain in
+ * `transcriber.ts`: fused streaming → fused batch → AsrUnavailableError).
  */
-function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
-	const noopMmap = (id: string): MmapRegionHandle => ({
+function noopMmapRegion(id: string): MmapRegionHandle {
+	return {
 		id,
 		path: "",
 		sizeBytes: 0,
@@ -2052,10 +2136,13 @@ function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 		async release() {
 			// No mmap region to release.
 		},
-	});
+	};
+}
+
+function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	return {
-		loadTtsRegion: async () => noopMmap("kokoro:tts"),
-		loadAsrRegion: async () => noopMmap("kokoro:asr"),
+		loadTtsRegion: async () => noopMmapRegion("kokoro:tts"),
+		loadAsrRegion: async () => noopMmapRegion("kokoro:asr"),
 		loadVoiceCaches: async () => ({
 			id: "kokoro:voice-caches",
 			async release() {},
@@ -2071,10 +2158,13 @@ function defaultLifecycleLoaders(
 	bundleRoot: string,
 	ffi: ElizaInferenceFfi | null,
 	ctx: ElizaInferenceContextHandle | FfiContextRef | null,
+	options: { skipTtsRegion?: boolean } = {},
 ): VoiceLifecycleLoaders {
 	return {
 		loadTtsRegion: async () =>
-			bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
+			options.skipTtsRegion === true
+				? noopMmapRegion(`tts-override:${bundleRoot}`)
+				: bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
 		loadAsrRegion: async () =>
 			bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
 		loadVoiceCaches: async () => ({
@@ -2195,28 +2285,6 @@ function locateBundleLibrary(bundleRoot: string): string {
 	return path.join(
 		dirs[0] ?? path.join(bundleRoot, "lib"),
 		libraryFilenames()[0] ?? "libelizainference.so",
-	);
-}
-
-function bundleHasOmniVoiceWeights(bundleRoot: string): boolean {
-	const ttsDir = path.join(bundleRoot, "tts");
-	if (!existsSync(ttsDir)) return false;
-	try {
-		return readdirSync(ttsDir, { withFileTypes: true }).some(
-			(entry) => entry.isFile() && /^omnivoice-.+\.gguf$/i.test(entry.name),
-		);
-	} catch {
-		return false;
-	}
-}
-
-export function isOmniVoiceBundleAvailable(bundleRoot: string): boolean {
-	if (!bundleRoot || !existsSync(bundleRoot)) return false;
-	const presetPath = path.join(bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
-	return (
-		existsSync(presetPath) &&
-		bundleHasOmniVoiceWeights(bundleRoot) &&
-		existsSync(locateBundleLibrary(bundleRoot))
 	);
 }
 

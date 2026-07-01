@@ -12,6 +12,11 @@ export const Z_DIALOG = 170;
 export const Z_OVERLAY = 200;
 export const Z_TOOLTIP = 300;
 export const Z_SHELL_OVERLAY = 9000;
+export const Z_FIRST_RUN_CHOOSER = 9400;
+// The interactive tutorial spotlight: sits above the chat/shell overlay so its
+// glow + card always read over an expanded chat, but stays BELOW the
+// system-critical band so a fatal banner can never be painted over by the tour.
+export const Z_TUTORIAL = 9500;
 export const Z_SYSTEM_BANNER = 9998;
 export const Z_SYSTEM_CRITICAL = 9999;
 export const Z_GLOBAL_EMOTE = 11000;

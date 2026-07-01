@@ -10,6 +10,7 @@
 import type { WorldFact } from "@feed/db";
 import { and, db, desc, eq, gte, isNull, lte, or, worldFacts } from "@feed/db";
 import { generateSnowflakeId, logger } from "@feed/shared";
+import { worldFactsContent } from "./data/world-facts";
 import {
   buildDailyTopicPromptContext,
   dailyTopicService,
@@ -29,6 +30,34 @@ export interface WorldFactsContext {
   timestamp: string;
   headlines?: string;
   dailyTopic?: string;
+}
+
+/**
+ * Build the static seed world-facts from the recovered `worldFactsContent`.
+ * Used as a cold-DB backstop so generated content is always grounded in the
+ * baseline world facts even before any dynamic facts have been persisted.
+ */
+function buildStaticSeedFacts(): WorldFact[] {
+  const now = new Date();
+  return worldFactsContent
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line, index) => ({
+      id: `seed-fact-${index + 1}`,
+      category: "general",
+      key: `seed_${index + 1}`,
+      label: "World Fact",
+      value: line.slice(2).trim(),
+      source: "static-seed",
+      priority: 1,
+      isActive: true,
+      qualityScore: null,
+      generationDepth: 0,
+      lastUpdated: now,
+      createdAt: now,
+      updatedAt: now,
+    }));
 }
 
 /**
@@ -104,6 +133,13 @@ export class WorldFactsService {
       )
       .orderBy(desc(worldFacts.createdAt))
       .limit(100);
+
+    // Cold-DB backstop: before any world-facts have been generated/seeded, fall
+    // back to the static recovered world facts so prompts are never grounded on
+    // an empty world-facts section.
+    if (facts.length === 0) {
+      return buildStaticSeedFacts();
+    }
 
     // Randomize order for entropy
     for (let i = facts.length - 1; i > 0; i--) {

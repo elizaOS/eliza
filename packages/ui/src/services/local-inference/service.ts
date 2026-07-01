@@ -14,14 +14,13 @@ import { registerBundledModels } from "./bundled-models";
 import { MODEL_CATALOG } from "./catalog";
 import { filterSettingsDefaultLocalModels } from "./catalog-policy";
 import {
+  CUSTOM_MODEL_SEARCH_DISABLED_MESSAGE,
+  getLocalModelSearchProvider,
   type LocalModelSearchProviderId,
   type LocalModelSearchResponse,
-  listLocalModelSearchProviders,
-  searchLocalModelProvider,
 } from "./custom-search";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
-import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import { buildTextGenerationReadiness } from "./readiness";
 import {
   chooseSmallerFallbackModel,
@@ -172,10 +171,8 @@ export class LocalInferenceService {
     return null;
   }
 
-  async startDownload(
-    modelIdOrSpec: string | CatalogModel,
-  ): Promise<DownloadJob> {
-    return this.downloader.start(modelIdOrSpec);
+  async startDownload(modelId: string): Promise<DownloadJob> {
+    return this.downloader.start(modelId);
   }
 
   async startSmallerFallbackDownload(
@@ -200,7 +197,9 @@ export class LocalInferenceService {
     query: string,
     limit?: number,
   ): Promise<CatalogModel[]> {
-    return searchHuggingFaceGguf(query, limit);
+    void query;
+    void limit;
+    return [];
   }
 
   async searchModelHub(
@@ -208,11 +207,14 @@ export class LocalInferenceService {
     hub: "huggingface" | "modelscope",
     limit?: number,
   ): Promise<CatalogModel[]> {
-    return searchModelHubGguf(query, hub, limit);
+    void query;
+    void hub;
+    void limit;
+    return [];
   }
 
   getSearchProviders() {
-    return listLocalModelSearchProviders();
+    return [];
   }
 
   async searchCustomModels(
@@ -220,7 +222,15 @@ export class LocalInferenceService {
     query: string,
     limit?: number,
   ): Promise<LocalModelSearchResponse> {
-    return searchLocalModelProvider(providerId, query, limit);
+    void query;
+    void limit;
+    const provider = getLocalModelSearchProvider(providerId);
+    return {
+      provider,
+      results: [],
+      unavailableMessage:
+        provider.unavailableMessage ?? CUSTOM_MODEL_SEARCH_DISABLED_MESSAGE,
+    };
   }
 
   /**

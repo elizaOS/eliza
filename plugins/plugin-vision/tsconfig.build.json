@@ -2,9 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
+    "rootDir": "./src",
     "sourceMap": true,
     "inlineSources": true,
-    "declaration": true
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false
   },
   "include": ["src/**/*.ts"],
   "exclude": [
@@ -12,6 +16,10 @@
     "dist",
     "src/tests/**/*",
     "test/**/*",
-    "src/tests/e2e/run-local.ts"
+    "src/tests/e2e/run-local.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

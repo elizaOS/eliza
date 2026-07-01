@@ -6,7 +6,6 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { FIRST_RUN_PROVIDER_CATALOG, getStylePresets } from "@elizaos/shared";
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
 import {
@@ -26,7 +25,12 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import type { UiLanguage } from "../i18n";
-import { isAndroid, isForceFreshFirstRunEnabled, isIOS } from "../platform";
+import {
+  clearForceFreshFirstRun,
+  isAndroid,
+  isForceFreshFirstRunEnabled,
+  isIOS,
+} from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
 import {
   buildCloudSharedAgentApiBase,
@@ -44,12 +48,17 @@ import {
   savePersistedFirstRunComplete,
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
+import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 
 // Direct elizaCloud API base used to backfill a missing apiBase on a
 // persisted cloud active-server. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL
 // in api/client-cloud.ts; kept inline because that constant is module-private.
 const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
+
+function isDevUiPort(): boolean {
+  return typeof window !== "undefined" && window.location.port === "2138";
+}
 
 /**
  * Repair a restored cloud active-server whose apiBase is missing OR is the
@@ -156,6 +165,67 @@ function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
 function isLoopbackHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
+}
+
+/**
+ * Whether a persisted `remote` apiBase is safe to dial at restore. The persisted
+ * active-server record lives in localStorage (mirrored to native Preferences),
+ * so an XSS or a malicious same-origin plugin view could have written it. Only
+ * dial — and attach the bearer token to — a trusted host; otherwise the record
+ * is dropped and the app falls back to first-run (fail closed) rather than
+ * silently connecting to an attacker-chosen server at boot.
+ *
+ * Trust mirrors the app's full policy (createUrlTrustPolicy in
+ * `packages/app/src/url-trust-policy.ts`, which `@elizaos/ui` cannot import):
+ * loopback, the current page origin, and private/LAN/CGNAT/link-local hosts —
+ * never an arbitrary public host. Keep the private-host set in sync with
+ * `isTrustedPrivateHttpHost` there. `local`/`cloud` records use their own
+ * validated branches in {@link applyRestoredConnection} and are not gated here.
+ */
+export function isTrustedRestoreApiBaseUrl(
+  apiBase: string | undefined,
+): boolean {
+  if (!apiBase) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(apiBase);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isLoopbackHostname(host) || host === "0.0.0.0") return true;
+  if (
+    typeof window !== "undefined" &&
+    host === window.location.hostname.toLowerCase()
+  ) {
+    return true;
+  }
+  // IPv6 ULA (fc00::/7) / link-local (fe80::/10).
+  if (
+    host.includes(":") &&
+    (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:"))
+  ) {
+    return true;
+  }
+  // RFC1918 / CGNAT (tailscale) / link-local IPv4 + private name suffixes.
+  return (
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "local" ||
+    host === "internal" ||
+    host === "lan" ||
+    host === "ts.net" ||
+    host.endsWith(".local") ||
+    host.endsWith(".lan") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".ts.net")
+  );
 }
 
 // Re-resolve a persisted loopback apiBase against whatever port the
@@ -292,6 +362,16 @@ export async function applyRestoredConnection(args: {
   const reconciled = reconcilePersistedApiBaseWithLive(
     restoredActiveServer.apiBase,
   );
+  // SECURITY backstop (the primary gate is canRestoreActiveServer): never dial
+  // an untrusted persisted remote host or attach the bearer token to it — drop
+  // the record and fall back to first-run instead.
+  if (!isTrustedRestoreApiBaseUrl(reconciled)) {
+    logger.warn(
+      `[startup-phase-restore] dropping persisted remote active-server with untrusted apiBase host: ${reconciled ?? "(none)"}`,
+    );
+    clearPersistedActiveServer();
+    return;
+  }
   if (reconciled && reconciled !== restoredActiveServer.apiBase) {
     savePersistedActiveServer({
       ...restoredActiveServer,
@@ -324,11 +404,31 @@ export function canRestoreActiveServer(args: {
   isDesktop: boolean;
 }): boolean {
   if (args.server.apiBase) {
+    // A "remote" record with an untrusted apiBase host must not be restored —
+    // restoring it would dial an attacker-chosen server with the persisted
+    // bearer token. Untrusted → not restorable → the caller clears it and falls
+    // back to first-run. local/cloud branches validate their own hosts.
+    if (args.server.kind === "remote") {
+      return isTrustedRestoreApiBaseUrl(args.server.apiBase);
+    }
     return true;
   }
 
   if (args.server.kind === "local") {
     return args.forceLocal || args.isDesktop || args.clientApiAvailable;
+  }
+
+  if (args.server.kind === "cloud") {
+    // A persisted cloud agent without a concrete apiBase is still restorable
+    // when its id carries a real agent id: applyRestoredConnection →
+    // backfillCloudApiBase recovers the base from `cloud:<agentId>` (or the
+    // live Steward session). Only an id-less / URL-as-id session (which the
+    // backfill cannot recover) falls through to agent selection. Keep this in
+    // sync with backfillCloudApiBase's recoverability check.
+    const rawId = args.server.id?.startsWith("cloud:")
+      ? args.server.id.slice("cloud:".length).trim()
+      : "";
+    return Boolean(rawId && !rawId.includes("/"));
   }
 
   return false;
@@ -373,6 +473,14 @@ export async function runRestoringSession(
   let hadPrior = loadPersistedFirstRunComplete();
   const forceFreshFirstRun = isForceFreshFirstRunEnabled();
   if (forceFreshFirstRun) {
+    // force-fresh is a ONE-SHOT directive: it forces exactly one fresh
+    // onboarding after an escape hatch (unreachable backend, pairing dead-end,
+    // ?reset). Clear it the moment restore consumes it so the *next* launch is
+    // back to normal server-authoritative behavior. Previously it was only
+    // cleared by the submitFirstRun client patch, so any completion path that
+    // doesn't POST first-run (cloud shared-agent's swallowed 404, pairing
+    // early-return) left the flag set — re-onboarding the user on every launch.
+    clearForceFreshFirstRun();
     clearPersistedActiveServer();
     savePersistedFirstRunComplete(false);
     persistedActiveServer = null;
@@ -396,7 +504,7 @@ export async function runRestoringSession(
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
   const probed =
-    !forceFreshFirstRun && !persistedActiveServer
+    !forceFreshFirstRun && !persistedActiveServer && !isDevUiPort()
       ? await detectExistingFirstRunConnection({
           client,
           timeoutMs: isDesktop
@@ -462,23 +570,7 @@ export async function runRestoringSession(
 
   if (!restoredActiveServer) {
     // No saved backend found — let the user (re-)onboard.
-    deps.setFirstRunOptions({
-      names: [],
-      styles: getStylePresets(deps.uiLanguage),
-      providers: [
-        ...FIRST_RUN_PROVIDER_CATALOG,
-      ] as FirstRunOptions["providers"],
-      cloudProviders: [],
-      models: {
-        nano: [],
-        small: [],
-        medium: [],
-        large: [],
-        mega: [],
-      } as FirstRunOptions["models"],
-      inventoryProviders: [],
-      sharedStyleRules: "",
-    });
+    deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
     if (!forceFreshFirstRun) {
       try {
         const det = await scanProviderCredentials();

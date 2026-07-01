@@ -13,7 +13,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { detectGpu } from "./gpu-detect";
 import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
+import { elizaModelsDir } from "./paths";
 import type {
 	CpuFeatureProbe,
 	HardwareProbe,
@@ -26,6 +29,30 @@ const BYTES_PER_GB = 1024 ** 3;
 
 function bytesToGb(bytes: number): number {
 	return Math.round((bytes / BYTES_PER_GB) * 10) / 10;
+}
+
+/**
+ * Free disk space (GB) on the volume that holds the models directory. Walks up
+ * to the nearest existing ancestor before `statfs` so a not-yet-created models
+ * dir still resolves to its parent volume. Returns `undefined` when the volume
+ * cannot be stat'd (the fit check then falls back to RAM-only / mobile
+ * storage), never throws.
+ */
+async function probeFreeDiskGb(): Promise<number | undefined> {
+	try {
+		let dir = elizaModelsDir();
+		for (let i = 0; i < 12 && !fs.existsSync(dir); i += 1) {
+			const parent = path.dirname(dir);
+			if (parent === dir) break;
+			dir = parent;
+		}
+		const stats = await fs.promises.statfs(dir);
+		const available = stats.bavail * stats.bsize;
+		if (!Number.isFinite(available) || available < 0) return undefined;
+		return bytesToGb(available);
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -151,28 +178,35 @@ export function hasUsableArmCpuBackend(probe: HardwareProbe): boolean {
 	return probe.cpuFeatures?.neon === true;
 }
 
-type LlamaBindingGpu = "cuda" | "metal" | "vulkan" | false;
-
-interface LlamaBinding {
-	gpu: LlamaBindingGpu;
-	getVramState(): Promise<{ total: number; used: number; free: number }>;
-	dispose?(): Promise<void>;
-}
-
-interface LlamaBindingModule {
-	getLlama(options?: { gpu?: "auto" | false }): Promise<LlamaBinding>;
-}
-
-async function loadLlamaBinding(): Promise<LlamaBindingModule | null> {
-	// node-llama-cpp has been removed from this plugin. GPU/VRAM probing
-	// was the only consumer of its `getLlama({gpu: "auto"})` API. The
-	// canonical Capacitor-llama adapter exposes `LlamaContext.gpu`
-	// (boolean) per-context, but a standalone hardware probe (independent
-	// of a loaded model) isn't part of its API. Return null here so the
-	// caller falls back to the OS-level probe (cpu cores, total RAM,
-	// Apple-silicon detection). Operators that need real VRAM accounting
-	// should run the desktop FFI backend and have it surface VRAM via
-	// the bun:ffi shim — tracked as a follow-up gap.
+/**
+ * Detect the host GPU + its VRAM for device-tier classification, VRAM
+ * admission, and `n_gpu_layers` sizing. Without this every box — including a
+ * 24 GB discrete workstation — probes as `gpu: null` and is mis-tiered as CPU.
+ *
+ *  - NVIDIA: `nvidia-smi` (the cheapest real pre-load VRAM number).
+ *  - Apple Silicon: unified memory, so system RAM IS the GPU working set.
+ *  - AMD/Intel (Vulkan): no cheap pre-load VRAM query exists; left `null` here
+ *    rather than guessed — the fused ABI surfaces real VRAM after model load.
+ */
+function detectProbeGpu(
+	appleSilicon: boolean,
+	totalRamBytes: number,
+	freeRamBytes: number,
+): HardwareProbe["gpu"] {
+	const nvidia = detectGpu();
+	if (nvidia.nvidiaPresent && nvidia.gpu) {
+		const totalVramGb = bytesToGb(nvidia.gpu.totalMemoryMiB * 1024 * 1024);
+		// nvidia-smi `memory.total` is capacity; an idle probe treats it as free.
+		// Real free-VRAM admission happens against the live backend post-load.
+		return { backend: "cuda", totalVramGb, freeVramGb: totalVramGb };
+	}
+	if (appleSilicon) {
+		return {
+			backend: "metal",
+			totalVramGb: bytesToGb(totalRamBytes),
+			freeVramGb: bytesToGb(freeRamBytes),
+		};
+	}
 	return null;
 }
 
@@ -321,24 +355,24 @@ export async function probeHardware(): Promise<HardwareProbe> {
 	const openvino = detectOpenVinoDevices();
 	const cpuFeatures = detectCpuFeatures({ platform, arch });
 
-	// node-llama-cpp has been removed; the binding probe is intentionally a
-	// passive compatibility probe (see `loadLlamaBinding()` above). Production GPU/VRAM detection
-	// for the desktop FFI backend and the Capacitor mobile backend is
-	// surfaced via `LlamaContext.gpu` per-context — there is no standalone
-	// hardware-probe API on either path. Callers wanting real VRAM
-	// accounting should consult the active backend after model load.
-	await loadLlamaBinding();
+	const gpu = detectProbeGpu(appleSilicon, totalRamBytes, freeRamBytes);
 	const totalRamGb = bytesToGb(totalRamBytes);
+	const freeDiskGb = await probeFreeDiskGb();
 	return {
 		totalRamGb,
 		freeRamGb: bytesToGb(freeRamBytes),
-		gpu: null,
+		...(freeDiskGb !== undefined ? { freeDiskGb } : {}),
+		gpu,
 		cpuCores,
 		cpuFeatures,
 		platform,
 		arch,
 		appleSilicon,
-		recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
+		recommendedBucket: recommendBucket(
+			totalRamGb,
+			gpu?.totalVramGb ?? 0,
+			appleSilicon,
+		),
 		source: "os-fallback",
 		openvino,
 	};

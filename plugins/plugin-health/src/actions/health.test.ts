@@ -1,10 +1,28 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+
+// The health planner routes its instructions through
+// `resolveOptimizedPromptForRuntime`. Pin it to the identity (return the
+// baseline) so this unit test of the trajectory `purpose` tag is hermetic and
+// does not depend on the OptimizedPromptService resolution in the test env.
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    resolveOptimizedPromptForRuntime: (
+      _runtime: unknown,
+      _task: unknown,
+      baseline: string,
+    ) => baseline,
+  };
+});
+
 import {
   createHealthActionRunner,
   createOwnerHealthAction,
   HEALTH_PARAMETERS,
   HEALTH_SIMILES,
+  type HealthActionRunJsonModelArgs,
   type HealthActionService,
 } from "./health.js";
 
@@ -65,6 +83,202 @@ describe("health action runner", () => {
     });
     expect(validate).toHaveBeenCalled();
     expect(handler).toHaveBeenCalled();
+  });
+
+  it("tags the planner LLM call with the health_checkin trajectory purpose (#8795)", async () => {
+    // A natural-language health request with NO explicit subaction routes
+    // through resolveHealthPlanWithLlm → runJsonModel. The trajectory purpose
+    // must be "health_checkin" (not the generic "planner") so it buckets into
+    // the health_checkin training dataset that feeds the optimization loop —
+    // matching the resolveOptimizedPromptForRuntime("health_checkin", ...) call.
+    const runJsonModel = vi.fn(
+      async (
+        _args: HealthActionRunJsonModelArgs,
+      ): Promise<{ parsed: Record<string, unknown> }> => ({
+        parsed: {
+          subaction: "status",
+          metric: null,
+          days: null,
+          shouldAct: true,
+        },
+      }),
+    );
+    const runner = createHealthActionRunner({
+      hasAccess: async () => true,
+      createService: () => ({
+        getHealthConnectorStatus: vi.fn(async () => ({
+          available: false,
+          backend: "none" as const,
+        })),
+        getHealthSummary: vi.fn(async () => ({
+          providers: [],
+          summaries: [],
+          samples: [],
+          workouts: [],
+          sleepEpisodes: [],
+          syncedAt: "2026-05-30T12:00:00.000Z",
+        })),
+        getHealthTrend: vi.fn(),
+        getHealthDataPoints: vi.fn(),
+        getHealthDailySummary: vi.fn(),
+      }),
+      messageText: (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      recentConversationTexts: async () => [],
+      runJsonModel,
+    });
+
+    // resolveHealthPlanWithLlm short-circuits unless runtime.useModel exists.
+    const plannerRuntime = {
+      logger: { warn: vi.fn() },
+      useModel: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    // No `subaction` in options → the planner LLM call fires.
+    await runner(
+      plannerRuntime,
+      { content: { text: "how have i been sleeping lately" } } as Memory,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(runJsonModel.mock.calls[0][0]).toMatchObject({
+      purpose: "health_checkin",
+      actionType: "HEALTH.plan",
+    });
+  });
+
+  it("denies access → PERMISSION_DENIED before touching the service (#8795)", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(),
+      getHealthSummary: vi.fn(),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const runner = createHealthActionRunner({
+      hasAccess: async () => false,
+      createService: () => service,
+      messageText: (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      recentConversationTexts: async () => [],
+      runJsonModel: async () => null,
+    });
+
+    const result = await runner(
+      runtime,
+      message,
+      undefined,
+      { parameters: { subaction: "today" } },
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "PERMISSION_DENIED" });
+    expect(result.text).toContain("Health data is restricted to the owner");
+    // No service work should run once access is denied.
+    expect(service.getHealthConnectorStatus).not.toHaveBeenCalled();
+  });
+
+  it("planner shouldAct:false → planner_clarification carrying the clarifying text (#8795)", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(),
+      getHealthSummary: vi.fn(),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const runJsonModel = vi.fn(
+      async (): Promise<{ parsed: Record<string, unknown> }> => ({
+        parsed: {
+          subaction: null,
+          metric: null,
+          days: null,
+          shouldAct: false,
+          response: "Which metric — steps, sleep, or heart rate?",
+        },
+      }),
+    );
+    const runner = createHealthActionRunner({
+      hasAccess: async () => true,
+      createService: () => service,
+      messageText: (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      renderReply: async ({ fallback }) => fallback,
+      recentConversationTexts: async () => [],
+      runJsonModel,
+    });
+
+    // resolveHealthPlanWithLlm only fires when runtime.useModel exists.
+    const plannerRuntime = {
+      logger: { warn: vi.fn() },
+      useModel: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    // No explicit subaction → the planner runs and returns shouldAct:false.
+    const result = await runner(
+      plannerRuntime,
+      { content: { text: "tell me about my health" } } as Memory,
+      undefined,
+      undefined,
+      undefined,
+    );
+
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    // renderReply echoes the fallback, which is the planner's clarifying text.
+    expect(result.text).toBe("Which metric — steps, sleep, or heart rate?");
+    expect(result.values).toMatchObject({
+      success: false,
+      error: "PLANNER_SHOULDACT_FALSE",
+      skipped: true,
+    });
+    expect(result.data).toMatchObject({
+      skipped: true,
+      error: "PLANNER_SHOULDACT_FALSE",
+    });
+    // Clarification short-circuits before any health data is fetched.
+    expect(service.getHealthConnectorStatus).not.toHaveBeenCalled();
+  });
+
+  it("by_metric with no metric → MISSING_METRIC (#8795)", async () => {
+    const service = {
+      getHealthConnectorStatus: vi.fn(async () => ({
+        available: true,
+        backend: "healthkit" as const,
+      })),
+      getHealthSummary: vi.fn(async () => ({
+        providers: [],
+        summaries: [],
+        samples: [],
+        workouts: [],
+        sleepEpisodes: [],
+        syncedAt: "2026-05-30T12:00:00.000Z",
+      })),
+      getHealthTrend: vi.fn(),
+      getHealthDataPoints: vi.fn(),
+      getHealthDailySummary: vi.fn(),
+    } satisfies HealthActionService;
+    const runner = makeRunner(service);
+
+    // Explicit by_metric subaction, but no metric param → MISSING_METRIC.
+    const result = await runner(
+      runtime,
+      { content: { text: "how much of that metric" } } as Memory,
+      undefined,
+      { parameters: { subaction: "by_metric" } },
+      undefined,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ error: "MISSING_METRIC" });
+    expect(result.text).toContain("Specify a metric");
+    // Reached the metric guard, so no data points were ever requested.
+    expect(service.getHealthDataPoints).not.toHaveBeenCalled();
   });
 
   it("runs status through injected service and renderer adapters", async () => {

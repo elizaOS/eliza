@@ -71,6 +71,14 @@ jobs:
         !(github.ref_type == 'tag' && contains(github.ref_name || '', '-alpha'))
       }}
 
+    env:
+      # Replay the publish-critical build graph from Turbo's remote cache
+      # instead of rebuilding it cold on every release. No-op when the secret
+      # is absent (Turbo falls back to the local .turbo cache restored below).
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_CACHE: remote:rw
+
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -106,6 +114,34 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "canary"
+
+      # release.yaml uses oven-sh/setup-bun directly (not setup-bun-workspace),
+      # so it gets no .turbo restore by default — the publish build was cold
+      # every run. Restore the local Turbo cache (shared with ci/test runs via
+      # the runner.os prefix) and the Bun install cache. Use the same
+      # content-derived key as setup-bun-workspace so exact hits can still save
+      # fresh task results after Turbo-relevant inputs change.
+      - name: Compute Turbo cache key
+        id: turbo_cache_key
+        run: node packages/scripts/turbo-cache-key.mjs --github-output
+
+      - name: Restore Turbo cache (GitHub Actions)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-release-${{ steps.turbo_cache_key.outputs.turbo_cache_key }}
+          restore-keys: |
+            turbo-${{ runner.os }}-release-
+            turbo-${{ runner.os }}-
+
+      - name: Cache Bun install
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-canary-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-canary-
+            bun-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
@@ -438,7 +474,7 @@ jobs:
 
       # Push changes to git (fails the workflow if it can't push)
       - name: Push to git
-        if: steps.commit.outputs.has_changes == 'true'
+        if: steps.commit.outputs.has_changes == 'true' && steps.release_type.outputs.is_release_event != 'true'
         run: |
           TAG_NAME="${{ steps.tag.outputs.tag_name }}"
 
@@ -586,6 +622,10 @@ jobs:
           node packages/scripts/replace-workspace-versions.js
           echo "✅ Workspace references replaced"
 
+      - name: Build and verify public package dist tarballs
+        run: |
+          node packages/scripts/verify-npm-pack-dist.mjs --all-public-dist-packages --build
+
       # Publish to NPM (only after git operations succeed)
       - name: Skip NPM publish on forks
         if: github.repository != 'elizaOS/eliza'
@@ -603,6 +643,9 @@ jobs:
 
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          # Ensure new scoped /* packages publish as public (lerna reads
+          # publishConfig.access per-package; the npmrc access key is ignored).
+          node scripts/release-set-public-access.mjs
 
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files

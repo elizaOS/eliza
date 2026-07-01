@@ -52,7 +52,10 @@ import {
   type TrainingCollectionRunOptions,
   type TrainingCollectionRunResult,
 } from "./training-collection-runner.js";
-import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
+import {
+  buildTaskRecord,
+  type TrajectoryTrainingTask,
+} from "./trajectory-task-datasets.js";
 import { discoverWorkspaceRoot } from "./workspace-runtime.js";
 
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
@@ -295,7 +298,7 @@ async function cmdCompare(args: string[]) {
     console.error("");
     console.error("Options:");
     console.error(
-      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description",
+      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description, view_context",
     );
     console.error(
       "  --scorer <kind>        agreement | planner_action (default: derived from --task)",
@@ -497,13 +500,7 @@ async function cmdExportTrajectories(args: string[]) {
   console.log(`[export-trajectories] reading from ${inputDir}`);
   console.log(`[export-trajectories] writing to ${outputDir}`);
 
-  const buckets: Record<TrajectoryTrainingTask, Record<string, unknown>[]> = {
-    should_respond: [],
-    context_routing: [],
-    action_planner: [],
-    response: [],
-    media_description: [],
-  };
+  const buckets = buildTaskRecord<Record<string, unknown>[]>(() => []);
 
   const agentDirs = readdirSync(inputDir).filter((name) => {
     const full = join(inputDir, name);
@@ -565,7 +562,7 @@ export function buildRunCollectionOptionsFromCliArgs(
     options: {
       output: { type: "string", short: "o" },
       "workspace-root": { type: "string" },
-      tiers: { type: "string", default: "0_8b" },
+      tiers: { type: "string", default: "2b" },
       benchmark: { type: "string", default: "eliza_harness_action_selection" },
       provider: { type: "string", default: "local-llama-cpp" },
       "base-url": { type: "string", default: "http://localhost:11434/v1" },
@@ -771,8 +768,8 @@ export function buildRunCollectionOptionsFromCliArgs(
       dryRun,
     },
     evalComparison: {
-      model: elizaOneBenchmarkModelId(tiers[0] ?? "0_8b", "base"),
-      trainedModelPath: elizaOneBenchmarkModelId(tiers[0] ?? "0_8b", "trained"),
+      model: elizaOneBenchmarkModelId(tiers[0] ?? "2b", "base"),
+      trainedModelPath: elizaOneBenchmarkModelId(tiers[0] ?? "2b", "trained"),
       backend: "cpu",
       dryRun,
     },
@@ -821,7 +818,7 @@ export function buildRunCollectionOptionsFromCliArgs(
     },
     eliza1BundleStage: {
       repoId: "elizaos/eliza-1",
-      tier: tiers[0] ?? "0_8b",
+      tier: tiers[0] ?? "2b",
       localDir: "/tmp/eliza-1-bundles",
       maxBytes: 8589934592,
       apply: false,
@@ -1163,6 +1160,7 @@ const OPTIMIZED_PROMPT_TASKS_CLI = [
   "action_planner",
   "response",
   "media_description",
+  "view_context",
 ] as const;
 type OptimizedPromptTaskCli = (typeof OPTIMIZED_PROMPT_TASKS_CLI)[number];
 
@@ -1285,7 +1283,7 @@ Commands:
 
   run-collection    Collect HF/feed/natural/test/scenario/eval/benchmark evidence
     -o, --output DIR   Output dir (default: training state collection dir)
-    --tiers LIST       Eliza-1 benchmark tiers, comma-separated, or "all" (default: 0_8b)
+    --tiers LIST       Eliza-1 benchmark tiers, comma-separated, or "all" (default: 2b)
                        (all expands to ${ELIZA_ONE_BENCHMARK_TIER_LIST})
     --live             Execute live external work instead of dry-run defaults
     --preflight-only   Print live-readiness checks without collecting artifacts
@@ -1323,7 +1321,7 @@ Commands:
     --baseline PATH    Path to baseline prompt (.txt)
     --variant PATH     Path to variant prompt (.txt)
     --dataset PATH     Path to JSONL dataset (eliza_native_v1)
-    --task NAME        should_respond | context_routing | action_planner | response | media_description
+    --task NAME        should_respond | context_routing | action_planner | response | media_description | view_context
     --scorer KIND      agreement | planner_action (default: from --task)
     --mode MODE        vs_historical (default) | pairwise
     --max-examples N   Cap evaluations
@@ -1335,7 +1333,8 @@ Commands:
 
     rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
       <task>            Required positional: should_respond | context_routing |
-                      action_planner | response | media_description
+                      action_planner | response | media_description |
+                      view_context
     --store-root DIR  Override the optimized-prompts store root (default:
                       $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
 

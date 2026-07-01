@@ -1,0 +1,30 @@
+{
+  "id": "screenshare",
+  "name": "Screenshare",
+  "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+  "npmName": "@elizaos/plugin-screenshare",
+  "version": "2.0.3-beta.2",
+  "source": "bundled",
+  "tags": ["device", "screenshare"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ScreenShare",
+    "group": "system",
+    "actions": ["enable"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media",
+  "curatedApp": {
+    "slug": "screenshare",
+    "order": 9,
+    "aliases": []
+  }
+}

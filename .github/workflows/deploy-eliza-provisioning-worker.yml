@@ -16,12 +16,12 @@ on:
       - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
       - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
       - 'packages/scripts/cloud/admin/eliza-agent-router.service'
-      - 'packages/cloud-shared/src/lib/services/provisioning-jobs.ts'
-      - 'packages/cloud-shared/src/lib/services/docker-sandbox-provider.ts'
-      - 'packages/cloud-shared/src/lib/services/eliza-sandbox.ts'
-      - 'packages/cloud-shared/src/db/repositories/agent-sandboxes.ts'
-      - 'packages/cloud-shared/**'
-      - 'packages/cloud-sdk/**'
+      - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
+      - 'packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts'
+      - 'packages/cloud/shared/src/lib/services/eliza-sandbox.ts'
+      - 'packages/cloud/shared/src/db/repositories/agent-sandboxes.ts'
+      - 'packages/cloud/shared/**'
+      - 'packages/cloud/sdk/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
@@ -86,6 +86,13 @@ jobs:
       HEADSCALE_API_URL: ${{ vars.HEADSCALE_API_URL }}
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      # Sandbox-registry Redis (TCP redis:// proxy, sandbox-reachable — never a
+      # *.railway.internal host) so provisioned sandboxes self-register and
+      # Discord/Telegram inbound routing works (#8621 / #8756). Reconciled into
+      # /opt/eliza/cloud/.env.local the same way as HEADSCALE_*; when the secret
+      # is unset the reconcile loop skips it and preserves any hand-set value,
+      # so this is a no-op until the operator sets the GH secret.
+      SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -163,7 +170,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -267,7 +274,7 @@ jobs:
             # `Cannot find package '@elizaos/cloud-shared'`. Recreate it here
             # idempotently after `bun install` is done.
             mkdir -p node_modules/@elizaos
-            ln -sfn ../../packages/cloud-shared node_modules/@elizaos/cloud-shared
+            ln -sfn ../../packages/cloud/shared node_modules/@elizaos/cloud-shared
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
@@ -308,7 +315,8 @@ jobs:
             for kv in \
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
-              "HEADSCALE_API_KEY=$HEADSCALE_API_KEY"; do
+              "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
+              "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL"; do
               key="${kv%%=*}"
               val="${kv#*=}"
               [ -n "$val" ] || continue
@@ -421,3 +429,5 @@ jobs:
             Branch: develop
             Commit: ${{ github.sha }}
           color: 0xff0000
+
+# ci-touch: re-trigger prod daemon deploy (dispatch runs were runner-starved) 2026-06-21

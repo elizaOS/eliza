@@ -27,8 +27,10 @@ import {
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import type {
+  ChatActionResultSummary,
   ChatFailureKind,
   ChatTokenUsage,
+  ChatTurnStatus,
   ConnectionStateInfo,
   ConversationChannelType,
   ImageAttachment,
@@ -59,6 +61,8 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
 ]);
+const REPLAYABLE_WS_EVENT_TYPES = new Set(["shell:navigate:view"]);
+const WS_EVENT_BACKLOG_LIMIT = 8;
 
 type StreamChatEvent = {
   type?: string;
@@ -70,6 +74,14 @@ type StreamChatEvent = {
   noResponseReason?: string;
   failureKind?: ChatFailureKind;
   localInference?: LocalInferenceChatMetadata;
+  actionResults?: ChatActionResultSummary[];
+  // `type: "status"` carries the in-flight phase flat on the event (the server
+  // spreads ChatTurnStatus into the SSE payload), so `kind` + the optional
+  // action/tool name live alongside the discriminator.
+  kind?: ChatTurnStatus["kind"];
+  label?: string;
+  actionName?: string;
+  toolName?: string;
   usage?: {
     promptTokens?: number;
     completionTokens?: number;
@@ -77,6 +89,37 @@ type StreamChatEvent = {
     model?: string;
   };
 };
+
+const CHAT_TURN_STATUS_KINDS: ReadonlySet<ChatTurnStatus["kind"]> = new Set<
+  ChatTurnStatus["kind"]
+>([
+  "thinking",
+  "streaming",
+  "running_action",
+  "running_tool",
+  "evaluating",
+  "waking",
+  "speaking",
+]);
+
+/** Build a typed ChatTurnStatus from a `type: "status"` SSE event, or null when
+ *  the `kind` is missing/unknown (defensive: a future server kind is ignored,
+ *  not crashed on). */
+function parseChatTurnStatus(parsed: StreamChatEvent): ChatTurnStatus | null {
+  if (!parsed.kind || !CHAT_TURN_STATUS_KINDS.has(parsed.kind)) return null;
+  return {
+    kind: parsed.kind,
+    ...(typeof parsed.label === "string" && parsed.label
+      ? { label: parsed.label }
+      : {}),
+    ...(typeof parsed.actionName === "string" && parsed.actionName
+      ? { actionName: parsed.actionName }
+      : {}),
+    ...(typeof parsed.toolName === "string" && parsed.toolName
+      ? { toolName: parsed.toolName }
+      : {}),
+  };
+}
 
 type StreamChatState = {
   fullText: string;
@@ -87,6 +130,7 @@ type StreamChatState = {
   doneUsage: ChatTokenUsage | undefined;
   doneFailureKind: ChatFailureKind | undefined;
   doneLocalInference: LocalInferenceChatMetadata | undefined;
+  doneActionResults: ChatActionResultSummary[] | undefined;
   receivedDone: boolean;
 };
 
@@ -176,6 +220,9 @@ function applyStreamChatDoneEvent(
   if (parsed.localInference && typeof parsed.localInference === "object") {
     state.doneLocalInference = parsed.localInference;
   }
+  if (Array.isArray(parsed.actionResults)) {
+    state.doneActionResults = parsed.actionResults;
+  }
   if (parsed.usage) {
     state.doneUsage = {
       promptTokens: parsed.usage.promptTokens ?? 0,
@@ -191,11 +238,21 @@ function applyStreamChatDataLine(
   line: string,
   state: StreamChatState,
   onToken: (token: string, accumulatedText?: string) => void,
+  onStatus?: (status: ChatTurnStatus) => void,
 ): boolean {
   const parsed = parseStreamChatDataLine(line);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
+  }
+  if (parsed.type === "status") {
+    // Additive: a non-terminal status event. Surface it (when a consumer wants
+    // it) and keep reading — it never ends the stream.
+    if (onStatus) {
+      const status = parseChatTurnStatus(parsed);
+      if (status) onStatus(status);
+    }
+    return false;
   }
   if (parsed.type === "done") {
     return applyStreamChatDoneEvent(parsed, state);
@@ -391,6 +448,7 @@ export class ElizaClient {
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
   private wsHandlers = new Map<string, Set<WsEventHandler>>();
+  private wsEventBacklog = new Map<string, Record<string, unknown>[]>();
   private wsSendQueue: string[] = [];
   private readonly wsSendQueueLimit = 32;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -551,6 +609,16 @@ export class ElizaClient {
     if (!persist) {
       return;
     }
+    this.persistBaseUrl(normalized);
+  }
+
+  /**
+   * Persist a base URL to every consumer that reads it out-of-band (boot config,
+   * localStorage, the `window.__ELIZA_API_BASE__` global). Shared by
+   * {@link setBaseUrl} and {@link repointBaseUrl} so both keep the same
+   * persistence semantics — the only difference between them is the WS handling.
+   */
+  private persistBaseUrl(normalized: string): void {
     // Update boot config so other consumers (resolveApiUrl, etc.) see the new base.
     const config = getBootConfig();
     setBootConfig({ ...config, apiBase: normalized || undefined });
@@ -576,6 +644,77 @@ export class ElizaClient {
     }
   }
 
+  /**
+   * Re-point the live client at a new base **in place**, keeping the realtime
+   * channel visually continuous — the seamless shared→dedicated handoff swap.
+   *
+   * Unlike {@link setBaseUrl}, which `disconnectWs()`es and leaves the socket
+   * dead until some later boot phase calls `connectWs()` (a visible drop + the
+   * `disconnected` connection-state flap), this:
+   *   1. tears down the old socket WITHOUT emitting a `disconnected` state, so
+   *      connection-state listeners never see a gap (the chat surface stays
+   *      "connected" throughout);
+   *   2. flips the base + persistence to the new (dedicated) host;
+   *   3. immediately `connectWs()`s to the new base.
+   *
+   * The transcript was already copied to the dedicated agent by the handoff
+   * supervisor, so live updates resume against the dedicated host with no
+   * full-screen reload, no coordinator re-entry, and no draft loss. Used ONLY by
+   * the handoff's silent re-point — every other base change still goes through
+   * `setBaseUrl`.
+   *
+   * Note on the WS swap: on cloud bases (the shared REST adapter and
+   * `*.elizacloud.ai`) `connectWs()` reports connected-over-REST and no socket
+   * is opened, so `ws-reconnected` does NOT fire and live updates resume via
+   * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
+   * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for
+   * non-cloud hosts — it is forward-cover for when a base actually uses `/ws`.
+   * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
+   * clear) hold independent of whether a socket is involved.
+   */
+  repointBaseUrl(baseUrl: string): void {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (!normalized) return;
+    // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
+    // it sets connectionState = "disconnected" and emits, which would surface a
+    // visible "reconnecting" flicker mid-handoff. Suppress onclose (which would
+    // otherwise schedule a reconnect against the OLD base) and close silently.
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      try {
+        this.ws.close();
+      } catch {
+        /* already closing */
+      }
+      this.ws = null;
+    }
+    // Pending outbound WS frames were addressed to the old host; drop them so
+    // they aren't replayed against the dedicated socket. The send-queue is for
+    // offline buffering, not cross-host carry-over.
+    this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
+
+    this._userSetBase = normalized.length > 0;
+    this._baseUrl = normalized;
+    this.persistBaseUrl(normalized);
+
+    // Reconnect immediately against the new base. connectWs() derives the WS
+    // host from this.baseUrl, so the socket comes up on the dedicated host; its
+    // onopen fires `ws-reconnected` (this.wsHasConnectedOnce is already true),
+    // re-hydrating live state without a reload.
+    this.backoffMs = 500;
+    this.reconnectAttempt = 0;
+    this.disconnectedAt = null;
+    this.connectWs();
+  }
+
   /** True when we have a usable HTTP(S) API endpoint. */
   get apiAvailable(): boolean {
     if (this.baseUrl) return true;
@@ -591,7 +730,14 @@ export class ElizaClient {
   async rawRequest(
     path: string,
     init?: RequestInit,
-    options?: { allowNonOk?: boolean; timeoutMs?: number },
+    options?: {
+      allowNonOk?: boolean;
+      timeoutMs?: number;
+      /** Invoked once when a non-running cloud agent answers 202 and the resume
+       *  loop starts waiting (#8628). Lets the chat surface a `waking` status
+       *  while the agent boots. */
+      onResuming?: () => void;
+    },
   ): Promise<Response> {
     if (!this.apiAvailable) {
       throw new ApiError({
@@ -625,6 +771,7 @@ export class ElizaClient {
     // eventual response instead of a 202 placeholder. Non-202 responses skip this
     // loop entirely, so ordinary requests are byte-for-byte unaffected.
     let resumeRetries = 0;
+    if (res.status === 202) options?.onResuming?.();
     while (res.status === 202 && resumeRetries < RESUME_MAX_RETRIES) {
       if (init?.signal?.aborted) break;
       await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
@@ -899,6 +1046,47 @@ export class ElizaClient {
 
   // --- WebSocket ---
 
+  private rememberReplayableWsEvent(
+    type: string,
+    data: Record<string, unknown>,
+  ): void {
+    if (!REPLAYABLE_WS_EVENT_TYPES.has(type)) return;
+    const backlog = this.wsEventBacklog.get(type) ?? [];
+    backlog.push(data);
+    if (backlog.length > WS_EVENT_BACKLOG_LIMIT) {
+      backlog.splice(0, backlog.length - WS_EVENT_BACKLOG_LIMIT);
+    }
+    this.wsEventBacklog.set(type, backlog);
+  }
+
+  private replayBackloggedWsEvents(
+    type: string,
+    handler: WsEventHandler,
+  ): void {
+    const backlog = this.wsEventBacklog.get(type);
+    if (!backlog?.length) return;
+    const pending = backlog.slice();
+    queueMicrotask(() => {
+      if (!this.wsHandlers.get(type)?.has(handler)) return;
+      for (const data of pending) {
+        try {
+          handler(data);
+        } catch {
+          // Match normal WS dispatch: a handler error must not poison replay.
+        }
+      }
+      const current = this.wsEventBacklog.get(type);
+      if (!current?.length) return;
+      const delivered = new Set(pending);
+      const remaining = current.filter((data) => !delivered.has(data));
+      if (remaining.length > 0) {
+        this.wsEventBacklog.set(type, remaining);
+      } else {
+        this.wsEventBacklog.delete(type);
+      }
+    });
+  }
+
   connectWs(): void {
     if (shouldTreatAsConnectedWithoutWebSocket(this.baseUrl)) {
       this.backoffMs = 500;
@@ -1023,10 +1211,12 @@ export class ElizaClient {
         >;
         const type = data.type as string;
         const handlers = this.wsHandlers.get(type);
-        if (handlers) {
+        if (handlers?.size) {
           for (const handler of handlers) {
             handler(data);
           }
+        } else {
+          this.rememberReplayableWsEvent(type, data);
         }
         // Also fire "all" handlers
         const allHandlers = this.wsHandlers.get("*");
@@ -1227,6 +1417,7 @@ export class ElizaClient {
       this.wsHandlers.set(type, new Set());
     }
     this.wsHandlers.get(type)?.add(handler);
+    this.replayBackloggedWsEvents(type, handler);
     return () => {
       this.wsHandlers.get(type)?.delete(handler);
     };
@@ -1244,6 +1435,7 @@ export class ElizaClient {
     this.ws?.close();
     this.ws = null;
     this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
     // Reset connection state on intentional disconnect
     this.reconnectAttempt = 0;
     this.disconnectedAt = null;
@@ -1295,6 +1487,9 @@ export class ElizaClient {
     signal?: AbortSignal,
     images?: ImageAttachment[],
     metadata?: Record<string, unknown>,
+    /** Additive: in-flight phase changes (thinking / streaming / running_action
+     *  / waking …). Omitting it leaves the token/done/error behaviour unchanged. */
+    onStatus?: (status: ChatTurnStatus) => void,
   ): Promise<{
     text: string;
     agentName: string;
@@ -1304,6 +1499,7 @@ export class ElizaClient {
     usage?: ChatTokenUsage;
     failureKind?: ChatFailureKind;
     localInference?: LocalInferenceChatMetadata;
+    actionResults?: ChatActionResultSummary[];
   }> {
     // Idempotency key for the chat send. The HTTP chat path (POST
     // /api/chat[/:conversationId]/stream) lives in
@@ -1313,21 +1509,27 @@ export class ElizaClient {
     // is generated here so the contract is in place regardless of when that
     // dedupe lands.
     const clientMessageId = ElizaClient.generateMessageId();
-    const res = await this.rawRequest(path, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
+    const res = await this.rawRequest(
+      path,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          text,
+          channelType,
+          clientMessageId,
+          ...(images?.length ? { images } : {}),
+          ...(metadata ? { metadata } : {}),
+        }),
+        signal,
       },
-      body: JSON.stringify({
-        text,
-        channelType,
-        clientMessageId,
-        ...(images?.length ? { images } : {}),
-        ...(metadata ? { metadata } : {}),
-      }),
-      signal,
-    });
+      // A non-running cloud agent 202s and auto-resumes; surface `waking` so the
+      // chat shows the agent booting instead of stalled dots.
+      onStatus ? { onResuming: () => onStatus({ kind: "waking" }) } : undefined,
+    );
 
     if (!res.body) {
       throw new Error("Streaming not supported by this browser");
@@ -1345,6 +1547,7 @@ export class ElizaClient {
       doneUsage: undefined,
       doneFailureKind: undefined,
       doneLocalInference: undefined,
+      doneActionResults: undefined,
       receivedDone: false,
     };
 
@@ -1356,18 +1559,29 @@ export class ElizaClient {
     while (true) {
       let done = false;
       let value: Uint8Array | undefined;
+      let idleTimedOut = false;
       try {
         const readPromise = reader.read();
         const timeoutPromise = new Promise<never>((_, reject) => {
-          const id = setTimeout(
-            () => reject(new Error("SSE idle timeout — no data for 60s")),
-            SSE_IDLE_TIMEOUT_MS,
-          );
+          const id = setTimeout(() => {
+            idleTimedOut = true;
+            reject(new Error("SSE idle timeout — no data for 60s"));
+          }, SSE_IDLE_TIMEOUT_MS);
           // Clear timeout if the read resolves first
           void readPromise.finally(() => clearTimeout(id));
         });
         ({ done, value } = await Promise.race([readPromise, timeoutPromise]));
       } catch {
+        // Only the 60s idle timeout sets `idleTimedOut`; a user abort or a
+        // mid-stream network drop rejects the read without it. Stamp the stall
+        // as a transient provider issue so the consumer carries `failureKind`
+        // onto the turn and the renderer shows a Retry affordance instead of a
+        // bare, ambiguous "interrupted" badge that locks the partial text.
+        // User-stop / network-drop stay failureKind-less (genuine interrupt).
+        if (idleTimedOut) {
+          streamState.doneFailureKind =
+            streamState.doneFailureKind ?? "provider_issue";
+        }
         void reader.cancel("elizaos-sse-idle-timeout").catch(() => {});
         break;
       }
@@ -1380,7 +1594,7 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          if (applyStreamChatDataLine(line, streamState, onToken)) {
+          if (applyStreamChatDataLine(line, streamState, onToken, onStatus)) {
             buffer = "";
             void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
             break;
@@ -1395,7 +1609,7 @@ export class ElizaClient {
     if (!streamState.receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
         if (line.startsWith("data:")) {
-          applyStreamChatDataLine(line, streamState, onToken);
+          applyStreamChatDataLine(line, streamState, onToken, onStatus);
         }
       }
     }
@@ -1422,6 +1636,9 @@ export class ElizaClient {
         : {}),
       ...(streamState.doneLocalInference
         ? { localInference: streamState.doneLocalInference }
+        : {}),
+      ...(streamState.doneActionResults?.length
+        ? { actionResults: streamState.doneActionResults }
         : {}),
     };
   }

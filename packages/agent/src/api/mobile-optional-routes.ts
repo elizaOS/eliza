@@ -298,10 +298,8 @@ export async function handleMobileOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/drop/status") {
-    // Off-state only. The real supply cap and shiny price are read from the
-    // on-chain contract by @elizaos/plugin-elizamaker (MAX_SUPPLY()/SHINY_PRICE())
-    // when a drop is actually live; this mobile fallback must not fabricate those
-    // mint constants, so the numeric fields are reported as zero/empty.
+    // Off-state only. This mobile fallback reports zero/empty mint constants
+    // rather than fabricating an on-chain supply cap or shiny price.
     sendJson(res, {
       dropEnabled: false,
       publicMintOpen: false,

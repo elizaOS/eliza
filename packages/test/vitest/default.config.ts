@@ -59,11 +59,11 @@ const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
 const cloudRoutingSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "packages/cloud-routing/src",
+  "packages/cloud/routing/src",
 );
 const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "packages/cloud-sdk/src",
+  "packages/cloud/sdk/src",
 );
 // @elizaos/logger was extracted from @elizaos/core (core's src re-exports it via
 // `export * from "@elizaos/logger"`). Since core is source-aliased for tests,
@@ -137,7 +137,14 @@ const workspaceReactTestRendererEntry = path.join(
   "index.js",
 );
 const workspaceAdzeEntry = path.join(workspaceAdzeDir, "dist", "index.js");
-const asViteFsPath = (targetPath: string) => `/@fs${targetPath}`;
+// Vite's `/@fs/` protocol expects a POSIX, forward-slash absolute path. On
+// POSIX `path.join(...)` already yields `/abs/...` so `/@fs` + that gives
+// `/@fs/abs/...`. On Windows it yields `C:\abs\...` (backslashes, no leading
+// slash), so a naive `/@fs${p}` produces `/@fsC:\abs\...` which vite's
+// `/@fs/`-prefix check never matches → "Cannot find package". Normalize
+// backslashes to `/` and ensure exactly one separator after `/@fs`.
+const asViteFsPath = (targetPath: string) =>
+  `/@fs/${targetPath.split("\\").join("/").replace(/^\/+/, "")}`;
 const workspacePluginPackageNames = Object.keys({
   ...(packageManifest.dependencies ?? {}),
   ...(packageManifest.devDependencies ?? {}),
@@ -184,6 +191,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-phone",
   "plugin-signal",
   "plugin-streaming",
+  "plugin-task-coordinator",
   "plugin-whatsapp",
   "plugin-workflow",
   "plugin-x402",
@@ -286,6 +294,46 @@ const vitestResolveAlias: ModuleAlias[] = [
       "plugins/plugin-sql/src/index.node.ts",
     ),
   },
+  // Server-safe DB subpaths of the carved LifeOps plugins. PA's
+  // lifeops/repository.ts imports its schemas/repos/factories from these leaf
+  // modules (not the package barrels, which re-export React views → @elizaos/ui).
+  // The `./*` wildcard export is skipped by the auto-alias builder, so anchor the
+  // exact subpaths to source here for every base-config consumer.
+  {
+    find: /^@elizaos\/plugin-inbox\/db\/schema$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-inbox/src/db/schema.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-finances\/db\/finances-repository$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-finances/src/db/finances-repository.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-health\/health-bridge\/health-records$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-health/src/health-bridge/health-records.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-health\/sleep\/sleep-episode-types$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-health/src/sleep/sleep-episode-types.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-browser\/schema$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-browser/src/schema.ts",
+    ),
+  },
   {
     find: /^@elizaos\/cloud-routing$/,
     replacement: path.join(cloudRoutingSourceRoot, "index.ts"),
@@ -338,6 +386,16 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...(elizaCoreEntry
     ? [
         {
+          // Resolve the testing subpath to source before the broad
+          // `@elizaos/core` alias, which would otherwise treat the source
+          // entry file as a directory (`index.node.ts/testing` → ENOTDIR).
+          find: /^@elizaos\/core\/testing$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            "testing/index.ts",
+          ),
+        },
+        {
           find: "@elizaos/core",
           replacement: elizaCoreEntry,
         },
@@ -360,9 +418,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-companion",
     "app-task-coordinator",
     "plugin-training",
-    "app-vincent",
     "plugin-shopify",
-    "plugin-steward-app",
     "plugin-personal-assistant",
     "plugin-documents",
     "plugin-wallet",
@@ -426,9 +482,7 @@ export default defineConfig({
       "eliza/packages/app-core/src/**/*.test.tsx",
       "eliza/packages/agent/src/runtime/roles/test/**/*.test.ts",
       "eliza/plugins/plugin-personal-assistant/src/selfcontrol/**/*.test.ts",
-      "eliza/plugins/plugin-vincent/src/**/*.test.ts",
-      "eliza/plugins/plugin-shopify-ui/src/**/*.test.ts",
-      "eliza/plugins/plugin-steward-app/src/**/*.test.ts",
+      "eliza/plugins/plugin-shopify/src/**/*.test.ts",
       "eliza/plugins/plugin-wallet-ui/src/**/*.test.ts",
       "eliza/plugins/plugin-wallet-ui/src/**/*.test.tsx",
       "eliza/plugins/plugin-personal-assistant/src/**/*.test.ts",

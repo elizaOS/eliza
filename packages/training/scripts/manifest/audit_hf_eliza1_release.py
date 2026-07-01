@@ -55,7 +55,7 @@ DATASET_REQUIRED_PIPELINE_DOCS = (
 DATASET_LIVE_AUDIT_PATH = "validation/eliza1-training-live-audit-2026-05-19.json"
 DATASET_VALIDATION_SCHEMA = "eliza.eliza1_trajectory_validation_report.v1"
 DATASET_LIVE_AUDIT_SCHEMA = "eliza.eliza1_training_dataset_live_audit.v1"
-ACTIVE_TEXT_SFT_TIER = "0_8b"
+ACTIVE_TEXT_SFT_TIER = ELIZA_1_TIERS[0]
 ACTIVE_TEXT_SFT_ROOT = f"sft/{ACTIVE_TEXT_SFT_TIER}"
 ACTIVE_TEXT_SFT_REQUIRED_FILES = (
     f"{ACTIVE_TEXT_SFT_ROOT}/train.jsonl",
@@ -64,8 +64,8 @@ ACTIVE_TEXT_SFT_REQUIRED_FILES = (
     f"{ACTIVE_TEXT_SFT_ROOT}/manifest.json",
     f"{ACTIVE_TEXT_SFT_ROOT}/validation.json",
 )
-ACTIVE_TEXT_SFT_MANIFEST_SCHEMA = "eliza.eliza1_sft_0_8b_manifest.v1"
-ACTIVE_TEXT_SFT_VALIDATION_SCHEMA = "eliza.eliza1_sft_0_8b_validation.v1"
+ACTIVE_TEXT_SFT_MANIFEST_SCHEMA = f"eliza.eliza1_sft_{ACTIVE_TEXT_SFT_TIER}_manifest.v1"
+ACTIVE_TEXT_SFT_VALIDATION_SCHEMA = f"eliza.eliza1_sft_{ACTIVE_TEXT_SFT_TIER}_validation.v1"
 DATASET_PRIVACY_ATTESTATION_SOURCES = frozenset(
     {
         "cli_flag",
@@ -116,7 +116,6 @@ WEIGHT_PAYLOAD_DIRS = frozenset(
     }
 )
 MODEL_CARD_REQUIRED_FRAGMENTS = (
-    "bundles/0_8b/",
     "bundles/2b/",
     "bundles/4b/",
     "bundles/9b/",
@@ -160,12 +159,10 @@ FINETUNE_REQUIRED_METRICS = frozenset(
 IMAGEGEN_REQUIRED_MODELS = frozenset(
     {
         "imagegen-sd-1_5-q5_0",
-        "imagegen-z-image-turbo-q4_k_m",
     }
 )
 IMAGEGEN_REQUIRED_MODEL_SMOKES = {
-    "imagegen-sd-1_5-q5_0": "0_8b/sd-1.5-Q5_0.gguf",
-    "imagegen-z-image-turbo-q4_k_m": "9b/z-image-turbo-Q4_K_M.gguf",
+    "imagegen-sd-1_5-q5_0": "2b/sd-1.5-Q5_0.gguf",
 }
 IMAGEGEN_REQUIRED_ACCELERATORS = frozenset({"cpu", "cuda", "vulkan", "metal"})
 IMAGEGEN_REQUIRED_MEMORY_FEATURES = frozenset({"mmap", "maxVramAuto", "segmentedOffload"})
@@ -1355,7 +1352,7 @@ def _active_text_sft_blockers(
         blockers.append("validation.blockers: non-empty")
     if manifest.get("published_name") != f"eliza-1-{ACTIVE_TEXT_SFT_TIER}":
         blockers.append(f"manifest.published_name: {manifest.get('published_name')!r}")
-    if manifest.get("base_model") != "Qwen/Qwen3.5-0.8B":
+    if manifest.get("base_model") != "google/gemma-4-E2B":
         blockers.append(f"manifest.base_model: {manifest.get('base_model')!r}")
 
     counts = manifest.get("counts")
@@ -1814,7 +1811,7 @@ def audit_hf_release(
         path for path in ACTIVE_TEXT_SFT_REQUIRED_FILES if path not in dataset_paths
     ]
     report.check(
-        "dataset active 0_8b SFT package present",
+        f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT package present",
         not missing_active_sft_files,
         ", ".join(missing_active_sft_files),
     )
@@ -1909,7 +1906,7 @@ def audit_hf_release(
             )
         if missing_active_sft_files:
             report.check(
-                "dataset active 0_8b SFT validation passed",
+                f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT validation passed",
                 False,
                 ", ".join(missing_active_sft_files),
             )
@@ -1922,7 +1919,11 @@ def audit_hf_release(
                     fetch_text(_raw_dataset_url(dataset_repo, f"{ACTIVE_TEXT_SFT_ROOT}/validation.json"))
                 )
             except (RuntimeError, json.JSONDecodeError) as exc:
-                report.check("dataset active 0_8b SFT validation passed", False, str(exc))
+                report.check(
+                    f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT validation passed",
+                    False,
+                    str(exc),
+                )
             else:
                 active_sft_blockers = (
                     _active_text_sft_blockers(active_sft_manifest, active_sft_validation)
@@ -1931,7 +1932,7 @@ def audit_hf_release(
                     else ["manifest or validation not an object"]
                 )
                 report.check(
-                    "dataset active 0_8b SFT validation passed",
+                    f"dataset active {ACTIVE_TEXT_SFT_TIER} SFT validation passed",
                     not active_sft_blockers,
                     ", ".join(active_sft_blockers[:8])
                     + (f" (+{len(active_sft_blockers) - 8} more)" if len(active_sft_blockers) > 8 else ""),

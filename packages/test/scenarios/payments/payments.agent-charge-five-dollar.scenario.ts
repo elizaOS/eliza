@@ -43,6 +43,7 @@ function assertPaymentCallback(ctx: ScenarioContext): string | undefined {
 }
 
 export default scenario({
+  lane: "live-only",
   id: "payments.agent-charge-five-dollar",
   title: "Agent creates and verifies a $5 app charge",
   domain: "payments",

@@ -24,18 +24,25 @@ import {
   type Content,
   createMessageMemory,
   logger,
+  type Memory,
   stringToUuid,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import {
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
+  parsePositiveInteger,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
-import type { ChatGenerationResult, LogEntry } from "./chat-routes.ts";
+import type {
+  ChatFailureKind,
+  ChatGenerationResult,
+  LogEntry,
+} from "./chat-routes.ts";
 import {
   classifyChatFailure,
   generateChatResponse,
@@ -48,6 +55,7 @@ import {
   persistConversationMemory,
   readChatRequestPayload,
   resolveNoResponseFallback,
+  writeChatStatusSse,
   writeChatTokenSse,
   writeSse,
   writeSseJson,
@@ -58,6 +66,7 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
+import { rankByKeyword } from "./memory-routes.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -217,6 +226,7 @@ export interface ConversationRouteState {
   chatUserId: UUID | null;
   logBuffer: LogEntry[];
   conversations: Map<string, ConversationMeta>;
+  activeChatTurnCount: number;
   conversationRestorePromise: Promise<void> | null;
   deletedConversationIds: Set<string>;
   broadcastWs: ((data: object) => void) | null;
@@ -255,6 +265,16 @@ async function resolveRuntimeForChatTurn(
     return state.runtime ?? null;
   }
   return state.awaitRuntimeReady(WARMING_TURN_HOLD_MS);
+}
+
+function beginActiveChatTurn(state: ConversationRouteState): () => void {
+  state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount) + 1;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    state.activeChatTurnCount = Math.max(0, state.activeChatTurnCount - 1);
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,6 +1037,77 @@ async function getConversationWithRestore(
   return state.conversations.get(convId);
 }
 
+/** Default recent-window size for GET /messages (the newest N turns). */
+const CONVERSATION_MESSAGE_WINDOW = 200;
+
+/**
+ * How many messages on EACH side of an `?around=<id>` pivot to load. The
+ * centered window is roughly 2× this plus the pivot itself.
+ */
+const CONVERSATION_AROUND_RADIUS = 100;
+
+/**
+ * Load a window of messages CENTERED on `aroundMessageId` for the jump-to-message
+ * flow (#9955). The default GET /messages window is the most-recent
+ * CONVERSATION_MESSAGE_WINDOW turns, so a keyword-search hit older than that is
+ * never in the loaded thread and can't be scrolled to. Given the pivot's id this
+ * returns the pivot's own turn plus up to CONVERSATION_AROUND_RADIUS older and
+ * newer turns, ordered chronologically by the caller.
+ *
+ * Bounds are pushed into the store as getMemories `start`/`end` (createdAt
+ * range) so there is NO in-process scan. Returns the recent window unchanged
+ * when the pivot is missing or lives in another room — the latter prevents a
+ * cross-room leak via a forged `around` id.
+ */
+async function loadConversationMessagesAround(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  aroundMessageId: UUID,
+): Promise<Memory[]> {
+  const [pivot] = await runtime.getMemoriesByIds([aroundMessageId], "messages");
+  if (!pivot || pivot.roomId !== roomId) {
+    logger.warn(
+      `[conversations] around=${aroundMessageId} is not in room ${roomId}; serving the recent window instead`,
+    );
+    return runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: CONVERSATION_MESSAGE_WINDOW,
+    });
+  }
+  const pivotCreatedAt = pivot.createdAt ?? 0;
+  const [olderOrAt, newerOrAt] = await Promise.all([
+    // The pivot and everything before it, newest-first, capped. The pivot is
+    // included because `end` is inclusive of its createdAt.
+    runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      end: pivotCreatedAt,
+      limit: CONVERSATION_AROUND_RADIUS + 1,
+      orderBy: "createdAt",
+      orderDirection: "desc",
+    }),
+    // The pivot and everything after it, oldest-first, capped.
+    runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      start: pivotCreatedAt,
+      limit: CONVERSATION_AROUND_RADIUS + 1,
+      orderBy: "createdAt",
+      orderDirection: "asc",
+    }),
+  ]);
+  // Merge the two half-windows, de-duping the shared pivot (and any createdAt
+  // ties both bounds picked up) by id.
+  const byId = new Map<UUID, Memory>();
+  for (const memory of [...olderOrAt, ...newerOrAt]) {
+    if (memory.id) {
+      byId.set(memory.id, memory);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 function extractConversationMetaString(
   memory: { metadata?: unknown },
   key: string,
@@ -1097,6 +1188,14 @@ type ConversationRouteMessageRecord = {
   rawDiscordMessageId?: string;
   rawSenderId?: string;
   senderEntityId?: string;
+  /**
+   * Synthetic-failure classification for this turn (provider-issue /
+   * no-provider / insufficient-credits / …). Persisted on the failed
+   * assistant memory as `content.failureKind` (live result) or
+   * `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round-tripped
+   * here so the renderer's gate + Retry survive a GET /messages full-replace.
+   */
+  failureKind?: ChatFailureKind;
 };
 
 async function ensureConversationGreetingStored(
@@ -1249,10 +1348,47 @@ async function truncateConversationMessages(
 // Main handler
 // ---------------------------------------------------------------------------
 
+const MESSAGE_SEARCH_DEFAULT_LIMIT = 20;
+const MESSAGE_SEARCH_MAX_LIMIT = 50;
+const MESSAGE_SEARCH_SNIPPET_RADIUS = 72;
+
+function clampMessageSearchLimit(value: string | null): number {
+  const parsed = parsePositiveInteger(value, MESSAGE_SEARCH_DEFAULT_LIMIT);
+  return Math.min(parsed, MESSAGE_SEARCH_MAX_LIMIT);
+}
+
+function normalizeMessageSearchQuery(value: string | null): string {
+  return (value === null ? "" : value).trim().replace(/\s+/g, " ");
+}
+
+/** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
+function buildMessageSearchSnippet(text: string, query: string): string {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (!normalizedText) return "";
+  const index = normalizedText.toLowerCase().indexOf(query.toLowerCase());
+  if (index < 0) {
+    return normalizedText.length <= MESSAGE_SEARCH_SNIPPET_RADIUS * 2
+      ? normalizedText
+      : `${normalizedText.slice(0, MESSAGE_SEARCH_SNIPPET_RADIUS * 2).trimEnd()}...`;
+  }
+  const start = Math.max(0, index - MESSAGE_SEARCH_SNIPPET_RADIUS);
+  const end = Math.min(
+    normalizedText.length,
+    index + query.length + MESSAGE_SEARCH_SNIPPET_RADIUS,
+  );
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < normalizedText.length ? "..." : "";
+  return `${prefix}${normalizedText.slice(start, end).trim()}${suffix}`;
+}
+
 export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, error, state } = ctx;
+  const requestUrl = new URL(
+    req.url === undefined ? "" : req.url,
+    `http://${req.headers.host === undefined ? "localhost" : req.headers.host}`,
+  );
 
   if (
     !pathname.startsWith("/api/conversations") ||
@@ -1277,6 +1413,111 @@ export async function handleConversationRoutes(
       );
     json(res, { conversations: convos });
     return true;
+  }
+
+  // ── GET /api/conversations/messages/search ──────────────────────────
+  // Keyword search across every conversation the requester can see. The
+  // predicate runs in the store (getMemories textContains → ILIKE), then
+  // results are ranked + snippeted here. No vector search.
+  if (method === "GET" && pathname === "/api/conversations/messages/search") {
+    if (!state.runtime) {
+      json(res, { results: [], count: 0 });
+      return true;
+    }
+    const query = normalizeMessageSearchQuery(requestUrl.searchParams.get("q"));
+    if (query.length < 2) {
+      error(res, "Search query must be at least 2 characters", 400);
+      return true;
+    }
+    const limit = clampMessageSearchLimit(requestUrl.searchParams.get("limit"));
+    const offset = parsePositiveInteger(
+      requestUrl.searchParams.get("offset"),
+      0,
+    );
+    const runtime = state.runtime;
+    const waifuAccess = resolveWaifuChatAccess(req);
+    const conversationsByRoomId = new Map<UUID, ConversationMeta>();
+    for (const conv of state.conversations.values()) {
+      if (state.deletedConversationIds.has(conv.id)) continue;
+      if (!canWaifuAccessConversation(waifuAccess, conv)) continue;
+      conversationsByRoomId.set(conv.roomId, conv);
+    }
+    // Scope the keyword search to the rooms the requester can actually see, in
+    // SQL. Filtering after a global LIMIT (newest-N across *all* the agent's
+    // rooms — discord/telegram/inbox/deleted/…) would silently drop accessible
+    // matches that fall outside that window. Pushing the room set into the store
+    // applies LIMIT/OFFSET after access-scoping.
+    const accessibleRoomIds = Array.from(conversationsByRoomId.keys());
+    if (accessibleRoomIds.length === 0) {
+      json(res, { results: [], count: 0 });
+      return true;
+    }
+    try {
+      const memories = await runtime.getMemoriesByRoomIds({
+        tableName: "messages",
+        roomIds: accessibleRoomIds,
+        textContains: query,
+        includeEmbedding: false,
+        limit,
+        offset,
+      });
+      // Collect valid candidates, then BM25-rank them together (corpus-aware IDF
+      // ranks real hits above messages that merely share a common word).
+      const candidates = memories.flatMap((memory) => {
+        const roomId = memory.roomId;
+        const conversation = roomId
+          ? conversationsByRoomId.get(roomId)
+          : undefined;
+        if (!roomId || !conversation) return [];
+        const text = (memory.content as { text?: unknown } | undefined)?.text;
+        if (typeof text !== "string") return [];
+        const rawText = text.trim();
+        if (!rawText || !memory.id) return [];
+        // A messages memory always carries a numeric createdAt; if it somehow
+        // does not, drop the row rather than inject epoch-0 into the DTO.
+        if (typeof memory.createdAt !== "number") return [];
+        return [
+          {
+            messageId: memory.id,
+            conversationId: conversation.id,
+            roomId,
+            role:
+              memory.entityId === runtime.agentId
+                ? "assistant"
+                : ("user" as const),
+            text: rawText,
+            snippet: buildMessageSearchSnippet(rawText, query),
+            createdAt: memory.createdAt,
+          },
+        ];
+      });
+      const results = rankByKeyword(query, candidates, (c) => c.text)
+        .filter(({ score }) => score > 0)
+        .map(({ item, score }) => ({ ...item, score }))
+        .sort((a, b) =>
+          b.score !== a.score ? b.score - a.score : b.createdAt - a.createdAt,
+        )
+        .slice(0, limit);
+      logger.info(
+        {
+          queryLength: query.length,
+          limit,
+          offset,
+          rawHits: memories.length,
+          results: results.length,
+        },
+        "[ConversationSearch] keyword message search completed",
+      );
+      json(res, { results, count: results.length });
+      return true;
+    } catch (err) {
+      logger.error(
+        { error: getErrorMessage(err) },
+        "[ConversationSearch] keyword message search failed",
+      );
+      error(res, "Failed to search conversation messages", 500);
+      return true;
+    }
   }
 
   // ── POST /api/conversations ─────────────────────────────────────────
@@ -1378,11 +1619,21 @@ export async function handleConversationRoutes(
     }
     const runtime = state.runtime;
     try {
-      const memories = await runtime.getMemories({
-        roomId: conv.roomId,
-        tableName: "messages",
-        limit: 200,
-      });
+      // `?around=<messageId>` centers the window on a specific (possibly
+      // far-back) message so a keyword-search jump can scroll to a hit older
+      // than the default recent window (#9955). Absent → unchanged recent window.
+      const aroundParam = validateUuid(requestUrl.searchParams.get("around"));
+      const memories = aroundParam
+        ? await loadConversationMessagesAround(
+            runtime,
+            conv.roomId,
+            aroundParam,
+          )
+        : await runtime.getMemories({
+            roomId: conv.roomId,
+            tableName: "messages",
+            limit: CONVERSATION_MESSAGE_WINDOW,
+          });
       // Sort by createdAt ascending
       memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
       const agentId = runtime.agentId;
@@ -1409,6 +1660,25 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          // The failed assistant turn carries its classification on the live
+          // result (`content.failureKind`) or, for synthetic fallbacks, on
+          // `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round
+          // it back so the renderer's provider/credits gate + Retry survive the
+          // GET /messages full-replace instead of vanishing.
+          const rawFailureKind =
+            typeof content.failureKind === "string"
+              ? content.failureKind
+              : typeof meta?.chatFailureKind === "string"
+                ? meta.chatFailureKind
+                : undefined;
+          const failureKind: ChatFailureKind | undefined =
+            rawFailureKind === "insufficient_credits" ||
+            rawFailureKind === "no_provider" ||
+            rawFailureKind === "provider_issue" ||
+            rawFailureKind === "rate_limited" ||
+            rawFailureKind === "local_inference"
+              ? rawFailureKind
+              : undefined;
           const role = m.entityId === agentId ? "assistant" : "user";
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
@@ -1419,12 +1689,19 @@ export async function handleConversationRoutes(
               ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
               : rawText;
           const attachments = serializeMessageAttachments(content);
+          const topics =
+            Array.isArray(meta?.topics) && meta.topics.length > 0
+              ? (meta.topics as unknown[]).filter(
+                  (topic): topic is string => typeof topic === "string",
+                )
+              : undefined;
           return {
             id: m.id ?? "",
             role,
             text,
             timestamp: m.createdAt ?? 0,
             ...(attachments ? { attachments } : {}),
+            ...(topics && topics.length > 0 ? { topics } : {}),
             source: normalizedSource,
             actionName,
             actionCallbackHistory:
@@ -1483,6 +1760,7 @@ export async function handleConversationRoutes(
             rawSenderId: extractConversationMetaString(m, "fromId"),
             senderEntityId:
               typeof m.entityId === "string" ? m.entityId : undefined,
+            ...(failureKind ? { failureKind } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -1907,6 +2185,7 @@ export async function handleConversationRoutes(
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
+      const endActiveChatTurn = beginActiveChatTurn(state);
       initSse(res);
       try {
         if (!disconnectTracker.isAborted()) {
@@ -1935,12 +2214,14 @@ export async function handleConversationRoutes(
         }
       } finally {
         finishStreamResponse();
+        endActiveChatTurn();
       }
       return true;
     }
 
     // ── Local runtime path (streaming) ───────────────────────
 
+    const endActiveChatTurn = beginActiveChatTurn(state);
     initSse(res);
     writeConversationStreamHeartbeat(res, disconnectTracker);
 
@@ -1966,6 +2247,15 @@ export async function handleConversationRoutes(
         {
           isAborted: () => disconnectTracker.isAborted(),
           abortSignal: disconnectTracker.signal,
+          onStatus: (status) => {
+            if (
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
+            writeChatStatusSse(res, status);
+          },
           onChunk: (chunk) => {
             if (!chunk) return;
             if (
@@ -2031,6 +2321,16 @@ export async function handleConversationRoutes(
             agentName: result.agentName,
             ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
+            ...(result.actionResults?.length
+              ? { actionResults: result.actionResults }
+              : {}),
+            // A non-throwing result can still carry a failure classification
+            // (e.g. a canned provider-issue phrase folded into the reply). Mirror
+            // the error branch so the renderer's gate + Retry persist.
+            ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+            ...(result.localInference
+              ? { localInference: result.localInference }
+              : {}),
           });
           deferredPersistence = (async () => {
             if (result.actionCallbackHistory?.length) {
@@ -2065,6 +2365,9 @@ export async function handleConversationRoutes(
             agentName: result.agentName,
             noResponseReason: "ignored",
             ...(result.usage ? { usage: result.usage } : {}),
+            ...(result.actionResults?.length
+              ? { actionResults: result.actionResults }
+              : {}),
           });
         }
       }
@@ -2166,6 +2469,7 @@ export async function handleConversationRoutes(
     } finally {
       clearInterval(heartbeatInterval);
       finishStreamResponse();
+      endActiveChatTurn();
       // Persistence runs after the client has already received `done` + the
       // socket is closed. Failures must still be observable — never swallow.
       if (deferredPersistence !== null) {
@@ -2252,6 +2556,7 @@ export async function handleConversationRoutes(
 
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
+      const endActiveChatTurn = beginActiveChatTurn(state);
       try {
         await persistAssistantConversationMemory(
           runtime,
@@ -2267,10 +2572,13 @@ export async function handleConversationRoutes(
         });
       } catch (persistErr) {
         error(res, getErrorMessage(persistErr), 500);
+      } finally {
+        endActiveChatTurn();
       }
       return true;
     }
 
+    const endActiveChatTurn = beginActiveChatTurn(state);
     try {
       const result = await generateChatResponse(
         runtime,
@@ -2317,12 +2625,25 @@ export async function handleConversationRoutes(
         json(res, {
           text: resolvedText,
           agentName: result.agentName,
+          ...(result.actionResults?.length
+            ? { actionResults: result.actionResults }
+            : {}),
+          // A non-throwing result can still carry a failure classification
+          // (e.g. a canned provider-issue phrase folded into the reply). Mirror
+          // the error branch so the renderer's gate + Retry persist.
+          ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+          ...(result.localInference
+            ? { localInference: result.localInference }
+            : {}),
         });
       } else {
         json(res, {
           text: "",
           agentName: result.agentName,
           noResponseReason: "ignored",
+          ...(result.actionResults?.length
+            ? { actionResults: result.actionResults }
+            : {}),
         });
       }
     } catch (err) {
@@ -2351,6 +2672,8 @@ export async function handleConversationRoutes(
       } catch (persistErr) {
         error(res, getErrorMessage(persistErr), 500);
       }
+    } finally {
+      endActiveChatTurn();
     }
     return true;
   }

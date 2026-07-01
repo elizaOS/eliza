@@ -2,7 +2,7 @@ import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
-import { useApp } from "../../state/useApp";
+import { useAppSelector } from "../../state";
 import { formatUptime } from "../../utils/format";
 import { Button } from "../ui/button";
 import { IS_POPOUT } from "./helpers";
@@ -25,7 +25,7 @@ export function StatusBar({
   uptime: number;
   frameCount: number;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const isElectrobun = isElectrobunRuntime();
   const popoutPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -40,7 +40,7 @@ export function StatusBar({
 
   return (
     <div
-      className="flex items-center justify-between bg-card/80 backdrop-blur-xl shrink-0 px-3 py-2 lg:px-4"
+      className="flex items-center justify-between bg-card/80 shrink-0 px-3 py-2 lg:px-4"
       style={
         IS_POPOUT ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined
       }
@@ -48,9 +48,7 @@ export function StatusBar({
       <div className="flex items-center gap-2">
         <span
           className={`w-2.5 h-2.5 rounded-full ${
-            streamLive
-              ? "bg-danger ring-2 ring-danger/25 animate-pulse"
-              : "bg-muted"
+            streamLive ? "bg-danger   animate-pulse" : "bg-muted"
           }`}
         />
         <span className="text-xs font-bold uppercase tracking-wider text-txt">
@@ -76,14 +74,16 @@ export function StatusBar({
           <span className="inline-flex min-h-9 items-center gap-1.5 rounded-sm border border-border/45 bg-card/92 px-2.5 py-1.5 text-xs-tight text-muted-strong font-mono text-2xs">
             <span className="text-txt">{formatUptime(uptime)}</span>
             <span className="text-border">|</span>
-            <span className="text-txt">{frameCount.toLocaleString()}f</span>
+            <span className="text-txt">
+              {frameCount.toLocaleString("en-US")}f
+            </span>
           </span>
         )}
 
         <Button
           size="sm"
           disabled={!streamAvailable || streamLoading}
-          className={`inline-flex h-9 min-h-9 items-center justify-center rounded-sm border px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-wait disabled:opacity-50 ${
+          className={`inline-flex h-9 min-h-9 items-center justify-center rounded-sm border px-3 text-xs-tight font-semibold uppercase tracking-[0.16em] transition-[border-color,background-color,color,box-shadow]   disabled:cursor-wait disabled:opacity-50 ${
             streamLive
               ? "border-danger/35 bg-danger/10 text-danger hover:border-danger/50 hover:bg-danger/16"
               : "border-ok/35 bg-ok/10 text-ok hover:border-ok/50 hover:bg-ok/16"
@@ -110,7 +110,7 @@ export function StatusBar({
           <Button
             variant="ghost"
             size="sm"
-            className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-sm border border-border/45 bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 hover:border-border-strong hover:bg-bg-hover hover:text-txt "
+            className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-sm border border-border/45 bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong transition-[border-color,background-color,color,box-shadow]   hover:border-border-strong hover:bg-bg-hover hover:text-txt "
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
               const popoutWin = openStreamPopout(getBootConfig().apiBase);

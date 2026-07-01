@@ -28,16 +28,20 @@
  *     throw — this is the safety net the dispatch layer relies on.
  */
 
-import { logger } from "@elizaos/core";
 import { captureDisplay, type DisplayCapture } from "../platform/capture.js";
 import { getPrimaryDisplay, listDisplays } from "../platform/displays.js";
 import {
   driverClick,
   driverDoubleClick,
   driverDrag,
+  driverDragPath,
   driverKeyCombo,
+  driverKeyDown,
   driverKeyPress,
+  driverKeyUp,
+  driverMouseDown,
   driverMouseMove,
+  driverMouseUp,
   driverRightClick,
   driverScroll,
   driverType,
@@ -159,7 +163,10 @@ export interface ComputerInterfaceDeps {
     doubleClick: (x: number, y: number) => Promise<void>;
     rightClick: (x: number, y: number) => Promise<void>;
     mouseMove: (x: number, y: number) => Promise<void>;
+    mouseDown: (x: number, y: number, button: MouseButton) => Promise<void>;
+    mouseUp: (x: number, y: number, button: MouseButton) => Promise<void>;
     drag: (x1: number, y1: number, x2: number, y2: number) => Promise<void>;
+    dragPath: (path: Array<{ x: number; y: number }>) => Promise<void>;
     scroll: (
       x: number,
       y: number,
@@ -169,6 +176,8 @@ export interface ComputerInterfaceDeps {
     type: (text: string) => Promise<void>;
     keyPress: (key: string) => Promise<void>;
     keyCombo: (combo: string) => Promise<void>;
+    keyDown: (key: string) => Promise<void>;
+    keyUp: (key: string) => Promise<void>;
   }>;
   listDisplays?: () => DisplayDescriptor[];
   /**
@@ -230,19 +239,29 @@ export class DefaultComputerInterface implements ComputerInterface {
   async mouseDown(
     point: DisplayPoint & { button?: MouseButton },
   ): Promise<void> {
-    // Lower-level mouseDown/mouseUp aren't exposed by the existing driver
-    // (which composes them into click/drag). For Brain-issued primitives we
-    // route a synthetic mouse-move + click; the cascade rarely needs
-    // separate down/up except for selection drags, which use `drag()`.
-    await this.moveCursor(point);
-    logger.debug(
-      "[computeruse/actor] mouseDown synthesized as moveCursor + click pending",
-    );
+    // Real button press-and-hold (nutjs `pressButton`). Pairs with `mouseUp`
+    // to express hold-drags, marquee selection, and press-and-hold gestures.
+    const g = this.toGlobalChecked(point);
+    const button = point.button ?? "left";
+    const fn = this.deps.driver?.mouseDown ?? driverMouseDown;
+    await fn(g.x, g.y, button);
+    this.deps.cursorState.current = {
+      displayId: point.displayId,
+      x: point.x,
+      y: point.y,
+    };
   }
 
   async mouseUp(point: DisplayPoint & { button?: MouseButton }): Promise<void> {
-    await this.moveCursor(point);
-    logger.debug("[computeruse/actor] mouseUp synthesized as moveCursor");
+    const g = this.toGlobalChecked(point);
+    const button = point.button ?? "left";
+    const fn = this.deps.driver?.mouseUp ?? driverMouseUp;
+    await fn(g.x, g.y, button);
+    this.deps.cursorState.current = {
+      displayId: point.displayId,
+      x: point.x,
+      y: point.y,
+    };
   }
 
   async leftClick(point: DisplayPoint): Promise<void> {
@@ -293,26 +312,19 @@ export class DefaultComputerInterface implements ComputerInterface {
         "[computeruse/actor] drag path requires at least two points",
       );
     }
-    // Driver doesn't expose multi-segment polylines; fall back to start→end.
-    const start = args.path[0];
     const end = args.path[args.path.length - 1];
-    if (!start || !end) {
+    if (!args.path[0] || !end) {
       throw new Error(
         "[computeruse/actor] drag path requires concrete start and end points",
       );
     }
-    const startG = this.toGlobalChecked({
-      displayId: args.displayId,
-      x: start.x,
-      y: start.y,
-    });
-    const endG = this.toGlobalChecked({
-      displayId: args.displayId,
-      x: end.x,
-      y: end.y,
-    });
-    const fn = this.deps.driver?.drag ?? driverDrag;
-    await fn(startG.x, startG.y, endG.x, endG.y);
+    // Real multi-segment polyline drag — traces every waypoint with the button
+    // held (curves, corners, marquee). The driver densifies between vertices.
+    const globalPath = args.path.map((p) =>
+      this.toGlobalChecked({ displayId: args.displayId, x: p.x, y: p.y }),
+    );
+    const fn = this.deps.driver?.dragPath ?? driverDragPath;
+    await fn(globalPath);
     this.deps.cursorState.current = {
       displayId: args.displayId,
       x: end.x,
@@ -321,14 +333,15 @@ export class DefaultComputerInterface implements ComputerInterface {
   }
 
   async keyDown(args: { key: string }): Promise<void> {
-    // Driver pairs keyDown/keyUp inside keyPress. Synthesize via keyPress
-    // here; the cascade should prefer `pressKey` for single-shot input.
-    const fn = this.deps.driver?.keyPress ?? driverKeyPress;
+    // Real key press-and-hold (nutjs `pressKey` without release). Pairs with
+    // `keyUp` for held-modifier sequences (e.g. hold Shift across other input).
+    const fn = this.deps.driver?.keyDown ?? driverKeyDown;
     await fn(args.key);
   }
 
-  async keyUp(_args: { key: string }): Promise<void> {
-    /* Already emitted by keyDown via the driver. */
+  async keyUp(args: { key: string }): Promise<void> {
+    const fn = this.deps.driver?.keyUp ?? driverKeyUp;
+    await fn(args.key);
   }
 
   async typeText(args: { text: string }): Promise<void> {

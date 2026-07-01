@@ -1,0 +1,300 @@
+#cloud-config
+# Tenant Postgres node for Eliza Cloud Apps (Product 2).
+#
+# Stands up ONE self-managed Postgres that holds thousands of per-tenant
+# DATABASE+ROLE (each app gets its own DB + LOGIN role with REVOKE CONNECT FROM
+# PUBLIC — the hard isolation boundary). The per-tenant DDL is run at deploy time
+# by the node daemon (DirectPgExecutor over the admin DSN); this only stands up
+# the cluster + the admin superuser + locks the network surface.
+#
+# Reachable ONLY on the private apps network (the firewall opens no public 5432).
+#
+# The cluster setup is wrapped in a systemd oneshot service (tenant-db-init)
+# rather than cloud-init runcmd, because runcmd is per-instance: it only fires
+# on first boot. After a Hetzner rescale (server_type change), the cloud
+# refreshes user_data + reboots but cloud-init treats it as the same instance,
+# so runcmd never runs again — and we end up with an empty volume and dead
+# Postgres. The systemd unit runs on every boot, every step is grep-/path-
+# guarded, so it's a no-op after first successful run.
+#
+# Connection scaling (#8321 P0 #2): the default Postgres ceiling is 100
+# connections, which the apps data plane exhausts at ~5 apps under load. This
+# node now (a) raises max_connections + sizes shared_buffers to the box, and
+# (b) runs pgbouncer in SESSION pool_mode on :6432 so app sessions are
+# multiplexed onto a bounded set of server backends. SESSION mode (not
+# transaction) is required because plugin-sql's migrator takes SESSION-scoped
+# advisory locks (pg_advisory_lock, not the _xact_ variants) across independent
+# pool checkouts — transaction pooling would orphan those locks and wedge
+# migrations. The pooler is INERT until an operator points the cluster's
+# app-facing host at :6432 (see README + tenant_db_pooler_endpoint output);
+# admin/DDL keeps using :5432 directly.
+#
+# STAN: wire volume-snapshot backups; generate a server TLS cert for hostssl
+# (until then the pg_hba lines below stay 'host' and the admin DSN uses
+# sslmode=disable); tighten pgbouncer listen_addr to the private IP.
+
+hostname: ${hostname}
+manage_etc_hosts: true
+
+users:
+  - name: deploy
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+%{ for key in operator_ssh_keys ~}
+      - ${key}
+%{ endfor ~}
+
+# Skip apt upgrade — cloud-init's `packages:` install fights unattended-upgrades
+# for the dpkg lock and can leave dpkg in a half-configured state on Hetzner
+# Ubuntu 24.04 images. The bootcmd block below disables unattended-upgrades
+# before the package install runs.
+package_update: true
+package_upgrade: false
+packages:
+  - postgresql
+  - postgresql-contrib
+  - pgbouncer
+  - jq
+
+bootcmd:
+  # Disable unattended-upgrades BEFORE cloud-init's package_update_upgrade_install
+  # stage runs, to avoid a dpkg lock collision: with both running concurrently,
+  # postgresql-common's postinst can hang on a needrestart interactive prompt
+  # and leave the postgresql server package unconfigured — leading to an empty
+  # /etc/postgresql and a tenant-db-init that loops "postgresql package not
+  # installed yet; deferring" forever. bootcmd runs at INIT-LOCAL, before the
+  # apt phase.
+  - systemctl stop unattended-upgrades.service 2>/dev/null || true
+  - systemctl disable unattended-upgrades.service 2>/dev/null || true
+
+write_files:
+  # Apt config: never prompt, always pick the safe default on conffile changes.
+  # Cloud-init's package install runs without a tty, so any debconf prompt
+  # silently hangs the apt run.
+  - path: /etc/apt/apt.conf.d/99-cloud-init-noninteractive
+    owner: root:root
+    permissions: '0644'
+    content: |
+      DPkg::Options { "--force-confnew"; "--force-confdef"; };
+      APT::Get::Assume-Yes "true";
+
+  # needrestart: auto-restart services without prompting (the default of
+  # "interactive" hangs cloud-init's apt run).
+  - path: /etc/needrestart/conf.d/50-cloud-init-noninteractive.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      $nrconf{restart} = 'a';
+      $nrconf{kernelhints} = 0;
+
+  - path: /usr/local/bin/tenant-db-init.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      # Idempotent tenant-DB cluster init. Re-running this script is a no-op
+      # once the cluster is up. Invoked by /etc/systemd/system/tenant-db-init.service
+      # on every boot — so rescales, image swaps, and operator reboots all
+      # converge back to the right state.
+      #
+      # `runuser -u postgres --` is used instead of `sudo -u postgres` because
+      # the Hetzner Ubuntu cloud image ships with the root password marked
+      # expired; from a systemd unit (no tty), sudo refuses to run any command
+      # until that password is reset — even with NOPASSWD in sudoers. runuser
+      # only uses PAM session, doesn't authenticate via password.
+      set -euo pipefail
+      log() { echo "[tenant-db-init] $*"; }
+
+      # 1. Locate the Hetzner data volume by stable scsi id.
+      VOL="$(ls /dev/disk/by-id/scsi-0HC_Volume_* 2>/dev/null | head -1 || true)"
+      if [ -z "$VOL" ]; then
+        log "no Hetzner data volume attached yet; deferring (next boot will retry)."
+        exit 0
+      fi
+      log "data volume = $VOL"
+
+      # 2. Format only if no filesystem detected. blkid is the gate — never -F.
+      if ! blkid "$VOL" >/dev/null 2>&1; then
+        log "no fs on $VOL — formatting ext4."
+        mkfs.ext4 "$VOL"
+      fi
+
+      # 3. fstab + mount, grep-guarded so we don't accumulate duplicate lines.
+      mkdir -p /mnt/tenant-pgdata
+      if ! grep -qE "^[^#]*[[:space:]]/mnt/tenant-pgdata[[:space:]]" /etc/fstab; then
+        echo "$VOL /mnt/tenant-pgdata ext4 defaults,nofail 0 2" >> /etc/fstab
+      fi
+      mountpoint -q /mnt/tenant-pgdata || mount -a
+
+      # 4. Postgres version detection. The package may not be installed on the
+      # very first boot if cloud-init hasn't reached the package stage yet —
+      # defer cleanly; the next boot will pick it up.
+      PGVER="$(ls /etc/postgresql 2>/dev/null | head -1 || true)"
+      if [ -z "$PGVER" ]; then
+        log "postgresql package not installed yet; deferring."
+        exit 0
+      fi
+      PGDATA="/mnt/tenant-pgdata/$PGVER/main"
+      CONF="/etc/postgresql/$PGVER/main/postgresql.conf"
+      HBA="/etc/postgresql/$PGVER/main/pg_hba.conf"
+      log "PGVER=$PGVER PGDATA=$PGDATA"
+
+      # 5. initdb if PGDATA doesn't exist or isn't an initialised cluster.
+      if [ ! -f "$PGDATA/PG_VERSION" ]; then
+        log "no cluster at $PGDATA — initdb."
+        systemctl stop "postgresql@$PGVER-main" 2>/dev/null || true
+        mkdir -p "$PGDATA"
+        chown -R postgres:postgres /mnt/tenant-pgdata
+        runuser -u postgres -- "/usr/lib/postgresql/$PGVER/bin/initdb" -D "$PGDATA" --auth-host=scram-sha-256
+      fi
+
+      # 6. postgresql.conf — sed pattern matches both commented and uncommented
+      # forms so the script is idempotent regardless of which boot ran it last.
+      sed -i -E "s|^#?[[:space:]]*data_directory[[:space:]]*=.*|data_directory = '$PGDATA'|" "$CONF"
+      sed -i -E "s|^#?[[:space:]]*listen_addresses[[:space:]]*=.*|listen_addresses = '*'|" "$CONF"
+      sed -i -E "s|^#?[[:space:]]*password_encryption[[:space:]]*=.*|password_encryption = scram-sha-256|" "$CONF"
+
+      # Connection ceiling + memory tuning for thousands of small tenant DBs
+      # (#8321 P0 #2). pgbouncer (step 10) multiplexes app sessions, but raise
+      # the backend ceiling well above the default 100 so admin/DDL + pooled
+      # server connections have headroom. shared_buffers ~= 25% of RAM (the
+      # Postgres rule of thumb), floored at 128MB. Same idempotent sed pattern.
+      sed -i -E "s|^#?[[:space:]]*max_connections[[:space:]]*=.*|max_connections = 500|" "$CONF"
+      SHARED_BUF="$(awk '/^MemTotal/ {mb=int($2/1024/4); if (mb<128) mb=128; printf "%dMB", mb}' /proc/meminfo)"
+      [ -n "$SHARED_BUF" ] || SHARED_BUF=128MB
+      sed -i -E "s|^#?[[:space:]]*shared_buffers[[:space:]]*=.*|shared_buffers = $SHARED_BUF|" "$CONF"
+
+      # 7. pg_hba — grep-guard before append so reboots don't grow the file.
+      if ! grep -qE "^hostssl[[:space:]]+all[[:space:]]+all[[:space:]]+10\.30\.0\.0/16" "$HBA"; then
+        echo "hostssl all all 10.30.0.0/16 scram-sha-256" >> "$HBA"
+      fi
+      if ! grep -qE "^host[[:space:]]+all[[:space:]]+all[[:space:]]+10\.30\.0\.0/16" "$HBA"; then
+        echo "host    all all 10.30.0.0/16 scram-sha-256" >> "$HBA"
+      fi
+
+      # 8. Start / restart so the new data_directory takes effect. Restart is
+      # safe — if PGDATA changed since last run, postgres reloads cleanly; if
+      # nothing changed, restart is a no-op for clients connecting before/after.
+      systemctl enable postgresql >/dev/null
+      systemctl restart postgresql
+      # Wait for the cluster socket so the ALTER USER below doesn't race.
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        runuser -u postgres -- pg_isready -q && break
+        sleep 1
+      done
+
+      # 9. Admin password (postgres superuser). The value is rendered from
+      # random_password.tenant_db_admin in TF state, stable across reboots, so
+      # this ALTER is idempotent.
+      runuser -u postgres -- psql -tAc "ALTER USER postgres WITH PASSWORD '${admin_password}';" >/dev/null
+
+      # 10. pgbouncer (#8321 P0 #2) — SESSION-mode pooler on :6432 in front of
+      # Postgres. Configured HERE (not via write_files) so the conffile is
+      # written AFTER apt installs the package — otherwise the noninteractive
+      # `--force-confnew` apt option would clobber a pre-seeded pgbouncer.ini.
+      # Everything below is idempotent: CREATE OR REPLACE / grep-guarded role /
+      # overwrite of the config + userlist. Deferred cleanly if the package
+      # isn't installed yet (same posture as the postgres deferral above).
+      if command -v pgbouncer >/dev/null 2>&1; then
+        mkdir -p /etc/pgbouncer
+        # Dedicated login role + SECURITY DEFINER lookup so the pooler can
+        # resolve each per-tenant role's SCRAM secret via auth_query WITHOUT
+        # being a superuser (pg_shadow is superuser-only; the function is owned
+        # by postgres and execute-granted to pgbouncer only).
+        PGB_PW='${pgbouncer_auth_password}'
+        runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='pgbouncer'" | grep -q 1 \
+          || runuser -u postgres -- psql -c "CREATE ROLE pgbouncer LOGIN"
+        runuser -u postgres -- psql -c "ALTER ROLE pgbouncer WITH PASSWORD '$PGB_PW'" >/dev/null
+        runuser -u postgres -- psql -d postgres -c "CREATE OR REPLACE FUNCTION public.pgbouncer_user_lookup(p_username text) RETURNS TABLE(usename name, passwd text) LANGUAGE sql SECURITY DEFINER AS 'SELECT usename, passwd FROM pg_catalog.pg_shadow WHERE usename = \$1'"
+        runuser -u postgres -- psql -d postgres -c "REVOKE ALL ON FUNCTION public.pgbouncer_user_lookup(text) FROM PUBLIC"
+        runuser -u postgres -- psql -d postgres -c "GRANT EXECUTE ON FUNCTION public.pgbouncer_user_lookup(text) TO pgbouncer"
+
+        # auth_file: only the auth_user itself; per-tenant roles resolve via
+        # auth_query against the lookup function. 0600, postgres-owned (the
+        # pgbouncer service runs as the postgres user on Ubuntu).
+        umask 077
+        printf '"pgbouncer" "%s"\n' "$PGB_PW" > /etc/pgbouncer/userlist.txt
+        chown postgres:postgres /etc/pgbouncer/userlist.txt
+        chmod 600 /etc/pgbouncer/userlist.txt
+
+        # Build pgbouncer.ini with printf (NOT a heredoc): inside a YAML `|`
+        # block every line is indented, but a heredoc terminator must sit at
+        # column 0 — printf string literals sidestep that entirely. Single
+        # quotes keep $1 (auth_query placeholder) literal.
+        printf '%s\n' \
+          '[databases]' \
+          '; Any requested tenant database routes to the local Postgres. The app SCRAM' \
+          '; credential (validated via auth_query) still gates CONNECT, so a tenant only' \
+          '; reaches its own REVOKE-CONNECT-isolated database.' \
+          '* = host=127.0.0.1 port=5432' \
+          '' \
+          '[pgbouncer]' \
+          'logfile = /var/log/postgresql/pgbouncer.log' \
+          'pidfile = /var/run/postgresql/pgbouncer.pid' \
+          'unix_socket_dir = /var/run/postgresql' \
+          '; Reachable only on the private apps net (the firewall opens no public 6432,' \
+          '; same posture as Postgres :5432).' \
+          'listen_addr = *' \
+          'listen_port = 6432' \
+          'auth_type = scram-sha-256' \
+          'auth_file = /etc/pgbouncer/userlist.txt' \
+          'auth_user = pgbouncer' \
+          'auth_dbname = postgres' \
+          'auth_query = SELECT usename, passwd FROM public.pgbouncer_user_lookup($1)' \
+          '; SESSION mode: required by plugin-sql session-scoped migration advisory locks.' \
+          'pool_mode = session' \
+          'max_client_conn = 5000' \
+          'default_pool_size = 25' \
+          'min_pool_size = 0' \
+          'reserve_pool_size = 5' \
+          'server_tls_sslmode = prefer' \
+          'ignore_startup_parameters = extra_float_digits,search_path' \
+          'admin_users = postgres' \
+          > /etc/pgbouncer/pgbouncer.ini
+
+        systemctl enable pgbouncer >/dev/null 2>&1 || true
+        systemctl restart pgbouncer
+        log "pgbouncer up on :6432 (session mode)."
+      else
+        log "pgbouncer not installed yet; deferring pooler setup."
+      fi
+
+      log "done."
+
+  - path: /etc/systemd/system/tenant-db-init.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Tenant DB cluster init (idempotent, runs every boot)
+      # NOTE: NO After=cloud-final.service here — that creates an ordering
+      # cycle (cloud-final's runcmd enables us, so systemd would refuse to
+      # restart us "to break ordering cycle"). network-online is enough.
+      After=network-online.target
+      Wants=network-online.target
+      # Run BEFORE postgresql so the script's restart isn't fighting the
+      # default unit. The script itself enables + starts postgresql once
+      # data_directory is wired.
+      Before=postgresql.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/tenant-db-init.sh
+      # Keep the unit's own state simple: success = postgres up; failure leaves
+      # it for the operator to inspect via `journalctl -u tenant-db-init`.
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # Activate the systemd unit on first boot. On subsequent boots, systemd
+  # picks it up automatically (WantedBy=multi-user.target) — runcmd is per-
+  # instance and never runs again, but the unit does.
+  - systemctl daemon-reload
+  - systemctl enable --now tenant-db-init.service

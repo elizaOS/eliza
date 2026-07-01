@@ -41,8 +41,8 @@ import java.nio.ByteOrder;
  *   contextCreate({ bundleDir })               -> { handle }
  *   contextDestroy({ handle })
  *   pipelineOpen({ ctx })                      -> { handle }
- *   pipelineProcess({ handle, pcm16 })         -> { turns: [{turnId,samples,...,embedding?,labels?}] }
- *   pipelineFlush({ handle })                  -> { turns: [...] }
+ *   pipelineProcess({ handle, pcm16, includePcm? }) -> { turns: [{turnId,samples,...,embedding?,labels?,pcm?}] }
+ *   pipelineFlush({ handle, includePcm? })     -> { turns: [...] }
  *   pipelineReset({ handle }) / pipelineClose({ handle })
  *   wakewordOpen({ ctx, headName })            -> { handle }
  *   wakewordScore({ handle, pcm16 })           -> { scores: number[] }
@@ -164,6 +164,54 @@ public class ElizaVoicePlugin extends Plugin {
         }
     }
 
+    // ── Text generation (LLM) — GPU-accelerated path in the bionic app process ──
+
+    /**
+     * Capability probe for the text path. With the dynamic-Vulkan
+     * libelizainference staged, llmStream is supported and runs on the Mali GPU
+     * in THIS process (the musl bun agent can't reach libvulkan).
+     */
+    @PluginMethod
+    public void llmAbiProbe(PluginCall call) {
+        if (!ensureLoadedOrReject(call)) return;
+        try {
+            JSObject r = new JSObject();
+            r.put("loaded", true);
+            r.put("abi", ElizaVoiceNative.nativeVoiceAbiVersion());
+            r.put("llmStream", ElizaVoiceNative.nativeLlmStreamSupported());
+            r.put("embed", ElizaVoiceNative.nativeEmbedSupported());
+            r.put("eot", ElizaVoiceNative.nativeEotSupported());
+            Log.i(TAG, "llmAbiProbe " + r.toString());
+            call.resolve(r);
+        } catch (Throwable e) {
+            call.reject("llmAbiProbe failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * KEYSTONE proof: run a whole greedy generation in one native call, in the
+     * bionic app process. ggml-vulkan logs the Mali device + layer offload to
+     * logcat; the returned JSON carries {ok, text, tokens, ms, tokS}.
+     */
+    @PluginMethod
+    public void llmSelfTest(PluginCall call) {
+        if (!ensureLoadedOrReject(call)) return;
+        String bundleDir = resolveBundleDir(call.getString("bundleDir"));
+        String prompt = call.getString("prompt",
+            "<start_of_turn>user\nWrite one sentence about the ocean.<end_of_turn>\n<start_of_turn>model\n");
+        Integer maxTokens = call.getInt("maxTokens", 48);
+        try {
+            String json = ElizaVoiceNative.nativeLlmSelfTest(
+                bundleDir, prompt, maxTokens != null ? maxTokens : 48);
+            Log.i(TAG, "llmSelfTest(" + bundleDir + ") -> " + json);
+            JSObject r = new JSObject();
+            r.put("result", json);
+            call.resolve(r);
+        } catch (Throwable e) {
+            call.reject("llmSelfTest failed: " + e.getMessage());
+        }
+    }
+
     private String resolveBundleDir(String requested) {
         if (requested != null && !requested.isEmpty()) return requested;
         Context context = getContext();
@@ -225,10 +273,11 @@ public class ElizaVoicePlugin extends Plugin {
         if (!ensureLoadedOrReject(call)) return;
         long handle = longArg(call, "handle");
         String pcm16 = call.getString("pcm16", "");
+        boolean includePcm = Boolean.TRUE.equals(call.getBoolean("includePcm", false));
         try {
             float[] pcm = decodePcm16(pcm16);
             String turnsJson = ElizaVoiceNative.nativePipelineProcess(handle, pcm);
-            call.resolve(buildTurns(handle, turnsJson));
+            call.resolve(buildTurns(handle, turnsJson, includePcm));
         } catch (Throwable e) {
             call.reject("pipelineProcess failed: " + e.getMessage());
         }
@@ -238,16 +287,17 @@ public class ElizaVoicePlugin extends Plugin {
     public void pipelineFlush(PluginCall call) {
         if (!ensureLoadedOrReject(call)) return;
         long handle = longArg(call, "handle");
+        boolean includePcm = Boolean.TRUE.equals(call.getBoolean("includePcm", false));
         try {
             String turnsJson = ElizaVoiceNative.nativePipelineFlush(handle);
-            call.resolve(buildTurns(handle, turnsJson));
+            call.resolve(buildTurns(handle, turnsJson, includePcm));
         } catch (Throwable e) {
             call.reject("pipelineFlush failed: " + e.getMessage());
         }
     }
 
-    /** Attach per-turn embedding/labels payloads to the native turn JSON. */
-    private JSObject buildTurns(long handle, String turnsJson) throws JSONException {
+    /** Attach per-turn native payloads to the native turn JSON. */
+    private JSObject buildTurns(long handle, String turnsJson, boolean includePcm) throws JSONException {
         JSONArray native_ = new JSONArray(turnsJson);
         JSArray turns = new JSArray();
         for (int i = 0; i < native_.length(); i++) {
@@ -258,6 +308,11 @@ public class ElizaVoicePlugin extends Plugin {
             turn.put("embeddingDim", emb != null ? emb.length : 0);
             turn.put("labels", encodeBytes(labels));
             turn.put("labelCount", labels != null ? labels.length : 0);
+            if (includePcm) {
+                float[] pcm = ElizaVoiceNative.nativePipelineTurnPcm(handle, i);
+                turn.put("pcm", encodeFloats(pcm));
+                turn.put("pcmSampleRate", 16000);
+            }
             turns.put(turn);
         }
         JSObject r = new JSObject();

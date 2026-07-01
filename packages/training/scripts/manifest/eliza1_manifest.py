@@ -37,9 +37,20 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
 )
 ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
 
+# Tokenizer identity for the Gemma 4 Eliza-1 line. Mirrors schema.ts
+# (ELIZA_1_TOKENIZER_FAMILY / ELIZA_1_TOKENIZER_VOCAB_SIZE). Stamped into the
+# emitted manifest by build_manifest() so the bundle records its tokenizer.
+ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma4"
+ELIZA_1_TOKENIZER_VOCAB_SIZE: Final[int] = 262_144
+
+# Gemma 4 KV-cache policy (MQA + windowed-SWA + shared-KV → stock q8_0; no
+# QJL/Polar) and MTP shape (a separate drafter GGUF, not an embedded NextN
+# head). Stamped into the manifest alongside the tokenizer block.
+ELIZA_1_KV_POLICY: Final[str] = "stock-q8_0"
+ELIZA_1_MTP_MODE: Final[str] = "separate-drafter"
+
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "0_8b",
     "2b",
     "4b",
     "9b",
@@ -110,56 +121,52 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "vision",
     "drafter",
 )
-QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
+RETIRED_QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
     "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "ggml-org/Qwen3-ASR-1.7B-GGUF",
 )
-QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
+RETIRED_QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
     "Qwen/Qwen3-Embedding-0.6B-GGUF",
     "Qwen/Qwen3-Embedding-4B-GGUF",
     "Qwen/Qwen3-Embedding-8B-GGUF",
 )
-QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
-    "asr": QWEN3_ASR_GGUF_REPOS,
-    "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
+RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
+    "asr": RETIRED_QWEN3_ASR_GGUF_REPOS,
+    "embedding": RETIRED_QWEN3_EMBEDDING_GGUF_REPOS,
 }
 CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
-        "Qwen/Qwen3.5-0.8B",
-        "Qwen/Qwen3.5-0.8B-Base",
-        "unsloth/Qwen3.5-0.8B-GGUF",
-    ),
     "2b": (
-        "Qwen/Qwen3.5-2B",
-        "Qwen/Qwen3.5-2B-Base",
-        "unsloth/Qwen3.5-2B-GGUF",
+        "google/gemma-4-E2B",
+        "google/gemma-4-E2B-Base",
+        "unsloth/gemma-4-E2B-GGUF",
     ),
     "4b": (
-        "Qwen/Qwen3.5-4B",
-        "Qwen/Qwen3.5-4B-Base",
-        "unsloth/Qwen3.5-4B-GGUF",
+        "google/gemma-4-E4B",
+        "google/gemma-4-E4B-Base",
+        "unsloth/gemma-4-E4B-GGUF",
     ),
     "9b": (
-        "Qwen/Qwen3.5-9B",
-        "unsloth/Qwen3.5-9B-GGUF",
+        "google/gemma-4-12B",
+        "unsloth/gemma-4-12B-GGUF",
     ),
     "27b": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
+        "google/gemma-4-31B",
+        "unsloth/gemma-4-31B-GGUF",
     ),
     "27b-256k": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
+        "google/gemma-4-31B",
+        "unsloth/gemma-4-31B-GGUF",
     ),
 }
 
+# Gemma 4 drops QJL/Polar (its KV is MQA + windowed-SWA + shared-KV, stock
+# q8_0). Matches schema.ts REQUIRED_KERNELS_BY_TIER for the Gemma cutover.
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "2b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "4b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "9b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "27b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
-    "27b-256k": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "2b": ("turboquant_q4", "turbo3_tcq"),
+    "4b": ("turboquant_q4", "turbo3_tcq"),
+    "9b": ("turboquant_q4", "turbo3_tcq"),
+    "27b": ("turboquant_q4", "turbo3_tcq"),
+    "27b-256k": ("turboquant_q4", "turbo3_tcq"),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -171,7 +178,6 @@ RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -183,7 +189,6 @@ ELIZA_1_MTP_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q8_0",
@@ -197,7 +202,6 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # the appropriate level from this ladder at install time based on the
 # host's RAM/SoC class (no silent fallback — AGENTS.md §3).
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
@@ -206,7 +210,6 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice", "kokoro"),
     "2b": ("omnivoice", "kokoro"),
     "4b": ("omnivoice", "kokoro"),
     "9b": ("omnivoice", "kokoro"),
@@ -225,7 +228,7 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line mirrors the staged release contract: 0_8b/2b/4b/9b bundle
+    release line mirrors the staged release contract: 2b/4b/9b bundle
     OmniVoice with Kokoro fallback, and 27B-class tiers ship OmniVoice only.
     """
 
@@ -388,13 +391,13 @@ def read_gguf_context_length(path: Path) -> int | None:
     """Return the declared GGUF training/native context length, if readable.
 
     Filename suffixes are release labels. The actual context capability comes
-    from GGUF metadata such as ``qwen35.context_length``; staging should prefer
+    from GGUF metadata such as ``gemma4.context_length``; staging should prefer
     that when available so a stale ``32k`` source filename cannot force a false
     below-floor manifest.
     """
 
     preferred = (
-        "qwen35.context_length",
+        "gemma4.context_length",
         "qwen36.context_length",
         "qwen3.context_length",
         "llama.context_length",
@@ -1121,6 +1124,29 @@ def validate_manifest(
                             f"voice.capabilities: unknown capability {capability!r}"
                         )
 
+    # ── tokenizer / kv / mtp identity (Gemma cutover) ───────────────────
+    # Optional blocks, but when present they must declare the Gemma values
+    # (mirrors schema.ts). build_manifest() always stamps them.
+    tokenizer = manifest.get("tokenizer")
+    if tokenizer is not None:
+        if not _is_object(tokenizer):
+            errors.append("tokenizer: must be an object when present")
+        else:
+            if tokenizer.get("family") != ELIZA_1_TOKENIZER_FAMILY:
+                errors.append(
+                    f"tokenizer.family: must be {ELIZA_1_TOKENIZER_FAMILY!r}"
+                )
+            if tokenizer.get("vocabSize") != ELIZA_1_TOKENIZER_VOCAB_SIZE:
+                errors.append(
+                    f"tokenizer.vocabSize: must be {ELIZA_1_TOKENIZER_VOCAB_SIZE}"
+                )
+    kv = manifest.get("kv")
+    if kv is not None and kv != ELIZA_1_KV_POLICY:
+        errors.append(f"kv: must be {ELIZA_1_KV_POLICY!r} when present")
+    mtp_mode = manifest.get("mtp")
+    if mtp_mode is not None and mtp_mode != ELIZA_1_MTP_MODE:
+        errors.append(f"mtp: must be {ELIZA_1_MTP_MODE!r} when present")
+
     # ── provenance (release-state + per-component source model) ─────────
     # Optional. Present on `base-v1` bundles so the "base, not fine-tuned"
     # plan is auditable from the manifest itself: which upstream repo each
@@ -1165,7 +1191,7 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
                     elif rs == "base-v1":
-                        repo_error = canonical_qwen_source_repo_error(
+                        repo_error = canonical_source_repo_error(
                             slot, repo, tier=manifest.get("tier")
                         )
                         if repo_error is not None:
@@ -1411,25 +1437,38 @@ def validate_manifest(
     return tuple(errors)
 
 
-def canonical_qwen_source_repo_error(
+def canonical_source_repo_error(
     slot: str,
     repo: str,
     *,
     tier: str | None = None,
 ) -> str | None:
-    """Return an error for known Qwen ASR/embedding provenance misspellings.
+    """Return an error for non-canonical base-v1 source repositories.
 
-    Text tiers are tier-specific: 0_8b/2b/4b/9b are Qwen3.5, while the 27B
-    release family is Qwen3.6. ASR and embedding are separate Qwen3 components
-    with their own published GGUF repos. The release pipeline must not invent
-    matching Qwen3.5/Qwen3.6 ASR/embedding names.
+    All text tiers (2b/4b/9b/27b) are Gemma 4. ASR and dedicated embedding
+    release sources are deliberately fail-closed until verified
+    Gemma-compatible GGUF artifacts are configured.
     """
 
     if slot == "text" and isinstance(tier, str):
         allowed = CANONICAL_TEXT_SOURCE_REPOS_BY_TIER.get(tier)
     else:
-        allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+        allowed = None
     if allowed is None or repo in allowed:
+        if slot in RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT:
+            retired = RETIRED_QWEN3_SOURCE_REPOS_BY_SLOT[slot]
+            if repo in retired or "qwen" in repo.lower():
+                retired_list = ", ".join(retired)
+                return (
+                    f"uses retired Qwen {slot} provenance [{retired_list}], "
+                    f"got {repo!r}; active Gemma base-v1 releases require a "
+                    "verified Gemma-compatible source"
+                )
+            return (
+                f"has no canonical Gemma-compatible {slot} source configured "
+                f"yet, got {repo!r}; keep this bundle as base-v1-candidate "
+                "until release-shaped artifacts are hosted and verified"
+            )
         return None
     allowed_list = ", ".join(allowed)
     return (
@@ -1521,10 +1560,14 @@ def build_manifest(
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     # Optional provenance block. Pass for a `base-v1` bundle:
     #   {"releaseState": "base-v1", "finetuned": False,
-    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B", "file": "..."},
+    #    "sourceModels": {"text": {"repo": "google/gemma-4-E4B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,
+    # Tokenizer identity stamped into the manifest. Defaults to the Gemma 4
+    # constants (mirrors schema.ts ELIZA_1_TOKENIZER_FAMILY / VOCAB_SIZE).
+    tokenizer_family: str = ELIZA_1_TOKENIZER_FAMILY,
+    tokenizer_vocab_size: int = ELIZA_1_TOKENIZER_VOCAB_SIZE,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
     """Assemble a manifest dict from typed inputs and validate it.
@@ -1536,6 +1579,21 @@ def build_manifest(
 
     if tier not in ELIZA_1_TIERS:
         raise Eliza1ManifestError([f"tier: unknown tier {tier!r}"])
+
+    if tokenizer_family != ELIZA_1_TOKENIZER_FAMILY:
+        raise Eliza1ManifestError(
+            [
+                "tokenizer_family: must be "
+                f"{ELIZA_1_TOKENIZER_FAMILY!r}, got {tokenizer_family!r}"
+            ]
+        )
+    if tokenizer_vocab_size != ELIZA_1_TOKENIZER_VOCAB_SIZE:
+        raise Eliza1ManifestError(
+            [
+                "tokenizer_vocab_size: must be "
+                f"{ELIZA_1_TOKENIZER_VOCAB_SIZE}, got {tokenizer_vocab_size}"
+            ]
+        )
 
     if bundle_id is None:
         bundle_id = f"eliza-1-{tier}"
@@ -1643,6 +1701,14 @@ def build_manifest(
             },
         },
         "evals": evals,
+        # Gemma cutover identity: tokenizer family/vocab, KV-cache policy
+        # (stock q8_0 — no QJL/Polar), and the separate-drafter MTP shape.
+        "tokenizer": {
+            "family": tokenizer_family,
+            "vocabSize": tokenizer_vocab_size,
+        },
+        "kv": ELIZA_1_KV_POLICY,
+        "mtp": ELIZA_1_MTP_MODE,
     }
     # Recipe-level kernel layout pins. Accept either pre-merged
     # ``recipe_manifest`` or raw ``kernel_manifest_fragments`` (the sidecar

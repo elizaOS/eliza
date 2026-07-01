@@ -97,9 +97,7 @@ const lifeOpsSourceTestFiles = collectTestFiles(
 );
 const appsAndPluginsSourceTestFiles = [
   ...collectTestFiles(
-    "eliza/plugins/plugin-vincent/src",
-    "eliza/plugins/plugin-shopify-ui/src",
-    "eliza/plugins/plugin-steward-app/src",
+    "eliza/plugins/plugin-shopify/src",
     "packages/plugin-wechat/src",
   ),
   ...[

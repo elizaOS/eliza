@@ -7,7 +7,7 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "useUnknownInCatchVariables": false,
     "forceConsistentCasingInFileNames": true,
@@ -32,9 +32,10 @@
     "paths": {
       "@elizaos/plugin-browser": ["./src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/plugin-personal-assistant": ["../../plugins/plugin-personal-assistant/src/index.ts"],
-      "@elizaos/plugin-companion": [
-        "../../plugins/plugin-companion/src/index.ts"
+      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
+      "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
@@ -44,7 +45,7 @@
       ]
     }
   },
-  "include": ["src", "../../plugins/plugin-companion/src/ambient-modules.d.ts"],
+  "include": ["src"],
   "references": [],
   "exclude": [
     "**/__tests__/**",

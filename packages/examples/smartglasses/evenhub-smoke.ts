@@ -1,5 +1,5 @@
 /// <reference path="./evenhub-sdk.d.ts" />
-import { waitForEvenAppBridge } from "@evenrealities/even_hub_sdk";
+
 import {
   encodeMicCommand,
   encodeTextPackets,
@@ -8,8 +8,9 @@ import {
   G1ScreenAction,
   paginateDisplayText,
   type SmartglassesAudioEncoding,
-} from "../../../plugins/plugin-facewear/src/protocol/smartglasses.js";
-import { EvenBridgeTransport } from "../../../plugins/plugin-facewear/src/transport/even-bridge.js";
+} from "@elizaos/plugin-facewear/protocol/smartglasses";
+import { EvenBridgeTransport } from "@elizaos/plugin-facewear/transport/even-bridge";
+import { waitForEvenAppBridge } from "@evenrealities/even_hub_sdk";
 
 const logEl = document.getElementById("log") as HTMLPreElement;
 

@@ -65,7 +65,7 @@ The `ElizaConfig` type defines every section available in `eliza.json`. Below is
 | [`x402`](#x402) | `X402Config` | x402 HTTP payment protocol |
 | [`media`](#media) | `MediaConfig` | Media generation providers (image, video, audio, vision) |
 | [`mcp`](#mcp) | `object` | MCP (Model Context Protocol) server definitions |
-| [`registry`](#registry) | `object` | ERC-8004 agent registry and ElizaMaker NFT config |
+| [`registry`](#registry) | `object` | ERC-8004 agent registry and agent NFT config |
 | [`features`](#features) | `Record<string, boolean \| object>` | Feature flags for plugin auto-enable |
 | [`customActions`](#customactions) | `CustomActionDef[]` | User-defined custom actions |
 
@@ -1467,13 +1467,13 @@ MCP (Model Context Protocol) server definitions.
 
 ## `registry`
 
-ERC-8004 agent registry and ElizaMaker NFT collection configuration.
+ERC-8004 agent registry and agent NFT collection configuration.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `mainnetRpc` | `string` | -- | Ethereum mainnet (or local Anvil) RPC URL |
 | `registryAddress` | `string` | -- | ElizaAgentRegistry contract address |
-| `collectionAddress` | `string` | -- | ElizaMaker collection contract address |
+| `collectionAddress` | `string` | -- | Agent NFT collection contract address |
 
 ---
 

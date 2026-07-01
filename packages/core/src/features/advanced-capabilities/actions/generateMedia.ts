@@ -125,44 +125,18 @@ function normalizeAudioKind(
 
 function inferMediaType(
 	params: Record<string, unknown>,
-	text: string,
 ): MediaGenerationMediaType {
-	const explicit = normalizeMediaType(params.mediaType);
-	if (explicit) return explicit;
-
-	const lower = text.toLowerCase();
-	if (/\b(video|clip|film|movie|animate|animation)\b/.test(lower))
-		return "video";
-	if (
-		/\b(audio|music|song|sound effect|sfx|tts|text to speech|speech|voiceover|beat|track|compose)\b/.test(
-			lower,
-		)
-	) {
-		return "audio";
-	}
-	return "image";
+	// `mediaType` is a required enum param the planner emits for any language;
+	// no English NL keyword inference (#10471). Default to image when absent.
+	return normalizeMediaType(params.mediaType) ?? "image";
 }
 
 function inferAudioKind(
 	params: Record<string, unknown>,
-	text: string,
 ): MediaGenerationAudioKind | undefined {
-	const explicit = normalizeAudioKind(params.audioKind ?? params.kind);
-	if (explicit) return explicit;
-
-	const lower = text.toLowerCase();
-	if (/\b(sound effect|sfx|foley)\b/.test(lower)) return "sfx";
-	if (
-		/\b(tts|text to speech|speech|voiceover|narrat(e|ion)|say this)\b/.test(
-			lower,
-		)
-	) {
-		return "tts";
-	}
-	if (/\b(music|song|instrumental|beat|track|compose)\b/.test(lower)) {
-		return "music";
-	}
-	return undefined;
+	// `audioKind` is an enum param emitted by the planner; no English NL
+	// keyword inference (#10471).
+	return normalizeAudioKind(params.audioKind ?? params.kind);
 }
 
 function buildRequest(
@@ -173,14 +147,12 @@ function buildRequest(
 	const prompt = readPrompt(message, options);
 	if (!prompt) return null;
 
-	const mediaType = inferMediaType(params, prompt);
+	const mediaType = inferMediaType(params);
 	return {
 		mediaType,
 		prompt,
 		audioKind:
-			mediaType === "audio"
-				? (inferAudioKind(params, prompt) ?? "music")
-				: undefined,
+			mediaType === "audio" ? (inferAudioKind(params) ?? "music") : undefined,
 		size: readStringParam(params, "size"),
 		quality:
 			params.quality === "standard" || params.quality === "hd"
@@ -319,10 +291,14 @@ async function generateWithService(
 	);
 }
 
+const GENERATE_MEDIA_ROUTING_HINT =
+	"When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). If ATTACHMENT already described a source image, use that description as the video/image prompt — do not refuse, do not offer to 'craft a prompt for another tool', and do not tell the user you lack a video generator when this action validates.";
+
 export const generateMediaAction = {
 	name: spec.name,
 	contexts: [...MEDIA_CONTEXTS],
 	roleGate: { minRole: "USER" },
+	routingHint: GENERATE_MEDIA_ROUTING_HINT,
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
 	descriptionCompressed: spec.descriptionCompressed,
@@ -340,7 +316,18 @@ export const generateMediaAction = {
 		const canGenerate =
 			(service && (await service.canGenerateMedia(request))) ||
 			(request.mediaType === "image" && hasImageGenerationModel(runtime));
-		if (!canGenerate) return false;
+		if (!canGenerate) {
+			logger.debug(
+				{
+					src: "plugin:advanced-capabilities:action:generate_media",
+					agentId: runtime.agentId,
+					mediaType: request.mediaType,
+					hasService: Boolean(service),
+				},
+				"GENERATE_MEDIA validate rejected — no provider configured",
+			);
+			return false;
+		}
 
 		const params = readParams(options);
 		if (normalizeMediaType(params.mediaType)) return true;
@@ -369,6 +356,16 @@ export const generateMediaAction = {
 
 		let result: MediaGenerationResponse;
 		try {
+			logger.debug(
+				{
+					src: "plugin:advanced-capabilities:action:generate_media",
+					agentId: runtime.agentId,
+					mediaType: request.mediaType,
+					promptPreview: request.prompt.slice(0, 120),
+					hasImageUrl: Boolean(request.imageUrl),
+				},
+				"GENERATE_MEDIA handler invoking media service",
+			);
 			result = await generateWithService(runtime, request);
 		} catch (error) {
 			const errorMessage =
@@ -424,6 +421,7 @@ export const generateMediaAction = {
 			id: v4(),
 			url,
 			title,
+			source: "media-generation",
 			contentType: contentTypeFor(request.mediaType),
 			description: result.revisedPrompt ?? request.prompt,
 		};
@@ -443,15 +441,35 @@ export const generateMediaAction = {
 			attachments: [attachment],
 			thought: `Generated ${label} based on: "${request.prompt}"`,
 			actions: ["GENERATE_MEDIA"],
-			text: responseText,
+			// Attachment-only callback: the planner/evaluator composes user-facing text.
+			text: "",
+			source: "media-generation",
 		};
 
 		if (callback) {
 			await callback(responseContent);
+		} else {
+			logger.warn(
+				{
+					src: "plugin:advanced-capabilities:action:generate_media",
+					agentId: runtime.agentId,
+					mediaType: request.mediaType,
+					videoUrl: result.videoUrl,
+					imageUrl: result.imageUrl,
+					audioUrl: result.audioUrl,
+				},
+				"GENERATE_MEDIA completed but no callback was available to deliver the attachment",
+			);
 		}
 
 		return {
 			text: responseText,
+			userFacingText:
+				request.mediaType === "video"
+					? "Here's your video."
+					: request.mediaType === "image"
+						? "Here's your image."
+						: "Here's your audio.",
 			values: {
 				success: true,
 				mediaGenerated: true,

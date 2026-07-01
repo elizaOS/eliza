@@ -68,6 +68,12 @@ async function fulfillJson(
 }
 
 async function installAssistantFlowRoutes(page: Page): Promise<{
+  messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }>;
   streamRequests: string[];
 }> {
   await installDefaultAppRoutes(page);
@@ -123,6 +129,13 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       return;
     }
     await fulfillJson(route, { success: true });
+  });
+  await page.route("**/api/cloud/compat/agents", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, { success: true, data: [] });
   });
   await page.route("**/api/stream/settings", async (route) => {
     if (route.request().method() !== "GET") {
@@ -373,7 +386,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     },
   );
 
-  return { streamRequests };
+  return { messages, streamRequests };
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
@@ -387,12 +400,50 @@ async function screenshot(page: Page, name: string): Promise<void> {
 
 function assistantComposer(page: Page) {
   return page
-    .locator('[data-testid="chat-composer-textarea"]')
-    .or(page.getByLabel("message"));
+    .getByTestId("chat-composer-textarea")
+    .or(page.getByLabel(/^message$/i))
+    .first();
 }
 
 function assistantMicButton(page: Page) {
   return page.getByRole("button", { name: /^(talk|voice input)$/i });
+}
+
+function launcherTile(page: Page, viewId: string) {
+  return page.getByTestId(`launcher-tile-${viewId}`).first();
+}
+
+async function settleHomeLauncherRail(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+      if (!rail) return false;
+      return !(rail as HTMLElement)
+        .getAnimations({ subtree: true })
+        .some((animation) => animation.playState === "running");
+    },
+    undefined,
+    { timeout: 5_000 },
+  );
+}
+
+async function openHomeLauncher(page: Page): Promise<void> {
+  const surface = page.getByTestId("home-launcher-surface");
+  await expect(surface).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:home-launcher:navigate", {
+        detail: { page: "launcher" },
+      }),
+    );
+  });
+  await expect(surface).toHaveAttribute("data-page", "launcher", {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible({
+    timeout: 15_000,
+  });
+  await settleHomeLauncherRail(page);
 }
 
 function conversationLog(page: Page) {
@@ -430,8 +481,9 @@ async function openReadyWorkspaceChat(page: Page): Promise<void> {
 async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
   await openAppPath(page, targetPath);
   await expect(page.getByTestId("startup-shell-loading")).toHaveCount(0);
-  await expect(page.getByTestId("first-run-shell")).toHaveCount(0);
-  await expect(page.getByTestId("onboarding-toast")).toHaveCount(0);
+  // When the agent is ready (first-run complete), the floating first-run chooser
+  // must be absent.
+  await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   const composer = assistantComposer(page);
   await expect(composer).toBeVisible({ timeout: 15_000 });
   await expect(composer).toBeEnabled({ timeout: 30_000 });
@@ -690,11 +742,13 @@ test.describe("assistant home app flow", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible({ timeout: 20_000 });
     await expect(page).not.toHaveURL(/first-run/, { timeout: 12_000 });
-    await expect(
-      page
-        .getByTestId("onboarding-toast")
-        .or(page.getByTestId("first-run-shell")),
-    ).toBeVisible();
+    // The fresh first-run runtime chooser renders over the real shell; there is
+    // no separate full-screen legacy surface.
+    const firstRunOverlay = page.getByTestId("continuous-chat-overlay");
+    await expect(firstRunOverlay).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("first-run-runtime-chooser")).toBeVisible({
+      timeout: 20_000,
+    });
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
@@ -730,12 +784,19 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
-    await expect(page.getByRole("heading", { name: "Views" })).toBeVisible();
+    await expect(launcherTile(page, "settings")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: /Settings/i })).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
 
     await openAppPath(page, "/wallet");
-    await expect(page.getByRole("button", { name: /Tokens/i })).toBeVisible();
+    await expect(
+      page.getByTestId("wallets-sidebar").getByRole("button", {
+        name: /^Tokens$/,
+      }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /Open RPC settings/i }),
     ).toBeVisible();
@@ -770,11 +831,17 @@ test.describe("assistant home app flow", () => {
     await expect
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
       .toEqual(["show me my pinned views"]);
-    await expect(
-      page
-        .getByText("Opening the right view now and keeping voice ready.")
-        .first(),
-    ).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          assistantApi.messages
+            .filter((message) => message.role === "assistant")
+            .map((message) => message.text),
+        { timeout: 10_000 },
+      )
+      .toContain(
+        "I heard you. Opening the right view now and keeping voice ready.",
+      );
     expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
 
@@ -844,21 +911,25 @@ test.describe("assistant home app flow", () => {
 
     await openReadyChat(page, "/chat");
 
-    // The home dashboard renders behind the floating chat: clock + pinned
-    // tile grid.
-    await expect(page.getByTestId("home-screen")).toBeVisible({
+    // The home dashboard renders behind the floating chat. App launchers now
+    // live on the paired launcher page of HomeLauncherSurface.
+    await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
+      "data-page",
+      "home",
+    );
+    await expect(page.getByTestId("home-launcher-home-page")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByTestId("home-clock")).toBeVisible();
-    await expect(
-      page.getByRole("navigation", { name: "Pinned views" }),
-    ).toBeVisible();
-    for (const id of ["tutorial", "help", "settings", "views"]) {
-      await expect(page.getByTestId(`home-tile-${id}`)).toBeVisible();
-    }
+    await expect(page.getByTestId("home-screen")).toBeVisible();
+
+    await openHomeLauncher(page);
+    const settingsTile = page
+      .getByTestId("home-launcher-launcher-page")
+      .getByTestId("launcher-tile-settings");
+    await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 
     // Tapping the Settings tile navigates to the Settings view (setTab path).
-    await page.getByTestId("home-tile-settings").click();
+    await settingsTile.getByRole("button").first().click();
     await expect(page.getByTestId("settings-shell")).toBeVisible({
       timeout: 15_000,
     });

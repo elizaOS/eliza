@@ -65,3 +65,35 @@ describe("buildGoalPrompt capability fence", () => {
     expect(prompt).not.toContain("domains.buy");
   });
 });
+
+describe("buildGoalPrompt attempt reflections (#8899)", () => {
+  const baseInput = { agentName: "Ada", goal: "ship the thing" };
+
+  it("omits the Past Attempt Failures section when there are no reflections", () => {
+    expect(buildGoalPrompt(baseInput)).not.toContain("Past Attempt Failures");
+    expect(
+      buildGoalPrompt({ ...baseInput, attemptReflections: [] }),
+    ).not.toContain("Past Attempt Failures");
+  });
+
+  it("replays prior failed attempts (summary + missing) on re-spawn", () => {
+    const prompt = buildGoalPrompt({
+      ...baseInput,
+      attemptReflections: [
+        {
+          attempt: 1,
+          summary: "tests were never run",
+          missing: ["unit tests pass", "typecheck clean"],
+        },
+        { attempt: 2, summary: "lint still failing", missing: [] },
+      ],
+    });
+    expect(prompt).toContain("--- Past Attempt Failures ---");
+    expect(prompt).toContain("Do NOT repeat these mistakes");
+    expect(prompt).toContain("Attempt 1: tests were never run");
+    expect(prompt).toContain("Missing: unit tests pass; typecheck clean.");
+    expect(prompt).toContain("Attempt 2: lint still failing");
+    // No "Missing:" suffix when the attempt listed nothing missing.
+    expect(prompt).not.toContain("Attempt 2: lint still failing. Missing:");
+  });
+});

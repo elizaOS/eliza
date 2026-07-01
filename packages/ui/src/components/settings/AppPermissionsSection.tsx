@@ -9,6 +9,7 @@
 
 import {
   type AppPermissionsView,
+  parseAppPermissions,
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
 } from "@elizaos/shared";
@@ -16,7 +17,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api/client";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { Switch } from "../ui/switch";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -24,11 +25,6 @@ import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 const NAMESPACE_LABELS: Record<RecognisedPermissionNamespace, string> = {
   fs: "Filesystem",
   net: "Network",
-};
-
-const NAMESPACE_DESCRIPTIONS: Record<RecognisedPermissionNamespace, string> = {
-  fs: "Read/write files the app's manifest declares.",
-  net: "Reach the hosts the app's manifest declares.",
 };
 
 type AsyncStatus =
@@ -50,36 +46,31 @@ function summariseRequested(
   view: AppPermissionsView,
   ns: RecognisedPermissionNamespace,
 ): string | null {
-  const block = view.requestedPermissions?.[ns];
-  if (!block || typeof block !== "object" || Array.isArray(block)) return null;
+  // Parse through the canonical manifest parser so the read fields are strongly
+  // typed (`string[]`) instead of hand-narrowed `unknown` casts.
+  const parsed = parseAppPermissions(view.requestedPermissions);
+  if (parsed.ok === false) return null;
   if (ns === "fs") {
-    const fs = block as { read?: unknown; write?: unknown };
-    const read = Array.isArray(fs.read) ? (fs.read as unknown[]) : [];
-    const write = Array.isArray(fs.write) ? (fs.write as unknown[]) : [];
+    const fs = parsed.manifest.fs;
+    if (!fs) return null;
     const parts: string[] = [];
-    if (read.length > 0)
-      parts.push(
-        `read: ${read.filter((v) => typeof v === "string").join(", ")}`,
-      );
-    if (write.length > 0)
-      parts.push(
-        `write: ${write.filter((v) => typeof v === "string").join(", ")}`,
-      );
+    if (fs.read && fs.read.length > 0)
+      parts.push(`read: ${fs.read.join(", ")}`);
+    if (fs.write && fs.write.length > 0)
+      parts.push(`write: ${fs.write.join(", ")}`);
     return parts.length > 0 ? parts.join(" · ") : null;
   }
   if (ns === "net") {
-    const net = block as { outbound?: unknown };
-    const outbound = Array.isArray(net.outbound)
-      ? (net.outbound as unknown[])
-      : [];
-    const hosts = outbound.filter((v): v is string => typeof v === "string");
-    return hosts.length > 0 ? `outbound: ${hosts.join(", ")}` : null;
+    const outbound = parsed.manifest.net?.outbound;
+    return outbound && outbound.length > 0
+      ? `outbound: ${outbound.join(", ")}`
+      : null;
   }
   return null;
 }
 
 export function AppPermissionsSection() {
-  const { setActionNotice } = useApp();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [rows, setRows] = useState<RowState[]>([]);
   const [listStatus, setListStatus] = useState<AsyncStatus>({
     state: "loading",
@@ -216,17 +207,13 @@ export function AppPermissionsSection() {
       </div>
 
       {listStatus.state === "error" && (
-        <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-          {listStatus.message}
-        </div>
+        <p className="text-xs text-danger">{listStatus.message}</p>
       )}
 
       {listStatus.state !== "loading" && grantableRows.length === 0 && (
-        <SettingsGroup bare>
-          <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-xs text-muted">
-            No apps declare permissions yet.
-          </div>
-        </SettingsGroup>
+        <p className="py-6 text-center text-xs text-muted">
+          No apps declare permissions yet.
+        </p>
       )}
 
       {grantableRows.map((row) => (
@@ -241,7 +228,8 @@ export function AppPermissionsSection() {
           action={
             row.view.grantedAt ? (
               <span className="text-2xs text-muted">
-                granted {new Date(row.view.grantedAt).toLocaleDateString()}
+                granted{" "}
+                {new Date(row.view.grantedAt).toLocaleDateString("en-US")}
               </span>
             ) : undefined
           }
@@ -269,7 +257,7 @@ export function AppPermissionsSection() {
       ))}
 
       {noManifestRows.length > 0 && (
-        <details className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted">
+        <details className="text-xs text-muted">
           <summary className="cursor-pointer">
             {noManifestRows.length} registered app
             {noManifestRows.length === 1 ? "" : "s"} without a permissions
@@ -314,7 +302,6 @@ function AppPermissionToggle({
     role: "toggle",
     label,
     group: "app-permissions",
-    description: NAMESPACE_DESCRIPTIONS[ns],
     status: granted ? "on" : "off",
     getValue: () => granted,
     onActivate: disabled ? undefined : () => onToggle(slug, ns, !granted),
@@ -324,14 +311,11 @@ function AppPermissionToggle({
       htmlFor={toggleId}
       label={NAMESPACE_LABELS[ns]}
       description={
-        <>
-          {NAMESPACE_DESCRIPTIONS[ns]}
-          {summary ? (
-            <span className="mt-1 block truncate font-mono text-xs text-txt">
-              {summary}
-            </span>
-          ) : null}
-        </>
+        summary ? (
+          <span className="block truncate font-mono text-xs text-txt">
+            {summary}
+          </span>
+        ) : undefined
       }
       control={
         <Switch

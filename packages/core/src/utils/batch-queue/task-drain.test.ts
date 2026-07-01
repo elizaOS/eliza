@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import type { IAgentRuntime } from "../../types/runtime";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import type { Task } from "../../types/task";
 import { TaskDrain } from "./task-drain";
 
@@ -38,7 +38,7 @@ describe("TaskDrain", () => {
 				baseInterval: 1000,
 			}),
 		];
-		const runtime = {
+		const runtime = createMockRuntime({
 			agentId: AGENT_ID,
 			getTasksByName: async (name: string) =>
 				tasks.filter((task) => task.name === name),
@@ -63,7 +63,7 @@ describe("TaskDrain", () => {
 			createTask: vi.fn(async () => {
 				throw new Error("should reuse an existing managed task");
 			}),
-		} as unknown as IAgentRuntime;
+		});
 
 		const drain = new TaskDrain(
 			{

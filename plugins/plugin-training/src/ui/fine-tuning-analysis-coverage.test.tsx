@@ -29,6 +29,16 @@ const { reactEntry } = vi.hoisted(() => {
 
 vi.mock("react", async () => await import(reactEntry));
 
+// Single shared app-state ref so the legacy `useApp` API and the per-slice
+// `useAppSelector` reads the migrated view now uses both resolve to the same
+// value.
+const fineTuningAppState = vi.hoisted(() => ({
+  handleRestart: vi.fn(),
+  setActionNotice: vi.fn(),
+  t: (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key,
+}));
+
 const trainingClient = vi.hoisted(() => ({
   getTrainingStatus: vi.fn(),
   listTrainingTrajectories: vi.fn(),
@@ -68,12 +78,42 @@ vi.mock("@elizaos/ui", () => ({
     React.createElement("button", { type: "button", ...props }, children),
   client: trainingClient,
   registerDetailExtension: vi.fn(),
-  useApp: () => ({
-    handleRestart: vi.fn(),
-    setActionNotice: vi.fn(),
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
-  }),
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("@elizaos/ui/api", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("@elizaos/ui/api/index", () => ({
+  client: trainingClient,
+}));
+
+vi.mock("../../../../packages/ui/src/api/index.ts", () => ({
+  client: trainingClient,
+}));
+
+// FineTuningView reads useApp/useAppSelector from @elizaos/ui/state (not the
+// root barrel), so the mock must cover that subpath too — otherwise the real
+// store runs, `t` returns raw i18n keys, and label/aria-label lookups fail.
+vi.mock("@elizaos/ui/state", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("@elizaos/ui/state/index", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
+}));
+
+vi.mock("../../../../packages/ui/src/state/index.ts", () => ({
+  useApp: () => fineTuningAppState,
+  useAppSelector: <T,>(selector: (s: typeof fineTuningAppState) => T): T =>
+    selector(fineTuningAppState),
 }));
 
 vi.mock("@elizaos/ui/agent-surface", () => ({
@@ -110,8 +150,14 @@ vi.mock("@elizaos/ui/utils", () => ({
 // Primitives the REAL panels (rendered by FineTuningView) import — these panels
 // are intentionally NOT mocked so the view boots with the production tree.
 vi.mock("@elizaos/ui/components", () => ({
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+    React.createElement("button", { type: "button", ...props }, children),
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
+  registerDetailExtension: vi.fn(),
 }));
 
 vi.mock("@elizaos/ui/components/ui/select", () => ({
@@ -204,7 +250,7 @@ const manifestCoverageIndex: TrainingAnalysisIndexResponse = {
         allEliza1TiersCovered: true,
         tierCoverage: [
           {
-            tier: "0_8b",
+            tier: "2b",
             hasBase: true,
             hasTrained: true,
             hasReference: true,
@@ -227,7 +273,7 @@ const manifestCoverageIndex: TrainingAnalysisIndexResponse = {
         payload: {
           comparisons: [
             {
-              tier: "0_8b",
+              tier: "2b",
               benchmark: "eliza_harness_action_selection",
               baseScore: 0.4,
               trainedScore: 0.5,
@@ -349,14 +395,14 @@ const artifactAggregationIndex: TrainingAnalysisIndexResponse = {
         summary: {
           schema: "eliza_benchmark_matrix_artifact",
           modelStats: [
-            { modelId: "eliza-1-0_8b-base", averageScore: 0.4 },
-            { modelId: "eliza-1-0_8b-trained", averageScore: 0.72 },
+            { modelId: "eliza-1-2b-base", averageScore: 0.4 },
+            { modelId: "eliza-1-2b-trained", averageScore: 0.72 },
           ],
         },
         payload: {
           comparisons: [
             {
-              tier: "0_8b",
+              tier: "2b",
               benchmark: "eliza_harness_action_selection",
               baseScore: 0.4,
               trainedScore: 0.5,
@@ -372,7 +418,7 @@ const artifactAggregationIndex: TrainingAnalysisIndexResponse = {
         kind: "model",
         title: "model",
         path: "/tmp/model.json",
-        summary: { model: "eliza-1-0_8b-trained" },
+        summary: { model: "eliza-1-2b-trained" },
         payload: {},
       },
     ],
@@ -435,12 +481,12 @@ describe("FineTuningView analysis coverage panel", () => {
     expect(expectMonoLine("models:2 best:none")).toBeTruthy();
     // all tiers covered + tier coverage row.
     expect(
-      expectMonoLine("all tiers covered 0_8b:base/trained/ref/improvement"),
+      expectMonoLine("all tiers covered 2b:base/trained/ref/improvement"),
     ).toBeTruthy();
     // benchmarkComparisons row (from artifact payload).
     expect(
       expectMonoLine(
-        "0_8b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
+        "2b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
       ),
     ).toBeTruthy();
   });
@@ -476,14 +522,14 @@ describe("FineTuningView analysis coverage panel", () => {
     expect(expectMonoLine("evals:1 matrices:1 models:1")).toBeTruthy();
     // model inventory summary from modelStats → best model + avg score.
     expect(
-      expectMonoLine("models:2 best:eliza-1-0_8b-trained avg:0.72"),
+      expectMonoLine("models:2 best:eliza-1-2b-trained avg:0.72"),
     ).toBeTruthy();
     // fallback branch reports partial tier coverage (no tier rows).
     expect(expectMonoLine("partial")).toBeTruthy();
     // benchmarkComparisons row.
     expect(
       expectMonoLine(
-        "0_8b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
+        "2b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
       ),
     ).toBeTruthy();
   });

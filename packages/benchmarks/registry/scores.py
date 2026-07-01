@@ -219,6 +219,45 @@ def _score_from_contextbench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_recall_json(data: JSONValue) -> ScoreExtraction:
+    """recall-bench (#9956): headline score is hybrid Recall@5 over the real
+    @elizaos/core document-recall path; surface the per-mode gap + fail-open drop.
+    """
+    root = expect_dict(data, ctx="recall:root")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="recall:root"), ctx="recall:metrics"
+    )
+    recall = get_optional(metrics, "overall_recall_at_5")
+    if not isinstance(recall, (int, float)):
+        # Honesty contract: a null (unmeasured) headline is not publishable.
+        raise ValueError("recall: overall_recall_at_5 is null/unmeasured")
+    overall = float(recall)
+    fail_open = expect_dict(
+        get_required(root, "failOpen", ctx="recall:root"), ctx="recall:failOpen"
+    )
+    corpus = expect_dict(
+        get_required(root, "corpus", ctx="recall:root"), ctx="recall:corpus"
+    )
+    documents = expect_float(
+        get_required(corpus, "documents", ctx="recall:corpus"), ctx="recall:documents"
+    )
+    if documents <= 0:
+        raise ValueError("recall: empty corpus score is not publishable")
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_recall_at_5": overall,
+            "overall_ndcg_at_5": metrics.get("overall_ndcg_at_5"),
+            "overall_p95_latency_ms": metrics.get("overall_p95_latency_ms"),
+            "fail_open_recall_drop": fail_open.get("recallDrop"),
+            "fail_open_observable": fail_open.get("observable"),
+            "corpus_documents": documents,
+        },
+    )
+
+
 def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="terminal_bench:root")
     summary = expect_dict(get_required(root, "summary", ctx="terminal_bench:root"), ctx="terminal_bench:summary")
@@ -1523,6 +1562,33 @@ def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
     }
     if "placeholder" in metric_keys and not (metric_keys & score_metric_keys):
         raise ValueError("hermes_env: placeholder-only score is not publishable")
+
+    def _metric_number(key: str) -> float | None:
+        value = metrics_dict.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value)
+
+    # A score derived from rollouts that ALL failed to complete is not a real
+    # measurement — like the placeholder-only gate above, publishing it would
+    # larp a "0.0" the harness never actually measured. Reject when every sampled
+    # rollout is incomplete so the run is rerun / manually reviewed instead.
+    incomplete_rollouts = _metric_number("incomplete_rollouts")
+    sampled = _metric_number("sample_rows")
+    if sampled is None:
+        sampled = _metric_number("total_tasks")
+    if (
+        incomplete_rollouts is not None
+        and incomplete_rollouts > 0
+        and sampled is not None
+        and sampled > 0
+        and incomplete_rollouts >= sampled
+    ):
+        raise ValueError(
+            "hermes_env: all sampled rollouts are incomplete; a zero from "
+            "incomplete rollouts is not a real measurement and is not publishable"
+        )
+
     env_id_public = get_optional(root, "env_id_public") or get_optional(root, "env_id")
     if env_id_public is not None:
         metrics_dict["env_id"] = env_id_public

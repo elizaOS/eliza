@@ -330,6 +330,7 @@ async function installOrchestratorWorkbenchRoutes(
           totalTokens: 0,
           stoppedAt: null,
           lastActivityAt: Date.parse(NOW),
+          metadata: {},
         },
       ];
       detail = {
@@ -589,6 +590,7 @@ function richOrchestratorFixture() {
         totalTokens: 2100,
         stoppedAt: null,
         lastActivityAt: Date.parse(NOW),
+        metadata: {},
       },
       {
         id: "session-cerebras-record",
@@ -607,6 +609,7 @@ function richOrchestratorFixture() {
         totalTokens: 12_345,
         stoppedAt: null,
         lastActivityAt: Date.parse(NOW),
+        metadata: {},
       },
     ],
     artifacts: [
@@ -900,19 +903,41 @@ test.describe("orchestrator GUI workbench", () => {
       });
   });
 
-  test("creates a task and sends a message through the visible controls", async ({
+  test("shows the read-only empty workbench when no tasks are in flight", async ({
     page,
   }) => {
     await hideContinuousChatOverlay(page);
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
-    const requests = await installOrchestratorWorkbenchRoutes(page);
+    await installOrchestratorWorkbenchRoutes(page);
 
     await openAppPath(page, "/orchestrator");
 
     await expect(page.getByTestId("orchestrator-workbench")).toBeVisible();
-    await expect(page.getByTestId("orchestrator-pause-all")).toBeDisabled();
-    await expect(page.getByTestId("orchestrator-resume-all")).toBeDisabled();
+    await expect(page.getByText("Orchestrator")).toBeVisible();
+
+    // A quiet orchestrator is read-only: pause-all / resume-all only surface
+    // while there is something to act on, so neither control is rendered with
+    // zero tasks (the dashboard never shows disabled placeholder chrome).
+    await expect(page.getByTestId("orchestrator-pause-all")).toHaveCount(0);
+    await expect(page.getByTestId("orchestrator-resume-all")).toHaveCount(0);
+
+    // The rail stays on its single-pane landing — no task is selected — and the
+    // empty state points the operator at the conversational create path. The
+    // "+ New Task" GUI affordance was removed with the overlay-only redesign;
+    // tasks are started in chat via the `orchestrator-create-task` capability
+    // (covered by the plugin's unit suite). The consolidated workbench renders
+    // the shared `ChatEmptyStateWithRecommendations` (testId task-empty-state)
+    // with a "describe a task in chat" prompt plus seed recommendations.
+    const rail = page.getByTestId("orchestrator-rail");
+    await expect(rail).toBeVisible();
+    await expect(rail.getByTestId("task-empty-state")).toContainText(
+      "Describe a task in the chat below",
+    );
+    await expect(rail.getByTestId("task-empty-state")).toContainText(
+      "Ask Eliza to fix a bug",
+    );
+
     await expect
       .poll(async () =>
         JSON.parse(
@@ -923,42 +948,5 @@ test.describe("orchestrator GUI workbench", () => {
         ),
       )
       .toMatchObject({ taskCount: 0, selectedId: null });
-
-    await page.getByTestId("orchestrator-new-task").click();
-    await expect(page.getByTestId("orchestrator-create-dialog")).toBeVisible();
-    await expect(page.getByTestId("orchestrator-create-submit")).toBeDisabled();
-
-    await page
-      .getByTestId("orchestrator-create-title")
-      .fill("Audit orchestrator surface");
-    await page
-      .getByTestId("orchestrator-create-goal")
-      .fill("Verify controls, routing, and message flow");
-    await page.getByTestId("orchestrator-create-priority").selectOption("high");
-    await page
-      .getByTestId("orchestrator-create-acceptance")
-      .fill("Task appears in rail\nMessage posts");
-    await expect(page.getByTestId("orchestrator-create-submit")).toBeEnabled();
-    await page.getByTestId("orchestrator-create-submit").click();
-
-    await expect
-      .poll(() => requests.createBodies)
-      .toEqual([
-        {
-          title: "Audit orchestrator surface",
-          goal: "Verify controls, routing, and message flow",
-          priority: "high",
-          acceptanceCriteria: ["Task appears in rail", "Message posts"],
-        },
-      ]);
-    // Creating a task drops straight into its full-pane room. The in-room
-    // composer was removed with the overlay-only chat redesign — operator
-    // messages now flow through the agent-surface capability
-    // `orchestrator-send-message` (covered by the plugin's unit suite), so the
-    // visible-control contract ends at the rendered room.
-    await expect(page.getByTestId("orchestrator-timeline")).toContainText(
-      "Audit orchestrator surface",
-    );
-    await expect(page.getByTestId("orchestrator-message-list")).toBeVisible();
   });
 });

@@ -7,6 +7,15 @@ import {
 /** Role names matching the elizaOS role hierarchy. */
 export type RequiredRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
+/**
+ * Re-export the single core role primitive. This module no longer defines its
+ * own `hasRoleAccess`: the previous local copy was a pure pass-through to the
+ * core implementation, so a second symbol only invited drift between two
+ * authorization seams (#9947). Callers get the canonical
+ * `hasRoleAccess(runtime, message, requiredRole)` from `@elizaos/core`.
+ */
+export { hasRoleAccess } from "@elizaos/core";
+
 type AccessContext = {
   runtime: IAgentRuntime & { agentId: string };
   message: Memory & { entityId: string };
@@ -81,20 +90,4 @@ export async function hasPrivateAccess(
   } catch {
     return false;
   }
-}
-
-/**
- * Check whether the sender has at least the given role in the elizaOS
- * role hierarchy (OWNER > ADMIN > USER > GUEST).
- *
- * Follows the same lenient pattern as plugin-role-gating: when there is
- * no world context (e.g. local API calls), the check falls through and
- * allows the action so local-only usage isn't blocked.
- */
-export async function hasRoleAccess(
-  runtime: IAgentRuntime | undefined,
-  message: Memory | undefined,
-  requiredRole: RequiredRole,
-): Promise<boolean> {
-  return coreHasRoleAccess(runtime, message, requiredRole);
 }

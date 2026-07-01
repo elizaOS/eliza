@@ -1,14 +1,12 @@
 # @elizaos/plugin-goals
 
-Life direction plugin for elizaOS: owner-set long-horizon goals, recurring
-routines, reminders, alarms, daily check-ins, and a self-care / mood / journal
-panel.
+Life direction plugin for elizaOS: owner-set long-horizon goals, daily
+check-ins, and a self-care / mood / journal panel.
 
-Decomposed out of `@elizaos/plugin-personal-assistant`. During the migration phase three
-of the four action handlers (`OWNER_ROUTINES`, `OWNER_REMINDERS`, `OWNER_ALARMS`) are
-scaffold stubs that point back to their LifeOps source via `TODO(migrate)` comments.
-`OWNER_GOALS` is fully implemented via `GoalsService`. The plugin registers cleanly,
-compiles standalone, and serves a real (if minimal) view.
+Decomposed out of `@elizaos/plugin-personal-assistant`. This plugin registers
+only the fully migrated `OWNER_GOALS` action via `GoalsService`. Routines,
+reminders, and alarms remain host-adapted owner surfaces in
+`@elizaos/plugin-personal-assistant` and are not exported here.
 
 ## Install
 
@@ -22,22 +20,19 @@ on the plugin object).
 
 ## Plugin surface
 
-- Actions: `OWNER_GOALS` (real — CRUD via GoalsService), `OWNER_ROUTINES`, `OWNER_REMINDERS`, `OWNER_ALARMS` (scaffold stubs)
+- Actions: `OWNER_GOALS` (real — CRUD via GoalsService)
 - Back-end: `GoalsService` (`src/goals-service.ts`) — goal CRUD, dedup, similarity scoring
 - Service: `GoalsCheckinService` (daily check-in engine, stub)
 - View: `goals` (`/goals`) — three sections (Life Goals / Routines / Today)
   plus a self-care / mood / journal panel
-- Schema: `pgSchema('app_goals')` with tables `goals`, `routines`,
-  `reminders`, `alarms`, `checkins`
+- Schema: `pgSchema('app_goals')` with the carved goal tables. Reminder /
+  alarm / routine delivery state lives in `@elizaos/plugin-reminders`.
 
-## Migration mapping (`plugin-lifeops` -> `plugin-goals`)
+## Migration mapping (`plugin-personal-assistant` -> `plugin-goals`)
 
 | LifeOps source                                                                       | Plugin-goals target                  |
 |--------------------------------------------------------------------------------------|--------------------------------------|
 | `src/actions/owner-surfaces.ts` (`OWNER_GOALS`)                                       | `src/actions/goals.ts`               |
-| `src/actions/owner-surfaces.ts` (`OWNER_ROUTINES`)                                    | `src/actions/routines.ts`            |
-| `src/actions/owner-surfaces.ts` (`OWNER_REMINDERS`)                                   | `src/actions/reminders.ts`           |
-| `src/actions/owner-surfaces.ts` (`OWNER_ALARMS`)                                      | `src/actions/alarms.ts`              |
 | `src/lifeops/checkin/checkin-service.ts` + `schedule-resolver.ts` + `types.ts`        | `src/services/checkin.ts`            |
 | `src/followup/followup-tracker.ts` + `src/followup/actions/`                          | `src/followup/` (added in phase 2)   |
 | `src/default-packs/{daily-rhythm,habit-starters,followup-starter}.ts`                 | `src/default-packs/` (phase 2)       |
@@ -45,11 +40,9 @@ on the plugin object).
 
 ## Status
 
-`OWNER_GOALS` is fully implemented (goal CRUD via `GoalsService`). The remaining
-three owner actions (`OWNER_ROUTINES`, `OWNER_REMINDERS`, `OWNER_ALARMS`) are scaffold
-stubs: handlers return `success: false` with a `scaffold_stub` reason and include a
-`TODO(migrate)` pointer back to the LifeOps source. The follow-up phase migrates the
-real handler bodies + default packs + check-in implementation from `plugin-lifeops`.
+`OWNER_GOALS` is fully implemented (goal CRUD via `GoalsService`). The plugin no
+longer ships scaffold actions for routines, reminders, or alarms; those owner
+surfaces are registered by `@elizaos/plugin-personal-assistant`.
 
 ## Layout
 
@@ -63,7 +56,7 @@ src/
   goal-normalize.ts              GoalsServiceError + input normalizers
   goal-grounding.ts              Goal grounding / semantic-review metadata helpers
   goal-semantic-evaluator.ts     evaluateGoalProgressWithLlm (LLM goal review)
-  actions/{goals,routines,reminders,alarms}.ts
+  actions/goals.ts
   services/checkin.ts            GoalsCheckinService (stub)
   db/
     index.ts                     Re-exports schema

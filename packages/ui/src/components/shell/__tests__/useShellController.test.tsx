@@ -15,6 +15,7 @@ import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
 } from "../../../voice/voice-capture-factory";
+import { resolveAdjacentConversationId } from "../conversation-nav";
 import { useShellController } from "../useShellController";
 
 // jsdom in this env ships a `window.localStorage` whose methods throw (the
@@ -61,6 +62,7 @@ const WARMING_STATUS = { state: "starting", canRespond: false };
 const appMock = vi.hoisted(() => ({
   value: {
     startupCoordinator: { phase: "ready" },
+    activeConversationId: null as string | null | undefined,
     conversationMessages: [] as Array<{
       id: string;
       role: string;
@@ -68,13 +70,63 @@ const appMock = vi.hoisted(() => ({
       timestamp: number;
     }>,
     chatSending: false,
+    chatFirstTokenReceived: false,
     sendChatText: vi.fn(),
     agentStatus: { state: "running", canRespond: true },
+    // Conversation-management callbacks the controller wraps in the loading
+    // flag (clear / swipe). Default to instant resolution; the watchdog tests
+    // override handleNewConversation with a controllable promise.
+    handleNewConversation: vi.fn(() => Promise.resolve()),
+    handleSelectConversation: vi.fn(() => Promise.resolve()),
+    conversations: [] as Array<{ id: string }>,
+    setTab: vi.fn(),
+    handleChatStop: vi.fn(),
+    uiLanguage: "en",
+    elizaCloudVoiceProxyAvailable: false,
   },
+  // Live server-reported turn status (#8813), read via useChatTurnStatus().
+  serverTurnStatus: null as { kind: string } | null,
+}));
+
+const composerMock = vi.hoisted(() => ({
+  value: {
+    chatInput: "",
+    chatSending: false,
+    chatPendingImages: [],
+    setChatInput: vi.fn(),
+    setChatPendingImages: vi.fn(),
+  },
+}));
+
+// Mirror the real store selector by applying the selector to the mock value
+// (useShellController reads via useAppSelectorShallow, #9141). Hoisted so both
+// the barrel and the deep app-store mock factories below can reference it.
+const { useAppSelectorShallowMock } = vi.hoisted(() => ({
+  useAppSelectorShallowMock: (
+    selector: (value: typeof appMock.value) => unknown,
+  ) => selector(appMock.value),
 }));
 
 vi.mock("../../../state", () => ({
   useApp: () => appMock.value,
+  useAppSelectorShallow: useAppSelectorShallowMock,
+  useConversationMessages: () => ({
+    conversationMessages: appMock.value.conversationMessages,
+    removeConversationMessage: vi.fn(),
+  }),
+  useChatComposer: () => composerMock.value,
+  useChatTurnStatus: () => ({
+    serverTurnStatus: appMock.serverTurnStatus,
+    setServerTurnStatus: vi.fn(),
+  }),
+}));
+
+// useShellController imports useAppSelectorShallow from the deep app-store path
+// (not the ../../state barrel) so the selector hook stays decoupled from the
+// barrel's transitive shell imports (#9141/#9249). Mock that exact specifier or
+// the controller reads the real empty store instead of appMock.value.
+vi.mock("../../../state/app-store", () => ({
+  useAppSelectorShallow: useAppSelectorShallowMock,
 }));
 
 vi.mock("../../local-inference/useHomeModelStatus", () => ({
@@ -102,10 +154,18 @@ vi.mock("../useShellVoiceOutput", () => ({
 afterEach(() => {
   cleanup();
   appMock.value.startupCoordinator.phase = "ready";
+  appMock.value.activeConversationId = null;
   appMock.value.conversationMessages = [];
   appMock.value.chatSending = false;
+  composerMock.value.chatSending = false;
+  appMock.value.chatFirstTokenReceived = false;
+  appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.agentStatus = { ...READY_STATUS };
+  appMock.value.handleNewConversation = vi.fn(() => Promise.resolve());
+  appMock.value.handleSelectConversation = vi.fn(() => Promise.resolve());
+  appMock.value.activeConversationId = null;
+  appMock.value.conversations = [];
 });
 
 describe("useShellController", () => {
@@ -150,6 +210,401 @@ describe("useShellController", () => {
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
   });
+
+  // Regression: a steady-state empty active conversation (greeting generation
+  // failed silently, or an existing zero-message conversation was selected) must
+  // NOT report conversationLoading=true. A message-count heuristic latched the
+  // flag true forever, pinning a perpetual loading spinner and letting the
+  // grabber/pill open the chat sheet into a never-resolving loader. Revealability
+  // must come from the explicit, sequence-guarded loading flag only.
+  it("does not report loading for a steady-state empty active conversation", () => {
+    appMock.value.activeConversationId = "conv-empty";
+    appMock.value.conversationMessages = [];
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.conversationLoading).toBe(false);
+  });
+});
+
+// ── Conversation loading watchdog + swipe (clear/new-chat robustness) ────────
+
+describe("useShellController — conversation loading watchdog", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("force-clears the loading spinner when the new-chat create hangs", async () => {
+    // A create that never resolves — the on-device agent queued behind a
+    // warming/loading model or an in-flight generation. The spinner must NOT
+    // hang there forever ("reset shows a spinner but never makes the new chat").
+    let resolveCreate: (() => void) | undefined;
+    appMock.value.handleNewConversation = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolveCreate = () => r();
+        }),
+    );
+
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.clearConversation());
+    expect(result.current.conversationLoading).toBe(true);
+
+    // Self-clears after the bounded watchdog window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+
+    // A late create resolution neither errors nor re-sticks the spinner.
+    await act(async () => {
+      resolveCreate?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("clears the loading flag as soon as a fast switch resolves (no needless wait)", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }];
+    appMock.value.activeConversationId = "a";
+
+    const { result } = renderHook(() => useShellController());
+
+    // Swipe to the next (older) conversation — the path that "thumbs back and
+    // forth". It resolves instantly, so the flag clears well before the cap and
+    // never strands the UI.
+    await act(async () => {
+      result.current.conversationNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(appMock.value.handleSelectConversation).toHaveBeenCalledWith("b");
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("drops stale swipe callbacks while a conversation switch is pending", async () => {
+    let resolveSwitch: (() => void) | undefined;
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    appMock.value.activeConversationId = "b";
+    appMock.value.handleSelectConversation = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSwitch = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useShellController());
+    const staleNav = result.current.conversationNav;
+
+    await act(async () => {
+      staleNav.goNext();
+      staleNav.goPrev();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      appMock.value.handleSelectConversation,
+    ).toHaveBeenCalledExactlyOnceWith("c");
+    expect(result.current.conversationLoading).toBe(true);
+
+    await act(async () => {
+      resolveSwitch?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.conversationLoading).toBe(false);
+  });
+
+  it("re-resolves a stale swipe callback against the latest active conversation", async () => {
+    appMock.value.conversations = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    appMock.value.activeConversationId = "b";
+
+    const { result, rerender } = renderHook(() => useShellController());
+    const staleNav = result.current.conversationNav;
+
+    appMock.value.activeConversationId = "a";
+    rerender();
+
+    await act(async () => {
+      staleNav.goNext();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(
+      appMock.value.handleSelectConversation,
+    ).toHaveBeenCalledExactlyOnceWith("b");
+    expect(result.current.conversationLoading).toBe(false);
+  });
+});
+
+// ── Conversation-nav interleaving fuzz over the REAL hook (#9954 item 1) ──────
+// The headline #9954 gap: rapid swipe ↔ new-conversation ↔ select interleavings
+// could select the wrong conversation against a stale nav closure. #10042 made
+// the swipe callbacks re-resolve through refs and drop a swipe while a switch is
+// in flight; the two hand-written cases above pin those specific shapes. This
+// block fuzzes the real `useShellController` over a LIVE mutating conversation
+// list (select flips the active id; new prepends at index 0 and activates it),
+// asserting the most-recent-first index invariants after EVERY step across the
+// named sequence plus seeded random walks — so a reintroduced stale-index or
+// off-by-one regression fails here regardless of ordering.
+describe("useShellController — conversation-nav interleaving (#9954)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  type Ctl = ReturnType<typeof useShellController>;
+  type Action = "next" | "prev" | "new" | "select";
+
+  // Records any SWIPE select (goNext/goPrev → handleSelectConversation) that
+  // targeted a conversation which is NOT a neighbour of the active id at the
+  // moment the call fired. That is exactly the stale-closure bug: with the
+  // #10042 seq/epoch guard every swipe re-resolves through refs against the
+  // LIVE active index, so this stays empty. (External `select` mutates the
+  // active id directly and never routes through handleSelectConversation, so it
+  // can't pollute this signal.) The post-rerender index invariants in
+  // `assertInvariants` alone do NOT catch a reverted guard — they hold for a
+  // wrong-but-present selection — so this call-time check is the actual teeth.
+  let staleSwipeSelects: Array<{ requested: string; activeAtCall: string }> =
+    [];
+
+  function wireMutableConversations(initialIds: string[]): void {
+    staleSwipeSelects = [];
+    appMock.value.conversations = initialIds.map((id) => ({ id }));
+    // Start on the oldest (highest index) so both swipe directions are live.
+    appMock.value.activeConversationId =
+      initialIds[initialIds.length - 1] ?? null;
+    appMock.value.handleSelectConversation = vi.fn((id: string) => {
+      const active = appMock.value.activeConversationId ?? null;
+      const neighbours = [
+        resolveAdjacentConversationId(
+          appMock.value.conversations,
+          active,
+          "prev",
+        ),
+        resolveAdjacentConversationId(
+          appMock.value.conversations,
+          active,
+          "next",
+        ),
+      ];
+      if (!neighbours.includes(id)) {
+        staleSwipeSelects.push({ requested: id, activeAtCall: String(active) });
+      }
+      appMock.value.activeConversationId = id;
+      return Promise.resolve();
+    }) as unknown as typeof appMock.value.handleSelectConversation;
+    let created = 0;
+    appMock.value.handleNewConversation = vi.fn(() => {
+      const id = `new-${created++}`;
+      appMock.value.conversations = [{ id }, ...appMock.value.conversations];
+      appMock.value.activeConversationId = id;
+      return Promise.resolve();
+    });
+  }
+
+  async function drive(
+    result: { current: Ctl },
+    rerender: () => void,
+    action: Action,
+    rng: () => number,
+  ): Promise<void> {
+    await act(async () => {
+      if (action === "next") result.current.conversationNav.goNext();
+      else if (action === "prev") result.current.conversationNav.goPrev();
+      else if (action === "new") result.current.clearConversation();
+      else {
+        // External (sidebar / deep-link) select interleaved with swipes.
+        const list = appMock.value.conversations;
+        if (list.length > 0) {
+          appMock.value.activeConversationId =
+            list[Math.floor(rng() * list.length)].id;
+        }
+      }
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    rerender();
+  }
+
+  function assertInvariants(ctl: Ctl): void {
+    const list = appMock.value.conversations;
+    const active = appMock.value.activeConversationId ?? null;
+    const expectedIndex = list.findIndex((c) => c.id === active);
+    const nav = ctl.conversationNav;
+    // The active conversation is always a member of the list (never orphaned).
+    if (active !== null) {
+      expect(list.some((c) => c.id === active)).toBe(true);
+    }
+    // nav.index tracks the active id's position in the most-recent-first list.
+    expect(nav.index).toBe(expectedIndex);
+    expect(nav.activeId).toBe(active);
+    // Edge hints are exactly the index boundaries — never navigable past an end.
+    expect(nav.hasPrev).toBe(expectedIndex > 0);
+    expect(nav.hasNext).toBe(
+      expectedIndex >= 0 && expectedIndex < list.length - 1,
+    );
+    // No transition is left in flight once the step settles.
+    expect(ctl.conversationLoading ?? false).toBe(false);
+    // Every swipe resolved against the LIVE active index — never a stale one.
+    // This is the assertion that fails if the #10042 guard is reverted.
+    expect(staleSwipeSelects).toEqual([]);
+  }
+
+  it("named sequence swipe-back → new → forward → new → forward → swipe-back stays index-consistent", async () => {
+    wireMutableConversations(["c0", "c1", "c2"]); // active = c2 (oldest, index 2)
+    const { result, rerender } = renderHook(() => useShellController());
+    assertInvariants(result.current);
+
+    const rng = mulberry32(1);
+    const sequence: Action[] = ["prev", "new", "next", "new", "next", "prev"];
+    for (const action of sequence) {
+      const before = appMock.value.activeConversationId;
+      const atIndex0Boundary =
+        action === "prev" && result.current.conversationNav.index === 0;
+      await drive(result, rerender, action, rng);
+      assertInvariants(result.current);
+      if (action === "new") {
+        // A new conversation lands at index 0 and becomes active.
+        expect(result.current.conversationNav.index).toBe(0);
+      }
+      if (atIndex0Boundary) {
+        // A swipe at the index-0 boundary is a no-op (no wrong-conversation jump).
+        expect(appMock.value.activeConversationId).toBe(before);
+      }
+    }
+    expect(
+      appMock.value.conversations.some(
+        (c) => c.id === appMock.value.activeConversationId,
+      ),
+    ).toBe(true);
+  });
+
+  it("seeded random walks keep the nav invariants on every step", async () => {
+    const actions: Action[] = ["next", "prev", "new", "select"];
+    for (let seed = 1; seed <= 12; seed++) {
+      wireMutableConversations(["a", "b", "c", "d"]);
+      const { result, rerender, unmount } = renderHook(() =>
+        useShellController(),
+      );
+      const rng = mulberry32(seed * 0x9e3779b1);
+      for (let stepN = 0; stepN < 40; stepN++) {
+        const action = actions[Math.floor(rng() * actions.length)];
+        await drive(result, rerender, action, rng);
+        assertInvariants(result.current);
+      }
+      unmount();
+    }
+  });
+
+  // The walks above rerender after EVERY op, so the nav closure is always fresh
+  // and the stale-closure race never fires — those invariants hold even with the
+  // #10042 guard reverted. The race the guard actually fixes needs TWO ops to
+  // share ONE nav closure (a second swipe dispatched before the first switch
+  // settles + rerenders). This drives exactly that: rapid bursts of two ops in a
+  // single act() with no rerender between, asserting (via the call-time
+  // adjacency check in assertInvariants) that the second op never navigates
+  // against the now-stale index. Reverting the goNext/goPrev ref-resolution in
+  // useShellController makes this fail; the guard keeps it green.
+  it("rapid swipe bursts never resolve against a stale index (#10042 regression)", async () => {
+    const burstable: Exclude<Action, "select">[] = ["next", "prev", "new"];
+    const fire = (ctl: Ctl, action: Action): void => {
+      if (action === "next") ctl.conversationNav.goNext();
+      else if (action === "prev") ctl.conversationNav.goPrev();
+      else if (action === "new") ctl.clearConversation();
+    };
+    for (let seed = 1; seed <= 12; seed++) {
+      wireMutableConversations(["a", "b", "c", "d", "e"]);
+      const { result, rerender, unmount } = renderHook(() =>
+        useShellController(),
+      );
+      const rng = mulberry32(seed * 0x85ebca6b);
+      for (let stepN = 0; stepN < 25; stepN++) {
+        const a = burstable[Math.floor(rng() * burstable.length)];
+        const b = burstable[Math.floor(rng() * burstable.length)];
+        // Both ops read the SAME `result.current` (no rerender between), so the
+        // second runs against the first's about-to-be-stale closure/index.
+        await act(async () => {
+          fire(result.current, a);
+          fire(result.current, b);
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        rerender();
+        assertInvariants(result.current);
+      }
+      unmount();
+    }
+  });
+});
+
+function mulberry32(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── Rich turn status derivation (#8813) ──────────────────────────────────────
+
+describe("useShellController — turnStatus derivation", () => {
+  it("is null when idle", () => {
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toBeNull();
+  });
+
+  it("is thinking while sending before the first token", () => {
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = false;
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "thinking" });
+  });
+
+  it("is streaming once the first token has arrived", () => {
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = true;
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "streaming" });
+  });
+
+  it("prefers the live server status (e.g. running_action) while sending", () => {
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = false;
+    appMock.serverTurnStatus = {
+      kind: "running_action",
+      actionName: "SEND_MESSAGE",
+    } as { kind: string };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({
+      kind: "running_action",
+      actionName: "SEND_MESSAGE",
+    });
+  });
+
+  it("surfaces a waking server status even before chatSending settles", () => {
+    composerMock.value.chatSending = false;
+    appMock.serverTurnStatus = { kind: "waking" } as { kind: string };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "waking" });
+  });
+
+  it("speaking (voice output) wins over the server status", () => {
+    voiceOutputMock.speaking = true;
+    composerMock.value.chatSending = true;
+    appMock.serverTurnStatus = { kind: "streaming" } as { kind: string };
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.turnStatus).toEqual({ kind: "speaking" });
+    voiceOutputMock.speaking = false;
+  });
+
+  it("uses the live composer chatSending value instead of the stale AppContext copy", () => {
+    appMock.value.chatSending = false;
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = false;
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.responding).toBe(true);
+    expect(result.current.turnStatus).toEqual({ kind: "thinking" });
+  });
 });
 
 // ── Voice: push-to-talk routing, hands-free loop, and #5 typing-pause ────────
@@ -186,8 +641,41 @@ function installFakeCapture(): void {
 }
 
 /** Fire a final transcript through the most recent capture. */
-function fireFinalTranscript(text: string): void {
-  lastCaptureOpts?.onTranscript?.({ text, final: true, backend: "browser" });
+function fireFinalTranscript(
+  text: string,
+  extra: Partial<Parameters<NonNullable<CaptureOpts["onTranscript"]>>[0]> = {},
+): void {
+  lastCaptureOpts?.onTranscript?.({
+    text,
+    final: true,
+    backend: "browser",
+    ...extra,
+  });
+}
+
+function makeWav(nSamples: number, sampleRate = 16000): Uint8Array {
+  const dataBytes = nSamples * 2;
+  const buf = new ArrayBuffer(44 + dataBytes);
+  const view = new DataView(buf);
+  const ascii = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return new Uint8Array(buf);
 }
 
 describe("useShellController — voice capture routing", () => {
@@ -241,6 +729,99 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
       channelType: "VOICE_DM",
     });
+  });
+
+  it("a spoken 'start transcription' in converse flips into transcription mode and is not sent", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    appMock.value.sendChatText.mockClear();
+
+    act(() => fireFinalTranscript("ok start transcription"));
+    // The command flips INTO record-only transcription mode (disabling
+    // hands-free) and is NOT sent as a normal conversational turn.
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+  });
+
+  it("transcript button OFF leaves the mic ON (resumes the paused hands-free loop)", async () => {
+    const { result } = renderHook(() => useShellController());
+    // Mic on (hands-free) is the base state.
+    await act(async () => result.current.toggleHandsFree());
+    expect(result.current.handsFree).toBe(true);
+
+    // Transcript ON pauses the reply loop but the mic stays on (transcribing).
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+
+    // Transcript OFF (the transcript button) must LEAVE THE MIC ON — the
+    // hands-free loop it paused resumes; it does not kill the mic.
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(result.current.handsFree).toBe(true);
+  });
+
+  it("the mic button while transcribing turns the mic AND transcript fully off", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => result.current.toggleHandsFree());
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+
+    // stopTranscriptionAndMic is the mic button's action: mic = parent, so
+    // turning the mic off turns transcript off too — nothing resumes.
+    await act(async () => result.current.stopTranscriptionAndMic());
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(result.current.handsFree).toBe(false);
+  });
+
+  it("transcript OFF does not resume the mic when it was started from cold (no prior mic)", async () => {
+    const { result } = renderHook(() => useShellController());
+    // Enter transcription with the mic NOT already on (e.g. a server command).
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+
+    // Turning it off leaves the mic off — there was no mic loop to resume.
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(result.current.handsFree).toBe(false);
+  });
+
+  it("wake word DURING transcription sends one inline reply and KEEPS recording (#9880)", async () => {
+    const { result } = renderHook(() => useShellController());
+    // Enter transcription mode directly (record-only; replies suppressed).
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(result.current.transcriptionMode).toBe(true);
+    // Let the transcription re-listen loop open a transcription-intent capture.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    appMock.value.sendChatText.mockClear();
+
+    // A plain utterance is recorded silently — NOT sent.
+    act(() => fireFinalTranscript("the meeting starts at noon"));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+
+    // The wake phrase makes the agent reply inline (parallel chat) while
+    // transcription continues — sent as a VOICE_DM, WITHOUT transcriptionMode
+    // metadata (so the server reply gate doesn't suppress it).
+    act(() => fireFinalTranscript("hey eliza what is on my calendar"));
+    expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
+    expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe(
+      "what is on my calendar",
+    );
+    const meta = appMock.value.sendChatText.mock.calls[0]?.[1] as {
+      channelType?: string;
+      metadata?: { transcriptionMode?: boolean };
+    };
+    expect(meta?.channelType).toBe("VOICE_DM");
+    expect(meta?.metadata?.transcriptionMode).toBeUndefined();
+    // Crucially, transcription did NOT exit — recording continues.
+    expect(result.current.transcriptionMode).toBe(true);
   });
 
   it("does NOT respond to pure thinking-noise in always-on (shouldRespond gate)", async () => {
@@ -404,5 +985,181 @@ describe("useShellController — voice capture routing", () => {
     expect(
       window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
     ).toBe("vad-gated");
+  });
+});
+
+// ── Transcription mode (#8789): record-only until an exit phrase ─────────────
+
+describe("useShellController — transcription mode", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lastCaptureOpts = null;
+    captureHandles = [];
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
+    voiceOutputMock.speaking = false;
+    appMock.value.agentStatus = { ...READY_STATUS };
+    appMock.value.sendChatText.mockClear();
+    try {
+      window.localStorage.clear();
+    } catch {}
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("starts/stops transcription on a voice-control window event (agent action)", () => {
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.transcriptionMode).toBe(false);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    // Idempotent: a second "start" is a no-op.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", {
+          detail: { command: "start" },
+        }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("eliza:voice-control", { detail: { command: "stop" } }),
+      );
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+  });
+
+  /** Capture finalized recording sessions delivered to the sink. */
+  function sinkSessions(result: {
+    current: ReturnType<typeof useShellController>;
+  }) {
+    const sessions: Array<{
+      segments: Array<{ text: string }>;
+      startedAt: number;
+      audioWav: Uint8Array | null;
+    }> = [];
+    act(() =>
+      result.current.setTranscriptSessionSink((segments, startedAt, audioWav) =>
+        sessions.push({
+          segments: segments as Array<{ text: string }>,
+          startedAt,
+          audioWav,
+        }),
+      ),
+    );
+    return sessions;
+  }
+
+  it("accumulates finals into ONE recording session, not per-utterance DMs", async () => {
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    act(() => fireFinalTranscript("schedule a meeting with"));
+    act(() => fireFinalTranscript("the design team tomorrow"));
+    // No per-utterance chat bubbles, and not finalized while still recording.
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    expect(sessions).toHaveLength(0);
+
+    // Toggling off finalizes the session with both utterances as segments.
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual([
+      "schedule a meeting with",
+      "the design team tomorrow",
+    ]);
+  });
+
+  it("waits for stop-drained transcript audio before finalizing the session", async () => {
+    const capturedWav = makeWav(1600);
+    createVoiceCaptureMock.mockImplementationOnce((opts: CaptureOpts) => {
+      lastCaptureOpts = opts;
+      const handle = {
+        start: vi.fn(() => Promise.resolve()),
+        stop: vi.fn(async () => {
+          await Promise.resolve();
+          opts.onTranscript?.({
+            text: "captured note",
+            final: true,
+            backend: "local-inference",
+            audioWav: capturedWav,
+          });
+          opts.onStateChange?.("stopped");
+        }),
+        dispose: vi.fn(),
+        getAnalyser: vi.fn(() => null),
+      };
+      captureHandles.push(handle);
+      return handle as never;
+    });
+
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => {
+      await result.current.toggleTranscriptionMode();
+    });
+    await act(async () => {
+      await result.current.toggleTranscriptionMode();
+    });
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual(["captured note"]);
+    expect(sessions[0].audioWav?.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("an exit phrase finalizes the session and exits (exit utterance not recorded)", async () => {
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    act(() => fireFinalTranscript("first paragraph of my notes"));
+    act(() => fireFinalTranscript("exit transcription mode"));
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual([
+      "first paragraph of my notes",
+    ]);
+  });
+
+  it("includes the text preceding an inline exit phrase, then exits", async () => {
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    act(() => fireFinalTranscript("wrap up here stop transcription"));
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual(["wrap up here"]);
+  });
+
+  it("toggling it off stops the capture and disables hands-free", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(result.current.handsFree).toBe(false);
+
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+    expect(captureHandles[0]?.stop).toHaveBeenCalled();
   });
 });

@@ -1,3 +1,4 @@
+import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { ComponentType } from "react";
 
 export type AppShellPageLoader = () => Promise<{
@@ -23,8 +24,16 @@ export interface AppShellPageRegistration {
   path: string;
   /** Sort priority within the nav (lower = first). Default 100. */
   order?: number;
-  /** When true, only visible when Developer Mode is enabled in Settings. */
+  /**
+   * When true, only visible when Developer Mode is enabled in Settings.
+   * Equivalent to `viewKind: "developer"`.
+   */
   developerOnly?: boolean;
+  /**
+   * Four-tier visibility category. Supersedes `developerOnly` when set.
+   * See {@link ViewKind}.
+   */
+  viewKind?: ViewKind;
   /** Optional named group the tab belongs to. */
   group?: string;
   /**
@@ -33,6 +42,8 @@ export interface AppShellPageRegistration {
    * orchestrator workbench.
    */
   fullBleed?: boolean;
+  /** Screen background policy for this page. Defaults to `"opaque"`. */
+  backgroundPolicy?: AppShellBackgroundPolicy;
   /**
    * The React component the shell mounts when this page is active.
    * Prefer `loader` for heavy pages so boot only pays metadata cost.

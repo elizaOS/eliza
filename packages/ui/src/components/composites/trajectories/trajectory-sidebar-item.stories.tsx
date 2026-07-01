@@ -74,9 +74,9 @@ export const Streaming: Story = {
   args: {
     title: "Drafting reply to Alex",
     statusLabel: "streaming",
-    statusColor: "#3b82f6",
+    statusColor: "#f97316",
     sourceLabel: "google",
-    sourceColor: "#4285f4",
+    sourceColor: "#f59e0b",
     tokenLabel: "—",
     durationLabel: "live",
     callCount: 21,

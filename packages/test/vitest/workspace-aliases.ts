@@ -51,6 +51,17 @@ function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * vite/rollup `resolve.alias` replacements must be POSIX, forward-slash paths.
+ * `path.join` yields backslash paths on Windows (e.g. `C:\src\local-inference`),
+ * which vite fails to resolve — surfacing as "Cannot find package
+ * '@elizaos/<pkg>/<subpath>'". Normalize at the point each replacement is built.
+ * No-op on POSIX (paths have no backslashes), so Linux/macOS behavior is identical.
+ */
+function toPosix(targetPath: string): string {
+  return targetPath.split("\\").join("/");
+}
+
 function readWorkspacePackageManifest(
   packageRoot: string,
 ): WorkspacePackageManifest | null {
@@ -124,7 +135,7 @@ function getWorkspacePackageExportAliases(
             subpath.slice(2),
           )}$`,
         ),
-        replacement,
+        replacement: toPosix(replacement),
       },
     ];
   });
@@ -141,18 +152,19 @@ function getPackageSourceAliases(
     rootReplacement: string;
   },
 ): ModuleAlias[] {
+  const normalizedRoot = toPosix(rootReplacement);
   return [
     ...(includeElizaAlias
       ? [
           {
             find: `@elizaai/${packageName}`,
-            replacement: rootReplacement,
+            replacement: normalizedRoot,
           },
         ]
       : []),
     {
       find: `@elizaos/${packageName}`,
-      replacement: rootReplacement,
+      replacement: normalizedRoot,
     },
   ];
 }
@@ -184,11 +196,16 @@ export function getOptionalInstalledPackageAliases(
     );
 
     if (installedEntry) {
-      return [{ find, replacement: installedEntry }];
+      return [{ find, replacement: toPosix(installedEntry) }];
     }
 
     return options?.fallbackPath
-      ? [{ find, replacement: resolveModuleEntry(options.fallbackPath) }]
+      ? [
+          {
+            find,
+            replacement: toPosix(resolveModuleEntry(options.fallbackPath)),
+          },
+        ]
       : [];
   });
 }
@@ -267,7 +284,7 @@ export function getAgentSourceAliases(
     return [
       {
         find: /^@elizaos\/agent\/(.+)$/,
-        replacement: path.join(sourceRoot, "$1.ts"),
+        replacement: toPosix(path.join(sourceRoot, "$1.ts")),
       },
       ...getPackageSourceAliases("agent", sourceRoot, {
         includeElizaAlias: options.includeElizaAlias,
@@ -310,11 +327,13 @@ export function getAppCoreSourceAliases(
         ? [
             {
               find: /^@elizaos\/app-core\/(.+)$/,
-              replacement: path.join(sourceRoot, "$1"),
+              replacement: toPosix(path.join(sourceRoot, "$1")),
             },
             {
               find: "@elizaos/app-core",
-              replacement: resolveModuleEntry(path.join(sourceRoot, "index")),
+              replacement: toPosix(
+                resolveModuleEntry(path.join(sourceRoot, "index")),
+              ),
             },
           ]
         : []),
@@ -342,19 +361,26 @@ export function getSharedSourceAliases(
   const packageRoot = path.dirname(sourceRoot);
 
   return [
-    ...getWorkspacePackageExportAliases("shared", packageRoot),
     {
       // Subpath imports (e.g. @elizaos/shared/contracts/first-run-options) must
       // map to source files; without this the bare-string alias below
       // prefix-replaces them into "<src>/index.ts/<subpath>" -> ENOTDIR.
       // Mirrors the agent/app-core/ui subpath aliases above.
+      //
+      // This src catch-all MUST precede the export-map aliases below: those
+      // resolve subpaths to the built dist, whose ESM output emits extensionless
+      // relative imports (e.g. local-inference/device-fit.js -> "./catalog")
+      // that vitest's resolver cannot follow — so a test transitively pulling
+      // such a subpath fails to load. Source resolution sidesteps the dist; the
+      // export aliases remain as a fallback for subpaths with no 1:1 source file.
       find: /^@elizaos\/shared\/(.+)$/,
-      replacement: path.join(sourceRoot, "$1"),
+      replacement: toPosix(path.join(sourceRoot, "$1")),
     },
     ...getPackageSourceAliases("shared", sourceRoot, {
       includeElizaAlias: options.includeElizaAlias,
       rootReplacement: path.join(sourceRoot, "index.ts"),
     }),
+    ...getWorkspacePackageExportAliases("shared", packageRoot),
   ];
 }
 
@@ -371,11 +397,11 @@ export function getUiSourceAliases(
     ...getWorkspacePackageExportAliases("ui", packageRoot),
     {
       find: /^@elizaos\/ui\/api$/,
-      replacement: path.join(sourceRoot, "api", "index.ts"),
+      replacement: toPosix(path.join(sourceRoot, "api", "index.ts")),
     },
     {
       find: /^@elizaos\/ui\/(.+)$/,
-      replacement: path.join(sourceRoot, "$1"),
+      replacement: toPosix(path.join(sourceRoot, "$1")),
     },
     ...getPackageSourceAliases("ui", sourceRoot, {
       includeElizaAlias: true,

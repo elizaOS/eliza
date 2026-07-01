@@ -6,6 +6,7 @@
 
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -193,20 +194,26 @@ export function wrapActionWithLogging(
 
   return {
     ...action,
-    handler: (async (
+    handler: async (
       runtime: IAgentRuntime,
       message: Memory,
       state?: State,
       options?: HandlerOptions,
       callback?: HandlerCallback,
-    ): Promise<void> => {
+    ): Promise<ActionResult | undefined> => {
       const activeStep = await ensureTrajectoryStep(runtime);
       if (!activeStep) {
         // No trajectory context - execute without logging
         if (originalHandler) {
-          await originalHandler(runtime, message, state, options, callback);
+          return await originalHandler(
+            runtime,
+            message,
+            state,
+            options,
+            callback,
+          );
         }
-        return;
+        return undefined;
       }
 
       const { trajectoryId, logger: loggerService, stepId } = activeStep;
@@ -270,14 +277,21 @@ export function wrapActionWithLogging(
 
       // Execute action and handle both success and error cases
       if (originalHandler) {
-        await originalHandler(runtime, message, state, options, callback).then(
-          successHandler,
-          errorHandler,
-        );
-      } else {
-        successHandler();
+        return await originalHandler(
+          runtime,
+          message,
+          state,
+          options,
+          callback,
+        ).then((result) => {
+          successHandler();
+          return result;
+        }, errorHandler);
       }
-    }) as unknown as Action["handler"],
+
+      successHandler();
+      return undefined;
+    },
   };
 }
 

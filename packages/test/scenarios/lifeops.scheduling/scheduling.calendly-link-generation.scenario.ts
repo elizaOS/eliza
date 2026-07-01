@@ -36,6 +36,7 @@ function checkAgentHandledSchedulingLink(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "scheduling.calendly-link-generation",
   title: "Handles a scheduling-link request (generate or alternative)",
   domain: "lifeops.scheduling",

@@ -32,6 +32,7 @@ const EXTRAS_PATH = path.resolve(
 	"..",
 	"..",
 	"packages",
+	"research",
 	"chip",
 	"ELIZA_1_BUNDLE_EXTRAS.json",
 );
@@ -235,7 +236,7 @@ describe("WS3 imagegen publishing pipeline", () => {
 		// path can hand back a model id that has no bundle entry.
 		const extras = loadExtras();
 		const expectedTiers = [
-			"eliza-1-0_8b",
+			"eliza-1-2b",
 			"eliza-1-2b",
 			"eliza-1-4b",
 			"eliza-1-9b",
@@ -250,39 +251,20 @@ describe("WS3 imagegen publishing pipeline", () => {
 		}
 	});
 
-	it("split Z-Image defaults declare required companion assets", () => {
+	it("default imagegen tiers do not require split companion assets", () => {
 		const extras = loadExtras();
 		const failures: string[] = [];
-		for (const tierId of [
-			"eliza-1-9b",
-			"eliza-1-27b",
-			"eliza-1-27b-256k",
-		]) {
+		for (const tierId of Object.keys(extras.imagegen.perTier)) {
 			const entry = extras.imagegen.perTier[tierId]?.default;
 			const where = `imagegen.perTier.${tierId}.default`;
-			if (entry?.id !== "imagegen-z-image-turbo-q4_k_m") {
-				failures.push(`${where}: expected z-image default`);
-				continue;
+			if (entry?.id !== "imagegen-sd-1_5-q5_0") {
+				failures.push(`${where}: expected SD 1.5 default`);
 			}
-			if (entry.splitDiffusionModel !== true) {
-				failures.push(`${where}: missing splitDiffusionModel:true`);
+			if (entry?.splitDiffusionModel === true) {
+				failures.push(`${where}: default must be monolithic`);
 			}
-			const companions = entry.companionAssets ?? [];
-			const byRole = new Map(companions.map((asset) => [asset.role, asset]));
-			for (const [role, file] of [
-				["vae", "imagegen/vae/ae.safetensors"],
-				[
-					"llm",
-					"imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-				],
-			] as const) {
-				const asset = byRole.get(role);
-				if (asset?.file !== file) {
-					failures.push(`${where}: ${role} companion file missing`);
-				}
-				if (!isHttpsUrl(asset?.url)) {
-					failures.push(`${where}: ${role} companion url missing`);
-				}
+			if ((entry?.companionAssets ?? []).length > 0) {
+				failures.push(`${where}: default must not require companion assets`);
 			}
 		}
 		expect(failures, failures.join("\n")).toHaveLength(0);

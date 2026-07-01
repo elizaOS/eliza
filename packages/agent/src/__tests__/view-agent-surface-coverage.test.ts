@@ -16,27 +16,19 @@ const PLUGINS_DIR = path.resolve(here, "../../../../plugins");
 const CONVERTED_PLUGINS = [
   "plugin-wallet-ui",
   "app-model-tester",
-  "plugin-2004scape",
   "plugin-app-control",
-  "plugin-clawville",
-  "plugin-companion",
   "plugin-contacts",
-  "plugin-defense-of-the-agents",
   "plugin-facewear",
   "plugin-feed",
-  "plugin-hyperliquid-app",
-  "plugin-hyperscape",
+  "plugin-hyperliquid",
   "plugin-messages",
   "plugin-phone",
-  "plugin-polymarket-app",
-  "plugin-scape",
+  "plugin-polymarket",
   "plugin-screenshare",
-  "plugin-shopify-ui",
-  "plugin-steward-app",
+  "plugin-shopify",
   "plugin-task-coordinator",
   "plugin-training",
   "plugin-trajectory-logger",
-  "plugin-vincent",
 ] as const;
 
 /** Remaining views to convert; must stay empty for the ratchet to pass. */
@@ -117,7 +109,6 @@ const CONVERTED_SHELL_PAGES = [
   "pages/HeartbeatsView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
-  "pages/ViewCatalog",
 ] as const;
 
 /**
@@ -149,7 +140,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "settings/AppsManagementSection",
   "settings/DesktopWorkspaceSection",
   "settings/LoadContentPackForm",
-  "settings/PolicyControlsView",
   "settings/RemotePluginHostSection",
   "settings/SecuritySettingsSection",
   "settings/VaultInventoryPanel",
@@ -160,7 +150,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "settings/VoiceProfileSection",
   "settings/VoiceSection",
   "settings/WalletKeysSection",
-  "settings/XRSettingsSection",
 ] as const;
 
 function isAgentControllable(pageFile: string): boolean {

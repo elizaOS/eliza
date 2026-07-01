@@ -62,7 +62,11 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { ensureZigDrivers, probeZig } from "./compile-libllama.mjs";
+import {
+  assertZigPinForTargets,
+  ensureZigDrivers,
+  probeZig,
+} from "./compile-libllama.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -329,6 +333,22 @@ export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const zigVersion = probeZig();
   console.log(`[compile-shim] Found zig ${zigVersion}`);
+  // Same aarch64/x86_64 `*-linux-musl` lld link as compile-libllama — pin the
+  // zig 0.13.x series so a 0.16 toolchain's lld doesn't SIGSEGV the link.
+  assertZigPinForTargets({
+    version: zigVersion,
+    zigTriples: args.abis.map((abi) => {
+      const target = SHIM_ABI_TARGETS.find((t) => t.androidAbi === abi);
+      if (!target) {
+        throw new Error(
+          `[compile-shim] unknown ABI ${abi}; expected one of ${SHIM_ABI_TARGETS.map(
+            (t) => t.androidAbi,
+          ).join(", ")}.`,
+        );
+      }
+      return target.zigTarget;
+    }),
+  });
 
   for (const abi of args.abis) {
     if (args.skipIfPresent) {

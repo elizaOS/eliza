@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
+import { logger } from "@elizaos/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
   savePersistedActiveServer,
+  scrubPersistedActiveServerToken,
 } from "./persistence";
 import {
   applyRestoredConnection,
@@ -107,6 +109,25 @@ describe("Cloud active server persistence", () => {
     ).toBe(false);
   });
 
+  it("restores a Cloud session with a recoverable agent id even when the apiBase is missing", () => {
+    // backfillCloudApiBase recovers the runtime base from `cloud:<agentId>`, so
+    // a returning user is not forced back through onboarding just because the
+    // persisted base was absent. Only an id-less / URL-as-id session is dropped.
+    expect(
+      canRestoreActiveServer({
+        server: {
+          id: "cloud:agent-123",
+          kind: "cloud",
+          label: "Demo Agent",
+          accessToken: "cloud-token",
+        },
+        clientApiAvailable: true,
+        forceLocal: false,
+        isDesktop: false,
+      }),
+    ).toBe(true);
+  });
+
   it("preserves the injected desktop API base when restoring a local session", async () => {
     elizaWindow.__ELIZA_API_BASE__ = "http://127.0.0.1:31337";
     const setBaseUrl = vi.fn();
@@ -128,6 +149,36 @@ describe("Cloud active server persistence", () => {
     expect(startLocalRuntime).toHaveBeenCalledTimes(1);
   });
 
+  it("scrubs the at-rest access token on sign-out but keeps the server selection", () => {
+    savePersistedActiveServer(
+      createPersistedActiveServer({
+        kind: "cloud",
+        id: "cloud:agent-1",
+        label: "Demo Agent",
+        apiBase: "https://agent-runtime.example.test/",
+        accessToken: "jwt-to-scrub",
+      }),
+    );
+
+    scrubPersistedActiveServerToken();
+
+    const after = loadPersistedActiveServer();
+    expect(after?.accessToken).toBeUndefined();
+    expect(after).toEqual(
+      expect.objectContaining({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Demo Agent",
+        apiBase: "https://agent-runtime.example.test",
+      }),
+    );
+  });
+
+  it("scrubbing the token is a safe no-op when nothing is persisted", () => {
+    expect(() => scrubPersistedActiveServerToken()).not.toThrow();
+    expect(loadPersistedActiveServer()).toBeNull();
+  });
+
   it("rewrites persisted iOS loopback local agents to the IPC identity", () => {
     expect(
       reconcileMobileRestoredActiveServer({
@@ -146,5 +197,35 @@ describe("Cloud active server persistence", () => {
       label: "On-device agent",
       apiBase: "eliza-local-agent://ipc",
     });
+  });
+
+  it("logs a warning instead of silently swallowing a failed active-server persist", () => {
+    const server = createPersistedActiveServer({
+      id: "cloud:agent-warn",
+      kind: "cloud",
+      label: "Demo Agent",
+      apiBase: "https://agent-runtime.example.test",
+      accessToken: "cloud-token",
+    });
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("quota exceeded", "QuotaExceededError");
+      });
+
+    try {
+      // A failed persist must not throw (callers treat it as best-effort) but
+      // must surface a diagnostic — previously this was swallowed silently, so
+      // a lost freshly-recovered apiBase re-triggered backfill on every boot.
+      expect(() => savePersistedActiveServer(server)).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]?.[0]).toMatch(
+        /\[persistence\] failed to save active server/,
+      );
+    } finally {
+      setItemSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });

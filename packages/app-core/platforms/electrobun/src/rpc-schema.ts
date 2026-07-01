@@ -481,14 +481,6 @@ export interface WatchStatus {
   eventCount: number;
 }
 
-// -- Floating Chat Window --
-export interface FloatingChatStatus {
-  open: boolean;
-  visible: boolean;
-  contextId: string | null;
-  bounds: WindowBounds | null;
-}
-
 // -- TalkMode --
 export type TalkModeState =
   | "idle"
@@ -2006,6 +1998,18 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: { listening: boolean };
       };
+      // Fused on-device wake (#10351): start/stop the native libwakeword head
+      // detector in the main process. `started:false` (with a reason) when the
+      // model is not staged — the renderer keeps the Swabble fallback.
+      fusedWakeStart: {
+        params: { head?: string; threshold?: number } | undefined;
+        response: { started: boolean; reason?: string };
+      };
+      fusedWakeStop: { params: undefined; response: undefined };
+      fusedWakeIsListening: {
+        params: undefined;
+        response: { listening: boolean };
+      };
       swabbleGetConfig: {
         params: undefined;
         response: Record<string, unknown>;
@@ -2181,32 +2185,6 @@ export type ElizaDesktopRPCSchema = {
         response: WatchStatus | null;
       };
 
-      // ---- Floating Chat Window ----
-      floatingChatOpen: {
-        params: { contextId?: string; x?: number; y?: number };
-        response: FloatingChatStatus;
-      };
-      floatingChatShow: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-      floatingChatHide: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-      floatingChatClose: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-      floatingChatSetContext: {
-        params: { contextId: string | null };
-        response: FloatingChatStatus;
-      };
-      floatingChatGetStatus: {
-        params: undefined;
-        response: FloatingChatStatus;
-      };
-
       // ---- Steward Sidecar ----
       stewardGetStatus: {
         params: undefined;
@@ -2347,6 +2325,12 @@ export type ElizaDesktopRPCSchema = {
       // Swabble: audio chunk fallback (native ASR unavailable)
       swabbleAudioChunkPush: { data: string };
 
+      // Fused on-device wake (#10351): the native libwakeword head fired in the
+      // main process. The renderer forwards this to the `eliza:fused-wake`
+      // bridge → useWakeController → the bottom bar.
+      voiceFusedWake: { stage: "head-fired"; confidence?: number };
+      voiceFusedWakeState: { listening: boolean };
+
       // Context menu push events (Bun pushes to renderer after processing)
       contextMenuAskAgent: { text: string };
       contextMenuCreateSkill: { text: string };
@@ -2359,11 +2343,12 @@ export type ElizaDesktopRPCSchema = {
       // Editor bridge push events
       editorSessionChanged: EditorSession | null;
 
-      // Floating chat push events
-      floatingChatStatusChanged: FloatingChatStatus;
-
       // API Base injection
-      apiBaseUpdate: { base: string; token?: string };
+      apiBaseUpdate: {
+        base: string;
+        token?: string;
+        externalApiBase?: string | null;
+      };
 
       // Share target
       shareTargetReceived: { url: string; text?: string };
@@ -2662,6 +2647,9 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "swabble:start": "swabbleStart",
   "swabble:stop": "swabbleStop",
   "swabble:isListening": "swabbleIsListening",
+  "fusedWake:start": "fusedWakeStart",
+  "fusedWake:stop": "fusedWakeStop",
+  "fusedWake:isListening": "fusedWakeIsListening",
   "swabble:getConfig": "swabbleGetConfig",
   "swabble:updateConfig": "swabbleUpdateConfig",
   "swabble:audioChunk": "swabbleAudioChunk",
@@ -2727,14 +2715,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "fileWatcher:stopAll": "fileWatcherStopAll",
   "fileWatcher:list": "fileWatcherList",
   "fileWatcher:getStatus": "fileWatcherGetStatus",
-
-  // Floating Chat Window
-  "floatingChat:open": "floatingChatOpen",
-  "floatingChat:show": "floatingChatShow",
-  "floatingChat:hide": "floatingChatHide",
-  "floatingChat:close": "floatingChatClose",
-  "floatingChat:setContext": "floatingChatSetContext",
-  "floatingChat:getStatus": "floatingChatGetStatus",
 };
 
 /**
@@ -2769,6 +2749,8 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "swabble:transcript": "swabbleTranscript",
   "swabble:error": "swabbleError",
   "swabble:audioChunkPush": "swabbleAudioChunkPush",
+  "voice:fusedWake": "voiceFusedWake",
+  "voice:fusedWakeState": "voiceFusedWakeState",
   "contextMenu:askAgent": "contextMenuAskAgent",
   "contextMenu:createSkill": "contextMenuCreateSkill",
   "contextMenu:quoteInChat": "contextMenuQuoteInChat",
@@ -2793,9 +2775,6 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
 
   // Editor bridge
   "editorBridge:sessionChanged": "editorSessionChanged",
-
-  // Floating chat
-  "floatingChat:statusChanged": "floatingChatStatusChanged",
 };
 
 /**

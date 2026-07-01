@@ -4,9 +4,16 @@ Trusted Execution Environment (TEE) integration plugin for elizaOS. Adds secure 
 
 ## What it does
 
-- **Remote attestation** — generates a verifiable TDX quote proving an agent is executing inside a real TEE (Phala Network / dstack).
-- **Key derivation** — deterministically derives Ed25519 (Solana) and ECDSA (EVM) keypairs from a secret salt inside the TEE, with per-derivation attestation.
+- **Remote attestation** — a `phala-remote-attestation` **provider** that generates a TDX quote over the current message payload (Phala Network / dstack). This is a context provider, **not** an action; the plugin registers no actions (`PhalaVendor.getActions()` returns `[]`).
+- **Key derivation** — a `phala-derive-key` **provider** plus the `TEEService`: deterministically derives Ed25519 (Solana) and ECDSA (EVM) keypairs from a secret salt, with per-derivation attestation.
 - **TEEService** — a runtime service (`ServiceType.TEE`) that other plugins can call to derive keys without going through providers.
+
+> This plugin exposes **providers + a service only — no actions**. An earlier
+> revision of this README implied a `REMOTE_ATTESTATION` action; there is no such
+> action. The attestation surface is the `phala-remote-attestation` provider above.
+> The provider-neutral evidence/policy/key-release trust contract used by the
+> agent boot path lives separately in `packages/agent/src/services/tee-*`
+> (`tee-evidence.ts` + `evaluateTeeEvidencePolicy`), not in this plugin.
 
 ## Quick start
 

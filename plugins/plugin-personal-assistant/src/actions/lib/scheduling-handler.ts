@@ -31,10 +31,12 @@ import {
   recentConversationTexts as collectRecentConversationTexts,
   ModelType,
   parseJsonModelRecord,
+  resolveOptimizedPromptForRuntime,
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
+import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
 import {
   type LifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferencesBlackout,
@@ -43,7 +45,6 @@ import {
   readLifeOpsMeetingPreferences,
   updateLifeOpsMeetingPreferences,
 } from "../../lifeops/owner-profile.js";
-import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
 import {
@@ -51,11 +52,17 @@ import {
   renderLifeOpsActionReply,
 } from "../../lifeops/voice/grounded-reply.js";
 
+export { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
+
 const MS_PER_MINUTE = 60_000;
 const MAX_DAYS_LOOKAHEAD = 60;
 const DEFAULT_DAYS_LOOKAHEAD = 7;
 const DEFAULT_SLOTS_COUNT = 3;
 const SLOT_STEP_MINUTES = 15;
+
+async function loadLifeOpsServiceModule() {
+  return import("../../lifeops/service.js");
+}
 
 export type ProposedMeetingSlot = {
   startAt: string;
@@ -513,6 +520,8 @@ export async function runProposeMeetingTimesHandler(
     explicitEnd ??
     new Date(windowStart.getTime() + daysAhead * 24 * 60 * 60_000);
 
+  const { LifeOpsService, LifeOpsServiceError } =
+    await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
   let events: readonly LifeOpsCalendarEvent[] = [];
   try {
@@ -627,6 +636,8 @@ export async function runCheckAvailabilityHandler(
   }
 
   const preferences = await readLifeOpsMeetingPreferences(runtime);
+  const { LifeOpsService, LifeOpsServiceError } =
+    await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
   let events: readonly LifeOpsCalendarEvent[] = [];
   try {
@@ -774,7 +785,7 @@ type SchedulingSubaction =
   | "list_active"
   | "list_proposals";
 
-type SchedulingActionParameters = {
+export type SchedulingActionParameters = {
   subaction?: SchedulingSubaction;
   intent?: string;
   negotiationId?: string;
@@ -842,6 +853,30 @@ function normalizePlannerResponse(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+export function buildSchedulingPlanPrompt(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  params: SchedulingActionParameters;
+  recentConversation: string;
+}): string {
+  const instructions = resolveOptimizedPromptForRuntime(
+    args.runtime,
+    "schedule_plan",
+    SCHEDULE_PLAN_INSTRUCTIONS,
+  );
+  return [
+    instructions,
+    "",
+    `Current request:\n${args.currentMessage}`,
+    `Resolved intent:\n${args.intent}`,
+    `Structured parameters:\n${Object.entries(args.params)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join("\n")}`,
+    `Recent conversation:\n${args.recentConversation}`,
+  ].join("\n");
+}
+
 async function resolveSchedulingPlanWithLlm(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -861,39 +896,17 @@ async function resolveSchedulingPlanWithLlm(args: {
     typeof args.message.content.text === "string"
       ? args.message.content.text
       : "";
-  const prompt = [
-    "Plan the scheduling negotiation action for this request.",
-    "The user may speak in any language.",
-    "Use the current request, the structured parameters, and recent conversation context.",
-    "Return JSON only as a single object with exactly these fields:",
-    "  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null",
-    "  shouldAct: boolean",
-    "  response: short natural-language reply when shouldAct is false or clarification is needed",
-    "",
-    "Use start when beginning a new negotiation.",
-    "Use propose when submitting a concrete proposed slot for an existing negotiation.",
-    "Use respond when recording accepted, declined, or expired against a proposal.",
-    "Use finalize when confirming the winning proposal.",
-    "Use cancel when stopping an active negotiation.",
-    "Use list_active for listing negotiations.",
-    "Use list_proposals for listing proposals in one negotiation.",
-    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.",
-    "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
-    "",
-    'Example: {"subaction":"start","shouldAct":true,"response":null}',
-    'Example clarification: {"subaction":null,"shouldAct":false,"response":"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?"}',
-    "",
-    `Current request:\n${currentMessage}`,
-    `Resolved intent:\n${args.intent}`,
-    `Structured parameters:\n${Object.entries(args.params)
-      .map(([key, value]) => `${key}: ${String(value)}`)
-      .join("\n")}`,
-    `Recent conversation:\n${recentConversation}`,
-  ].join("\n");
+  const prompt = buildSchedulingPlanPrompt({
+    runtime: args.runtime,
+    currentMessage,
+    intent: args.intent,
+    params: args.params,
+    recentConversation,
+  });
 
   try {
     const result = await runWithTrajectoryContext(
-      { purpose: "lifeops-scheduling-handler" },
+      { purpose: "schedule_plan" },
       () =>
         args.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,
@@ -1014,6 +1027,8 @@ export async function runSchedulingNegotiationHandler(
     });
   }
 
+  const { LifeOpsService, LifeOpsServiceError } =
+    await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
   try {
     if (subaction === "start") {

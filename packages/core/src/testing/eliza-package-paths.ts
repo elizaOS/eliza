@@ -24,10 +24,6 @@ function getRepoLocalWorkspaceRoot(
 			"../eliza/packages/app-core",
 		],
 		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
-		"@elizaos/plugin-companion": [
-			"eliza/plugins/plugin-companion",
-			"../eliza/plugins/plugin-companion",
-		],
 	};
 
 	for (const relativeRoot of relativeRoots[packageName] ?? []) {

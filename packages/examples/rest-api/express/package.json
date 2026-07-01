@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-openrouter": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
     "express": "^4.21.0",
     "uuid": "^14.0.0"
   },

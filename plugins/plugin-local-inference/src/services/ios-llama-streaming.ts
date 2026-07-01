@@ -141,7 +141,7 @@ interface CapacitorWindow {
 }
 
 function tryGetCapacitorPlugin(): CapacitorLlamaStreamingPlugin | null {
-	const w = globalThis as unknown as CapacitorWindow;
+	const w = globalThis as CapacitorWindow;
 	const plugin = w.Capacitor?.Plugins?.LlamaStreaming;
 	if (!plugin) return null;
 	if (

@@ -23,4 +23,4 @@ for DIR in $PATH; do
 done
 unset IFS
 
-exec bunx opencode "$@"
+exec bunx opencode-ai "$@"

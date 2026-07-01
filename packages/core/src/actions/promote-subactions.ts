@@ -125,9 +125,9 @@ function findDiscriminatorParameter(
  * already implies which subaction it dispatches. The model sees
  * `TASKS_SPAWN_AGENT(action: enum[14 values], task, agentType, ...)` and
  * is asked to set `action` to a value — but `action` is meant to be
- * implicit from the virtual name. With weaker LLMs (Cerebras-hosted
- * gpt-oss / qwen-instruct, native function-calling planners that have to
- * fill structured args), this is the dominant cause of "TASKS umbrella
+ * implicit from the virtual name. With weaker LLMs (hosted small instruct
+ * models, native function-calling planners that have to fill structured args),
+ * this is the dominant cause of "TASKS umbrella
  * called with no sub-action" retry loops: the model picks the parent
  * because the virtual's schema looks more complex than the parent's.
  *

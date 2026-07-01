@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { compressPromptDescription } from "../src/prompt-compression.ts";
 import { ensureDirectory, readJson } from "./file-utils.js";
-import { compressPromptDescription } from "./prompt-compression.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

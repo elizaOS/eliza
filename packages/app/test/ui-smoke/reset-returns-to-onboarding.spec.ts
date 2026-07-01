@@ -88,15 +88,14 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   // The reset actually fires against the server...
   await resetRequest;
 
-  // ...and the renderer returns to the pre-agent first-run onboarding surface
-  // (App.tsx gates this on `!firstRunComplete`, which the local wipe sets).
-  await expect(
-    page
-      .getByTestId("onboarding-toast")
-      .or(page.getByTestId("first-run-shell"))
-      .or(page.getByRole("form", { name: "Bootstrap token entry" })),
-  ).toBeVisible({
+  // ...and the renderer returns to the pre-agent first-run chooser.
+  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("first-run-runtime-chooser")).toBeVisible({
     timeout: 20_000,
+  });
+  await expect(page.getByTestId("first-run-chooser-cloud")).toBeVisible({
+    timeout: 15_000,
   });
 });
 

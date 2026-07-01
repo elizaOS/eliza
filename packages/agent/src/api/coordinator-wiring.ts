@@ -37,13 +37,7 @@ const RETRY_DELAY_MS = 500;
 const MAX_RETRIES = 5;
 
 function discoverCoordinator(runtime: AgentRuntime): unknown | null {
-  const coordinator = runtime.getService("SWARM_COORDINATOR");
-  if (coordinator) return coordinator;
-
-  const ptyService = runtime.getService("PTY_SERVICE") as {
-    coordinator?: unknown;
-  } | null;
-  return ptyService?.coordinator ?? null;
+  return runtime.getService("SWARM_COORDINATOR") ?? null;
 }
 
 /**
@@ -51,8 +45,8 @@ function discoverCoordinator(runtime: AgentRuntime): unknown | null {
  *
  * 1. Attempts immediate wiring (coordinator may already be available).
  * 2. If any bridge fails, polls for the coordinator via `runtime.getService()`.
- *    Depending on the installed coding-agent plugin, this may be exposed as a
- *    `SWARM_COORDINATOR` service or as `PTY_SERVICE.coordinator`.
+ *    Depending on the installed coding-agent plugin, this is exposed as a
+ *    `SWARM_COORDINATOR` service.
  * 3. Once the service appears, retries failed bridges up to MAX_RETRIES.
  * 4. On timeout or exhaustion, broadcasts a system-warning WS event.
  *

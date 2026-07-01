@@ -68,7 +68,16 @@ function now(): number {
 		: Number(process.hrtime.bigint() / 1_000_000n);
 }
 
-/** Word error rate via token Levenshtein (lowercased, punctuation-stripped). */
+/**
+ * Word error rate via token Levenshtein (lowercased, punctuation-stripped).
+ *
+ * Intentionally ASCII-only: the normalizer collapses everything outside
+ * `[a-z0-9]` to whitespace, so apostrophes and non-ASCII letters are dropped.
+ * That is fine here because the grind self-test compares against a fixed ASCII
+ * English phrase (`GRIND_PHRASE`). The canonical, Unicode-aware WER used
+ * elsewhere lives in `@elizaos/shared/voice-wer`; this local copy stays
+ * dependency-free so the mobile bridge bundle does not pull in `@elizaos/shared`.
+ */
 export function wordErrorRate(reference: string, hypothesis: string): number {
 	const norm = (s: string): string[] =>
 		s
@@ -229,12 +238,13 @@ export async function runModelGrind(
 				"llama_generate",
 				{
 					context_id: contextId,
-					prompt: "User: Say hello in one short sentence.\nAssistant:",
+					prompt:
+						"<start_of_turn>user\nSay hello in one short sentence.<end_of_turn>\n<start_of_turn>model\n",
 					max_tokens: 48,
 					temperature: 0.7,
 					top_p: 0.9,
 					top_k: 40,
-					stop: ["<|im_end|>", "<|endoftext|>", "\nUser:"],
+					stop: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
 				},
 				120_000,
 			)) as Record<string, unknown>;

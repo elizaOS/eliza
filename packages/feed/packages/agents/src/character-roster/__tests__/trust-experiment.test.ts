@@ -42,7 +42,7 @@ describe("trust experiment matrix", () => {
       modelSizes: ["0.5b"],
     });
 
-    expect(agent.sheet.settings.model).toBe("Qwen/Qwen2.5-0.5B-Instruct");
+    expect(agent.sheet.settings.model).toBe("google/gemma-4-E2B-it");
     expect(agent.sheet.settings.groq.primary).toBe("llama-3.1-8b-instant");
     expect(agent.sheet.feed.datasetTags).toContain(
       "runtime_model:llama-3.1-8b-instant",

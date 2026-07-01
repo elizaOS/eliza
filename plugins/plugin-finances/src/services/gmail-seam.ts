@@ -188,28 +188,29 @@ async function resolveGoogleConnectorAccount(args: {
 
 function requireGoogleWorkspaceService(
   runtime: IAgentRuntime,
-): IGoogleWorkspaceService {
+): Record<string, unknown> {
   const service = runtime.getService("google");
-  if (!service || typeof service !== "object") {
+  if (!isRecord(service)) {
     fail(
       503,
       "Google Workspace service is not registered. Enable @elizaos/plugin-google before scanning Gmail for subscriptions.",
     );
   }
-  return service as unknown as IGoogleWorkspaceService;
+  return service;
 }
 
 function requireSearchMessages(
   runtime: IAgentRuntime,
 ): IGoogleWorkspaceService["searchMessages"] {
   const service = requireGoogleWorkspaceService(runtime);
-  if (typeof service.searchMessages !== "function") {
+  const searchMessages = service.searchMessages;
+  if (typeof searchMessages !== "function") {
     fail(
       501,
       "@elizaos/plugin-google does not expose searchMessages for subscription discovery.",
     );
   }
-  return service.searchMessages.bind(
+  return searchMessages.bind(
     service,
   ) as IGoogleWorkspaceService["searchMessages"];
 }

@@ -27,9 +27,9 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  createPendingPromptsStore,
   type PendingPrompt,
   type PendingPromptsStore,
+  resolvePendingPromptsStore,
 } from "../lifeops/pending-prompts/store.js";
 
 export type { PendingPrompt };
@@ -79,7 +79,7 @@ export function renderPendingPromptsText(prompts: PendingPrompt[]): string {
 export function createPendingPromptsProvider(
   runtime: IAgentRuntime,
 ): PendingPromptsProvider {
-  const store: PendingPromptsStore = createPendingPromptsStore(runtime);
+  const store: PendingPromptsStore = resolvePendingPromptsStore(runtime);
   return {
     list: (roomId: string, opts) => store.list(roomId, opts),
   };
@@ -111,7 +111,7 @@ export const pendingPromptsProvider: Provider = {
 
     let store: PendingPromptsStore;
     try {
-      store = createPendingPromptsStore(runtime);
+      store = resolvePendingPromptsStore(runtime);
     } catch (error) {
       logger.debug(
         "[pending-prompts-provider] store unavailable:",

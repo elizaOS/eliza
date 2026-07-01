@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-openrouter": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-eliza-classic": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "elysia": "^1.1.0",
     "@elysiajs/cors": "^1.1.0",

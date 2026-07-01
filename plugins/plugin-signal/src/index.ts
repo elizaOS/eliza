@@ -135,6 +135,11 @@ export {
   createSignalConnectorAccountProvider,
   SIGNAL_PROVIDER_ID,
 } from "./connector-account-provider";
+export {
+  readSignalInboundMessages,
+  readSignalLocalClientConfigFromEnv,
+  type SignalLocalClientConfig,
+} from "./local-client";
 // Pairing service (device linking via QR code / signal-cli)
 export {
   classifySignalPairingErrorStatus,
@@ -209,8 +214,3 @@ export {
   SignalPluginError,
   SignalServiceNotInitializedError,
 } from "./types";
-export {
-  readSignalInboundMessages,
-  readSignalLocalClientConfigFromEnv,
-  type SignalLocalClientConfig,
-} from "./local-client";

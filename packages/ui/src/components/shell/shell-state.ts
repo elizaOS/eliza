@@ -1,4 +1,8 @@
-import type { ChatFailureKind, MessageAttachment } from "../../api";
+import type {
+  ChatFailureKind,
+  ConversationSecretRequest,
+  MessageAttachment,
+} from "../../api";
 
 /**
  * Shell phase for the device-shell foundation (HomePill + AssistantOverlay +
@@ -28,4 +32,39 @@ export interface ShellMessage {
   reasoning?: string;
   /** Media attached to this turn — user uploads and agent-generated media. */
   attachments?: MessageAttachment[];
+  /** Pending secret / OAuth request (rendered as an actionable block). */
+  secretRequest?: ConversationSecretRequest;
+  /**
+   * Short topic labels for this turn (Stage-1 `topics`). Drives the transcript
+   * topic grouping + chips bar (#8928). Absent when the turn had no topic.
+   */
+  topics?: string[];
+}
+
+/**
+ * Max chat turns actually rendered in the shell transcript. Older turns stay in
+ * state (the agent's context is untouched) — this only bounds DOM nodes so a
+ * long thread can't jank scrolling, without pulling in a virtualizer. Gap 4 of
+ * #9141 (transcript windowing) builds on this seam.
+ */
+export const MAX_RENDERED_SHELL_MESSAGES = 80;
+
+/**
+ * Pure transcript-windowing decision (#9141 gap 4 seam). Drops empty turns —
+ * EXCEPT the in-flight assistant turn while a reply is streaming (phase ===
+ * "responding"), so its bubble can show the breathing dots anchored where the
+ * text will fill in — then keeps only the most recent `max` turns to bound DOM
+ * nodes. Pure + DOM-free so the cap + streaming-turn exception are unit-testable
+ * and any future virtualizer can reuse the same predicate.
+ */
+export function selectVisibleShellMessages(
+  messages: readonly ShellMessage[],
+  phase: ShellPhase,
+  max: number = MAX_RENDERED_SHELL_MESSAGES,
+): ShellMessage[] {
+  const kept = messages.filter(
+    (m) =>
+      m.content.trim() || (m.role === "assistant" && phase === "responding"),
+  );
+  return max > 0 && kept.length > max ? kept.slice(-max) : [...kept];
 }

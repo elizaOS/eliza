@@ -84,9 +84,8 @@ export class ScreenSpotAdapter implements BenchmarkAdapter<ScreenSpotPayload> {
     // Region predictions (some grounders return [x1,y1,x2,y2]) — fall back
     // to IoU. The runner does not currently emit these but the shape stays
     // open so future grounders can plug in without changing the scorer.
-    const maybeBox = (prediction as unknown as { bbox?: unknown }).bbox;
-    if (Array.isArray(maybeBox) && maybeBox.length === 4) {
-      const predBox = maybeBox as unknown as BBox;
+    const predBox = parseBBox(prediction.bbox);
+    if (predBox) {
       const score = iouHit(predBox, sample.payload.bbox);
       return {
         score,
@@ -101,6 +100,24 @@ export class ScreenSpotAdapter implements BenchmarkAdapter<ScreenSpotPayload> {
       detail: { reason: "no click or bbox in prediction" },
     };
   }
+}
+
+function parseBBox(value: unknown): BBox | null {
+  if (!Array.isArray(value) || value.length !== 4) return null;
+  const [x1, y1, x2, y2] = value;
+  if (
+    typeof x1 !== "number" ||
+    typeof y1 !== "number" ||
+    typeof x2 !== "number" ||
+    typeof y2 !== "number" ||
+    !Number.isFinite(x1) ||
+    !Number.isFinite(y1) ||
+    !Number.isFinite(x2) ||
+    !Number.isFinite(y2)
+  ) {
+    return null;
+  }
+  return [x1, y1, x2, y2];
 }
 
 export async function predictScreenSpot(

@@ -15,37 +15,6 @@ import {
 import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 
 const DOWNLOAD_MUSIC_CONTEXTS = ["media", "files"] as const;
-const DOWNLOAD_MUSIC_KEYWORDS = [
-  "download",
-  "fetch",
-  "save",
-  "grab",
-  "music",
-  "song",
-  "track",
-  "album",
-  "library",
-  "descargar",
-  "guardar",
-  "música",
-  "canción",
-  "télécharger",
-  "musique",
-  "chanson",
-  "herunterladen",
-  "speichern",
-  "musik",
-  "lied",
-  "scaricare",
-  "salvare",
-  "baixar",
-  "下载",
-  "音乐",
-  "保存",
-  "ダウンロード",
-  "音楽",
-] as const;
-
 function hasDownloadMusicContext(message: Memory, state?: State): boolean {
   const active = new Set(
     getActiveRoutingContextsForTurn(state, message).map((context) =>
@@ -67,28 +36,11 @@ function hasDownloadMusicContext(message: Memory, state?: State): boolean {
   return DOWNLOAD_MUSIC_CONTEXTS.some((context) => active.has(context));
 }
 
-function hasDownloadMusicIntent(message: Memory, state?: State): boolean {
-  const text = [
-    typeof message.content.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string"
-      ? state.values.recentMessages
-      : "",
-  ]
-    .join("\n")
-    .toLowerCase();
-  return DOWNLOAD_MUSIC_KEYWORDS.some((keyword) =>
-    text.includes(keyword.toLowerCase()),
-  );
-}
-
-function readDownloadQuery(
-  message: Memory,
-  options?: Record<string, unknown>,
-): string {
+function readDownloadQuery(options?: Record<string, unknown>): string {
   const maxQueryLength = 200;
   const direct = readDirectDownloadQuery(options);
   if (direct) return direct.slice(0, maxQueryLength);
-  return (message.content.text || "").trim().slice(0, maxQueryLength);
+  return "";
 }
 
 function readDirectDownloadQuery(
@@ -119,8 +71,7 @@ export async function validateDownloadMusic(
 ): Promise<boolean> {
   return (
     (readDirectDownloadQuery(options)?.length ?? 0) >= 3 ||
-    hasDownloadMusicContext(message, state) ||
-    hasDownloadMusicIntent(message, state)
+    hasDownloadMusicContext(message, state)
   );
 }
 
@@ -134,7 +85,7 @@ export async function handleDownloadMusic(
   if (!callback) return { success: false, error: "Missing callback" };
 
   const timeoutMs = 120_000;
-  const query = readDownloadQuery(message, options);
+  const query = readDownloadQuery(options);
 
   if (!query || query.length < 3) {
     await callback({

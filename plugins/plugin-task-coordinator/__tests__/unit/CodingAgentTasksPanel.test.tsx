@@ -29,6 +29,18 @@ const getCodingAgentTaskThread = vi.fn();
 const archiveCodingAgentTaskThread = vi.fn();
 const reopenCodingAgentTaskThread = vi.fn();
 
+// Shared mock app value so the legacy `useApp()` API and the per-slice
+// `useAppSelector` / `useAppSelectorShallow` selectors all read the same fields.
+const mockAppValue = vi.hoisted(() => ({
+  t: (key: string, vars?: Record<string, unknown>) => {
+    const template = String(vars?.defaultValue ?? key);
+    return template.replace(/\{\{(\w+)\}\}/g, (_m: string, name: string) =>
+      vars && name in vars ? String(vars[name]) : `{{${name}}}`,
+    );
+  },
+  uiLanguage: "en-US",
+}));
+
 vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
@@ -48,17 +60,13 @@ vi.mock("@elizaos/ui", () => ({
   // render the defaultValue and interpolate `{{var}}` placeholders from `vars`
   // (this is exactly the count/preview interpolation the real catalog performs,
   // so the rendered "2 sessions" / "2 changed files: …" strings are real).
-  useApp: () => ({
-    t: (key: string, vars?: Record<string, unknown>) => {
-      const template = String(vars?.defaultValue ?? key);
-      return template.replace(/\{\{(\w+)\}\}/g, (_m, name: string) =>
-        vars && name in vars ? String(vars[name]) : `{{${name}}}`,
-      );
-    },
-    uiLanguage: "en-US",
-  }),
-  // Lightweight Button + TerminalPluginView stubs — the real ones pull a large
-  // dependency graph; the panel only needs a clickable button element.
+  useApp: () => mockAppValue,
+  useAppSelector: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(mockAppValue),
+  useAppSelectorShallow: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector(mockAppValue),
+  // Lightweight Button stub — the real one pulls a large dependency graph; the
+  // panel only needs a clickable button element.
   Button: ({
     children,
     onClick,
@@ -79,7 +87,27 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
-  TerminalPluginView: () => <div data-testid="terminal-plugin-view" />,
+  // Empty-state recommendations stub — render the title + each recommendation
+  // as a button so tests can assert the chat-seeding empty state.
+  ChatEmptyStateWithRecommendations: ({
+    title,
+    recommendations = [],
+  }: {
+    title?: string;
+    recommendations?: Array<string | { label: string }>;
+  }) => (
+    <div data-testid="task-empty-state">
+      {title ? <p>{title}</p> : null}
+      {recommendations.map((rec) => {
+        const label = typeof rec === "string" ? rec : rec.label;
+        return (
+          <button type="button" key={label}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  ),
 }));
 
 import { CodingAgentTasksPanel } from "../../src/CodingAgentTasksPanel";
@@ -360,7 +388,9 @@ describe("CodingAgentTasksPanel — list", () => {
     listCodingAgentTaskThreads.mockResolvedValue([]);
     render(<CodingAgentTasksPanel />);
     expect(await screen.findByTestId("task-empty-state")).toBeTruthy();
-    expect(screen.getByText("No coding tasks yet")).toBeTruthy();
+    expect(
+      screen.getByText("Dispatch a coding agent to fix a failing test"),
+    ).toBeTruthy();
   });
 });
 

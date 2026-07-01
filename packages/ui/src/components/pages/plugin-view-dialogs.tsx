@@ -11,14 +11,7 @@ import {
   resolveIcon,
   type TranslateFn,
 } from "./plugin-list-utils";
-
-type PluginConnectionTestResult = {
-  durationMs: number;
-  error?: string;
-  loading: boolean;
-  message?: string;
-  success: boolean;
-};
+import type { PluginConnectionTestResult } from "./plugin-view-connectors";
 
 interface PluginSettingsDialogProps {
   installPluginLabel: string;
@@ -293,7 +286,7 @@ export function PluginSettingsDialog({
                       ? "bg-ok text-ok-fg border-ok hover:bg-ok/90"
                       : testResults.get(plugin.id)?.error
                         ? "bg-danger text-danger-fg border-danger hover:bg-danger/90"
-                        : "border-border/40 bg-card/40 backdrop-blur-md hover:border-accent/40"
+                        : "border-border/40 bg-card/40 hover:border-accent/40"
                 }`}
                 disabled={testResults.get(plugin.id)?.loading}
                 onClick={() => void onTestConnection(plugin.id)}

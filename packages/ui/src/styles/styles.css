@@ -44,6 +44,7 @@ body {
   max-width: 100%;
   height: 100%;
   margin: 0;
+  background: var(--launch-bg, #ef5a1f);
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
@@ -58,20 +59,16 @@ body {
   overflow: hidden;
   font-family: var(--font-body);
   color: var(--text);
-  background: var(--bg);
+  background: var(--launch-bg, #ef5a1f);
 }
 
 html.eliza-chat-overlay-shell,
 html.eliza-chat-overlay-shell body,
-html.eliza-chat-overlay-shell #root,
-html.eliza-onboarding-overlay-shell,
-html.eliza-onboarding-overlay-shell body,
-html.eliza-onboarding-overlay-shell #root {
+html.eliza-chat-overlay-shell #root {
   background: transparent;
 }
 
-html.eliza-chat-overlay-shell #root,
-html.eliza-onboarding-overlay-shell #root {
+html.eliza-chat-overlay-shell #root {
   pointer-events: none;
 }
 
@@ -338,9 +335,13 @@ kbd {
   *::before,
   /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
   *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-    scroll-behavior: auto;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
+    scroll-behavior: auto !important;
   }
 }

@@ -12,8 +12,11 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
-const cloudApiDir = path.join(repoRoot, "packages", "cloud-api");
-const onboardingVerifier = path.join(scriptDir, "verify-cloud-sms-onboarding-flow.mjs");
+const cloudApiDir = path.join(repoRoot, "packages", "cloud", "api");
+const onboardingVerifier = path.join(
+  scriptDir,
+  "verify-cloud-sms-onboarding-flow.mjs",
+);
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -29,13 +32,19 @@ function run(command, args, options = {}) {
 }
 
 function latestWorkerVersion() {
-  const result = run("bun", ["wrangler", "versions", "list", "--env", "production"], {
-    cwd: cloudApiDir,
-  });
+  const result = run(
+    "bun",
+    ["wrangler", "versions", "list", "--env", "production"],
+    {
+      cwd: cloudApiDir,
+    },
+  );
   if (result.status !== 0) {
     return {
       ok: false,
-      detail: result.output.replace(/\s+/g, " ").trim().slice(0, 300) || "wrangler failed",
+      detail:
+        result.output.replace(/\s+/g, " ").trim().slice(0, 300) ||
+        "wrangler failed",
     };
   }
 
@@ -62,7 +71,9 @@ function main() {
   const version = latestWorkerVersion();
   const onboarding = run("node", [onboardingVerifier], { timeout: 180_000 });
   if (onboarding.status !== 0) {
-    throw new Error(onboarding.output.trim() || "cloud onboarding verifier failed");
+    throw new Error(
+      onboarding.output.trim() || "cloud onboarding verifier failed",
+    );
   }
   const summary = onboarding.output.trim().split(/\r?\n/).at(-1) ?? "";
   if (
@@ -70,7 +81,9 @@ function main() {
     !/device=\+14159611510\/bluebubbles\/blooio/.test(summary) ||
     !/registered=yes/.test(summary)
   ) {
-    throw new Error(`Cloud onboarding verifier returned unexpected summary: ${summary}`);
+    throw new Error(
+      `Cloud onboarding verifier returned unexpected summary: ${summary}`,
+    );
   }
 
   const versionText = version.ok
@@ -82,6 +95,8 @@ function main() {
 try {
   main();
 } catch (error) {
-  console.error(`[cloud-api-prod] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[cloud-api-prod] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 }

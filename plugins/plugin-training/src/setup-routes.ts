@@ -36,6 +36,17 @@ import { handleTrajectoryRoute } from "./routes/trajectory-routes.js";
 import { getActiveTrainingService } from "./services/training-service-registry.js";
 import { VastTrainingService } from "./services/training-vast-service.js";
 
+// In a terminal host (the Node agent, no DOM), register the training view so it
+// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
+// stays out of browser/mobile bundles.
+if (typeof window === "undefined") {
+  void import("./register-terminal-view.js")
+    .then((m) => m.registerFineTuningTerminalView())
+    .catch(() => {
+      // Terminal rendering is best-effort; never block plugin load.
+    });
+}
+
 const LOOPBACK_HOSTS = new Set([
   "localhost",
   "127.0.0.1",
@@ -228,6 +239,23 @@ const TRAINING_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/training/auto/runs/:runId" },
   { type: "GET", path: "/api/training/auto/config" },
   { type: "POST", path: "/api/training/auto/config" },
+  // Analysis + readiness
+  { type: "POST", path: "/api/training/analysis/index" },
+  { type: "POST", path: "/api/training/analysis/readiness" },
+  // Data collection pipeline
+  { type: "GET", path: "/api/training/collections" },
+  { type: "POST", path: "/api/training/collect" },
+  { type: "POST", path: "/api/training/feed/generate" },
+  { type: "POST", path: "/api/training/scenarios/run" },
+  { type: "POST", path: "/api/training/datasets/ingest-hf" },
+  // Evals + benchmarks
+  { type: "POST", path: "/api/training/evals/record-comparison" },
+  { type: "POST", path: "/api/training/evals/run-local-comparison" },
+  { type: "POST", path: "/api/training/benchmarks/action-selection/run" },
+  { type: "POST", path: "/api/training/benchmarks/matrix" },
+  { type: "POST", path: "/api/training/benchmarks/matrix/from-artifacts" },
+  { type: "POST", path: "/api/training/benchmarks/run-vs-cerebras" },
+  { type: "POST", path: "/api/training/models/stage-eliza1-bundle" },
   { type: "GET", path: "/api/training/trajectories" },
   { type: "GET", path: "/api/training/trajectories/:trajectoryId" },
   { type: "POST", path: "/api/training/trajectories/export" },
@@ -322,6 +350,13 @@ export const trainingPlugin: Plugin = {
     "Training jobs, datasets, models, blueprints, and trajectory routes",
   routes: trainingRoutes,
   views: [
+    // ONE declaration → GUI + XR + TUI, ONE componentExport. `FineTuningView`
+    // is an adaptive wrapper: GUI/XR render the rich `FineTuningDashboard`
+    // through the spatial `Escape` hatch, TUI falls back to the presentational
+    // `FineTuningSpatialView` — the same source the agent terminal renders
+    // directly via the spatial terminal registry (see register-terminal-view.tsx).
+    // `modalities` is a plain literal here, so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "training",
       label: "Training",
@@ -329,6 +364,7 @@ export const trainingPlugin: Plugin = {
         "Fine-tuning jobs, data collection, analysis, evals, benchmarks, trained models, and trajectory management",
       icon: "BrainCircuit",
       path: "/apps/fine-tuning",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FineTuningView",
       tags: [
@@ -341,57 +377,6 @@ export const trainingPlugin: Plugin = {
         "benchmarks",
         "analysis",
         "data-collection",
-      ],
-      developerOnly: true,
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "training",
-      label: "Training XR",
-      description:
-        "Fine-tuning jobs, data collection, analysis, evals, benchmarks, trained models, and trajectory management",
-      icon: "BrainCircuit",
-      path: "/training",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FineTuningView",
-      tags: [
-        "training",
-        "fine-tuning",
-        "models",
-        "trajectories",
-        "datasets",
-        "evals",
-        "benchmarks",
-        "analysis",
-        "data-collection",
-      ],
-      developerOnly: true,
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "training",
-      label: "Training TUI",
-      description:
-        "Terminal fine-tuning jobs, data collection, analysis, evals, benchmarks, trained models, and trajectory management",
-      icon: "BrainCircuit",
-      path: "/training/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FineTuningTuiView",
-      tags: [
-        "training",
-        "fine-tuning",
-        "models",
-        "trajectories",
-        "datasets",
-        "evals",
-        "benchmarks",
-        "analysis",
-        "data-collection",
-        "terminal",
       ],
       developerOnly: true,
       visibleInManager: true,

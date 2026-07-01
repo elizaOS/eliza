@@ -18,7 +18,7 @@ import {
   getApplicationUpdateSnapshot,
   mapAgentUpdateStatusToSnapshot,
 } from "../../services/app-updates/update-policy";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
 import {
@@ -135,7 +135,13 @@ export function ReleaseCenterView() {
   const { appUrl } = useBranding();
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
   const desktopRuntime = isElectrobunRuntime();
-  const { loadUpdateStatus, t, updateLoading, updateStatus } = useApp();
+  const { loadUpdateStatus, t, updateLoading, updateStatus } =
+    useAppSelectorShallow((s) => ({
+      loadUpdateStatus: s.loadUpdateStatus,
+      t: s.t,
+      updateLoading: s.updateLoading,
+      updateStatus: s.updateStatus,
+    }));
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -284,7 +290,7 @@ export function ReleaseCenterView() {
   const channel = nativeUpdater?.channel ?? "—";
   const lastCheckAt = appStatus?.lastCheckAt;
   const lastChecked = lastCheckAt
-    ? new Date(lastCheckAt).toLocaleString()
+    ? new Date(lastCheckAt).toLocaleString("en-US")
     : t("releasecenter.NotYet", { defaultValue: "Not yet" });
   const updaterStatus = nativeUpdater?.updateReady
     ? t("releasecenterview.UpdateReady", { defaultValue: "Update ready" })
@@ -458,13 +464,9 @@ export function ReleaseCenterView() {
   const resetUrlLabel = t("releasecenter.ResetUrl", {
     defaultValue: "Reset URL",
   });
-  const releaseDetail =
-    [
-      applicationUpdate && !desktopRuntime ? applicationUpdate.detail : null,
-      agentUpdate ? (agentUpdate.error ?? agentUpdate.detail) : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || null;
+  // Surface only a live update error here; the per-channel prose `detail`
+  // strings are explanatory copy, not functional state.
+  const releaseDetail = agentUpdate?.error ?? null;
 
   const refreshAgent = useAgentElement<HTMLButtonElement>({
     id: "updates-refresh",

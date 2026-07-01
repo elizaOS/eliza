@@ -1,12 +1,28 @@
-// Fixture for the home-screen e2e: mounts the real HomeScreen over the real
-// ChatAmbientBackground (flat orange + edge pulse), with stubbed data sources
-// (see the esbuild redirects in run-home-screen-e2e.mjs). Paired with that runner.
+// Fixture for the home-screen e2e: mounts the REAL HomeScreen — including the
+// REAL unified home-slot WidgetHost (#9143) and its per-plugin widget components
+// — over the real ShaderBackground (flat orange + edge pulse). The widgets are
+// fed by injected DATA only: the app-store plugins snapshot + notification store
+// are seeded, and `window.fetch` is mocked, all BEFORE first render so the
+// widgets resolve and populate on mount. Paired with run-home-screen-e2e.mjs.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
-import { ChatAmbientBackground } from "../ChatAmbientBackground";
+import {
+  installHomeWidgetFetchMock,
+  seedHomeWidgetAppStore,
+  seedHomeWidgetNotifications,
+} from "../../../widgets/__fixtures__/home-widget-mock-data";
+import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
+import { LauncherSurface } from "../../pages/LauncherSurface";
+import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
+
+// Inject the home-widget data BEFORE the React tree renders so every widget's
+// mount-time fetch + the WidgetHost's plugin resolution see populated data.
+seedHomeWidgetAppStore();
+seedHomeWidgetNotifications();
+installHomeWidgetFetchMock();
 
 const params =
   typeof location !== "undefined"
@@ -20,12 +36,17 @@ function Harness(): React.JSX.Element {
       data-testid="home-fixture-root"
       style={{ position: "fixed", inset: 0, overflow: "hidden" }}
     >
-      <ChatAmbientBackground />
-      <HomeScreen
-        onOpenTile={(t: HomeTileTarget) =>
-          console.log(`[fixture] open ${JSON.stringify(t)}`)
+      <ShaderBackground />
+      <HomeLauncherSurface
+        home={
+          <HomeScreen
+            onOpenTile={(t: HomeTileTarget) =>
+              console.log(`[fixture] open ${JSON.stringify(t)}`)
+            }
+            showNativeOsTiles={showNativeOsTiles}
+          />
         }
-        showNativeOsTiles={showNativeOsTiles}
+        launcher={<LauncherSurface />}
       />
     </div>
   );

@@ -41,7 +41,7 @@ const XR_SWITCH_TEXT = `Switch the XR view to "${XR_VIEW_ID}"`;
 const XR_RESIZE_TEXT = "Resize the XR view panel bigger and closer";
 const XR_CLOSE_TEXT = `Close "${XR_VIEW_ID}" in XR`;
 const XR_QUERY_VISION_TEXT =
-  "Use XR device vision to answer: what do you see through the XR camera?";
+  "Use XR device vision to describe the current headset frame.";
 
 type RuntimeWithRegistration = IAgentRuntime &
   RuntimeWithScenarioLlmFixtures & {
@@ -611,6 +611,7 @@ function cleanupXrClient(): string | undefined {
 
 export default scenario({
   id: "deterministic-xr-view-actions",
+  lane: "pr-deterministic",
   title: "Deterministic XR view actions with real WebSocket service",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "xr", "views"],

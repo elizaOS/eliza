@@ -331,8 +331,9 @@ try {
 // ============================================================================
 
 /**
- * File logging — lazy-initialized on first write to avoid module-init timing issues.
- * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in cwd) or LOG_FILE=/path/to/file.log.
+ * File logging - lazy-initialized on first write to avoid module-init timing issues.
+ * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in
+ * cwd) or LOG_FILE=/path/to/file.log.
  * Disabled by default.
  */
 let _fileLogState: "pending" | "active" | "disabled" = "pending";
@@ -469,8 +470,27 @@ function writeLogEntryToFile(entry: LogEntry): void {
 }
 
 // ============================================================================
-// Prompts.log (companion file to output.log)
+// Prompt instrumentation (prompts.log)
 // ============================================================================
+
+export interface PromptLogMetadata {
+  agentName?: string;
+  agentId?: string;
+  runId?: string;
+  provider?: string;
+  caller?: string;
+  [key: string]: unknown;
+}
+
+export interface ResponseLogMetadata {
+  agentName?: string;
+  agentId?: string;
+  runId?: string;
+  provider?: string;
+  duration?: number;
+  promptSlug?: string;
+  [key: string]: unknown;
+}
 
 function promptSlug(
   counter: number,
@@ -489,11 +509,11 @@ function writeToPromptLog(
   body: string,
   metadata?: Record<string, unknown>,
 ): void {
-  if (!ensureFileLog() || !_promptLogFd) return;
+  if (!ensureFileLog() || _promptLogFd === null) return;
   try {
     const fs = getFs();
     if (!fs) return;
-    const sep = "═".repeat(80);
+    const sep = "=".repeat(80);
     let header = `${sep}\n ${slug}  ${kind}: ${modelType} (${body.length} chars)\n`;
     header += ` ${new Date().toISOString()}\n`;
     if (metadata) {
@@ -505,7 +525,7 @@ function writeToPromptLog(
       fs.writeSync(_promptLogFd, body.substring(0, MAX_PROMPT_LOG_CHARS));
       fs.writeSync(
         _promptLogFd,
-        `\n... [TRUNCATED — ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
+        `\n... [TRUNCATED - ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
       );
     } else {
       fs.writeSync(_promptLogFd, body);
@@ -517,53 +537,39 @@ function writeToPromptLog(
 }
 
 /**
- * Log a prompt to prompts.log. Returns a slug for output.log.
+ * Log a prompt to prompts.log. Returns the slug callers can pass as
+ * `metadata.promptSlug` when logging the matching response.
  */
 export function logPrompt(
   modelType: string,
   prompt: string,
-  metadata?: {
-    agentName?: string;
-    agentId?: string;
-    runId?: string;
-    provider?: string;
-    caller?: string;
-    [key: string]: unknown;
-  },
+  metadata?: PromptLogMetadata,
 ): string {
   if (!ensureFileLog()) return "";
-  // Generate next sequential counter for this prompt
   const counter = ++_promptLogCounter;
   const agentName = metadata?.agentName ?? "unknown";
   const slug = promptSlug(counter, agentName, modelType);
-  // Store slug in metadata to be reused by response
-  metadata = { ...metadata, promptSlug: slug };
-  writeToPromptLog(slug, "PROMPT", modelType, prompt, metadata);
+  writeToPromptLog(slug, "PROMPT", modelType, prompt, {
+    ...metadata,
+    promptSlug: slug,
+  });
   return slug;
 }
 
 /**
- * Log a response to prompts.log. Returns a slug for output.log.
+ * Log a response to prompts.log. Returns the correlated prompt slug, or an
+ * empty string when no prompt slug is available.
  */
 export function logResponse(
   modelType: string,
   response: string,
-  metadata?: {
-    agentName?: string;
-    agentId?: string;
-    runId?: string;
-    provider?: string;
-    duration?: number;
-    promptSlug?: string;
-    [key: string]: unknown;
-  },
+  metadata?: ResponseLogMetadata,
 ): string {
   if (!ensureFileLog()) return "";
-  // Use the same slug that was stored in the prompt's metadata for correlation
   const slug = metadata?.promptSlug;
   if (!slug) {
     logger.warn(
-      { src: "core:logger" },
+      { src: "logger" },
       "logResponse missing promptSlug - responses can't be correlated",
     );
     return "";
@@ -576,6 +582,27 @@ export function logResponse(
 // Chat instrumentation (chat.log)
 // ============================================================================
 
+export interface ChatInLogParams {
+  agentName: string;
+  agentId: string;
+  roomId: string;
+  messageId: string;
+  text: string;
+  source?: string;
+}
+
+export interface ChatOutLogParams {
+  agentName: string;
+  agentId: string;
+  roomId: string;
+  action: string;
+  text?: string;
+  emoji?: string;
+  providers?: string[];
+  reasoning?: string;
+  actions?: string[];
+}
+
 const CHAT_PREVIEW_IN_MAX = 200;
 const CHAT_PREVIEW_OUT_MAX = 120;
 
@@ -586,7 +613,7 @@ function escapeChatPreview(text: string): string {
 }
 
 function writeChatLine(line: string): void {
-  if (!ensureFileLog() || !_chatLogFd) return;
+  if (!ensureFileLog() || _chatLogFd === null) return;
   try {
     const fs = getFs();
     if (!fs) return;
@@ -597,20 +624,11 @@ function writeChatLine(line: string): void {
   }
 }
 
-/**
- * Log an incoming message to chat.log. Call when a message is received.
- */
-export function logChatIn(params: {
-  agentName: string;
-  agentId: string;
-  roomId: string;
-  messageId: string;
-  text: string;
-  source?: string;
-}): string {
+/** Log an incoming message to chat.log. */
+export function logChatIn(params: ChatInLogParams): string {
   const preview = escapeChatPreview(
     params.text.length > CHAT_PREVIEW_IN_MAX
-      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}…`
+      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}...`
       : params.text,
   );
   const roomShort = params.roomId.slice(0, 8);
@@ -621,20 +639,8 @@ export function logChatIn(params: {
   return line;
 }
 
-/**
- * Log an outgoing response to chat.log. Call when the agent sends a reply (once per logical send).
- */
-export function logChatOut(params: {
-  agentName: string;
-  agentId: string;
-  roomId: string;
-  action: string;
-  text?: string;
-  emoji?: string;
-  providers?: string[];
-  reasoning?: string;
-  actions?: string[];
-}): string {
+/** Log an outgoing response to chat.log. */
+export function logChatOut(params: ChatOutLogParams): string {
   const roomShort = params.roomId.slice(0, 8);
   let part = `[CHAT:OUT] #agent:${params.agentName} room=${roomShort} action=${params.action}`;
   if (params.actions && params.actions.length > 0) {
@@ -646,12 +652,12 @@ export function logChatOut(params: {
   if (params.text !== undefined && params.text !== "") {
     const preview = escapeChatPreview(
       params.text.length > CHAT_PREVIEW_OUT_MAX
-        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}…`
+        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}...`
         : params.text,
     );
     part += ` len=${params.text.length} "${preview}"`;
   } else if (params.emoji) {
-    part += ` len=0`;
+    part += " len=0";
   }
   if (params.providers && params.providers.length > 0) {
     part += ` providers=${params.providers.join(",")}`;
@@ -659,7 +665,7 @@ export function logChatOut(params: {
   if (params.reasoning !== undefined && params.reasoning !== "") {
     const safe = escapeChatPreview(
       params.reasoning.length > 80
-        ? `${params.reasoning.slice(0, 80)}…`
+        ? `${params.reasoning.slice(0, 80)}...`
         : params.reasoning,
     );
     part += ` reasoning="${safe}"`;

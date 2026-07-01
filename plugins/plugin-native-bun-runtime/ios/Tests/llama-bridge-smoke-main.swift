@@ -65,11 +65,11 @@ struct LlamaSmoke {
         fflush(stdout)
         let genResult = impl.generate(
             contextId: contextId,
-            prompt: "<|im_start|>user\nSay hello in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+            prompt: "<start_of_turn>user\nSay hello in one short sentence.<end_of_turn>\n<start_of_turn>model\n",
             maxTokens: 64,
             temperature: 0.7,
             topP: 0.9,
-            stopSequences: ["<|im_end|>"],
+            stopSequences: ["<end_of_turn>", "<start_of_turn>"],
             onToken: { tok, last in
                 if !last {
                     print(tok, terminator: "")

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { createMockRuntime } from "../../testing/mock-runtime";
 import type { ResolvedSection } from "../../types/prompt-batcher";
-import type { IAgentRuntime } from "../../types/runtime";
 import { PromptDispatcher } from "./dispatcher";
 
 function makeResolvedSection(id: string, maxRetries: number): ResolvedSection {
@@ -26,7 +26,7 @@ function makeResolvedSection(id: string, maxRetries: number): ResolvedSection {
 describe("PromptDispatcher", () => {
 	test("passes section retry budget into structured model calls", async () => {
 		const seen: unknown[] = [];
-		const runtime = {
+		const runtime = createMockRuntime({
 			dynamicPromptExecFromState: async (args: unknown) => {
 				seen.push(args);
 				return {
@@ -34,7 +34,7 @@ describe("PromptDispatcher", () => {
 					second__value: "two",
 				};
 			},
-		} as unknown as IAgentRuntime;
+		});
 		const dispatcher = new PromptDispatcher({
 			packingDensity: 1,
 			maxTokensPerCall: 8_000,

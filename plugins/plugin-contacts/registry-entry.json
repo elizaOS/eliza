@@ -1,0 +1,30 @@
+{
+  "id": "contacts",
+  "name": "Contacts",
+  "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
+  "npmName": "@elizaos/plugin-contacts",
+  "version": "2.0.3-beta.2",
+  "source": "bundled",
+  "tags": ["device", "contacts"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": ["os-shell"],
+    "style": "card",
+    "icon": "Contact",
+    "group": "system",
+    "actions": ["enable"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "feature",
+  "curatedApp": {
+    "slug": "contacts",
+    "order": 1,
+    "aliases": []
+  }
+}

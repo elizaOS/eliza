@@ -2,6 +2,7 @@ import type { SubscriptionProviderStatus } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import { type ComponentType, useCallback, useMemo } from "react";
 import type { PluginParamDef } from "../../api";
+import { getFrontendPlatform } from "../../platform/platform-guards";
 import {
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
@@ -9,7 +10,6 @@ import {
   isSubscriptionProviderSelectionId,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
 } from "../../providers";
-import { getFrontendPlatform } from "../../platform/platform-guards";
 import type { ConfigUiHint } from "../../types";
 import type { ProviderCategory, ProviderStatus } from "./ProviderCard";
 import type { ProviderPanelId } from "./useProviderSelection";

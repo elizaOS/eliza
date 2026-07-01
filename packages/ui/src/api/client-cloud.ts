@@ -48,6 +48,7 @@ import type {
   CloudOAuthInitiateResponse,
   CloudStatus,
   CloudTwitterOAuthInitiateResponse,
+  LocalAgentBackupMetadata,
   SandboxBrowserEndpoints,
   SandboxPlatformStatus,
   SandboxScreenshotPayload,
@@ -63,13 +64,21 @@ import type {
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
+const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
+const STAGING_DIRECT_CLOUD_API_BASE_URL = "https://api-staging.elizacloud.ai";
 const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
-const DIRECT_ELIZA_CLOUD_WEB_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
+const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
+  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["www.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["dev.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
+  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
+  ["staging.elizacloud.ai", STAGING_DIRECT_CLOUD_API_BASE_URL],
 ]);
-const DIRECT_ELIZA_CLOUD_API_HOST = "api.elizacloud.ai";
+const DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST = new Map([
+  ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_BASE_URL],
+  ["api-staging.elizacloud.ai", STAGING_DIRECT_CLOUD_BASE_URL],
+]);
 
 type DirectCloudAgent = {
   id?: string;
@@ -134,27 +143,6 @@ type DirectCloudAgentCreateData = {
 /** Async-job envelope returned by the restart/suspend/resume lifecycle routes. */
 type LifecycleResult = { jobId: string; status: string; message: string };
 
-type ProvisioningAgentStatusData = {
-  status?: string;
-  bridgeUrl?: string | null;
-  webUiUrl?: string | null;
-  agentId?: string | null;
-};
-
-type ProvisioningAgentChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type ProvisioningAgentChatData = {
-  reply?: string;
-  containerStatus?: string;
-  bridgeUrl?: string | null;
-  webUiUrl?: string | null;
-  agentId?: string | null;
-  history?: ProvisioningAgentChatMessage[];
-};
-
 function isCloudRouteNotFound(error: unknown): error is ApiError {
   return (
     error instanceof Error &&
@@ -181,10 +169,7 @@ function isDirectCloudBase(client: ElizaClient): boolean {
 
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return (
-      host === DIRECT_ELIZA_CLOUD_API_HOST ||
-      DIRECT_ELIZA_CLOUD_WEB_HOSTS.has(host)
-    );
+    return DIRECT_ELIZA_CLOUD_API_BY_HOST.has(host);
   } catch {
     return false;
   }
@@ -255,9 +240,7 @@ function resolveDirectCloudWebBase(cloudBase: string): string {
   const normalized = cloudBase.replace(/\/+$/, "");
   try {
     const host = new URL(normalized).hostname.toLowerCase();
-    if (host === DIRECT_ELIZA_CLOUD_API_HOST) {
-      return DEFAULT_DIRECT_CLOUD_BASE_URL;
-    }
+    return DIRECT_ELIZA_CLOUD_WEB_BY_API_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }
@@ -269,12 +252,7 @@ function resolveDirectCloudAuthApiBase(cloudBase: string): string {
   try {
     const url = new URL(normalized);
     const host = url.hostname.toLowerCase();
-    if (
-      host === DIRECT_ELIZA_CLOUD_API_HOST ||
-      DIRECT_ELIZA_CLOUD_WEB_HOSTS.has(host)
-    ) {
-      return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
-    }
+    return DIRECT_ELIZA_CLOUD_API_BY_HOST.get(host) ?? normalized;
   } catch {
     // Fall back to the provided base below.
   }
@@ -1008,6 +986,21 @@ declare module "./client-base" {
       agentName: string;
       agentConfig?: Record<string, unknown>;
       environmentVars?: Record<string, string>;
+      /**
+       * Phase-0 tier flip. When true, omit `alwaysOn` so the backend derives a
+       * SHARED (container-free, instant) agent instead of a DEDICATED always-on
+       * one. Default (undefined/false) keeps the dedicated request unchanged.
+       */
+      preferSharedTier?: boolean;
+      /**
+       * Bypass the backend's org-scoped reuse guard so a SEPARATE agent is
+       * minted even when the org already has a live one. The shared→dedicated
+       * handoff sets this for the dedicated migration target; without it the
+       * reuse guard hands back the shared bridge (dedicatedId === sharedId) and
+       * the handoff probe never resolves. Default (undefined/false) leaves the
+       * request byte-identical — every existing caller still reuses.
+       */
+      forceCreate?: boolean;
     }): Promise<{
       success: boolean;
       data: {
@@ -1144,17 +1137,6 @@ declare module "./client-base" {
       success: boolean;
       data: CloudCompatAgentStatus;
     }>;
-    getProvisioningAgentStatus(agentId?: string): Promise<{
-      success: boolean;
-      data: ProvisioningAgentStatusData;
-    }>;
-    sendProvisioningAgentMessage(
-      message: string,
-      agentId?: string,
-    ): Promise<{
-      success: boolean;
-      data: ProvisioningAgentChatData;
-    }>;
     getCloudCompatAgentLogs(
       agentId: string,
       tail?: number,
@@ -1176,54 +1158,6 @@ declare module "./client-base" {
       data?: CloudCompatLaunchResult;
       error?: string;
     }>;
-    /**
-     * Fetch a pairing token for a cloud agent. When the agent is not running,
-     * the server kicks off a resume and returns a 202 `{ status: "starting",
-     * jobId, retryAfterMs }` body instead of a token — poll again after the
-     * suggested interval. See `pairDedicatedCloudAgent` for the full loop.
-     */
-    getCloudCompatPairingToken(agentId: string): Promise<{
-      success: boolean;
-      data: {
-        token?: string;
-        redirectUrl?: string;
-        expiresIn?: number;
-        status?: string;
-        jobId?: string;
-        retryAfterMs?: number;
-        message?: string;
-      };
-      error?: string;
-    }>;
-    /**
-     * Resume (if needed), wait until running, then pair with a DEDICATED cloud
-     * agent and return the bind target. A dedicated agent is a full app-server
-     * with its own auth, so binding needs the agent's own API token (obtained by
-     * exchanging a one-time pairing token), not the cloud token. Drives the
-     * self-healing `pairing-token` endpoint: polls through the cold-boot
-     * (~5 min) `202 starting` responses, then exchanges the token at the cloud
-     * `/api/auth/pair` relay for the agent's API key.
-     *
-     * Resolves to `{ status: "paired", apiBase, agentToken }` to bind, or
-     * `{ status: "manual_auth", webUiUrl }` when the agent only offers its own
-     * password screen (no token pairing). Throws on timeout / hard failure.
-     */
-    pairDedicatedCloudAgent(
-      agentId: string,
-      options?: {
-        onProgress?: (status: string, detail?: string) => void;
-        timeoutMs?: number;
-        signal?: AbortSignal;
-      },
-    ): Promise<
-      | {
-          status: "paired";
-          apiBase: string;
-          agentToken: string;
-          agentName?: string;
-        }
-      | { status: "manual_auth"; webUiUrl: string }
-    >;
     getCloudCompatAvailability(): Promise<{
       success: boolean;
       data: {
@@ -1254,6 +1188,12 @@ declare module "./client-base" {
       agentId: string;
       agentName: string;
       counts: Record<string, number>;
+    }>;
+    listLocalAgentBackups(): Promise<LocalAgentBackupMetadata[]>;
+    createLocalAgentBackup(): Promise<LocalAgentBackupMetadata>;
+    restoreLocalAgentBackup(fileName: string): Promise<{
+      restored: true;
+      requiresRestart: true;
     }>;
     getSandboxPlatform(): Promise<SandboxPlatformStatus>;
     getSandboxBrowser(): Promise<SandboxBrowserEndpoints>;
@@ -1310,6 +1250,12 @@ declare module "./client-base" {
       preferAgentId?: string | null;
       /** Skip reuse and always create a new agent (explicit "Create new"). */
       forceCreate?: boolean;
+      /**
+       * Phase-0 tier flip. When true, a freshly created agent is requested as
+       * SHARED (instant, container-free) instead of DEDICATED always-on. Only
+       * affects the create branch; reuse of an existing agent is unaffected.
+       */
+      preferSharedTier?: boolean;
       onProgress?: (status: string, detail?: string) => void;
     }): Promise<{
       agentId: string;
@@ -1331,6 +1277,13 @@ declare module "./client-base" {
       conversationId: string;
       cloudApiBase: string;
       authToken: string;
+      /**
+       * The SEPARATE dedicated agent to migrate onto. When set, the readiness
+       * probe polls THIS agent's record for its container base (the shared
+       * `agentId` is container-free and never exposes one). Omitted → the probe
+       * polls `agentId` itself, the pre-shared-tier behavior.
+       */
+      dedicatedAgentId?: string;
       onSwitch: (containerBase: string) => void | Promise<void>;
       intervalMs?: number;
       timeoutMs?: number;
@@ -1338,6 +1291,24 @@ declare module "./client-base" {
     }): Promise<
       import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
     >;
+    /**
+     * Delete the transient SHARED bridge agent (+ its `shared_runtime_history`,
+     * cascaded server-side) once the user has been switched to their dedicated
+     * agent (PR4). MUST only be called after a confirmed-successful handoff —
+     * deleting the shared while the user is still served by it loses their
+     * conversation.
+     *
+     * Pins the request to the explicit `cloudApiBase` (NOT the client's mutable
+     * `baseUrl`): by the time the switch succeeds the client has already
+     * repointed onto the dedicated container, so the base-derived
+     * `deleteCloudCompatAgent` would no longer resolve the cloud API. Shared
+     * delete is synchronous server-side (no container teardown), so success
+     * means the row + history are gone.
+     */
+    deleteSharedBridgeAgent(
+      agentId: string,
+      options: { cloudApiBase: string; authToken: string },
+    ): Promise<{ success: boolean; error?: string }>;
     checkBugReportInfo(): Promise<{
       nodeVersion?: string;
       platform?: string;
@@ -1442,12 +1413,7 @@ ElizaClient.prototype.getCloudCredits = async function (this: ElizaClient) {
         this,
         "/api/v1/credits/balance",
       );
-      const balance =
-        typeof data?.balance === "number"
-          ? data.balance
-          : typeof data?.balance === "string"
-            ? Number(data.balance)
-            : null;
+      const balance = numberOrNull(data?.balance);
       return {
         connected: true,
         balance: Number.isFinite(balance) ? balance : null,
@@ -1500,12 +1466,7 @@ ElizaClient.prototype.getCloudBillingSummary = async function (
       typeof direct.pricing === "object" && direct.pricing !== null
         ? (direct.pricing as Record<string, unknown>)
         : {};
-    const balance =
-      typeof organization.creditBalance === "number"
-        ? organization.creditBalance
-        : typeof organization.creditBalance === "string"
-          ? Number(organization.creditBalance)
-          : null;
+    const balance = numberOrNull(organization.creditBalance);
     return {
       ...direct,
       balance: Number.isFinite(balance) ? balance : null,
@@ -1672,6 +1633,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   this: ElizaClient,
   opts,
 ) {
+  // Phase-0 tier flip. The backend derives `execution_tier` from the request:
+  // `alwaysOn: true` → DEDICATED always-on container; omitting it (for a plain
+  // chat agent) → SHARED, container-free, instant. Default is dedicated — only
+  // the demo flag drops `alwaysOn` to request shared. `tierFields` is spread
+  // into both create bodies so the dedicated path stays byte-identical to before.
+  const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
   const direct = await directCloudRequest<{
     success: boolean;
     data: unknown;
@@ -1684,7 +1651,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       // the full experience, and the paid tier. New users have the signup credit
       // grant so they get a real agent; out-of-credit users get the cloud's
       // 402 add-credits prompt (the monetization path) rather than a shared agent.
-      alwaysOn: true,
+      // (With the Phase-0 shared-tier flag on, `alwaysOn` is dropped so the
+      // backend derives a SHARED agent instead — see tierFields above.)
+      ...tierFields,
+      // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+      // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+      ...(opts.forceCreate ? { forceCreate: true } : {}),
       ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
       ...(opts.environmentVars
         ? { environmentVars: opts.environmentVars }
@@ -1730,7 +1702,11 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       body: JSON.stringify({
         agentName: opts.agentName,
         // Dedicated (own-container, always-on) agent — see the direct-path note.
-        alwaysOn: true,
+        // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
+        ...tierFields,
+        // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+        // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+        ...(opts.forceCreate ? { forceCreate: true } : {}),
         ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
         ...(opts.environmentVars
           ? { environmentVars: opts.environmentVars }
@@ -2224,64 +2200,6 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
   );
 };
 
-ElizaClient.prototype.getProvisioningAgentStatus = async function (
-  this: ElizaClient,
-  agentId,
-) {
-  const direct = await directCloudRequest<{
-    success: boolean;
-    data?: ProvisioningAgentStatusData;
-  }>(this, "/api/v1/provisioning-agent");
-  if (direct) return { success: direct.success, data: direct.data ?? {} };
-
-  try {
-    return await this.fetch<{
-      success: boolean;
-      data: ProvisioningAgentStatusData;
-    }>("/api/v1/provisioning-agent");
-  } catch (error) {
-    if (!agentId || !isCloudRouteNotFound(error)) throw error;
-
-    const compat = await this.getCloudCompatAgentStatus(agentId);
-    return {
-      success: compat.success,
-      data: {
-        status: compat.data.status,
-        bridgeUrl: compat.data.bridgeUrl ?? null,
-        webUiUrl: compat.data.webUiUrl ?? null,
-        agentId,
-      },
-    };
-  }
-};
-
-ElizaClient.prototype.sendProvisioningAgentMessage = async function (
-  this: ElizaClient,
-  message,
-  agentId,
-) {
-  const body = JSON.stringify({
-    message,
-    ...(agentId ? { agentId } : {}),
-  });
-  const direct = await directCloudRequest<{
-    success: boolean;
-    data?: ProvisioningAgentChatData;
-  }>(this, "/api/v1/provisioning-agent/chat", {
-    method: "POST",
-    body,
-  });
-  if (direct) return { success: direct.success, data: direct.data ?? {} };
-
-  return this.fetch<{
-    success: boolean;
-    data: ProvisioningAgentChatData;
-  }>("/api/v1/provisioning-agent/chat", {
-    method: "POST",
-    body,
-  });
-};
-
 ElizaClient.prototype.getCloudCompatAgentLogs = async function (
   this: ElizaClient,
   agentId,
@@ -2442,52 +2360,6 @@ ElizaClient.prototype.launchCloudCompatAgent = async function (
   );
 };
 
-ElizaClient.prototype.getCloudCompatPairingToken = async function (
-  this: ElizaClient,
-  agentId,
-) {
-  const direct = await directCloudRequest<{
-    success: boolean;
-    data: {
-      token: string;
-      redirectUrl: string;
-      expiresIn: number;
-      status?: string;
-      jobId?: string;
-      retryAfterMs?: number;
-      message?: string;
-    };
-    error?: string;
-  }>(
-    this,
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
-    { method: "POST" },
-  );
-  if (direct) return direct;
-
-  if (isNativeDirectCloudAuthMissing(this)) {
-    return {
-      success: false,
-      data: { token: "", redirectUrl: "", expiresIn: 0 },
-      error: nativeDirectCloudAuthMissingMessage(),
-    };
-  }
-
-  if (isDirectCloudBase(this)) {
-    return this.fetch(
-      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
-      { method: "POST" },
-      { allowNonOk: true },
-    );
-  }
-
-  return this.fetch(
-    `/api/cloud/v1/app/agents/${encodeURIComponent(agentId)}/pairing-token`,
-    { method: "POST" },
-    { allowNonOk: true },
-  );
-};
-
 ElizaClient.prototype.getCloudCompatAvailability = async function (
   this: ElizaClient,
 ) {
@@ -2603,6 +2475,40 @@ ElizaClient.prototype.importAgent = async function (
     agentName: string;
     counts: Record<string, number>;
   };
+};
+
+ElizaClient.prototype.listLocalAgentBackups = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ backups: LocalAgentBackupMetadata[] }>(
+    "/api/backups",
+  );
+  return response.backups;
+};
+
+ElizaClient.prototype.createLocalAgentBackup = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ backup: LocalAgentBackupMetadata }>(
+    "/api/backups",
+    {
+      method: "POST",
+    },
+  );
+  return response.backup;
+};
+
+ElizaClient.prototype.restoreLocalAgentBackup = async function (
+  this: ElizaClient,
+  fileName,
+) {
+  return this.fetch<{ restored: true; requiresRestart: true }>(
+    "/api/backups/restore",
+    {
+      method: "POST",
+      body: JSON.stringify({ fileName }),
+    },
+  );
 };
 
 ElizaClient.prototype.getSandboxPlatform = async function (this: ElizaClient) {
@@ -3016,8 +2922,15 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   this: ElizaClient,
   options,
 ) {
-  const { cloudApiBase, authToken, name, bio, preferAgentId, forceCreate } =
-    options;
+  const {
+    cloudApiBase,
+    authToken,
+    name,
+    bio,
+    preferAgentId,
+    forceCreate,
+    preferSharedTier,
+  } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
@@ -3033,9 +2946,25 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // path only runs when the user has no agent yet.
   if (!forceCreate) {
     onProgress?.("creating", "Finding your agents...");
-    const list = await this.getCloudCompatAgents().catch(() => null);
-    const agents = list?.success ? list.data : [];
-    const chosen = pickPreferredCloudAgent(agents, preferAgentId);
+    // A failed agent-list lookup must NOT fall through to provisioning. A
+    // transient error (expired token, network blip, or a success:false body)
+    // previously collapsed to an empty list and minted a brand-new billed agent
+    // even though the user already had one — the root of the "it creates
+    // multiple agents" report. Only an authoritative success list may conclude
+    // the user has no agent to reuse; otherwise surface the error so the caller
+    // can retry rather than duplicate.
+    const list = await this.getCloudCompatAgents().catch((cause) => ({
+      success: false as const,
+      data: [] as CloudCompatAgent[],
+      error: cause instanceof Error ? cause.message : undefined,
+    }));
+    if (!list.success) {
+      throw new Error(
+        list.error ||
+          "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+      );
+    }
+    const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
     if (chosen) {
       const apiBase = resolveCloudAgentApiBase({
         bridgeUrl: chosen.bridge_url,
@@ -3067,6 +2996,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const created = await this.createCloudCompatAgent({
     agentName: name,
     ...(bio?.length ? { agentConfig: { bio } } : {}),
+    ...(preferSharedTier ? { preferSharedTier: true } : {}),
   });
   if (!created.success || !created.data.agentId) {
     throw new Error(created.data.message || "Failed to create cloud agent");
@@ -3074,8 +3004,19 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const agentId = created.data.agentId;
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
   const detailAgent = detail?.success ? detail.data : null;
+  // A freshly-created dedicated agent's subdomain is populated immediately, but
+  // its container takes ~30-120s to boot — chatting against it during that window
+  // 202s "starting" and the first message times out (the reported first-run bug).
+  // So start on the shared REST adapter base (the always-on in-Worker shared
+  // runtime serves the user instantly); finishCloud's handoff supervisor switches
+  // to the dedicated subdomain once it reports `running`. Only use the subdomain
+  // up-front when the agent is ALREADY running (warm-pool claim) — no boot gap.
+  const isRunning = detailAgent?.status === "running";
+  const hasDedicatedUrl = Boolean(
+    detailAgent?.web_ui_url || detailAgent?.bridge_url,
+  );
   const apiBase =
-    detailAgent?.web_ui_url || detailAgent?.bridge_url
+    isRunning && hasDedicatedUrl
       ? resolveCloudAgentApiBase({
           bridgeUrl: detailAgent.bridge_url,
           webUiUrl: detailAgent.web_ui_url ?? detailAgent.webUiUrl,
@@ -3103,12 +3044,18 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     conversationId,
     cloudApiBase,
     authToken,
+    dedicatedAgentId,
     onSwitch,
     intervalMs,
     timeoutMs,
     log,
   } = options;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  // Migration TARGET. With the shared tier, the user chats on `agentId` (a
+  // container-free shared agent that never gets a dedicated base), so the
+  // dedicated record we poll for readiness is a SEPARATE agent. Default to
+  // `agentId` so the pre-shared-tier single-agent flow is unchanged.
+  const readinessAgentId = dedicatedAgentId ?? agentId;
 
   // Authed JSON fetch against a specific agent base (shared adapter OR the
   // dedicated container subdomain). Both accept the cloud session token —
@@ -3135,7 +3082,9 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
-      const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
+      const detail = await this.getCloudCompatAgent(readinessAgentId).catch(
+        () => null,
+      );
       const agent = detail?.success ? detail.data : null;
       if (!agent) return null;
       // The container is "ready" only once the record exposes a dedicated base
@@ -3149,7 +3098,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       const base = resolveCloudAgentApiBase({
         bridgeUrl: agent.bridge_url,
         webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
-        agentId,
+        agentId: readinessAgentId,
         cloudApiBase: resolvedCloudApiBase,
       });
       // Never "switch" onto the shared adapter (no migration target there).
@@ -3170,148 +3119,61 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   });
 };
 
-/** Strip a `/pair?token=…` redirect down to the agent's own origin. */
-function dedicatedAgentOriginFromRedirect(redirectUrl: string): string {
-  return new URL(redirectUrl).origin;
-}
-
-/**
- * Exchange a one-time pairing token for the dedicated agent's API key via the
- * cloud `/api/auth/pair` relay. The token is origin-bound, so the request MUST
- * carry an `Origin` header matching the agent web UI origin. A browser `fetch`
- * cannot set `Origin` (forbidden header), so the native path calls
- * `CapacitorHttp` directly (it preserves the header); on the web the browser
- * supplies its own origin, which only matches when the SPA is served from the
- * agent origin. The exchange itself is unauthenticated — the pairing token is
- * the credential.
- */
-async function exchangeCloudPairingToken(args: {
-  cloudApiBase: string;
-  token: string;
-  agentOrigin: string;
-}): Promise<{ apiKey: string; agentName?: string }> {
-  const url = `${args.cloudApiBase.replace(/\/+$/, "")}/api/auth/pair`;
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    Origin: args.agentOrigin,
-  };
-  const bodyObj = { token: args.token };
-
-  let status: number;
-  let parsed: { apiKey?: string | null; agentName?: string; error?: string };
-  if (shouldUseNativeCloudHttp()) {
-    const res = await withDirectCloudHttpTimeout(
-      CapacitorHttp.request({
-        url,
-        method: "POST",
-        headers,
-        data: bodyObj,
-        responseType: "json",
-        connectTimeout: 15_000,
-        readTimeout: 15_000,
-      }),
-      { method: "POST", url },
-    );
-    status = res.status;
-    parsed = (parseDirectCloudJsonSafe(res.data) ?? {}) as typeof parsed;
-  } else {
-    const res = await fetchDirectCloudWithTimeout(
-      url,
-      { method: "POST", headers, body: JSON.stringify(bodyObj) },
-      { method: "POST", url },
-    );
-    status = res.status;
-    parsed = (await res.json().catch(() => ({}))) as typeof parsed;
-  }
-
-  if (status === 401 || status === 403 || status === 410) {
-    throw new Error(
-      "Pairing link expired before sign-in completed. Try connecting again.",
-    );
-  }
-  if (status < 200 || status >= 300) {
-    throw new Error(
-      parsed.error || `Agent pairing exchange failed (${status}).`,
-    );
-  }
-  const apiKey = parsed.apiKey;
-  if (typeof apiKey !== "string" || !apiKey) {
-    throw new Error(
-      "Eliza Cloud accepted the pairing link but returned no agent key.",
-    );
-  }
-  return { apiKey, agentName: parsed.agentName };
-}
-
-ElizaClient.prototype.pairDedicatedCloudAgent = async function (
+ElizaClient.prototype.deleteSharedBridgeAgent = async function (
   this: ElizaClient,
   agentId,
   options,
 ) {
-  const onProgress = options?.onProgress;
-  // Cold boot of a dedicated container is ~5 min; give it headroom.
-  const deadline = Date.now() + (options?.timeoutMs ?? 6 * 60_000);
-  const cloudApiBase = resolveDirectCloudClientApiBase(this);
-  if (!cloudApiBase) {
-    throw new Error("Not signed in to Eliza Cloud.");
-  }
-
-  let token = "";
-  let redirectUrl = "";
-
-  // Phase 1: resume (server-side, automatic) + wait until the agent is running.
-  // The pairing-token endpoint returns a 202 `starting` body while the agent
-  // boots and a token once it is running.
-  for (;;) {
-    options?.signal?.throwIfAborted?.();
-    const res = await this.getCloudCompatPairingToken(agentId);
-    if (!res.success) {
-      throw new Error(res.error || "Failed to start the cloud agent.");
-    }
-    const data = res.data ?? {};
-    if (data.token && data.redirectUrl) {
-      token = data.token;
-      redirectUrl = data.redirectUrl;
-      break;
-    }
-    onProgress?.(
-      data.status || "starting",
-      data.message || "Waking your agent…",
-    );
-    if (Date.now() >= deadline) {
-      throw new Error(
-        "Timed out waiting for the cloud agent to start. Try again in a moment.",
-      );
-    }
-    const waitMs = Math.min(Math.max(data.retryAfterMs ?? 5000, 1000), 15_000);
-    await new Promise((r) => setTimeout(r, waitMs));
-  }
-
-  const agentOrigin = dedicatedAgentOriginFromRedirect(redirectUrl);
-
-  // When the agent has no UI-token pairing configured the server returns the
-  // bare web UI URL (no `/pair?token=`). That agent uses its own password
-  // screen — we cannot bind headlessly, so hand the URL back to the caller.
-  if (!/\/pair\b/.test(new URL(redirectUrl).pathname)) {
-    onProgress?.("manual_auth", "This agent uses its own sign-in.");
-    return { status: "manual_auth", webUiUrl: agentOrigin };
-  }
-
-  // Phase 2: trade the one-time token for the agent's own API key and bind.
-  onProgress?.("pairing", "Signing in to your agent…");
-  const exchanged = await exchangeCloudPairingToken({
-    cloudApiBase,
-    token,
-    agentOrigin,
-  });
-  onProgress?.("ready", "Connected.");
-  return {
-    status: "paired",
-    apiBase: agentOrigin,
-    agentToken: exchanged.apiKey,
-    agentName: exchanged.agentName,
+  // Pin to the explicit cloud API base, not the client's (now repointed-to-
+  // dedicated) baseUrl. The shared-tier DELETE on `/api/v1/eliza/agents/:id`
+  // synchronously removes the shared `agent_sandboxes` row AND its
+  // `shared_runtime_history` (cascaded in `deleteAgent`); no container teardown.
+  const apiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const url = `${apiBase}/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${options.authToken}`,
   };
+  try {
+    // Route through Capacitor native HTTP on iOS/Android, exactly like every
+    // other direct-cloud helper in this file. A bare cross-origin `fetch()`
+    // from `capacitor://localhost` is blocked on native, so without this the
+    // fire-and-forget cleanup would silently no-op on mobile and leak the
+    // shared `agent_sandboxes` row — the very thing this delete exists to avoid.
+    const status = shouldUseNativeCloudHttp()
+      ? (
+          await withDirectCloudHttpTimeout(
+            CapacitorHttp.request({
+              url,
+              method: "DELETE",
+              headers,
+              responseType: "json",
+              connectTimeout: 10_000,
+              readTimeout: 10_000,
+            }),
+            { method: "DELETE", url },
+          )
+        ).status
+      : (
+          await fetch(url, {
+            method: "DELETE",
+            headers,
+            signal: AbortSignal.timeout(20_000),
+          })
+        ).status;
+    if (status < 200 || status >= 300) {
+      return {
+        success: false,
+        error: `shared bridge delete failed (HTTP ${status})`,
+      };
+    }
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 };
 
 ElizaClient.prototype.checkBugReportInfo = async function (this: ElizaClient) {

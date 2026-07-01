@@ -4,10 +4,10 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": [
-      "ES2022",
+      "ES2023",
       "DOM"
     ],
-    "strict": false,
+    "strict": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -44,6 +44,7 @@
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
-    "**/*.e2e.test.ts"
+    "**/*.e2e.test.ts",
+    "vitest.harness.config.ts"
   ]
 }

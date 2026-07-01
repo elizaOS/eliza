@@ -38,8 +38,8 @@ function validManifest(): Eliza1Manifest {
 			voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
-			drafter: { base: "eliza-1-mtp-drafter", license: "apache-2.0" },
 			vision: { base: "eliza-1-vision", license: "apache-2.0" },
+			drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
 		},
 		files: {
 			text: [{ path: "text/eliza-1-9b-128k.gguf", ctx: 131072, sha256: SHA }],
@@ -78,6 +78,7 @@ function validManifest(): Eliza1Manifest {
 		},
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
+		mtp: "separate-drafter",
 	};
 	return manifest;
 }

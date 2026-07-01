@@ -1,9 +1,9 @@
 /**
  * Shared llama.cpp (eliza-fork `llama-server`) adapter for the local prompt-
  * optimization measurement scripts. We use llama.cpp — NOT Ollama — because the
- * production local-inference path is the eliza llama.cpp fork, and stock Ollama
- * cannot even load the eliza-1 qwen3.5 tiers above 2b (the NextN/MTP head trips
- * `qwen3next: layer 32 missing attn_qkv/attn_gate`).
+ * production local-inference path is the eliza llama.cpp fork. That fork carries
+ * the Gemma 4 chat-template, long-context, and separate-drafter MTP support used
+ * by the active eliza-1 text tiers.
  *
  * Start a server first, e.g.:
  *   BC=plugins/plugin-local-inference/native/llama.cpp/build-cuda
@@ -15,10 +15,9 @@
  * (label it via LABEL=...).
  *
  * Decoding is schema-constrained (OpenAI `response_format: json_schema`, mirrors
- * production guided decode) and qwen3.5 THINKING IS DISABLED
- * (`chat_template_kwargs.enable_thinking=false`) — these are cheap structured
- * classifications, and leaving thinking on burns the token budget into
- * `reasoning_content`, returning empty `content`.
+ * production guided decode). `chat_template_kwargs.enable_thinking=false` is
+ * included for llama.cpp builds/models that expose thinking controls; these are
+ * cheap structured classifications, so private reasoning tokens are not useful.
  */
 import type { LlmAdapter } from "../../src/optimizers/types.js";
 

@@ -12,8 +12,11 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
-const cloudApiDir = path.join(repoRoot, "packages", "cloud-api");
-const verifyScript = path.join(scriptDir, "verify-cloud-api-production-deploy.mjs");
+const cloudApiDir = path.join(repoRoot, "packages", "cloud", "api");
+const verifyScript = path.join(
+  scriptDir,
+  "verify-cloud-api-production-deploy.mjs",
+);
 
 function run(command, args, options = {}) {
   console.log(`[cloud-api-gateway-deploy] run: ${command} ${args.join(" ")}`);
@@ -38,8 +41,14 @@ function run(command, args, options = {}) {
 function main() {
   run("bun", ["run", "build"], { cwd: cloudApiDir, inherit: true });
   run("bun", ["run", "deploy"], { cwd: cloudApiDir, inherit: true });
-  run("node", [verifyScript], { cwd: repoRoot, inherit: true, timeout: 180_000 });
-  console.log("[cloud-api-gateway-deploy] PASS production Cloud API gateway contract deployed and verified.");
+  run("node", [verifyScript], {
+    cwd: repoRoot,
+    inherit: true,
+    timeout: 180_000,
+  });
+  console.log(
+    "[cloud-api-gateway-deploy] PASS production Cloud API gateway contract deployed and verified.",
+  );
 }
 
 try {

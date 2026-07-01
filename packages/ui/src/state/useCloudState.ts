@@ -12,17 +12,16 @@
  * - `setActionNotice`        — from useLifecycleState, used for disconnect / auth notices
  * - `loadWalletConfig`       — from useWalletState, called after successful login
  * - `t`                      — translation function, used for auth-rejected notice key
- *
- * Note: `handleCloudFirstRunFinish` is kept in AppContext (one-liner that calls
- * `submitFirstRunAndComplete`, which is defined later in AppContext's render order).
  */
 
 import {
+  clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
+import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
@@ -42,10 +41,12 @@ import {
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
+import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
   hasStewardLoginLauncher,
   launchStewardLogin,
 } from "./cloud-steward-login";
+import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -94,6 +95,11 @@ function isSameOriginLocalHttpBackend(): boolean {
   }
 
   return isPrivateNetworkHost(hostname);
+}
+
+function isDevUiPortWithoutEmbeddedBackend(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.port === "2138";
 }
 
 function isCapacitorNativeRuntime(): boolean {
@@ -160,7 +166,16 @@ function hasCloudLoginBackend(): boolean {
       !isCapacitorAssetBase(explicitBase)
     );
   }
+  if (isDevUiPortWithoutEmbeddedBackend()) return false;
   return isSameOriginLocalHttpBackend();
+}
+
+function canPollCloudStatus(): boolean {
+  const explicitBase =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  if (isCapacitorNativeRuntime()) return true;
+  if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
+  return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
 }
 
 /**
@@ -289,15 +304,17 @@ export function useCloudState({
   const elizaCloudLoginBusyRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
-  /**
-   * Forward ref so handleFirstRunNext (defined earlier in AppContext) can call
-   * handleCloudLogin (defined later).
-   */
-  const handleCloudLoginRef = useRef<() => Promise<void>>(async () => {});
 
   // ── Callbacks ──────────────────────────────────────────────────────
 
   const pollCloudCredits = useCallback(async (): Promise<boolean> => {
+    if (!canPollCloudStatus()) {
+      if (elizaCloudPollInterval.current) {
+        clearInterval(elizaCloudPollInterval.current);
+        elizaCloudPollInterval.current = null;
+      }
+      return lastElizaCloudPollConnectedRef.current;
+    }
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
     }
@@ -413,22 +430,24 @@ export function useCloudState({
 
   const handleCloudLogin = useCallback(
     async (prePoppedWindow: Window | null = null) => {
+      let prePoppedWindowNavigatedExternally = false;
+      const closePrePoppedWindow = () => {
+        if (!prePoppedWindow || prePoppedWindowNavigatedExternally) return;
+        try {
+          prePoppedWindow.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
+      };
+
       if (
         isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
       ) {
-        try {
-          prePoppedWindow?.close();
-        } catch {
-          // Cross-origin — ignore.
-        }
+        closePrePoppedWindow();
         return;
       }
       if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) {
-        try {
-          prePoppedWindow?.close();
-        } catch {
-          // Cross-origin — ignore.
-        }
+        closePrePoppedWindow();
         await elizaCloudLoginCompletionRef.current;
         return;
       }
@@ -459,22 +478,30 @@ export function useCloudState({
       // cookie + localStorage JWT) and native (Bearer-from-localStorage).
       const existingStewardToken = readStoredStewardToken()?.trim();
       if (existingStewardToken || hasStewardLoginLauncher()) {
-        try {
-          prePoppedWindow?.close();
-        } catch {
-          // Cross-origin — ignore.
-        }
+        closePrePoppedWindow();
         try {
           await launchStewardLogin();
-          await pollCloudCredits();
+          // Gate the connected state + success toast on an ACTUAL authed status
+          // call. `launchStewardLogin` short-circuits on a stored token; if that
+          // token is stale/revoked the status poll reports disconnected, so
+          // declaring "connected" + toasting here would be a false success that
+          // 401s the agent picker in a loop. Only celebrate a verified session;
+          // otherwise surface the re-auth path the login UI already renders.
+          const connected = await pollCloudCredits();
           await loadWalletConfig().catch(() => undefined);
-          setElizaCloudConnected(true);
-          setElizaCloudLoginError(null);
-          setActionNotice(
-            "Logged in to Eliza Cloud successfully.",
-            "success",
-            6000,
-          );
+          if (connected) {
+            setElizaCloudConnected(true);
+            setElizaCloudLoginError(null);
+            setActionNotice(
+              "Logged in to Eliza Cloud successfully.",
+              "success",
+              6000,
+            );
+          } else {
+            setElizaCloudLoginError(
+              "Could not verify your Eliza Cloud session. Please sign in again.",
+            );
+          }
         } catch (err) {
           setElizaCloudLoginError(
             err instanceof Error ? err.message : "Eliza Cloud login failed",
@@ -494,20 +521,21 @@ export function useCloudState({
       const hasBackend = hasCloudLoginBackend();
       const cloudApiBase =
         getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
-      const useDirectAuth = !hasBackend;
+      let useDirectAuth = !hasBackend;
 
       if (hasBackend) {
         const cloudStatus = await client.getCloudStatus().catch(() => null);
+        if (cloudStatus === null) {
+          // Browser/dev shells can run on localhost without a local agent proxy.
+          // In that case, keep first-run Cloud usable via the direct Cloud flow.
+          useDirectAuth = true;
+        }
         const alreadyAuthenticated = isCloudStatusAuthenticated(
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
         );
         if (alreadyAuthenticated) {
-          try {
-            prePoppedWindow?.close();
-          } catch {
-            // Cross-origin — ignore.
-          }
+          closePrePoppedWindow();
           await pollCloudCredits();
           await loadWalletConfig().catch(() => undefined);
           setElizaCloudLoginError(null);
@@ -533,11 +561,7 @@ export function useCloudState({
           resp = await client.cloudLogin();
         }
         if (!resp.ok) {
-          try {
-            prePoppedWindow?.close();
-          } catch {
-            // Cross-origin — ignore.
-          }
+          closePrePoppedWindow();
           setElizaCloudLoginError(
             resp.error || "Failed to start Eliza Cloud login",
           );
@@ -561,6 +585,7 @@ export function useCloudState({
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
           if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl);
+            prePoppedWindowNavigatedExternally = true;
           } else {
             try {
               await openExternalUrl(resp.browserUrl);
@@ -571,11 +596,7 @@ export function useCloudState({
             }
           }
         } else {
-          try {
-            prePoppedWindow?.close();
-          } catch {
-            // Cross-origin — ignore.
-          }
+          closePrePoppedWindow();
         }
 
         const sessionId = resp.sessionId ?? "";
@@ -659,11 +680,7 @@ export function useCloudState({
                 client.setToken(poll.token);
               }
 
-              try {
-                prePoppedWindow?.close();
-              } catch {
-                // Cross-origin — ignore.
-              }
+              closePrePoppedWindow();
               void closeExternalBrowser();
 
               stopCloudLoginPolling();
@@ -729,9 +746,6 @@ export function useCloudState({
       loadWalletConfig,
     ],
   );
-
-  // Keep forward ref in sync so handleFirstRunNext can call it.
-  handleCloudLoginRef.current = handleCloudLogin;
 
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
@@ -882,6 +896,27 @@ export function useCloudState({
         setElizaCloudStatusReason(null);
         lastElizaCloudPollConnectedRef.current = false;
         elizaCloudPreferDisconnectedUntilLoginRef.current = true;
+        // Drop the persisted JWT on disconnect. The full sign-out path
+        // (StewardProviderRuntime) already scrubs it; cloud-disconnect cleared
+        // in-memory state but left active-server.accessToken in localStorage —
+        // an at-rest JWT leak readable by XSS / plugin views. Keep the server
+        // selection (kind/apiBase/label) so we know where to re-authenticate.
+        scrubPersistedActiveServerToken();
+        // SECURITY: scrubbing active-server.accessToken alone is incomplete —
+        // the LIVE cloud bearer also lives in (a) localStorage steward_session_token
+        // (the JWT read on every /api/* call), (b) per-agent-profile accessToken
+        // copies, and (c) the in-memory __ELIZA_CLOUD_AUTH_TOKEN__ global. Clear
+        // all of them on an explicit disconnect so no usable credential survives
+        // at rest / in memory (XSS / same-origin plugin views).
+        clearStoredStewardToken();
+        scrubPersistedAgentProfileTokens();
+        try {
+          delete (globalThis as Record<string, unknown>)
+            .__ELIZA_CLOUD_AUTH_TOKEN__;
+        } catch {
+          (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+            undefined;
+        }
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }
@@ -1001,7 +1036,6 @@ export function useCloudState({
     lastElizaCloudPollConnectedRef,
     elizaCloudLoginPollTimer,
     elizaCloudLoginBusyRef,
-    handleCloudLoginRef,
     // Callbacks
     pollCloudCredits,
     handleCloudLogin,

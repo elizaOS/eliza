@@ -18,6 +18,16 @@ const reactDomClient = requireFromUi.resolve("react-dom/client");
 export default defineConfig({
   resolve: {
     alias: [
+      {
+        // @elizaos/ui DynamicViewLoader statically imports this plugin-health
+        // subpath; anchor it to source (no built plugin-health dist in the
+        // keyless lane). Self-contained so it needs no config-local path vars.
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: new URL(
+          "../plugin-health/src/screen-time/mobile-signal-setup.ts",
+          import.meta.url,
+        ).pathname,
+      },
       { find: /^react$/, replacement: reactEntry },
       { find: /^react\/jsx-runtime$/, replacement: reactJsxRuntime },
       { find: /^react-dom$/, replacement: reactDomEntry },
@@ -26,7 +36,6 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
-    passWithNoTests: true,
     environment: "node",
   },
 });

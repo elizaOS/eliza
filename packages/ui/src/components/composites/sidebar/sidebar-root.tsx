@@ -18,7 +18,7 @@ const sidebarRootVariants = cva(
       variant: {
         default:
           "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-sm border border-border bg-card",
-        mobile: "h-full w-full min-w-0 border-0 bg-card shadow-none ring-0",
+        mobile: "h-full w-full min-w-0 border-0 bg-card shadow-none ",
         "game-modal": "h-full rounded-sm border border-border bg-card ",
       },
       collapsed: {
@@ -26,7 +26,12 @@ const sidebarRootVariants = cva(
         false: "",
       },
       resizable: {
-        true: "",
+        // While resizable, width is driven directly by the drag — animating it
+        // over 360ms makes the sidebar lag/chase the pointer and forces layout
+        // every frame. Drop width/min-width from the transition (keep the
+        // radius/shadow polish for collapse/expand, which happens in the
+        // non-resizable state).
+        true: "transition-[border-radius,box-shadow]",
         false: "",
       },
     },
@@ -724,26 +729,46 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         } catch {
           /* ignore */
         }
+        // Coalesce width writes to one per frame: a high-rate mouse fires
+        // pointermove well above 60Hz, and each write is a parent setState +
+        // layout. The collapse check stays synchronous so the threshold can't
+        // be missed between frames.
+        let rafId = 0;
+        let pendingWidth: number | null = null;
         const onMove = (ev: PointerEvent) => {
           const delta = ev.clientX - startX;
           const nextRaw = startWidth + delta;
           if (nextRaw < collapseThreshold && onCollapseRequest) {
             onCollapseRequest();
-            window.removeEventListener("pointermove", onMove);
-            window.removeEventListener("pointerup", onUp);
+            cleanup();
             return;
           }
-          const clamped = Math.min(Math.max(nextRaw, minWidth), maxWidth);
-          onWidthChange?.(clamped);
+          pendingWidth = Math.min(Math.max(nextRaw, minWidth), maxWidth);
+          if (rafId === 0) {
+            rafId = requestAnimationFrame(() => {
+              rafId = 0;
+              if (pendingWidth !== null) onWidthChange?.(pendingWidth);
+            });
+          }
         };
+        function cleanup() {
+          if (rafId !== 0) {
+            cancelAnimationFrame(rafId);
+            rafId = 0;
+          }
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+        }
         const onUp = () => {
+          // Flush the last pending width so the final position isn't dropped.
+          if (rafId !== 0 && pendingWidth !== null)
+            onWidthChange?.(pendingWidth);
           try {
             target.releasePointerCapture(event.pointerId);
           } catch {
             /* ignore */
           }
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
+          cleanup();
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);

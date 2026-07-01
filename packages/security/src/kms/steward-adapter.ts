@@ -34,7 +34,7 @@ import {
  *
  * All requests authenticate via short-lived OIDC bearer (preferred) or mTLS;
  * the adapter reuses the credential-proxy auth pattern from
- * `packages/cloud-api/src/steward/embedded.ts`.
+ * `packages/cloud/api/src/steward/embedded.ts`.
  */
 
 export interface StewardKmsOptions {

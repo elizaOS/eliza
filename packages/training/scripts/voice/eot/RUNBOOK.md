@@ -17,7 +17,6 @@ turn-detector on the voice-assistant use case.
 |-------------------------|---------------------------|--------------------------------------------|
 | dataset audit           | minutes                   | Read `DATASETS.md`; pick mix.              |
 | prep_eot_corpus.py      | 5-30 min per 100k turns   | CPU-bound (tokenize + privacy filter).     |
-| train_eot_lora.py 0_8b  | 15-45 min @ 2000 steps    | RTX 4090: 20 min.                          |
 | train_eot_lora.py 2b    | 30-90 min @ 2000 steps    | RTX 4090: 45 min.                          |
 | train_eot_lora.py 4b    | 60-180 min @ 2000 steps   | RTX 4090: 90 min; drop --batch-size 2 on 16 GB cards. |
 | eval_eot_lora.py        | 5-20 min per classifier   | GPU; loads base + adapter + LiveKit GGUF.  |
@@ -27,7 +26,6 @@ Disk: ~3 GB per training run (checkpoints + processed corpus +
 TensorBoard logs). The adapter itself is 5-10 MB.
 
 VRAM at defaults (rank 8, batch tier-default, seq 512):
-- 0.8B target → ~6 GB
 - 2B target → ~12 GB
 - 4B target → ~20 GB (fits 24 GB consumer GPU)
 
@@ -87,33 +85,33 @@ python3 packages/training/scripts/voice/eot/prep_eot_corpus.py \
 
 # 4. Train one tier at a time. Start with the smallest.
 python3 packages/training/scripts/voice/eot/train_eot_lora.py \
-    --tier 0_8b \
+    --tier 2b \
     --corpus "$RUN/corpus/train.parquet" \
-    --out-dir "$RUN/outputs/0_8b" \
+    --out-dir "$RUN/outputs/2b" \
     --epochs 1 \
-    --batch-size 8
+    --batch-size 4
 
 # 5. Eval against LiveKit baseline + heuristic.
 LIVEKIT_GGUF=~/.eliza/local-inference/models/voice/turn-detector/onnx/turn-detector-en-q8.gguf
 python3 packages/training/scripts/voice/eot/eval_eot_lora.py \
     --eval-corpus "$RUN/corpus/eval.parquet" \
-    --lora-adapter "$RUN/outputs/0_8b/checkpoint-final" \
-    --lora-base "Qwen/Qwen3.5-0.8B-Base" \
+    --lora-adapter "$RUN/outputs/2b/checkpoint-final" \
+    --lora-base "google/gemma-4-E2B" \
     --livekit-gguf "$LIVEKIT_GGUF" \
-    --out "$RUN/reports/eval-0_8b.json"
+    --out "$RUN/reports/eval-2b.json"
 
 # exit 0 = gates passed → publishable
-# exit 1 = gates failed → read $RUN/reports/eval-0_8b.json, iterate
+# exit 1 = gates failed → read $RUN/reports/eval-2b.json, iterate
 
 # 6. (Optional) publish adapter to HF. The HF_TOKEN at
 #    ~/.huggingface/token must have write scope to the elizaos org.
 huggingface-cli upload elizaos/eliza-1-voice-eot \
-    "$RUN/outputs/0_8b/checkpoint-final" \
-    "0_8b/" \
+    "$RUN/outputs/2b/checkpoint-final" \
+    "2b/" \
     --repo-type model
 ```
 
-Repeat steps 4-5 for tiers `2b` and `4b`.
+Repeat steps 4-5 for tier `4b`.
 
 ## Failure modes
 

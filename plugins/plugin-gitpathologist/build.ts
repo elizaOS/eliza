@@ -1,78 +1,51 @@
 #!/usr/bin/env bun
+import { buildPlugin } from "../plugin-build";
 
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+/**
+ * Build script for @elizaos/plugin-gitpathologist.
+ *
+ * Outputs:
+ * - ESM (Node): dist/node/index.js
+ * - CJS (Node): dist/cjs/index.cjs
+ * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
+ *
+ * Migrated onto the shared `buildPlugin` driver (issue #10078). The CJS bundle
+ * is renamed `index.js` -> `index.cjs` with a plain rename (its sibling
+ * `index.js.map` is intentionally left unrenamed so the emitted
+ * `//# sourceMappingURL=index.js.map` reference stays valid), byte-identical to
+ * the prior hand-rolled build.
+ */
+const reexport = (from: string) => `export * from "${from}";\nexport { default } from "${from}";\n`;
 
-const externalDeps = await externalsFromPackageJson("./package.json", {
-  extra: ["@elizaos/shared", "@elizaos/agent"],
-});
-
-async function build(): Promise<void> {
-  const totalStart = Date.now();
-  const { rm } = await import("node:fs/promises");
-  await rm("dist", { recursive: true, force: true });
-
-  const nodeStart = Date.now();
-  console.log("Building @elizaos/plugin-gitpathologist for Node (ESM)...");
-  const nodeResult = await Bun.build({
-    entrypoints: ["src/index.ts"],
-    outdir: "dist/node",
-    target: "node",
-    format: "esm",
-    sourcemap: "external",
-    minify: false,
-    external: externalDeps,
-  });
-  if (!nodeResult.success) {
-    console.error("Node ESM build failed:", nodeResult.logs);
-    throw new Error("Node ESM build failed");
-  }
-  console.log(`Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
-
-  const cjsStart = Date.now();
-  console.log("Building @elizaos/plugin-gitpathologist for Node (CJS)...");
-  const cjsResult = await Bun.build({
-    entrypoints: ["src/index.ts"],
-    outdir: "dist/cjs",
-    target: "node",
-    format: "cjs",
-    sourcemap: "external",
-    minify: false,
-    external: externalDeps,
-  });
-  if (!cjsResult.success) {
-    console.error("Node CJS build failed:", cjsResult.logs);
-    throw new Error("Node CJS build failed");
-  }
-
-  const { rename, access, mkdir, writeFile } = await import("node:fs/promises");
-  const { $ } = await import("bun");
-
-  await access("dist/cjs/index.js");
-  await rename("dist/cjs/index.js", "dist/cjs/index.cjs");
-  console.log(`Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
-
-  const dtsStart = Date.now();
-  console.log("Generating TypeScript declarations...");
-  await $`tsc --noCheck --project tsconfig.build.json`;
-
-  await mkdir("dist/node", { recursive: true });
-  await mkdir("dist/cjs", { recursive: true });
-
-  const rootReexport = `export * from "./node/index";
-export { default } from "./node/index";
-`;
-  const cjsReexport = `export * from "../node/index";
-export { default } from "../node/index";
-`;
-
-  await writeFile("dist/index.d.ts", rootReexport);
-  await writeFile("dist/cjs/index.d.ts", cjsReexport);
-
-  console.log(`Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
-  console.log(`All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
-}
-
-build().catch((err) => {
-  console.error("Build failed:", err);
-  process.exit(1);
+await buildPlugin({
+  name: "@elizaos/plugin-gitpathologist",
+  clean: true,
+  externals: "auto",
+  externalsOptions: { extra: ["@elizaos/shared", "@elizaos/agent"] },
+  targets: [
+    {
+      label: "Node (ESM)",
+      entry: "src/index.ts",
+      outSubdir: "node",
+      target: "node",
+      format: "esm",
+      sourcemap: "external",
+      minify: false,
+    },
+    {
+      label: "Node (CJS)",
+      entry: "src/index.ts",
+      outSubdir: "cjs",
+      target: "node",
+      format: "cjs",
+      sourcemap: "external",
+      minify: false,
+      renames: [["index.js", "index.cjs"]],
+    },
+  ],
+  dtsProject: "tsconfig.build.json",
+  dtsShims: [
+    { path: "index.d.ts", content: reexport("./node/index") },
+    { path: "cjs/index.d.ts", content: reexport("../node/index") },
+  ],
 });

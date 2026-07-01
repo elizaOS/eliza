@@ -55,7 +55,15 @@ if (envFlagEnabled("AGENT_SKIP_CLOUD_LIVE_SMOKE")) {
 
 if (
   !fs.existsSync(
-    path.join(repoRoot, "packages", "cloud-api", "test", "e2e", "preload.ts"),
+    path.join(
+      repoRoot,
+      "packages",
+      "cloud",
+      "api",
+      "test",
+      "e2e",
+      "preload.ts",
+    ),
   )
 ) {
   skip("the cloud e2e harness is not available in this checkout");
@@ -74,8 +82,8 @@ const result = spawnSync(
     "test",
     "--max-concurrency=1",
     "--preload",
-    "packages/cloud-api/test/e2e/preload.ts",
-    "packages/cloud-api/test/e2e/agent-token-flow.test.ts",
+    "packages/cloud/api/test/e2e/preload.ts",
+    "packages/cloud/api/test/e2e/agent-token-flow.test.ts",
     "--timeout",
     "120000",
   ],

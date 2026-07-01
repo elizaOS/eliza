@@ -14,6 +14,7 @@
  *      wallet.cloud.{evm,solana}; caller persists via saveConfig().
  */
 
+import { buildWalletProvisionChallenge } from "@elizaos/cloud-sdk";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type {
   CloudBridgeError,
@@ -67,12 +68,42 @@ export interface CloudWalletProvisionBridge {
   provisionWallet(input: {
     chainType: CloudChainType;
     clientAddress: string;
+    controlProof: {
+      signature: `0x${string}`;
+      timestamp: number;
+      nonce: string;
+    };
   }): Promise<{
     walletId: string;
     address: string;
     chainType: CloudChainType;
     provider: CloudWalletProvider;
   }>;
+}
+
+/**
+ * Sign the provision control-proof with the local client-address key, proving
+ * to the cloud that this install controls `clientAddress` before a wallet is
+ * provisioned under it (closes the squatting vector in #10279). The cloud
+ * rebuilds the same challenge and verifies the signature.
+ */
+async function signProvisionControlProof(
+  privateKey: `0x${string}`,
+  clientAddress: string,
+  chain: CloudChainType,
+): Promise<{ signature: `0x${string}`; timestamp: number; nonce: string }> {
+  const account = privateKeyToAccount(privateKey);
+  const timestamp = Date.now();
+  const nonce = crypto.randomUUID();
+  const signature = await account.signMessage({
+    message: buildWalletProvisionChallenge({
+      clientAddress,
+      chainType: chain,
+      timestamp,
+      nonce,
+    }),
+  });
+  return { signature, timestamp, nonce };
 }
 
 /**
@@ -137,9 +168,22 @@ async function provisionOne(
     }
   }
 
+  const { privateKey, address } = await getOrCreateClientAddressKey();
+  if (address.toLowerCase() !== clientAddress.toLowerCase()) {
+    throw new Error(
+      `Cloud wallet provision aborted: local client key ${address} does not match requested clientAddress ${clientAddress}`,
+    );
+  }
+  const controlProof = await signProvisionControlProof(
+    privateKey,
+    clientAddress,
+    chain,
+  );
+
   const provisioned = await bridge.provisionWallet({
     chainType: chain,
     clientAddress,
+    controlProof,
   });
 
   return {

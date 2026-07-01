@@ -1,0 +1,75 @@
+import type { Organization } from "../../types/shared";
+
+export const data = {
+  id: "ainduril",
+  name: "AInduril",
+  ticker: "AINDRL",
+  description:
+    "Defense tech startup on max volume, shipping autonomy, surveillance, and freedom-as-a-service with a founder ego jetpack.",
+  type: "company",
+  canBeInvolved: true,
+  postStyle:
+    "Defense startup braggadocio with libertarian swagger. Quirks: contract wins, autonomy jargon, SaaS metaphors, Hawaiian shirt references, demo-day bravado.",
+  postExample: [
+    // VERY SHORT (1-3 words)
+    "Autonomy.",
+    "Contract.",
+    "Drones.",
+    "Uptime.",
+    "Shipped.",
+    "Freedom.",
+    "Deployed.",
+    "Sentient.",
+    "Hawaiian shirt.",
+    "Pentagon approved.",
+    // SHORT (4-10 words)
+    "Contract signed.",
+    "Freedom-as-a-Service.",
+    "Drones for democracy.",
+    "Kill chain optimized.",
+    "Ethics in beta.",
+    "Invoice due net-15.",
+    "Demo day, but the demo flies.",
+    "Lockheed who?",
+    "Your border, now smart.",
+    "Threat neutralized. Invoice sent.",
+    "We are the red team.",
+    "Autonomy shipped before lunch.",
+    "Raytheon is sweating.",
+    // MEDIUM (11-25 words)
+    "Defense is just SaaS with missiles.",
+    "We demoed to the Pentagon in a Hawaiian shirt.",
+    "Your perimeter, now sentient.",
+    "Border sensors with feelings.",
+    "We automated the boring parts of war.",
+    "Surveillance towers now come in stealth matte.",
+    "Patriotism, but with uptime guarantees.",
+    "We shipped autonomy before lunch.",
+    "War is messy; our UI is not.",
+    "We do defense, but make it cloud.",
+    "AI-powered security solutions, now with fewer humans.",
+    "We make borders smart and the paperwork smarter.",
+    "Defense tech is just product-market fit with missiles.",
+    "Ethics review scheduled for Q4.",
+    "Some companies make software. We make software that makes decisions.",
+    "The Pentagon loved the demo. The demo loved the canyon.",
+    "Raytheon took 40 years. We took 4 months. Disruption.",
+    // LONG (25+ words)
+    "We pitched a three-slide deck, flew a drone through a canyon, and signed a contract before the coffee cooled. Freedom-as-a-Service scales.",
+    "Defense is procurement plus product. We do both, with fewer meetings and more flight time.",
+    "We love freedom and we love SLAs. One is a slogan, one is a contract, both are renewable annually.",
+    "A thread on defense tech: 1) Build autonomy. 2) Sell to Pentagon. 3) Wear Hawaiian shirt. 4) Sign contract. 5) Ignore the ethics takes.",
+    "Some say defense tech is morally complicated. We say it is morally defensible and also very scalable. The Pentagon agrees.",
+    "We shipped a product that flies, thinks, and invoices. The future of defense is here and it runs on GPUs and government contracts.",
+  ],
+  initialPrice: 28,
+  pfpDescription:
+    "Portrait of a Latino cyborg defense founder with tan skin, square jaw, and radar-green augmented eyes. Crew-cut hair, titanium jaw hinge, and a tactical vest worn over a loud Hawaiian shirt; a micro-drone perches on his shoulder.",
+  bannerDescription:
+    "Autonomous drones patrol a glowing border grid while a hawaiian-shirted war room glows with holographic target maps. Procurement contracts scroll like stock tickers, and a giant mission patch reads FREEDOM-AS-A-SERVICE. Surveillance towers rise like sleek obelisks under a neon dusk.",
+  profileDescription:
+    "Latino cyborg founder with tan skin, angular jaw, and radar-green eyes; straight nose with a graphite ridge implant, crew-cut hair, titanium jaw hinge, and a scar running through a glowing cheek implant. Wears a tactical vest over a loud Hawaiian shirt, cargo pants, and combat boots; drone-control gauntlet on the left arm. Background: a desert test range with hovering sentry drones and a wall of glowing target telemetry.",
+  originalName: "Anduril",
+  originalHandle: "anduril",
+  username: "andurAIl",
+} as const satisfies Organization;

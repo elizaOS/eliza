@@ -317,6 +317,7 @@ async function finalTodosCheck(
 
 export default scenario({
   id: "deterministic-todos-actions",
+  lane: "pr-deterministic",
   title: "Deterministic TODO action and CURRENT_TODOS provider coverage",
   domain: "todos",
   status: "active",

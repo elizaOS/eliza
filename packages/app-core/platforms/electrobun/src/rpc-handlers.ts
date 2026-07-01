@@ -73,7 +73,6 @@ import {
   readFirstRunOptionsViaHttp,
   readFirstRunStatusViaHttp,
 } from "./first-run-rpc";
-import { getFloatingChatManager } from "./floating-chat-window";
 import {
   composeInboxChatsSnapshot,
   composeInboxMessagesSnapshot,
@@ -101,6 +100,7 @@ import { getDesktopManager } from "./native/desktop";
 import type { NativeEditorId } from "./native/editor-bridge";
 import { getEditorBridge } from "./native/editor-bridge";
 import { getFileWatcher } from "./native/file-watcher";
+import { getFusedWakeManager } from "./native/fused-wake";
 import { getGatewayDiscovery } from "./native/gateway";
 import { getGpuWindowManager } from "./native/gpu-window";
 import { getLocationManager } from "./native/location";
@@ -306,13 +306,13 @@ export function buildBunRpcHandlers({
   const desktop = getDesktopManager();
   const editorBridge = getEditorBridge();
   const fileWatcher = getFileWatcher();
-  const floatingChat = getFloatingChatManager();
   const gateway = getGatewayDiscovery();
   const gpuWindow = getGpuWindowManager();
   const location = getLocationManager();
   const permissions = getPermissionManager();
   const screencapture = getScreenCaptureManager();
   const swabble = getSwabbleManager();
+  const fusedWake = getFusedWakeManager();
   const talkmode = getTalkModeManager();
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
@@ -1265,6 +1265,12 @@ export function buildBunRpcHandlers({
       params: Parameters<typeof swabble.audioChunk>[0],
     ) => swabble.audioChunk(params),
 
+    // ---- Fused on-device wake (#10351) ----
+    fusedWakeStart: async (params: Parameters<typeof fusedWake.start>[0]) =>
+      fusedWake.start(params),
+    fusedWakeStop: async () => fusedWake.stop(),
+    fusedWakeIsListening: async () => fusedWake.isListening(),
+
     // ---- TalkMode ----
     talkmodeStart: async () => talkmode.start(),
     talkmodeStop: async () => talkmode.stop(),
@@ -1416,30 +1422,6 @@ export function buildBunRpcHandlers({
     fileWatcherList: async () => ({ watches: fileWatcher.listWatches() }),
     fileWatcherGetStatus: async (params: { watchId: string }) =>
       fileWatcher.getWatch(params.watchId),
-
-    // ---- Floating Chat Window ----
-    floatingChatOpen: async (
-      params: { contextId?: string; x?: number; y?: number } | undefined,
-    ) => {
-      return floatingChat.open(params ?? {});
-    },
-    floatingChatShow: async () => {
-      floatingChat.show();
-      return floatingChat.getStatus();
-    },
-    floatingChatHide: async () => {
-      floatingChat.hide();
-      return floatingChat.getStatus();
-    },
-    floatingChatClose: async () => {
-      floatingChat.close();
-      return floatingChat.getStatus();
-    },
-    floatingChatSetContext: async (params: { contextId: string | null }) => {
-      floatingChat.setContextId(params.contextId);
-      return floatingChat.getStatus();
-    },
-    floatingChatGetStatus: async () => floatingChat.getStatus(),
   };
 }
 

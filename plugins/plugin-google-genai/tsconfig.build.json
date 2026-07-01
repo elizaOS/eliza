@@ -22,6 +22,7 @@
     "node_modules",
     "__tests__",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "vitest.harness.config.ts"
   ]
 }

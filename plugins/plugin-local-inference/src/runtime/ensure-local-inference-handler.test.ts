@@ -2,11 +2,21 @@ import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
+const assignmentsState = vi.hoisted(() => ({
+	assignments: {} as Record<string, string>,
+}));
+const registryState = vi.hoisted(() => ({
+	installed: [] as Array<{ id: string; path: string }>,
+}));
+const hardwareState = vi.hoisted(() => ({
+	probe: { memory: { totalGb: 8 } },
+}));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
 	available: vi.fn(async () => true),
 	conversation: vi.fn(() => null),
 	currentModelPath: vi.fn(() => null),
+	ensureActiveBundleAsrReady: vi.fn(async () => undefined),
 	ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
 	generate: vi.fn(async () => "ok"),
 	generateInConversation: vi.fn(async () => ({
@@ -36,23 +46,13 @@ const arbiterState = vi.hoisted(() => ({
 		description: "A tiny synthetic image.",
 	})),
 }));
-const asrState = vi.hoisted(() => ({
-	createStreamingTranscriber: vi.fn(),
-	dispose: vi.fn(),
-	feed: vi.fn(),
-	flush: vi.fn(async () => ({
-		partial: "standalone transcript",
-		isFinal: true,
-	})),
-}));
-
 vi.mock("../services/active-model", () => ({
 	resolveLocalInferenceLoadArgs: vi.fn(async (target) => target),
 }));
 
 vi.mock("../services/assignments", () => ({
 	autoAssignAtBoot: vi.fn(async () => null),
-	readEffectiveAssignments: vi.fn(async () => ({})),
+	readEffectiveAssignments: vi.fn(async () => assignmentsState.assignments),
 }));
 
 vi.mock("../services/cache-bridge", () => ({
@@ -81,12 +81,16 @@ vi.mock("../services/handler-registry", () => ({
 	},
 }));
 
+vi.mock("../services/hardware", () => ({
+	probeHardware: vi.fn(async () => hardwareState.probe),
+}));
+
 vi.mock("../services/memory-arbiter", () => ({
 	tryGetMemoryArbiter: vi.fn(() => arbiterState),
 }));
 
 vi.mock("../services/registry", () => ({
-	listInstalledModels: vi.fn(async () => []),
+	listInstalledModels: vi.fn(async () => registryState.installed),
 }));
 
 vi.mock("../services/router-handler", () => ({
@@ -100,19 +104,8 @@ vi.mock("../services/voice", () => ({
 	})),
 }));
 
-vi.mock("../services/voice/transcriber", () => {
-	class AsrUnavailableError extends Error {
-		constructor(message: string) {
-			super(message);
-			this.name = "AsrUnavailableError";
-		}
-	}
-	return {
-		AsrUnavailableError,
-		createStreamingTranscriber: asrState.createStreamingTranscriber,
-	};
-});
-
+import { resolveLocalInferenceLoadArgs } from "../services/active-model";
+import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
 import { VoiceStartupError } from "../services/voice/errors";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
@@ -174,21 +167,15 @@ function findRegisteredHandler(
 beforeEach(() => {
 	vi.clearAllMocks();
 	modeState.mode = "local";
+	assignmentsState.assignments = {};
+	registryState.installed = [];
+	hardwareState.probe = { memory: { totalGb: 8 } };
 	delete process.env.ELIZA_LOCAL_LLAMA;
 	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
 	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
-	asrState.createStreamingTranscriber.mockReturnValue({
-		dispose: asrState.dispose,
-		feed: asrState.feed,
-		flush: asrState.flush,
-	});
-	asrState.flush.mockResolvedValue({
-		partial: "standalone transcript",
-		isFinal: true,
-	});
 	arbiterState.hasCapability.mockImplementation(
 		(capability: string) => capability === "vision-describe",
 	);
@@ -196,6 +183,9 @@ beforeEach(() => {
 		title: "A small image",
 		description: "A tiny synthetic image.",
 	});
+	vi.mocked(resolveLocalInferenceLoadArgs).mockImplementation(
+		async (target) => target,
+	);
 });
 
 describe("ensureLocalInferenceHandler", () => {
@@ -329,6 +319,88 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("uses a fine-grained maxTokensPerStep for user-visible streaming, coarse for internal calls", async () => {
+		const prior = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+		delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+		try {
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(true);
+
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(
+				registrations,
+				ModelType.TEXT_LARGE,
+			);
+
+			// Streaming reply (onStreamChunk wired) → tuned fine-grained step (8).
+			await handler(runtime, {
+				prompt: "hi",
+				stream: true,
+				onStreamChunk: () => {},
+			});
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: 8 }),
+			);
+
+			// Internal / non-streamed call → no override (runner keeps coarse 32).
+			await handler(runtime, { prompt: "hi" });
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: undefined }),
+			);
+
+			// The shared env knob overrides the tuned streaming default.
+			process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = "4";
+			await handler(runtime, {
+				prompt: "hi",
+				stream: true,
+				onStreamChunk: () => {},
+			});
+			expect(engineState.generate).toHaveBeenLastCalledWith(
+				expect.objectContaining({ maxTokensPerStep: 4 }),
+			);
+		} finally {
+			if (prior === undefined) {
+				delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
+			} else {
+				process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = prior;
+			}
+		}
+	});
+
+	it("passes hardware-aware load args through desktop lazy assignment loads", async () => {
+		const installed = {
+			id: "eliza-1-2b",
+			path: "/models/eliza-1-2b.gguf",
+		};
+		const resolved = {
+			...installed,
+			modelPath: installed.path,
+			contextSize: 32_768,
+		};
+		assignmentsState.assignments = { TEXT_SMALL: installed.id };
+		registryState.installed = [installed];
+		engineState.hasLoadedModel.mockReturnValue(true);
+		vi.mocked(resolveLocalInferenceLoadArgs).mockResolvedValueOnce(
+			resolved as never,
+		);
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+		});
+
+		expect(probeHardware).toHaveBeenCalledTimes(1);
+		expect(resolveLocalInferenceLoadArgs).toHaveBeenCalledWith(
+			installed,
+			undefined,
+			{ hardware: hardwareState.probe },
+		);
+		expect(engineState.load).toHaveBeenCalledWith(installed.path, resolved);
+	});
+
 	it.each([
 		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
 		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
@@ -380,6 +452,8 @@ describe("ensureLocalInferenceHandler", () => {
 
 	it("routes image description through the Eliza-1 vision arbiter", async () => {
 		const { registrations, runtime } = makeRuntime();
+		const signal = new AbortController().signal;
+		const onStreamChunk = vi.fn();
 
 		await ensureLocalInferenceHandler(runtime);
 		const registration = registrations.find(
@@ -397,22 +471,63 @@ describe("ensureLocalInferenceHandler", () => {
 			handler?.(runtime, {
 				imageUrl: "data:image/png;base64,AAAA",
 				prompt: "describe this",
+				stream: true,
+				signal,
+				onStreamChunk,
 			}),
 		).resolves.toEqual({
 			title: "A small image",
 			description: "A tiny synthetic image.",
 		});
 		expect(arbiterState.requestVisionDescribe).toHaveBeenCalledWith({
-			modelKey: "qwen3-vl",
+			modelKey: "gemma-vl",
 			payload: {
 				image: { kind: "dataUrl", dataUrl: "data:image/png;base64,AAAA" },
 				prompt: "describe this",
+				signal,
+				onTextChunk: expect.any(Function),
 			},
 		});
+		const payload = arbiterState.requestVisionDescribe.mock.calls[0]?.[0]
+			?.payload as { onTextChunk?: (chunk: string) => void | Promise<void> };
+		await payload.onTextChunk?.("token");
+		expect(onStreamChunk).toHaveBeenCalledWith("token");
 		expect(runtime.setSetting).toHaveBeenCalledWith(
 			"ELIZA1_VISION_HANDLER_PRESENT",
 			"1",
 		);
+	});
+
+	it("keeps image description buffered unless stream is explicitly true", async () => {
+		const { registrations, runtime } = makeRuntime();
+		const onStreamChunk = vi.fn();
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<{ title: string; description: string }>)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		await handler?.(runtime, {
+			imageUrl: "https://example.test/image.png",
+			prompt: "describe this",
+			onStreamChunk,
+		});
+
+		expect(arbiterState.requestVisionDescribe).toHaveBeenCalledWith({
+			modelKey: "gemma-vl",
+			payload: {
+				image: { kind: "url", url: "https://example.test/image.png" },
+				prompt: "describe this",
+			},
+		});
+		expect(onStreamChunk).not.toHaveBeenCalled();
 	});
 
 	it("arms the active voice bundle before TRANSCRIPTION", async () => {
@@ -434,16 +549,20 @@ describe("ensureLocalInferenceHandler", () => {
 			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
 		).resolves.toBe("transcribed");
 
-		expect(engineState.ensureActiveBundleVoiceReady).toHaveBeenCalledTimes(1);
-		expect(asrState.createStreamingTranscriber).not.toHaveBeenCalled();
+		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
+		expect(engineState.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
 		expect(engineState.transcribePcm).toHaveBeenCalledWith(
 			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
+			undefined,
 			undefined,
 		);
 	});
 
-	it("uses standalone Whisper ASR when no voice bundle is loaded", async () => {
-		engineState.ensureActiveBundleVoiceReady.mockRejectedValueOnce(
+	it("fails fast when the fused voice bundle is unavailable (no whisper fallback)", async () => {
+		// The fused libelizainference ASR runtime is the sole on-device
+		// transcriber. A startup failure must propagate (AGENTS.md §3) — there is
+		// no whisper.cpp second attempt and no silent empty transcript.
+		engineState.ensureActiveBundleAsrReady.mockRejectedValueOnce(
 			new VoiceStartupError("missing-bundle-root", "no bundle"),
 		);
 		const { registrations, runtime } = makeRuntime();
@@ -462,19 +581,9 @@ describe("ensureLocalInferenceHandler", () => {
 
 		await expect(
 			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
-		).resolves.toBe("standalone transcript");
+		).rejects.toThrow(VoiceStartupError);
 
-		expect(asrState.createStreamingTranscriber).toHaveBeenCalledWith({
-			prefer: "whisper-cpp",
-			allowWhisperCpp: true,
-		});
-		expect(asrState.feed).toHaveBeenCalledWith(
-			expect.objectContaining({
-				pcm: new Float32Array([0]),
-				sampleRate: 16_000,
-			}),
-		);
-		expect(asrState.dispose).toHaveBeenCalledTimes(1);
+		expect(engineState.ensureActiveBundleAsrReady).toHaveBeenCalledTimes(1);
 		expect(engineState.transcribePcm).not.toHaveBeenCalled();
 	});
 
@@ -543,6 +652,54 @@ describe("ensureLocalInferenceHandler", () => {
 
 		expect(received).toEqual(tokens);
 		expect(received.length).toBeGreaterThan(1);
+	});
+
+	it("wires onTextChunk for a plain (non-structured) stream request", async () => {
+		// The chat path can ask for token streaming via `stream: true` without a
+		// response skeleton. The handler must still bridge onStreamChunk →
+		// onTextChunk so cloud-parity token streaming works for the local model.
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			stream: true,
+			onStreamChunk: vi.fn(),
+		});
+
+		expect(engineState.generate).toHaveBeenCalledWith(
+			expect.objectContaining({ onTextChunk: expect.any(Function) }),
+		);
+	});
+
+	it("does not wire onTextChunk for a non-streaming request", async () => {
+		// Non-streaming callers must not pay the per-chunk callback overhead:
+		// engineGenerateArgsFromParams only bridges the callback when the caller
+		// asked for streaming (`stream` or `streamStructured`).
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			onStreamChunk: vi.fn(),
+		});
+
+		const args = engineState.generate.mock.calls.at(-1)?.[0] as {
+			onTextChunk?: unknown;
+		};
+		expect(args.onTextChunk).toBeUndefined();
 	});
 
 	it("threads eliza thinking provider options into local engine args", async () => {

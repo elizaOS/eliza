@@ -48,6 +48,8 @@ type TweetDecision = {
   actionResponse: ActionResponse;
   tweetState: State;
   roomId: UUID;
+  /** Interpreted description of the tweet's media, "" when there is none. */
+  mediaDescriptions: string;
 };
 
 function normalizeTweet(tweet: Tweet): ActionableTweet | null {
@@ -79,6 +81,28 @@ function normalizeTweet(tweet: Tweet): ActionableTweet | null {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Collect the image URLs that represent a tweet's media. Photos contribute
+ * their full image; videos and animated GIFs contribute their preview frame
+ * (the v2 timeline only exposes a still preview URL for non-photo media, which
+ * an IMAGE_DESCRIPTION model can still interpret).
+ */
+function collectTweetMediaUrls(tweet: ActionableTweet): string[] {
+  const urls: string[] = [];
+  for (const photo of tweet.photos ?? []) {
+    if (typeof photo.url === "string" && photo.url.length > 0) {
+      urls.push(photo.url);
+    }
+  }
+  for (const video of tweet.videos ?? []) {
+    const url = video.preview ?? video.url;
+    if (typeof url === "string" && url.length > 0) {
+      urls.push(url);
+    }
+  }
+  return urls;
 }
 
 export class TwitterTimelineClient {
@@ -173,6 +197,57 @@ export class TwitterTimelineClient {
       .filter((tweet) => tweet.username !== twitterUsername); // do not perform action on self-tweets
   }
 
+  /**
+   * Interpret any media attached to a tweet (images, GIFs, videos) by running
+   * each through the IMAGE_DESCRIPTION model. Returns a formatted block of
+   * descriptions to inject into the action/reply/quote prompts so the agent
+   * reasons about what the media actually shows, not just the tweet text.
+   * Returns "" when the tweet has no media or no IMAGE_DESCRIPTION model is
+   * registered.
+   */
+  async describeTweetMedia(tweet: ActionableTweet): Promise<string> {
+    const mediaUrls = collectTweetMediaUrls(tweet);
+    if (mediaUrls.length === 0) {
+      return "";
+    }
+
+    if (
+      typeof this.runtime.getModel(ModelType.IMAGE_DESCRIPTION) !== "function"
+    ) {
+      logger.debug(
+        `No IMAGE_DESCRIPTION model registered; skipping media interpretation for tweet ${tweet.id}`,
+      );
+      return "";
+    }
+
+    const descriptions: string[] = [];
+    for (const imageUrl of mediaUrls) {
+      try {
+        const result = await this.runtime.useModel(
+          ModelType.IMAGE_DESCRIPTION,
+          { imageUrl },
+        );
+        const description =
+          typeof result === "string"
+            ? result
+            : [result?.title, result?.description].filter(Boolean).join(": ");
+        if (description.length > 0) {
+          descriptions.push(`- ${description}`);
+        }
+      } catch (error) {
+        logger.warn(
+          `Failed to interpret media ${imageUrl} on tweet ${tweet.id}: ${errorMessage(error)}`,
+        );
+      }
+    }
+
+    if (descriptions.length === 0) {
+      return "";
+    }
+
+    return `\n\n# Media in the tweet\n${descriptions.join("\n")}`;
+  }
+
   createTweetId(runtime: IAgentRuntime, tweet: ActionableTweet) {
     return createUniqueUuid(runtime, tweet.id);
   }
@@ -233,6 +308,10 @@ export class TwitterTimelineClient {
 
         const state = await this.runtime.composeState(message);
 
+        // Interpret any media (image, gif, video) so the action decision and
+        // any generated reply/quote reason about the media, not just the text.
+        const mediaDescriptions = await this.describeTweetMedia(tweet);
+
         const actionRespondPrompt =
           composePromptFromState({
             state,
@@ -242,7 +321,7 @@ export class TwitterTimelineClient {
           }) +
           `
 Tweet:
-${tweet.text}
+${tweet.text}${mediaDescriptions}
 
 # Respond with qualifying action tags only.
 
@@ -268,6 +347,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
           actionResponse: parsedResponse,
           tweetState: state,
           roomId,
+          mediaDescriptions,
         });
 
         // Limit the number of actions per cycle
@@ -343,6 +423,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
       actionResponse,
       tweetState: _tweetState,
       roomId,
+      mediaDescriptions,
     } of tweetDecisions) {
       const tweetId = this.createTweetId(this.runtime, tweet);
       const executedActions: string[] = [];
@@ -400,12 +481,12 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         }
 
         if (actionResponse.quote) {
-          await this.handleQuoteAction(tweet);
+          await this.handleQuoteAction(tweet, mediaDescriptions);
           executedActions.push("quote");
         }
 
         if (actionResponse.reply) {
-          await this.handleReplyAction(tweet);
+          await this.handleReplyAction(tweet, mediaDescriptions);
           executedActions.push("reply");
         }
 
@@ -471,7 +552,10 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
     }
   }
 
-  async handleQuoteAction(tweet: ActionableTweet) {
+  async handleQuoteAction(
+    tweet: ActionableTweet,
+    mediaDescriptions: string = "",
+  ) {
     try {
       const message = this.formMessage(this.runtime, tweet);
 
@@ -486,7 +570,7 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         }) +
         `
 You are responding to this tweet:
-${tweet.text}`;
+${tweet.text}${mediaDescriptions}`;
 
       const quoteResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: quotePrompt,
@@ -569,7 +653,10 @@ ${tweet.text}`;
     }
   }
 
-  async handleReplyAction(tweet: ActionableTweet) {
+  async handleReplyAction(
+    tweet: ActionableTweet,
+    mediaDescriptions: string = "",
+  ) {
     try {
       const message = this.formMessage(this.runtime, tweet);
 
@@ -584,7 +671,7 @@ ${tweet.text}`;
         }) +
         `
 You are replying to this tweet:
-${tweet.text}`;
+${tweet.text}${mediaDescriptions}`;
 
       const replyResponse = await this.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt: replyPrompt,

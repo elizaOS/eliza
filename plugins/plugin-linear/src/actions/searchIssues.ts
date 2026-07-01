@@ -13,6 +13,7 @@ import { searchIssuesTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { LinearSearchFilters, SearchIssuesParameters } from "../types/index.js";
 import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
+import { formatUnknownError, getMessageSource } from "./message-source";
 import {
   getBooleanValue,
   getNumberValue,
@@ -102,10 +103,7 @@ export const searchIssuesAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
-    validateLinearActionIntent(runtime, message, state, {
-      keywords: ["search", "linear", "issues"],
-      regexAlternation: "search|linear|issues",
-    }),
+    validateLinearActionIntent(runtime, message, state),
 
   async handler(
     runtime: IAgentRuntime,
@@ -126,7 +124,7 @@ export const searchIssuesAction: Action = {
         const errorMessage = "Please provide search criteria for issues.";
         await callback?.({
           text: errorMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: errorMessage,
@@ -225,28 +223,24 @@ export const searchIssuesAction: Action = {
               }
             });
           } catch (parseError) {
-            logger.error("Failed to parse search filters:", parseError);
+            logger.error("Failed to parse search filters:", formatUnknownError(parseError));
             // Fallback to simple search
             filters = { query: content };
           }
         }
       }
 
-      if (!filters.team) {
+      // Scope to the default team unless the caller explicitly asked for all
+      // teams. `allTeams` is a structured filter the model sets (#10470) — the
+      // previous English-keyword guess (text includes "all" + "issue"/"bug"/
+      // "task") never worked for other languages or phrasings.
+      if (!filters.team && filters.allTeams !== true) {
         const defaultTeamKey =
           linearService.getDefaultTeamKey(accountId) ??
           (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
         if (defaultTeamKey) {
-          const searchingAllIssues =
-            content.toLowerCase().includes("all") &&
-            (content.toLowerCase().includes("issue") ||
-              content.toLowerCase().includes("bug") ||
-              content.toLowerCase().includes("task"));
-
-          if (!searchingAllIssues) {
-            filters.team = defaultTeamKey;
-            logger.info(`Applying default team filter: ${defaultTeamKey}`);
-          }
+          filters.team = defaultTeamKey;
+          logger.info(`Applying default team filter: ${defaultTeamKey}`);
         }
       }
 
@@ -258,7 +252,7 @@ export const searchIssuesAction: Action = {
         const noResultsMessage = "No issues found matching your search criteria.";
         await callback?.({
           text: noResultsMessage,
-          source: message.content.source,
+          source: getMessageSource(message),
         });
         return {
           text: noResultsMessage,
@@ -287,7 +281,7 @@ export const searchIssuesAction: Action = {
       const resultMessage = `📋 Found ${issues.length} issue${issues.length === 1 ? "" : "s"}:\n\n${issueText}`;
       await callback?.({
         text: resultMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
 
       return {
@@ -322,11 +316,11 @@ export const searchIssuesAction: Action = {
         },
       };
     } catch (error) {
-      logger.error("Failed to search issues:", error);
+      logger.error("Failed to search issues:", formatUnknownError(error));
       const errorMessage = `❌ Failed to search issues: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback?.({
         text: errorMessage,
-        source: message.content.source,
+        source: getMessageSource(message),
       });
       return {
         text: errorMessage,

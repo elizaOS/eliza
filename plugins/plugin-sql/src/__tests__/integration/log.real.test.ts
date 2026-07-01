@@ -74,8 +74,7 @@ describe("Log Integration Tests", () => {
 
     it("should not throw when deleting a non-existent log", async () => {
       const nonExistentId = uuidv4() as UUID;
-      await adapter.deleteLog(nonExistentId);
-      expect(true).toBe(true);
+      await expect(adapter.deleteLog(nonExistentId)).resolves.not.toThrow();
     });
 
     it("should filter logs by type", async () => {

@@ -2,8 +2,7 @@ import type { ModelOption } from "@elizaos/shared";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { ConfigRenderer } from "../../components/config-ui/config-renderer";
 import { defaultRegistry } from "../../components/config-ui/config-renderer.helpers";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { SettingsSelectRow } from "./settings-agent-rows";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
@@ -38,8 +37,7 @@ export function ProviderRoutingPanel({
   showCloudControls,
   elizaCloudConnected,
 }: ProviderRoutingPanelProps) {
-  const { t } = useApp();
-  const branding = useBranding();
+  const t = useAppSelector((s) => s.t);
 
   const hasModelControls =
     elizaCloudConnected &&
@@ -48,15 +46,12 @@ export function ProviderRoutingPanel({
   if (!showCloudControls || !hasModelControls) return null;
 
   return (
-    <div className="border-border border-t">
+    <div className="flex flex-col">
       {largeModelOptions.length > 0 ? (
         <SettingsSelectRow
           agentId="routing-primary-model"
           label={t("providerswitcher.model", {
             defaultValue: "Primary model",
-          })}
-          description={t("providerswitcher.modelDesc", {
-            defaultValue: "The model used for the agent's main reasoning.",
           })}
           value={currentLargeModel || ""}
           onValueChange={(v) => onModelFieldChange("large", v)}
@@ -70,50 +65,38 @@ export function ProviderRoutingPanel({
           triggerClassName="w-full"
         />
       ) : null}
-      <div className="px-4 py-4">
-        {cloudModelSchema ? (
-          <AdvancedSettingsDisclosure title="Model overrides">
-            <ConfigRenderer
-              schema={cloudModelSchema.schema}
-              hints={cloudModelSchema.hints}
-              values={modelValues.values}
-              setKeys={modelValues.setKeys}
-              registry={defaultRegistry}
-              onChange={onModelFieldChange}
-            />
-          </AdvancedSettingsDisclosure>
-        ) : null}
-        <div className="mt-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
-          <p className="text-muted text-xs-tight">
-            {t(
-              "providerswitcher.restartRequiredHint",
-              appNameInterpolationVars(branding),
-            )}
-          </p>
-          <div className="flex items-center gap-2">
-            {modelSaving && (
-              <span
-                className="inline-flex items-center text-muted"
-                title={t("providerswitcher.savingRestarting")}
-                role="status"
-                aria-label={t("providerswitcher.savingRestarting")}
-              >
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              </span>
-            )}
-            {modelSaveSuccess && (
-              <span
-                className="inline-flex items-center text-ok"
-                title={t("providerswitcher.savedRestartingAgent")}
-                role="status"
-                aria-label={t("providerswitcher.savedRestartingAgent")}
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      {cloudModelSchema ? (
+        <AdvancedSettingsDisclosure title="Model overrides">
+          <ConfigRenderer
+            schema={cloudModelSchema.schema}
+            hints={cloudModelSchema.hints}
+            values={modelValues.values}
+            setKeys={modelValues.setKeys}
+            registry={defaultRegistry}
+            onChange={onModelFieldChange}
+          />
+        </AdvancedSettingsDisclosure>
+      ) : null}
+      {modelSaving ? (
+        <span
+          className="inline-flex items-center py-2 text-muted"
+          title={t("providerswitcher.savingRestarting")}
+          role="status"
+          aria-label={t("providerswitcher.savingRestarting")}
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        </span>
+      ) : null}
+      {modelSaveSuccess ? (
+        <span
+          className="inline-flex items-center py-2 text-ok"
+          title={t("providerswitcher.savedRestartingAgent")}
+          role="status"
+          aria-label={t("providerswitcher.savedRestartingAgent")}
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+        </span>
+      ) : null}
     </div>
   );
 }

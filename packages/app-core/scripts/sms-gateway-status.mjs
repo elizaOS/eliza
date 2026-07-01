@@ -12,7 +12,10 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
-const auditScript = path.join(scriptDir, "check-sms-gateway-completion-audit.mjs");
+const auditScript = path.join(
+  scriptDir,
+  "check-sms-gateway-completion-audit.mjs",
+);
 const defaultAuditEvidencePath = path.join(
   repoRoot,
   ".eliza-local",
@@ -55,12 +58,16 @@ function readAuditEvidence(evidencePath) {
 
 function findRequirement(evidence, key) {
   if (!Array.isArray(evidence?.requirements)) return null;
-  return evidence.requirements.find((requirement) => requirement.key === key) ?? null;
+  return (
+    evidence.requirements.find((requirement) => requirement.key === key) ?? null
+  );
 }
 
 function supplementalSummary(requirement, predicate = () => true) {
   if (!Array.isArray(requirement?.evidence)) return null;
-  const item = requirement.evidence.find((entry) => entry.exists && predicate(entry));
+  const item = requirement.evidence.find(
+    (entry) => entry.exists && predicate(entry),
+  );
   return item?.summary ?? null;
 }
 
@@ -68,10 +75,14 @@ function printHomepageEvidence(requirement) {
   const summary = supplementalSummary(requirement);
   if (!summary) return;
   const blockedChecks = Array.isArray(summary.blockedChecks)
-    ? summary.blockedChecks.map((check) => `${check.name}=${check.detail}`).join("; ")
+    ? summary.blockedChecks
+        .map((check) => `${check.name}=${check.detail}`)
+        .join("; ")
     : "";
   if (blockedChecks) {
-    console.log(`[sms-gateway-status] evidence homepage-public-dns: ${blockedChecks}`);
+    console.log(
+      `[sms-gateway-status] evidence homepage-public-dns: ${blockedChecks}`,
+    );
   }
 }
 
@@ -104,7 +115,9 @@ function printBlueBubblesEvidence(requirement) {
 
 function buildBlockerBundle(evidence, evidencePath) {
   const blockedRequirements = Array.isArray(evidence?.requirements)
-    ? evidence.requirements.filter((requirement) => requirement.status === "blocked")
+    ? evidence.requirements.filter(
+        (requirement) => requirement.status === "blocked",
+      )
     : [];
   return {
     ok: false,
@@ -157,7 +170,7 @@ function main() {
   }
   if (has(output, /BLOCKED routing-contracts/)) {
     console.log(
-      "[sms-gateway-status] blocked: build linked workspaces with bun run --cwd packages/cloud-shared build:linked-workspaces, then rerun sms-gateway:status",
+      "[sms-gateway-status] blocked: build linked workspaces with bun run --cwd packages/cloud/shared build:linked-workspaces, then rerun sms-gateway:status",
     );
   }
   if (has(output, /BLOCKED android-transport/)) {
@@ -170,7 +183,9 @@ function main() {
     console.log(
       "[sms-gateway-status] blocked: after explicit real-send approval, run sms-gateway:validate:bluebubbles -- --confirm-real-send, then sms-gateway:verify:bluebubbles",
     );
-    printBlueBubblesEvidence(findRequirement(evidence, "bluebubbles-transport"));
+    printBlueBubblesEvidence(
+      findRequirement(evidence, "bluebubbles-transport"),
+    );
   }
 
   if (audit.status === 0) {

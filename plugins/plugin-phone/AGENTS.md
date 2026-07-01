@@ -12,12 +12,14 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 - `phoneCallLog` — Dynamic, read-only. Fetches the last 50 Android calls via `@elizaos/capacitor-phone`. Available in `contacts` and `messaging` contexts; requires `ADMIN` role. Returns `{ count, items }` where each item has `id`, `number`, `cachedName`, `date`, `durationSeconds`, `type`, `isNew`.
 
 **Actions**
-- `VOICE_CALL` — Scaffold stub registered in plugin. Sub-op `dial` routes by `recipientKind`: `owner`, `external`, or `e164`. Draft-first; `confirmed:true` to dispatch through the approval queue. **Not yet migrated** — the handler returns a `scaffold_stub` failure; full Twilio dispatch is pending migration from `plugins/plugin-lifeops/src/actions/voice-call.ts`. The Twilio helpers (`sendTwilioSms`, `sendTwilioVoiceCall`) already live in `src/twilio.ts`.
+- None registered here. The canonical `VOICE_CALL` action is currently
+  host-adapted by `@elizaos/plugin-personal-assistant`, which owns owner gating,
+  approval queue flow, recipient policy, and Twilio dispatch. The Twilio helpers
+  (`sendTwilioSms`, `sendTwilioVoiceCall`) live in `src/twilio.ts` for the
+  future provider/action migration.
 
 **Views** (registered in `plugin.ts` under `plugin.views`)
-- `phone` (default) — `PhonePluginView`: full-screen dialer + recent-calls overlay, mounted at `/phone`. The address book is the separate Contacts view; a header "Contacts" button links to it via the `eliza:navigate:view` bus.
-- `phone` (xr) — same component, `viewType: "xr"`.
-- `phone` (tui) — `PhoneTuiView`: terminal-mode dialer + transcript UI, mounted at `/phone/tui`.
+- `phone` — ONE declaration (`modalities: ["gui", "xr", "tui"]`, componentExport `PhoneView`), mounted at `/phone`. `PhoneView` owns the live Android data and renders the single presentational `PhoneSpatialView` inside a `SpatialSurface`; the same `PhoneSpatialView` drives the terminal surface via `register-terminal-view.tsx`. The address book is the separate Contacts view; a "Contacts" control links to it via the `eliza:navigate:view` bus.
 
 **App nav tab** (registered under `plugin.app.navTabs`)
 - `phone-companion` — Mounts `PhoneCompanionApp` at `/phone-companion`; declared for hosts that do not side-effect-import `register-companion-page.ts`.
@@ -28,26 +30,22 @@ Adds two distinct surfaces to elizaOS. The Android surface provides a full-scree
 src/
   index.ts                       Package barrel — public exports
   plugin.ts                      Plugin object (appPhonePlugin / default)
-  register.ts                    Side-effect entry: registers phone overlay on Android,
-                                 companion page always
+  register.ts                    Side-effect entry: registers the companion page (all
+                                 hosts) + the terminal phone view (Node agent)
   register-companion-page.ts     Registers PhoneCompanionApp with @elizaos/ui app-shell-registry
-  register-terminal-view.tsx     Registers spatial phone view for terminal/TUI surface
+  register-terminal-view.tsx     Registers PhoneSpatialView for the terminal/TUI surface
   ui.ts                          Re-exports all UI components under public names
   twilio.ts                      Twilio helpers: sendTwilioSms, sendTwilioVoiceCall,
                                  readTwilioCredentialsFromEnv, billing calc
-  actions/
-    voice-call.ts                VOICE_CALL action (scaffold stub; see TODO in file)
   providers/
     call-log.ts                  phoneCallLog provider (dynamic, ADMIN-gated)
   components/
-    phone-app.ts                 phoneApp OverlayApp definition + registerPhoneApp()
-    phone-view-bundle.ts         View bundle entry point
-    PhoneAppView.tsx             PhoneAppView (full GUI), PhonePluginView (wrapper),
-                                 PhoneTuiView (terminal)
-    PhoneAppView.helpers.ts      Helper utilities for PhoneAppView
-    PhoneAppView.interact.ts     interact() — TUI capability bridge
-    PhoneSpatialView.tsx         Spatial-vocabulary phone surface (GUI/XR/TUI)
-    PhoneTuiView.test.ts         Unit tests for TUI view
+    phone-view-bundle.ts         View bundle entry: re-exports PhoneView + interact
+    PhoneView.tsx                Unified GUI/XR data wrapper (owns hooks/fetch),
+                                 renders <SpatialSurface><PhoneSpatialView/></SpatialSurface>
+    PhoneSpatialView.tsx         Pure spatial-primitive phone surface (GUI/XR/TUI)
+    phone-view-helpers.ts        Pure data helpers (normalizeNumber, callLabelFor, loadPhoneState)
+    phone-interact.ts            interact() — TUI capability bridge
   companion/
     index.ts                     Companion barrel
     components/
@@ -104,15 +102,59 @@ The `phoneCallLog` provider reads no env vars; it calls `Phone.listRecentCalls` 
 
 **Add a companion view:** Add a React component under `src/companion/components/`. Add the view name to the `ViewName` union in `src/companion/services/navigation.ts`. Add the render branch in `PhoneCompanionApp.tsx`'s `renderView`.
 
-**Add a TUI capability:** Extend the `interact()` function in `src/components/PhoneAppView.interact.ts` with a new `if (capability === "...")` branch.
+**Add a TUI capability:** Extend the `interact()` function in `src/components/phone-interact.ts` with a new `if (capability === "...")` branch.
 
 ## Conventions / gotchas
 
-- **Android-only registration.** `src/register.ts` calls `registerPhoneApp()` only when `isElizaOS()` returns true (i.e. the Android host). The companion page registers unconditionally because it serves iOS as well.
-- **VOICE_CALL action is a stub.** The action is registered and the runtime can plan with it, but the handler returns a `scaffold_stub` failure until the Twilio dispatch is migrated from `plugins/plugin-lifeops`. Do not add parallel inline wrappers — migrate into the existing `src/actions/voice-call.ts` instead.
-- **Contacts live in their own view.** The Phone overlay has no contacts pane — it links to the separate `@elizaos/plugin-contacts` view via `eliza:navigate:view` (`{ viewId: "contacts", viewPath: "/contacts" }`). Do not re-embed a contacts list or add a `@elizaos/capacitor-contacts` dependency here.
+- **One unified view, no overlay app.** The dialer + recent-calls surface ships only as the `phone` plugin view (`PhoneView` → `PhoneSpatialView`). There is no separate overlay-app registration; `src/register.ts` registers the companion page (all hosts) and the terminal phone view (Node agent) only.
+- **VOICE_CALL is host-adapted.** Do not add a second phone action here unless
+  the PA-hosted owner gating, approval queue flow, recipient policy, and Twilio
+  dispatch move with parity tests.
+- **Contacts live in their own view.** The Phone view has no contacts pane — it links to the separate `@elizaos/plugin-contacts` view via `eliza:navigate:view` (`{ viewId: "contacts", viewPath: "/contacts" }`). Do not re-embed a contacts list or add a `@elizaos/capacitor-contacts` dependency here.
 - **Cross-view number handoff.** The Phone view consumes a pending number via `consumePendingPhoneNumber()` from `@elizaos/ui/app-navigate-view` on mount, pre-seeding the dialer. Contacts (and any caller) seed it with `navigateToPhoneWithNumber(number)` from the same module — the navigation bus carries no payload to a mounted view, so the number is stashed module-side and consumed once.
 - **`ElizaIntentWeb` does not simulate success.** The web fallback for the iOS native bridge explicitly returns `paired: false` and throws on `scheduleAlarm` — intentional, to prevent dev builds from appearing to work without a simulator.
 - **Two build outputs.** The `build` script runs `tsup` (main ESM bundle) and then a separate Vite build for `dist/views/bundle.js` (the plugin view bundle loaded by the elizaOS view registry). The types pass uses `tsc --noCheck`.
 - **Navigation persistence key.** `eliza.companion.nav.v1` in `@capacitor/preferences` — bump the key suffix if the `ViewName` union changes in a breaking way.
 - **Session token is appended as `?token=`.** `SessionClient.connect` appends the token as a query param to the WebSocket URL; the ingress side must read it from there.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — platform connector:**
+- A real (or sandbox-account) round-trip on the platform: inbound message → agent → outbound reply, captured as logs **and** a screenshot/recording of the actual conversation.
+- The raw inbound event/webhook payload and the outbound API request/response, with IDs mapped correctly (`stringToUuid` / `createUniqueUuid`).
+- Attachments, threads/replies, edits, multi-account, and rate-limit/error paths — not just a single text ping.
+- The agent trajectory for the turn the connector drove.
+<!-- END: evidence-and-e2e-mandate -->

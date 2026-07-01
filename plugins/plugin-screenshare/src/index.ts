@@ -17,41 +17,20 @@ const rawScreensharePlugin: Plugin = {
   description:
     "Streams the local desktop and accepts authenticated mouse and keyboard control from the Screen Share app.",
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single
+    // ScreenshareView spatial source. `modalities` is a plain literal here
+    // (index.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
     {
       id: "screenshare",
       label: "Screen Share",
       description: "Remote desktop streaming and operator control surface",
       icon: "Monitor",
       path: "/screenshare",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "ScreenshareOperatorSurface",
+      componentExport: "ScreenshareView",
       tags: ["screenshare", "remote", "desktop"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "screenshare",
-      label: "Screen Share XR",
-      description: "Remote desktop streaming and operator control surface",
-      icon: "Monitor",
-      path: "/screenshare",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ScreenshareOperatorSurface",
-      tags: ["screenshare", "remote", "desktop"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "screenshare",
-      label: "Screen Share TUI",
-      description: "Terminal remote desktop session surface",
-      icon: "Monitor",
-      path: "/screenshare/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ScreenshareTuiView",
-      tags: ["screenshare", "remote", "desktop", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
@@ -75,7 +54,6 @@ export {
 
 export default screensharePlugin;
 export * from "./routes.js";
-export * from "./ui/index.js";
 
 // In a terminal host (the Node agent, no DOM), register the screen-share view
 // so it renders inline in the terminal. Lazy + DOM-guarded so the terminal

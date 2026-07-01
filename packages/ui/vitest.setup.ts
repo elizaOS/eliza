@@ -6,6 +6,16 @@ import {
 } from "node:stream/web";
 import { TextDecoder } from "node:util";
 
+// Deterministic timezone for any test that renders a localized date/number.
+// Set (overridably) so `toLocale*` / `Intl` output is identical on every
+// machine and in CI — the unit-test counterpart to the browser determinism
+// shim used by the story gate. Components that read the clock during render
+// are caught separately by `audit:ui-determinism`; tests that need a frozen
+// clock opt in via `test/determinism.ts`.
+if (!process.env.TZ) {
+  process.env.TZ = "UTC";
+}
+
 // Polyfill Web Streams API for jsdom (eventsource-parser, AI SDK, etc. use
 // TransformStream at module-load time; jsdom does not include it).
 if (typeof globalThis.TransformStream === "undefined") {
@@ -14,6 +24,20 @@ if (typeof globalThis.TransformStream === "undefined") {
     ReadableStream,
     WritableStream,
   });
+}
+
+// jsdom does not implement Element.prototype.scrollTo / scrollIntoView, so any
+// component that scrolls a ref into view during render (e.g. a chat transcript
+// auto-scrolling to the latest message) throws `el.scrollTo is not a function`
+// under jsdom. Assign no-op shims only when absent — never overwrite a real
+// implementation, and only when `Element` exists (the jsdom-environment tests).
+if (typeof Element !== "undefined") {
+  if (typeof Element.prototype.scrollTo !== "function") {
+    Element.prototype.scrollTo = () => {};
+  }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = () => {};
+  }
 }
 
 // @testing-library/react's act() checks this flag to decide whether to use

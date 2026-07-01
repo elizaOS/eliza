@@ -98,6 +98,7 @@ export {
 } from "./live-provider";
 // Loopback port availability checker
 export { canBindLoopback } from "./loopback";
+export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
 // Ollama model handlers (for local inference)
 export {
 	createOllamaModelHandlers,

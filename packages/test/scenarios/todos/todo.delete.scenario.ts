@@ -1,6 +1,9 @@
+import type { AgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "todo.delete",
   title: "Delete a seeded todo with confirmation",
   domain: "todos",
@@ -45,6 +48,28 @@ export default scenario({
       actionName: "LIFE",
       status: "success",
       minCount: 1,
+    },
+    {
+      type: "custom",
+      name: "garage-todo-deleted",
+      predicate: async (ctx) => {
+        const runtime = ctx.runtime as AgentRuntime | undefined;
+        if (!runtime) return "scenario runtime unavailable";
+        await LifeOpsRepository.bootstrapSchema(runtime);
+        const repository = new LifeOpsRepository(runtime);
+        const definitions = await repository.listDefinitions(
+          String(runtime.agentId),
+        );
+        const remaining = definitions.filter(
+          (definition) => definition.title === "Reorganize garage",
+        );
+        if (remaining.length > 0) {
+          const seen = remaining
+            .map((definition) => `${definition.id}:${definition.status}`)
+            .join(", ");
+          return `expected "Reorganize garage" definition to be deleted; still saw ${seen}`;
+        }
+      },
     },
   ],
 });

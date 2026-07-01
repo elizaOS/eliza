@@ -1,5 +1,12 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
+import {
+  type AgentRequestTransport,
+  bodyToString,
+  fetchAgentTransport,
+  headersToRecord,
+  isStreamingRequest,
+  methodAllowsBody,
+} from "./transport";
 
 const DIRECT_CLOUD_API_HOSTS = new Set(["api.elizacloud.ai"]);
 const CLOUD_HOST_SUFFIX = ".elizacloud.ai";
@@ -50,24 +57,6 @@ function isNativeCloudAgentSubdomain(url: string): boolean {
   return !NON_AGENT_CLOUD_HOSTS.has(host) && host.endsWith(CLOUD_HOST_SUFFIX);
 }
 
-/**
- * An SSE / streaming request — the chat reply's token stream. Detected by the
- * `Accept: text/event-stream` header or a `…/stream` path. `CapacitorHttp`
- * buffers the entire response before resolving, which collapses token streaming
- * into a single blob delivered only after the full server-side generation. The
- * native browser fetch (`CapacitorWebFetch`) streams `response.body`
- * incrementally instead.
- */
-function isStreamingRequest(
-  url: string,
-  headers: HeadersInit | undefined,
-): boolean {
-  const accept = new Headers(headers ?? {}).get("accept") ?? "";
-  if (accept.toLowerCase().includes("text/event-stream")) return true;
-  const parsed = parseUrl(url);
-  return parsed ? parsed.pathname.endsWith("/stream") : url.includes("/stream");
-}
-
 type NativeWebFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -83,29 +72,6 @@ function nativeWebFetch(): NativeWebFetch | null {
   const candidate = (globalThis as { CapacitorWebFetch?: unknown })
     .CapacitorWebFetch;
   return typeof candidate === "function" ? (candidate as NativeWebFetch) : null;
-}
-
-function headersToRecord(
-  headers: HeadersInit | undefined,
-): Record<string, string> {
-  if (!headers) return {};
-  const record: Record<string, string> = {};
-  new Headers(headers).forEach((value, key) => {
-    record[key] = value;
-  });
-  return record;
-}
-
-function methodAllowsBody(method: string): boolean {
-  const normalized = method.toUpperCase();
-  return normalized !== "GET" && normalized !== "HEAD";
-}
-
-function bodyToNativeData(body: BodyInit | null | undefined): unknown {
-  if (body === null || body === undefined) return undefined;
-  if (typeof body === "string") return body;
-  if (body instanceof URLSearchParams) return body.toString();
-  return undefined;
 }
 
 function responseBody(data: unknown): string {
@@ -140,7 +106,8 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     }
 
     const method = init.method ?? "GET";
-    const data = bodyToNativeData(init.body);
+    // CapacitorHttp has no concept of a null body — treat null and undefined alike.
+    const data = bodyToString(init.body) ?? undefined;
     if (init.body != null && data === undefined) {
       return fetchAgentTransport.request(url, init, context);
     }
@@ -151,6 +118,13 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       headers: headersToRecord(init.headers),
       ...(methodAllowsBody(method) && data !== undefined ? { data } : {}),
       responseType: "text",
+      // Don't auto-follow 3xx: this path forwards the user's cloud bearer to
+      // the dedicated agent subdomain, and CapacitorHttp (unlike browser fetch)
+      // would replay the Authorization header across a redirect. A 3xx here is a
+      // misconfig/open-redirect signal — surface it instead of leaking the token
+      // off *.elizacloud.ai. (The agent-router/central API must never 30x a
+      // bearer-carrying request.)
+      disableRedirects: true,
       ...(context?.timeoutMs
         ? {
             connectTimeout: context.timeoutMs,

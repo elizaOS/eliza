@@ -31,6 +31,7 @@ function checkLaunchSyncMovedToAfternoon(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "calendar.reschedule-launch-sync-to-afternoon",
   title: "Move the morning launch sync to an afternoon slot",
   domain: "lifeops.calendar",

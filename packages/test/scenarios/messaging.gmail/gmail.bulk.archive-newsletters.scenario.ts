@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "gmail.bulk.archive-newsletters",
   title: "Bulk archive selected Gmail newsletter",
   domain: "messaging.gmail",
@@ -67,7 +68,7 @@ export default scenario({
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "MESSAGE",
+        removeLabelIds: "INBOX",
       },
     },
     {

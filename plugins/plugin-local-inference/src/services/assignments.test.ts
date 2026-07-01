@@ -6,6 +6,8 @@ import {
 	buildRecommendedAssignments,
 	ensureDefaultAssignment,
 	readAssignments,
+	setAssignment,
+	writeAssignments,
 } from "./assignments";
 import type { InstalledModel } from "./types";
 
@@ -76,5 +78,29 @@ describe("local inference assignments", () => {
 		await ensureDefaultAssignment("hf:some-org/some-model::model.Q4_K_M.gguf");
 
 		expect(await readAssignments()).toEqual({});
+	});
+
+	it("rejects custom assignment writes", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+
+		await expect(
+			setAssignment("TEXT_LARGE", "hf:some-org/some-model::model.Q4_K_M.gguf"),
+		).rejects.toThrow(/curated Eliza-1/i);
+		expect(await readAssignments()).toEqual({});
+	});
+
+	it("drops stale custom ids while preserving curated assignments", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+
+		await writeAssignments({
+			TEXT_SMALL: "eliza-1-4b",
+			TEXT_LARGE: "hf:some-org/some-model::model.Q4_K_M.gguf",
+		});
+
+		expect(await readAssignments()).toEqual({ TEXT_SMALL: "eliza-1-4b" });
 	});
 });

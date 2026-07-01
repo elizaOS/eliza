@@ -36,59 +36,32 @@ class ContactsPlugin : Plugin() {
             return
         }
 
-        val query = call.getString("query")?.trim()?.lowercase()
         val limit = call.getInt("limit") ?: 100
         if (limit <= 0 || limit > 500) {
             call.reject("limit must be between 1 and 500")
             return
         }
+        // The ContactsProvider query is delegated to ContactsReader so it can be
+        // exercised by an instrumented androidTest (write→read round-trip) without
+        // a Capacitor Bridge (issue #9967); the JS shape below is unchanged.
         val contacts = JSArray()
-        val projection = arrayOf(
-            ContactsContract.Contacts._ID,
-            ContactsContract.Contacts.LOOKUP_KEY,
-            ContactsContract.Contacts.DISPLAY_NAME_PRIMARY,
-            ContactsContract.Contacts.PHOTO_THUMBNAIL_URI,
-            ContactsContract.Contacts.HAS_PHONE_NUMBER,
-            ContactsContract.Contacts.STARRED
-        )
-        val cursor = context.contentResolver.query(
-            ContactsContract.Contacts.CONTENT_URI,
-            projection,
-            null,
-            null,
-            "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} ASC"
-        )
-        if (cursor == null) {
-            call.reject("Contacts provider returned no cursor")
-            return
-        }
-        cursor.use {
-            val idCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID)
-            val lookupCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.LOOKUP_KEY)
-            val nameCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.DISPLAY_NAME_PRIMARY)
-            val photoCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.PHOTO_THUMBNAIL_URI)
-            val phoneCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.HAS_PHONE_NUMBER)
-            val starredCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
-                val id = cursor.getString(idCol)
-                val displayName = cursor.getString(nameCol) ?: ""
-                val phoneNumbers = readPhoneNumbers(id, cursor.getInt(phoneCol) > 0)
-                val emailAddresses = readEmailAddresses(id)
-                if (!matchesQuery(query, displayName, phoneNumbers, emailAddresses)) continue
+        try {
+            for (record in ContactsReader(context).listContacts(call.getString("query"), limit)) {
                 contacts.put(
                     contactJson(
-                        id = id,
-                        lookupKey = cursor.getString(lookupCol) ?: "",
-                        displayName = displayName,
-                        photoUri = cursor.getString(photoCol),
-                        phoneNumbers = phoneNumbers,
-                        emailAddresses = emailAddresses,
-                        starred = cursor.getInt(starredCol) == 1
-                    )
+                        id = record.id,
+                        lookupKey = record.lookupKey,
+                        displayName = record.displayName,
+                        photoUri = record.photoUri,
+                        phoneNumbers = record.phoneNumbers,
+                        emailAddresses = record.emailAddresses,
+                        starred = record.starred,
+                    ),
                 )
-                count += 1
             }
+        } catch (error: IllegalStateException) {
+            call.reject(error.message ?: "Contacts provider returned no cursor")
+            return
         }
 
         val result = JSObject()
@@ -235,55 +208,17 @@ class ContactsPlugin : Plugin() {
             val phoneCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.HAS_PHONE_NUMBER)
             val starredCol = cursor.getColumnIndexOrThrow(ContactsContract.Contacts.STARRED)
             val id = cursor.getString(idCol)
+            val reader = ContactsReader(context)
             return contactJson(
                 id = id,
                 lookupKey = cursor.getString(lookupCol) ?: "",
                 displayName = cursor.getString(nameCol) ?: "",
                 photoUri = cursor.getString(photoCol),
-                phoneNumbers = readPhoneNumbers(id, cursor.getInt(phoneCol) > 0),
-                emailAddresses = readEmailAddresses(id),
+                phoneNumbers = reader.readPhoneNumbers(id, cursor.getInt(phoneCol) > 0),
+                emailAddresses = reader.readEmailAddresses(id),
                 starred = cursor.getInt(starredCol) == 1
             )
         }
-    }
-
-    private fun readPhoneNumbers(contactId: String, hasPhone: Boolean): List<String> {
-        if (!hasPhone) return emptyList()
-        val numbers = mutableListOf<String>()
-        val cursor = context.contentResolver.query(
-            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
-            "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
-            arrayOf(contactId),
-            null
-        ) ?: return numbers
-        cursor.use {
-            val numberCol = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            while (cursor.moveToNext()) {
-                val number = cursor.getString(numberCol)?.trim()
-                if (!number.isNullOrEmpty()) numbers.add(number)
-            }
-        }
-        return numbers.distinct()
-    }
-
-    private fun readEmailAddresses(contactId: String): List<String> {
-        val emails = mutableListOf<String>()
-        val cursor = context.contentResolver.query(
-            ContactsContract.CommonDataKinds.Email.CONTENT_URI,
-            arrayOf(ContactsContract.CommonDataKinds.Email.ADDRESS),
-            "${ContactsContract.CommonDataKinds.Email.CONTACT_ID} = ?",
-            arrayOf(contactId),
-            null
-        ) ?: return emails
-        cursor.use {
-            val emailCol = cursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Email.ADDRESS)
-            while (cursor.moveToNext()) {
-                val email = cursor.getString(emailCol)?.trim()
-                if (!email.isNullOrEmpty()) emails.add(email)
-            }
-        }
-        return emails.distinct()
     }
 
     private fun contactJson(
@@ -304,18 +239,6 @@ class ContactsPlugin : Plugin() {
         contact.put("emailAddresses", JSArray(emailAddresses))
         contact.put("starred", starred)
         return contact
-    }
-
-    private fun matchesQuery(
-        query: String?,
-        displayName: String,
-        phoneNumbers: List<String>,
-        emailAddresses: List<String>
-    ): Boolean {
-        if (query.isNullOrEmpty()) return true
-        if (displayName.lowercase().contains(query)) return true
-        if (phoneNumbers.any { it.lowercase().contains(query) }) return true
-        return emailAddresses.any { it.lowercase().contains(query) }
     }
 
     private fun readStringList(call: PluginCall, arrayKey: String, singleValue: String?): List<String> {

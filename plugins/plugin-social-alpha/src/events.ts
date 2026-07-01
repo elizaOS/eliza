@@ -4,6 +4,7 @@ import {
 	logger as coreLogger,
 	createUniqueUuid,
 	type Memory,
+	type MessagePayload,
 	ModelType,
 	withStandaloneTrajectory,
 } from "@elizaos/core";
@@ -12,7 +13,6 @@ import { TRUST_LEADERBOARD_WORLD_SEED } from "./config";
 import type { CommunityInvestorService } from "./service";
 import {
 	type Conviction,
-	type MessageReceivedHandlerParams,
 	type Recommendation,
 	ServiceType,
 	SupportedChain,
@@ -103,14 +103,13 @@ function parseJsonObject<T extends Record<string, unknown>>(
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
- * @param {MessageReceivedHandlerParams} params - The parameters needed for message handling, including runtime, message, and callback.
+ * @param {MessagePayload} params - The parameters needed for message handling.
  * @returns {Promise<void>} - A promise that resolves once the message handling and response generation is complete.
  */
 const messageReceivedHandler = async ({
 	runtime,
 	message,
-	onComplete,
-}: MessageReceivedHandlerParams): Promise<void> => {
+}: MessagePayload): Promise<void> => {
 	const {
 		entityId: currentMessageSenderId,
 		roomId,
@@ -200,7 +199,6 @@ const messageReceivedHandler = async ({
 
 			if (currentMessageSenderId === agentId) {
 				logger.debug("[CommunityInvestor] Skipping self-message.");
-				onComplete?.();
 				return;
 			}
 
@@ -217,7 +215,6 @@ const messageReceivedHandler = async ({
 				logger.debug(
 					"[CommunityInvestor] Agent muted and not mentioned. Ignoring.",
 				);
-				onComplete?.();
 				return;
 			}
 
@@ -283,7 +280,6 @@ const messageReceivedHandler = async ({
 				logger.debug(
 					"[CommunityInvestor] No recommendations extracted (not relevant or nothing actionable).",
 				);
-				onComplete?.();
 				return;
 			}
 
@@ -296,7 +292,6 @@ const messageReceivedHandler = async ({
 			) as CommunityInvestorService;
 			if (!communityInvestorService) {
 				logger.error("[CommunityInvestor] Service not found!");
-				onComplete?.();
 				return;
 			}
 
@@ -535,8 +530,6 @@ const messageReceivedHandler = async ({
 		}
 	} catch (error) {
 		logger.error("[CommunityInvestor] Error in messageReceivedHandler:", error);
-	} finally {
-		onComplete?.();
 	}
 };
 

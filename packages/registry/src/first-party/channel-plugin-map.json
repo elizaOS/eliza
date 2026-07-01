@@ -1,0 +1,22 @@
+{
+  "blooio": "@elizaos/plugin-blooio",
+  "bluebubbles": "@elizaos/plugin-bluebubbles",
+  "discord": "@elizaos/plugin-discord",
+  "discordLocal": "@elizaos/plugin-discord-local",
+  "farcaster": "@elizaos/plugin-farcaster",
+  "feishu": "@elizaos/plugin-feishu",
+  "googlechat": "@elizaos/plugin-google-chat",
+  "imessage": "@elizaos/plugin-imessage",
+  "lens": "@elizaos/plugin-lens",
+  "matrix": "@elizaos/plugin-matrix",
+  "mattermost": "@elizaos/plugin-mattermost",
+  "msteams": "@elizaos/plugin-msteams",
+  "nostr": "@elizaos/plugin-nostr",
+  "signal": "@elizaos/plugin-signal",
+  "slack": "@elizaos/plugin-slack",
+  "telegram": "@elizaos/plugin-telegram",
+  "twitch": "@elizaos/plugin-twitch",
+  "twitter": "@elizaos/plugin-x",
+  "whatsapp": "@elizaos/plugin-whatsapp",
+  "x": "@elizaos/plugin-x"
+}

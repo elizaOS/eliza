@@ -115,6 +115,7 @@ export const documentsPlugin: Plugin = {
       description: "Browse and search the document store.",
       icon: "FileText",
       path: "/documents",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "DocumentsView",
       tags: ["documents", "files", "signatures"],

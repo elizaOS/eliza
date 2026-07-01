@@ -20,6 +20,7 @@
 
 import type {
   Action,
+  ActionResult,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -33,7 +34,6 @@ import type {
   HostRpcResultMessage,
   JsonObject,
   JsonValue,
-  RemoteFunctionRef,
   RemotePluginWorkerMessage,
   WorkerAnnounceDynamicMessage,
   WorkerAnnouncePluginMessage,
@@ -45,7 +45,239 @@ import type {
 import {
   fromWireError,
   toWireError,
-} from "@elizaos/plugin-worker-runtime/error";
+  type WireError,
+} from "@elizaos/plugin-remote-manifest/worker-runtime/error";
+import * as z from "zod";
+
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+) as z.ZodType<JsonValue>;
+
+const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
+
+const WireErrorSchema = z
+  .object({
+    name: z.string(),
+    message: z.string(),
+    stack: z.string().optional(),
+    cause: JsonValueSchema.optional(),
+    code: z.string().optional(),
+  })
+  .passthrough() as z.ZodType<WireError>;
+
+const MemorySchema = z
+  .object({
+    entityId: z.string(),
+    roomId: z.string(),
+    content: JsonObjectSchema,
+  })
+  .catchall(JsonValueSchema) as z.ZodType<Memory>;
+
+const UpdateMemorySchema = z
+  .object({
+    id: z.string(),
+    content: JsonObjectSchema.optional(),
+  })
+  .catchall(JsonValueSchema) as z.ZodType<
+  Parameters<IAgentRuntime["updateMemory"]>[0]
+>;
+
+const ActionResultSchema = z
+  .object({
+    success: z.boolean(),
+    text: z.string().optional(),
+    userFacingText: z.string().optional(),
+    verifiedUserFacing: z.boolean().optional(),
+    values: JsonObjectSchema.optional(),
+    data: JsonObjectSchema.optional(),
+    error: z.union([z.string(), WireErrorSchema]).optional(),
+    continueChain: z.boolean().optional(),
+  })
+  .catchall(JsonValueSchema);
+
+const ActionHandlerWireResultSchema = z.union([ActionResultSchema, z.null()]);
+
+const RouteTypeSchema = z.enum([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "STATIC",
+]);
+
+const RouteHandlerResultSchema = z.object({
+  status: z.number().int(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: JsonValueSchema.optional(),
+});
+
+const HostRpcArgsSchema = {
+  getService: z.object({ serviceType: z.string() }).passthrough(),
+  useModel: z
+    .object({ modelType: z.string(), params: JsonValueSchema })
+    .passthrough(),
+  getMemory: z.object({ memoryId: z.string() }).passthrough(),
+  createMemory: z
+    .object({
+      memory: MemorySchema,
+      tableName: z.string().optional(),
+    })
+    .passthrough(),
+  updateMemory: z.object({ memory: UpdateMemorySchema }).passthrough(),
+  emitEvent: z
+    .object({
+      name: z.string(),
+      payload: JsonObjectSchema.optional(),
+    })
+    .passthrough(),
+  getSetting: z.object({ key: z.string() }).passthrough(),
+  setSetting: z
+    .object({
+      key: z.string(),
+      value: JsonValueSchema,
+    })
+    .passthrough(),
+  composeState: z.object({ message: MemorySchema }).passthrough(),
+} as const;
+
+/**
+ * Envelope-level validation for the worker→host RPC messages this bridge
+ * dispatches. The producer stamps a numeric `requestId` (see
+ * `nextRequestId`); a message that reaches a handler without its required
+ * fields is a protocol violation that must surface rather than be silently
+ * dropped (an rpc-result with no `requestId` would otherwise no-op against the
+ * pending map). Malformed *payloads* (vs. malformed envelopes) are still
+ * validated downstream and answered with a graceful `ok: false` result, so this
+ * gate intentionally checks only the envelope shape.
+ */
+const RequestIdSchema = z.union([z.string(), z.number()]);
+const HandledWorkerEnvelopeSchemas: Partial<
+  Record<RemotePluginWorkerMessage["type"], z.ZodTypeAny>
+> = {
+  "worker-rpc-result": z
+    .object({
+      type: z.literal("worker-rpc-result"),
+      requestId: RequestIdSchema,
+      ok: z.boolean(),
+    })
+    .passthrough(),
+  "host-rpc": z
+    .object({
+      type: z.literal("host-rpc"),
+      requestId: RequestIdSchema,
+      method: z.string(),
+    })
+    .passthrough(),
+};
+
+function toActionResult(
+  value: z.infer<typeof ActionHandlerWireResultSchema>,
+): ActionResult | undefined {
+  if (value === null) return undefined;
+  return {
+    ...value,
+    ...(typeof value.error === "object" && value.error !== null
+      ? { error: fromWireError(value.error, "remote worker action") }
+      : {}),
+  };
+}
+
+/**
+ * Schema for the announce/dynamic descriptor the worker emits via
+ * {@link buildAnnounceDescriptor}
+ * (packages/plugin-remote-manifest/src/worker-runtime/descriptor.ts).
+ *
+ * The descriptor is untrusted JSON crossing the host↔worker RPC boundary, so
+ * it is parsed once at ingress instead of being blind-cast field by field.
+ *
+ * Object schemas are intentionally passthrough (extra keys pass through): the
+ * producer only writes a field when it is present, the metadata surfaces
+ * (`views`/`widgets`/`componentTypes`) are author-defined JSON, and the
+ * service entries carry dynamic `rpc:<method>` keys. The schema validates the
+ * *container shape* (array vs record vs object) and the fields the bridge
+ * actually reads; everything else is preserved verbatim. Functions are
+ * replaced on the wire by {@link RemoteFunctionRef} (`{ rpc: true, id }`).
+ */
+const RemoteFunctionRefSchema = z
+  .object({
+    rpc: z.literal(true),
+    id: z.string(),
+  })
+  .passthrough();
+
+const ActionDescriptorSchema = z
+  .object({
+    name: z.string(),
+    handler: RemoteFunctionRefSchema,
+    similes: z.array(z.string()).optional(),
+    description: z.string().optional(),
+    examples: z.unknown().optional(),
+    validate: RemoteFunctionRefSchema.optional(),
+  })
+  .passthrough();
+
+const ProviderDescriptorSchema = z
+  .object({
+    name: z.string(),
+    get: RemoteFunctionRefSchema,
+    description: z.string().optional(),
+    dynamic: z.boolean().optional(),
+    position: z.number().optional(),
+    private: z.boolean().optional(),
+  })
+  .passthrough();
+
+const ServiceDescriptorSchema = z
+  .object({
+    serviceType: z.string(),
+    rpcMethods: z.array(z.string()),
+    capabilityDescription: z.string().optional(),
+  })
+  .passthrough();
+
+const RouteDescriptorSchema = z
+  .object({
+    path: z.string(),
+    routeHandler: RemoteFunctionRefSchema.optional(),
+    type: RouteTypeSchema.optional(),
+    name: z.string().optional(),
+    public: z.boolean().optional(),
+    isMultipart: z.boolean().optional(),
+  })
+  .passthrough();
+
+const RemotePluginDescriptorSchema = z
+  .object({
+    name: z.string().optional(),
+    description: z.unknown().optional(),
+    priority: z.unknown().optional(),
+    dependencies: z.array(z.string()).optional(),
+    actions: z.array(ActionDescriptorSchema).optional(),
+    providers: z.array(ProviderDescriptorSchema).optional(),
+    events: z.record(z.string(), z.array(RemoteFunctionRefSchema)).optional(),
+    models: z.record(z.string(), RemoteFunctionRefSchema).optional(),
+    services: z.array(ServiceDescriptorSchema).optional(),
+    routes: z.array(RouteDescriptorSchema).optional(),
+    views: z.array(z.unknown()).optional(),
+    widgets: z.array(z.unknown()).optional(),
+    componentTypes: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
+type RemotePluginDescriptor = z.infer<typeof RemotePluginDescriptorSchema>;
+type ActionDescriptor = z.infer<typeof ActionDescriptorSchema>;
+type ProviderDescriptor = z.infer<typeof ProviderDescriptorSchema>;
+type ServiceDescriptor = z.infer<typeof ServiceDescriptorSchema>;
+type RouteDescriptor = z.infer<typeof RouteDescriptorSchema>;
+type ParsedFunctionRef = z.infer<typeof RemoteFunctionRefSchema>;
 
 /** Transport contract the bridge talks to. */
 export interface BridgeChannel {
@@ -155,6 +387,11 @@ export class RemotePluginBridge {
       return;
     }
 
+    const envelopeSchema = HandledWorkerEnvelopeSchemas[message.type];
+    if (envelopeSchema && !envelopeSchema.safeParse(message).success) {
+      throw new Error(`Invalid remote plugin worker message: ${message.type}`);
+    }
+
     switch (message.type) {
       case "worker-announce-plugin":
         await this.handleAnnounce(message as WorkerAnnouncePluginMessage);
@@ -205,7 +442,8 @@ export class RemotePluginBridge {
     await this.applyDynamicContributions(registeredPlugin, dynamicPlugin);
   }
 
-  private materialisePlugin(descriptor: JsonObject): Plugin {
+  private materialisePlugin(rawDescriptor: JsonObject): Plugin {
+    const descriptor = RemotePluginDescriptorSchema.parse(rawDescriptor);
     const name = String(descriptor.name ?? "");
     if (!name)
       throw new Error("worker-announce-plugin descriptor missing name");
@@ -219,7 +457,7 @@ export class RemotePluginBridge {
       plugin.priority = Number(descriptor.priority);
     }
     if (descriptor.dependencies) {
-      plugin.dependencies = (descriptor.dependencies as string[]) ?? [];
+      plugin.dependencies = descriptor.dependencies;
     }
 
     this.attachFunctionContributions(plugin, descriptor);
@@ -358,44 +596,34 @@ export class RemotePluginBridge {
 
   private attachFunctionContributions(
     plugin: Plugin,
-    descriptor: JsonObject,
+    descriptor: RemotePluginDescriptor,
   ): void {
-    const actions = descriptor.actions as
-      | Array<JsonObject & { name: string; handler: RemoteFunctionRef }>
-      | undefined;
-    if (actions?.length) {
-      plugin.actions = actions.map((action) => this.makeActionProxy(action));
+    if (descriptor.actions?.length) {
+      plugin.actions = descriptor.actions.map((action) =>
+        this.makeActionProxy(action),
+      );
     }
 
-    const providers = descriptor.providers as
-      | Array<JsonObject & { name: string; get: RemoteFunctionRef }>
-      | undefined;
-    if (providers?.length) {
-      plugin.providers = providers.map((provider) =>
+    if (descriptor.providers?.length) {
+      plugin.providers = descriptor.providers.map((provider) =>
         this.makeProviderProxy(provider),
       );
     }
 
-    const events = descriptor.events as unknown as
-      | Record<string, RemoteFunctionRef[]>
-      | undefined;
-    if (events) {
+    if (descriptor.events) {
       const eventMap: NonNullable<Plugin["events"]> = {};
-      for (const [eventName, refs] of Object.entries(events)) {
+      for (const [eventName, refs] of Object.entries(descriptor.events)) {
         const handlers = refs.map((ref) => this.makeEventHandlerProxy(ref));
         (eventMap as Record<string, unknown[]>)[eventName] = handlers;
       }
       plugin.events = eventMap;
     }
 
-    const models = descriptor.models as unknown as
-      | Record<string, RemoteFunctionRef>
-      | undefined;
-    if (models) {
+    if (descriptor.models) {
       const modelMap: NonNullable<Plugin["models"]> = {} as NonNullable<
         Plugin["models"]
       >;
-      for (const [modelType, ref] of Object.entries(models)) {
+      for (const [modelType, ref] of Object.entries(descriptor.models)) {
         (modelMap as Record<string, unknown>)[modelType] =
           this.makeModelHandlerProxy(ref);
       }
@@ -405,22 +633,13 @@ export class RemotePluginBridge {
 
   private attachServiceContributions(
     plugin: Plugin,
-    descriptor: JsonObject,
+    descriptor: RemotePluginDescriptor,
   ): void {
     // Services: opt-in via `static rpcMethods`. The descriptor carries
     // one entry per service with the methods list and per-method rpc
     // ids; we synthesise a ServiceClass with dynamic methods.
-    const services = descriptor.services as unknown as
-      | Array<
-          JsonObject & {
-            serviceType: string;
-            rpcMethods: string[];
-            capabilityDescription?: string;
-          }
-        >
-      | undefined;
-    if (services?.length) {
-      plugin.services = services.map((svc) =>
+    if (descriptor.services?.length) {
+      plugin.services = descriptor.services.map((svc) =>
         this.makeServiceClassProxy(svc),
       ) as Plugin["services"];
     }
@@ -428,16 +647,13 @@ export class RemotePluginBridge {
 
   private attachRouteContributions(
     plugin: Plugin,
-    descriptor: JsonObject,
+    descriptor: RemotePluginDescriptor,
   ): void {
     // Routes: the agent's existing plugin-route lifecycle will pick
     // these up. Each routeHandler is wrapped to forward
     // RouteHandlerContext via worker-rpc and return RouteHandlerResult.
-    const routes = descriptor.routes as unknown as
-      | Array<JsonObject & { path: string; routeHandler?: RemoteFunctionRef }>
-      | undefined;
-    if (routes?.length) {
-      plugin.routes = routes
+    if (descriptor.routes?.length) {
+      plugin.routes = descriptor.routes
         .map((r) => this.makeRouteProxy(r))
         .filter((r): r is NonNullable<Plugin["routes"]>[number] => r !== null);
     }
@@ -445,32 +661,26 @@ export class RemotePluginBridge {
 
   private attachViewContributions(
     plugin: Plugin,
-    descriptor: JsonObject,
+    descriptor: RemotePluginDescriptor,
   ): void {
     // Views/widgets/componentTypes are pure JSON metadata; pass them
     // through unchanged so the existing view registry serves the
     // remote plugin's bundle the same way it does direct plugins'.
-    if (descriptor.views)
-      plugin.views = descriptor.views as unknown as Plugin["views"];
+    if (descriptor.views) plugin.views = descriptor.views as Plugin["views"];
     if (descriptor.widgets)
-      plugin.widgets = descriptor.widgets as unknown as Plugin["widgets"];
+      plugin.widgets = descriptor.widgets as Plugin["widgets"];
     if (descriptor.componentTypes) {
       plugin.componentTypes =
-        descriptor.componentTypes as unknown as Plugin["componentTypes"];
+        descriptor.componentTypes as Plugin["componentTypes"];
     }
   }
 
-  private makeActionProxy(
-    descriptor: JsonObject & { name: string; handler: RemoteFunctionRef },
-  ): Action {
+  private makeActionProxy(descriptor: ActionDescriptor): Action {
     const name = descriptor.name;
-    const similes = (descriptor.similes as string[] | undefined) ?? [];
+    const similes = descriptor.similes ?? [];
     const description = String(descriptor.description ?? "");
-    const examples =
-      (descriptor.examples as unknown as Action["examples"]) ?? [];
-    const validateRef = descriptor.validate as unknown as
-      | RemoteFunctionRef
-      | undefined;
+    const examples = (descriptor.examples as Action["examples"]) ?? [];
+    const validateRef = descriptor.validate;
 
     const handler: Action["handler"] = async (
       _runtime,
@@ -497,7 +707,8 @@ export class RemotePluginBridge {
             ...(callbackId ? { callbackId } : {}),
           },
         );
-        return result as unknown as ReturnType<Action["handler"]>;
+        const parsed = ActionHandlerWireResultSchema.parse(result);
+        return toActionResult(parsed);
       } finally {
         if (callbackId) {
           this.state.actionCallbacks.delete(callbackId);
@@ -530,15 +741,12 @@ export class RemotePluginBridge {
     return action;
   }
 
-  private makeProviderProxy(
-    descriptor: JsonObject & { name: string; get: RemoteFunctionRef },
-  ): Provider {
+  private makeProviderProxy(descriptor: ProviderDescriptor): Provider {
     const name = descriptor.name;
     const description = String(descriptor.description ?? "");
     const dynamic = descriptor.dynamic === true;
     const priv = descriptor.private === true;
-    const position =
-      typeof descriptor.position === "number" ? descriptor.position : undefined;
+    const position = descriptor.position;
 
     const get: Provider["get"] = async (
       _runtime: IAgentRuntime,
@@ -556,7 +764,9 @@ export class RemotePluginBridge {
       if (result && typeof result === "object" && !Array.isArray(result)) {
         return result as ProviderResult;
       }
-      return { values: {}, data: {}, text: "" } as ProviderResult;
+      throw new Error(
+        `Remote provider ${name} returned invalid ProviderResult`,
+      );
     };
 
     const provider: Provider = {
@@ -580,19 +790,16 @@ export class RemotePluginBridge {
    * private worker methods from the host, which is the whole point of
    * the opt-in.
    */
-  private makeServiceClassProxy(descriptor: {
-    serviceType: string;
-    rpcMethods: string[];
-    capabilityDescription?: string;
-    [rpcKey: string]: unknown;
-  }): unknown {
+  private makeServiceClassProxy(descriptor: ServiceDescriptor): unknown {
     const bridge = this;
     const serviceType = descriptor.serviceType;
     const description = descriptor.capabilityDescription ?? "";
     const methodIdMap = new Map<string, RpcId>();
     for (const method of descriptor.rpcMethods) {
-      const ref = descriptor[`rpc:${method}`] as RemoteFunctionRef | undefined;
-      if (ref?.rpc) methodIdMap.set(method, ref.id);
+      const ref = RemoteFunctionRefSchema.safeParse(
+        descriptor[`rpc:${method}`],
+      );
+      if (ref.success) methodIdMap.set(method, ref.data.id);
     }
 
     // Build the proxy class on the fly. The Service base class isn't
@@ -610,12 +817,11 @@ export class RemotePluginBridge {
         for (const method of descriptor.rpcMethods) {
           const id = methodIdMap.get(method);
           if (!id) continue;
-          (this as unknown as Record<string, unknown>)[method] = async (
-            ...callArgs: unknown[]
-          ) =>
+          Reflect.set(this, method, async (...callArgs: unknown[]) =>
             bridge.workerRpc("service", id, {
               args: callArgs.map((a) => bridge.normalize(a)),
-            });
+            }),
+          );
         }
       }
       async stop(): Promise<void> {
@@ -631,35 +837,44 @@ export class RemotePluginBridge {
    * picks up `plugin.routes[i]` exactly as for direct plugins; the
    * `routeHandler` here forwards via worker-rpc.
    */
-  private makeRouteProxy(descriptor: {
-    path: string;
-    routeHandler?: RemoteFunctionRef;
-    type?: unknown;
-    name?: unknown;
-    public?: unknown;
-    isMultipart?: unknown;
-  }): NonNullable<Plugin["routes"]>[number] | null {
+  private makeRouteProxy(
+    descriptor: RouteDescriptor,
+  ): NonNullable<Plugin["routes"]>[number] | null {
     if (!descriptor.routeHandler) return null;
     const ref = descriptor.routeHandler;
     const routeHandler = async (ctx: unknown) =>
-      this.workerRpc("route", ref.id, { ctx: this.normalize(ctx) });
+      RouteHandlerResultSchema.parse(
+        await this.workerRpc("route", ref.id, { ctx: this.normalize(ctx) }),
+      );
 
-    const route = {
+    const routeBase = {
       path: descriptor.path,
-      ...(descriptor.type ? { type: descriptor.type as string } : {}),
-      ...(descriptor.name ? { name: descriptor.name as string } : {}),
-      ...(descriptor.public !== undefined
-        ? { public: Boolean(descriptor.public) }
-        : {}),
+      type: descriptor.type ?? "GET",
       ...(descriptor.isMultipart !== undefined
-        ? { isMultipart: Boolean(descriptor.isMultipart) }
+        ? { isMultipart: descriptor.isMultipart }
         : {}),
       routeHandler,
-    } as unknown as NonNullable<Plugin["routes"]>[number];
-    return route;
+    };
+    if (descriptor.public === true) {
+      if (!descriptor.name) {
+        throw new Error(
+          `[RemotePluginBridge] public route ${descriptor.path} must declare a name`,
+        );
+      }
+      return {
+        ...routeBase,
+        public: true,
+        name: descriptor.name,
+      };
+    }
+    return {
+      ...routeBase,
+      ...(descriptor.name ? { name: descriptor.name } : {}),
+      ...(descriptor.public === false ? { public: false } : {}),
+    };
   }
 
-  private makeEventHandlerProxy(ref: RemoteFunctionRef) {
+  private makeEventHandlerProxy(ref: ParsedFunctionRef) {
     return async (payload: unknown): Promise<void> => {
       await this.workerRpc<JsonValue>(
         "event",
@@ -669,7 +884,7 @@ export class RemotePluginBridge {
     };
   }
 
-  private makeModelHandlerProxy(ref: RemoteFunctionRef) {
+  private makeModelHandlerProxy(ref: ParsedFunctionRef) {
     return async (
       _runtime: IAgentRuntime,
       params: JsonValue,
@@ -765,74 +980,66 @@ export class RemotePluginBridge {
   private async dispatchRuntimeMethod(
     message: HostRpcMessage,
   ): Promise<JsonValue> {
-    const args = (message.args ?? {}) as Record<string, JsonValue>;
     switch (message.method) {
       case "getService": {
-        const serviceType = String(args.serviceType);
+        const args = HostRpcArgsSchema.getService.parse(message.args);
+        const serviceType = args.serviceType;
         const service = this.runtime.getService(serviceType);
         return service ? { available: true } : null;
       }
       case "useModel": {
-        const modelType = String(args.modelType);
-        const params = args.params as JsonValue;
+        const args = HostRpcArgsSchema.useModel.parse(message.args);
         const result = await this.runtime.useModel(
-          modelType as Parameters<IAgentRuntime["useModel"]>[0],
-          params as Parameters<IAgentRuntime["useModel"]>[1],
+          args.modelType as Parameters<IAgentRuntime["useModel"]>[0],
+          args.params as Parameters<IAgentRuntime["useModel"]>[1],
         );
         return (result ?? null) as JsonValue;
       }
       case "getMemory": {
-        const memoryId = String(args.memoryId);
+        const args = HostRpcArgsSchema.getMemory.parse(message.args);
         const memory = await this.runtime.getMemoryById(
-          memoryId as Parameters<IAgentRuntime["getMemoryById"]>[0],
+          args.memoryId as Parameters<IAgentRuntime["getMemoryById"]>[0],
         );
-        return (memory ?? null) as unknown as JsonValue;
+        return JSON.parse(JSON.stringify(memory ?? null)) as JsonValue;
       }
       case "createMemory": {
-        const memory = args.memory as JsonValue;
-        const tableName =
-          typeof args.tableName === "string" ? args.tableName : undefined;
+        const args = HostRpcArgsSchema.createMemory.parse(message.args);
         const created = await this.runtime.createMemory(
-          memory as unknown as Memory,
-          tableName ?? "messages",
+          args.memory,
+          args.tableName ?? "messages",
         );
         return String(created);
       }
       case "updateMemory": {
-        await this.runtime.updateMemory(
-          args.memory as unknown as Parameters<
-            IAgentRuntime["updateMemory"]
-          >[0],
-        );
+        const args = HostRpcArgsSchema.updateMemory.parse(message.args);
+        await this.runtime.updateMemory(args.memory);
         return null;
       }
       case "emitEvent": {
-        const eventName = String(args.name);
-        const payload = args.payload as JsonValue;
-        await this.runtime.emitEvent(
-          eventName as Parameters<IAgentRuntime["emitEvent"]>[0],
-          payload as unknown as Parameters<IAgentRuntime["emitEvent"]>[1],
-        );
+        const args = HostRpcArgsSchema.emitEvent.parse(message.args);
+        await this.runtime.emitEvent(args.name, {
+          ...(args.payload ?? {}),
+          runtime: this.runtime,
+        });
         return null;
       }
       case "getSetting": {
-        const key = String(args.key);
-        const value = this.runtime.getSetting(key);
+        const args = HostRpcArgsSchema.getSetting.parse(message.args);
+        const value = this.runtime.getSetting(args.key);
         return (value ?? null) as JsonValue;
       }
       case "setSetting": {
-        const key = String(args.key);
-        const value = args.value;
+        const args = HostRpcArgsSchema.setSetting.parse(message.args);
         this.runtime.setSetting(
-          key,
-          value as Parameters<IAgentRuntime["setSetting"]>[1],
+          args.key,
+          args.value as Parameters<IAgentRuntime["setSetting"]>[1],
         );
         return null;
       }
       case "composeState": {
-        const memory = args.message as unknown as Memory;
-        const result = await this.runtime.composeState(memory);
-        return (result ?? null) as unknown as JsonValue;
+        const args = HostRpcArgsSchema.composeState.parse(message.args);
+        const result = await this.runtime.composeState(args.message);
+        return JSON.parse(JSON.stringify(result ?? null)) as JsonValue;
       }
       default:
         throw new Error(

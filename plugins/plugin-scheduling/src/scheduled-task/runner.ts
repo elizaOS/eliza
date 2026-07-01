@@ -196,6 +196,7 @@ export interface ScheduledTaskDispatchRecord {
   contextRequest: ScheduledTask["contextRequest"];
   consolidationBatchId?: string;
   output?: ScheduledTask["output"];
+  metadata?: ScheduledTask["metadata"];
 }
 
 export interface ScheduledTaskDispatcher {
@@ -361,10 +362,9 @@ export interface EscalationCursorView {
  * - `skipped` — the task was skipped without dispatch: global-pause active,
  *   a gate denied, or the task was already terminal and not eligible for
  *   recurrence refire.
- * - `dispatch_failed` — the atomic claim succeeded and the row is in
- *   `"fired"` state, but the dispatcher threw. The runner has already
- *   persisted the `fired` row and a `fire_attempt` log line; the caller
- *   surfaces the error.
+ * - `dispatch_failed` — the atomic claim succeeded but the dispatcher threw.
+ *   The runner persists the row as `"failed"` and writes a failed state-log
+ *   entry so history does not strand the task as successfully fired.
  */
 export type ScheduledTaskFireResult =
   | { kind: "fired"; task: ScheduledTask }
@@ -1079,7 +1079,7 @@ export function createScheduledTaskRunner(
       });
     }
 
-    let dispatchResult: DispatchResult | undefined | undefined;
+    let dispatchResult: DispatchResult | undefined;
     try {
       dispatchResult = await dispatcher.dispatch({
         taskId: claimed.taskId,
@@ -1089,9 +1089,29 @@ export function createScheduledTaskRunner(
         promptInstructions: claimed.promptInstructions,
         contextRequest: claimed.contextRequest,
         output: claimed.output,
+        metadata: claimed.metadata,
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));
+      const reason = `dispatch_failed: ${wrapped.message}`;
+      claimed.state.status = "failed";
+      claimed.state.lastDecisionLog = reason;
+      claimed.metadata = {
+        ...(claimed.metadata ?? {}),
+        lastDispatchError: {
+          name: wrapped.name,
+          message: wrapped.message,
+        },
+      };
+      await persist(claimed);
+      await logger.log(claimed.taskId, "failed", {
+        reason,
+        detail: {
+          errorName: wrapped.name,
+          message: wrapped.message,
+        },
+      });
+      await runPipeline(claimed, "failed");
       return { kind: "dispatch_failed", task: claimed, error: wrapped };
     }
     if (dispatchResult) {

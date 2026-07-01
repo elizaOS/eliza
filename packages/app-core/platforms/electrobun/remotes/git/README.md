@@ -57,11 +57,10 @@ Each operation includes:
 - `ELIZA_GIT_COMMAND_TIMEOUT_MS` defaults to `120000`
 - `ELIZA_GIT_MAX_OPERATIONS` defaults to `200`
 
-## Build And Smoke
+## Typecheck And Smoke
 
 ```sh
 bun run --cwd elizalaunch/remotes/git typecheck
-bun run --cwd elizalaunch/remotes/git build
 bun run --cwd elizalaunch/remotes/git smoke
 bun run --cwd elizalaunch/remotes/git smoke:phase7
 ```

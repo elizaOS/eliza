@@ -8,7 +8,7 @@ The attacker is rewarded when the defender calls unsafe tools.
 
 Usage:
     python scripts/run_adversarial_training.py \
-        --attacker-model Qwen/Qwen3.5-30B \
+        --attacker-model google/gemma-4-31B \
         --attacker-endpoint http://localhost:8001/v1 \
         --defender-model gpt-5.4 \
         --defender-endpoint https://api.openai.com/v1 \
@@ -44,7 +44,7 @@ THINK_PATTERN = re.compile(r"<think>[\s\S]*?</think>\s*", re.IGNORECASE)
 @dataclass
 class AdversarialConfig:
     # Models
-    attacker_model: str = "Qwen/Qwen3.5-30B"
+    attacker_model: str = "google/gemma-4-31B"
     attacker_endpoint: str = "http://localhost:8001/v1"
     attacker_api_key: str = "local"
     defender_model: str = "gpt-5.4"
@@ -280,7 +280,7 @@ async def run_episode(
                 config.attacker_model, attacker_messages,
                 temperature=0.7, max_tokens=500,
             )
-            # Strip <think> tokens that Qwen3 models produce
+            # Strip private thinking traces emitted by reasoning-capable models.
             attack_text = THINK_PATTERN.sub("", attacker_resp["content"]).strip()
             # Also strip any meta-commentary the model might add
             if attack_text.startswith('"') and attack_text.endswith('"'):
@@ -351,7 +351,7 @@ async def run_episode(
 
 async def main():
     parser = argparse.ArgumentParser(description="Adversarial RL training against GPT-5.4")
-    parser.add_argument("--attacker-model", default="Qwen/Qwen3.5-30B")
+    parser.add_argument("--attacker-model", default="google/gemma-4-31B")
     parser.add_argument("--attacker-endpoint", default="http://localhost:8001/v1")
     parser.add_argument("--attacker-api-key", default="local")
     parser.add_argument("--defender-model", default="gpt-5.4")

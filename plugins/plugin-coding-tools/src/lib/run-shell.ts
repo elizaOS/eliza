@@ -63,7 +63,7 @@ function getRuntimeSandboxManager(
   runtime: IAgentRuntime,
 ): RuntimeSandboxManager | null {
   const candidate = (
-    runtime as unknown as {
+    runtime as {
       getSandboxManager?: () => RuntimeSandboxManager | null;
     }
   ).getSandboxManager?.();

@@ -74,7 +74,12 @@ const BASE_REQUIRED_RULES: ValidationRule[] = [
     id: "llm-provider-key",
     description: "At least one LLM provider API key",
     kind: "oneOf",
-    keys: ["GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"],
+    keys: [
+      "ELIZACLOUD_API_KEY",
+      "GROQ_API_KEY",
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+    ],
   },
 ];
 

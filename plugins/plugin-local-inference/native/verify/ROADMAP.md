@@ -203,7 +203,7 @@ Exynos-based Galaxy.
 
 ## Extension 6 — iOS on-device runner
 
-**Status:** blocks `0_8b` and `2b` Metal claim on iOS
+**Status:** blocks `2b` Metal claim on iOS
 hardware. **Has a hard prerequisite:** the `ios-arm64-metal` archive
 must actually be linked into the app first (see
 [`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md)

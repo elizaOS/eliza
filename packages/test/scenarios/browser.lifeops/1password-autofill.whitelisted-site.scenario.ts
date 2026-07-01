@@ -14,6 +14,7 @@ import {
 const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "AUTOFILL"];
 
 export default scenario({
+  lane: "live-only",
   id: "1password-autofill.whitelisted-site",
   title: "1Password autofill on whitelisted GitHub login",
   domain: "browser.lifeops",

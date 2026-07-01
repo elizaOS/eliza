@@ -4,9 +4,17 @@
  * Dual build script for @elizaos/core - generates both Node.js and browser builds
  */
 
+import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, mkdirSync, watch } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import type { BuildConfig, BunPlugin } from "bun";
+
+const execFileAsync = promisify(execFile);
+const RM_RECURSIVE_SCRIPT = fileURLToPath(
+	new URL("../scripts/rm-path-recursive.mjs", import.meta.url),
+);
 
 export interface ElizaBuildOptions {
 	/** Entry points - defaults to ['src/index.ts'] */
@@ -64,6 +72,7 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 	const fs = await import("node:fs/promises");
 	const lockParent = join(process.cwd(), "../../.turbo");
 	const lockDir = join(lockParent, "core-build.lock");
+	const cleanupHelper = join(process.cwd(), "../scripts/rm-path-recursive.mjs");
 	const staleAfterMs = 30 * 60 * 1000;
 	let announcedWait = false;
 
@@ -84,6 +93,12 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 		} catch (error) {
 			return (error as NodeJS.ErrnoException).code !== "ESRCH";
 		}
+	}
+
+	async function removeLockDir(): Promise<void> {
+		await execFileAsync("node", [cleanupHelper, lockDir], {
+			cwd: process.cwd(),
+		});
 	}
 
 	await fs.mkdir(lockParent, { recursive: true });
@@ -108,7 +123,7 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 				(ownerPid !== null && !isProcessAlive(ownerPid)) ||
 				(stat && Date.now() - stat.mtimeMs > staleAfterMs)
 			) {
-				await fs.rm(lockDir, { recursive: true, force: true });
+				await removeLockDir();
 				continue;
 			}
 
@@ -123,7 +138,7 @@ async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
 	try {
 		return await build();
 	} finally {
-		await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {});
+		await removeLockDir().catch(() => {});
 	}
 }
 
@@ -324,7 +339,7 @@ export async function generateDts(
 	console.log("Generating TypeScript declarations...");
 	try {
 		// Use incremental compilation for faster subsequent builds
-		await $`${resolveTscBin()} --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
+		await $`${resolveTscBin()} --emitDeclarationOnly --noCheck --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
 		console.log(
 			`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`,
 		);
@@ -350,7 +365,6 @@ export async function generateDts(
  */
 export async function cleanBuild(outdir = "dist", maxRetries = 3) {
 	const timer = getTimer();
-	const { rm } = await import("node:fs/promises");
 
 	if (!existsSync(outdir)) {
 		console.log(`✓ ${outdir} directory already clean (${timer.elapsed()}ms)`);
@@ -361,7 +375,9 @@ export async function cleanBuild(outdir = "dist", maxRetries = 3) {
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
 		try {
-			await rm(outdir, { recursive: true, force: true });
+			await execFileAsync("node", [RM_RECURSIVE_SCRIPT, outdir], {
+				cwd: process.cwd(),
+			});
 			console.log(`✓ Cleaned ${outdir} directory (${timer.elapsed()}ms)`);
 			return; // Success, exit the function
 		} catch (error: unknown) {
@@ -768,7 +784,11 @@ async function buildBrowser() {
 			format: "esm",
 			external: browserExternals,
 			sourcemap: true,
-			minify: true, // Minify for browser to reduce bundle size
+			// Bun 1.4 can emit invalid ESM for this large barrel when identifier
+			// minification drops declarations that remain in the final export list.
+			// App/example bundlers minify their final browser assets, so keep this
+			// package artifact readable and valid.
+			minify: false,
 			generateDts: false, // Use the same .d.ts files from Node build
 			skipClean: true,
 			plugins: [],

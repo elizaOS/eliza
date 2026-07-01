@@ -29,29 +29,6 @@ import {
   registerHealthAnchors,
   registerHealthBusFamilies,
 } from "@elizaos/plugin-health";
-import { describe, expect, it } from "vitest";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
-} from "@elizaos/plugin-scheduling";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -59,6 +36,21 @@ import type {
   ScheduledTask,
   SubjectStoreView,
 } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it } from "vitest";
 
 describe("J16 — plugin-health anchor + bus integration with the spine", () => {
   it("plugin-health exposes the canonical anchor / bus / connector sets", () => {

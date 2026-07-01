@@ -227,9 +227,32 @@ export class SharedResourceRegistry {
 		RegistryEntry<RefCountedResource>
 	>();
 	private readonly log?: Logger;
+	/**
+	 * When a higher-level component (the `MemoryArbiter`) owns the eviction
+	 * decision for this registry, it claims ownership here so the simpler
+	 * `MemoryMonitor` poll defers instead of evicting in parallel — a single
+	 * eviction decision point, no double-eviction on one pressure event
+	 * (#8809 AC#2). Null = no external owner, the monitor evicts itself.
+	 */
+	private evictionOwner: string | null = null;
 
 	constructor(opts: { logger?: Logger } = {}) {
 		this.log = opts.logger;
+	}
+
+	/** Claim the single eviction-decision ownership for this registry. */
+	claimEvictionOwnership(owner: string): void {
+		this.evictionOwner = owner;
+	}
+
+	/** Release ownership (only the current owner may release it). */
+	releaseEvictionOwnership(owner: string): void {
+		if (this.evictionOwner === owner) this.evictionOwner = null;
+	}
+
+	/** True when an external component owns the eviction decision. */
+	hasExternalEvictionOwner(): boolean {
+		return this.evictionOwner !== null;
 	}
 
 	/**

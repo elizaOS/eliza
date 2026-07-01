@@ -310,6 +310,9 @@ export function statSync(): typeof emptyStats {
 export async function access(): Promise<void> {
   return unavailable("fs.promises.access");
 }
+export async function open(): Promise<never> {
+  return unavailable("fs.promises.open");
+}
 export async function mkdir(): Promise<void> {}
 export async function readFile(): Promise<never> {
   return unavailable("fs.promises.readFile");
@@ -338,6 +341,7 @@ export const promises = {
   access,
   cp,
   mkdir,
+  open,
   readFile,
   writeFile,
   rename,
@@ -503,6 +507,30 @@ export function connect(): never {
 }
 
 export const createConnection = connect;
+
+function isIPv4Address(value: string): boolean {
+  const parts = value.split(".");
+  return (
+    parts.length === 4 &&
+    parts.every((part) => {
+      if (!/^\d+$/.test(part)) return false;
+      const octet = Number(part);
+      return Number.isInteger(octet) && octet >= 0 && octet <= 255;
+    })
+  );
+}
+
+export function isIP(value: string): 0 | 4 | 6 {
+  const address = String(value).trim();
+  if (isIPv4Address(address)) return 4;
+  if (!address.includes(":")) return 0;
+  try {
+    new URL(`http://[${address}]`);
+    return 6;
+  } catch {
+    return 0;
+  }
+}
 
 export function gzipSync(value: unknown): Uint8Array {
   return toBytes(value);

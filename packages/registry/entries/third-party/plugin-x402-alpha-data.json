@@ -1,0 +1,20 @@
+{
+  "package": "plugin-x402-alpha-data",
+  "repository": "github:sna4an/plugin-x402-alpha-data",
+  "kind": "plugin",
+  "description": "Paid alpha data endpoints via x402 protocol \u2014 token safety, whale tracking, yield strategies, governance, sentiment.",
+  "homepage": "https://github.com/sna4an/plugin-x402-alpha-data",
+  "version": "1.0.0",
+  "tags": [
+    "x402",
+    "defi",
+    "alpha",
+    "whale-tracking",
+    "token-safety",
+    "yield",
+    "solana",
+    "base",
+    "web3",
+    "paid-api"
+  ]
+}

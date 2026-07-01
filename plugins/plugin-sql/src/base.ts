@@ -1,4 +1,5 @@
 import {
+  type AccessContext,
   type Agent,
   type AgentRunCounts,
   type AgentRunSummary,
@@ -155,6 +156,11 @@ function normalizeAgentBio(value: unknown): string[] | undefined {
   return undefined;
 }
 
+/** Escape an ILIKE literal so user keywords match literally (no `%`/`_` wildcards). */
+function escapeIlikeLiteral(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
 type CountMemoriesParams = {
   roomIds?: UUID[];
   unique?: boolean;
@@ -166,6 +172,7 @@ type CountMemoriesParams = {
 
 import {
   and,
+  asc,
   cosineDistance,
   count,
   desc,
@@ -1408,6 +1415,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     end?: number;
     roomId?: UUID;
     worldId?: UUID;
+    textContains?: string;
+    orderBy?: "createdAt";
+    orderDirection?: "asc" | "desc";
     /**
      * When `false`, skip fetching/materializing the embedding vector. List and
      * browse callers discard embeddings, so fetching the 384-float column for
@@ -1415,13 +1425,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
      * (embeddings included) to preserve existing behavior.
      */
     includeEmbedding?: boolean;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
     const includeEmbedding = params.includeEmbedding !== false;
     const tableName = params.tableName;
+    const textContains = params.textContains?.trim();
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).
     const effectiveLimit = params.limit ?? params.count;
+    // Default newest-first; `orderDirection: "asc"` powers around-message paging
+    // (load the messages immediately *after* an anchor, not the newest tail).
+    const order =
+      params.orderDirection === "asc"
+        ? [asc(memoryTable.createdAt), asc(memoryTable.id)]
+        : [desc(memoryTable.createdAt), desc(memoryTable.id)];
 
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
@@ -1455,6 +1473,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (agentId) {
         conditions.push(eq(memoryTable.agentId, agentId));
+      }
+
+      if (textContains) {
+        // Push the keyword filter into the store as a case-insensitive ILIKE;
+        // user input is escaped so `%`/`_` match literally, not as wildcards.
+        // This is a sequential filter over `content->>'text'`, not index-backed.
+        // TODO(#9955): pg_trgm GIN index on content->>'text' for sub-linear
+        // keyword search at scale.
+        conditions.push(
+          sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(textContains)}%`} ESCAPE '\\'`
+        );
       }
 
       const memorySelect = {
@@ -1501,7 +1530,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .from(memoryTable)
           .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
           .where(and(...conditions))
-          .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
+          .orderBy(...order);
         const rows = await (async () => {
           // Honor `effectiveLimit` (params.limit ?? params.count), matching the
           // no-embedding branch below. Gating the LIMIT on `params.count` alone
@@ -1528,7 +1557,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({ memory: memorySelect })
         .from(memoryTable)
         .where(and(...conditions))
-        .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
+        .orderBy(...order);
       const rows = await (async () => {
         if (effectiveLimit && offset !== undefined && offset > 0) {
           return baseQuery.limit(effectiveLimit).offset(offset);
@@ -1556,6 +1585,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomIds: UUID[];
     tableName: string;
     limit?: number;
+    offset?: number;
+    textContains?: string;
+    includeEmbedding?: boolean;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return this.withDatabase(async () => {
       if (params.roomIds.length === 0) return [];
@@ -1567,7 +1600,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       conditions.push(eq(memoryTable.agentId, this.agentId));
 
-      const query = this.db
+      const textContains = params.textContains?.trim();
+      if (textContains) {
+        // Same case-insensitive keyword predicate as getMemories: a sequential
+        // ILIKE over `content->>'text'` (not index-backed). Escaped so `%`/`_`
+        // match literally. Scoping to roomIds first narrows the scan via the
+        // (type, roomId) index. TODO(#9955): pg_trgm GIN index for scale.
+        conditions.push(
+          sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(textContains)}%`} ESCAPE '\\'`
+        );
+      }
+
+      const baseQuery = this.db
         .select({
           id: memoryTable.id,
           type: memoryTable.type,
@@ -1583,7 +1627,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt));
 
-      const rows = params.limit ? await query.limit(params.limit) : await query;
+      const { limit, offset } = params;
+      const rows = await (async () => {
+        if (limit !== undefined && offset !== undefined && offset > 0) {
+          return baseQuery.limit(limit).offset(offset);
+        } else if (limit !== undefined) {
+          return baseQuery.limit(limit);
+        } else if (offset !== undefined && offset > 0) {
+          return baseQuery.offset(offset);
+        }
+        return baseQuery;
+      })();
 
       return rows.map((row) => ({
         id: row.id as UUID,
@@ -2213,15 +2267,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     embedding: number[];
     match_threshold?: number;
     count?: number;
+    limit?: number;
     unique?: boolean;
     query?: string;
     roomId?: UUID;
     worldId?: UUID;
     entityId?: UUID;
+    accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return await this.searchMemoriesByEmbedding(params.embedding, {
       match_threshold: params.match_threshold,
-      count: params.count,
+      // `limit` is the IDatabaseAdapter contract param; honour it (with `count`
+      // as a legacy alias) instead of silently ignoring it and capping the
+      // candidate pool at the default 10.
+      count: params.count ?? params.limit,
       // Pass direct scope fields down
       roomId: params.roomId,
       worldId: params.worldId,

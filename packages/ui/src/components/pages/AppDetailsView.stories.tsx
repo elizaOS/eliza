@@ -8,7 +8,7 @@ import { AppDetailsView } from "./AppDetailsView";
  * in-memory internal-tool / overlay registries and the (network-backed)
  * registry catalog. In Storybook the catalog never loads, so catalog-only
  * slugs fall through to the "not found" state, while internal-tool slugs
- * such as `lifeops` resolve from the in-memory registry and render fully.
+ * such as `fine-tuning` resolve from the in-memory registry and render fully.
  */
 const meta = {
   title: "Pages/AppDetailsView",
@@ -17,7 +17,7 @@ const meta = {
   parameters: { layout: "fullscreen" },
   decorators: [mockApp()],
   args: {
-    slug: "lifeops",
+    slug: "fine-tuning",
     onLaunched: () => {},
   },
 } satisfies Meta<typeof AppDetailsView>;
@@ -25,7 +25,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Internal-tool app resolved from the in-memory registry (LifeOps). */
+/** Internal-tool app resolved from the in-memory registry (Fine Tuning). */
 export const Default: Story = {};
 
 /** Same app, but with live runs surfaced in the header + Recent Runs. */
@@ -35,14 +35,14 @@ export const WithActiveRuns: Story = {
       appRuns: [
         {
           runId: "run-7c1f",
-          appName: "@elizaos/plugin-personal-assistant",
-          displayName: "LifeOps",
+          appName: "@elizaos/plugin-training",
+          displayName: "Fine Tuning",
           status: "running",
         },
         {
           runId: "run-3a90",
-          appName: "@elizaos/plugin-personal-assistant",
-          displayName: "LifeOps",
+          appName: "@elizaos/plugin-training",
+          displayName: "Fine Tuning",
           status: "exited",
         },
         // Unrelated run — filtered out by appName.

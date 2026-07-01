@@ -15,6 +15,9 @@ android {
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
+        // Instrumented (androidTest) runner — exercises SystemDeviceReader's real
+        // device reads on a connected device/emulator (issue #9967).
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -34,4 +37,9 @@ repositories {
 dependencies {
     implementation project(':capacitor-android')
     implementation "androidx.activity:activity:$androidxActivityVersion"
+
+    // Instrumented test deps (issue #9967 — first androidTest for a native plugin).
+    androidTestImplementation "androidx.test:core:1.5.0"
+    androidTestImplementation "androidx.test:runner:1.5.2"
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
 }

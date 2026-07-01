@@ -19,6 +19,7 @@ import type {
   WalletEntry,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
+  WalletNftsResponse,
   WalletPrimaryMap,
   WalletRpcChain,
   WalletSource,
@@ -927,6 +928,16 @@ export async function handleWalletRoutes(
     }
 
     json(res, result);
+    return true;
+  }
+
+  // GET /api/wallet/nfts
+  // No NFT indexer is wired here yet. Return an empty, well-typed collection
+  // so the wallet and inventory views render cleanly instead of hitting an
+  // unhandled 404.
+  if (method === "GET" && pathname === "/api/wallet/nfts") {
+    const empty: WalletNftsResponse = { evm: [], solana: null };
+    json(res, empty);
     return true;
   }
 

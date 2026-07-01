@@ -54,9 +54,11 @@ packages/tui/
       index.ts             Text-edit primitives (cursor movement, word deletion, paste)
       cursor-movement.ts   Low-level cursor position math
       paste-handler.ts     PasteHandler — bracketed paste detection + large-paste markers
+    testing/
+      virtual-terminal.ts  VirtualTerminal — headless @xterm/headless terminal,
+                           exported via @elizaos/tui/testing
   test/
     chat-simple.ts         Runnable demo: full chat UI (markdown + loader + editor)
-    virtual-terminal.ts    VirtualTerminal test helper (wraps @xterm/headless)
     *.test.ts              Vitest unit tests for all subsystems
 ```
 
@@ -134,10 +136,52 @@ Use `setEditorKeybindings(manager)` at startup to remap `EditorAction` values to
 
 - **Every `render()` line must be <= `width`.** The TUI throws if a line is wider. Always call `truncateToWidth()` or `wrapTextWithAnsi()` before returning lines.
 - **ANSI codes do not carry across lines.** The TUI appends `SGR reset` after each line. Reapply styles per line or use `wrapTextWithAnsi()` which preserves them.
-- **`VirtualTerminal` is test-only.** It wraps `@xterm/headless` and lives in `test/virtual-terminal.ts` — not exported from `dist/`.
+- **`VirtualTerminal` is the headless test terminal.** It wraps `@xterm/headless`, implements the same `Terminal` interface as `ProcessTerminal`, and is exported from `@elizaos/tui/testing` (`src/testing/virtual-terminal.ts`). Drive it with `sendInput`/`resize`; read the rendered grid back cell-accurately with `getViewport`/`getScrollBuffer`/`getCursorPosition`/`getCellAttributes`, and the raw ANSI stream with `getWriteLog`. Intended for tests, not the runtime render path.
 - **Image rendering is capability-gated.** `detectCapabilities()` inspects the terminal env vars; `getCapabilities()` caches that result. The `Image` component calls `getCapabilities()` automatically and falls back to text output when Kitty/iTerm2 is absent.
 - **Kitty keyboard protocol.** `ProcessTerminal` enables the Kitty protocol on start. `matchesKey` handles both legacy and Kitty sequences. `isKittyProtocolActive()` reflects current state.
 - **Focus and IME.** Only one component holds focus at a time. When a container wraps an `Input`/`Editor`, it must propagate `focused` to the child or IME candidate windows appear at the wrong position (see README for the pattern).
 - **`StdinBuffer`** coalesces rapid stdin bursts before dispatching to components — prevents partial multi-byte sequence splits over slow connections.
 - **Large pastes** (>10 lines or above `LARGE_PASTE_CHAR_THRESHOLD`) are collapsed to a `[paste #N +M lines]` marker in the `Editor` to prevent render floods.
 - **No elizaOS plugin registration.** This package has no `Plugin` export and no actions/providers/services. It is a pure rendering library.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — UI surface:**
+- Before/after **full-page** screenshots — desktop **and** mobile, portrait **and** landscape, rest **and** hover (`bun run --cwd packages/app audit:app` where applicable) — not desktop-only-happy-path (see #9950).
+- A **video walkthrough** of the whole view/flow, plus browser console + network logs showing the real request/response and state change.
+- Empty, loading, error, and permission-denied states — and fill the per-view manual-review verdict (`good`/`needs-work`/`needs-eyeball`/`broken`); no page ships `needs-work`/`broken`.
+- The backend trajectory/logs behind anything the UI triggered.
+<!-- END: evidence-and-e2e-mandate -->

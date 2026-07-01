@@ -520,7 +520,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "No Files API or vision image uploads",
       "No prompt caching or token-budget headers",
     ],
-    validation: [],
+    validation: [
+      "test/harness/__tests__/provider-wire-mock.test.ts",
+      "../plugins/plugin-anthropic/__tests__/anthropic-drift.real.test.ts",
+    ],
   },
   {
     id: "openai",
@@ -541,7 +544,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "No Assistants v2 (threads, runs, vector stores)",
       "No fine-tuning, moderation, or audio endpoints",
     ],
-    validation: [],
+    validation: [
+      "test/harness/__tests__/provider-wire-mock.test.ts",
+      "../plugins/plugin-openai/__tests__/openai-drift.real.test.ts",
+    ],
   },
   {
     id: "vision-analysis",

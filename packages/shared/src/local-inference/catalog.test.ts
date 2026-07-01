@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
+  ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
+  ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
+  isOnDeviceTier,
   MODEL_CATALOG,
   type OmniVoiceQuantLevel,
   voiceQuantLadderForTier,
 } from "./catalog.js";
 
-const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
+const SMALL_TIERS = ["eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b"] as const;
 const OMNIVOICE_TIERS = ELIZA_1_TIER_IDS;
 const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
-  "eliza-1-0_8b": "eliza-1-0.8B",
   "eliza-1-2b": "eliza-1-2B",
   "eliza-1-4b": "eliza-1-4B",
   "eliza-1-9b": "eliza-1-9B",
@@ -21,7 +23,6 @@ const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-27b-256k": "eliza-1-27B-256k",
 };
 const EXPECTED_CHAT_PARAMS: Record<string, string> = {
-  "eliza-1-0_8b": "0.8B",
   "eliza-1-2b": "2B",
   "eliza-1-4b": "4B",
   "eliza-1-9b": "9B",
@@ -110,19 +111,22 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("uses QJL K-cache and TurboQuant V-cache for every chat tier", () => {
+  it("advertises only safe runtime optimizations for the shipped gemma4 tiers", () => {
+    const hostedMtpTiers: ReadonlySet<string> = new Set(
+      ELIZA_1_HOSTED_MTP_TIER_IDS,
+    );
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      expect(entry?.runtime?.kvCache?.typeK).toBe("qjl1_256");
-      expect(entry?.runtime?.kvCache?.typeV).toBe("tbq3_0");
-      expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
+      expect(entry?.runtime?.kvCache).toBeUndefined();
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo4");
+      expect(entry?.runtime?.optimizations?.requiresKernel).not.toContain(
         "qjl_full",
       );
-      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
-      expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
+      expect(entry?.runtime?.optimizations?.requiresKernel).not.toContain(
         "polarquant",
       );
-      if (ELIZA_1_MTP_TIER_IDS.some((mtpId) => mtpId === id)) {
+      if (hostedMtpTiers.has(id)) {
         expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
       } else {
         expect(entry?.runtime?.mtp).toBeUndefined();
@@ -130,18 +134,13 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("enables same-file native MTP metadata (no separate drafter) for MTP tiers", () => {
+  it("does not advertise Gemma MTP metadata until drafter GGUFs are hosted", () => {
+    expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
+    expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual([]);
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
-      // Same-file MTP: the NextN head is embedded in the text GGUF, so the
-      // catalog carries no separate drafter file or component.
-      expect(entry?.runtime?.mtp?.drafterFile).toBeUndefined();
+      expect(entry?.runtime?.mtp).toBeUndefined();
       expect(entry?.sourceModel?.components.mtp).toBeUndefined();
-      // Single NextN head ⇒ draft window pinned at the measured throughput
-      // peak (n-max 2), not scaled with context length.
-      expect(entry?.runtime?.mtp?.draftMin).toBe(1);
-      expect(entry?.runtime?.mtp?.draftMax).toBe(2);
     }
   });
 
@@ -161,6 +160,66 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.sourceModel?.components.vision?.file).toBe(
         `bundles/${slug}/vision/mmproj-${slug}.gguf`,
       );
+    }
+  });
+
+  it("gates the on-device tier set to exactly 2b/4b", () => {
+    // The mobile QAT/LiteRT bundle is only valid for phone-class tiers; if this
+    // set ever widens the .litertlm/wna8o8 advertisement leaks onto desktop
+    // tiers, and isOnDeviceTier must agree with the exported id list exactly.
+    expect(ELIZA_1_ON_DEVICE_TIER_IDS).toEqual(["eliza-1-2b", "eliza-1-4b"]);
+    for (const id of ELIZA_1_TIER_IDS) {
+      const expected = id === "eliza-1-2b" || id === "eliza-1-4b";
+      expect(isOnDeviceTier(id)).toBe(expected);
+    }
+    for (const id of [
+      "eliza-1-9b",
+      "eliza-1-27b",
+      "eliza-1-27b-256k",
+    ] as const) {
+      expect(isOnDeviceTier(id)).toBe(false);
+    }
+  });
+
+  it("advertises the mobile QAT Q4_0 + LiteRT-LM bundle on every on-device tier", () => {
+    for (const id of ELIZA_1_ON_DEVICE_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const variants = entry?.quantization?.variants ?? [];
+
+      const q4_0 = variants.find((variant) => variant.id === "q4_0");
+      expect(q4_0?.mobilePreferred).toBe(true);
+
+      // The LiteRT-LM / NPU mobile bundle is a `.litertlm` artifact, not GGUF.
+      const litert = variants.find((variant) => variant.id === "wna8o8");
+      expect(litert?.artifactFormat).toBe("litertlm");
+      expect(litert?.ggufFile).toMatch(/\.litertlm$/);
+    }
+  });
+
+  it("never advertises the mobile QAT/LiteRT bundle on desktop tiers", () => {
+    const desktopTiers = ELIZA_1_TIER_IDS.filter((id) => !isOnDeviceTier(id));
+    expect(desktopTiers).toEqual([
+      "eliza-1-9b",
+      "eliza-1-27b",
+      "eliza-1-27b-256k",
+    ]);
+    for (const id of desktopTiers) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const variants = entry?.quantization?.variants ?? [];
+
+      // No variant may carry the mobile-preferred flag or the LiteRT bundle
+      // format on a desktop tier — that would advertise the phone-only QAT
+      // artifact on hardware that runs the post-training GGUF instead.
+      for (const variant of variants) {
+        expect(variant.mobilePreferred).toBeUndefined();
+        expect(variant.artifactFormat).not.toBe("litertlm");
+      }
+      expect(variants.some((variant) => variant.id === "wna8o8")).toBe(false);
+
+      // The shared Q4_0 GGUF variant is present on every tier, but stays
+      // un-flagged on desktop so the on-device selector never picks it.
+      const q4_0 = variants.find((variant) => variant.id === "q4_0");
+      expect(q4_0?.mobilePreferred).toBeUndefined();
     }
   });
 });

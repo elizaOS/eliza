@@ -5,15 +5,20 @@ import {
 	resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
-import { resolveIntentView } from "../actions/views-show.js";
+import {
+	isStandaloneNotesSurfaceRequest,
+	resolveIntentView,
+} from "../actions/views-show.js";
+import { markViewSwitch } from "../runtime/view-switch-signal.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
 const NONE = "none";
 
 // The user-facing domain surfaces a situation can map to. Kept as a fixed enum
 // so the model output is constrained; the processor still confirms the id is an
-// actually-registered view before navigating.
-const CONTEXT_VIEWS = [
+// actually-registered view before navigating. Exported so the cross-list drift
+// guard (#8797) can assert every contextual view is also matcher-resolvable.
+export const CONTEXT_VIEWS = [
 	"calendar",
 	"inbox",
 	"wallet",
@@ -24,7 +29,6 @@ const CONTEXT_VIEWS = [
 	"documents",
 	"relationships",
 	"focus",
-	"companion",
 	"task-coordinator",
 ] as const;
 
@@ -63,9 +67,10 @@ export const BASELINE_VIEW_CONTEXT_INSTRUCTION = [
 	"- tasks / to-dos / checklists → todos",
 	"- goals / routines / habits → goals",
 	"- sleep / workouts / health metrics → health",
-	"- documents / files / notes → documents",
+	"- documents / files → documents",
 	"- contacts / people / relationships → relationships",
 	"- needing to concentrate / block distractions → focus",
+	'- notes → "none" unless a registered Notes view is explicitly available through the VIEWS action',
 	'If no view clearly helps (small talk, a question you can simply answer, or ambiguous intent), return viewId "none".',
 	'Respond as JSON: {"viewId": <one listed view or "none">, "reason": <short>}.',
 ].join("\n");
@@ -77,12 +82,20 @@ export const BASELINE_VIEW_CONTEXT_INSTRUCTION = [
  */
 const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 	name: "navigate-to-contextual-view",
-	async process({ output }) {
+	async process({ output, message }) {
 		const viewId =
 			typeof output?.viewId === "string"
 				? output.viewId.trim().toLowerCase()
 				: "";
 		if (!viewId || viewId === NONE) return undefined;
+		const messageText =
+			typeof message?.content?.text === "string" ? message.content.text : "";
+		if (
+			viewId === "documents" &&
+			isStandaloneNotesSurfaceRequest(messageText)
+		) {
+			return undefined;
+		}
 
 		const client = createViewsClient();
 		let views: Awaited<ReturnType<typeof client.listViews>>;
@@ -106,6 +119,11 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 			viewType: target.viewType,
 		});
 		if (!ok) return undefined;
+		// This evaluator runs *after* the reply, so it cannot acknowledge the
+		// switch in the just-sent message. Record the switch (and the server
+		// stamps it on navigate): the `current_view` provider then acknowledges it
+		// on the immediate next turn rather than the user being moved silently.
+		markViewSwitch(message?.roomId);
 		logger.info(
 			`[plugin-app-control] contextual view nav → ${viewId}${output.reason ? ` (${output.reason})` : ""}`,
 		);
@@ -155,6 +173,7 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		const text =
 			typeof message.content?.text === "string" ? message.content.text : "";
 		if (text.trim().length < 8) return false;
+		if (isStandaloneNotesSurfaceRequest(text)) return false;
 		// Direct nav commands belong to the VIEWS action — only infer contextually
 		// when the keyword resolver finds NO direct surface but the turn hints at a
 		// mappable activity.

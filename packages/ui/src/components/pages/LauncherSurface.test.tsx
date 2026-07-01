@@ -1,0 +1,132 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
+import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { LauncherSurface } from "./LauncherSurface";
+
+let aospEnabled = false;
+
+vi.mock("../../hooks/useAvailableViews", () => ({
+  useRoutableViews: vi.fn(),
+}));
+
+vi.mock("../../state/useViewKinds", () => ({
+  useEnabledViewKinds: vi.fn(),
+}));
+
+vi.mock("../../platform/platform-guards", () => ({
+  getActiveViewModality: () => "gui",
+}));
+
+vi.mock("../../navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../navigation")>();
+  return { ...actual, isAospShellEnabled: () => aospEnabled };
+});
+
+const useRoutableViewsMock = vi.mocked(useRoutableViews);
+const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);
+
+function view(
+  id: string,
+  label: string,
+  path: string,
+  options: Partial<ViewRegistryEntry> = {},
+): ViewRegistryEntry {
+  return {
+    id,
+    label,
+    viewType: "gui",
+    path,
+    available: true,
+    pluginName: "@elizaos/builtin",
+    visibleInManager: true,
+    builtin: true,
+    viewKind: "release",
+    ...options,
+  };
+}
+
+function setViews(views: ViewRegistryEntry[]) {
+  useRoutableViewsMock.mockReturnValue({
+    views,
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  });
+}
+
+beforeEach(() => {
+  aospEnabled = false;
+  window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
+  useEnabledViewKindsMock.mockReturnValue({ developer: true, preview: true });
+  setViews([
+    view("chat", "Chat", "/chat"),
+    view("views", "Views", "/views"),
+    view("wallet", "Wallet", "/wallet", { viewKind: "system" }),
+    view("inventory", "Wallet", "/wallet", { visibleInManager: false }),
+    view("browser", "Browser", "/browser"),
+    view("settings", "Settings", "/settings", { visibleInManager: false }),
+    view("shopify", "Shopify", "/shopify"),
+    view("hyperliquid", "Hyperliquid", "/hyperliquid"),
+    view("phone", "Phone", "/phone", { visibleInManager: false }),
+    view("trajectories", "Trajectories", "/apps/trajectories", {
+      viewKind: "developer",
+    }),
+  ]);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+describe("LauncherSurface", () => {
+  it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
+    render(<LauncherSurface />);
+
+    expect(screen.getByTestId("launcher-tile-wallet")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-browser")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
+
+    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
+  });
+
+  it("collapses duplicate wallet registrations to a single tile", () => {
+    render(<LauncherSurface />);
+    expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
+  });
+
+  it("hides native-OS tiles off the AOSP fork and shows them on it", () => {
+    render(<LauncherSurface />);
+    expect(screen.queryByTestId("launcher-tile-phone")).toBeNull();
+    cleanup();
+
+    aospEnabled = true;
+    render(<LauncherSurface />);
+    expect(screen.getByTestId("launcher-tile-phone")).toBeTruthy();
+  });
+
+  it("puts developer tools on a second page", () => {
+    render(<LauncherSurface />);
+    const devPage = screen.getByTestId("launcher-page-1");
+    expect(
+      devPage.querySelector('[data-testid="launcher-tile-trajectories"]'),
+    ).toBeTruthy();
+    const appsPage = screen.getByTestId("launcher-page-0");
+    expect(
+      appsPage.querySelector('[data-testid="launcher-tile-trajectories"]'),
+    ).toBeNull();
+  });
+
+  it("navigates loaded views through the browser route", () => {
+    render(<LauncherSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Browser" }));
+    expect(window.location.pathname).toBe("/browser");
+  });
+});

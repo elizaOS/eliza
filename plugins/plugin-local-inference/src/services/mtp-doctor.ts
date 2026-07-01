@@ -1,4 +1,8 @@
-import { MODEL_CATALOG } from "./catalog";
+import {
+	ELIZA_1_HOSTED_MTP_TIER_IDS,
+	ELIZA_1_MTP_TIER_IDS,
+	MODEL_CATALOG,
+} from "./catalog";
 import { probeHardware } from "./hardware";
 
 export type MtpDoctorCheckStatus = "pass" | "warn" | "fail";
@@ -27,7 +31,11 @@ export async function runMtpDoctor(): Promise<MtpDoctorReport> {
 		detail:
 			mtpCatalogEntries.length > 0
 				? `${mtpCatalogEntries.length} MTP-capable model entries found`
-				: "No catalog entries advertise runtime.mtp",
+				: `No catalog entries advertise runtime.mtp; ${ELIZA_1_HOSTED_MTP_TIER_IDS.length}/${ELIZA_1_MTP_TIER_IDS.length} Gemma MTP drafter tiers have hosted GGUFs`,
+		fix:
+			mtpCatalogEntries.length > 0
+				? undefined
+				: "publish Gemma drafter GGUFs at bundles/<tier>/mtp/drafter-<tier>.gguf before enabling runtime MTP",
 	});
 
 	try {

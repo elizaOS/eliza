@@ -1,4 +1,5 @@
 import {
+	type AudioStreamResult,
 	EventType,
 	type GenerateTextParams,
 	type IAgentRuntime,
@@ -16,8 +17,14 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import {
+	startTranscriptionAction,
+	stopTranscriptionAction,
+} from "./actions/transcription-control.js";
+import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
+import { augmentVisionRequest } from "./services/vision/augmenter.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
@@ -35,6 +42,8 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TEXT_TO_SPEECH,
 	ModelType.TRANSCRIPTION,
 ] as const;
+
+const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
 
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
@@ -101,6 +110,17 @@ interface LocalInferenceTextToSpeechService {
 		text: string;
 		signal?: AbortSignal;
 	}) => Promise<Uint8Array | ArrayBuffer | Buffer>;
+	/**
+	 * Optional streaming synth seam: yields audio (PCM/WAV) chunks as they are
+	 * produced so playback can start before the whole clip is ready. When a
+	 * backend implements it, the TEXT_TO_SPEECH handler returns an
+	 * {@link AudioStreamResult} for `audioStream` callers; otherwise it falls
+	 * back to a single-chunk result around the buffered synth.
+	 */
+	synthesizeSpeechStream?: (
+		text: string,
+		signal?: AbortSignal,
+	) => AsyncIterable<Uint8Array>;
 }
 
 interface LocalInferenceTranscriptionService {
@@ -273,7 +293,9 @@ function textGenerationArgsFromParams(
 	return {
 		prompt: promptFromParams(params),
 		stopSequences: params.stopSequences,
-		maxTokens: params.maxTokens,
+		maxTokens: params.omitMaxTokens
+			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
+			: params.maxTokens,
 		temperature: params.temperature,
 		topP: params.topP,
 		signal: params.signal,
@@ -363,6 +385,60 @@ function normalizeAudioBytes(
 		"[local-inference] TEXT_TO_SPEECH backend returned non-audio output",
 	);
 }
+
+function concatAudioChunks(chunks: Uint8Array[]): Uint8Array {
+	const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+	const out = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return out;
+}
+
+/** A single-chunk {@link AudioStreamResult} around already-synthesized bytes —
+ *  satisfies the streaming contract when the backend has no streaming synth. */
+function bufferedAudioStreamResult(
+	bytes: Uint8Array,
+	mimeType: string,
+): AudioStreamResult {
+	async function* generate(): AsyncGenerator<Uint8Array> {
+		if (bytes.byteLength > 0) yield bytes;
+	}
+	return { audioStream: generate(), bytes: Promise.resolve(bytes), mimeType };
+}
+
+/** Wrap a backend streaming synth as an {@link AudioStreamResult}, accumulating
+ *  the chunks so `bytes` resolves to the full clip after the stream is drained. */
+function streamingAudioStreamResult(
+	source: AsyncIterable<Uint8Array>,
+	mimeType: string,
+): AudioStreamResult {
+	const collected: Uint8Array[] = [];
+	let resolveBytes!: (value: Uint8Array) => void;
+	let rejectBytes!: (reason: unknown) => void;
+	const bytes = new Promise<Uint8Array>((resolve, reject) => {
+		resolveBytes = resolve;
+		rejectBytes = reject;
+	});
+	async function* generate(): AsyncGenerator<Uint8Array> {
+		try {
+			for await (const value of source) {
+				const chunk = normalizeAudioBytes(value);
+				collected.push(chunk);
+				yield chunk;
+			}
+			resolveBytes(concatAudioChunks(collected));
+		} catch (err) {
+			rejectBytes(err);
+			throw err;
+		}
+	}
+	return { audioStream: generate(), bytes, mimeType };
+}
+
+const LOCAL_TTS_MIME = "audio/wav";
 
 function extractPcmTranscriptionParams(
 	params: TranscriptionParams | Buffer | string | unknown,
@@ -510,51 +586,52 @@ function createTextToSpeechHandler() {
 	return async (
 		runtime: IAgentRuntime,
 		params: TextToSpeechParams | string,
-	): Promise<Uint8Array> => {
+	): Promise<Uint8Array | AudioStreamResult> => {
 		const service = requireService(runtime, ModelType.TEXT_TO_SPEECH);
 		const text = ensureNonEmptyText(
 			ModelType.TEXT_TO_SPEECH,
 			extractSpeechText(params),
 		);
 		const signal = extractSpeechSignal(params);
-		const arbiter = _tryGetTtsArbiter(service);
-		if (arbiter) {
-			const request = { text, ...(signal ? { signal } : {}) };
-			const requestSpeech = arbiter.requestTextToSpeech ?? arbiter.requestSpeak;
-			if (!requestSpeech) {
-				throw unavailable(
-					ModelType.TEXT_TO_SPEECH,
-					"capability_unavailable",
-					"[local-inference] Active local arbiter does not implement TEXT_TO_SPEECH",
-				);
-			}
-			const modelKeyCandidate =
-				typeof params === "object"
-					? (params as unknown as { modelKey?: unknown }).modelKey
-					: undefined;
-			const modelKey =
-				typeof modelKeyCandidate === "string" && modelKeyCandidate
-					? modelKeyCandidate
-					: "eliza-1-voice";
-			const result = await requestSpeech<typeof request, Uint8Array>({
-				modelKey,
-				payload: request,
-			});
-			return normalizeAudioBytes(result);
-		}
-		if (typeof service.synthesizeSpeech === "function") {
-			return normalizeAudioBytes(await service.synthesizeSpeech(text, signal));
-		}
-		if (typeof service.textToSpeech === "function") {
-			return normalizeAudioBytes(
-				await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+		// Explicit opt-in (NOT the generic `stream` useModel injects from an
+		// ambient text-streaming turn) so byte-expecting callers keep a buffer.
+		const wantsStream =
+			typeof params === "object" &&
+			params !== null &&
+			(params as { audioStream?: boolean }).audioStream === true;
+
+		// Real chunked streaming when the backend implements the seam.
+		if (wantsStream && typeof service.synthesizeSpeechStream === "function") {
+			return streamingAudioStreamResult(
+				service.synthesizeSpeechStream(text, signal),
+				LOCAL_TTS_MIME,
 			);
 		}
-		throw unavailable(
-			ModelType.TEXT_TO_SPEECH,
-			"capability_unavailable",
-			"[local-inference] Active local backend does not implement TEXT_TO_SPEECH",
-		);
+
+		const synthesizeBuffered = async (): Promise<Uint8Array> => {
+			if (typeof service.synthesizeSpeech === "function") {
+				return normalizeAudioBytes(
+					await service.synthesizeSpeech(text, signal),
+				);
+			}
+			if (typeof service.textToSpeech === "function") {
+				return normalizeAudioBytes(
+					await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+				);
+			}
+			throw unavailable(
+				ModelType.TEXT_TO_SPEECH,
+				"capability_unavailable",
+				"[local-inference] Active local backend does not implement TEXT_TO_SPEECH",
+			);
+		};
+
+		const bytes = await synthesizeBuffered();
+		// Streaming asked but no streaming backend — satisfy the contract with a
+		// single chunk so consumers use one code path for cloud + local.
+		return wantsStream
+			? bufferedAudioStreamResult(bytes, LOCAL_TTS_MIME)
+			: bytes;
 	};
 }
 
@@ -566,25 +643,6 @@ function createTranscriptionHandler() {
 		const service = requireService(runtime, ModelType.TRANSCRIPTION);
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
-		const arbiter = _tryGetTranscribeArbiter(service);
-		if (arbiter?.requestTranscribe) {
-			const modelKeyCandidate =
-				typeof params === "object" && params !== null
-					? (params as { modelKey?: unknown }).modelKey
-					: undefined;
-			const modelKey =
-				typeof modelKeyCandidate === "string" && modelKeyCandidate
-					? modelKeyCandidate
-					: "eliza-1-transcribe";
-			const transcript = normalizeTranscript(
-				await arbiter.requestTranscribe<
-					TranscriptionParams | Buffer | string | unknown,
-					string | { text?: string }
-				>({ modelKey, payload: params }),
-			);
-			throwIfAborted(signal);
-			return transcript;
-		}
 		if (typeof service.transcribe === "function") {
 			const transcript = normalizeTranscript(await service.transcribe(params));
 			throwIfAborted(signal);
@@ -631,18 +689,6 @@ interface ArbiterLike {
 		modelKey: string;
 		payload: Req;
 	}) => Promise<Res>;
-	requestTranscribe?: <Req, Res>(req: {
-		modelKey: string;
-		payload: Req;
-	}) => Promise<Res>;
-	requestTextToSpeech?: <Req, Res>(req: {
-		modelKey: string;
-		payload: Req;
-	}) => Promise<Res>;
-	requestSpeak?: <Req, Res>(req: {
-		modelKey: string;
-		payload: Req;
-	}) => Promise<Res>;
 }
 
 function tryGetArbiter(
@@ -679,50 +725,11 @@ function tryGetImageGenArbiter(
 	return null;
 }
 
-/**
- * Return the arbiter if it has the WS5 `"speak"` capability registered.
- * Mirrors `tryGetArbiter` / `tryGetImageGenArbiter`. Either of
- * `requestTextToSpeech` or `requestSpeak` is sufficient — they both
- * route through the same `"speak"` queue.
- */
-function _tryGetTtsArbiter(
-	service: LocalInferenceRuntimeService | null,
-): ArbiterLike | null {
-	if (!service?.getMemoryArbiter) return null;
-	const arbiter = service.getMemoryArbiter();
-	if (!arbiter || typeof arbiter !== "object") return null;
-	const cand = arbiter as ArbiterLike;
-	if (
-		typeof cand.hasCapability === "function" &&
-		(typeof cand.requestTextToSpeech === "function" ||
-			typeof cand.requestSpeak === "function") &&
-		cand.hasCapability("speak")
-	) {
-		return cand;
-	}
-	return null;
-}
-
-function _tryGetTranscribeArbiter(
-	service: LocalInferenceRuntimeService | null,
-): ArbiterLike | null {
-	if (!service?.getMemoryArbiter) return null;
-	const arbiter = service.getMemoryArbiter();
-	if (!arbiter || typeof arbiter !== "object") return null;
-	const cand = arbiter as ArbiterLike;
-	if (
-		typeof cand.hasCapability === "function" &&
-		typeof cand.requestTranscribe === "function" &&
-		cand.hasCapability("transcribe")
-	) {
-		return cand;
-	}
-	return null;
-}
-
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
 	prompt?: string;
+	signal?: AbortSignal;
+	onTextChunk?: (chunk: string) => void | Promise<void>;
 } {
 	const url = typeof params === "string" ? params : params.imageUrl;
 	if (typeof url !== "string" || !url) {
@@ -733,15 +740,38 @@ function paramsToVisionRequest(params: ImageDescriptionParams | string): {
 		);
 	}
 	const prompt = typeof params === "object" ? params.prompt : undefined;
+	const signal =
+		typeof params === "object"
+			? (params as { signal?: AbortSignal }).signal
+			: undefined;
+	// Token-by-token streaming is intentionally explicit for vision. Hidden image
+	// preprocessing can happen inside a streaming chat turn; only forward the
+	// runtime callback when the call itself asks for `stream: true`.
+	const wantsStream =
+		typeof params === "object" &&
+		(params as { stream?: boolean }).stream === true;
+	const streamSink =
+		wantsStream && typeof params === "object"
+			? (params as { onStreamChunk?: (chunk: string) => void | Promise<void> })
+					.onStreamChunk
+			: undefined;
+	const onTextChunk =
+		typeof streamSink === "function"
+			? (chunk: string) => streamSink(chunk)
+			: undefined;
 	if (url.startsWith("data:")) {
 		return {
 			image: { kind: "dataUrl", dataUrl: url },
 			prompt,
+			...(signal ? { signal } : {}),
+			...(onTextChunk ? { onTextChunk } : {}),
 		};
 	}
 	return {
 		image: { kind: "url", url },
 		prompt,
+		...(signal ? { signal } : {}),
+		...(onTextChunk ? { onTextChunk } : {}),
 	};
 }
 
@@ -785,13 +815,14 @@ function createImageDescriptionHandler() {
 			markEliza1VisionHandlerPresent(runtime);
 			const modelKeyCandidate =
 				typeof params === "object"
-					? (params as unknown as { modelKey?: unknown }).modelKey
+					? (params as { modelKey?: unknown }).modelKey
 					: undefined;
 			const modelKey =
 				typeof modelKeyCandidate === "string" && modelKeyCandidate
 					? modelKeyCandidate
-					: "qwen3-vl";
+					: "gemma-vl";
 			const request = paramsToVisionRequest(params);
+			await augmentVisionRequest(request);
 			const result = await arbiter.requestVisionDescribe<
 				typeof request,
 				ImageDescriptionResult | string
@@ -997,12 +1028,11 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
  * routing test (`imagegen-routing.test.ts`).
  */
 const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
-	"eliza-1-0_8b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-2b": "imagegen-sd-1_5-q5_0",
 	"eliza-1-4b": "imagegen-sd-1_5-q5_0",
-	"eliza-1-9b": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b-256k": "imagegen-z-image-turbo-q4_k_m",
+	"eliza-1-9b": "imagegen-sd-1_5-q5_0",
+	"eliza-1-27b": "imagegen-sd-1_5-q5_0",
+	"eliza-1-27b-256k": "imagegen-sd-1_5-q5_0",
 };
 
 export function createLocalInferenceModelHandlers(): NonNullable<
@@ -1030,7 +1060,12 @@ export const localInferencePlugin: Plugin = {
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
-	actions: [generateMediaAction, identifySpeakerAction],
+	actions: [
+		generateMediaAction,
+		identifySpeakerAction,
+		startTranscriptionAction,
+		stopTranscriptionAction,
+	],
 	events: {
 		// Round-trip half of the voice→entity binding: when the merge engine
 		// (plugin-lifeops) reports a binding, persist entityId onto the matching
@@ -1041,7 +1076,7 @@ export const localInferencePlugin: Plugin = {
 	// VoiceProfileSection management UI). Registered as rawPath plugin routes
 	// because no server forwards these namespaces to the local-inference
 	// route dispatcher. See routes/voice-profile-plugin-routes.ts.
-	routes: voiceProfilePluginRoutes,
+	routes: [...voiceProfilePluginRoutes, ...transcriptsRoutes],
 	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
 	// plugin object. Runtime bootstrap probes embeddings before the user has
 	// activated an Eliza-1 bundle; registering the static handler there claims a

@@ -67,9 +67,9 @@ const serviceStartupTimeoutMs = Number.parseInt(
   10,
 );
 
-const packagedCloudAvailable =
-  existsSync(`${repoRoot}/packages/cloud-api/package.json`) &&
-  existsSync(`${repoRoot}/packages/cloud-frontend/package.json`);
+const packagedCloudAvailable = existsSync(
+  `${repoRoot}/packages/cloud/api/package.json`,
+);
 const cloudMode = packagedCloudAvailable ? "packages" : "legacy";
 const commonEnv = {
   ...process.env,
@@ -132,7 +132,6 @@ const agentEnv = {
   ),
   ELIZA_SKIP_PLUGINS: [
     process.env.ELIZA_SKIP_PLUGINS,
-    "@elizaos/plugin-companion",
     "@elizaos/plugin-personal-assistant",
     "@elizaos/plugin-wallet",
   ]
@@ -188,11 +187,11 @@ const cloudDbEnv = {
   PGLITE_HOST: "127.0.0.1",
 };
 const cloudApiService = packagedCloudAvailable
-  ? { cwd: "packages/cloud-api", command: [bunBin, "run", "dev"] }
+  ? { cwd: "packages/cloud/api", command: [bunBin, "run", "dev"] }
   : { cwd: "cloud", command: [bunBin, "run", "dev:api"] };
 const cloudWebService = packagedCloudAvailable
   ? {
-      cwd: "packages/cloud-frontend",
+      cwd: "packages/app",
       command: [
         bunBin,
         "run",
@@ -273,7 +272,7 @@ const services = [
   },
   {
     name: "os-homepage",
-    cwd: "packages/os-homepage",
+    cwd: "packages/os/homepage",
     command: [
       bunBin,
       "run",
@@ -306,12 +305,6 @@ function buildDefaultPrepareCommands() {
       label: "shared i18n keywords",
       cwd: "packages/shared",
       command: [bunBin, "run", "build:i18n"],
-      env: commonEnv,
-    },
-    {
-      label: "ui css string modules",
-      cwd: "packages/ui",
-      command: [bunBin, "run", "generate:css-strings"],
       env: commonEnv,
     },
     {

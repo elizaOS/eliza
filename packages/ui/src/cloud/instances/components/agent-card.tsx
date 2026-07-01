@@ -35,7 +35,7 @@ import {
   X,
 } from "lucide-react";
 import type * as React from "react";
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useT } from "../lib/i18n";
@@ -76,7 +76,7 @@ interface AgentCardProps {
   onRemoveSaved?: (agentId: string) => void;
 }
 
-export function AgentCard({
+function AgentCardInner({
   agent,
   viewMode = "grid",
   showDeploymentStatus = false,
@@ -527,7 +527,7 @@ export function AgentCard({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleDeleteClick}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                     >
                       <Trash2 className="h-4 w-4 mr-2 text-red-500" />
                       {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
@@ -547,7 +547,7 @@ export function AgentCard({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleRemoveSaved}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                     >
                       <X className="h-4 w-4 mr-2 text-red-500" />
                       {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
@@ -749,7 +749,7 @@ export function AgentCard({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleDeleteClick}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                 >
                   <Trash2 className="h-4 w-4 mr-2 text-red-500" />
                   {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
@@ -769,7 +769,7 @@ export function AgentCard({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleRemoveSaved}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
+                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
                 >
                   <X className="h-4 w-4 mr-2 text-red-500" />
                   {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
@@ -834,3 +834,8 @@ export function AgentCard({
     </div>
   );
 }
+
+// Rendered in a `.map()` grid that re-renders on filter/poll; memoize so only
+// cards whose `agent` reference changes re-render. Callers pass a stable
+// `onRemoveSaved` for the comparison to hold.
+export const AgentCard = memo(AgentCardInner);

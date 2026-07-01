@@ -20,7 +20,7 @@
  * not pretend it fixed anything.
  */
 
-import os from "node:os";
+import { readSystemMemory } from "./system-memory";
 import type {
 	ResidentModelRole,
 	SharedResourceRegistry,
@@ -36,7 +36,12 @@ export interface MemoryMonitorLogger {
 export interface MemorySample {
 	totalMb: number;
 	freeMb: number;
-	/** External runtime RSS in MB when a host probe exposes it, else null. */
+	/**
+	 * Resident-set size in MB of the inference host. On the in-process FFI path
+	 * this is the current process's RSS (`process.memoryUsage().rss`); the
+	 * device-bridge path injects a phone-sourced figure. `null` only when no
+	 * probe could read it.
+	 */
 	serverRssMb: number | null;
 	/** Effective free memory used for the pressure decision (min of OS-free and total-minus-RSS-style headroom). */
 	effectiveFreeMb: number;
@@ -123,7 +128,10 @@ export function resolveMemoryMonitorConfig(
 
 /** Pluggable sources so the monitor stays unit-testable without OS state. */
 export interface MemoryMonitorSources {
-	/** OS free/total memory in bytes. Defaults to `os.freemem()/os.totalmem()`. */
+	/**
+	 * Available/total memory in bytes. Defaults to `readSystemMemory()`
+	 * (`/proc/meminfo` `MemAvailable` on Linux/Android, `os.freemem()` elsewhere).
+	 */
 	osMemory?: () => { freeBytes: number; totalBytes: number };
 	/** Running external runtime RSS in MB, or null. */
 	serverRssMb?: () => Promise<number | null>;
@@ -135,6 +143,12 @@ export interface MemoryPressureAction {
 	evicted: { id: string; role: ResidentModelRole; estimatedMb: number } | null;
 	/** True when pressure was detected but nothing could be evicted. */
 	exhausted: boolean;
+	/**
+	 * True when pressure was detected but eviction was deferred to the registry's
+	 * external eviction owner (the `MemoryArbiter`) so the two loops never
+	 * double-evict on one pressure event (#8809 AC#2).
+	 */
+	delegated?: boolean;
 }
 
 export class MemoryMonitor {
@@ -157,9 +171,7 @@ export class MemoryMonitor {
 		this.registry = args.registry;
 		this.config = resolveMemoryMonitorConfig(args.config);
 		this.log = args.logger;
-		this.osMemory =
-			args.sources?.osMemory ??
-			(() => ({ freeBytes: os.freemem(), totalBytes: os.totalmem() }));
+		this.osMemory = args.sources?.osMemory ?? (() => readSystemMemory());
 		this.serverRssMb =
 			args.sources?.serverRssMb ?? (async () => defaultServerRssMb());
 	}
@@ -246,6 +258,12 @@ export class MemoryMonitor {
 			if (now - this.lastEvictionAtMs < this.config.evictionCooldownMs) {
 				return { sample, evicted: null, exhausted: false };
 			}
+			// Single eviction owner: when the MemoryArbiter owns the registry's
+			// eviction decision, defer to it (its pressure source evicts) rather
+			// than evicting in parallel — no double-eviction on one event.
+			if (this.registry.hasExternalEvictionOwner()) {
+				return { sample, evicted: null, exhausted: false, delegated: true };
+			}
 			const evicted = await this.registry.evictLowestPriorityRole();
 			if (evicted) {
 				this.lastEvictionAtMs = now;
@@ -270,9 +288,22 @@ export class MemoryMonitor {
 }
 
 /**
- * Default RSS probe. The local text path is in-process FFI now, so there is no
- * server-side metrics endpoint to scrape.
+ * Default RSS probe for the in-process FFI path.
+ *
+ * Text inference now runs in-process via FFI llama.cpp, so the inference
+ * weights live in *this* process's address space — `process.memoryUsage().rss`
+ * is therefore the real resident-set high-water of the inference host, not a
+ * separate server to scrape. Returning it (instead of the old `null` stub) gives
+ * the monitor a genuine on-device RSS signal on desktop and on a phone running
+ * the agent in-process.
+ *
+ * The device-bridge topology (agent in a container, inference on a paired phone)
+ * is the exception: there the container process RSS is *not* the phone's, so
+ * that bootstrap injects a device-sourced `serverRssMb` via
+ * `MemoryMonitorSources` rather than using this default.
  */
 async function defaultServerRssMb(): Promise<number | null> {
-	return null;
+	const usage = process.memoryUsage?.();
+	if (!usage || !Number.isFinite(usage.rss)) return null;
+	return usage.rss / (1024 * 1024);
 }

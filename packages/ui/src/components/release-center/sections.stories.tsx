@@ -33,7 +33,7 @@ const mockApp = {
     }
     return out;
   },
-} as unknown as AppContextValue;
+} as AppContextValue;
 
 const withAppContext = (Story: () => JSX.Element) => (
   <AppContext.Provider value={mockApp}>

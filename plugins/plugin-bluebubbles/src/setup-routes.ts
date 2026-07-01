@@ -2,7 +2,7 @@
  * BlueBubbles connector HTTP setup routes.
  *
  * Implements the shared setup contract defined in
- * `@elizaos/app-core/api/setup-contract.ts`:
+ * `@elizaos/core` (`packages/core/src/types/connector-setup.ts`):
  *
  *   GET  /api/setup/bluebubbles/status   service health + webhook path
  *   POST /api/setup/bluebubbles/start    save server URL + password and reconnect
@@ -22,30 +22,14 @@
  * the UI can render an informative empty state.
  */
 
-import type {
-	IAgentRuntime,
-	Route,
-	RouteRequest,
-	RouteResponse,
+import {
+	buildSetupError,
+	type IAgentRuntime,
+	type Route,
+	type RouteRequest,
+	type RouteResponse,
+	type SetupStatusResponse,
 } from "@elizaos/core";
-
-// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
-
-type SetupState = "idle" | "configuring" | "paired" | "error";
-
-interface SetupStatusResponse<TDetail = unknown> {
-	connector: string;
-	state: SetupState;
-	detail?: TDetail;
-}
-
-interface SetupErrorResponse {
-	error: { code: string; message: string };
-}
-
-function setupError(code: string, message: string): SetupErrorResponse {
-	return { error: { code, message } };
-}
 
 // ── BlueBubbles types ───────────────────────────────────────────────────
 
@@ -171,7 +155,7 @@ async function handleStart(
 		res
 			.status(400)
 			.json(
-				setupError(
+				buildSetupError(
 					"bad_request",
 					"serverUrl and password are required to start BlueBubbles setup",
 				),
@@ -185,7 +169,7 @@ async function handleStart(
 	} catch {
 		res
 			.status(400)
-			.json(setupError("bad_request", "serverUrl must be a valid URL"));
+			.json(buildSetupError("bad_request", "serverUrl must be a valid URL"));
 		return;
 	}
 
@@ -194,7 +178,7 @@ async function handleStart(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"connector-setup service not registered",
 				),
@@ -230,7 +214,7 @@ async function handleCancel(
 		res
 			.status(503)
 			.json(
-				setupError(
+				buildSetupError(
 					"service_unavailable",
 					"connector-setup service not registered",
 				),

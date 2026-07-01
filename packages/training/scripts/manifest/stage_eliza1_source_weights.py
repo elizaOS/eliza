@@ -79,118 +79,150 @@ class SourceArtifact:
 
 
 TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
-    "0_8b": SourceArtifact(
-        kind="text",
-        repo="unsloth/Qwen3.5-0.8B-GGUF",
-        filename="Qwen3.5-0.8B-Q8_0.gguf",
-        destination="source/text/qwen3.5-0_8b-q8_0.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-0.8B base.",
-            "Final Eliza-1 0.8B still needs training plus Q4_K_M quantization.",
-        ),
-    ),
     "2b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-2B-GGUF",
-        filename="Qwen3.5-2B-Q8_0.gguf",
-        destination="source/text/qwen3.5-2b-q8_0.gguf",
+        repo="unsloth/gemma-4-E2B-GGUF",
+        filename="gemma-4-E2B-Q8_0.gguf",
+        destination="source/text/gemma4-e2b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-2B base.",
+            "GGUF mirror of the official google/gemma-4-E2B base.",
             "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
         ),
     ),
     "4b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-4B-GGUF",
-        filename="Qwen3.5-4B-Q8_0.gguf",
-        destination="source/text/qwen3.5-4b-q8_0.gguf",
+        repo="unsloth/gemma-4-E4B-GGUF",
+        filename="gemma-4-E4B-Q8_0.gguf",
+        destination="source/text/gemma4-e4b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=("Final Eliza-1 4B still needs training plus Q4_K_M quantization.",),
     ),
     "9b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-9B-GGUF",
-        filename="Qwen3.5-9B-Q8_0.gguf",
-        destination="source/text/qwen3.5-9b-q8_0.gguf",
+        repo="unsloth/gemma-4-12B-GGUF",
+        filename="gemma-4-12B-Q8_0.gguf",
+        destination="source/text/gemma4-12b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
             "Final Eliza-1 9B still needs training plus Q4_K_M quantization.",
-            "Qwen3.5 is the active Eliza-1 backbone family.",
+            "Gemma 4 is the active Eliza-1 backbone family.",
         ),
     ),
     "27b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.6-27B-GGUF",
-        filename="Qwen3.6-27B-Q8_0.gguf",
-        destination="source/text/qwen3.6-27b-q8_0.gguf",
+        repo="unsloth/gemma-4-31B-GGUF",
+        filename="gemma-4-31B-Q8_0.gguf",
+        destination="source/text/gemma4-31b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
-        notes=("Final Eliza-1 27B uses Qwen3.6 and still needs training plus Q4_K_M quantization.",),
+        notes=("Final Eliza-1 27B uses Gemma 4 31B and still needs training plus Q4_K_M quantization.",),
+    ),
+    "27b-256k": SourceArtifact(
+        kind="text",
+        repo="unsloth/gemma-4-31B-GGUF",
+        filename="gemma-4-31B-Q8_0.gguf",
+        destination="source/text/gemma4-31b-q8_0.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=(
+            "Final Eliza-1 27B-256k uses Gemma 4 31B and still needs training "
+            "plus Q4_K_M quantization.",
+        ),
     ),
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_8b": None,
-    "2b": None,
-    "4b": SourceArtifact(
+    "2b": SourceArtifact(
         kind="mtp",
-        repo="z-lab/Qwen3.5-4B-MTP",
+        repo="google/gemma-4-E2B-it-qat-q4_0-unquantized-assistant",
         filename="model.safetensors",
-        destination="source/mtp/qwen3.5-4b-mtp.safetensors",
-        license="mit",
+        destination="source/mtp/gemma4-e2b-assistant.safetensors",
+        license="gemma",
         status="source-safetensors",
         notes=(
-            "Official upstream MTP drafter source for Qwen/Qwen3.5-4B.",
-            "Final Eliza-1 4B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
+            "Official Google Gemma 4 E2B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 2B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
+        ),
+    ),
+    "4b": SourceArtifact(
+        kind="mtp",
+        repo="google/gemma-4-E4B-it-qat-q4_0-unquantized-assistant",
+        filename="model.safetensors",
+        destination="source/mtp/gemma4-e4b-assistant.safetensors",
+        license="gemma",
+        status="source-safetensors",
+        notes=(
+            "Official Google Gemma 4 E4B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 4B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
         ),
     ),
     "9b": SourceArtifact(
         kind="mtp",
-        repo="z-lab/Qwen3.5-9B-MTP",
+        repo="google/gemma-4-12B-it-qat-q4_0-unquantized-assistant",
         filename="model.safetensors",
-        destination="source/mtp/qwen3.5-9b-mtp.safetensors",
-        license="mit",
+        destination="source/mtp/gemma4-12b-assistant.safetensors",
+        license="gemma",
         status="source-safetensors",
         notes=(
-            "Official upstream MTP drafter source for Qwen/Qwen3.5-9B.",
-            "Final Eliza-1 9B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
+            "Official Google Gemma 4 12B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 9B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
         ),
     ),
     "27b": SourceArtifact(
         kind="mtp",
-        repo="spiritbuun/Qwen3.6-27B-MTP-GGUF",
-        filename="mtp-draft-3.6-q8_0.gguf",
-        destination="source/mtp/qwen3.6-27b-mtp-q8_0.gguf",
-        license="mit",
-        status="source-gguf",
+        repo="google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+        filename="model.safetensors",
+        destination="source/mtp/gemma4-31b-assistant.safetensors",
+        license="gemma",
+        status="source-safetensors",
         notes=(
-            "GGUF quantization of z-lab/Qwen3.6-27B-MTP; Q8_0 is the upstream recommended quant for the Qwen3.6 drafter.",
-            "Final Eliza-1 27B still needs MTP acceptance against the Eliza-1 text checkpoint before publish.",
+            "Official Google Gemma 4 31B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 27B still needs tokenizer merge, mtp-draft GGUF "
+            "conversion, quantization, and acceptance against the Eliza-1 text "
+            "checkpoint.",
+        ),
+    ),
+    "27b-256k": SourceArtifact(
+        kind="mtp",
+        repo="google/gemma-4-31B-it-qat-q4_0-unquantized-assistant",
+        filename="model.safetensors",
+        destination="source/mtp/gemma4-31b-assistant.safetensors",
+        license="gemma",
+        status="source-safetensors",
+        notes=(
+            "Official Google Gemma 4 31B assistant source for MTP/speculative "
+            "decoding.",
+            "Final Eliza-1 27B-256k still needs tokenizer merge, mtp-draft "
+            "GGUF conversion, quantization, and acceptance against the Eliza-1 "
+            "text checkpoint.",
         ),
     ),
 }
 
-# mmproj-F16 sources per tier. Every active Qwen3.5 base
-# (0.8B/2B/4B/9B) ships its own `mmproj-F16.gguf` in the matching unsloth
-# repo. The Qwen3.6 27B projector is also published in the matching
-# unsloth/Qwen3.6-27B-GGUF repo.
+# mmproj-F16 sources per tier. Every active Gemma 4 base
+# (2B/4B/9B/27B/27B-256k) ships or reuses the matching Gemma 4
+# `mmproj-F16.gguf` from the corresponding unsloth repo.
 #
 # Per-tier quantization (handled downstream by `llama-quantize` against the
 # fork at `plugins/plugin-local-inference/native/llama.cpp/`):
-#   0_8b              -> Q4_K_M
 #   2b / 4b / 9b      -> Q8_0
-#   27b               -> Q8_0
-# The full canonical chain and the architectural reasoning for why
-# TurboQuant / PolarQuant / QJL are NOT applied to mmproj projectors are
-# documented in the 2026-05-14 plan memo cited above and in
-# `packages/training/release-staging/mmproj/manifest.json` once Phase 2
-# has executed.
+#   27b / 27b-256k    -> Q8_0
+# The source manifest emitted under `packages/training/release-staging/mmproj/`
+# records the final per-tier projector provenance once Phase 2 has executed.
 def _vision_source(tier: str, family: str, size: str) -> SourceArtifact:
     family_slug = family.lower()
     return SourceArtifact(
@@ -202,29 +234,28 @@ def _vision_source(tier: str, family: str, size: str) -> SourceArtifact:
         status="source-only",
         notes=(
             f"Upstream mmproj-F16 for the {family}-{size} projector; quantized to "
-            f"{'Q4_K_M' if tier == '0_8b' else 'Q8_0'} during Phase 2 staging.",
+            "Q8_0 during Phase 2 staging.",
         ),
     )
 
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_8b": _vision_source("0_8b", "Qwen3.5", "0.8B"),
-    "2b": _vision_source("2b", "Qwen3.5", "2B"),
-    "4b": _vision_source("4b", "Qwen3.5", "4B"),
-    "9b": _vision_source("9b", "Qwen3.5", "9B"),
-    "27b": _vision_source("27b", "Qwen3.6", "27B"),
+    "2b": _vision_source("2b", "gemma-4", "E2B"),
+    "4b": _vision_source("4b", "gemma-4", "E4B"),
+    "9b": _vision_source("9b", "gemma-4", "12B"),
+    "27b": _vision_source("27b", "gemma-4", "31B"),
+    "27b-256k": _vision_source("27b-256k", "gemma-4", "31B"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live
 # contract in `docs/ELIZA_1_BUNDLE_EXTRAS.json#vision.perTier` plus the
-# plan memo at
-# `plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md`.
+# source manifest emitted under `packages/training/release-staging/mmproj/`.
 MMPROJ_QUANT_BY_TIER: Final[dict[str, str]] = {
-    "0_8b": "Q4_K_M",
     "2b": "Q8_0",
     "4b": "Q8_0",
     "9b": "Q8_0",
     "27b": "Q8_0",
+    "27b-256k": "Q8_0",
 }
 
 # Per-tier tensor-type overrides passed to `llama-quantize --tensor-type`.
@@ -240,7 +271,6 @@ MMPROJ_QUANT_BY_TIER: Final[dict[str, str]] = {
 #     uses hidden_dim=4304 (4304 mod 32 == 16), so every ffn_down row in
 #     every vision block must stay F16 in the Q8_0 output.
 MMPROJ_QUANT_TENSOR_OVERRIDES: Final[dict[str, dict[str, str]]] = {
-    "0_8b": {"v\\.patch_embd\\.weight": "f16"},
     "2b": {"v\\.patch_embd\\.weight": "f16"},
     "4b": {"v\\.patch_embd\\.weight": "f16"},
     "9b": {
@@ -248,6 +278,10 @@ MMPROJ_QUANT_TENSOR_OVERRIDES: Final[dict[str, dict[str, str]]] = {
         "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
     },
     "27b": {
+        "v\\.patch_embd\\.weight": "f16",
+        "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
+    },
+    "27b-256k": {
         "v\\.patch_embd\\.weight": "f16",
         "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
     },
@@ -460,7 +494,11 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
         )
     elif not drafter_source.filename.lower().endswith(".gguf"):
         blockers.append(
-            f"Upstream MTP source for tier {args.tier} is {drafter_source.repo}/{drafter_source.filename}, not a final GGUF; final mtp/drafter-{args.tier}.gguf still needs tokenizer merge, GGUF conversion, quantization, and acceptance."
+            f"Upstream MTP source for tier {args.tier} is "
+            f"{drafter_source.repo}/{drafter_source.filename}, not a final "
+            f"GGUF; final mtp/drafter-{args.tier}.gguf still needs tokenizer "
+            "merge, GGUF conversion, quantization, and acceptance against the "
+            "Eliza-1 text checkpoint."
         )
     else:
         blockers.append(
@@ -509,7 +547,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help=(
             "After staging the F16 mmproj source, run `llama-quantize` to "
             "produce bundles/<tier>/vision/mmproj-<tier>.gguf at the "
-            "per-tier canonical quant (Q4_K_M for 0_8b, Q8_0 elsewhere). "
+            "per-tier canonical quant (Q8_0 for all active Gemma tiers). "
             "Requires the elizaOS/llama.cpp fork's llama-quantize binary."
         ),
     )

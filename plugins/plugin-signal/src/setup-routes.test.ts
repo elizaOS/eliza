@@ -1,6 +1,15 @@
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Every case re-imports the route module under a fresh mock graph
+// (`vi.resetModules()` + `await import("./setup-routes")` in loadSetupRoutes).
+// The handlers themselves are synchronous, but that per-test re-transform can
+// exceed the 5s default when the Plugin Tests lane runs the workspace at full
+// concurrency on a saturated runner — which intermittently timed out the last
+// cases in the suite. Give the re-import generous headroom; the assertions stay
+// strict so a genuine handler hang would still fail fast against this ceiling.
+vi.setConfig({ testTimeout: 20_000 });
+
 type PairingStatus =
   | "idle"
   | "initializing"

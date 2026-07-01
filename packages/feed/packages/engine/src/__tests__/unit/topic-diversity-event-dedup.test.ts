@@ -80,7 +80,7 @@ describe("TopicDiversityService - Event Deduplication", () => {
     });
 
     // Skip: Bun doesn't support full timer mocking - new Date() returns real time
-    it.skip("should update lastCoveredAt on subsequent tracks", () => {
+    it("should update lastCoveredAt on subsequent tracks", () => {
       service.trackEventCoverage(["ethereum", "upgrade"]);
 
       // Advance time by 1 hour
@@ -162,7 +162,7 @@ describe("TopicDiversityService - Event Deduplication", () => {
     });
 
     // Skip: Bun doesn't support full timer mocking - new Date() returns real time
-    it.skip("should allow more posts after 30 minute cooldown", () => {
+    it("should allow more posts after 30 minute cooldown", () => {
       service.trackEventCoverage(["cooldown", "test"]);
       service.trackEventCoverage(["cooldown", "test"]);
 
@@ -237,7 +237,7 @@ describe("TopicDiversityService - Event Deduplication", () => {
     });
 
     // Skip: Bun doesn't support full timer mocking - new Date() returns real time
-    it.skip("should count recent events (within 1 hour)", () => {
+    it("should count recent events (within 1 hour)", () => {
       service.trackEventCoverage(["recent", "event"]);
 
       // Advance 30 minutes
@@ -257,7 +257,7 @@ describe("TopicDiversityService - Event Deduplication", () => {
 
   describe("Event Expiry", () => {
     // Skip: Bun doesn't support full timer mocking - new Date() returns real time
-    it.skip("should clean up expired events", () => {
+    it("should clean up expired events", () => {
       service.trackEventCoverage(["old", "event"]);
 
       // Advance past expiry (12 hours + cleanup interval)
@@ -271,7 +271,7 @@ describe("TopicDiversityService - Event Deduplication", () => {
     });
 
     // Skip: Bun doesn't support full timer mocking - new Date() returns real time
-    it.skip("should keep events that are not yet expired", () => {
+    it("should keep events that are not yet expired", () => {
       service.trackEventCoverage(["fresh", "event"]);
 
       // Advance 6 hours (less than 12 hour expiry)
@@ -285,7 +285,7 @@ describe("TopicDiversityService - Event Deduplication", () => {
     });
 
     // Skip: Bun doesn't support full timer mocking - new Date() returns real time
-    it.skip("should update lastCoveredAt to extend lifetime", () => {
+    it("should update lastCoveredAt to extend lifetime", () => {
       service.trackEventCoverage(["renewed", "event"]);
 
       // Advance 10 hours

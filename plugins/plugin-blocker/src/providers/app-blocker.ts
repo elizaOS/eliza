@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/core";
 import { getAppBlockerAccess } from "../services/app-blocker/access.ts";
 import { getCachedAppBlockerStatus } from "../services/app-blocker/engine.ts";
+import type { AppBlockerStatus } from "../services/app-blocker/types.ts";
 
 export const appBlockerProvider: Provider = {
   name: "appBlocker",
@@ -32,7 +33,7 @@ export const appBlockerProvider: Provider = {
       };
     }
 
-    let status;
+    let status: AppBlockerStatus;
     try {
       status = await getCachedAppBlockerStatus();
     } catch {

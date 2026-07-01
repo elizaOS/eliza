@@ -1,0 +1,503 @@
+# =============================================================================
+# eliza-cloud-api — Cloudflare Worker config
+# =============================================================================
+# This file is committed; secrets live in `wrangler secret put` (push them via
+# packages/scripts/cf-secrets-migrate.mjs).  Anything marked REPLACE_ME must be filled
+# in by the operator after running packages/scripts/cf-bootstrap.sh.
+# =============================================================================
+
+name = "eliza-cloud-api"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+workers_dev = false
+minify = true
+
+# -----------------------------------------------------------------------------
+# Bundle-time aliases — swap Node-only / forbidden-top-level-IO modules for
+# Workers-friendly stubs. The agent runtime itself runs on the agent-server
+# sidecar, NOT on the Worker; the API only needs the schema *types* + *table
+# objects* so Drizzle queries against shared tables compile and execute.
+# -----------------------------------------------------------------------------
+[define]
+__dirname = '"/"'
+__filename = '"/worker.js"'
+
+[alias]
+"@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
+"@elizaos/plugin-elevenlabs" = "./src/stubs/elizaos-plugin-elevenlabs.ts"
+"@elizaos/core" = "./src/stubs/elizaos-core.ts"
+"@elizaos/cloud-sdk" = "../sdk/src/index.ts"
+"@elizaos/cloud-shared" = "../shared/src/index.ts"
+"@elizaos/shared/contracts/cloud-coding-containers" = "../../shared/src/contracts/cloud-coding-containers.ts"
+"@elizaos/shared/local-inference/voice-models" = "../../shared/src/local-inference/voice-models.ts"
+"@brighter/storage-adapter-s3" = "./src/stubs/brighter-storage-adapter-s3.ts"
+# ssh2 is Node-only (.node native binding). Container/agent SSH lives on the
+# sidecar (cloud/INFRA.md). Stub at bundle time so the Worker compiles; any
+# accidental runtime instantiation throws a clear error.
+"ssh2" = "./src/stubs/ssh2.ts"
+# undici is Node's fetch impl; references node:net, MessagePort, perf_hooks
+# that don't exist on Workers. Re-export runtime globals + map the
+# Agent/Pool/Dispatcher classes.
+"undici" = "./src/stubs/undici.ts"
+
+[observability]
+enabled = true
+
+# -----------------------------------------------------------------------------
+# Cron triggers — Cloudflare requires unique schedule strings. Multiple
+# handlers per schedule are fanned out by the dispatcher in `src/lib/cron.ts`
+# (CRON_FANOUT). See cloud/INFRA.md "Cron triggers" for the full mapping.
+# -----------------------------------------------------------------------------
+[triggers]
+crons = [
+  "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
+  "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
+  "*/10 * * * *",   # cleanup-expired-crypto-payments
+  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
+  "0 * * * *",      # agent-billing
+  "0 */6 * * *",    # cleanup-anonymous-sessions + agent-backups
+  "0 0 * * *",      # container-billing + release-pending-earnings
+  "0 1 * * *",      # compute-metrics
+  "0 2 * * *",      # cleanup-webhook-events
+  "0 3 * * *",      # domain-renewals
+]
+
+# -----------------------------------------------------------------------------
+# Bindings
+# -----------------------------------------------------------------------------
+
+# R2 — primary blob/media storage. Use env.BLOB.put/get/etc.
+[[r2_buckets]]
+binding = "BLOB"
+bucket_name = "eliza-cloud-blob"
+
+# Cache + rate-limit storage runs through Railway TCP Redis via REDIS_URL in
+# Worker envs (in-Worker SocketRedis, RESP2 over cloudflare:sockets); set
+# REDIS_URL as a Wrangler secret. Upstash REST (KV_REST_API_URL /
+# KV_REST_API_TOKEN) remains a legacy fallback only. Shared-runtime chat history
+# depends on this being durable across Worker requests. Local dev still uses
+# embedded Wadis by default when no Redis credentials are present.
+
+# Vectorize — embeddings (uncomment after `wrangler vectorize create`)
+# [[vectorize]]
+# binding = "EMBEDDINGS"
+# index_name = "eliza-cloud-embeddings"
+
+# -----------------------------------------------------------------------------
+# Queue: Stripe webhook fan-out runs on Redis (Railway TCP via REDIS_URL in
+# cloud, embedded Wadis locally), not Cloudflare Queues. The webhook route LPUSHes a JSON
+# envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
+# which drains a bounded batch via the queue helper in
+# `packages/lib/queue/redis-queue.ts`. Failed messages are retried with
+# attempts++ and demoted to a `:dlq` list after `maxAttempts`.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Vars (non-secret build/runtime config — the rest live as wrangler secrets)
+# -----------------------------------------------------------------------------
+[vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
+NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
+ELIZA_CLOUD_URL = "https://elizacloud.ai"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
+WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
+ELIZA_APP_URL = "https://eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://elizaos-homepage.pages.dev"
+BLUEBUBBLES_GATEWAY_PHONE_NUMBER = "+14159611510"
+NEXT_PUBLIC_NETWORK = "base"
+NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+GITHUB_ORG_NAME = "eliza-cloud-apps"
+GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
+ENVIRONMENT = "production"
+DATABASE_REGION = "na"
+PAYOUT_TESTNET = "false"
+X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
+X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+X402_BSC_RPC_URL = "https://bsc-dataseed.binance.org"
+CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS = "0x72D043586b6226A97197408b4EE41572dD000ac6"
+CRYPTO_DIRECT_BASE_SECURE_ADDRESS = "0x0551323d0631441EAAE1B5dB114dD3B50250e333"
+CRYPTO_DIRECT_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+CRYPTO_DIRECT_BASE_TOKEN_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+CRYPTO_DIRECT_BASE_TOKEN_DECIMALS = "6"
+CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = "0x93cacDACDf6791be31EA44742CA94db238C887EB"
+CRYPTO_DIRECT_BSC_SECURE_ADDRESS = "0x50Bd301C351AeF49aa01f5F4E069C9f398f6597b"
+CRYPTO_DIRECT_BSC_RPC_URL = "https://bsc-dataseed.binance.org"
+CRYPTO_DIRECT_BSC_TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955"
+CRYPTO_DIRECT_BSC_TOKEN_DECIMALS = "18"
+CRYPTO_DIRECT_SOLANA_RECEIVE_ADDRESS = "D9KjXwECD1nqDQA1ektXjen1PAMcDnYKPmEGU9oZctzX"
+CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS = "97oFR38EpWEaLuKc13AnyL6GrqBZTBCVCh9rAHAXWgad"
+CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
+CACHE_ENABLED = "true"
+# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
+# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
+# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+CACHE_BACKEND = "auto"
+REDIS_RATE_LIMITING = "false"
+# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
+# enables it; when "true" with a writable KV backstop, an org clearing
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
+# response path (the sweep-inference-charges cron settles dropped inline settles).
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. The auth+moderation hot-path cache is the default now
+# (no flag); a cache miss falls back to the authoritative slow path.
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
+# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
+# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
+# backstop (current). Off until soaked; cutover is an ops flip (#9899).
+INFERENCE_BILLING_LEDGER = ""
+FORCE_REDIS_EVENTS = "false"
+R2_PUBLIC_HOST = "blob.elizacloud.ai"
+SQL_HEAVY_PAYLOAD_STORAGE = "r2"
+SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
+SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
+LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
+
+# -----------------------------------------------------------------------------
+# Required secrets — set via `wrangler secret put KEY` (or run
+# packages/scripts/cf-secrets-migrate.mjs which iterates a .env file).
+#
+# CANONICAL LIST (cross-reference cloud/packages/apps/api/MIGRATION_NOTES.md once Agent B
+# publishes it; if names diverge, Agent B's c.env.X usage wins — update this
+# file and leave a note in cloud/INFRA.md).
+#
+#   DATABASE_URL                       Railway Postgres (Worker reaches it via the HYPERDRIVE binding;
+#       DATABASE_URL is the origin string for the sidecar/scripts — public-proxy DSNs need
+#       ?sslmode=no-verify or DATABASE_SSL_NO_VERIFY=true for direct node-pg consumers)
+#   REDIS_URL                          Railway TCP Redis (primary cache/queue/rate-limit; rediss://...)
+#   STEWARD_API_URL                    Optional Steward base URL override;
+#       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
+#   STEWARD_SESSION_SECRET             HS256 secret for Steward JWT verify (jose); MUST match Steward host
+#   STEWARD_MASTER_PASSWORD            Steward vault encryption master password; required for wallet/key ops
+#   STEWARD_TENANT_ID                  Default tenant scope; verifier rejects other tenants
+#   STEWARD_DEFAULT_TENANT_ID          Embedded Steward default tenant id (optional; defaults to elizacloud)
+#   STEWARD_DEFAULT_TENANT_KEY         Embedded Steward default tenant API key hash/source
+#   STEWARD_PLATFORM_KEYS              Server-only platform key (server-wallets, tenant ops)
+#   STEWARD_TENANT_API_KEY             Server-only tenant API key
+#   STEWARD_REQUEST_SIGNING_SECRET     HMAC secret for signed Steward mutating requests
+#   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
+#   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
+#   STRIPE_SECRET_KEY                  Stripe billing
+#   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
+#   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
+#   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
+#   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
+#   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
+#   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token (legacy fallback)
+#   OPENROUTER_API_KEY                 OpenRouter BYOK key (backup for non-native models)
+#   ANTHROPIC_API_KEY                  Claude
+#   OPENAI_API_KEY                     OpenAI direct
+#   AI_GATEWAY_API_KEY
+#   GROQ_API_KEY                       Groq
+#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
+#   FAL_KEY                            Fal.ai video gen
+#   ELEVENLABS_API_KEY                 ElevenLabs TTS
+#   HF_TOKEN                           HuggingFace token for the /api/v1/hf-proxy/* route
+#       (gated eliza-1 bundle downloads; clients never hold an HF key)
+#   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
+#   VAST_BASE_URL                      Vast.ai Serverless endpoint URL (e.g.
+#       https://run.vast.ai/route/abc123). Provider strips trailing slash and
+#       appends /v1/chat/completions. Set both VAST_* secrets together — both
+#       are required to enable the vast/* model family.
+#   SENDGRID_API_KEY                   (or RESEND_API_KEY) — outbound mail
+#   AWS_KMS_KEY_ID / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  KMS-only;
+#       used by packages/lib/services/secrets/encryption.ts when AWS_KMS_KEY_ID
+#       is set. Optional — LocalKMSProvider is the default. Container backend
+#       has moved off AWS (see CONTAINERS_MIGRATION.md), so the rest of the
+#       AWS_* / ECS_* / ACM_* secrets are gone.
+#   GITHUB_APP_TOKEN  (or GIT_ACCESS_TOKEN)
+#   CRON_SECRET                        Scheduled-job auth
+#   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
+#   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret
+#   HCLOUD_TOKEN                       Hetzner Cloud API token for elastic Docker node provisioning
+#   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY Public SSH key written to autoscaled nodes
+#   CONTAINERS_BOOTSTRAP_CALLBACK_URL  Optional docker_nodes self-registration callback URL
+#   CONTAINERS_BOOTSTRAP_SECRET        Optional docker_nodes self-registration shared secret
+#   CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET   x402
+#   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
+#   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
+#   JWT_SIGNING_PRIVATE_KEY / JWT_SIGNING_PUBLIC_KEY
+#   COINGECKO_API_KEY / BRAVE_SEARCH_API_KEY
+#   TWITTER_BEARER_TOKEN / X_API_KEY / X_API_KEY_SECRET
+#   X402_RECIPIENT_ADDRESS / PINATA_JWT
+#   EVM_PAYOUT_PRIVATE_KEY / SOLANA_PAYOUT_PRIVATE_KEY
+#   SECRETS_MASTER_KEY                 Field encryption master key
+#   MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET
+#   ELIZA_APP_DISCORD_BOT_TOKEN / ELIZA_APP_DISCORD_CLIENT_SECRET
+#   ELIZA_APP_WHATSAPP_ACCESS_TOKEN / _APP_SECRET / _VERIFY_TOKEN
+#   NEON_API_KEY                       RETIRED — provisioning moved to Railway; no longer used
+#   CONTAINERS_SSH_KEY / AGENT_SSH_KEY Docker provider SSH private key for the Node sidecar
+#   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
+#   TUNNEL_HOSTNAME_SIGNING_SECRET     Shared HMAC secret with tunnel-proxy
+#   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
+# -----------------------------------------------------------------------------
+
+# =============================================================================
+# Environments
+# =============================================================================
+
+[env.staging]
+name = "eliza-cloud-api-staging"
+workers_dev = false
+routes = [
+  { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "app-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+]
+
+[env.staging.define]
+__dirname = '"/"'
+__filename = '"/worker.js"'
+
+[env.staging.vars]
+NODE_ENV = "production"
+# Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
+# enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
+# legacy status-only stub). Staging only — the apps data plane (tenant DB +
+# Caddy app node + armed daemon) is live on staging. Gates configureAppsDeployTrigger
+# in bootstrap-app.ts; no effect on Product-1 / agent paths.
+APPS_DEPLOY_ENABLED = "1"
+NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
+NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
+ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+# Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
+# redirects email magic-link callbacks to staging.elizacloud.ai instead of the
+# prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
+STEWARD_TENANT_ID = "elizacloud-staging"
+NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# Routes agent-subdomain traffic to the staging control-plane VM. Without this
+# the Worker falls back to DEFAULT_AGENT_ROUTER_ORIGIN_HOST in
+# packages/cloud/api/src/index.ts (= eliza-production-1.elizacloud.ai) so
+# staging agent requests would silently hit the prod CP.
+AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.elizacloud.ai"
+WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
+WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
+ELIZA_APP_URL = "https://eliza.app"
+NEXT_PUBLIC_NETWORK = "base"
+NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+GITHUB_ORG_NAME = "eliza-cloud-apps"
+GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
+ENVIRONMENT = "staging"
+DATABASE_REGION = "na"
+PAYOUT_TESTNET = "true"
+X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
+X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+X402_BSC_RPC_URL = "https://bsc-dataseed.binance.org"
+CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS = "0x72D043586b6226A97197408b4EE41572dD000ac6"
+CRYPTO_DIRECT_BASE_SECURE_ADDRESS = "0x0551323d0631441EAAE1B5dB114dD3B50250e333"
+CRYPTO_DIRECT_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+CRYPTO_DIRECT_BASE_TOKEN_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+CRYPTO_DIRECT_BASE_TOKEN_DECIMALS = "6"
+CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = "0x93cacDACDf6791be31EA44742CA94db238C887EB"
+CRYPTO_DIRECT_BSC_SECURE_ADDRESS = "0x50Bd301C351AeF49aa01f5F4E069C9f398f6597b"
+CRYPTO_DIRECT_BSC_RPC_URL = "https://bsc-dataseed.binance.org"
+CRYPTO_DIRECT_BSC_TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955"
+CRYPTO_DIRECT_BSC_TOKEN_DECIMALS = "18"
+CRYPTO_DIRECT_SOLANA_RECEIVE_ADDRESS = "D9KjXwECD1nqDQA1ektXjen1PAMcDnYKPmEGU9oZctzX"
+CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS = "97oFR38EpWEaLuKc13AnyL6GrqBZTBCVCh9rAHAXWgad"
+CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
+CACHE_ENABLED = "true"
+# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
+# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
+# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+CACHE_BACKEND = "auto"
+REDIS_RATE_LIMITING = "true"
+# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
+# enables it; when "true" with a writable KV backstop, an org clearing
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
+# response path (the sweep-inference-charges cron settles dropped inline settles).
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. The auth+moderation hot-path cache is the default now
+# (no flag); a cache miss falls back to the authoritative slow path.
+INFERENCE_OPTIMISTIC_BILLING = "false"
+SAFE_BALANCE_THRESHOLD = ""
+# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
+# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
+# backstop (current). Off until soaked; cutover is an ops flip (#9899).
+INFERENCE_BILLING_LEDGER = ""
+FORCE_REDIS_EVENTS = "false"
+R2_PUBLIC_HOST = "blob.elizacloud.ai"
+SQL_HEAVY_PAYLOAD_STORAGE = "r2"
+SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
+SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
+LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel-staging.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.staging.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
+
+# Cloudflare Workers does NOT inherit top-level r2_buckets into environment
+# blocks — they must be re-declared per-env. Same physical resources.
+[[env.staging.r2_buckets]]
+binding = "BLOB"
+bucket_name = "eliza-cloud-blob-staging"
+
+# Hyperdrive proxies the Worker's Postgres connection to Railway (workerd can't
+# reliably open a direct node-pg TCP/TLS connection to an external Postgres).
+[[env.staging.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "ef65eb94c74144a3a3848ad1945571fb"
+
+# KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
+# TCP to an external Redis (Railway's public proxy hangs under load), so the Worker
+# caches auth/api-key/model-catalog in KV instead of Redis.
+[[env.staging.kv_namespaces]]
+binding = "CACHE_KV"
+id = "f7e24faaff734e7c8cd8e12b093c3571"
+
+[env.production]
+name = "eliza-cloud-api-prod"
+workers_dev = false
+# The `*.elizacloud.ai/*` wildcard makes this Worker the default origin for
+# EVERY elizacloud.ai subdomain. Surfaces served by a different origin (e.g. the
+# Feed app on Railway at feed.elizacloud.ai) MUST be carved out of this wildcard
+# or they hit cloud-api instead of their real backend. The carve-out is a
+# Cloudflare dashboard action (a Worker cannot opt a host out of its own route):
+# add a more-specific Workers route `feed.elizacloud.ai/*` with Worker = None,
+# or set the `feed` DNS record to DNS-only. ALTERNATIVELY (CI-deployable, no DNS
+# change): set the `FEED_ORIGIN_HOST` var/secret to the Railway feed host and this
+# Worker reverse-proxies feed.elizacloud.ai → Railway (src/index.ts, inert when
+# unset). See packages/feed/RAILWAY.md, "Canonical host: feed.elizacloud.ai".
+routes = [
+  { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+]
+
+[env.production.define]
+__dirname = '"/"'
+__filename = '"/worker.js"'
+
+[env.production.vars]
+NODE_ENV = "production"
+# Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
+# bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
+# the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
+# daemon is armed (arm-apps-daemon.yml -f environment=production, sets APPS_DEPLOY_ENABLED via
+# #8422) AND the prod apps data plane exists (terraform). Do NOT merge develop→main until
+# staging QA is green and the prod data plane is applied. Production deploys are ALSO refined by
+# the route-level org allowlist (apps-deploy-gate.ts): without APPS_DEPLOY_ALLOWED_ORG_IDS the
+# deploy POST fails closed with 403 even when this flag is "1".
+APPS_DEPLOY_ENABLED = "1"
+# Org allowlist for apps-deploy (apps-deploy-gate.ts). "*" = open to ALL orgs —
+# the launch posture so any user can deploy an app. Set here as a COMMITTED var,
+# NOT a Cloudflare secret: secrets get wiped on Worker redeploys, which already
+# silently re-closed apps-deploy in prod once. Requires the "*" wildcard support
+# in apps-deploy-gate.ts (#9735). To pilot a narrower cohort instead, replace "*"
+# with comma/space-separated org UUIDs.
+APPS_DEPLOY_ALLOWED_ORG_IDS = "*"
+NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
+NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
+ELIZA_CLOUD_URL = "https://elizacloud.ai"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+FEED_ORIGIN_HOST = "feed-web-production.up.railway.app"
+# Pin the prod Steward tenant explicitly instead of leaning on the implicit
+# DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
+# implicit fallback is what the prod magic-link bug hinged on — make it explicit
+# so prod tenant scope can't silently shift if the code default ever changes.
+STEWARD_TENANT_ID = "elizacloud"
+NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud"
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
+WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
+WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
+ELIZA_APP_URL = "https://eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://elizaos-homepage.pages.dev"
+BLUEBUBBLES_GATEWAY_PHONE_NUMBER = "+14159611510"
+NEXT_PUBLIC_NETWORK = "base"
+NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+GITHUB_ORG_NAME = "eliza-cloud-apps"
+GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
+ENVIRONMENT = "production"
+DATABASE_REGION = "na"
+PAYOUT_TESTNET = "false"
+X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
+X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+X402_BSC_RPC_URL = "https://bsc-dataseed.binance.org"
+CRYPTO_DIRECT_BASE_RECEIVE_ADDRESS = "0x72D043586b6226A97197408b4EE41572dD000ac6"
+CRYPTO_DIRECT_BASE_SECURE_ADDRESS = "0x0551323d0631441EAAE1B5dB114dD3B50250e333"
+CRYPTO_DIRECT_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+CRYPTO_DIRECT_BASE_TOKEN_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+CRYPTO_DIRECT_BASE_TOKEN_DECIMALS = "6"
+CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = "0x93cacDACDf6791be31EA44742CA94db238C887EB"
+CRYPTO_DIRECT_BSC_SECURE_ADDRESS = "0x50Bd301C351AeF49aa01f5F4E069C9f398f6597b"
+CRYPTO_DIRECT_BSC_RPC_URL = "https://bsc-dataseed.binance.org"
+CRYPTO_DIRECT_BSC_TOKEN_ADDRESS = "0x55d398326f99059fF775485246999027B3197955"
+CRYPTO_DIRECT_BSC_TOKEN_DECIMALS = "18"
+CRYPTO_DIRECT_SOLANA_RECEIVE_ADDRESS = "D9KjXwECD1nqDQA1ektXjen1PAMcDnYKPmEGU9oZctzX"
+CRYPTO_DIRECT_SOLANA_SECURE_ADDRESS = "97oFR38EpWEaLuKc13AnyL6GrqBZTBCVCh9rAHAXWgad"
+CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
+CACHE_ENABLED = "true"
+# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
+# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
+# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+CACHE_BACKEND = "auto"
+REDIS_RATE_LIMITING = "true"
+# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
+# enables it; when "true" with a writable KV backstop, an org clearing
+# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
+# response path (the sweep-inference-charges cron settles dropped inline settles).
+# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
+# synchronous-reserve path. The auth+moderation hot-path cache is the default now
+# (no flag); a cache miss falls back to the authoritative slow path.
+INFERENCE_OPTIMISTIC_BILLING = "true"
+SAFE_BALANCE_THRESHOLD = "5.00"
+# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
+# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
+# backstop (current). Off until soaked; cutover is an ops flip (#9899).
+INFERENCE_BILLING_LEDGER = ""
+FORCE_REDIS_EVENTS = "false"
+R2_PUBLIC_HOST = "blob.elizacloud.ai"
+SQL_HEAVY_PAYLOAD_STORAGE = "r2"
+SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
+SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
+LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
+
+[[env.production.r2_buckets]]
+binding = "BLOB"
+bucket_name = "eliza-cloud-blob"
+
+# Hyperdrive proxies the Worker's Postgres connection to Railway (workerd can't
+# reliably open a direct node-pg TCP/TLS connection to an external Postgres).
+# Inert until DATABASE_URL points at Railway (Neon uses the neon-serverless
+# WebSocket driver in client.ts, which bypasses this binding).
+[[env.production.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "9f59e4ec65f048f7b87e29e7b9c5d728"
+
+# KV is the Worker's cache backend (CacheClient). Workers can't reliably open raw
+# TCP to an external Redis (Railway's public proxy hangs under load), so the Worker
+# caches auth/api-key/model-catalog in KV instead of Redis.
+[[env.production.kv_namespaces]]
+binding = "CACHE_KV"
+id = "1dafabf1293d4b6b97f61c5cc22d6fec"

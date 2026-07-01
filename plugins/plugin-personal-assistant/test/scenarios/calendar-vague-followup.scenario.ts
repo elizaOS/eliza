@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "calendar-vague-followup",
   title: "Calendar vague follow-up routing",
   domain: "calendar",

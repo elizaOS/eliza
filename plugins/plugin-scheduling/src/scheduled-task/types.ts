@@ -187,6 +187,8 @@ export interface ScheduledTaskOutput {
   persistAs?: "task_metadata" | "external_only";
 }
 
+export type ScheduledTaskMetadata = Record<string, unknown>;
+
 export interface ScheduledTaskPipeline {
   onComplete?: ScheduledTaskRef[];
   onSkip?: ScheduledTaskRef[];
@@ -236,7 +238,7 @@ export interface ScheduledTask {
   source: ScheduledTaskSource;
   createdBy: string;
   ownerVisible: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: ScheduledTaskMetadata;
   /**
    * Host execution profile required at fire time. The runner consults the
    * platform's `getHostExecutionCapabilities` and substitutes `notify-only`
@@ -254,6 +256,13 @@ export interface ScheduledTask {
    */
   executionProfile?: TaskExecutionProfile;
 }
+
+/**
+ * The "input shape" accepted by `runner.schedule()` — the full task minus the
+ * server-managed `taskId` and `state` (the runner generates both). Consumers
+ * (seed packs, the SCHEDULED_TASKS action, the REST route) build this shape.
+ */
+export type ScheduledTaskInput = Omit<ScheduledTask, "taskId" | "state">;
 
 export type ScheduledTaskRef = string | ScheduledTask;
 export type EventFilter = unknown; // typed via EventKindRegistry per kind
@@ -321,6 +330,10 @@ export interface OwnerFactsView {
   eveningWindow?: { start?: string; end?: string };
   quietHours?: { start: string; end: string; tz: string };
   travelActive?: boolean;
+  personalBaseline?: {
+    sampleCount?: number;
+    windowDays?: number;
+  };
 }
 
 /**

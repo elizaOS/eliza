@@ -8,6 +8,7 @@
 import { ArrowRight, Loader2, Plus, Trash2 } from "lucide-react";
 import {
   type FormEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -18,6 +19,13 @@ import { useTranslation } from "../../../state/TranslationContext.hooks";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "../../ui/select";
+import { SettingsSelectTrigger } from "../../ui/settings-controls";
 import type {
   AgentSummary,
   InstalledApp,
@@ -64,7 +72,7 @@ export function RoutingTab(props: RoutingTabProps) {
   const [rulesFilter, setRulesFilter] = useState("");
 
   const { ref: defaultProfileRef, agentProps: defaultProfileAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-default-profile",
       role: "select",
       label: "Default routing profile",
@@ -101,7 +109,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setKeyPattern(v),
     });
   const { ref: scopeKindRef, agentProps: scopeKindAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-scope-kind",
       role: "select",
       label: "Routing scope kind",
@@ -111,7 +119,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setScopeKind(v as RoutingScopeKind),
     });
   const { ref: scopeAgentRef, agentProps: scopeAgentAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-scope-agent",
       role: "select",
       label: "Routing scope agent",
@@ -121,7 +129,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setScopeAgentId(v),
     });
   const { ref: scopeAppRef, agentProps: scopeAppAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-scope-app",
       role: "select",
       label: "Routing scope app",
@@ -131,7 +139,7 @@ export function RoutingTab(props: RoutingTabProps) {
       onFill: (v) => setScopeAppName(v),
     });
   const { ref: ruleProfileRef, agentProps: ruleProfileAgentProps } =
-    useAgentElement<HTMLSelectElement>({
+    useAgentElement<HTMLButtonElement>({
       id: "routing-rule-profile",
       role: "select",
       label: "Routing rule profile",
@@ -164,6 +172,18 @@ export function RoutingTab(props: RoutingTabProps) {
   }, [focusKey, onFocusApplied]);
 
   const allKeys = useMemo(() => entries.map((e) => e.key), [entries]);
+  const agentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) map.set(a.id, a.name);
+    return map;
+  }, [agents]);
+  const appLabelByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of apps) {
+      if (a.displayName) map.set(a.name, a.displayName);
+    }
+    return map;
+  }, [apps]);
   const profilesByKey = useMemo(() => {
     const map = new Map<string, { id: string; label: string }[]>();
     for (const entry of entries) {
@@ -317,21 +337,28 @@ export function RoutingTab(props: RoutingTabProps) {
               })}
             </p>
           </div>
-          <select
-            ref={defaultProfileRef}
-            {...defaultProfileAgentProps}
+          <Select
             value={config.defaultProfile ?? "default"}
-            onChange={(e) => void onDefaultProfileChange(e.target.value)}
+            onValueChange={(value) => void onDefaultProfileChange(value)}
             disabled={saving}
-            data-testid="routing-default-profile"
-            className="block h-8 w-40 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
-            {allProfileIds.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
+            <SettingsSelectTrigger
+              ref={defaultProfileRef}
+              {...defaultProfileAgentProps}
+              variant="filter"
+              data-testid="routing-default-profile"
+              className="w-40"
+            >
+              <SelectValue />
+            </SettingsSelectTrigger>
+            <SelectContent>
+              {allProfileIds.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </section>
 
@@ -425,22 +452,29 @@ export function RoutingTab(props: RoutingTabProps) {
                 <Label className="text-2xs text-muted">
                   {t("routing.field.scope", { defaultValue: "Scope" })}
                 </Label>
-                <select
-                  ref={scopeKindRef}
-                  {...scopeKindAgentProps}
+                <Select
                   value={scopeKind}
-                  onChange={(e) =>
-                    setScopeKind(e.target.value as RoutingScopeKind)
+                  onValueChange={(value) =>
+                    setScopeKind(value as RoutingScopeKind)
                   }
-                  className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                 >
-                  <option value="agent">
-                    {t("routing.scope.agent", { defaultValue: "Agent" })}
-                  </option>
-                  <option value="app">
-                    {t("routing.scope.app", { defaultValue: "App" })}
-                  </option>
-                </select>
+                  <SettingsSelectTrigger
+                    ref={scopeKindRef}
+                    {...scopeKindAgentProps}
+                    variant="touch"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SettingsSelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="agent">
+                      {t("routing.scope.agent", { defaultValue: "Agent" })}
+                    </SelectItem>
+                    <SelectItem value="app">
+                      {t("routing.scope.app", { defaultValue: "App" })}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label className="text-2xs text-muted">
@@ -449,68 +483,85 @@ export function RoutingTab(props: RoutingTabProps) {
                     : t("routing.scope.app", { defaultValue: "App" })}
                 </Label>
                 {scopeKind === "agent" ? (
-                  <select
-                    ref={scopeAgentRef}
-                    {...scopeAgentAgentProps}
-                    value={scopeAgentId}
-                    onChange={(e) => setScopeAgentId(e.target.value)}
-                    className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
-                    required
+                  <Select
+                    value={scopeAgentId || undefined}
+                    onValueChange={(value) => setScopeAgentId(value)}
                   >
-                    <option value="">
-                      {t("routing.selectAgent", {
-                        defaultValue: "Select agent…",
-                      })}
-                    </option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SettingsSelectTrigger
+                      ref={scopeAgentRef}
+                      {...scopeAgentAgentProps}
+                      variant="touch"
+                      className="w-full"
+                    >
+                      <SelectValue
+                        placeholder={t("routing.selectAgent", {
+                          defaultValue: "Select agent…",
+                        })}
+                      />
+                    </SettingsSelectTrigger>
+                    <SelectContent>
+                      {agents.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
-                  <select
-                    ref={scopeAppRef}
-                    {...scopeAppAgentProps}
-                    value={scopeAppName}
-                    onChange={(e) => setScopeAppName(e.target.value)}
-                    className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
-                    required
+                  <Select
+                    value={scopeAppName || undefined}
+                    onValueChange={(value) => setScopeAppName(value)}
                   >
-                    <option value="">
-                      {t("routing.selectApp", { defaultValue: "Select app…" })}
-                    </option>
-                    {apps.map((a) => (
-                      <option key={a.name} value={a.name}>
-                        {a.displayName ?? a.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SettingsSelectTrigger
+                      ref={scopeAppRef}
+                      {...scopeAppAgentProps}
+                      variant="touch"
+                      className="w-full"
+                    >
+                      <SelectValue
+                        placeholder={t("routing.selectApp", {
+                          defaultValue: "Select app…",
+                        })}
+                      />
+                    </SettingsSelectTrigger>
+                    <SelectContent>
+                      {apps.map((a) => (
+                        <SelectItem key={a.name} value={a.name}>
+                          {a.displayName ?? a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
               <div>
                 <Label className="text-2xs text-muted">
                   {t("routing.field.profile", { defaultValue: "Profile" })}
                 </Label>
-                <select
-                  ref={ruleProfileRef}
-                  {...ruleProfileAgentProps}
-                  value={profileId}
-                  onChange={(e) => setProfileId(e.target.value)}
-                  className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
-                  required
+                <Select
+                  value={profileId || undefined}
+                  onValueChange={(value) => setProfileId(value)}
                 >
-                  <option value="">
-                    {t("routing.selectProfile", {
-                      defaultValue: "Select profile…",
-                    })}
-                  </option>
-                  {profilesForNewRule.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
+                  <SettingsSelectTrigger
+                    ref={ruleProfileRef}
+                    {...ruleProfileAgentProps}
+                    variant="touch"
+                    className="w-full"
+                  >
+                    <SelectValue
+                      placeholder={t("routing.selectProfile", {
+                        defaultValue: "Select profile…",
+                      })}
+                    />
+                  </SettingsSelectTrigger>
+                  <SelectContent>
+                    {profilesForNewRule.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">
@@ -593,11 +644,10 @@ export function RoutingTab(props: RoutingTabProps) {
                   "—";
                 const targetLabel =
                   rule.scope.kind === "agent"
-                    ? (agents.find((a) => a.id === rule.scope.agentId)?.name ??
-                      targetId)
+                    ? (agentNameById.get(rule.scope.agentId ?? "") ?? targetId)
                     : rule.scope.kind === "app"
-                      ? (apps.find((a) => a.name === rule.scope.appName)
-                          ?.displayName ?? targetId)
+                      ? (appLabelByName.get(rule.scope.appName ?? "") ??
+                        targetId)
                       : targetId;
                 const ruleKey = `${rule.keyPattern}:${rule.scope.kind}:${targetId}:${rule.profileId}:${idx}`;
                 const keyExists = allKeys.includes(rule.keyPattern);
@@ -636,16 +686,7 @@ export function RoutingTab(props: RoutingTabProps) {
   );
 }
 
-function RoutingRuleRow({
-  ruleKey,
-  keyPattern,
-  scopeKind,
-  targetLabel,
-  profileId,
-  keyExists,
-  onOpenInSecrets,
-  onDelete,
-}: {
+interface RoutingRuleRowProps {
   ruleKey: string;
   keyPattern: string;
   scopeKind: string;
@@ -654,78 +695,102 @@ function RoutingRuleRow({
   keyExists: boolean;
   onOpenInSecrets: () => void;
   onDelete: () => void;
-}) {
-  const { t } = useTranslation();
-  const { ref: chipRef, agentProps: chipAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `routing-key-chip-${ruleKey}`,
-      role: "button",
-      label: `Open ${keyPattern} in Secrets tab`,
-      group: "routing-rules",
-      description: "Jump to the Secrets tab pre-filtered to this key",
-      onActivate: onOpenInSecrets,
-    });
-  const { ref: deleteRef, agentProps: deleteAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `routing-rule-delete-${ruleKey}`,
-      role: "button",
-      label: `Delete routing rule for ${keyPattern}`,
-      group: "routing-rules",
-      onActivate: onDelete,
-    });
-  return (
-    <tr
-      data-testid={`routing-rule-row-${ruleKey}`}
-      className="border-t border-border/30"
-    >
-      <td className="px-2 py-1.5 align-top">
-        {keyExists ? (
-          <button
-            ref={chipRef}
-            {...chipAgentProps}
-            type="button"
-            onClick={onOpenInSecrets}
-            data-testid={`routing-key-chip-${ruleKey}`}
-            className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
-            aria-label={t("routing.openInSecrets", {
+}
+
+const RoutingRuleRow = memo(
+  function RoutingRuleRow({
+    ruleKey,
+    keyPattern,
+    scopeKind,
+    targetLabel,
+    profileId,
+    keyExists,
+    onOpenInSecrets,
+    onDelete,
+  }: RoutingRuleRowProps) {
+    const { t } = useTranslation();
+    const { ref: chipRef, agentProps: chipAgentProps } =
+      useAgentElement<HTMLButtonElement>({
+        id: `routing-key-chip-${ruleKey}`,
+        role: "button",
+        label: `Open ${keyPattern} in Secrets tab`,
+        group: "routing-rules",
+        description: "Jump to the Secrets tab pre-filtered to this key",
+        onActivate: onOpenInSecrets,
+      });
+    const { ref: deleteRef, agentProps: deleteAgentProps } =
+      useAgentElement<HTMLButtonElement>({
+        id: `routing-rule-delete-${ruleKey}`,
+        role: "button",
+        label: `Delete routing rule for ${keyPattern}`,
+        group: "routing-rules",
+        onActivate: onDelete,
+      });
+    return (
+      <tr
+        data-testid={`routing-rule-row-${ruleKey}`}
+        className="border-t border-border/30"
+      >
+        <td className="px-2 py-1.5 align-top">
+          {keyExists ? (
+            <button
+              ref={chipRef}
+              {...chipAgentProps}
+              type="button"
+              onClick={onOpenInSecrets}
+              data-testid={`routing-key-chip-${ruleKey}`}
+              className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+              aria-label={t("routing.openInSecrets", {
+                keyPattern,
+                defaultValue: "Open {{keyPattern}} in Secrets tab",
+              })}
+            >
+              {keyPattern}
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </button>
+          ) : (
+            <span className="font-mono text-2xs text-muted">{keyPattern}</span>
+          )}
+        </td>
+        <td className="px-2 py-1.5 align-top">
+          <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+            {scopeKind}
+          </span>
+          <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
+        </td>
+        <td className="px-2 py-1.5 align-top">
+          <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+            {profileId}
+          </span>
+        </td>
+        <td className="px-2 py-1.5 align-top text-right">
+          <Button
+            ref={deleteRef}
+            {...deleteAgentProps}
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
+            onClick={onDelete}
+            aria-label={t("routing.deleteRule", {
               keyPattern,
-              defaultValue: "Open {{keyPattern}} in Secrets tab",
+              defaultValue: "Delete rule for {{keyPattern}}",
             })}
           >
-            {keyPattern}
-            <ArrowRight className="h-3 w-3" aria-hidden />
-          </button>
-        ) : (
-          <span className="font-mono text-2xs text-muted">{keyPattern}</span>
-        )}
-      </td>
-      <td className="px-2 py-1.5 align-top">
-        <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
-          {scopeKind}
-        </span>
-        <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
-      </td>
-      <td className="px-2 py-1.5 align-top">
-        <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-          {profileId}
-        </span>
-      </td>
-      <td className="px-2 py-1.5 align-top text-right">
-        <Button
-          ref={deleteRef}
-          {...deleteAgentProps}
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
-          onClick={onDelete}
-          aria-label={t("routing.deleteRule", {
-            keyPattern,
-            defaultValue: "Delete rule for {{keyPattern}}",
-          })}
-        >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-        </Button>
-      </td>
-    </tr>
-  );
-}
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        </td>
+      </tr>
+    );
+  },
+  // Include handlers in the memo check so rows pick up changed navigation or
+  // delete closures after their parent state changes.
+  (prev, next) =>
+    prev.ruleKey === next.ruleKey &&
+    prev.keyPattern === next.keyPattern &&
+    prev.scopeKind === next.scopeKind &&
+    prev.targetLabel === next.targetLabel &&
+    prev.profileId === next.profileId &&
+    prev.keyExists === next.keyExists &&
+    prev.onOpenInSecrets === next.onOpenInSecrets &&
+    prev.onDelete === next.onDelete,
+);

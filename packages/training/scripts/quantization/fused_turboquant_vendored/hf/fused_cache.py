@@ -1,6 +1,13 @@
 """
 Fused TurboQuant cache with compressed KV storage and fused attention.
 
+FLAGGED DEAD CODE (Gemma 4 cutover): the Qwen3_5/Qwen3_6 support paths below
+are for the old hybrid-attention base. Gemma 4 is dense and uses stock q8_0 KV
+(its MQA + dual-head-dim 512/256 geometry does not match the head_dim=128 fused
+path). This vendored hybrid path no longer fires for the active base; owner to
+retire. The known-compatible release list below is limited to the Gemma-era
+decoder families still endorsed by the training wrappers.
+
 Stores keys in compressed form (uint8 indices + fp32 norms) and computes
 Q @ K^T directly from compressed keys using our Triton fused attention kernel.
 Values are also compressed (packed indices + fp32 norms) and decompressed on
@@ -35,30 +42,14 @@ logger = logging.getLogger(__name__)
 KNOWN_COMPATIBLE = {
     # Dense decoder-only models
     "LlamaForCausalLM",
-    "Qwen2ForCausalLM",
-    "Qwen2_5ForCausalLM",
-    "Qwen3ForCausalLM",
     "GemmaForCausalLM",
     "InternLMForCausalLM",
     "InternLM2ForCausalLM",
     "YiForCausalLM",
     "BaichuanForCausalLM",
-    # MoE models (attention layers identical to dense variant)
-    "Qwen2MoeForCausalLM",
-    "Qwen3MoeForCausalLM",
+    # MoE models (attention layers identical to dense variants)
     "OlmoeForCausalLM",
-    # Hybrid linear+full attention with gated q_proj. The full-attention
-    # layers are patched; linear-attention (Gated DeltaNet) layers are
-    # auto-skipped by _is_full_attention_layer because they don't expose
-    # q_proj/k_proj/v_proj.
-    "Qwen3_5ForCausalLM",
-    "Qwen3_5ForConditionalGeneration",
-    "Qwen3_5MoeForCausalLM",
-    "Qwen3_6ForCausalLM",
-    "Qwen3_6ForConditionalGeneration",
-    "Qwen3_6MoeForCausalLM",
     # Multimodal (text decoder patched, vision encoder skipped)
-    "Qwen2VLForConditionalGeneration",
     "InternVLForConditionalGeneration",
 }
 

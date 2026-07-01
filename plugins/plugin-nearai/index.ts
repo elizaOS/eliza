@@ -82,7 +82,7 @@ export const nearaiPlugin: Plugin = {
     NEARAI_BROWSER_BASE_URL: env.NEARAI_BROWSER_BASE_URL ?? null,
   },
 
-  async init(config, runtime) {
+  async init(config: Record<string, string>, runtime: IAgentRuntime) {
     initializeNearAI(config as PluginConfig, runtime);
   },
 

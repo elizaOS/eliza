@@ -64,6 +64,13 @@ html.eliza-electrobun-macos-titlebar [data-window-titlebar-banner="true"] {
   );
 }
 
+html.eliza-electrobun-macos-titlebar .eliza-content-layout {
+  padding-inline-start: max(
+    env(safe-area-inset-left, 0px),
+    var(--eliza-macos-frame-left-inset)
+  );
+}
+
 html.eliza-electrobun-macos-titlebar a,
 html.eliza-electrobun-macos-titlebar button,
 html.eliza-electrobun-macos-titlebar input,

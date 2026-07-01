@@ -1,6 +1,17 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import {
+  type ChildProcessWithoutNullStreams,
+  execFileSync,
+  spawn,
+} from "node:child_process";
 import { existsSync } from "node:fs";
-import { access, cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  access,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -12,15 +23,30 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
+import { createLiveRuntimeChildEnv } from "../test/helpers/live-child-env.ts";
 import {
   getFirstRunProviderForLiveProvider,
-  selectLiveProvider,
+  selectLiveProviderAsync,
 } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
+import {
+  clearPendingWebSocketQueue,
+  createPendingWebSocketQueueState,
+  DEFAULT_PENDING_WEBSOCKET_QUEUE_LIMITS,
+  drainPendingWebSocketQueue,
+  enqueuePendingWebSocketMessage,
+  type WebSocketSendData,
+} from "./lib/websocket-pending-queue.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
+const CLEANUP_HELPER_SCRIPT = path.join(
+  REPO_ROOT,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
 const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
 const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const COMPANION_PUBLIC_DIR = path.join(
@@ -36,12 +62,55 @@ const UI_SMOKE_STUB_SCRIPT = path.join(
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
 const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
-const LIVE_PROVIDER = selectLiveProvider();
+const UI_SMOKE_RUN_ID = process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() ?? "";
+const LIVE_PROVIDER = await selectLiveProviderAsync();
 // Precedence (force-stub > live opt-in > CI default) lives in one tested helper.
 // The key behavior: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the CI-based stub force
 // so a genuinely-real lane is possible (GitHub Actions always sets CI=true, which
 // would otherwise re-force the stub even when a provider key was supplied).
 const FORCE_STUB_STACK = shouldForceStubStack(process.env);
+const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES = [
+  "calendar",
+  "inbox",
+  "todos",
+  "wallet-ui",
+] as const;
+const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_PACKAGES: ReadonlyArray<{
+  id: (typeof LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES)[number];
+  dir: string;
+  requiredBuildOutputs: readonly string[];
+}> = [
+  {
+    id: "calendar",
+    dir: "plugin-calendar",
+    requiredBuildOutputs: [
+      "dist/index.js",
+      "dist/plugin.js",
+      "dist/views/bundle.js",
+    ],
+  },
+  {
+    id: "inbox",
+    dir: "plugin-inbox",
+    requiredBuildOutputs: [
+      "dist/index.js",
+      "dist/plugin.js",
+      "dist/views/bundle.js",
+    ],
+  },
+  {
+    id: "todos",
+    dir: "plugin-todos",
+    requiredBuildOutputs: ["dist/index.js", "dist/views/bundle.js"],
+  },
+  {
+    id: "wallet-ui",
+    dir: "plugin-wallet-ui",
+    requiredBuildOutputs: ["dist/index.js", "dist/views/bundle.js"],
+  },
+];
+const pendingStateDirs = new Set<string>();
+const ownedStateDirs = new Set<string>();
 
 type StartedStack = {
   apiBase: string;
@@ -51,10 +120,83 @@ type StartedStack = {
   uiServer: Server;
 };
 
+async function createStateDir(prefix: string): Promise<string> {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), prefix));
+  pendingStateDirs.add(stateDir);
+  if (UI_SMOKE_RUN_ID) {
+    await writeFile(
+      path.join(stateDir, ".eliza-ui-smoke-run-id"),
+      `${UI_SMOKE_RUN_ID}\n`,
+      "utf8",
+    );
+  }
+  return stateDir;
+}
+
+function markStateDirOwnedByStack(stateDir: string): void {
+  pendingStateDirs.delete(stateDir);
+  ownedStateDirs.add(stateDir);
+}
+
+async function removePathRecursive(targetPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [CLEANUP_HELPER_SCRIPT, targetPath], {
+      cwd: REPO_ROOT,
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`rm-path-recursive exited due to signal ${signal}`));
+        return;
+      }
+      if ((code ?? 1) !== 0) {
+        reject(
+          new Error(
+            `rm-path-recursive failed for ${targetPath} with status ${
+              code ?? 1
+            }`,
+          ),
+        );
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function cleanupPendingStateDirs(): Promise<void> {
+  const stateDirs = Array.from(pendingStateDirs);
+  pendingStateDirs.clear();
+  await Promise.all(stateDirs.map(removePathRecursive));
+}
+
+function cleanupKnownStateDirsSync(): void {
+  const stateDirs = new Set([...pendingStateDirs, ...ownedStateDirs]);
+  pendingStateDirs.clear();
+  ownedStateDirs.clear();
+  for (const stateDir of stateDirs) {
+    try {
+      execFileSync(process.execPath, [CLEANUP_HELPER_SCRIPT, stateDir], {
+        cwd: REPO_ROOT,
+        stdio: "ignore",
+      });
+    } catch {
+      // Best effort during process teardown.
+    }
+  }
+}
+
 function resolveBunCommand(): string {
   const bunFromEnv = process.env.BUN?.trim();
-  if (bunFromEnv && existsSync(bunFromEnv)) {
-    return bunFromEnv;
+  if (bunFromEnv) {
+    if (existsSync(bunFromEnv)) {
+      return bunFromEnv;
+    }
+    const bunEnvFromPath = resolveExecutableFromPath(bunFromEnv);
+    if (bunEnvFromPath) {
+      return bunEnvFromPath;
+    }
   }
 
   const bunInstallRoot = process.env.BUN_INSTALL?.trim();
@@ -79,7 +221,41 @@ function resolveBunCommand(): string {
     return homeBun;
   }
 
+  const bunFromPath = resolveExecutableFromPath("bun");
+  if (bunFromPath) {
+    return bunFromPath;
+  }
+
   return process.platform === "win32" ? "bun.exe" : "bun";
+}
+
+function resolveExecutableFromPath(command: string): string | null {
+  const pathValue = process.env.PATH ?? process.env.Path ?? "";
+  if (!pathValue) return null;
+
+  const hasExtension = path.extname(command).length > 0;
+  const pathExts =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .map((ext) => ext.trim())
+          .filter(Boolean)
+      : [""];
+  const binaryNames =
+    process.platform === "win32" && !hasExtension
+      ? pathExts.map((ext) => `${command}${ext.toLowerCase()}`)
+      : [command];
+
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) continue;
+    for (const binaryName of binaryNames) {
+      const candidate = path.join(dir, binaryName);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
 }
 
 function contentTypeFor(filePath: string): string {
@@ -268,17 +444,15 @@ function relayWebSocket(args: {
         : undefined,
   });
 
-  const pendingClientMessages: Array<{
-    data: Parameters<WebSocket["send"]>[0];
-    isBinary: boolean;
-  }> = [];
+  const pendingClientQueue =
+    createPendingWebSocketQueueState<WebSocketSendData>();
 
-  const closeSocket = (socket: WebSocket) => {
+  const closeSocket = (socket: WebSocket, code?: number, reason?: string) => {
     if (
       socket.readyState === WebSocket.OPEN ||
       socket.readyState === WebSocket.CONNECTING
     ) {
-      socket.close();
+      socket.close(code, reason);
     }
   };
 
@@ -288,12 +462,25 @@ function relayWebSocket(args: {
       return;
     }
     if (upstreamSocket.readyState === WebSocket.CONNECTING) {
-      pendingClientMessages.push({ data, isBinary });
+      const accepted = enqueuePendingWebSocketMessage(
+        pendingClientQueue,
+        { data, isBinary },
+        DEFAULT_PENDING_WEBSOCKET_QUEUE_LIMITS,
+      );
+      if (!accepted) {
+        clearPendingWebSocketQueue(pendingClientQueue);
+        closeSocket(
+          args.clientSocket,
+          1009,
+          "Pending websocket queue overflow",
+        );
+        closeSocket(upstreamSocket);
+      }
     }
   });
 
   upstreamSocket.on("open", () => {
-    for (const message of pendingClientMessages.splice(0)) {
+    for (const message of drainPendingWebSocketQueue(pendingClientQueue)) {
       upstreamSocket.send(message.data, { binary: message.isBinary });
     }
   });
@@ -306,16 +493,20 @@ function relayWebSocket(args: {
   });
 
   args.clientSocket.on("close", () => {
+    clearPendingWebSocketQueue(pendingClientQueue);
     closeSocket(upstreamSocket);
   });
   upstreamSocket.on("close", () => {
+    clearPendingWebSocketQueue(pendingClientQueue);
     closeSocket(args.clientSocket);
   });
 
   args.clientSocket.on("error", () => {
+    clearPendingWebSocketQueue(pendingClientQueue);
     closeSocket(upstreamSocket);
   });
   upstreamSocket.on("error", () => {
+    clearPendingWebSocketQueue(pendingClientQueue);
     closeSocket(args.clientSocket);
   });
 }
@@ -407,6 +598,29 @@ async function waitForChildExit(
   });
 }
 
+async function closeUiServer(uiServer: Server | null): Promise<void> {
+  if (!uiServer) return;
+  try {
+    await new Promise<void>((resolve, reject) =>
+      uiServer.close((error) => (error ? reject(error) : resolve())),
+    );
+  } catch {
+    // Best effort during shutdown.
+  }
+}
+
+async function stopApiChild(
+  apiChild: ChildProcessWithoutNullStreams | null,
+): Promise<void> {
+  if (!apiChild || apiChild.exitCode != null) return;
+  apiChild.kill("SIGTERM");
+  const exitedAfterTerm = await waitForChildExit(apiChild, 5_000);
+  if (!exitedAfterTerm && apiChild.exitCode == null) {
+    apiChild.kill("SIGKILL");
+    await waitForChildExit(apiChild, 5_000);
+  }
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
   if (!response.ok) {
@@ -465,6 +679,54 @@ async function waitForJsonPredicate<T>(
     : new Error(`Timed out waiting for ${url}`);
 }
 
+function createProcessLogSignal(matchText: string): {
+  observe: (chunk: Buffer | string) => void;
+  wait: (timeoutMs: number, label: string) => Promise<void>;
+} {
+  let matched = false;
+  let tail = "";
+  const waiters = new Set<() => void>();
+
+  return {
+    observe(chunk) {
+      if (matched) {
+        return;
+      }
+      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      tail = `${tail}${text}`.slice(-Math.max(matchText.length * 2, 4096));
+      if (!tail.includes(matchText)) {
+        return;
+      }
+      matched = true;
+      tail = "";
+      for (const resolve of waiters) {
+        resolve();
+      }
+      waiters.clear();
+    },
+    async wait(timeoutMs, label) {
+      if (matched) {
+        return;
+      }
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error(`Timed out waiting for ${label}`));
+        }, timeoutMs);
+        const finish = () => {
+          cleanup();
+          resolve();
+        };
+        const cleanup = () => {
+          clearTimeout(timeout);
+          waiters.delete(finish);
+        };
+        waiters.add(finish);
+      });
+    },
+  };
+}
+
 async function ensureUiDistReady(): Promise<void> {
   const distIndex = path.join(APP_DIST_DIR, "index.html");
   let needsBuild = false;
@@ -496,7 +758,7 @@ async function ensureUiDistReady(): Promise<void> {
     return;
   }
 
-  await rm(path.join(APP_DIR, ".vite"), { force: true, recursive: true });
+  await removePathRecursive(path.join(APP_DIR, ".vite"));
 
   const logs: string[] = [];
   const child = spawn(resolveBunCommand(), ["run", "build:web"], {
@@ -605,56 +867,138 @@ async function submitFirstRun(apiBase: string): Promise<void> {
   );
 }
 
+async function seedLiveStackConfig(stateDir: string): Promise<void> {
+  await mkdir(stateDir, { recursive: true });
+  const configPath = path.join(stateDir, "eliza.json");
+  await writeFile(
+    configPath,
+    `${JSON.stringify(
+      {
+        logging: { level: "error" },
+        plugins: {
+          entries: Object.fromEntries(
+            LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES.map((pluginId) => [
+              pluginId,
+              { enabled: true },
+            ]),
+          ),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+}
+
+async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
+  for (const plugin of LIVE_STACK_OPTIONAL_VIEW_PLUGIN_PACKAGES) {
+    const pluginDir = path.join(REPO_ROOT, "plugins", plugin.dir);
+    const outputPaths = plugin.requiredBuildOutputs.map((output) =>
+      path.join(pluginDir, output),
+    );
+    const missingOutputPaths: string[] = [];
+    for (const outputPath of outputPaths) {
+      try {
+        await access(outputPath);
+      } catch {
+        missingOutputPaths.push(outputPath);
+      }
+    }
+    if (missingOutputPaths.length === 0) continue;
+
+    const logs: string[] = [];
+    const child = spawn(resolveBunCommand(), ["run", "build"], {
+      cwd: pluginDir,
+      env: {
+        ...process.env,
+        FORCE_COLOR: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.on("data", (chunk) => logs.push(String(chunk)));
+    child.stderr.on("data", (chunk) => logs.push(String(chunk)));
+
+    const BUILD_TIMEOUT_MS = 300_000;
+    const exited = await waitForChildExit(child, BUILD_TIMEOUT_MS);
+    if (!exited) {
+      child.kill("SIGKILL");
+      throw new Error(
+        `Timed out building optional live-stack plugin ${plugin.id} after ${BUILD_TIMEOUT_MS}ms.\n${logs.join("").slice(-8_000)}`,
+      );
+    }
+    if (child.exitCode !== 0) {
+      throw new Error(
+        `Failed to build optional live-stack plugin ${plugin.id}.\n${logs.join("").slice(-8_000)}`,
+      );
+    }
+    for (const outputPath of outputPaths) {
+      await access(outputPath);
+    }
+  }
+}
+
 async function startStubStack(): Promise<StartedStack> {
-  const stateDir = await mkdtemp(
-    path.join(os.tmpdir(), "eliza-ui-smoke-stub-"),
-  );
-  const uiDistDir = await snapshotUiDist(stateDir);
-  const apiBase = `http://127.0.0.1:${API_PORT}`;
-  const apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
-    cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      FORCE_COLOR: "0",
-      ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
-      ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const stateDir = await createStateDir("eliza-ui-smoke-stub-");
+  let apiChild: ChildProcessWithoutNullStreams | null = null;
+  let uiServer: Server | null = null;
+  try {
+    const uiDistDir = await snapshotUiDist(stateDir);
+    const apiBase = `http://127.0.0.1:${API_PORT}`;
+    apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        FORCE_COLOR: "0",
+        ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
+        ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-  apiChild.stdout.on("data", (chunk) => {
-    process.stdout.write(`[ui-smoke][stub] ${chunk}`);
-  });
-  apiChild.stderr.on("data", (chunk) => {
-    process.stdout.write(`[ui-smoke][stub-err] ${chunk}`);
-  });
+    apiChild.stdout.on("data", (chunk) => {
+      process.stdout.write(`[ui-smoke][stub] ${chunk}`);
+    });
+    apiChild.stderr.on("data", (chunk) => {
+      process.stdout.write(`[ui-smoke][stub-err] ${chunk}`);
+    });
 
-  await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
-  await waitForJsonPredicate<{ state?: string }>(
-    `${apiBase}/api/status`,
-    (status) => status.state === "running",
-    READY_TIMEOUT_MS,
-  );
-  await waitForJsonPredicate<{ session?: { kind?: string } }>(
-    `${apiBase}/api/auth/me`,
-    (me) => me.session?.kind === "local",
-    READY_TIMEOUT_MS,
-  );
+    await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
+    await waitForJsonPredicate<{ state?: string }>(
+      `${apiBase}/api/status`,
+      (status) => status.state === "running",
+      READY_TIMEOUT_MS,
+    );
+    await waitForJsonPredicate<{ session?: { kind?: string } }>(
+      `${apiBase}/api/auth/me`,
+      (me) => me.session?.kind === "local",
+      READY_TIMEOUT_MS,
+    );
 
-  const uiServer = await startUiProxyServer({
-    apiBase,
-    port: UI_PORT,
-    uiDistDir,
-  });
-  process.env.ELIZA_API_PORT = String(API_PORT);
+    uiServer = await startUiProxyServer({
+      apiBase,
+      port: UI_PORT,
+      uiDistDir,
+    });
+    process.env.ELIZA_API_PORT = String(API_PORT);
+    markStateDirOwnedByStack(stateDir);
+    const startedApiChild = apiChild;
+    const startedUiServer = uiServer;
 
-  return {
-    apiBase,
-    apiChild,
-    stateDir,
-    uiBase: `http://127.0.0.1:${UI_PORT}`,
-    uiServer,
-  };
+    return {
+      apiBase,
+      apiChild: startedApiChild,
+      stateDir,
+      uiBase: `http://127.0.0.1:${UI_PORT}`,
+      uiServer: startedUiServer,
+    };
+  } catch (error) {
+    await closeUiServer(uiServer);
+    await stopApiChild(apiChild);
+    await removePathRecursive(stateDir);
+    pendingStateDirs.delete(stateDir);
+    throw error;
+  }
 }
 
 async function startRealStack(): Promise<StartedStack> {
@@ -664,84 +1008,112 @@ async function startRealStack(): Promise<StartedStack> {
     return startStubStack();
   }
 
-  const stateDir = await mkdtemp(
-    path.join(os.tmpdir(), "eliza-ui-smoke-live-"),
-  );
-  const uiDistDir = await snapshotUiDist(stateDir);
-  const apiBase = `http://127.0.0.1:${API_PORT}`;
-  const apiChild = spawn(
-    "node",
-    [
-      path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "packages/app-core/src/runtime/eliza.ts"),
-    ],
-    {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        ALLOW_NO_DATABASE: "",
-        FORCE_COLOR: "0",
-        ELIZA_API_PORT: String(API_PORT),
-        ELIZA_HOME_PORT: String(UI_PORT),
-        ELIZA_PORT: String(API_PORT),
-        ELIZA_STATE_DIR: stateDir,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+  await ensureLiveStackOptionalViewPluginsReady();
 
-  apiChild.stdout.on("data", (chunk) => {
-    process.stdout.write(`[ui-smoke][api] ${chunk}`);
-  });
-  apiChild.stderr.on("data", (chunk) => {
-    process.stdout.write(`[ui-smoke][api-err] ${chunk}`);
-  });
-
-  await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
-  // Cloud-live mode (ELIZA_UI_SMOKE_CLOUD_LIVE=1) leaves first-run UNcompleted so
-  // the spec can drive the real cloud onboarding (login -> provision) through the
-  // UI against real Eliza Cloud. The default lane auto-completes a local first-run
-  // so chat/view specs land on a ready agent.
-  const skipAutoFirstRun = process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1";
-  if (!skipAutoFirstRun) {
-    const onboardingStatus = await fetchJson<{ complete: boolean }>(
-      `${apiBase}/api/first-run/status`,
+  const stateDir = await createStateDir("eliza-ui-smoke-live-");
+  let apiChild: ChildProcessWithoutNullStreams | null = null;
+  let uiServer: Server | null = null;
+  try {
+    await seedLiveStackConfig(stateDir);
+    const uiDistDir = await snapshotUiDist(stateDir);
+    const apiBase = `http://127.0.0.1:${API_PORT}`;
+    const deferredBootComplete = createProcessLogSignal(
+      "[eliza-boot] deferred:complete",
     );
-    if (!onboardingStatus.complete) {
-      await submitFirstRun(apiBase);
-    }
+    apiChild = spawn(
+      "node",
+      [
+        path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
+        path.join(REPO_ROOT, "packages/app-core/src/runtime/eliza.ts"),
+      ],
+      {
+        cwd: REPO_ROOT,
+        env: createLiveRuntimeChildEnv({
+          ...(LIVE_PROVIDER?.env ?? {}),
+          ALLOW_NO_DATABASE: "",
+          FORCE_COLOR: "0",
+          ELIZA_API_PORT: String(API_PORT),
+          ELIZA_HOME_PORT: String(UI_PORT),
+          ELIZA_PORT: String(API_PORT),
+          ELIZA_STATE_DIR: stateDir,
+        }),
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
 
-    await waitForJsonPredicate<{ complete: boolean }>(
-      `${apiBase}/api/first-run/status`,
-      (status) => status.complete === true,
+    apiChild.stdout.on("data", (chunk) => {
+      deferredBootComplete.observe(chunk);
+      process.stdout.write(`[ui-smoke][api] ${chunk}`);
+    });
+    apiChild.stderr.on("data", (chunk) => {
+      deferredBootComplete.observe(chunk);
+      process.stdout.write(`[ui-smoke][api-err] ${chunk}`);
+    });
+
+    await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
+    // Cloud-live mode (ELIZA_UI_SMOKE_CLOUD_LIVE=1) leaves first-run UNcompleted so
+    // the spec can drive the real cloud onboarding (login -> provision) through the
+    // UI against real Eliza Cloud. The default lane auto-completes a local first-run
+    // so chat/view specs land on a ready agent.
+    const skipAutoFirstRun = process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1";
+    if (!skipAutoFirstRun) {
+      const onboardingStatus = await fetchJson<{ complete: boolean }>(
+        `${apiBase}/api/first-run/status`,
+      );
+      if (!onboardingStatus.complete) {
+        await submitFirstRun(apiBase);
+      }
+
+      await waitForJsonPredicate<{ complete: boolean }>(
+        `${apiBase}/api/first-run/status`,
+        (status) => status.complete === true,
+        READY_TIMEOUT_MS,
+      );
+    }
+    await waitForJsonPredicate<{ state?: string }>(
+      `${apiBase}/api/status`,
+      (status) => status.state === "running",
       READY_TIMEOUT_MS,
     );
+    await waitForJsonPredicate<{ session?: { kind?: string } }>(
+      `${apiBase}/api/auth/me`,
+      (me) => me.session?.kind === "local",
+      READY_TIMEOUT_MS,
+    );
+    if (!skipAutoFirstRun) {
+      // App-control and plugin views are deferred capabilities. Treat the live
+      // harness as ready only after those runtime plugins have had a chance to
+      // register; otherwise chat-driven view switching can race boot.
+      await deferredBootComplete.wait(
+        READY_TIMEOUT_MS,
+        "deferred runtime plugin registration",
+      );
+    }
+
+    uiServer = await startUiProxyServer({
+      apiBase,
+      port: UI_PORT,
+      uiDistDir,
+    });
+    process.env.ELIZA_API_PORT = String(API_PORT);
+    markStateDirOwnedByStack(stateDir);
+    const startedApiChild = apiChild;
+    const startedUiServer = uiServer;
+
+    return {
+      apiBase,
+      apiChild: startedApiChild,
+      stateDir,
+      uiBase: `http://127.0.0.1:${UI_PORT}`,
+      uiServer: startedUiServer,
+    };
+  } catch (error) {
+    await closeUiServer(uiServer);
+    await stopApiChild(apiChild);
+    await removePathRecursive(stateDir);
+    pendingStateDirs.delete(stateDir);
+    throw error;
   }
-  await waitForJsonPredicate<{ state?: string }>(
-    `${apiBase}/api/status`,
-    (status) => status.state === "running",
-    READY_TIMEOUT_MS,
-  );
-  await waitForJsonPredicate<{ session?: { kind?: string } }>(
-    `${apiBase}/api/auth/me`,
-    (me) => me.session?.kind === "local",
-    READY_TIMEOUT_MS,
-  );
-
-  const uiServer = await startUiProxyServer({
-    apiBase,
-    port: UI_PORT,
-    uiDistDir,
-  });
-  process.env.ELIZA_API_PORT = String(API_PORT);
-
-  return {
-    apiBase,
-    apiChild,
-    stateDir,
-    uiBase: `http://127.0.0.1:${UI_PORT}`,
-    uiServer,
-  };
 }
 
 async function stopRealStack(stack: StartedStack | null): Promise<void> {
@@ -749,28 +1121,17 @@ async function stopRealStack(stack: StartedStack | null): Promise<void> {
     return;
   }
 
-  try {
-    await new Promise<void>((resolve, reject) =>
-      stack.uiServer.close((error) => (error ? reject(error) : resolve())),
-    );
-  } catch {
-    // Best effort during shutdown.
-  }
+  await closeUiServer(stack.uiServer);
+  await stopApiChild(stack.apiChild);
 
-  if (stack.apiChild.exitCode == null) {
-    stack.apiChild.kill("SIGTERM");
-    const exitedAfterTerm = await waitForChildExit(stack.apiChild, 5_000);
-    if (!exitedAfterTerm && stack.apiChild.exitCode == null) {
-      stack.apiChild.kill("SIGKILL");
-      await waitForChildExit(stack.apiChild, 5_000);
-    }
-  }
-
-  await rm(stack.stateDir, { force: true, recursive: true });
+  await removePathRecursive(stack.stateDir);
+  ownedStateDirs.delete(stack.stateDir);
 }
 
 let stack: StartedStack | null = null;
 let shuttingDown = false;
+
+process.once("exit", cleanupKnownStateDirsSync);
 
 async function shutdown(exitCode: number): Promise<void> {
   if (shuttingDown) {
@@ -778,6 +1139,7 @@ async function shutdown(exitCode: number): Promise<void> {
   }
   shuttingDown = true;
   await stopRealStack(stack);
+  await cleanupPendingStateDirs();
   process.exit(exitCode);
 }
 
@@ -808,5 +1170,6 @@ try {
     }`,
   );
   await stopRealStack(stack);
+  await cleanupPendingStateDirs();
   process.exit(1);
 }

@@ -22,7 +22,7 @@ import {
   buildThreads,
   loadMessagesState,
   smsRole,
-} from "./MessagesAppView.helpers";
+} from "./messages-view-helpers";
 
 describe("real bridge web fallback contract", () => {
   it("loadMessagesState yields a contract-valid DTO over the real web layer", async () => {

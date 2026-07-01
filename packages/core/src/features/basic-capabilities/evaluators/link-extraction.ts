@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import { fetchWithSsrfGuard } from "../../../network/index.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {
 	Evaluator,
@@ -46,6 +47,11 @@ function getMessageText(message: Memory): string {
 	}
 	const text = content.text;
 	return typeof text === "string" ? text : "";
+}
+
+function getMessageSource(message: Memory): string {
+	const source = message.content?.source;
+	return typeof source === "string" && source.length > 0 ? source : "unknown";
 }
 
 function extractUrls(text: string): string[] {
@@ -128,17 +134,24 @@ function stripTags(html: string): string {
 async function fetchLinkPreview(
 	url: string,
 ): Promise<{ title: string; bodyChunk: string } | null> {
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), SUMMARY_FETCH_TIMEOUT_MS);
+	// URLs come straight from inbound message text, so this fetch is attacker-
+	// controlled — route it through the SSRF guard (DNS-pinned, private/internal
+	// targets blocked, redirects validated per hop). Any failure (blocked,
+	// invalid, timeout, network) → no preview, exactly as before.
+	let release: (() => Promise<void>) | undefined;
 	try {
-		const response = await fetch(url, {
-			signal: controller.signal,
-			redirect: "follow",
-			headers: {
-				accept: "text/html,application/xhtml+xml",
-				"user-agent": "Mozilla/5.0 (compatible; ElizaLinkPreview/1.0)",
+		const guarded = await fetchWithSsrfGuard({
+			url,
+			timeoutMs: SUMMARY_FETCH_TIMEOUT_MS,
+			init: {
+				headers: {
+					accept: "text/html,application/xhtml+xml",
+					"user-agent": "Mozilla/5.0 (compatible; ElizaLinkPreview/1.0)",
+				},
 			},
 		});
+		release = guarded.release;
+		const { response } = guarded;
 		if (!response.ok) {
 			return null;
 		}
@@ -153,7 +166,7 @@ async function fetchLinkPreview(
 	} catch {
 		return null;
 	} finally {
-		clearTimeout(timer);
+		await release?.();
 	}
 }
 
@@ -222,6 +235,7 @@ async function persistLink(
 	link: LinkRecord,
 ): Promise<void> {
 	const text = link.summary || link.title || link.url;
+	const platform = getMessageSource(message);
 	const memory: Memory = {
 		id: asUUID(v4()),
 		entityId: runtime.agentId,
@@ -231,13 +245,15 @@ async function persistLink(
 			text,
 			type: "link",
 			source: EVALUATOR_SOURCE,
+			platform,
 			url: link.url,
 		},
 		metadata: {
 			type: MemoryType.CUSTOM,
 			source: EVALUATOR_SOURCE,
+			platform,
 			sourceId: message.id,
-			tags: ["link", "auto_capture"],
+			tags: ["link", "auto_capture", `platform:${platform}`],
 			url: link.url,
 			title: link.title,
 			summary: link.summary,

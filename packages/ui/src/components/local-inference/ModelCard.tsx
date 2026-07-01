@@ -6,7 +6,6 @@ import type {
   InstalledModel,
 } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -16,10 +15,12 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
+  formatBytes,
 } from "./hub-utils";
-
-const formatBytes = (bytes: number): string =>
-  formatByteSize(bytes, { unknownLabel: "—" });
+import {
+  catalogRuntimeClass,
+  runtimeClassDescription,
+} from "./runtime-class-ui";
 
 interface ModelCardProps {
   model: CatalogModel;
@@ -81,6 +82,12 @@ export function ModelCard({
           <div className="text-xs text-muted-foreground truncate">
             {parameterLabel} · {model.quant} · {model.sizeGb.toFixed(1)} GB
           </div>
+          <div
+            className="mt-1 inline-flex w-fit rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+            title={runtimeClassDescription(catalogRuntimeClass(model))}
+          >
+            {runtimeClassDescription(catalogRuntimeClass(model))}
+          </div>
         </div>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${FIT_STYLES[fit]}`}
@@ -130,7 +137,9 @@ export function ModelCard({
               ? t("modelcard.downloadUnavailable", {
                   defaultValue: "Download unavailable",
                 })
-              : t("modelcard.download", { defaultValue: "Download" })}
+              : failed
+                ? t("modelcard.retry", { defaultValue: "Retry" })
+                : t("modelcard.download", { defaultValue: "Download" })}
           </Button>
         )}
         {downloading && (

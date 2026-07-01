@@ -39,7 +39,6 @@ import {
   mkdir,
   readdir,
   rename,
-  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -54,6 +53,23 @@ const agentRoot = path.resolve(here, "..");
 // the source of every "could not locate @electric-sql/pglite/dist" or
 // "agent-bundle.js not found" error in CI.)
 const repoRoot = path.resolve(agentRoot, "..", "..");
+const rmRecursiveScript = path.join(
+  repoRoot,
+  "packages",
+  "scripts",
+  "rm-path-recursive.mjs",
+);
+
+function rmRecursive(targetPath) {
+  const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `[build-mobile] FATAL: failed to remove generated mobile output ${targetPath} (exit ${result.status})`,
+    );
+  }
+}
 
 // Target selection. `--target=android` (default) preserves existing behavior;
 // `--target=ios` swaps in iOS-specific stubs and sets ELIZA_PLATFORM=ios at
@@ -86,25 +102,8 @@ console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
 
-await rm(outDir, { recursive: true, force: true });
+rmRecursive(outDir);
 await mkdir(outDir, { recursive: true });
-
-const generateCssStringsScript = path.join(
-  repoRoot,
-  "packages",
-  "scripts",
-  "generate-css-strings.mjs",
-);
-if (existsSync(generateCssStringsScript)) {
-  const cssResult = spawnSync(process.execPath, [generateCssStringsScript], {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-  if (cssResult.status !== 0) {
-    console.error("[build-mobile] FATAL: generate-css-strings failed");
-    process.exit(cssResult.status ?? 1);
-  }
-}
 
 // Ensure generated keyword data exists. `@elizaos/shared` ships a
 // runtime-loaded `validation-keyword-data.js` that's produced by
@@ -311,7 +310,7 @@ const nativeStubs = {
   // a per-boot passphrase if needed. Stub keeps the bundle building.
   "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
   // React + react-dom stubs: workspace plugins (`@elizaos/plugin-personal-assistant`,
-  // `@elizaos/plugin-companion`, etc.) re-export their UI subtree from
+  // etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
   // package's runtime plugin object, but Bun.build still has to resolve
   // every import in the dependency closure. Without these stubs Bun follows
@@ -376,7 +375,7 @@ if (TARGET === "ios-jsc") {
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
 // Other packages — including `@elizaos/plugin-task-coordinator`,
-// `@elizaos/plugin-companion`, `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
+// `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
 // — are imported by `api/server.ts` as named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
 // satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we
@@ -387,7 +386,13 @@ const optionalPluginStubs = {
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-commands": path.join(stubsDir, "null-plugin.cjs"),
+  // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
+  // dependency is `@elizaos/core` (workspace:*), so it does not drag an
+  // incompatible core into the bundle, and `api/commands-routes.ts` imports the
+  // pure `getConnectorCommands` from it by name. The null-plugin Proxy stub does
+  // not carry that own-key, so stubbing it made the /api/commands route throw
+  // `getConnectorCommands is not a function` on device. It belongs to the
+  // "let it bundle, the runtime plugin filter handles registration" group.
   "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
@@ -428,9 +433,9 @@ const optionalPluginStubs = {
   // package so a local-source mobile bundle does not depend on those desktop
   // catalogs or pull the full workflow graph into the phone agent.
   "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.cjs"),
-  // plugin-device-filesystem uses native fs APIs and is not available
+  // plugin-native-filesystem uses native fs APIs and is not available
   // in the mobile bundle — stub it so the runtime skips it gracefully.
-  "@elizaos/plugin-device-filesystem": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-native-filesystem": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
@@ -1332,6 +1337,53 @@ const iosJscExternals =
       ]
     : undefined;
 
+// Pin every `@elizaos/plugin-local-inference/<subpath>` import to the WORKSPACE
+// `plugins/plugin-local-inference/src/...` tree. Without this, subpath imports
+// resolve through `node_modules/@elizaos/plugin-local-inference` (a symlink Bun
+// does NOT realpath) while the plugin's own relative imports resolve to the
+// workspace path — so shared modules like `services/device-tier.ts` get bundled
+// TWICE in two module scopes, and Bun's minifier emits a dangling
+// `selectBestEliza1Fit2` reference into one copy (crashing classifyDeviceTier
+// on-device). Forcing one tree de-dupes them. The bare package name and
+// `/runtime/embedding-presets` are intentionally stubbed earlier (null on
+// mobile), so this only catches the real subpaths (/services, /runtime, /routes,
+// /local-inference-routes, /voice-workbench, /src/*).
+const localInferenceWorkspaceSrc = path.resolve(
+  repoRoot,
+  "plugins",
+  "plugin-local-inference",
+  "src",
+);
+const localInferenceDedupePlugin = {
+  name: "eliza-mobile-local-inference-dedupe",
+  setup(build) {
+    build.onResolve(
+      { filter: /^@elizaos\/plugin-local-inference\// },
+      (args) => {
+        // Leave the explicitly-stubbed subpath to the stub plugin.
+        if (
+          args.path ===
+          "@elizaos/plugin-local-inference/runtime/embedding-presets"
+        )
+          return undefined;
+        let sub = args.path.slice("@elizaos/plugin-local-inference/".length);
+        if (sub.startsWith("src/")) sub = sub.slice(4);
+        const cleaned = sub.replace(/\.(js|ts|tsx)$/, "");
+        for (const cand of [
+          `${cleaned}.ts`,
+          `${cleaned}.tsx`,
+          `${cleaned}/index.ts`,
+          `${cleaned}/index.tsx`,
+        ]) {
+          const full = path.join(localInferenceWorkspaceSrc, cand);
+          if (existsSync(full)) return { path: full, namespace: "file" };
+        }
+        return undefined;
+      },
+    );
+  },
+};
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -1389,6 +1441,7 @@ const buildResult = await Bun.build({
     exactMobileStubPlugin,
     capabilityRouterStubPlugin,
     stubResolverPlugin,
+    localInferenceDedupePlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
     // ios-jsc: actively mark Node built-ins as external via onResolve so
@@ -1787,7 +1840,12 @@ const manifest = {
     },
   },
   plugins: {
-    core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],
+    core: [
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-background-runner",
+      "@elizaos/plugin-vision",
+      "@elizaos/plugin-scheduling",
+    ],
     aospOnly: [
       "@elizaos/plugin-wifi",
       "@elizaos/plugin-contacts",

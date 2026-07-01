@@ -7,8 +7,8 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
-    "strict": false,
+    "rootDir": "../..",
+    "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "esModuleInterop": true,
@@ -16,15 +16,21 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+    }
   },
   "include": ["./**/*"],
   "exclude": [
     "node_modules",
     "dist",
+    "build.ts",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",

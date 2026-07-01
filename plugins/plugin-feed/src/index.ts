@@ -4,40 +4,21 @@ const feedPlugin: Plugin = {
   name: "@elizaos/plugin-feed",
   description: "Feed prediction market game operator surface.",
   views: [
+    // ONE declaration → GUI + XR + TUI, all drawn from the single FeedView
+    // spatial source. `modalities` is a plain literal here (index.ts is not in
+    // the view bundle), so no brand-new `@elizaos/core` runtime export reaches
+    // the bundle build. The terminal surface mounts the same FeedSpatialView via
+    // register-terminal-view.tsx.
     {
       id: "feed",
+      viewKind: "system",
       label: "Feed",
       description: "Feed prediction market operator dashboard",
       icon: "Gamepad2",
       path: "/feed",
+      modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
-      componentExport: "FeedOperatorSurface",
-      tags: ["game", "prediction-market", "feed"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "feed",
-      label: "Feed XR",
-      description: "Feed prediction market operator dashboard",
-      icon: "Gamepad2",
-      path: "/feed",
-      viewType: "xr",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FeedOperatorSurface",
-      tags: ["game", "prediction-market", "feed"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "feed",
-      label: "Feed TUI",
-      description: "Terminal Feed prediction market operator dashboard",
-      icon: "Gamepad2",
-      path: "/feed/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "FeedTuiView",
+      componentExport: "FeedView",
       capabilities: [
         { id: "get-state", description: "Return Feed terminal state" },
         {
@@ -59,7 +40,7 @@ const feedPlugin: Plugin = {
           },
         },
       ],
-      tags: ["game", "prediction-market", "feed", "terminal"],
+      tags: ["game", "prediction-market", "feed"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },
@@ -80,4 +61,8 @@ if (typeof window === "undefined") {
 export default feedPlugin;
 export * from "./routes.js";
 export * from "./ui/feed-data.js";
-export * from "./ui/index.js";
+// NOTE: only the pure proxy + data layers are re-exported here. The Node agent
+// imports this entry to register the plugin's views; pulling React/UI in would
+// break that bundle. The GUI/XR surface loads from the dedicated view bundle
+// (src/ui/feed-view-bundle.ts → FeedView), and the terminal surface mounts the
+// same FeedSpatialView via register-terminal-view.tsx.

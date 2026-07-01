@@ -4,10 +4,13 @@
  * `@elizaos/cloud-frontend/src/dashboard/my-agents/Page.tsx`.
  */
 
-import { DashboardLoadingState } from "@elizaos/ui/cloud-ui";
+import {
+  DashboardLoadingState,
+  PageHeaderProvider,
+} from "@elizaos/ui/cloud-ui";
+import { useDocumentTitle } from "../lib/use-document-title";
 import { MyAgentsClient } from "./components/my-agents";
 import { useT } from "./lib/i18n";
-import { useDocumentTitle } from "./lib/use-document-title";
 import { useRequireAuth } from "./lib/use-session-auth";
 
 export default function MyAgentsPage() {
@@ -26,5 +29,11 @@ export default function MyAgentsPage() {
     );
   }
 
-  return <MyAgentsClient />;
+  // MyAgentsClient sets the page header; this standalone route has no ancestor
+  // PageHeaderProvider, so supply one here.
+  return (
+    <PageHeaderProvider>
+      <MyAgentsClient />
+    </PageHeaderProvider>
+  );
 }

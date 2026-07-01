@@ -191,7 +191,7 @@ export class WebBluetoothG1Transport implements SmartglassesTransport {
     const rx = await service.getCharacteristic(EVEN_G1_UART.rx);
     const listener = (event: Event) => {
       const value = (
-        event.target as unknown as BluetoothRemoteGATTCharacteristicLike | null
+        event.target as BluetoothRemoteGATTCharacteristicLike | null
       )?.value;
       if (!value) return;
       const bytes = new Uint8Array(

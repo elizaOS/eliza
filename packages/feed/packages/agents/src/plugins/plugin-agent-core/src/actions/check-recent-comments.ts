@@ -15,6 +15,7 @@ import type {
 import { comments, db, desc, eq, inArray, posts, users } from "@feed/db";
 import { getTimeAgo } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 interface ThreadMessage {
   authorName: string;
@@ -83,7 +84,7 @@ export const checkRecentCommentsAction: Action = {
   description:
     "Check recent comments for yourself or another user with thread context. Use LOOKUP_USER first to get a userId by username.",
 
-  parameters: {
+  parameters: defineActionParameters({
     userId: {
       type: "string",
       description:
@@ -95,7 +96,7 @@ export const checkRecentCommentsAction: Action = {
       description: "Number of comments to retrieve (default: 5, max: 10)",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  }),
 
   examples: [
     [

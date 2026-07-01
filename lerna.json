@@ -1,10 +1,11 @@
 {
-  "version": "2.0.3-beta.14",
+  "version": "2.0.3-beta.7",
   "packages": [
     "packages/*",
     "packages/app-core/platforms/*",
+    "packages/examples/code",
     "plugins/*",
-    "packages/cloud-sdk"
+    "packages/cloud/sdk"
   ],
   "npmClient": "bun",
   "command": {
@@ -19,11 +20,7 @@
         "new-beginnings",
         "beta"
       ],
-      "ignoreChanges": [
-        "**/*.md",
-        "**/test/**",
-        "**/__tests__/**"
-      ],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
       "verifyAccess": false
     },
     "version": {

@@ -46,6 +46,7 @@ import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evalua
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
 import { RoomHandlerQueue } from "./runtime/room-handler-queue";
+import { ShortcutRegistry } from "./runtime/shortcut-registry";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
@@ -54,6 +55,12 @@ import {
 import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
+import {
+	parseSecretSwapExemptValues,
+	SECRET_SWAP_ENABLED_SETTING,
+	SECRET_SWAP_EXEMPT_VALUES_SETTING,
+	SecretSwapSession,
+} from "./security/secret-swap";
 import { DefaultMessageService } from "./services/message";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
@@ -72,6 +79,7 @@ import {
 	withProviderStep,
 } from "./trajectory-utils";
 import {
+	type AccessContext,
 	type Action,
 	type ActionMode,
 	type ActionResult,
@@ -152,6 +160,7 @@ import {
 	type Route,
 	type RuntimeEventStorage,
 	type RuntimeSettings,
+	type RuntimeStopOptions,
 	type SendHandlerFunction,
 	type Service,
 	type ServiceClass,
@@ -199,6 +208,7 @@ import {
 	type SearchCategoryRegistration,
 	SearchCategoryRegistryError,
 } from "./types/search";
+import type { ShortcutDefinition } from "./types/shortcut";
 import type {
 	RetryBackoffConfig,
 	SchemaRow,
@@ -218,6 +228,7 @@ import {
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import {
 	ResponseSkeletonStreamExtractor,
@@ -240,6 +251,8 @@ const RUNTIME_TEMPLATE_CACHE = new Map<
 	Handlebars.TemplateDelegate<Record<string, unknown>>
 >();
 const RUNTIME_TEMPLATE_CACHE_LIMIT = 256;
+const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000;
+const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // stateCache holds up to 2 entries per message (base State + `${id}_action_results`).
 // Previously it was never unconditionally evicted at end-of-turn, so a long-lived
 // runtime accumulated one State per processed message for its lifetime (~4.7 KB/msg,
@@ -396,7 +409,15 @@ const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
 	"messageToUser",
 ]);
 
-function resolveDynamicPromptStreamFields(
+/**
+ * Resolve which structured fields stream to the consumer for the line-oriented
+ * `dynamicPromptExecFromState` path. A field streams when it opts in with
+ * `streamField: true`, or — when it expresses no preference — when its name is
+ * in {@link DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS} (the clean reply `text`).
+ * `streamField: false` always opts out. Exported for regression coverage of
+ * the default token-stream contract (#9174).
+ */
+export function resolveDynamicPromptStreamFields(
 	schema: readonly SchemaRow[],
 ): string[] {
 	return schema
@@ -722,6 +743,20 @@ function isMessagingAdapter(
 	);
 }
 
+function resolveShutdownTimeoutMs(envName: string, fallbackMs: number): number {
+	const raw = process.env[envName];
+	const parsed = Number(raw);
+	if (raw?.trim() === "0") return 0;
+	if (Number.isFinite(parsed) && parsed > 0) return parsed;
+	return fallbackMs;
+}
+
+function timeoutAfter(ms: number): Promise<"timeout"> {
+	return new Promise((resolve) => {
+		setTimeout(() => resolve("timeout"), ms);
+	});
+}
+
 export class AgentRuntime implements IAgentRuntime {
 	#conversationLength = 100;
 	readonly agentId: UUID;
@@ -733,6 +768,8 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly responseHandlerEvaluators: ResponseHandlerEvaluator[] = [];
 	readonly responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[] = [];
+	/** Pre-LLM action shortcuts (#8791), registered from `Plugin.shortcuts`. */
+	readonly shortcutRegistry = new ShortcutRegistry();
 	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	readonly turnControllers = new TurnControllerRegistry();
 	readonly roomHandlerQueue = new RoomHandlerQueue();
@@ -1106,6 +1143,46 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		return nativeRuntimeFeatureDefaults[feature];
+	}
+
+	private isSecretSwapEnabled(): boolean {
+		return (
+			parseBooleanValue(this.getSetting(SECRET_SWAP_ENABLED_SETTING)) ?? false
+		);
+	}
+
+	private createSecretSwapSession(): SecretSwapSession {
+		const toSecretStrings = (
+			values: Record<string, unknown> | undefined,
+		): Record<string, string | undefined> => {
+			const result: Record<string, string | undefined> = {};
+			const entries = values ? Object.entries(values) : [];
+			for (const [key, value] of entries) {
+				if (typeof value === "string") {
+					result[key] = value;
+				}
+			}
+			return result;
+		};
+		const settingsSecrets =
+			this.character.settings &&
+			typeof this.character.settings === "object" &&
+			"secrets" in this.character.settings &&
+			this.character.settings.secrets &&
+			typeof this.character.settings.secrets === "object"
+				? toSecretStrings(
+						this.character.settings.secrets as Record<string, unknown>,
+					)
+				: undefined;
+		return new SecretSwapSession({
+			knownSecrets: {
+				...settingsSecrets,
+				...toSecretStrings(this.character.secrets),
+			},
+			exemptValues: parseSecretSwapExemptValues(
+				this.getSetting(SECRET_SWAP_EXEMPT_VALUES_SETTING),
+			),
+		});
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -1742,6 +1819,9 @@ export class AgentRuntime implements IAgentRuntime {
 				existingEvaluatorNames.add(evaluator.name);
 			}
 		}
+		if (pluginToRegister.shortcuts) {
+			this.registerShortcuts(pluginToRegister.shortcuts);
+		}
 		if (pluginToRegister.responseHandlerEvaluators) {
 			const existingResponseHandlerEvaluatorNames = new Set(
 				this.responseHandlerEvaluators.map((evaluator) => evaluator.name),
@@ -1900,7 +1980,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Stops all started services and clears runtime caches/handlers.
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
-	async stop() {
+	async stop(options?: RuntimeStopOptions): Promise<void> {
 		if (this.stopped) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -1908,37 +1988,113 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
+		const fast = options?.fast === true;
+		const previousFastShutdown = process.env.ELIZA_FAST_SHUTDOWN;
+		if (fast) {
+			process.env.ELIZA_FAST_SHUTDOWN = "1";
+		}
+		try {
+			await this._stopServices(fast);
+		} finally {
+			if (fast) {
+				if (previousFastShutdown === undefined) {
+					delete process.env.ELIZA_FAST_SHUTDOWN;
+				} else {
+					process.env.ELIZA_FAST_SHUTDOWN = previousFastShutdown;
+				}
+			}
+		}
+	}
+
+	private async _stopServices(fast: boolean): Promise<void> {
 		this.stopped = true;
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId },
+			{ src: "agent", agentId: this.agentId, fast },
 			"Stopping runtime",
 		);
 
-		// Wait for any in-flight service starts so we don't leave services running
-		const inFlight = Array.from(this.startingServices.values());
+		const inFlightEntries = Array.from(this.startingServices.entries());
+		const inFlight = inFlightEntries.map(([, promise]) => promise);
 		if (inFlight.length > 0) {
-			this.logger.debug(
-				{ src: "agent", agentId: this.agentId, count: inFlight.length },
-				"Waiting for in-flight service starts before stopping",
-			);
-			await Promise.all(inFlight);
+			const serviceTypes = inFlightEntries.map(([serviceType]) => serviceType);
+			if (fast) {
+				this.logger.info(
+					{ src: "agent", agentId: this.agentId, serviceTypes },
+					"Fast shutdown: skipping wait for in-flight service starts",
+				);
+				this.startingServices.clear();
+			} else {
+				const timeoutMs = resolveShutdownTimeoutMs(
+					"ELIZA_SHUTDOWN_SERVICE_START_TIMEOUT_MS",
+					DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS,
+				);
+				if (timeoutMs === 0) {
+					this.logger.info(
+						{ src: "agent", agentId: this.agentId, serviceTypes },
+						"Skipping wait for in-flight service starts",
+					);
+					this.startingServices.clear();
+				} else {
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							count: inFlight.length,
+							serviceTypes,
+							timeoutMs,
+						},
+						"Waiting for in-flight service starts before stopping",
+					);
+					const waitStartedAt = Date.now();
+					const result = await Promise.race([
+						Promise.allSettled(inFlight).then(() => "settled" as const),
+						timeoutAfter(timeoutMs),
+					]);
+					if (result === "timeout" && this.startingServices.size > 0) {
+						this.logger.warn(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								serviceTypes,
+								timeoutMs,
+								elapsedMs: Date.now() - waitStartedAt,
+							},
+							"Timed out waiting for in-flight service starts; proceeding with shutdown",
+						);
+						this.startingServices.clear();
+					}
+				}
+			}
 		}
 
+		const fastStopTasks: Promise<void>[] = [];
 		for (const [serviceType, services] of this.services) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId, serviceType },
 				"Stopping service",
 			);
 			for (const service of services) {
-				const maybe = service as { stop?: () => Promise<void> };
-				if (typeof maybe.stop === "function") {
-					await maybe.stop();
-				} else {
-					this.logger.warn(
-						{ src: "agent", agentId: this.agentId, serviceType },
-						"Service instance is missing stop(); skipping",
+				if (fast) {
+					fastStopTasks.push(
+						this._stopServiceInstance(serviceType, service, "fast shutdown"),
 					);
+				} else {
+					await this._stopServiceInstance(serviceType, service, "shutdown");
 				}
+			}
+		}
+		if (fast && fastStopTasks.length > 0) {
+			const timeoutMs = resolveShutdownTimeoutMs(
+				"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
+				DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
+			);
+			if (timeoutMs > 0) {
+				await Promise.race([
+					Promise.allSettled(fastStopTasks),
+					timeoutAfter(timeoutMs),
+				]);
+			} else {
+				await Promise.allSettled(fastStopTasks);
 			}
 		}
 
@@ -1962,6 +2118,40 @@ export class AgentRuntime implements IAgentRuntime {
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
+	}
+
+	private async _stopServiceInstance(
+		serviceType: string,
+		service: Service | null | undefined,
+		reason: string,
+	): Promise<void> {
+		const maybe = service as { stop?: () => Promise<void> | void } | null;
+		if (maybe && typeof maybe.stop === "function") {
+			try {
+				await Promise.resolve().then(() => maybe.stop?.());
+			} catch (err) {
+				this.logger.warn(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						serviceType,
+						reason,
+						error: err instanceof Error ? err.message : String(err),
+					},
+					"Service stop() threw; continuing",
+				);
+			}
+		} else if (!maybe) {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, serviceType, reason },
+				"Null service instance during stop; skipping",
+			);
+		} else {
+			this.logger.warn(
+				{ src: "agent", agentId: this.agentId, serviceType, reason },
+				"Service instance is missing stop(); skipping",
+			);
+		}
 	}
 
 	/**
@@ -2092,6 +2282,14 @@ export class AgentRuntime implements IAgentRuntime {
 			"./security/incoming-message-security.js"
 		);
 		registerCoreIncomingMessageSecurityHook(this);
+
+		// #9949: stamp deterministic injection RiskFactors during the
+		// parallel-with-should-respond phase so the role-keyed verify gate in the
+		// message service can escalate borderline USER/GUEST messages.
+		const { registerCoreShouldRespondRiskHook } = await import(
+			"./features/trust/should-respond-risk-gate.js"
+		);
+		registerCoreShouldRespondRiskHook(this);
 
 		// Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
 		const skipMigrations = options?.skipMigrations ?? false;
@@ -2771,6 +2969,27 @@ export class AgentRuntime implements IAgentRuntime {
 				"Action registered",
 			);
 		}
+	}
+
+	/** Register a pre-LLM action shortcut (#8791) into this runtime's registry. */
+	registerShortcut(shortcut: ShortcutDefinition) {
+		this.shortcutRegistry.register(shortcut);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, shortcut: shortcut.id },
+			"Shortcut registered",
+		);
+	}
+
+	registerShortcuts(shortcuts: readonly ShortcutDefinition[]) {
+		for (const shortcut of shortcuts) this.registerShortcut(shortcut);
+	}
+
+	unregisterShortcut(id: string) {
+		this.shortcutRegistry.unregister(id);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, shortcut: id },
+			"Shortcut unregistered",
+		);
 	}
 
 	registerEvaluator(evaluator: RegisteredEvaluator) {
@@ -3494,6 +3713,7 @@ export class AgentRuntime implements IAgentRuntime {
 		includeList: string[] | null = null,
 		onlyInclude = false,
 		skipCache = false,
+		refreshProviders: string[] | null = null,
 	): Promise<State> {
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
@@ -3593,13 +3813,40 @@ export class AgentRuntime implements IAgentRuntime {
 				(a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name),
 		);
 
+		// `refreshProviders` lets a caller REUSE cached provider results for the
+		// requested set and re-run only the named providers (plus any not yet in
+		// the cache) — e.g. the planner pass refreshes only RECENT_MESSAGES (which
+		// changes after an early reply) and reuses everything the first compose
+		// already ran for this message.id. The full requested set still drives the
+		// rendered text/order below (pulled from `currentProviderResults`, which
+		// merges cache + fresh); only the run-set shrinks. No-op (run everything)
+		// when `refreshProviders` is null or there is no cached state.
+		const refreshSet =
+			refreshProviders && refreshProviders.length > 0
+				? new Set(refreshProviders)
+				: null;
+		const cachedProviderNames = refreshSet
+			? new Set(
+					Object.keys(
+						(cachedState.data.providers as
+							| Record<string, unknown>
+							| undefined) ?? {},
+					),
+				)
+			: null;
+		const providersToRun = refreshSet
+			? providersToGet.filter(
+					(p) => refreshSet.has(p.name) || !cachedProviderNames?.has(p.name),
+				)
+			: providersToGet;
+
 		// Optional trajectory logging service; absent unless configured.
 		const trajLogger = (await this._ensureServiceStarted("trajectories")) as
 			| (Service & TrajectoryProviderAccessLogger)
 			| null;
 		const composeStartedAt = Date.now();
 		const providerData = await Promise.all(
-			providersToGet.map(async (provider) => {
+			providersToRun.map(async (provider) => {
 				const start = Date.now();
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
@@ -3671,7 +3918,8 @@ export class AgentRuntime implements IAgentRuntime {
 			}),
 		);
 		recordInferenceSpan("composeState", Date.now() - composeStartedAt, {
-			providers: providersToGet.length,
+			providers: providersToRun.length,
+			reused: providersToGet.length - providersToRun.length,
 		});
 
 		if (trajectoryStepId && trajLogger) {
@@ -3863,8 +4111,21 @@ export class AgentRuntime implements IAgentRuntime {
 			return null;
 		}
 		try {
+			if (this.stopped) {
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
+			}
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
+			}
+			if (this.stopped) {
+				await this._stopServiceInstance(
+					key,
+					serviceInstance,
+					"late service start after runtime stop",
+				);
 				this.serviceRegistrationStatus.set(key, "failed");
 				return null;
 			}
@@ -4223,15 +4484,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Return highest priority handler (first in array after sorting)
-		this.logger.debug(
-			{
-				src: "agent",
-				agentId: this.agentId,
-				model: resolvedModel.modelKey,
-				provider: resolvedModel.provider,
-			},
-			"Using model",
-		);
 		return resolvedModel.handler;
 	}
 
@@ -4443,6 +4695,9 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
+			? captureModelLookupCaller()
+			: undefined;
 		// Per-action model routing seam (closes A5 / W1-R2). If the call
 		// originates inside an action handler that declared a `modelClass`, and
 		// the requested model type is a text-generation model, we resolve
@@ -4545,24 +4800,6 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		// Only treat params as an object if it's actually an object (not a string or primitive)
-		const paramsObj =
-			params && typeof params === "object" && !Array.isArray(params)
-				? (params as Record<string, JsonValue | object>)
-				: null;
-		const promptContent =
-			(paramsObj &&
-			"prompt" in paramsObj &&
-			typeof paramsObj.prompt === "string"
-				? paramsObj.prompt
-				: null) ||
-			(paramsObj && "input" in paramsObj && typeof paramsObj.input === "string"
-				? paramsObj.input
-				: null) ||
-			(paramsObj && "messages" in paramsObj && Array.isArray(paramsObj.messages)
-				? stringifyStructuredForPrompt({ messages: paramsObj.messages })
-				: null) ||
-			(typeof params === "string" ? params : null);
 		const resolvedModel = this.resolveModelRegistration(
 			requestedModelKey,
 			provider,
@@ -4589,52 +4826,12 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(errorMsg);
 		}
 
-		// Log input parameters (keep debug log if useful)
-		// Skip verbose logging for binary data models (TRANSCRIPTION, IMAGE, AUDIO, VIDEO)
 		const binaryModels: string[] = [
 			ModelType.TRANSCRIPTION,
 			ModelType.IMAGE,
 			ModelType.AUDIO,
 			ModelType.VIDEO,
 		];
-		if (!binaryModels.includes(resolvedModelKey)) {
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					params,
-				},
-				"Model input",
-			);
-		} else {
-			// For binary models, just log the type and size info
-			let sizeInfo = "unknown size";
-			if (Buffer.isBuffer(params)) {
-				sizeInfo = `${params.length} bytes`;
-			} else if (typeof Blob !== "undefined" && params instanceof Blob) {
-				sizeInfo = `${params.size} bytes`;
-			} else if (typeof params === "object" && params !== null) {
-				if ("audio" in params && Buffer.isBuffer(params.audio)) {
-					sizeInfo = `${(params.audio as Buffer).length} bytes`;
-				} else if (
-					"audio" in params &&
-					typeof Blob !== "undefined" &&
-					params.audio instanceof Blob
-				) {
-					sizeInfo = `${(params.audio as Blob).size} bytes`;
-				}
-			}
-			this.logger.trace(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					model: resolvedModelKey,
-					size: sizeInfo,
-				},
-				"Model input (binary)",
-			);
-		}
 		let modelParams: ModelParamsMap[T];
 		const paramsClone = isPlainObject(params)
 			? { ...(params as Record<string, JsonValue | object>) }
@@ -4717,11 +4914,18 @@ export class AgentRuntime implements IAgentRuntime {
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
 		const resolvedProviderName = resolvedModel?.provider;
-		// stream: false = force no stream, otherwise stream if any callback exists
+		// stream: false = force no stream, otherwise stream if any callback exists.
+		// Vision describes are often hidden preprocessing/OCR calls inside a chat
+		// turn; do not leak those chunks into the visible chat stream unless the
+		// call itself opts in.
+		const requiresExplicitStreaming =
+			requestedModelKey === ModelType.IMAGE_DESCRIPTION;
 		const shouldStream =
 			explicitStream === false
 				? false
-				: !!(paramsChunk || ctxChunk || explicitStream);
+				: requiresExplicitStreaming
+					? explicitStream === true
+					: !!(paramsChunk || ctxChunk || explicitStream);
 		const structuredStreamFields =
 			shouldStream && paramsAsStreaming?.streamStructured === true
 				? resolveResponseSkeletonStreamFields(
@@ -4747,18 +4951,20 @@ export class AgentRuntime implements IAgentRuntime {
 				: undefined;
 		let handlerDeliveredStream = false;
 		let streamedText = "";
-		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
+		let secretSwapSession: SecretSwapSession | null = null;
+		let secretSwapStreamBuffer = "";
+		const emitModelStreamChunk = async (safeChunk: string): Promise<void> => {
 			if (abortSignal?.aborted) return;
-			if (streamedText === "" && chunk.length > 0) {
+			if (streamedText === "" && safeChunk.length > 0) {
 				markInference(INFERENCE_MARKS.firstToken);
 			}
-			streamedText += chunk;
+			streamedText += safeChunk;
 			const trajStream = getTrajectoryContext();
 			await this.invokePipelineHooks(
 				"model_stream_chunk",
 				modelStreamChunkPipelineHookContext({
 					source: "use_model",
-					chunk,
+					chunk: safeChunk,
 					messageId: msgId,
 					roomId:
 						(trajStream?.roomId as UUID | undefined) ??
@@ -4775,17 +4981,50 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			await runInsideModelStreamChunkDelivery(async () => {
 				if (structuredExtractor) {
-					structuredExtractor.push(chunk);
+					structuredExtractor.push(safeChunk);
 					return;
 				}
-				if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
-				if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
+				if (paramsChunk) await paramsChunk(safeChunk, msgId, undefined);
+				if (ctxChunk) await ctxChunk(safeChunk, msgId, undefined);
 			});
 		};
+		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
+			if (abortSignal?.aborted) return;
+			if (secretSwapSession) {
+				secretSwapStreamBuffer += chunk;
+				return;
+			}
+			await emitModelStreamChunk(chunk);
+		};
+		const flushSecretSwapStream = async (): Promise<void> => {
+			if (
+				abortSignal?.aborted ||
+				!secretSwapSession ||
+				secretSwapStreamBuffer.length === 0
+			) {
+				return;
+			}
+			const safeText = secretSwapSession.substituteText(secretSwapStreamBuffer);
+			secretSwapStreamBuffer = "";
+			if (safeText.length > 0) {
+				await emitModelStreamChunk(safeText);
+			}
+		};
+		// Wire the handler-facing stream callback for local providers AND for the
+		// prefer-local router ("eliza-router"): the router resolves to itself as
+		// the top-priority handler but invokes the underlying provider's handler
+		// directly and forwards `onStreamChunk` transparently, so on mobile (where
+		// the router is always the resolved provider, dispatching to the on-device
+		// capacitor-llama / bionic host) streaming is only wired if we recognize
+		// it here. Scoped to the streaming gate only — it intentionally does NOT
+		// change validation/pricing semantics keyed on isLocalProvider().
+		const resolvedIsStreamableLocal =
+			!!resolvedProviderName &&
+			(isLocalProvider(resolvedProviderName) ||
+				resolvedProviderName === "eliza-router");
 		const handlerStreamChunk: StreamChunkCallback | undefined =
 			shouldStream &&
-			resolvedProviderName &&
-			isLocalProvider(resolvedProviderName) &&
+			resolvedIsStreamableLocal &&
 			(paramsChunk || ctxChunk || structuredExtractor)
 				? async (chunk) => {
 						handlerDeliveredStream = true;
@@ -4814,10 +5053,32 @@ export class AgentRuntime implements IAgentRuntime {
 		)
 			? String(resolvedModelKey)
 			: requestedModelKey;
-		const effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
+		let effectiveSystemPrompt = this.attachEffectiveSystemPrompt(
 			textModelKey,
 			modelParams,
 		);
+
+		if (
+			this.isSecretSwapEnabled() &&
+			!binaryModels.includes(resolvedModelKey)
+		) {
+			// Reuse one session per turn so every model call in the turn shares a
+			// nonce and the action-execution boundary can restore what this call
+			// swapped. The session hangs off the turn-scoped trajectory context;
+			// calls outside a trajectory scope fall back to a per-call session
+			// (no egress restore — there is no execution boundary to restore at).
+			const trajectoryCtx = getTrajectoryContext();
+			secretSwapSession =
+				trajectoryCtx?.secretSwapSession ?? this.createSecretSwapSession();
+			if (trajectoryCtx && !trajectoryCtx.secretSwapSession) {
+				trajectoryCtx.secretSwapSession = secretSwapSession;
+			}
+			modelParams = secretSwapSession.substituteInValue(modelParams);
+			effectiveSystemPrompt =
+				effectiveSystemPrompt === undefined
+					? undefined
+					: secretSwapSession.substituteText(effectiveSystemPrompt);
+		}
 
 		await this.invokePipelineHooks(
 			"pre_model",
@@ -4830,13 +5091,102 @@ export class AgentRuntime implements IAgentRuntime {
 			}),
 			"Pre-model pipeline hook",
 		);
+		if (secretSwapSession) {
+			modelParams = secretSwapSession.substituteInValue(modelParams);
+			const postHookSystemPrompt = resolveEffectiveSystemPrompt({
+				params: modelParams,
+				fallback: effectiveSystemPrompt,
+			});
+			effectiveSystemPrompt =
+				postHookSystemPrompt === undefined
+					? undefined
+					: secretSwapSession.substituteText(postHookSystemPrompt);
+		}
+
+		const hookedParamsObj =
+			modelParams &&
+			typeof modelParams === "object" &&
+			!Array.isArray(modelParams)
+				? (modelParams as Record<string, JsonValue | object>)
+				: null;
+		const promptContent =
+			(hookedParamsObj &&
+			"prompt" in hookedParamsObj &&
+			typeof hookedParamsObj.prompt === "string"
+				? hookedParamsObj.prompt
+				: null) ||
+			(hookedParamsObj &&
+			"input" in hookedParamsObj &&
+			typeof hookedParamsObj.input === "string"
+				? hookedParamsObj.input
+				: null) ||
+			(hookedParamsObj &&
+			"messages" in hookedParamsObj &&
+			Array.isArray(hookedParamsObj.messages)
+				? stringifyStructuredForPrompt({ messages: hookedParamsObj.messages })
+				: null) ||
+			(typeof modelParams === "string" ? modelParams : null);
+
+		if (!binaryModels.includes(resolvedModelKey)) {
+			this.logger.trace(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					params: modelParams,
+				},
+				"Model input",
+			);
+		} else {
+			let sizeInfo = "unknown size";
+			if (Buffer.isBuffer(modelParams)) {
+				sizeInfo = `${modelParams.length} bytes`;
+			} else if (typeof Blob !== "undefined" && modelParams instanceof Blob) {
+				sizeInfo = `${modelParams.size} bytes`;
+			} else if (typeof modelParams === "object" && modelParams !== null) {
+				if ("audio" in modelParams && Buffer.isBuffer(modelParams.audio)) {
+					sizeInfo = `${(modelParams.audio as Buffer).length} bytes`;
+				} else if (
+					"audio" in modelParams &&
+					typeof Blob !== "undefined" &&
+					modelParams.audio instanceof Blob
+				) {
+					sizeInfo = `${(modelParams.audio as Blob).size} bytes`;
+				}
+			}
+			this.logger.trace(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					model: resolvedModelKey,
+					size: sizeInfo,
+				},
+				"Model input (binary)",
+			);
+		}
+
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				model: resolvedModelKey,
+				provider: resolvedModel.provider,
+				...(lookupCaller?.caller ? { caller: lookupCaller.caller } : {}),
+				...(lookupCaller?.callerStack.length
+					? { callerStack: lookupCaller.callerStack }
+					: {}),
+			},
+			"Using model",
+		);
 
 		const rawResponse = await handler(
 			this,
 			modelParams as Record<string, JsonValue | object>,
 		);
 
-		const resultRef: { current: unknown } = { current: rawResponse };
+		const resultRef: { current: unknown } = {
+			current: secretSwapSession?.substituteInValue(rawResponse) ?? rawResponse,
+		};
 		const modelOutToTrajectoryString = (v: unknown) =>
 			typeof v === "string" ? v : stringifyStructuredForPrompt({ response: v });
 
@@ -4850,6 +5200,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (abortSignal?.aborted) break;
 				await deliverModelStreamChunk(chunk);
 			}
+			await flushSecretSwapStream();
 			structuredExtractor?.flush();
 
 			const trajStreamEnd = getTrajectoryContext();
@@ -4938,6 +5289,9 @@ export class AgentRuntime implements IAgentRuntime {
 				}),
 				"Post-model pipeline hook",
 			);
+			resultRef.current =
+				secretSwapSession?.substituteInValue(resultRef.current) ??
+				resultRef.current;
 
 			this.logger.trace(
 				{
@@ -4978,6 +5332,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (handlerDeliveredStream) {
+			await flushSecretSwapStream();
 			structuredExtractor?.flush();
 			const trajStreamEnd = getTrajectoryContext();
 			await this.invokePipelineHooks(
@@ -5020,6 +5375,9 @@ export class AgentRuntime implements IAgentRuntime {
 			}),
 			"Post-model pipeline hook",
 		);
+		resultRef.current =
+			secretSwapSession?.substituteInValue(resultRef.current) ??
+			resultRef.current;
 
 		this.logger.trace(
 			{
@@ -6241,6 +6599,39 @@ ${section_end}`;
 					}
 
 					extractor.reset();
+				}
+
+				// Repair reroll: when the extractor didn't produce a targeted retry
+				// context (the common case — contextLevel 2, no streaming extractor,
+				// or no validated fields), feed the model the CONCRETE reason its last
+				// output was rejected + the (redacted, truncated) bad output, so the
+				// reroll is corrective instead of a blind re-roll of the same prompt.
+				// Goes in the same `_smartRetryContext` field, which is rendered as a
+				// `stable:false` segment (prompt-cache safe) and cleared on
+				// success/abort. Correctness-neutral: it only changes the prompt of a
+				// retry that was already going to run; it never skips a validation.
+				if (!smartRetryContextNext) {
+					const repairIssues =
+						validationIssues.length > 0
+							? validationIssues
+							: parseErrorMessage
+								? [parseErrorMessage]
+								: [];
+					if (repairIssues.length > 0) {
+						const priorOutput = this.redactSecrets(cleanResponse).slice(
+							0,
+							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						);
+						const issueList = repairIssues
+							.slice(0, 8)
+							.map((issue) => `- ${issue}`)
+							.join("\n");
+						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
+							priorOutput
+								? `\n\nYour previous (invalid) output was:\n${priorOutput}`
+								: ""
+						}`;
+					}
 				}
 
 				if (smartRetryContextNext) {
@@ -7623,9 +8014,11 @@ ${section_end}`;
 		end?: number;
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
+		textContains?: string;
 		orderBy?: "createdAt";
 		orderDirection?: "asc" | "desc";
 		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemories({
 			...params,
@@ -7655,6 +8048,10 @@ ${section_end}`;
 		tableName: string;
 		roomIds: UUID[];
 		limit?: number;
+		offset?: number;
+		textContains?: string;
+		includeEmbedding?: boolean;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		return this.adapter.getMemoriesByRoomIds(params);
 	}
@@ -7673,12 +8070,14 @@ ${section_end}`;
 		embedding: number[];
 		query?: string;
 		match_threshold?: number;
+		count?: number;
 		limit?: number;
 		roomId?: UUID;
 		unique?: boolean;
 		worldId?: UUID;
 		entityId?: UUID;
 		tableName: string;
+		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const memories = await this.adapter.searchMemories({
 			...params,

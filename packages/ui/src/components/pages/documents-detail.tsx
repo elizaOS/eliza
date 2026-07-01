@@ -2,11 +2,14 @@ import {
   BadgeCheck,
   Bot,
   CalendarDays,
+  Download,
   FileText,
   Globe2,
+  Headphones,
   Lock,
   Pencil,
   Save,
+  Share2,
   Shield,
   User,
 } from "lucide-react";
@@ -16,7 +19,14 @@ import type {
   DocumentDetail,
   DocumentFragmentRecord,
 } from "../../api/client-types-chat";
-import { useApp } from "../../state/useApp";
+import { navigateBrowserPath } from "../../app-navigate-view";
+import { useAppSelector } from "../../state";
+import {
+  canShareFiles,
+  downloadAttachment,
+  filenameForMime,
+  shareAttachment,
+} from "../../utils/download-share";
 import { formatByteSize } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
@@ -44,7 +54,8 @@ export function DocumentViewer({
   documentId: string | null;
   onUpdated?: () => void;
 }) {
-  const { t, setActionNotice } = useApp();
+  const t = useAppSelector((s) => s.t);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [fragments, setFragments] = useState<DocumentFragmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,8 +67,7 @@ export function DocumentViewer({
 
   useEffect(() => {
     const id = documentId ?? "";
-    const refreshToken = reloadToken;
-    void refreshToken;
+    void reloadToken; // re-run on manual refresh (kept in deps below)
     if (!id) {
       setDoc(null);
       setFragments([]);
@@ -81,8 +91,21 @@ export function DocumentViewer({
 
       if (cancelled) return;
 
+      // A well-formed detail response always carries `document`; if the backend
+      // returns an empty/malformed body (or the doc was deleted between the list
+      // and detail fetch), surface a clean message instead of letting a raw
+      // "Cannot read properties of undefined (reading 'content')" TypeError
+      // reach the user as the error text (#8876).
+      if (!docRes?.document) {
+        throw new Error(
+          t("documentsview.DocumentUnavailable", {
+            defaultValue: "This document is no longer available.",
+          }),
+        );
+      }
+
       setDoc(docRes.document);
-      setFragments(fragRes.fragments);
+      setFragments(fragRes?.fragments ?? []);
       setDraftText(docRes.document.content?.text ?? "");
       setEditing(false);
       setLoading(false);
@@ -125,6 +148,37 @@ export function DocumentViewer({
           ? Bot
           : Globe2;
 
+  // The original served file (when the backend exposes a fetchable URL for the
+  // document, e.g. uploaded binaries / mirrored transcript audio). v1 gates the
+  // download/share affordances on this URL existing.
+  const servedFileUrl = doc?.url || doc?.transcriptAudioUrl || null;
+  const shareSupported = canShareFiles();
+
+  const handleDownloadFile = async () => {
+    if (!servedFileUrl || !doc) return;
+    const filename = doc.filename || filenameForMime(doc.contentType);
+    try {
+      await downloadAttachment(servedFileUrl, filename);
+    } catch {
+      setActionNotice(
+        t("documentsview.FailedToDownload", {
+          defaultValue: "Failed to download file",
+        }),
+        "error",
+        4000,
+      );
+    }
+  };
+
+  const handleShareFile = async () => {
+    if (!servedFileUrl || !doc) return;
+    const shared = await shareAttachment(servedFileUrl, {
+      title: doc.filename,
+      filename: doc.filename || undefined,
+    });
+    if (!shared) await handleDownloadFile();
+  };
+
   const handleSave = async () => {
     if (!documentId || !doc) return;
     setSaving(true);
@@ -159,7 +213,7 @@ export function DocumentViewer({
   };
 
   return (
-    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none !ring-0">
+    <PagePanel className="flex flex-col overflow-hidden !rounded-none !border-0 !bg-transparent !shadow-none ">
       <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {loading && (
           <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
@@ -168,16 +222,12 @@ export function DocumentViewer({
           </div>
         )}
 
-        {error && (
-          <div className="rounded-sm border border-danger/25 bg-danger/10 py-8 text-center text-sm font-medium text-danger">
-            {error}
-          </div>
-        )}
+        {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
 
         {!loading && !error && !doc && (
           <PagePanel.Empty
             variant="inset"
-            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+            className="px-0 py-12 !rounded-none !border-0 !bg-transparent !shadow-none "
             description={t("documentsview.NoDocumentSelectedDesc", {
               defaultValue:
                 "Select a document from the list to view its fragments and metadata.",
@@ -251,6 +301,50 @@ export function DocumentViewer({
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                {doc.transcriptId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="document-open-transcript"
+                    onClick={() => navigateBrowserPath("/apps/transcripts")}
+                  >
+                    <Headphones className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("documentsview.ViewOriginalTranscript", {
+                      defaultValue: "View original transcript",
+                    })}
+                  </Button>
+                ) : null}
+                {servedFileUrl ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm"
+                    data-testid="document-download"
+                    onClick={() => void handleDownloadFile()}
+                  >
+                    <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("documentsview.Download", {
+                      defaultValue: "Download",
+                    })}
+                  </Button>
+                ) : null}
+                {servedFileUrl && shareSupported ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-sm"
+                    data-testid="document-share"
+                    onClick={() => void handleShareFile()}
+                  >
+                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    {t("documentsview.Share", {
+                      defaultValue: "Share",
+                    })}
+                  </Button>
+                ) : null}
                 {doc.canEditText ? (
                   <>
                     <Button
@@ -287,11 +381,8 @@ export function DocumentViewer({
 
             <PagePanel
               variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("common.preview", { defaultValue: "Preview" })}
-              </div>
               {editing ? (
                 <Textarea
                   value={draftText}
@@ -314,13 +405,8 @@ export function DocumentViewer({
 
             <PagePanel
               variant="inset"
-              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+              className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none "
             >
-              <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("documentsview.FragmentsLabel", {
-                  defaultValue: "Fragments",
-                })}
-              </div>
               <div className="divide-y divide-border/20">
                 {fragments.map((fragment, index) => {
                   const createdLabel = formatDocumentTimestamp(
@@ -379,7 +465,7 @@ export function DocumentViewer({
                 {fragments.length === 0 && (
                   <PagePanel.Empty
                     variant="inset"
-                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+                    className="min-h-[8rem] py-8 !rounded-none !border-0 !bg-transparent !shadow-none "
                     title={t("documentsview.NoFragmentsFound")}
                   />
                 )}

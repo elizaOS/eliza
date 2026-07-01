@@ -164,7 +164,7 @@ export interface VoiceBudget {
  * - MAX:  ~24 GB free RAM (enough to keep 9b + drafter + omnivoice-Q8 +
  *         ASR + embed + warm/cold path co-resident).
  * - GOOD: ~12 GB (2b/4b co-resident + transient).
- * - OKAY: ~6 GB (0.8b LM only resident; ASR/TTS swap).
+ * - OKAY: ~6 GB (2b entry-tier LM only resident; ASR/TTS swap).
  * - POOR: ~3 GB (turn + VAD + wake only, no LM/TTS local).
  *
  * The `maxRamMB` user override (R9 §5.3) can cap this lower. The default
@@ -206,7 +206,7 @@ function defaultTierBudgetBytes(
  * local TTS, so transient = 0.
  *
  * The figures are MEASURED on-disk (Q4_K_M GGUFs in
- * `<stateDir>/local-inference/models/eliza-1-{0_8b,2b}.bundle/`) plus
+ * `<stateDir>/local-inference/models/eliza-1-2b.bundle/`) plus
  * model-card sizes for VAD, wake-word, turn-detector, emotion, speaker-id.
  * See R9 §2.1 + §2.2 + §2.3 for the per-component breakdown.
  */
@@ -237,12 +237,11 @@ export interface VoiceEnsembleBudget {
  * the largest co-resident knob is the LM itself.
  */
 export type VoiceTierSlot =
-	| "mobile-0_8b" // mobile profile: kokoro-q8 + turnsense + ASR-0.6B + LM-0.8B, no embedding
-	| "desktop-0_8b" // desktop profile: omnivoice + livekit-turn + ASR-0.6B + LM-0.8B
-	| "desktop-2b" // 2b LM + full voice stack + embedding
+	| "mobile-2b" // mobile profile: kokoro-q8 + turnsense + entry ASR + LM-2B (entry tier), no dedicated embedding
+	| "desktop-2b" // 2b LM (entry tier) + full voice stack + embedding
 	| "desktop-4b" // 4b LM + full voice stack + embedding
-	| "workstation-9b" // 9b LM + omnivoice-Q8 + ASR-0.6B + embedding
-	| "workstation-27b"; // 27b LM + omnivoice-Q8 + ASR-1.7B + embedding
+	| "workstation-9b" // 9b LM + omnivoice-Q8 + entry ASR + embedding
+	| "workstation-27b"; // 27b LM + omnivoice-Q8 + large ASR + embedding
 
 const _MB = 1; // alias for readability inside the table
 const _GB = 1024;
@@ -251,37 +250,21 @@ const _GB = 1024;
 export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 	Record<VoiceTierSlot, VoiceEnsembleBudget>
 > = {
-	"mobile-0_8b": buildEnsemble({
-		tierSlot: "mobile-0_8b",
-		lmMb: 0.5 * _GB,
-		lmKvMb: 0.044 * _GB,
-		drafterMb: 0.31 * _GB,
+	"mobile-2b": buildEnsemble({
+		tierSlot: "mobile-2b",
+		lmMb: 1.4 * _GB, // eliza-1-2b (entry tier) Q4-ish
+		lmKvMb: 0.075 * _GB,
+		drafterMb: 0.5 * _GB,
 		ttsMb: 0.08 * _GB, // kokoro-q8 ONNX
-		asrMb: 0.4 * _GB, // qwen3-asr-0.6B documented Q4-equiv
+		asrMb: 0.4 * _GB, // entry Gemma-compatible ASR placeholder budget
 		asrMmprojMb: 0.2 * _GB,
-		embeddingMb: 0, // pools from LM on the 0.8B tier
+		embeddingMb: 0, // pools from the text backbone on the 2b entry tier
 		vadMb: 2 * _MB, // silero-vad documented baseline
 		wakeWordMb: 4 * _MB,
 		turnDetectorMb: 60 * _MB, // turnsense 135M int8 mobile
 		emotionMb: 40 * _MB, // wav2small int8 acoustic
 		speakerEncoderMb: 10 * _MB, // wespeaker / x-vector int8
 		transientTtsBufferMb: 0, // mobile defaults to cloud TTS or kokoro burst
-	}),
-	"desktop-0_8b": buildEnsemble({
-		tierSlot: "desktop-0_8b",
-		lmMb: 0.5 * _GB,
-		lmKvMb: 0.044 * _GB,
-		drafterMb: 0.31 * _GB,
-		ttsMb: 0.65 * _GB, // omnivoice base (Q4_K_M = 388.6 MB) + tokenizer (240.8 MB)
-		asrMb: 0.4 * _GB,
-		asrMmprojMb: 0.2 * _GB,
-		embeddingMb: 0,
-		vadMb: 2 * _MB,
-		wakeWordMb: 4 * _MB,
-		turnDetectorMb: 100 * _MB, // livekit/turn-detector v1.2.2-en SmolLM2-135M
-		emotionMb: 40 * _MB,
-		speakerEncoderMb: 10 * _MB,
-		transientTtsBufferMb: 1.17 * _GB, // omnivoice MaskGIT compute peak
 	}),
 	"desktop-2b": buildEnsemble({
 		tierSlot: "desktop-2b",
@@ -310,7 +293,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		embeddingMb: 0.4 * _GB,
 		vadMb: 2 * _MB,
 		wakeWordMb: 4 * _MB,
-		turnDetectorMb: 400 * _MB, // livekit/turn-detector v0.4.1-intl Qwen2.5-0.5B
+		turnDetectorMb: 400 * _MB, // livekit/turn-detector v0.4.1-intl semantic model
 		emotionMb: 40 * _MB,
 		speakerEncoderMb: 10 * _MB,
 		transientTtsBufferMb: 1.17 * _GB,
@@ -337,7 +320,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		lmKvMb: 2.75 * _GB,
 		drafterMb: 2.6 * _GB,
 		ttsMb: 1.28 * _GB,
-		asrMb: 1.1 * _GB, // qwen3-asr-1.7B on the 27B tier
+		asrMb: 1.1 * _GB, // large Gemma-compatible ASR placeholder budget
 		asrMmprojMb: 0.3 * _GB,
 		embeddingMb: 0.4 * _GB,
 		vadMb: 2 * _MB,
@@ -387,28 +370,24 @@ export function voiceEnsembleSteadyStateMb(slot: VoiceTierSlot): number {
 
 /**
  * Pick the canonical voice-tier slot for an installed text model + device
- * tier. The LM size anchors the slot (`eliza-1-0_8b` → `0_8b`, `2b` → `2b`,
- * …) and the device tier picks `mobile-` vs `desktop-` vs `workstation-`
- * for the voice surrounding it. Mobile always pulls the `mobile-0_8b` slot
- * because the brief defaults mobile to cloud TTS+ASR; only the 0.8B local
- * LM stays available there.
+ * tier. The LM size anchors the slot (`eliza-1-2b` → `2b` (entry tier),
+ * `4b` → `4b`, …) and the device tier picks `mobile-` vs `desktop-` vs
+ * `workstation-` for the voice surrounding it. Mobile always pulls the
+ * `mobile-2b` slot because the brief defaults mobile to cloud TTS+ASR; only
+ * the 2B entry-tier local LM stays available there.
  */
 export function pickVoiceTierSlot(args: {
 	textModelId: string;
 	deviceTier: DeviceTier;
 	mobile?: boolean;
 }): VoiceTierSlot {
-	if (args.mobile) return "mobile-0_8b";
+	if (args.mobile) return "mobile-2b";
 	const id = args.textModelId.toLowerCase();
 	if (id.includes("27b")) return "workstation-27b";
 	if (id.includes("9b")) return "workstation-9b";
 	if (id.includes("4b")) return "desktop-4b";
-	if (id.includes("2b") || id.includes("1_7b")) return "desktop-2b";
-	// 0.8B / 0.6B / unknown small fall through to desktop-0_8b on non-mobile.
-	if (args.deviceTier === "POOR" || args.deviceTier === "OKAY") {
-		return "desktop-0_8b";
-	}
-	return "desktop-0_8b";
+	// 2b is the entry/floor tier; any smaller/unknown id resolves to it.
+	return "desktop-2b";
 }
 
 /**

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,7 +33,7 @@ describe("action benchmark runner", () => {
         filter: "message-route",
         runsPerCase: 2,
         provider: "local-llama-cpp",
-        runtimeModel: "eliza-1-0_8b-trained",
+        runtimeModel: "eliza-1-2b-trained",
         baseUrl: "http://localhost:11434/v1",
       },
       {
@@ -54,8 +55,8 @@ describe("action benchmark runner", () => {
       ELIZA_ACTION_BENCHMARK_TRAJECTORY_DIR: "/tmp/trajectories",
       ELIZA_BENCHMARK_PROVIDER: "local-llama-cpp",
       LOCAL_LLAMA_CPP_API_KEY: "local",
-      ELIZA_LIVE_TEST_SMALL_MODEL: "eliza-1-0_8b-trained",
-      ELIZA_LIVE_TEST_LARGE_MODEL: "eliza-1-0_8b-trained",
+      ELIZA_LIVE_TEST_SMALL_MODEL: "eliza-1-2b-trained",
+      ELIZA_LIVE_TEST_LARGE_MODEL: "eliza-1-2b-trained",
       ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL: "http://localhost:11434/v1",
     });
   });
@@ -65,7 +66,7 @@ describe("action benchmark runner", () => {
       {
         dryRun: false,
         provider: "local-llama-cpp",
-        runtimeModel: "eliza-1-0_8b-trained",
+        runtimeModel: "eliza-1-2b-trained",
       },
       {
         reportMarkdownPath: "/tmp/action.md",
@@ -75,7 +76,7 @@ describe("action benchmark runner", () => {
     );
 
     expect(env.ELIZA_BENCHMARK_USE_MOCKS).toBeUndefined();
-    expect(env.ELIZA_LIVE_TEST_LARGE_MODEL).toBe("eliza-1-0_8b-trained");
+    expect(env.ELIZA_LIVE_TEST_LARGE_MODEL).toBe("eliza-1-2b-trained");
   });
 
   it("requires requested local benchmark models to be served before live runs", async () => {
@@ -86,21 +87,21 @@ describe("action benchmark runner", () => {
           data: [
             { id: "gemma2:2b" },
             { id: "llama3.2:3b" },
-            { id: "eliza-1-0_8b:latest" },
+            { id: "eliza-1-2b:latest" },
           ],
         }),
         { status: 200, headers: { "content-type": "application/json" } },
-      )) as typeof fetch;
+      )) as unknown as typeof fetch;
     try {
       await expect(
         assertLocalBenchmarkModelAvailable({
           provider: "local-llama-cpp",
-          runtimeModel: "eliza-1-0_8b-trained",
+          runtimeModel: "eliza-1-2b-trained",
           baseUrl: "http://localhost:11434/v1/",
           dryRun: false,
         }),
       ).rejects.toThrow(
-        'local action benchmark model "eliza-1-0_8b-trained" is not available',
+        'local action benchmark model "eliza-1-2b-trained" is not available',
       );
       await expect(
         assertLocalBenchmarkModelAvailable({
@@ -113,7 +114,7 @@ describe("action benchmark runner", () => {
       await expect(
         assertLocalBenchmarkModelAvailable({
           provider: "local-llama-cpp",
-          runtimeModel: "eliza-1-0_8b",
+          runtimeModel: "eliza-1-2b",
           baseUrl: "http://localhost:11434/v1/",
           dryRun: false,
         }),
@@ -130,9 +131,9 @@ describe("action benchmark runner", () => {
       outputDir,
       dryRun: true,
       useMocks: true,
-      modelId: "eliza-1-0_8b-trained",
+      modelId: "eliza-1-2b-trained",
       variant: "trained",
-      tier: "0_8b",
+      tier: "2b",
       benchmark: "eliza_harness_action_selection",
       datasetVersion: "eliza-native-v1",
       codeCommit: "abc123",
@@ -158,9 +159,9 @@ describe("action benchmark runner", () => {
     expect(result.stdout).toContain("DRY RUN");
     expect(result.matrixSource).toMatchObject({
       path: join(outputDir, "action-benchmark-report.json"),
-      modelId: "eliza-1-0_8b-trained",
+      modelId: "eliza-1-2b-trained",
       variant: "trained",
-      tier: "0_8b",
+      tier: "2b",
       benchmark: "eliza_harness_action_selection",
       useMocks: true,
     });
@@ -168,9 +169,9 @@ describe("action benchmark runner", () => {
     expect(report).toMatchObject({
       schema: "eliza_action_selection_benchmark_report",
       source: {
-        modelId: "eliza-1-0_8b-trained",
+        modelId: "eliza-1-2b-trained",
         variant: "trained",
-        tier: "0_8b",
+        tier: "2b",
         benchmark: "eliza_harness_action_selection",
         datasetVersion: "eliza-native-v1",
         codeCommit: "abc123",
@@ -180,7 +181,7 @@ describe("action benchmark runner", () => {
       failureModes: { dry_run: 1 },
       results: [
         expect.objectContaining({
-          caseId: "dry-run-0_8b-trained-action-selection",
+          caseId: "dry-run-2b-trained-action-selection",
           prompt: "Can you check my calendar?",
           expectedAction: "CHECK_RUNTIME",
           actualAction: null,
@@ -189,7 +190,7 @@ describe("action benchmark runner", () => {
           trajectoryPath: join(
             outputDir,
             "trajectories",
-            "dry-run-0_8b-trained-action-selection.json",
+            "dry-run-2b-trained-action-selection.json",
           ),
         }),
       ],
@@ -200,7 +201,7 @@ describe("action benchmark runner", () => {
         join(
           outputDir,
           "trajectories",
-          "dry-run-0_8b-trained-action-selection.json",
+          "dry-run-2b-trained-action-selection.json",
         ),
         "utf8",
       ),
@@ -219,11 +220,16 @@ describe("action benchmark runner", () => {
     const result = await runActionBenchmark({
       outputDir,
       dryRun: true,
-      modelId: "eliza-1-0_8b-base",
+      modelId: "eliza-1-2b-base",
       variant: "base",
     });
 
-    expect(result.workspaceRoot).toContain("eliza");
+    // Verify discovery found the real workspace root structurally, not by
+    // assuming the checkout dir is named "eliza" (false in a /tmp worktree,
+    // a fork, or any renamed CI checkout).
+    expect(existsSync(join(result.workspaceRoot, "packages", "app-core"))).toBe(
+      true,
+    );
     expect(result.appCoreRoot).toBe(
       join(result.workspaceRoot, "packages", "app-core"),
     );

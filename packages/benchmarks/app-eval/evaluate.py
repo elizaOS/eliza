@@ -25,6 +25,9 @@ sys.path.insert(0, str(SCRIPT_DIR / "tasks"))
 from research_evaluator import evaluate_task as evaluate_research_task  # noqa: E402
 from coding_evaluator import evaluate_coding_task  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from llm_judge import apply_judge  # noqa: E402
+
 
 def load_task_definitions() -> dict[str, dict[str, Any]]:
     """Load all task definitions keyed by task ID."""
@@ -68,14 +71,14 @@ def evaluate_result(
     """Route to the appropriate evaluator based on task type."""
     task_type = task_def.get("type", "research")
 
+    response_text = result.get("response", "") or result.get("raw_output", "")
     if task_type == "coding":
-        return evaluate_coding_task(task_def, result)
+        eval_out = evaluate_coding_task(task_def, result)
     else:
         # Research evaluator expects (task, response_string)
-        response_text = result.get("response", "")
         eval_result = evaluate_research_task(task_def, response_text)
         # Normalize output keys
-        return {
+        eval_out = {
             "task_id": task_def["id"],
             "score": eval_result.get("overall_score", 0),
             "max_score": task_def.get("evaluation", {}).get("scoring", {}).get("max_score", 10),
@@ -83,6 +86,9 @@ def evaluate_result(
             "feedback": eval_result.get("rubric_band", ""),
             "breakdown": eval_result.get("components", {}),
         }
+    # Optional LLM-judge augmentation (#9475). No-op unless APP_EVAL_LLM_JUDGE=1
+    # and a judge endpoint is configured — the default stays deterministic.
+    return apply_judge(eval_out, task_def, response_text)
 
 
 def build_report(

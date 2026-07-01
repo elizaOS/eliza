@@ -3,7 +3,7 @@ import { useBranding } from "../../../config/branding";
 import { dispatchTutorialChatControl } from "../../../events";
 import type { Tab } from "../../../navigation";
 import { setNavLock } from "../../../navigation/nav-lock";
-import { useApp } from "../../../state";
+import { useAppSelector } from "../../../state";
 import { useShellControllerContext } from "../../shell/ShellControllerContext.hooks";
 import { TutorialNarrator } from "./TutorialNarrator";
 import { TutorialSpotlight } from "./TutorialSpotlight";
@@ -43,9 +43,23 @@ function readComposerText(): string {
   return el instanceof HTMLTextAreaElement ? el.value : "";
 }
 
+/** Read the active conversation id + index off the live chat-sheet (stamped by
+ *  ContinuousChatOverlay). Drives the new-chat / swipe-between-chats frames. */
+function readConversation(): { id: string | null; index: number } {
+  if (typeof document === "undefined") return { id: null, index: -1 };
+  const el = document.querySelector('[data-testid="chat-sheet"]');
+  const id = el?.getAttribute("data-conversation-id") ?? null;
+  const idx = Number.parseInt(
+    el?.getAttribute("data-conversation-index") ?? "",
+    10,
+  );
+  return { id, index: Number.isNaN(idx) ? -1 : idx };
+}
+
 export function TutorialOverlay(): React.ReactElement | null {
   const { active, stepIndex } = useTutorial();
-  const { tab, setTab } = useApp();
+  const tab = useAppSelector((s) => s.tab);
+  const setTab = useAppSelector((s) => s.setTab);
   const controller = useShellControllerContext();
   // Brand the tour copy ("Meet Milady", "Hi, I'm Milady") with the app name.
   const { appName } = useBranding();
@@ -72,6 +86,13 @@ export function TutorialOverlay(): React.ReactElement | null {
   transcriptRef.current = controller?.transcript ?? "";
   const stepStartRef = React.useRef(0);
   const sawPrefillRef = React.useRef(false);
+  // The conversation the current frame STARTED on — captured lazily on the first
+  // tick the chat is mounted — so new-chat / swipe is measured as a change from
+  // it, not an absolute value.
+  const convoBaselineRef = React.useRef<{
+    id: string | null;
+    index: number;
+  } | null>(null);
 
   const advance = React.useCallback(() => {
     if (stepIndex >= steps.length - 1) stopTutorial();
@@ -86,6 +107,7 @@ export function TutorialOverlay(): React.ReactElement | null {
     setDoneStepId(null);
     setLateSkip(false);
     sawPrefillRef.current = false;
+    convoBaselineRef.current = null;
     stepStartRef.current = Date.now();
     if (!step) return;
     if (step.prefill != null) {
@@ -121,7 +143,8 @@ export function TutorialOverlay(): React.ReactElement | null {
   }, [active]);
 
   // The tour never auto-launches. It only starts on an explicit user action —
-  // the home "Tutorial" tile or the launcher view (both call startTutorial()).
+  // the launcher/Tutorial view or Help's "Start the tutorial" link (both call
+  // startTutorial()).
 
   // Sample live UI state and auto-detect completion of the current beat.
   React.useEffect(() => {
@@ -135,6 +158,13 @@ export function TutorialOverlay(): React.ReactElement | null {
       if (step.prefill && composerText === step.prefill) {
         sawPrefillRef.current = true;
       }
+      const convo = readConversation();
+      // Capture the frame's starting conversation once the chat is mounted, then
+      // report a new-chat / swipe as a change away from it.
+      if (convoBaselineRef.current == null && convo.id != null) {
+        convoBaselineRef.current = convo;
+      }
+      const base = convoBaselineRef.current;
       const obs: TutorialObservable = {
         tab: tabRef.current,
         detent: readChatDetent(),
@@ -144,6 +174,10 @@ export function TutorialOverlay(): React.ReactElement | null {
           step.prefill != null &&
           sawPrefillRef.current &&
           composerText.trim() === "",
+        newConversationStarted:
+          base != null && convo.id != null && convo.id !== base.id,
+        conversationSwitched:
+          base != null && convo.index >= 0 && convo.index !== base.index,
         secondsOnStep: secs,
       };
       const check = beat === 2 && step.beat2 ? step.beat2.isDone : step.isDone;
@@ -189,6 +223,7 @@ export function TutorialOverlay(): React.ReactElement | null {
         />
       )}
       <TutorialSpotlight
+        stepId={step.id}
         targetSelector={step.targetSelector}
         dimOutside={!succeeded}
         title={step.title}

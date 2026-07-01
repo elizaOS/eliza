@@ -72,23 +72,13 @@ export const ELIZA_BUILD_STEPS = [
     label: "@elizaos/security",
   },
   {
-    check: path.join(
-      "packages",
-      "plugin-remote-manifest",
-      "dist",
-      "index.js",
-    ),
+    check: path.join("packages", "plugin-remote-manifest", "dist", "index.js"),
     cwd: path.join("packages", "plugin-remote-manifest"),
     args: ["run", "build"],
     label: "@elizaos/plugin-remote-manifest",
   },
   {
-    check: path.join(
-      "packages",
-      "plugin-worker-runtime",
-      "dist",
-      "index.js",
-    ),
+    check: path.join("packages", "plugin-worker-runtime", "dist", "index.js"),
     cwd: path.join("packages", "plugin-worker-runtime"),
     args: ["run", "build"],
     label: "@elizaos/plugin-worker-runtime",
@@ -96,16 +86,16 @@ export const ELIZA_BUILD_STEPS = [
   {
     // plugin-elizacloud imports types from @elizaos/cloud-sdk; without dist
     // its tsup --dts pass fails with TS2307.
-    check: path.join("cloud", "packages", "sdk", "dist", "index.d.ts"),
-    cwd: path.join("cloud", "packages", "sdk"),
+    check: path.join("packages", "cloud", "sdk", "dist", "index.d.ts"),
+    cwd: path.join("packages", "cloud", "sdk"),
     args: ["run", "build"],
     label: "@elizaos/cloud-sdk",
   },
   {
     // plugin-streaming imports isCloudConnected from @elizaos/cloud-routing;
     // without dist its tsup --dts pass fails with TS2307.
-    check: path.join("packages", "cloud-routing", "dist", "index.js"),
-    cwd: path.join("packages", "cloud-routing"),
+    check: path.join("packages", "cloud", "routing", "dist", "index.js"),
+    cwd: path.join("packages", "cloud", "routing"),
     args: ["run", "build"],
     label: "@elizaos/cloud-routing",
   },

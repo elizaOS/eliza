@@ -15,10 +15,12 @@ import type {
 	Eliza1FilesSchema,
 	Eliza1KernelEnumSchema,
 	Eliza1KernelsSchema,
+	Eliza1LibFileEntrySchema,
 	Eliza1LineageSchema,
 	Eliza1ManifestSchema,
 	Eliza1ProvenanceSchema,
 	Eliza1RamBudgetSchema,
+	Eliza1TextRuntimeClassEnumSchema,
 	Eliza1TierEnumSchema,
 	Eliza1VerifiedBackendStatusSchema,
 	Eliza1VoiceSchema,
@@ -27,7 +29,11 @@ import type {
 export type Eliza1Tier = z.infer<typeof Eliza1TierEnumSchema>;
 export type Eliza1Kernel = z.infer<typeof Eliza1KernelEnumSchema>;
 export type Eliza1Backend = z.infer<typeof Eliza1BackendEnumSchema>;
+export type Eliza1TextRuntimeClass = z.infer<
+	typeof Eliza1TextRuntimeClassEnumSchema
+>;
 export type Eliza1FileEntry = z.infer<typeof Eliza1FileEntrySchema>;
+export type Eliza1LibFileEntry = z.infer<typeof Eliza1LibFileEntrySchema>;
 export type Eliza1Files = z.infer<typeof Eliza1FilesSchema>;
 export type Eliza1Lineage = z.infer<typeof Eliza1LineageSchema>;
 export type Eliza1Kernels = z.infer<typeof Eliza1KernelsSchema>;

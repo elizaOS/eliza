@@ -1,4 +1,4 @@
-import { useApp } from "../../state";
+import { useAppSelector } from "../../state";
 import { getConnectorModes } from "./ConnectorModeSelector.helpers";
 
 export type { ConnectorMode } from "./ConnectorModeSelector.helpers";
@@ -14,7 +14,7 @@ export function ConnectorModeSelector({
   onModeChange: (modeId: string) => void;
   elizaCloudConnected?: boolean;
 }) {
-  const { t } = useApp();
+  const t = useAppSelector((s) => s.t);
   const modes = getConnectorModes(connectorId, { elizaCloudConnected });
 
   if (modes.length <= 1) return null;

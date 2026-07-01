@@ -11,9 +11,6 @@ const KNOWN_ADAPTER_TYPES = new Set([
   "claude",
   "codex",
   "opencode",
-  "gemini",
-  "aider",
-  "hermes",
 ]);
 
 export function normalizeTaskAgentAdapter(
@@ -102,7 +99,7 @@ export function resolveSpawnWorkdir(
   userRequest: string,
   explicitWorkdir: string | undefined,
   opts: { lockWorkdir?: boolean } = {},
-): { workdir: string; route?: ResolvedWorkdirRoute } {
+): { workdir: string; route?: ResolvedWorkdirRoute; isolate?: boolean } {
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
     : undefined;
@@ -118,41 +115,93 @@ export function resolveSpawnWorkdir(
   // as long as the project directory is named like the user refers to it.
   const detected = resolveWorkdirByConvention(runtime, task, userRequest);
   if (detected) return { workdir: detected };
+  const fallback = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
+    if (
+      fallback.isolate &&
+      path.resolve(expandedExplicit) === path.resolve(process.cwd())
+    ) {
+      logger.warn(
+        `[workdir-routes] Planner explicit workdir equals runtime cwd (${expandedExplicit}), ignoring it and using configured workspace ${fallback.workdir}`,
+      );
+      return { workdir: fallback.workdir, isolate: true };
+    }
     return { workdir: expandedExplicit };
   }
-  const fallbackWorkdir = resolveDefaultSpawnWorkdir(runtime);
   if (expandedExplicit) {
     logger.warn(
-      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallbackWorkdir}`,
+      `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
     );
   }
-  return { workdir: fallbackWorkdir };
+  // `isolate` is only set when the fallback landed on a SHARED scratch root
+  // (a configured ELIZA_ACP_WORKSPACE_ROOT / ACPX_DEFAULT_CWD) — spawnSession
+  // then gives each concurrent session its own subdir so simultaneous projects
+  // can't collide. cwd (self-checkout) and route/convention/explicit matches
+  // resolve to a specific directory and are never auto-isolated.
+  return fallback.isolate
+    ? { workdir: fallback.workdir, isolate: true }
+    : { workdir: fallback.workdir };
 }
 
 /**
  * Last-resort spawn cwd when a task matched no route/convention/explicit
- * workdir. Honors the documented default ACP workspace settings
- * (`ELIZA_ACP_WORKSPACE_ROOT` / `ACPX_DEFAULT_CWD` — the same ones
- * `AcpService.spawnSession` consults) so simple, non-repo tasks land in a
- * dedicated scratch dir instead of writing into the runtime's own source
- * checkout. Falls back to `process.cwd()` only when neither is configured,
- * preserving the run-in-place default for self-checkout workflows.
+ * workdir. Honors the documented default workspace settings so simple, non-repo
+ * tasks land in a dedicated scratch dir instead of writing into the runtime's
+ * own source checkout.
+ *
+ * Precedence (first configured value wins; each key is read first from the
+ * runtime setting, then — at lower priority — from the config file's env
+ * section / process env via `readConfigEnvKey`):
+ *
+ *   1. `ELIZA_ACP_WORKSPACE_ROOT`  — ACP-specific scratch root
+ *                                     (the one `AcpService.spawnSession` consults)
+ *   2. `ACPX_DEFAULT_CWD`          — ACP default cwd
+ *   3. `ELIZA_WORKSPACE_DIR`       — general workspace dir (set by store builds)
+ *   4. `ELIZA_CODING_WORKSPACE`    — coding-workspace dir
+ *   5. `ELIZA_CODING_DIRECTORY`    — user coding directory (the same key
+ *                                     `WorkspaceService` honors for scratch dirs)
+ *   …falling back to `process.cwd()` only when none is configured, preserving
+ *   the run-in-place default for self-checkout workflows.
+ *
+ * A configured value is treated as a SHARED scratch root → `isolate=true` so
+ * each concurrent spawned session gets its own subdir; the `process.cwd()`
+ * fallback is never isolated.
  */
-function resolveDefaultSpawnWorkdir(
-  runtime: IAgentRuntime | undefined,
-): string {
+function resolveDefaultSpawnWorkdir(runtime: IAgentRuntime | undefined): {
+  workdir: string;
+  isolate: boolean;
+} {
+  const getSetting = (key: string): string | undefined =>
+    typeof runtime?.getSetting === "function"
+      ? (runtime.getSetting(key) as string | undefined)
+      : undefined;
+  // Prefer the ACP-specific scratch root, then the general coding-workspace dirs.
+  // Falling through to ELIZA_WORKSPACE_DIR / ELIZA_CODING_WORKSPACE /
+  // ELIZA_CODING_DIRECTORY means an operator who points the runtime at a coding
+  // workspace (the common case) gets spawns landing THERE instead of in the eliza
+  // runtime root (process.cwd(), e.g. /app) — which otherwise causes "build me X"
+  // tasks to grep the eliza repo in place instead of scaffolding fresh.
+  // ELIZA_CODING_DIRECTORY is included for parity with WorkspaceService, which
+  // honors it for scratch-dir placement (workspace-service.ts).
   const configured =
-    (typeof runtime?.getSetting === "function"
-      ? ((runtime.getSetting("ELIZA_ACP_WORKSPACE_ROOT") as
-          | string
-          | undefined) ??
-        (runtime.getSetting("ACPX_DEFAULT_CWD") as string | undefined))
-      : undefined) ??
+    getSetting("ELIZA_ACP_WORKSPACE_ROOT") ??
+    getSetting("ACPX_DEFAULT_CWD") ??
+    getSetting("ELIZA_WORKSPACE_DIR") ??
+    getSetting("ELIZA_CODING_WORKSPACE") ??
+    getSetting("ELIZA_CODING_DIRECTORY") ??
     readConfigEnvKey("ELIZA_ACP_WORKSPACE_ROOT") ??
-    readConfigEnvKey("ACPX_DEFAULT_CWD");
+    readConfigEnvKey("ACPX_DEFAULT_CWD") ??
+    readConfigEnvKey("ELIZA_WORKSPACE_DIR") ??
+    readConfigEnvKey("ELIZA_CODING_WORKSPACE") ??
+    readConfigEnvKey("ELIZA_CODING_DIRECTORY");
   const trimmed = configured?.trim();
-  return trimmed ? expandHomePath(trimmed) : process.cwd();
+  // A configured workspace ROOT is a shared scratch area for ad-hoc spawned
+  // tasks → isolate=true so each concurrent session gets its own subdir.
+  // With nothing configured we keep process.cwd() WITHOUT isolation, preserving
+  // the run-in-place self-checkout workflow (the agent edits the repo in place).
+  return trimmed
+    ? { workdir: expandHomePath(trimmed), isolate: true }
+    : { workdir: process.cwd(), isolate: false };
 }
 
 export function resolveWorkdirByConvention(

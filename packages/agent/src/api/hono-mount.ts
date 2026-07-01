@@ -20,15 +20,18 @@ interface RuntimeHonoCache {
 }
 
 let cached: RuntimeHonoCache | null = null;
+const INTERNAL_AUTHORIZED_HEADER = "x-eliza-internal-authorized";
+const INTERNAL_TRUSTED_LOCAL_HEADER = "x-eliza-internal-trusted-local";
 
-function getHonoApp(
-  runtime: IAgentRuntime,
-  isAuthorized: (req: Request) => boolean,
-): Hono {
+function getHonoApp(runtime: IAgentRuntime): Hono {
   if (cached && cached.runtime.deref() === runtime) {
     return cached.app;
   }
-  const app = buildHonoAppForRuntime(runtime, { isAuthorized });
+  const app = buildHonoAppForRuntime(runtime, {
+    isAuthorized: (req) => req.headers.get(INTERNAL_AUTHORIZED_HEADER) === "1",
+    isTrustedLocal: (req) =>
+      req.headers.get(INTERNAL_TRUSTED_LOCAL_HEADER) === "1",
+  });
   cached = { runtime: new WeakRef(runtime), app };
   return app;
 }
@@ -38,7 +41,7 @@ export function resetHonoMountCache(): void {
   cached = null;
 }
 
-async function readNodeBody(req: IncomingMessage): Promise<Uint8Array | null> {
+async function readNodeBody(req: IncomingMessage): Promise<ArrayBuffer | null> {
   const method = (req.method ?? "GET").toUpperCase();
   if (method === "GET" || method === "HEAD") return null;
   const chunks: Buffer[] = [];
@@ -46,7 +49,10 @@ async function readNodeBody(req: IncomingMessage): Promise<Uint8Array | null> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   if (chunks.length === 0) return null;
-  return new Uint8Array(Buffer.concat(chunks));
+  const concatenated = Buffer.concat(chunks);
+  const body = new ArrayBuffer(concatenated.byteLength);
+  new Uint8Array(body).set(concatenated);
+  return body;
 }
 
 function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
@@ -95,6 +101,7 @@ export async function tryHandleHonoRuntimeRoute(options: {
   res: ServerResponse;
   runtime: IAgentRuntime | null | undefined;
   isAuthorized: () => boolean;
+  isTrustedLocal?: () => boolean;
 }): Promise<boolean> {
   const { req, res, runtime } = options;
   if (!runtime?.routes?.length) return false;
@@ -114,19 +121,25 @@ export async function tryHandleHonoRuntimeRoute(options: {
     return false;
   }
 
-  const app = getHonoApp(runtime, () => options.isAuthorized());
+  const app = getHonoApp(runtime);
 
   const bodyBytes = await readNodeBody(req);
   const url = new URL(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
   );
+  const headers = nodeHeadersToWeb(req.headers);
+  headers.set(INTERNAL_AUTHORIZED_HEADER, options.isAuthorized() ? "1" : "0");
+  headers.set(
+    INTERNAL_TRUSTED_LOCAL_HEADER,
+    options.isTrustedLocal?.() ? "1" : "0",
+  );
 
   // Hono needs a Web Request. Avoid leaking the body to GET/HEAD.
   const request = new Request(url, {
     method: req.method ?? "GET",
-    headers: nodeHeadersToWeb(req.headers),
-    body: (bodyBytes ?? undefined) as unknown as BodyInit | undefined,
+    headers,
+    body: bodyBytes ?? undefined,
   });
 
   const response: Response = await app.fetch(request);

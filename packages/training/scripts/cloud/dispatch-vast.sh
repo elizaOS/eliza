@@ -15,7 +15,7 @@
 # Usage (forwarded straight from run-on-cloud.sh; see also that script's --help):
 #   dispatch-vast.sh --task build         --gpu h100   [--yes-i-will-pay]
 #   dispatch-vast.sh --task kernel-verify --gpu h100   [--yes-i-will-pay]
-#   dispatch-vast.sh --task bench         --gpu rtx4090 --tier 0_8b [--yes-i-will-pay]
+#   dispatch-vast.sh --task bench         --gpu rtx4090 --tier 2b [--yes-i-will-pay]
 #   dispatch-vast.sh --task train         --gpu b200    --tier 27b  [--yes-i-will-pay]
 #   dispatch-vast.sh --task kernel-verify --gpu h100   --dry-run
 #   dispatch-vast.sh --tier 9b            --dry-run                   # task defaults to train
@@ -39,7 +39,7 @@ TIER_ROUTING_JSON="$HERE/tier-routing.json"
 
 TASK="train"
 GPU=""
-TIER="0_8b"
+TIER="2b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK' (build|kernel-verify|bench|train)" ;; esac
-case "$TIER" in 0_8b|2b|4b|9b|27b) ;; *) die "unknown tier '$TIER' (0_8b|2b|4b|9b|27b)" ;; esac
+case "$TIER" in 2b|4b|9b|27b|27b-256k) ;; *) die "unknown tier '$TIER' (2b|4b|9b|27b|27b-256k)" ;; esac
 
 # --- tier → defaults from tier-routing.json -----------------------------------
 # Use the routing table to pick a default GPU + min VRAM when --gpu is not set.
@@ -109,11 +109,10 @@ gpu_to_train_vast_token() {
 }
 tier_to_registry_key() {
   case "$1" in
-    0_8b) echo qwen3.5-0.8b ;;
-    2b)   echo qwen3.5-2b ;;
-    4b)   echo qwen3.5-4b ;;
-    9b)   echo qwen3.5-9b ;;
-    27b) echo qwen3.6-27b ;;
+    2b)        echo gemma4-e2b ;;
+    4b)        echo gemma4-e4b ;;
+    9b)        echo gemma4-12b ;;
+    27b|27b-256k) echo gemma4-31b ;;
   esac
 }
 

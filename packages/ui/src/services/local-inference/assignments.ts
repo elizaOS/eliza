@@ -14,6 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
+import { isVerifiedCuratedEliza1Download } from "./catalog-policy";
 import { localInferenceRoot } from "./paths";
 import { listInstalledModels } from "./registry";
 import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
@@ -29,6 +30,27 @@ function assignmentsPath(): string {
   return path.join(localInferenceRoot(), ASSIGNMENTS_FILENAME);
 }
 
+function isCuratedEliza1AssignmentId(modelId: string): boolean {
+  const catalog = findCatalogModel(modelId);
+  return (
+    !!catalog &&
+    !catalog.hiddenFromCatalog &&
+    catalog.runtimeRole !== "mtp-drafter" &&
+    isDefaultEligibleId(catalog.id)
+  );
+}
+
+function sanitizeAssignments(assignments: ModelAssignments): ModelAssignments {
+  const next: ModelAssignments = {};
+  for (const [slot, modelId] of Object.entries(assignments) as Array<
+    [AgentModelSlot, string | undefined]
+  >) {
+    if (!modelId || !isCuratedEliza1AssignmentId(modelId)) continue;
+    next[slot] = modelId;
+  }
+  return next;
+}
+
 async function ensureRoot(): Promise<void> {
   await fs.mkdir(localInferenceRoot(), { recursive: true });
 }
@@ -38,7 +60,7 @@ export async function readAssignments(): Promise<ModelAssignments> {
     const raw = await fs.readFile(assignmentsPath(), "utf8");
     const parsed = JSON.parse(raw) as AssignmentsFile;
     if (parsed?.version !== 1 || !parsed.assignments) return {};
-    return parsed.assignments;
+    return sanitizeAssignments(parsed.assignments);
   } catch {
     return {};
   }
@@ -58,23 +80,18 @@ function pickLargestInstalledModel(
  * Build slot recommendations from currently-installed models.
  *
  * Only default-eligible Eliza-1 downloads are auto-recommended.
- * External-scan blobs and ad-hoc Hugging Face downloads are surfaced in
- * the Model Hub for explicit opt-in, but they are NOT auto-assigned to
- * TEXT_SMALL / TEXT_LARGE.
+ * External-scan blobs and ad-hoc Hugging Face downloads are never assigned to
+ * agent slots.
  *
  * Why: external blobs may use newer architectures or quant formats outside
- * the bundled `node-llama-cpp` binding's supported set. Auto-loading
- * an external blob the user never selected silently breaks PROACTIVE_AGENT
- * and other background tasks at boot. The user opted into the external
- * tool, not into Eliza loading those weights through llama.cpp.
+ * the bundled Eliza-1 FFI runtime's supported set. Auto-loading an external
+ * blob the user never selected silently breaks PROACTIVE_AGENT and other
+ * background tasks at boot.
  */
 export function buildRecommendedAssignments(
   installed: InstalledModel[],
 ): ModelAssignments {
-  const ownDownloads = installed.filter(
-    (model) =>
-      model.source === "eliza-download" && isDefaultEligibleId(model.id),
-  );
+  const ownDownloads = installed.filter(isVerifiedCuratedEliza1Download);
   const best = pickLargestInstalledModel(ownDownloads);
   if (!best) return {};
   return {
@@ -113,6 +130,11 @@ export async function setAssignment(
   const current = await readAssignments();
   const next: ModelAssignments = { ...current };
   if (modelId) {
+    if (!isCuratedEliza1AssignmentId(modelId)) {
+      throw new Error(
+        "Local inference assignments are limited to curated Eliza-1 tiers.",
+      );
+    }
     next[slot] = modelId;
   } else {
     delete next[slot];
@@ -128,10 +150,9 @@ export async function setAssignment(
  * `chat | code | tools | tiny | reasoning` and `bucket` ∈
  * `small | mid | large | xl` — no explicit "embedding" tag, because the
  * default catalog ships only generative models. The defensive check below
- * still recognizes an "embedding" category/bucket for catalog additions and
- * for external-scan models whose ids contain a recognizable
- * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
- * `e5-`). External GGUFs without a catalog entry default to generative.
+ * still recognizes an "embedding" category/bucket for future curated catalog
+ * additions and legacy assignment files whose ids contain a recognizable
+ * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`, `e5-`).
  */
 function isEmbeddingModelId(modelId: string): boolean {
   const catalog = findCatalogModel(modelId);
@@ -208,10 +229,7 @@ export async function ensureDefaultAssignment(
 export async function autoAssignAtBoot(
   installed: InstalledModel[],
 ): Promise<ModelAssignments | null> {
-  const ownDownloads = installed.filter(
-    (model) =>
-      model.source === "eliza-download" && isDefaultEligibleId(model.id),
-  );
+  const ownDownloads = installed.filter(isVerifiedCuratedEliza1Download);
   if (ownDownloads.length !== 1) return null;
   const current = await readAssignments();
   if (Object.keys(current).length > 0) return null;

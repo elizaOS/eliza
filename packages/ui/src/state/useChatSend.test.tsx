@@ -9,8 +9,20 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
+
+const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
+const DEDICATED_BASE = "https://agent-456.elizacloud.ai";
+
+function dispatchHandoffPhase(phase: string): void {
+  window.dispatchEvent(
+    new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
+      detail: { agentId: "agent-123", phase },
+    }),
+  );
+}
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -20,6 +32,8 @@ const mocks = vi.hoisted(() => ({
     sendConversationMessageStream: vi.fn(),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
+    renameConversation: vi.fn(() => Promise.resolve()),
+    truncateConversationMessages: vi.fn(() => Promise.resolve()),
     getBaseUrl: vi.fn(() => ""),
   },
 }));
@@ -28,10 +42,16 @@ vi.mock("../api", () => ({
   client: mocks.client,
 }));
 
-vi.mock("../api/client-cloud", () => ({
-  isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
-    !!url &&
-    /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
+// Stub Capacitor so the REAL `../api/client-cloud` (imported by useChatSend)
+// loads cleanly under jsdom. We deliberately do NOT mock client-cloud: these
+// freeze tests must exercise the production `isDirectCloudSharedAgentBase`
+// classifier, not a hand-copied regex that can silently drift from it.
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => false,
+    getPlatform: () => "web",
+  },
+  CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
 function conversation(id: string, roomId: string): Conversation {
@@ -106,6 +126,7 @@ function makeDeps(
     setChatInput: vi.fn(),
     setChatSending: vi.fn(),
     setChatFirstTokenReceived: vi.fn(),
+    setServerTurnStatus: vi.fn(),
     setChatLastUsage: vi.fn(),
     setChatPendingImages: vi.fn(),
     setConversations,
@@ -229,6 +250,40 @@ describe("useChatSend stop handling", () => {
       "ui-chat-stop",
     );
   });
+
+  it("does NOT surface an error notice when the send is aborted by the user", async () => {
+    // A user-initiated stop rejects the stream with AbortError. The send catch
+    // has a dedicated abort branch (drop the empty assistant placeholder, return)
+    // that must NOT fall through to the error-toast path — a Stop is intentional,
+    // not a failure.
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+
+    act(() => {
+      result.current.handleChatStop();
+    });
+
+    await act(async () => {
+      await sendPromise;
+    });
+
+    // The abort path ran (server turn aborted) but no error notice was shown.
+    expect(mocks.client.abortConversationTurn).toHaveBeenCalledTimes(1);
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
 });
 
 function http404(): Error {
@@ -285,14 +340,29 @@ describe("useChatSend 404 recovery", () => {
     ).toBe(false);
   });
 
-  it("recreates the conversation and replays when only the conversation was deleted", async () => {
+  it("recreates the conversation and replays as a token STREAM when only the conversation was deleted", async () => {
     // The normal recoverable case: the conversation row was deleted but the
-    // agent is fine. createConversation succeeds, the message is replayed.
-    mockStream404();
+    // agent is fine. createConversation succeeds, and the message is REPLAYED
+    // through the streaming endpoint (not the non-streaming one) so the reply
+    // tokens in rather than popping in all at once (#10231).
+    const replayTokens: Array<[string, string]> = [];
+    mocks.client.sendConversationMessageStream
+      .mockRejectedValueOnce(http404())
+      .mockImplementationOnce(
+        async (
+          _id: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+        ) => {
+          onToken("hi", "hi");
+          onToken(" back", "hi back");
+          replayTokens.push(["hi", " back"]);
+          return { text: "hi back", completed: true };
+        },
+      );
     mocks.client.createConversation.mockResolvedValue({
       conversation: conversation("conv-new", "room-new"),
     });
-    mocks.client.sendConversationMessage.mockResolvedValue({ text: "hi back" });
     mocks.client.getBaseUrl.mockReturnValue(
       "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
     );
@@ -311,7 +381,13 @@ describe("useChatSend 404 recovery", () => {
 
     expect(deps.setActionNotice).not.toHaveBeenCalled();
     expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
-    expect(mocks.client.sendConversationMessage).toHaveBeenCalledTimes(1);
+    // Original send (404) + streaming replay = two stream calls; the
+    // non-streaming endpoint is never used.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+    // The replay actually streamed tokens.
+    expect(replayTokens).toEqual([["hi", " back"]]);
+    expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
     const remaining = deps.conversationMessagesRef.current;
     expect(
       remaining.some((m) => m.role === "user" && m.text === "hello there"),
@@ -344,5 +420,536 @@ describe("useChatSend 404 recovery", () => {
     expect(
       remaining.some((m) => m.role === "assistant" && !m.text.trim()),
     ).toBe(false);
+  });
+});
+
+describe("useChatSend always streams (#9174)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("uses the streaming endpoint on the happy path and never the non-streaming one", async () => {
+    const tokens: Array<[string, string]> = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        // Cloud + local both drive the UI through this same callback.
+        onToken("Hello", "Hello");
+        onToken(" world", "Hello world");
+        tokens.push(["Hello", " world"]);
+        return { text: "Hello world", completed: true };
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // Happy path streams.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    // The non-streaming endpoint is never used — even 404 recovery streams now
+    // (#10231).
+    expect(mocks.client.sendConversationMessage).not.toHaveBeenCalled();
+    // Streaming context is active by default — the first-token signal fired as
+    // tokens arrived through onToken.
+    expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
+    // The streaming callback actually received incremental tokens.
+    expect(tokens).toEqual([["Hello", " world"]]);
+  });
+});
+
+function httpStatusError(status: number, message = "Error"): Error {
+  return Object.assign(new Error(message), { status });
+}
+
+describe("useChatSend non-404 send failures", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces a notice + keeps the user message on a transient (non-404) send failure", async () => {
+    // Regression: non-404 send failures (network drop mid-stream / 5xx) fell to
+    // a silent else branch that only reloaded — the typing dots vanished with no
+    // error, reading as "my message was lost". Now it drops only the empty
+    // assistant placeholder, keeps the user bubble, and surfaces a notice.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(503, "Service Unavailable"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("are you there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("waking up"),
+      "error",
+      expect.any(Number),
+    );
+    const remaining = deps.conversationMessagesRef.current;
+    expect(
+      remaining.some((m) => m.role === "user" && m.text === "are you there"),
+    ).toBe(true);
+    expect(
+      remaining.some((m) => m.role === "assistant" && !m.text.trim()),
+    ).toBe(false);
+  });
+
+  it("distinguishes a first-token timeout from a network drop in the notice copy", async () => {
+    // A timeout means the agent WAS reached but did not respond in time, so
+    // "check your connection" is the wrong remedy. Timeout → slow-response copy;
+    // a genuine network drop keeps the connection copy.
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("Request timed out"), { kind: "timeout" }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("are you there", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("took too long"),
+      "error",
+      expect.any(Number),
+    );
+    // Must NOT show the misleading network/connection copy for a timeout.
+    expect(deps.setActionNotice).not.toHaveBeenCalledWith(
+      expect.stringContaining("check your connection"),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("keeps the connection copy for a genuine network drop", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      Object.assign(new Error("Failed to fetch"), { kind: "network" }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("check your connection"),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("does not reload (which could re-fail) on an auth-failure send error, and notifies", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      httpStatusError(401, "Unauthorized"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("sign in again"),
+      "error",
+      expect.any(Number),
+    );
+    // Auth failures skip the reconcile reload (it would just fail again).
+    expect(deps.loadConversationMessages).not.toHaveBeenCalled();
+  });
+});
+
+describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("queues a message sent during the handoff window and delivers it to the dedicated agent after switch (not lost, not sent to shared)", async () => {
+    // The bug this proves we fixed: while the handoff is migrating the user is
+    // still on the SHARED agent, whose transcript was already snapshotted. The
+    // dedicated import is skip-all idempotent, so a message that reaches the
+    // shared history after the snapshot is silently lost. The freeze must hold
+    // the message off the shared agent and deliver it to the dedicated once the
+    // client has switched.
+    const basesSeenAtSend: string[] = [];
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      basesSeenAtSend.push(mocks.client.getBaseUrl());
+      return { text: "ack", completed: true };
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    // Handoff starts: the window opens.
+    act(() => dispatchHandoffPhase("migrating"));
+
+    // The user fires a message DURING the window. sendChatText resolves only
+    // once the message is actually delivered, so we don't await it here — it
+    // must stay pending (queued) until the switch settles.
+    let sendSettled = false;
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current
+        .sendChatText("during handoff", { conversationId: "conv-1" })
+        .then(() => {
+          sendSettled = true;
+        });
+      // Give the queued flush a chance to (not) run.
+      await Promise.resolve();
+    });
+
+    // GUARANTEE 1: nothing was dispatched to the shared agent — the message did
+    // not reach the post-snapshot shared history, so it can't be lost.
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+    expect(sendSettled).toBe(false);
+
+    // The switch completes: onSwitch re-points the live client at the dedicated
+    // container BEFORE the `switched` phase is dispatched (mirrors the real
+    // handoff ordering), then the phase fires and unfreezes the queue.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await sendPromise;
+    });
+
+    // GUARANTEE 2: the queued message was delivered exactly once, and only after
+    // the client pointed at the dedicated container.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    const [convIdArg, textArg] =
+      mocks.client.sendConversationMessageStream.mock.calls[0];
+    expect(convIdArg).toBe("conv-1");
+    expect(textArg).toBe("during handoff");
+    expect(basesSeenAtSend).toEqual([DEDICATED_BASE]);
+    expect(sendSettled).toBe(true);
+  });
+
+  it("flushes the queue to the shared agent (no message lost) when the handoff times out", async () => {
+    // Fallback path: the dedicated container never became ready. No switch
+    // happened and no snapshot landed, so the user safely stays on the shared
+    // agent — the queued message must still be delivered there, never dropped.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ack",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    act(() => dispatchHandoffPhase("migrating"));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("during handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    // Handoff gives up — unfreeze and drain to the (still-active) shared agent.
+    await act(async () => {
+      dispatchHandoffPhase("timed-out");
+      await sendPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    const [convIdArg, textArg] =
+      mocks.client.sendConversationMessageStream.mock.calls[0];
+    expect(convIdArg).toBe("conv-1");
+    expect(textArg).toBe("during handoff");
+  });
+
+  it("re-checks the freeze mid-drain: a message queued behind an in-flight send when `migrating` fires is NOT drained to shared after the snapshot", async () => {
+    // Regression for the in-flight-drain race: send A is already mid-`await`
+    // when the handoff begins; the user then fires send B during the window.
+    // B is enqueued behind A's still-running drain loop. When A resolves the
+    // loop must NOT shift B and dispatch it to the (post-snapshot) SHARED agent
+    // — it must re-check the freeze, break, and leave B for the post-switch
+    // flush. Without the per-iteration freeze re-check, B leaks to shared and is
+    // lost to the skip-all import.
+    const basesSeenAtSend: string[] = [];
+    let releaseA: (() => void) | undefined;
+    const aInFlight = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    let callCount = 0;
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => {
+      const index = callCount++;
+      basesSeenAtSend.push(mocks.client.getBaseUrl());
+      if (index === 0) await aInFlight; // A blocks until we release it
+      return { text: "ack", completed: true };
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    // Send A starts on the SHARED base BEFORE the handoff — it is not frozen, so
+    // it enters the drain loop and parks mid-await (the drain loop stays busy).
+    let aPromise: Promise<void> | undefined;
+    await act(async () => {
+      aPromise = result.current.sendChatText("before handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+
+    // Handoff begins while A is still in flight, then the user fires B.
+    act(() => dispatchHandoffPhase("migrating"));
+    let bPromise: Promise<void> | undefined;
+    await act(async () => {
+      bPromise = result.current.sendChatText("during handoff", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+
+    // Release A; the still-running drain loop must break on the freeze re-check
+    // rather than draining B to shared.
+    await act(async () => {
+      releaseA?.();
+      await aPromise;
+      await Promise.resolve();
+    });
+
+    // GUARANTEE: B was NOT sent to shared — only A's send happened, on SHARED.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(basesSeenAtSend).toEqual([SHARED_BASE]);
+
+    // Switch settles: the client repoints to the dedicated, the phase fires, and
+    // B drains to the dedicated container exactly once.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    await act(async () => {
+      dispatchHandoffPhase("switched");
+      await bPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(2);
+    expect(basesSeenAtSend).toEqual([SHARED_BASE, DEDICATED_BASE]);
+    const [, secondText] =
+      mocks.client.sendConversationMessageStream.mock.calls[1];
+    expect(secondText).toBe("during handoff");
+  });
+
+  it("does not freeze when no handoff is in flight — sends dispatch inline (flag-off parity)", async () => {
+    // With `preferSharedCloudTier` off no `migrating` phase ever fires, so the
+    // freeze flag stays false and the queue drains immediately, exactly as
+    // before this change.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ack",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hello", { conversationId: "conv-1" });
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+    mocks.client.truncateConversationMessages.mockResolvedValue(undefined);
+  });
+
+  function seedFailedTurn(deps: UseChatSendDeps): void {
+    const seeded: ConversationMessage[] = [
+      { id: "u1", role: "user", text: "hello", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "I'm having trouble reaching the model provider.",
+        timestamp: 2,
+        failureKind: "provider_issue",
+      },
+    ];
+    deps.conversationMessagesRef.current = seeded;
+  }
+
+  it("truncates from the user message (inclusive) and resends, leaving exactly one user turn", async () => {
+    // Regression: the old retry only dropped the failed assistant bubble in
+    // memory and resent, producing [Q, fail, Q-dup, new]. The fix mirrors
+    // handleChatEdit — truncate [Q, fail] server-side, then re-run Q in place.
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "recovered reply",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    seedFailedTurn(deps);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    // The turn was truncated from the user message inclusive, in place.
+    expect(mocks.client.truncateConversationMessages).toHaveBeenCalledTimes(1);
+    expect(mocks.client.truncateConversationMessages).toHaveBeenCalledWith(
+      "conv-1",
+      "u1",
+      { inclusive: true },
+    );
+    // The text was resent once (re-run), not as a brand-new extra turn.
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+
+    // No duplicate user message: exactly one "hello" user turn remains, and the
+    // failed assistant bubble (a1) is gone.
+    const remaining = deps.conversationMessagesRef.current;
+    const userHellos = remaining.filter(
+      (m) => m.role === "user" && m.text === "hello",
+    );
+    expect(userHellos).toHaveLength(1);
+    expect(remaining.some((m) => m.id === "a1")).toBe(false);
+  });
+
+  it("falls back to in-memory resend for an optimistic (temp-) user turn", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "recovered reply",
+      completed: true,
+    });
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    // An optimistic user turn whose server id hasn't landed yet — not safe to
+    // truncate server-side, so retry drops the failed bubble in memory + resends.
+    deps.conversationMessagesRef.current = [
+      { id: "temp-u1", role: "user", text: "hello", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "I'm having trouble reaching the model provider.",
+        timestamp: 2,
+        failureKind: "provider_issue",
+      },
+    ];
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    // temp- user id → cannot truncate; resend still fires.
+    expect(mocks.client.truncateConversationMessages).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend empty-reply failure surfacing (#10231)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces a failureKind gate (not a silent drop) when the streamed terminal reply is empty", async () => {
+    // Regression: the empty-text terminal handler dropped any empty reply
+    // unconditionally, so an empty-text + failureKind response (e.g. the
+    // "Connect a provider" gate) vanished with no error. It must stamp the
+    // failureKind onto the assistant turn instead.
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "",
+      completed: true,
+      failureKind: "no_provider",
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant.length).toBe(1);
+    expect(assistant[0]?.failureKind).toBe("no_provider");
+  });
+
+  it("still drops an empty terminal reply that carries no failureKind", async () => {
+    mocks.client.sendConversationMessageStream.mockImplementation(async () => ({
+      text: "",
+      completed: true,
+    }));
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.filter(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant.length).toBe(0);
   });
 });

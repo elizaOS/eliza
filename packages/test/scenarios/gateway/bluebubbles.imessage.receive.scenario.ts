@@ -2,6 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectMemoryWrite } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "bluebubbles.imessage.receive",
   title:
     "BlueBubbles webhook inbound iMessage writes memory and reaches the agent",

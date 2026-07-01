@@ -10,38 +10,44 @@
  * @module security/external-content
  */
 
-/**
- * Patterns that may indicate prompt injection attempts.
- * These are logged for monitoring but content is still processed (wrapped safely).
- */
-const SUSPICIOUS_PATTERNS = [
-	/ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)/i,
-	/disregard\s+(all\s+)?(previous|prior|above)/i,
-	/forget\s+(everything|all|your)\s+(instructions?|rules?|guidelines?)/i,
-	/you\s+are\s+now\s+(a|an)\s+/i,
-	/new\s+instructions?:/i,
-	/system\s*:?\s*(prompt|override|command)/i,
-	/\bexec\b.*command\s*=/i,
-	/elevated\s*=\s*true/i,
-	/rm\s+-rf/i,
-	/delete\s+all\s+(emails?|files?|data)/i,
-	/<\/?system>/i,
-	/\]\s*\n\s*\[?(system|assistant|user)\]?:/i,
-];
+import {
+	detectObfuscatedKeywordMatches,
+	EXTERNAL_CONTENT_RISK_PATTERNS,
+	INJECTION_KEYWORDS,
+	INJECTION_PATTERNS,
+} from "../features/trust/injection-primitives.ts";
 
 /**
  * Check if content contains suspicious patterns that may indicate injection.
  *
+ * Draws entirely from the shared injection-primitives bank (issue #9949): the
+ * prompt-injection phrasing in `INJECTION_PATTERNS`, the external-content
+ * dangerous-command / forged-delimiter indicators in
+ * `EXTERNAL_CONTENT_RISK_PATTERNS`, and obfuscation-aware keyword matching over
+ * `INJECTION_KEYWORDS`. There is no second pattern set here. Matches are logged
+ * for monitoring but content is still processed (wrapped safely).
+ *
  * @param content - The content to check
- * @returns Array of matched pattern sources (empty if none)
+ * @returns Array of matched pattern sources / keywords (empty if none)
  */
 export function detectSuspiciousPatterns(content: string): string[] {
-	const matches: string[] = [];
 	const safe = content.length > 100_000 ? content.slice(0, 100_000) : content;
-	for (const pattern of SUSPICIOUS_PATTERNS) {
+	const matches: string[] = [];
+	for (const pattern of INJECTION_PATTERNS) {
 		if (pattern.test(safe)) {
 			matches.push(pattern.source);
 		}
+	}
+	for (const pattern of EXTERNAL_CONTENT_RISK_PATTERNS) {
+		if (pattern.test(safe)) {
+			matches.push(pattern.source);
+		}
+	}
+	for (const keyword of detectObfuscatedKeywordMatches(
+		safe,
+		INJECTION_KEYWORDS,
+	)) {
+		matches.push(keyword);
 	}
 	return matches;
 }
@@ -228,6 +234,28 @@ export function wrapExternalContent(
 		sanitized,
 		EXTERNAL_CONTENT_END,
 	].join("\n");
+}
+
+/**
+ * Returns the original payload from a string produced by
+ * {@link wrapExternalContent}, or null when the text is not wrapped.
+ */
+export function extractWrappedExternalContent(content: string): string | null {
+	const start = content.indexOf(EXTERNAL_CONTENT_START);
+	if (start < 0) return null;
+
+	const payloadStart = start + EXTERNAL_CONTENT_START.length;
+	const end = content.indexOf(EXTERNAL_CONTENT_END, payloadStart);
+	if (end < 0) return null;
+
+	const inner = content.slice(payloadStart, end);
+	const metadataSeparator = "\n---\n";
+	const separatorIndex = inner.indexOf(metadataSeparator);
+	const payload =
+		separatorIndex >= 0
+			? inner.slice(separatorIndex + metadataSeparator.length)
+			: inner;
+	return payload.trim();
 }
 
 /**

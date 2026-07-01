@@ -24,13 +24,6 @@ committed tripwire test so it is change-detected. Status below.
 
 ## Fixed
 
-- **plugin-vincent — TUI read wrong wallet fields.** `VincentTuiView` read
-  `walletAddresses.evm` / `.solana`, but the canonical `WalletAddresses` type
-  (`@elizaos/shared`) and the GUI `WalletStatusCard` use `.evmAddress` /
-  `.solanaAddress`, so the TUI always rendered null addresses. Fixed + locked by
-  the new view tests. (commit: "fix(vincent): TUI view read canonical wallet
-  address fields + tests".)
-
 - **plugin-companion — EmotePicker grid diverged from the catalog.** The picker
   shipped a hardcoded 29-item grid where 17 ids were absent from `EMOTE_CATALOG`
   (clicking them → 400 "Unknown emote" at `POST /api/emote`) and 28 real catalog
@@ -45,15 +38,6 @@ committed tripwire test so it is change-detected. Status below.
   asserts list==plugin.ts==interact() and guards the empty-list regression.
   (commit: "fix(app-model-tester): surface TUI capabilities".)
 
-- **plugin-clawville — building ids stale vs the live API.** Fixed without
-  guessing the full registry: `resolveBuildingIdFromText` is now perception-aware
-  — it resolves move/visit targets to the REAL live ids (matching live
-  `nearbyBuildings` + remapping a matched hardcoded building via shared
-  label/alias tokens), falling back to the hardcoded id only when no live match.
-  Tests assert the remap against recorded ground truth (squidward→memory-rag,
-  patrick→agent-security). (commit: "fix(clawville): resolve building targets to
-  REAL live ids via perception".)
-
 - **plugin-feed — FeedAgentSummary type lie.** `getFeedAgentSummary()` only
   proxies the upstream `/agent/summary` body but was typed `Promise<FeedAgentSummary>`
   ({id,name,summary,recentActivity}) — a shape it never builds and the surface
@@ -66,16 +50,14 @@ committed tripwire test so it is change-detected. Status below.
 
 ## Open — deferred
 
-_(none — all three formerly-deferred bugs are fixed: app-model-tester TUI,
-clawville building ids, feed type lie.)_
+_(none — both formerly-deferred bugs are fixed: app-model-tester TUI,
+feed type lie.)_
 
 ## Pre-existing (not caused by this work; noted for the owner)
 
 - **plugin-task-coordinator — NotesPanel.test.tsx: 18 failures** under bun+jsdom
   (`window.localStorage.clear is not a function`) on the untouched baseline. A
   jsdom localStorage shim in the shared test env would fix it.
-- **plugin-clawville — biome formatting error** in `ClawvilleOperatorSurface.tsx`
-  (~line 575, onClick arrow wrap), present before this work.
 - **test:e2e:manual relative-config quirk** — some plugins' `test:e2e:manual`
   script's `../../vitest.config.ts` misresolves under bunx vitest v4; worked
   around by a package-local `vitest.config.ts` for the new `test` script.

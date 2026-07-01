@@ -12,8 +12,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  getViewModalities,
   logger,
   type Plugin,
+  resolveViewKind,
   type ViewDeclaration,
   type ViewType,
 } from "@elizaos/core";
@@ -68,33 +70,42 @@ async function resolvePluginPackageDir(
 ): Promise<string | undefined> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
+  const packageNames = pluginName.startsWith("@")
+    ? [pluginName]
+    : [pluginName, `@elizaos/plugin-${pluginName}`];
 
-  // Preferred: resolve the package's own package.json directly. Requires the
-  // package to expose "./package.json" in its exports map.
-  try {
-    return path.dirname(req.resolve(`${pluginName}/package.json`));
-  } catch {
-    // Fall through to resolving the package entry instead.
+  for (const packageName of packageNames) {
+    // Preferred: resolve the package's own package.json directly. Requires the
+    // package to expose "./package.json" in its exports map.
+    try {
+      return path.dirname(req.resolve(`${packageName}/package.json`));
+    } catch {
+      // Fall through to resolving the package entry instead.
+    }
   }
 
   // Fallback: resolve the package main entry (the "." export always exists for
   // a loadable plugin) and walk up to the directory that owns its package.json.
   // This keeps view bundles resolvable for plugins that don't export
   // "./package.json".
-  try {
-    let dir = path.dirname(req.resolve(pluginName));
-    for (let depth = 0; depth < 8; depth++) {
-      if (await fileExists(path.join(dir, "package.json"))) return dir;
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
+  for (const packageName of packageNames) {
+    try {
+      let dir = path.dirname(req.resolve(packageName));
+      for (let depth = 0; depth < 8; depth++) {
+        if (await fileExists(path.join(dir, "package.json"))) return dir;
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    } catch {
+      // Package is not reachable from this module under this name.
     }
-  } catch {
-    // Package is not reachable from this module at all.
   }
 
-  const workspaceDir = await resolveWorkspacePluginPackageDir(pluginName);
-  if (workspaceDir) return workspaceDir;
+  for (const packageName of packageNames) {
+    const workspaceDir = await resolveWorkspacePluginPackageDir(packageName);
+    if (workspaceDir) return workspaceDir;
+  }
 
   logger.warn(
     { src: "ViewRegistry", pluginName },
@@ -259,32 +270,40 @@ export async function registerPluginViews(
 
   const registered: ViewRegistryEntry[] = [];
   for (const view of views) {
-    const entry = await buildEntry(view, plugin.name, resolvedDir);
-    const key = viewRegistryKey(entry.id, entry.viewType);
-    const existing = registry.get(key);
-    if (existing && existing.pluginName !== plugin.name) {
-      logger.warn(
+    for (const viewType of getViewModalities(view)) {
+      const entry = await buildEntry(
+        { ...view, viewType },
+        plugin.name,
+        resolvedDir,
+      );
+      const key = viewRegistryKey(entry.id, entry.viewType);
+      const existing = registry.get(key);
+      if (existing && existing.pluginName !== plugin.name) {
+        logger.warn(
+          {
+            src: "ViewRegistry",
+            viewId: entry.id,
+            viewType: entry.viewType,
+            existingPlugin: existing.pluginName,
+            incomingPlugin: plugin.name,
+          },
+          `View id "${entry.id}" (${entry.viewType}) from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+        );
+        continue;
+      }
+      registry.set(key, entry);
+      registered.push(entry);
+      logger.debug(
         {
           src: "ViewRegistry",
           viewId: entry.id,
-          existingPlugin: existing.pluginName,
-          incomingPlugin: plugin.name,
+          viewType: entry.viewType,
+          pluginName: entry.pluginName,
+          available: entry.available,
         },
-        `View id "${entry.id}" from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+        `Registered view "${entry.id}" (${entry.viewType}) from plugin "${plugin.name}"`,
       );
-      continue;
     }
-    registry.set(key, entry);
-    registered.push(entry);
-    logger.debug(
-      {
-        src: "ViewRegistry",
-        viewId: entry.id,
-        pluginName: entry.pluginName,
-        available: entry.available,
-      },
-      `Registered view "${entry.id}" from plugin "${plugin.name}"`,
-    );
   }
 
   // Queue embedding computation in the background — non-blocking.
@@ -334,38 +353,47 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
-  for (const view of BUILTIN_VIEWS) {
-    const viewType = normalizeViewType(view.viewType);
-    const key = viewRegistryKey(view.id, viewType);
-    if (registry.has(key)) {
-      // Already registered (e.g. called twice at startup). Skip silently.
-      continue;
+  for (const sourceView of BUILTIN_VIEWS) {
+    for (const viewType of getViewModalities(sourceView)) {
+      const view = { ...sourceView, viewType };
+      const key = viewRegistryKey(view.id, viewType);
+      if (registry.has(key)) {
+        // Already registered (e.g. called twice at startup). Skip silently.
+        continue;
+      }
+      const platform: AgentPlatform =
+        (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
+      const pluginDir = AGENT_PACKAGE_DIR;
+      const hasHeroImage = pluginDir
+        ? hasDeclaredHeroOnDiskSync({
+            pluginDir,
+            heroImagePath: view.heroImagePath,
+          })
+        : false;
+      const params = new URLSearchParams();
+      if (viewType !== DEFAULT_VIEW_TYPE) {
+        params.set("viewType", viewType);
+      }
+      const query = params.toString();
+      const entry: ViewRegistryEntry = {
+        ...view,
+        viewType,
+        pluginName,
+        pluginDir,
+        bundleUrl: undefined,
+        bundleUrlVersioned: undefined,
+        heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero${
+          query ? `?${query}` : ""
+        }`,
+        hasHeroImage,
+        available: true,
+        loadedAt,
+        platform,
+        builtin: true,
+      };
+      registry.set(key, entry);
+      registered.push(entry);
     }
-    const platform: AgentPlatform =
-      (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
-    const pluginDir = AGENT_PACKAGE_DIR;
-    const hasHeroImage = pluginDir
-      ? hasDeclaredHeroOnDiskSync({
-          pluginDir,
-          heroImagePath: view.heroImagePath,
-        })
-      : false;
-    const entry: ViewRegistryEntry = {
-      ...view,
-      viewType,
-      pluginName,
-      pluginDir,
-      bundleUrl: undefined,
-      bundleUrlVersioned: undefined,
-      heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero`,
-      hasHeroImage,
-      available: true,
-      loadedAt,
-      platform,
-      builtin: true,
-    };
-    registry.set(key, entry);
-    registered.push(entry);
   }
   // Called on every /api/views request and again during deferred startup, but
   // registration is idempotent — only the first call adds entries. Stay silent
@@ -390,18 +418,33 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
 /**
  * List all registered views.
  *
- * @param filter.developerMode - When `false` (default) hidden developer-only
- *   views are excluded. Pass `true` to include them.
+ * Visibility follows the four-kind taxonomy ({@link resolveViewKind}):
+ * `system`/`release` views are always listed. `developer` views are listed
+ * only when `developerMode` is true. `preview` views are listed only when
+ * `includeAllKinds` is true. The dashboard's `GET /api/views` passes
+ * `includeAllKinds: true` so the client receives every view (with its
+ * `viewKind`) and applies the user's Settings toggles itself — the server
+ * cannot know whether it is talking to a dev build or which toggles are on.
+ *
+ * @param filter.developerMode - Include `developer`-kind views. Default false.
+ * @param filter.includeAllKinds - Include every kind regardless of toggle
+ *   (developer + preview). Default false.
  */
 export function listViews(filter?: {
   developerMode?: boolean;
+  includeAllKinds?: boolean;
   viewType?: ViewType;
 }): ViewRegistryEntry[] {
   const developerMode = filter?.developerMode ?? false;
+  const includeAllKinds = filter?.includeAllKinds ?? false;
   const requestedViewType = filter?.viewType ?? DEFAULT_VIEW_TYPE;
   const byId = new Map<string, ViewRegistryEntry>();
   for (const entry of registry.values()) {
-    if (entry.developerOnly && !developerMode) continue;
+    if (!includeAllKinds) {
+      const kind = resolveViewKind(entry);
+      if (kind === "preview") continue;
+      if (kind === "developer" && !developerMode) continue;
+    }
     const existing = byId.get(entry.id);
     if (!existing) {
       if (

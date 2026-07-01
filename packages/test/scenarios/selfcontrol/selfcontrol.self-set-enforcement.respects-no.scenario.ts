@@ -1,6 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
+  lane: "live-only",
   id: "selfcontrol.self-set-enforcement.respects-no",
   title: "Agent respects user's refusal and does not block",
   domain: "selfcontrol",

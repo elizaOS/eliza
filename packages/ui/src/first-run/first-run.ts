@@ -23,8 +23,16 @@ export type FirstRunRuntime = "local" | "cloud" | "remote";
  * - `all-local` runs every model on-device (kicks off model downloads now).
  * - `cloud-inference` keeps the agent local but routes inference through Eliza
  *   Cloud (maps to the `elizacloud-hybrid` server target).
+ * - `configure-later` is the "bring your own keys / Other" path: the agent runs
+ *   locally with NO model wired and NO local download — the user configures a
+ *   provider (Anthropic sub / Codex / z.ai / Kimi) in Settings afterward. It is
+ *   the one local sub-choice that leaves `needsProviderSetup` true so the finish
+ *   path surfaces the "Open Settings" handoff.
  */
-export type FirstRunLocalInference = "all-local" | "cloud-inference";
+export type FirstRunLocalInference =
+  | "all-local"
+  | "cloud-inference"
+  | "configure-later";
 
 export const FIRST_RUN_STEPS: readonly FirstRunStep[] = [
   "runtime",
@@ -93,8 +101,10 @@ function trimmedOrDefault(value: string, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
-export function normalizeFirstRunName(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
+export function normalizeFirstRunName(
+  value: string | null | undefined,
+): string {
+  return (value ?? "").trim().replace(/\s+/g, " ");
 }
 
 function isFirstRunStep(value: unknown): value is FirstRunStep {
@@ -108,7 +118,11 @@ function isFirstRunRuntime(value: unknown): value is FirstRunRuntime {
 function isFirstRunLocalInference(
   value: unknown,
 ): value is FirstRunLocalInference {
-  return value === "all-local" || value === "cloud-inference";
+  return (
+    value === "all-local" ||
+    value === "cloud-inference" ||
+    value === "configure-later"
+  );
 }
 
 function readStringField(record: Record<string, unknown>, key: string): string {
@@ -421,7 +435,13 @@ export function buildFirstRunSubmitPlan(args: {
     firstRunCloudApiKey: "",
     firstRunProvider: cloudInference ? "elizacloud" : "",
     firstRunApiKey: "",
-    omitRuntimeProvider: !cloudInference,
+    // Omit the runtime provider only when a provider is implicitly settled:
+    // `all-local` (the on-device model IS the provider). `configure-later`
+    // ("bring your own keys") deliberately does NOT omit, so no llmText route
+    // is wired and `needsProviderSetup` stays true → the finish path opens
+    // Settings. Cloud / cloud-inference wire `elizacloud` above, so this stays
+    // behavior-preserving for them (they already have a route).
+    omitRuntimeProvider: args.draft.localInference === "all-local",
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",
     firstRunPrimaryModel: "",

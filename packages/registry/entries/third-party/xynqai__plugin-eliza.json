@@ -1,0 +1,18 @@
+{
+  "package": "@xynqai/plugin-eliza",
+  "repository": "github:visionsXBT/xynq",
+  "kind": "plugin",
+  "description": "XYNQ decentralized inference for ElizaOS — OpenAI-compatible models, live GPU mesh status, USDC worker earnings, and Solana credit top-ups.",
+  "homepage": "https://github.com/visionsXBT/xynq/tree/main/plugin-eliza",
+  "version": "0.1.1",
+  "directory": "plugin-eliza",
+  "tags": [
+    "llm",
+    "inference",
+    "decentralized",
+    "solana",
+    "gpu",
+    "crypto",
+    "usdc"
+  ]
+}

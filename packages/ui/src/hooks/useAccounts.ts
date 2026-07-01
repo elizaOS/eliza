@@ -21,17 +21,8 @@ import type {
   AccountsListResponse,
   AccountTestResult,
 } from "../api/client-agent";
+import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
-
-type ActionTone = "info" | "success" | "error";
-
-type ActionNoticeFn = (
-  text: string,
-  tone?: ActionTone,
-  ttlMs?: number,
-  once?: boolean,
-  busy?: boolean,
-) => void;
 
 export interface UseAccountsOptions {
   setActionNotice?: ActionNoticeFn;
@@ -110,6 +101,8 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<Set<string>>(() => new Set<string>());
   const mountedRef = useRef(true);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const notify = useCallback(
     (prefix: string, err: unknown) => {
@@ -173,7 +166,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const patch = useCallback<UseAccountsResult["patch"]>(
     async (providerId, accountId, body) => {
       markSaving(accountId, true);
-      const previous = data;
+      const previous = dataRef.current;
       // Optimistic update for safe fields.
       setData((prev) => {
         if (!prev) return prev;
@@ -200,7 +193,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
         markSaving(accountId, false);
       }
     },
-    [data, markSaving, notify],
+    [markSaving, notify],
   );
 
   const remove = useCallback<UseAccountsResult["remove"]>(
@@ -285,7 +278,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     async (providerId, strategy) => {
       const key = `strategy:${providerId}`;
       markSaving(key, true);
-      const previous = data;
+      const previous = dataRef.current;
       setData((prev) => {
         if (!prev) return prev;
         return {
@@ -304,7 +297,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
         markSaving(key, false);
       }
     },
-    [data, markSaving, notify],
+    [markSaving, notify],
   );
 
   useEffect(() => {
@@ -315,11 +308,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     };
   }, [refresh]);
 
-  useIntervalWhenDocumentVisible(
-    () => void refresh(),
-    pollMs,
-    pollMs > 0,
-  );
+  useIntervalWhenDocumentVisible(() => void refresh(), pollMs, pollMs > 0);
 
   return {
     data,

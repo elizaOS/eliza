@@ -26,11 +26,6 @@ export interface MediaPipeFaceDetection {
 }
 
 export class MediaPipeFaceDetector {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  constructor(_config: MediaPipeFaceConfig = {}) {
-    /* config retained for API stability */
-  }
-
   static async isAvailable(): Promise<boolean> {
     return false;
   }

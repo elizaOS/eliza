@@ -185,7 +185,7 @@ export default function CloningPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-fuchsia-50">
       {!error ? (
         /* Tinder-like Card Layout */
         <div className="min-h-screen flex flex-col md:flex-row md:items-center md:justify-center p-0 md:p-8">

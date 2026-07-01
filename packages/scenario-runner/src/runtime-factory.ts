@@ -5,6 +5,7 @@
  * proxy when mock mode is explicitly enabled.
  */
 
+import "./react-runtime-stubs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -72,6 +73,35 @@ export async function loadScenarioTestMocksForTests() {
 
 const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
   "deterministic-llm-proxy" as const;
+
+async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
+  const agentPackageName: string = "@elizaos/agent";
+  const agentModule = (await import(agentPackageName)) as Record<
+    string,
+    unknown
+  >;
+  const KnowledgeGraphService = agentModule.KnowledgeGraphService;
+  const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  if (
+    typeof KnowledgeGraphService !== "function" ||
+    knowledgeGraphSchema === null ||
+    typeof knowledgeGraphSchema !== "object"
+  ) {
+    throw new Error(
+      "[scenario-runner] @elizaos/agent did not expose KnowledgeGraphService and knowledgeGraphSchema",
+    );
+  }
+
+  return {
+    name: "scenario-runner-knowledge-graph",
+    description:
+      "Scenario-runner runtime knowledge graph service and schema bootstrap.",
+    schema: knowledgeGraphSchema as Plugin["schema"],
+    services: [
+      KnowledgeGraphService as NonNullable<Plugin["services"]>[number],
+    ],
+  };
+}
 
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;
@@ -351,6 +381,7 @@ export async function createScenarioRuntime(
     default: Plugin;
   };
   await runtime.registerPlugin(pluginSql);
+  await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
 
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
@@ -364,7 +395,7 @@ export async function createScenarioRuntime(
 
   // Skip @elizaos/plugin-local-inference by default and register a
   // deterministic zero-vector TEXT_EMBEDDING fallback instead. The bundled
-  // `eliza-1-0_8b-32k.gguf` is fetched from a gated HuggingFace repo on
+  // `eliza-1-2b-32k.gguf` is fetched from a gated HuggingFace repo on
   // first generation; without HF credentials each turn produces a fresh
   // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
   // scenario runner doesn't score on semantic retrieval, so a zero vector is
@@ -453,6 +484,20 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(agentSkillsPlugin);
 
+  const schedulingModule = (await import(
+    "@elizaos/plugin-scheduling"
+  )) as Record<string, unknown>;
+  const schedulingPlugin = extractPlugin(schedulingModule, [
+    "default",
+    "schedulingPlugin",
+  ]);
+  if (!schedulingPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
+    );
+  }
+  await runtime.registerPlugin(schedulingPlugin);
+
   const lifeOpsModule = (await import(
     "@elizaos/plugin-personal-assistant/plugin"
   )) as Record<string, unknown>;
@@ -467,6 +512,26 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(lifeOpsPlugin);
 
+  // The LifeOps dashboard HTTP routes (/api/lifeops/*) live on a separate
+  // routes-only plugin, not the main lifeops plugin. Register it so api-turn
+  // scenarios can exercise reminder/scheduling/inbox outcomes on the keyless
+  // pr-deterministic lane (the executor's api server is built from
+  // `runtime.routes`). It is routes-only — no services/actions/providers — so
+  // it only adds endpoints; non-api scenarios are unaffected. Its sole
+  // dependency (@elizaos/plugin-google) is already registered above.
+  const routesModule = (await import(
+    "@elizaos/plugin-personal-assistant"
+  )) as Record<string, unknown>;
+  const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
+    "personalAssistantRoutesPlugin",
+  ]);
+  if (!lifeOpsRoutesPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
+    );
+  }
+  await runtime.registerPlugin(lifeOpsRoutesPlugin);
+
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
   }
@@ -478,6 +543,18 @@ export async function createScenarioRuntime(
   await seedXConnectorGrant(runtime);
   await seedBenchmarkLifeOpsFixtures(runtime);
   await seedLifeOpsSimulatorRuntime(runtime);
+
+  // Deterministic scenarios share one runtime; seed first-run as already
+  // complete so the firstRun provider stays silent and action-routing is
+  // order-independent. Without this, scenarios run in --lane discovery order
+  // can see a "first-run pending" planner context the strict fixtures do not
+  // cover (e.g. deterministic-xr-view-actions when it runs last).
+  await runtime.setCache("eliza:lifeops:first-run:v1", {
+    status: "complete",
+    partialAnswers: {},
+    completionCount: 1,
+    completedAt: "1970-01-01T00:00:00.000Z",
+  });
 
   // Remove upstream actions that reliably steal action-selection from the
   // domain actions scenarios actually care about. UPDATE_ENTITY's description

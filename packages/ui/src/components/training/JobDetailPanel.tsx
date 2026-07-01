@@ -80,7 +80,7 @@ function ProgressChart({
             cx={point.x}
             cy={point.y + 15}
             r={point.contentOk ? 4 : 2}
-            fill={point.contentOk ? "#3b82f6" : "#6b7280"}
+            fill={point.contentOk ? "#f97316" : "#6b7280"}
           />
         </g>
       ))}
@@ -129,7 +129,7 @@ function CheckpointsList({
           </div>
           <div className="text-muted">
             {cp.size_mb.toFixed(1)} MB ·{" "}
-            {new Date(cp.pulled_at).toLocaleString()}
+            {new Date(cp.pulled_at).toLocaleString("en-US")}
           </div>
         </div>
       ))}
@@ -296,7 +296,7 @@ export function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps) {
               {t("jobdetail.field.started", { defaultValue: "Started" })}
             </div>
             <div className="text-txt">
-              {new Date(job.started_at).toLocaleString()}
+              {new Date(job.started_at).toLocaleString("en-US")}
             </div>
           </div>
           <div>

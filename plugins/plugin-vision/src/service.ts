@@ -12,18 +12,30 @@ import {
   type ServiceTypeName,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import sharp from "sharp";
 import { AudioCaptureService, type AudioConfig } from "./audio-capture";
 import {
   StreamingAudioCaptureService,
   type StreamingAudioConfig,
 } from "./audio-capture-stream";
+import {
+  DescribeBackpressureController,
+  type DescribePauseReason,
+} from "./describe-backpressure";
+import { DirtyTileDescriber } from "./dirty-tile-describer";
+import {
+  createTileDescribeFn,
+  type FrameHash,
+  type TileDescribeFn,
+  tilePngToImageUrl,
+} from "./dirty-tile-scene";
 import { EntityTracker } from "./entity-tracker";
-import { FaceRecognition } from "./face-recognition-ggml";
+import type { FaceRecognition } from "./face-recognition-ggml";
+import { getSharp } from "./image/sharp-compat";
 import {
   assertValidVisionImageBuffer,
   parseVisionDataImageUrl,
 } from "./image-input";
+import { resolveArbiterFromRuntime } from "./lifecycle";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
 import { getTestImage } from "./test-input";
@@ -43,7 +55,7 @@ import {
   VisionServiceType,
 } from "./types";
 import { VisionWorkerManager } from "./vision-worker-manager";
-import { YOLODetector } from "./yolo-detector";
+import type { YOLODetector } from "./yolo-detector";
 
 const execAsync = promisify(exec);
 
@@ -55,8 +67,12 @@ const execAsync = promisify(exec);
 const VISION_CONTEXT_SERVICE_TYPE = "vision-context";
 const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
 const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
+const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
+const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
+const SCENE_DESCRIPTION_OBJECT_LIMIT = 20;
+const SCENE_DESCRIPTION_FACE_LIMIT = 10;
 
-interface VisionContextSnapshot {
+export interface VisionContextSnapshot {
   openApps: string[];
   focusedWindow: {
     app: string;
@@ -75,6 +91,23 @@ const SCENE_DESCRIPTION_INSTRUCTIONS = [
   "Describe visible people, objects, UI, text, and notable scene changes.",
   "Keep the answer concise and factual.",
 ];
+
+/**
+ * A face that the ggml face-recognition pipeline matched to a known profile,
+ * shaped for the VLM prompt. `label` is the profile's display name when set,
+ * otherwise the opaque profile id. `bbox` is the detected face region.
+ */
+export interface RecognizedFace {
+  label: string;
+  bbox: BoundingBox;
+}
+
+/** Prompt-shaped detected object: label + confidence + region. */
+interface DetectedObjectForPrompt {
+  type: string;
+  confidence: number;
+  bbox: BoundingBox;
+}
 
 function isVisionContextProvider(
   candidate: unknown,
@@ -99,15 +132,77 @@ function trimVisionContextForPrompt(
   };
 }
 
-function buildSceneDescriptionPrompt(
+export function buildSceneDescriptionPrompt(
   context: VisionContextSnapshot | null,
+  ocrText?: string | null,
+  detectedObjects?: DetectedObject[] | null,
+  recognizedFaces?: RecognizedFace[] | null,
 ): string {
   const payload: Record<string, unknown> = {
     task: "describe_visual_scene",
     instructions: SCENE_DESCRIPTION_INSTRUCTIONS,
   };
   if (context) payload.context = trimVisionContextForPrompt(context);
+  const detectedText = normalizeOcrTextForPrompt(ocrText);
+  if (detectedText) payload.detectedText = detectedText;
+  const objects = normalizeDetectedObjectsForPrompt(detectedObjects);
+  if (objects.length > 0) payload.detectedObjects = objects;
+  const faces = normalizeRecognizedFacesForPrompt(recognizedFaces);
+  if (faces.length > 0) payload.recognizedFaces = faces;
   return JSON.stringify(payload, null, 2);
+}
+
+function normalizeDetectedObjectsForPrompt(
+  objects?: DetectedObject[] | null,
+): DetectedObjectForPrompt[] {
+  if (!objects || objects.length === 0) return [];
+  return [...objects]
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, SCENE_DESCRIPTION_OBJECT_LIMIT)
+    .map((obj) => ({
+      type: obj.type,
+      confidence: obj.confidence,
+      bbox: obj.boundingBox,
+    }));
+}
+
+function normalizeRecognizedFacesForPrompt(
+  faces?: RecognizedFace[] | null,
+): RecognizedFace[] {
+  if (!faces || faces.length === 0) return [];
+  const seen = new Set<string>();
+  const result: RecognizedFace[] = [];
+  for (const face of faces) {
+    const label = face.label.trim();
+    if (label.length === 0) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    result.push({ label, bbox: face.bbox });
+    if (result.length >= SCENE_DESCRIPTION_FACE_LIMIT) break;
+  }
+  return result;
+}
+
+function normalizeOcrTextForPrompt(text?: string | null): string | null {
+  if (!text) return null;
+  const seen = new Set<string>();
+  const lines: string[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/\s+/g, " ").trim();
+    if (line.length === 0) continue;
+    const dedupeKey = line.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    lines.push(line);
+    if (lines.length >= SCENE_DESCRIPTION_OCR_LINE_LIMIT) break;
+  }
+
+  const normalized = lines
+    .join("\n")
+    .slice(0, SCENE_DESCRIPTION_OCR_TEXT_LIMIT)
+    .trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 interface CameraDevice {
@@ -117,7 +212,8 @@ interface CameraDevice {
 }
 
 export class VisionService extends Service {
-  static override serviceType: ServiceTypeName = VisionServiceType.VISION;
+  static override serviceType: ServiceTypeName =
+    VisionServiceType.VISION as ServiceTypeName;
   override capabilityDescription =
     "Provides visual perception through camera integration and scene analysis.";
 
@@ -131,7 +227,10 @@ export class VisionService extends Service {
   private isProcessingScreen = false;
   private objectDetector: YOLODetector | null = null;
   private hasObjectDetection = false;
-  private faceRecognition: FaceRecognition;
+  // Lazily constructed: the face backend is dynamically imported on first use
+  // so plugin-vision's module graph never pulls native code at module-eval
+  // (required for the Android bun-musl agent).
+  private faceRecognition: FaceRecognition | null = null;
   private entityTracker: EntityTracker;
   private audioCapture: AudioCaptureService | null = null;
   private streamingAudioCapture: StreamingAudioCaptureService | null = null;
@@ -150,6 +249,27 @@ export class VisionService extends Service {
   private lastVlmUpdateTime = 0;
   private lastTfDescription = "";
 
+  // Memory-pressure pause owner for the continuous VLM describe step
+  // (#9105 M8 / #9581). Gates only the expensive IMAGE_DESCRIPTION call;
+  // OCR/YOLO/dHash keep running while describing is paused. Fed by both the
+  // WS1 memory arbiter (when present) and a local RSS cap (always).
+  private readonly describeBackpressure: DescribeBackpressureController;
+  private arbiterUnsubscribe: (() => void) | null = null;
+
+  // Change-gated per-tile describe (#9105). Built lazily on first VLM tick:
+  // null until we know whether a perceptual hash is available. When present it
+  // re-describes only the screen tiles that changed since the previous frame;
+  // when absent the VLM path stays exactly as before (full-frame describe).
+  private dirtyTileDescriber: DirtyTileDescriber | null = null;
+  private dirtyTileDescriberInit = false;
+  // Per-frame prompt context for the per-tile describe. Set immediately before
+  // each `dirtyTileDescriber.describe(...)` and read by the bound describeTile
+  // closure (screen/camera processing is serialized, so there is no overlap).
+  private dirtyTileDescribeContext: {
+    detectedObjects: DetectedObject[];
+    recognizedFaces: RecognizedFace[];
+  } = { detectedObjects: [], recognizedFaces: [] };
+
   // Default configuration
   private readonly DEFAULT_CONFIG: VisionConfig = {
     pixelChangeThreshold: 50, // 50% change required for VLM update
@@ -167,17 +287,16 @@ export class VisionService extends Service {
     ocrEnabled: true,
   };
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
     // Load configuration from runtime settings
-    this.visionConfig = this.parseConfig(runtime);
+    this.visionConfig = this.parseConfig(this.runtime);
 
-    // Initialize face recognition
-    this.faceRecognition = new FaceRecognition();
+    // Face recognition is constructed lazily (see getFaceRecognition).
 
     // Initialize entity tracker
-    const worldIdValue = runtime.getSetting("WORLD_ID");
+    const worldIdValue = this.runtime.getSetting("WORLD_ID");
     const worldId =
       typeof worldIdValue === "string" ? worldIdValue : "default-world";
     this.entityTracker = new EntityTracker(worldId);
@@ -187,6 +306,21 @@ export class VisionService extends Service {
 
     // Initialize OCR service
     this.ocrService = new OCRService();
+
+    // Memory-pressure pause owner for the continuous describe loop. The cap
+    // mirrors the documented MAX_MEMORY_USAGE_MB setting (default 2000 MB);
+    // `0`/invalid disables the local RSS guard so only arbiter pressure pauses.
+    const memoryCapMb = Number(
+      this.runtime.getSetting("MAX_MEMORY_USAGE_MB") ??
+        this.runtime.getSetting("VISION_MAX_MEMORY_USAGE_MB") ??
+        2000,
+    );
+    this.describeBackpressure = new DescribeBackpressureController({
+      memoryCapBytes:
+        Number.isFinite(memoryCapMb) && memoryCapMb > 0
+          ? memoryCapMb * 1024 * 1024
+          : 0,
+    });
 
     logger.info(
       "[VisionService] Constructed with config:",
@@ -308,6 +442,7 @@ export class VisionService extends Service {
       // to the heuristic path (detectPeopleFromMotion).
       if (this.visionConfig.enableObjectDetection) {
         try {
+          const { YOLODetector } = await import("./yolo-detector");
           this.objectDetector = new YOLODetector();
           await this.objectDetector.initialize();
           this.hasObjectDetection = true;
@@ -321,7 +456,7 @@ export class VisionService extends Service {
           this.hasObjectDetection = false;
           logger.warn(
             "[VisionService] ggml YOLOv8 detector unavailable, object detection disabled (using motion/heuristic + VLM fallback):",
-            yoloError instanceof Error ? yoloError.message : yoloError,
+            yoloError instanceof Error ? yoloError.message : String(yoloError),
           );
         }
       }
@@ -354,7 +489,7 @@ export class VisionService extends Service {
       // Start processing based on mode
       this.startProcessing();
     } catch (error) {
-      logger.error("[VisionService] Failed to initialize:", error);
+      logger.error({ error }, "[VisionService] Failed to initialize:");
     }
   }
 
@@ -393,8 +528,8 @@ export class VisionService extends Service {
       logger.info("[VisionService] Screen vision initialized");
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to initialize screen vision:",
-        error,
       );
     }
   }
@@ -539,8 +674,8 @@ export class VisionService extends Service {
       }
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to initialize audio capture:",
-        error,
       );
       // Continue without audio
     }
@@ -559,13 +694,17 @@ export class VisionService extends Service {
       );
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to store audio transcription:",
-        error,
       );
     }
   }
 
   private startProcessing(): void {
+    // Wire the continuous describe loop to the memory arbiter (if WS1 is
+    // loaded) so device memory pressure pauses the expensive VLM describe.
+    this.attachMemoryArbiter();
+
     // Start camera processing if enabled
     if (
       (this.visionConfig.visionMode === VisionMode.CAMERA ||
@@ -584,6 +723,47 @@ export class VisionService extends Service {
     }
   }
 
+  /**
+   * Subscribe the describe-backpressure controller to WS1 memory-pressure
+   * events. Resolves the arbiter dynamically (no hard dependency on
+   * `@elizaos/plugin-local-inference`); when none is registered the controller
+   * still pauses on the local RSS cap. Idempotent — a prior subscription is
+   * released first so a restart doesn't double-subscribe.
+   */
+  private attachMemoryArbiter(): void {
+    if (this.arbiterUnsubscribe) {
+      this.arbiterUnsubscribe();
+      this.arbiterUnsubscribe = null;
+    }
+    const arbiter = resolveArbiterFromRuntime(this.runtime);
+    if (!arbiter) return;
+    // `onPressure` fires with a non-empty holder list when pressure is high
+    // enough to shed load, and (on the WS1 bridge) an empty list on any
+    // non-nominal tier. Either way that means "pause describing"; the next
+    // tick with no pressure event keeps describing. The bridge only emits on
+    // pressure, so we treat any callback as "critical" and rely on the WS1
+    // side clearing — for finer levels a direct IModelArbiter can be extended
+    // later. Empty/any callback ⇒ pause.
+    this.arbiterUnsubscribe = arbiter.onPressure(() => {
+      this.describeBackpressure.setPressure("critical");
+    });
+    logger.debug("[VisionService] Memory arbiter attached to describe loop");
+  }
+
+  /**
+   * Clear the arbiter-driven pause. Called by the WS1 bridge consumer when
+   * pressure returns to nominal; also exposed so an embedder can resume the
+   * describe loop explicitly.
+   */
+  public resumeDescribeLoop(): void {
+    this.describeBackpressure.setPressure("nominal");
+  }
+
+  /** Current describe-backpressure stats (telemetry / tests). */
+  public getBackpressureStats() {
+    return this.describeBackpressure.stats();
+  }
+
   private startFrameProcessing(): void {
     if (this.frameProcessingInterval) {
       return;
@@ -595,7 +775,7 @@ export class VisionService extends Service {
         try {
           await this.captureAndProcessFrame();
         } catch (error) {
-          logger.error("[VisionService] Frame processing error:", error);
+          logger.error({ error }, "[VisionService] Frame processing error:");
         }
         this.isProcessing = false;
       }
@@ -639,7 +819,7 @@ export class VisionService extends Service {
 
       this.lastFrame = frame;
     } catch (error) {
-      logger.error("[VisionService] Error capturing frame:", error);
+      logger.error({ error }, "[VisionService] Error capturing frame:");
     }
   }
 
@@ -647,6 +827,7 @@ export class VisionService extends Service {
     await assertValidVisionImageBuffer(data);
 
     // Use sharp to ensure consistent format
+    const sharp = await getSharp();
     const image = sharp(data);
     const metadata = await image.metadata();
 
@@ -710,6 +891,7 @@ export class VisionService extends Service {
   ): Promise<void> {
     try {
       const currentTime = Date.now();
+      const previousSceneDescription = this.lastSceneDescription;
 
       // Test-input override: when ELIZA_VISION_TEST_INPUT=image, replace the
       // captured frame with the fixture PNG so the rest of the pipeline runs
@@ -717,6 +899,7 @@ export class VisionService extends Service {
       const testImage = getTestImage();
 
       // Convert frame to base64 for VLM
+      const sharp = await getSharp();
       const jpegBuffer = testImage
         ? await sharp(testImage).jpeg().toBuffer()
         : await sharp(frame.data, {
@@ -740,17 +923,15 @@ export class VisionService extends Service {
         timeSinceVlmUpdate >= vlmUpdateInterval || // Time threshold
         changePercentage >= vlmChangeThreshold; // Change threshold
 
-      let description = this.lastTfDescription;
-
-      if (shouldUpdateVlm) {
-        // Use VLM to describe the scene
-        description = await this.describeSceneWithVLM(imageUrl);
-        this.lastVlmUpdateTime = currentTime;
-        this.lastTfDescription = description;
-        logger.debug(
-          `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change`,
-        );
-      }
+      let description =
+        previousSceneDescription?.description ?? this.lastTfDescription;
+      let descriptionTimestamp =
+        previousSceneDescription?.descriptionTimestamp ??
+        previousSceneDescription?.timestamp ??
+        frame.timestamp;
+      let descriptionStale = false;
+      let describePaused = false;
+      let describePauseReason: Exclude<DescribePauseReason, null> | undefined;
 
       // Determine if we should update TensorFlow detections
       const timeSinceTfUpdate = currentTime - this.lastTfUpdateTime;
@@ -785,7 +966,9 @@ export class VisionService extends Service {
           } catch (detectError) {
             logger.warn(
               "[VisionService] YOLOv8 object detection failed, falling back to motion-based:",
-              detectError instanceof Error ? detectError.message : detectError,
+              detectError instanceof Error
+                ? detectError.message
+                : String(detectError),
             );
             detectedObjects = await this.detectMotionObjects(frame);
           }
@@ -824,6 +1007,7 @@ export class VisionService extends Service {
 
       // Face recognition and entity tracking
       const faceProfiles = new Map<string, string>();
+      const recognizedFaces: RecognizedFace[] = [];
       const getSettingString = (key: string): string | undefined => {
         const value = this.runtime.getSetting(key);
         return value === true || value === false
@@ -841,19 +1025,13 @@ export class VisionService extends Service {
         enableFaceRecognition &&
         people.length > 0 &&
         frame.width > 0 &&
-        frame.height > 0
+        frame.height > 0 &&
+        frame.data.length > 0
       ) {
         try {
-          // Validate frame data
-          if (frame.data.length === 0) {
-            logger.warn(
-              "[VisionService] Invalid frame data for face recognition",
-            );
-            return;
-          }
-
           // Detect faces in the frame
-          const faces = await this.faceRecognition.detectFaces(
+          const faceRecognition = await this.getFaceRecognition();
+          const faces = await faceRecognition.detectFaces(
             frame.data,
             frame.width,
             frame.height,
@@ -875,7 +1053,7 @@ export class VisionService extends Service {
               if (overlap > 0.5) {
                 // 50% overlap threshold
                 // Recognize or register the face
-                const match = await this.faceRecognition.recognizeFace(
+                const match = await faceRecognition.recognizeFace(
                   face.descriptor,
                 );
                 let profileId: string;
@@ -888,7 +1066,7 @@ export class VisionService extends Service {
                 } else {
                   // Register new face. The native ggml backend produces no
                   // expression / age-gender estimates, so no attributes.
-                  profileId = await this.faceRecognition.addOrUpdateFace(
+                  profileId = await faceRecognition.addOrUpdateFace(
                     face.descriptor,
                   );
                   logger.info(
@@ -897,12 +1075,106 @@ export class VisionService extends Service {
                 }
 
                 faceProfiles.set(person.id, profileId);
+                const profile = faceRecognition.getFaceProfile(profileId);
+                recognizedFaces.push({
+                  label: profile?.name ?? profileId,
+                  bbox: {
+                    x: Math.round(faceBox.x),
+                    y: Math.round(faceBox.y),
+                    width: Math.round(faceBox.width),
+                    height: Math.round(faceBox.height),
+                  },
+                });
                 break;
               }
             }
           }
         } catch (faceError) {
-          logger.error("[VisionService] Face recognition error:", faceError);
+          logger.error(
+            { error: faceError },
+            "[VisionService] Face recognition error:",
+          );
+        }
+      }
+
+      // VLM scene description runs after detection so the success path can
+      // feed the model the freshly-computed YOLO objects + recognized faces
+      // as additional context alongside the image. The describe step is the
+      // dominant token + RAM cost, so it is gated by the memory-pressure
+      // backpressure owner: under device pressure or over the RSS cap we skip
+      // the VLM call (keeping the cheap OCR/YOLO/dHash work) and reuse the last
+      // description until pressure clears (#9105 M8 / #9581).
+      const describeGate = shouldUpdateVlm
+        ? this.describeBackpressure.evaluate()
+        : null;
+      if (describeGate?.transitionedTo === "paused") {
+        logger.info(
+          `[VisionService] VLM describe paused (${describeGate.reason}); reusing last scene description`,
+        );
+      } else if (describeGate?.transitionedTo === "active") {
+        logger.info("[VisionService] VLM describe resumed");
+      }
+      if (describeGate?.warnPaused) {
+        const stats = this.describeBackpressure.stats();
+        logger.warn(
+          {
+            reason: describeGate.reason,
+            pausedForMs: describeGate.pausedForMs,
+            describesSkipped: stats.describesSkipped,
+            memoryGrowthBytes: stats.memoryGrowthBytes,
+          },
+          "[VisionService] VLM describe still paused; reusing stale scene description",
+        );
+      }
+      if (shouldUpdateVlm && describeGate?.describe) {
+        // Prefer the change-gated per-tile describe on incremental updates: once
+        // a prior scene description exists we only re-describe the tiles that
+        // changed since the last frame (the rest reuse cached tile text), which
+        // avoids paying for a full-frame VLM pass every tick. The first frame,
+        // the test-image override, and any unavailable/empty result fall back to
+        // the full-frame describe below.
+        const incremental =
+          !testImage && this.lastSceneDescription
+            ? await this.describeSceneWithDirtyTiles(
+                await sharp(frame.data, {
+                  raw: {
+                    width: frame.width,
+                    height: frame.height,
+                    channels: 4,
+                  },
+                })
+                  .png()
+                  .toBuffer(),
+                frame.width,
+                frame.height,
+                detectedObjects,
+                recognizedFaces,
+              )
+            : null;
+        description =
+          incremental ??
+          (await this.describeSceneWithVLM(
+            imageUrl,
+            detectedObjects,
+            recognizedFaces,
+          ));
+        this.lastVlmUpdateTime = currentTime;
+        this.lastTfDescription = description;
+        descriptionTimestamp = frame.timestamp;
+        logger.debug(
+          `[VisionService] VLM updated: ${timeSinceVlmUpdate}ms since last update, ${changePercentage.toFixed(1)}% change${
+            incremental ? " (per-tile)" : " (full-frame)"
+          }`,
+        );
+      } else if (shouldUpdateVlm && describeGate && !describeGate.describe) {
+        describePaused = true;
+        describePauseReason = describeGate.reason ?? undefined;
+        if (previousSceneDescription?.description) {
+          description = previousSceneDescription.description;
+          descriptionTimestamp =
+            previousSceneDescription.descriptionTimestamp ??
+            previousSceneDescription.timestamp;
+          descriptionStale = true;
         }
       }
 
@@ -917,11 +1189,15 @@ export class VisionService extends Service {
       // Create scene description
       this.lastSceneDescription = {
         timestamp: frame.timestamp,
+        descriptionTimestamp,
         description,
         objects: detectedObjects,
         people,
         sceneChanged: shouldUpdateVlm || shouldUpdateTf,
         changePercentage,
+        descriptionStale,
+        describePaused,
+        ...(describePauseReason ? { describePauseReason } : {}),
       };
 
       // Enhanced logging
@@ -964,8 +1240,8 @@ export class VisionService extends Service {
       }
     } catch (error) {
       logger.error(
+        { error },
         "[VisionService] Failed to update scene description:",
-        error,
       );
     }
   }
@@ -1010,26 +1286,160 @@ export class VisionService extends Service {
       return await candidate.getContext();
     } catch (error) {
       logger.warn(
+        { error },
         "[VisionService] vision-context provider getContext() failed:",
-        error,
       );
       return null;
     }
   }
 
-  private async describeSceneWithVLM(imageUrl: string): Promise<string> {
+  private collectCurrentOcrTextForPrompt(): string | null {
+    const screenAnalysis = this.lastEnhancedScene?.screenAnalysis;
+    const candidates = [
+      screenAnalysis?.fullScreenOCR,
+      screenAnalysis?.activeTile?.ocr?.fullText,
+      screenAnalysis?.activeTile?.text,
+    ];
+    const text = candidates
+      .filter((candidate): candidate is string => Boolean(candidate?.trim()))
+      .join("\n");
+    return text.length > 0 ? text : null;
+  }
+
+  /**
+   * Resolve the change-gated per-tile describer, building it once. Returns
+   * `null` (and degrades to full-frame describe) when no perceptual hash is
+   * available — i.e. plugin-computeruse's `frameDhash` cannot be imported.
+   *
+   * The dHash is resolved via a best-effort dynamic import so plugin-vision
+   * never eagerly pulls computeruse's module graph at boot (same idiom as the
+   * coord-OCR bridge wiring in `index.ts`).
+   */
+  private async ensureDirtyTileDescriber(): Promise<DirtyTileDescriber | null> {
+    if (this.dirtyTileDescriberInit) {
+      return this.dirtyTileDescriber;
+    }
+    this.dirtyTileDescriberInit = true;
+    const hashTile = await this.resolveFrameHash();
+    if (!hashTile) {
+      logger.debug(
+        "[VisionService] per-tile dHash unavailable; using full-frame VLM describe",
+      );
+      return null;
+    }
+    const describeTile = this.buildTileDescribeFn();
+    this.dirtyTileDescriber = new DirtyTileDescriber({
+      hashTile,
+      describeTile,
+    });
+    logger.info(
+      "[VisionService] change-gated per-tile describe enabled (#9105)",
+    );
+    return this.dirtyTileDescriber;
+  }
+
+  private async resolveFrameHash(): Promise<FrameHash | null> {
+    // Indirect the specifier through a const so the bundler does not eagerly
+    // resolve the optional peer at build time (same idiom as the OCR-bridge
+    // dynamic import in index.ts) — plugin-computeruse is an optional peer.
+    const computerUseSpecifier = "@elizaos/plugin-computeruse";
+    try {
+      const mod = (await import(/* @vite-ignore */ computerUseSpecifier)) as {
+        frameDhash?: FrameHash;
+      };
+      return typeof mod.frameDhash === "function" ? mod.frameDhash : null;
+    } catch (err) {
+      logger.debug(
+        `[VisionService] plugin-computeruse dHash not available (${
+          err instanceof Error ? err.message : String(err)
+        })`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Build the per-tile describe call bound to this service's runtime. Reads the
+   * current frame's prompt context (`dirtyTileDescribeContext`) so each tile is
+   * described with the same context the full-frame path would use.
+   */
+  private buildTileDescribeFn(): TileDescribeFn {
+    return createTileDescribeFn({
+      buildTileImageUrl: tilePngToImageUrl,
+      buildTilePrompt: async () => {
+        const sceneContext = await this.collectVisionContext();
+        return buildSceneDescriptionPrompt(
+          sceneContext,
+          this.collectCurrentOcrTextForPrompt(),
+          this.dirtyTileDescribeContext.detectedObjects,
+          this.dirtyTileDescribeContext.recognizedFaces,
+        );
+      },
+      invokeModel: (imageUrl, prompt) =>
+        this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          imageUrl,
+          prompt,
+        }),
+      extractDescription: (result) =>
+        this.extractDescriptionFromUseModel(result),
+    });
+  }
+
+  /**
+   * Per-tile incremental scene describe. Re-describes only the tiles whose
+   * perceptual hash changed since the previous frame; unchanged tiles reuse
+   * their cached description. Returns `null` when the per-tile path is
+   * unavailable or yields no usable text, so the caller falls back to the
+   * full-frame describe.
+   */
+  private async describeSceneWithDirtyTiles(
+    pngBytes: Buffer,
+    width: number,
+    height: number,
+    detectedObjects: DetectedObject[],
+    recognizedFaces: RecognizedFace[],
+  ): Promise<string | null> {
+    const describer = await this.ensureDirtyTileDescriber();
+    if (!describer) return null;
+    this.dirtyTileDescribeContext = { detectedObjects, recognizedFaces };
+    const out = await describer.describe({
+      displayId: 0,
+      width,
+      height,
+      pngBytes,
+    });
+    const stats = describer.getStats();
+    logger.debug(
+      `[VisionService] dirty-tile describe: ${out.tiles.length} tiles, ${stats.tilesSkipped} reused, ~${stats.approxTokensSaved} tokens saved`,
+    );
+    const scene = out.vlmScene.trim();
+    return scene.length > 0 ? scene : null;
+  }
+
+  private async describeSceneWithVLM(
+    imageUrl: string,
+    detectedObjects: DetectedObject[] = [],
+    recognizedFaces: RecognizedFace[] = [],
+  ): Promise<string> {
     return withStandaloneTrajectory(
       this.runtime,
       {
         source: "plugin-vision:scene-description",
         metadata: { modelType: ModelType.IMAGE_DESCRIPTION },
       },
-      () => this.describeSceneWithVLMInTrajectory(imageUrl),
+      () =>
+        this.describeSceneWithVLMInTrajectory(
+          imageUrl,
+          detectedObjects,
+          recognizedFaces,
+        ),
     );
   }
 
   private async describeSceneWithVLMInTrajectory(
     imageUrl: string,
+    detectedObjects: DetectedObject[],
+    recognizedFaces: RecognizedFace[],
   ): Promise<string> {
     try {
       try {
@@ -1037,18 +1447,23 @@ export class VisionService extends Service {
       } catch (inputError) {
         logger.warn(
           "[VisionService] rejected unsafe VLM image input:",
-          inputError instanceof Error ? inputError.message : inputError,
+          inputError instanceof Error ? inputError.message : String(inputError),
         );
         return "Unable to describe scene";
       }
 
       // Route every VLM call through the runtime IMAGE_DESCRIPTION handler.
-      // When eliza-1 (Qwen3.5-VL) is registered locally it owns this slot;
+      // When eliza-1 local Gemma vision is registered it owns this slot;
       // otherwise the runtime rotates to whichever cloud/remote provider
       // has registered IMAGE_DESCRIPTION. plugin-vision no longer ships its
       // own VLM.
       const sceneContext = await this.collectVisionContext();
-      const prompt = buildSceneDescriptionPrompt(sceneContext);
+      const prompt = buildSceneDescriptionPrompt(
+        sceneContext,
+        this.collectCurrentOcrTextForPrompt(),
+        detectedObjects,
+        recognizedFaces,
+      );
       try {
         const result = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
@@ -1060,8 +1475,8 @@ export class VisionService extends Service {
         }
       } catch (modelError) {
         logger.warn(
+          { error: modelError },
           "[VisionService] IMAGE_DESCRIPTION call failed:",
-          modelError,
         );
       }
 
@@ -1100,7 +1515,7 @@ export class VisionService extends Service {
       // Final fallback
       return "Visual scene captured";
     } catch (error) {
-      logger.error("[VisionService] VLM description failed:", error);
+      logger.error({ error }, "[VisionService] VLM description failed:");
       return "Unable to describe scene";
     }
   }
@@ -1329,7 +1744,7 @@ export class VisionService extends Service {
         try {
           await this.captureAndProcessScreen();
         } catch (error) {
-          logger.error("[VisionService] Screen processing error:", error);
+          logger.error({ error }, "[VisionService] Screen processing error:");
         }
         this.isProcessingScreen = false;
       }
@@ -1354,7 +1769,7 @@ export class VisionService extends Service {
       // Update enhanced scene description
       await this.updateEnhancedSceneDescription();
     } catch (error) {
-      logger.error("[VisionService] Error capturing screen:", error);
+      logger.error({ error }, "[VisionService] Error capturing screen:");
     }
   }
 
@@ -1370,7 +1785,7 @@ export class VisionService extends Service {
         analysis.text = analysis.ocr.fullText;
       }
     } catch (error) {
-      logger.error("[VisionService] Error analyzing tile:", error);
+      logger.error({ error }, "[VisionService] Error analyzing tile:");
     }
 
     return analysis;
@@ -1553,6 +1968,11 @@ export class VisionService extends Service {
       clearInterval(this.screenProcessingInterval);
       this.screenProcessingInterval = null;
     }
+
+    if (this.arbiterUnsubscribe) {
+      this.arbiterUnsubscribe();
+      this.arbiterUnsubscribe = null;
+    }
   }
 
   public getCameraInfo(): CameraInfo | null {
@@ -1595,7 +2015,11 @@ export class VisionService extends Service {
     return this.entityTracker;
   }
 
-  public getFaceRecognition(): FaceRecognition {
+  public async getFaceRecognition(): Promise<FaceRecognition> {
+    if (!this.faceRecognition) {
+      const { FaceRecognition } = await import("./face-recognition-ggml");
+      this.faceRecognition = new FaceRecognition();
+    }
     return this.faceRecognition;
   }
 
@@ -1630,6 +2054,8 @@ export class VisionService extends Service {
     this.lastSceneDescription = null;
     this.lastScreenCapture = null;
     this.lastEnhancedScene = null;
+    this.dirtyTileDescriber = null;
+    this.dirtyTileDescriberInit = false;
     this.isProcessing = false;
     this.isProcessingScreen = false;
 
@@ -1668,7 +2094,7 @@ export class VisionService extends Service {
       // Use first available camera
       return this.createCameraDevice(cameras[0]);
     } catch (error) {
-      logger.error("[VisionService] Error finding camera:", error);
+      logger.error({ error }, "[VisionService] Error finding camera:");
       return null;
     }
   }
@@ -1741,7 +2167,7 @@ export class VisionService extends Service {
 
       return [];
     } catch (error) {
-      logger.error("[VisionService] Error listing cameras:", error);
+      logger.error({ error }, "[VisionService] Error listing cameras:");
       return [];
     }
   }
@@ -1837,7 +2263,7 @@ export class VisionService extends Service {
     try {
       return await this.camera.capture();
     } catch (error) {
-      logger.error("[VisionService] Failed to capture image:", error);
+      logger.error({ error }, "[VisionService] Failed to capture image:");
       return null;
     }
   }

@@ -7,19 +7,19 @@ Compares a trained model against a baseline model using standardized evaluation 
 Usage:
     # Compare trained model against baseline
     python scripts/run_ab_test.py \
-        --model-a Qwen/Qwen3-30B \
+        --model-a google/gemma-4-31B \
         --model-b ./trained_models/final_model \
         --archetypes trader degen
 
     # Quick test with fewer scenarios
     python scripts/run_ab_test.py \
-        --model-a Qwen/Qwen2.5-0.5B-Instruct \
+        --model-a google/gemma-4-E2B \
         --model-b ./trained_models/final_model \
         --num-runs 1
 
     # Full test suite
     python scripts/run_ab_test.py \
-        --model-a Qwen/Qwen3-30B \
+        --model-a google/gemma-4-31B \
         --model-b ./trained_models/final_model \
         --num-runs 5 \
         --output-dir ./ab_results

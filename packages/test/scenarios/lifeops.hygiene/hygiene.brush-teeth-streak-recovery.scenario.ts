@@ -58,6 +58,7 @@ async function seedSecondMissedBrushOccurrence(
 }
 
 export default scenario({
+  lane: "live-only",
   id: "hygiene.brush-teeth-streak-recovery",
   title: "Brushing streak recovery surfaces missed days with a warm tone",
   domain: "lifeops.hygiene",

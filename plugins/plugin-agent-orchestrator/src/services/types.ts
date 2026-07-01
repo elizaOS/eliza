@@ -10,7 +10,12 @@ export type ApprovalPreset =
   | "readonly"
   | "standard"
   | "permissive"
-  | "autonomous";
+  | "autonomous"
+  // Read + search + EXECUTE allowed, edit/write/delete DENIED. The profile the
+  // independent read-only verifier (#8898) runs under: it must re-run tests
+  // (`execute`) and inspect files (`read`/`search`) but can never mutate the
+  // worktree it is verifying. `readonly` (`--deny-all`) cannot run the tests.
+  | "verifier";
 
 export type SessionStatus =
   | "running"
@@ -68,6 +73,13 @@ export interface SpawnOptions {
   name?: string;
   agentType?: AgentType;
   workdir?: string;
+  /**
+   * When true, spawnSession places this session in a per-session subdir of
+   * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
+   * Set by the orchestrator only when the workdir resolved to a configured
+   * workspace root — never for cwd self-checkout or a route/explicit dir.
+   */
+  isolateWorkdir?: boolean;
   initialTask?: string;
   env?: Record<string, string>;
   metadata?: Record<string, unknown>;

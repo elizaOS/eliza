@@ -21,6 +21,21 @@ export interface SpeechFixtureOptions {
 	tailSilenceSec?: number;
 	/** Deterministic seed for the f0 jitter. */
 	seed?: number;
+	/**
+	 * Per-speaker voice colour. Two speakers with different timbres have
+	 * measurably different spectral envelopes, so an acoustic diarizer can tell
+	 * them apart from the audio alone. Omit for the default (shared) voice — the
+	 * VAD/wake-word smoke fixtures don't care who is speaking.
+	 */
+	timbre?: SpeakerTimbre;
+}
+
+/** A speaker's voice colour: fundamental frequency + vocal-tract formants. */
+export interface SpeakerTimbre {
+	/** Base fundamental frequency (Hz) — speaker pitch. */
+	f0Hz: number;
+	/** Three `[centerHz, bandwidthHz]` formants — the vocal-tract resonances. */
+	formants: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface SpeechFixture {
@@ -85,6 +100,57 @@ const DEFAULT_FORMANTS: ReadonlyArray<readonly [number, number]> = [
 	[2600, 120],
 ];
 
+/** The shared (speaker-agnostic) voice used when no `timbre` is supplied. */
+export const DEFAULT_SPEAKER_TIMBRE: SpeakerTimbre = {
+	f0Hz: 110,
+	formants: DEFAULT_FORMANTS,
+};
+
+/**
+ * Deterministic, distinct voice colour for participant `index` of `count`
+ * speakers in a scenario. The speakers are spread EVENLY across a wide
+ * vocal-tract-length (formant-scaling) and pitch range, so every pair in a
+ * scenario is acoustically far apart — a blind acoustic diarizer can split them
+ * from the audio alone — while one participant always gets one timbre, so the
+ * same speaker clusters together. Spreading by position (not by a label hash)
+ * guarantees the separation; two labels could otherwise hash to near-identical
+ * voices and merge.
+ */
+export function speakerTimbreForIndex(
+	index: number,
+	count: number,
+): SpeakerTimbre {
+	const frac = count <= 1 ? 0.5 : index / (count - 1); // 0..1
+	// Vocal-tract scaling 0.72..1.32 (shorter tract → higher formants).
+	const formantScale = 0.72 + frac * 0.6;
+	// Alternate the second formant up/down so even adjacent slots differ in
+	// formant PATTERN (F2 is the most speaker-discriminative resonance), not just
+	// a global shift.
+	const f2Bias = index % 2 === 0 ? 1.06 : 0.94;
+	const formants = DEFAULT_FORMANTS.map(([fc, bw], i) => {
+		const bias = i === 1 ? f2Bias : 1;
+		return [fc * formantScale * bias, bw] as const;
+	});
+	// Pitch 98..202 Hz.
+	const f0Hz = 98 + frac * 104;
+	return { f0Hz, formants };
+}
+
+/**
+ * The agent's own synthetic TTS voice — a fixed timbre, deliberately placed
+ * outside the speaker-seed range so it is acoustically distinct from every
+ * scenario participant. The corpus synthesizes agent-echo turns with this voice,
+ * and the acoustic self-voice gate enrolls it as the agent's imprint.
+ */
+export const AGENT_VOICE_TIMBRE: SpeakerTimbre = {
+	f0Hz: 250,
+	formants: [
+		[1100, 90],
+		[2400, 110],
+		[3800, 150],
+	],
+};
+
 /** Build a `silence + synthesized speech + silence` PCM buffer. */
 export function makeSpeechWithSilenceFixture(
 	opts: SpeechFixtureOptions = {},
@@ -100,12 +166,16 @@ export function makeSpeechWithSilenceFixture(
 	const speechEndSample = Math.floor((leadSec + speechSec) * sampleRate);
 
 	const rng = mulberry32(opts.seed ?? 0xe11a);
-	const bank = new FormantBank(sampleRate, DEFAULT_FORMANTS);
+	const timbre = opts.timbre ?? DEFAULT_SPEAKER_TIMBRE;
+	const bank = new FormantBank(sampleRate, timbre.formants);
 	let phase = 0;
 	for (let i = speechStartSample; i < speechEndSample; i++) {
 		const tInSpeech = (i - speechStartSample) / sampleRate;
+		// Syllable-rate vibrato proportional to the speaker's base pitch (the
+		// original shared voice swung 30 Hz around 110 Hz ≈ ±27%).
 		const f0 =
-			110 + 30 * Math.sin(2 * Math.PI * 5 * tInSpeech) + (rng() - 0.5) * 4;
+			timbre.f0Hz * (1 + 0.27 * Math.sin(2 * Math.PI * 5 * tInSpeech)) +
+			(rng() - 0.5) * 4;
 		phase += f0 / sampleRate;
 		let excitation = 0;
 		if (phase >= 1) {

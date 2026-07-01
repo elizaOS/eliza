@@ -1,8 +1,8 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
-  ContactsPermissionStatus,
   ContactSummary,
+  ContactsPermissionStatus,
   ContactsPlugin,
   CreateContactOptions,
   ImportedContactSummary,

@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   DESKTOP_PARITY,
@@ -5,6 +8,15 @@ import {
   parityFor,
 } from "../platform/capabilities.js";
 import type { PlatformOS } from "../platform/helpers.js";
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+);
+
+function readRepoFile(relativePath: string): string {
+  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
 
 function detectFor(
   osName: PlatformOS,
@@ -58,6 +70,19 @@ describe("cross-platform computer-use capabilities", () => {
     });
   });
 
+  it("falls back to ffmpeg x11grab for screenshots when no dedicated tool is present (#9105)", () => {
+    const caps = detectFor("linux", ["ffmpeg"]);
+    expect(caps.screenshot).toMatchObject({
+      available: true,
+      tool: "ffmpeg x11grab",
+    });
+  });
+
+  it("reports no screenshot tool when none of import/scrot/gnome/ffmpeg exist", () => {
+    const caps = detectFor("linux", []);
+    expect(caps.screenshot.available).toBe(false);
+  });
+
   it("reports Windows desktop control through built-in PowerShell capabilities", () => {
     const caps = detectFor("win32", [], false);
 
@@ -86,7 +111,7 @@ describe("cross-platform computer-use capabilities", () => {
 
     expect(caps.screenshot).toMatchObject({
       available: false,
-      tool: "none (install ImageMagick, scrot, or gnome-screenshot)",
+      tool: "none (install ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
     });
     expect(caps.computerUse).toMatchObject({
       available: false,
@@ -123,5 +148,29 @@ describe("desktop parity matrix", () => {
     expect(parityFor("linux", "fileSystem").status).toBe("verified");
     expect(parityFor("darwin", "fileSystem").status).toBe("verified");
     expect(parityFor("win32", "fileSystem").status).toBe("verified");
+  });
+
+  it("documents mobile and desktop platform constraints without task-owner placeholders", () => {
+    const matrix = readRepoFile(
+      "plugins/plugin-computeruse/src/mobile/parity-status.md",
+    );
+
+    expect(matrix).not.toContain("OWNED BY TASK");
+    expect(matrix).not.toContain("TBD");
+    expect(matrix).toContain(
+      "| computerUse — mouse / keyboard | verified (`xdotool`)",
+    );
+    expect(matrix).toContain("blocked: stock iOS forbids cross-app input");
+    expect(matrix).toContain(
+      "| browser (Puppeteer-core driving Chromium) | verified",
+    );
+    expect(matrix).toContain("| clipboard | verified");
+    expect(matrix).toContain(
+      "unavailable (no mobile clipboard bridge method yet)",
+    );
+    expect(matrix).toContain(
+      "code-parity (MediaProjection, requires user consent)",
+    );
+    expect(matrix).toContain("blocked: no Chromium on iOS");
   });
 });

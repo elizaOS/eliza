@@ -23,7 +23,7 @@ import {
   type UserContent,
 } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
-import type { ModelName, ModelSize } from "../types";
+import { createModelName, type ModelName, type ModelSize } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
 import {
   getActionPlannerModel,
@@ -98,6 +98,13 @@ interface GenerateTextParamsWithProviderOptions
   toolChoice?: ToolChoice<ToolSet>;
   responseSchema?: unknown;
   providerOptions?: ProviderOptions;
+}
+
+function resolveRequestedModelName(params: GenerateTextParams, fallback: ModelName): ModelName {
+  const requestedModel = (params as GenerateTextParams & { model?: unknown }).model;
+  return typeof requestedModel === "string" && requestedModel.trim().length > 0
+    ? createModelName(requestedModel.trim())
+    : fallback;
 }
 
 type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
@@ -437,7 +444,9 @@ function buildSegmentedUserContentFromSegments(
 function buildSegmentedUserContentForMessages(
   params: GenerateTextParamsWithProviderOptions
 ): UserContent | undefined {
-  const dynamicSegments = (params.promptSegments ?? []).filter((segment) => !segment.stable);
+  const dynamicSegments = (params.promptSegments ?? []).filter(
+    (segment: PromptSegment) => !segment.stable
+  );
   if (dynamicSegments.length === 0 && (params.attachments?.length ?? 0) === 0) {
     return undefined;
   }
@@ -496,7 +505,7 @@ function buildSegmentCacheControls(
   // longer matching prefix that a later breakpoint creates — we lose
   // granularity on partial-prefix hits but not coverage.
   const stableIndices: number[] = [];
-  (params.promptSegments ?? []).forEach((segment, index) => {
+  (params.promptSegments ?? []).forEach((segment: PromptSegment, index: number) => {
     if (segment.stable) stableIndices.push(index);
   });
   for (const index of stableIndices.slice(-maxSegmentBreakpoints)) {
@@ -770,10 +779,15 @@ function resolveTextParams(
   // Cap output tokens at the model's hard limit. Opus 4.x = 32k, Sonnet 4.x = 64k.
   // Callers (eliza runtime) sometimes pass the prompt context window (128k+) as
   // maxTokens, which the API rejects with "Invalid request data".
-  const maxTokens = Math.min(
-    params.maxTokens ?? defaultMaxTokens,
-    isOpus4Model(modelName) ? 32_000 : 64_000
-  );
+  const modelHardCap = isOpus4Model(modelName) ? 32_000 : 64_000;
+  // Anthropic's Messages API REQUIRES max_tokens — an opt-out caller (direct-
+  // channel Stage-1) can't drop it, so send the model's hard cap. The reply is
+  // then bounded only by the model's real max (never an arbitrary 8192), and the
+  // value never 400s because it equals the documented limit. Other callers keep
+  // the existing default, Math.min-capped.
+  const maxTokens = params.omitMaxTokens
+    ? modelHardCap
+    : Math.min(params.maxTokens ?? defaultMaxTokens, modelHardCap);
 
   const rawProviderOptions = params.providerOptions;
   const rawAnthropicOptions = rawProviderOptions?.anthropic;
@@ -960,7 +974,23 @@ async function generateTextWithModel(
 
   const operationName = `${modelType} request using ${modelName}`;
 
-  if (params.stream) {
+  // Route tool-using requests (and any request when ELIZA_ANTHROPIC_DISABLE_STREAM=1)
+  // to the non-streaming generateText path. The AI SDK streaming companion
+  // promises raise AI_NoOutputGeneratedError when a response contains only
+  // tool_use blocks and no text; generateText preserves response.toolCalls and
+  // text reliably. `readToolSet` has already normalized tools to a ToolSet
+  // record (or undefined), so a non-empty tool set means there are tool keys.
+  const toolSet = paramsWithAttachments.tools;
+  const hasToolSurface =
+    (toolSet ? Object.keys(toolSet).length > 0 : false) ||
+    Boolean(paramsWithAttachments.toolChoice);
+  const streamDisabled = process.env.ELIZA_ANTHROPIC_DISABLE_STREAM === "1" || hasToolSurface;
+
+  // Structured-output calls must not stream: the parsed native object is only
+  // available on the non-stream `generateText` result (returned via
+  // `buildNativeTextResult` below). A streamed structured call would emit raw
+  // text chunks and discard the parsed object, so fall through to generateText.
+  if (params.stream && !streamDisabled && !paramsWithAttachments.responseSchema) {
     try {
       const streamResult = streamText(generateParams);
       const providerMetadataPromise: Promise<unknown> = Promise.resolve(
@@ -988,22 +1018,48 @@ async function generateTextWithModel(
           for await (const chunk of streamResult.textStream) {
             yield chunk;
           }
+          // The AI SDK's `textStream` terminates with zero chunks on a hard
+          // failure (auth/transport) instead of throwing — the real error
+          // (e.g. APICallError 401) only rejects the companion promises. Await
+          // `finishReason` here so an errored/empty stream re-throws the real
+          // cause (matching the non-stream generateText branch) rather than
+          // silently returning ''. The happy path resolves with a value.
+          await streamResult.finishReason;
           completed = true;
+        } catch (error) {
+          throw formatModelError(operationName, error);
         } finally {
           if (completed) {
             await usagePromise.catch(ignoreUsageError);
           }
         }
       }
+      // The streaming path primarily consumes `textStream`. The AI SDK's
+      // companion promises (text/toolCalls/finishReason/usage) reject on an
+      // empty stream ("No output generated") even when no caller awaits them,
+      // which otherwise surfaces as an unhandled rejection. Attach a no-op catch
+      // so each bare promise is always considered handled; real consumers still
+      // observe the value or error. Mirrors plugin-openai's `handledPromise`.
+      const handledPromise = <T>(value: T | PromiseLike<T>): Promise<T> => {
+        const promise = Promise.resolve(value);
+        promise.catch(() => {});
+        return promise;
+      };
       return {
         textStream: textStreamWithUsage(),
-        text: Promise.resolve(streamResult.text).then(async (text) => {
-          await usagePromise.catch(ignoreUsageError);
-          return text;
-        }),
-        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(streamResult.toolCalls) } : {}),
-        usage: usagePromise,
-        finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
+        text: handledPromise(
+          Promise.resolve(streamResult.text).then(async (text) => {
+            await usagePromise.catch(ignoreUsageError);
+            return text;
+          })
+        ),
+        ...(shouldReturnNativeResult
+          ? { toolCalls: handledPromise(Promise.resolve(streamResult.toolCalls)) }
+          : {}),
+        usage: handledPromise(usagePromise),
+        finishReason: handledPromise(
+          Promise.resolve(streamResult.finishReason) as Promise<string | undefined>
+        ),
       };
     } catch (error) {
       throw formatModelError(operationName, error);
@@ -1037,7 +1093,7 @@ export async function handleTextSmall(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const modelName = getSmallModel(runtime);
+  const modelName = resolveRequestedModelName(params, getSmallModel(runtime));
   return generateTextWithModel(runtime, params, modelName, "small", ModelType.TEXT_SMALL);
 }
 
@@ -1045,7 +1101,7 @@ export async function handleTextLarge(
   runtime: IAgentRuntime,
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
-  const modelName = getLargeModel(runtime);
+  const modelName = resolveRequestedModelName(params, getLargeModel(runtime));
   return generateTextWithModel(runtime, params, modelName, "large", ModelType.TEXT_LARGE);
 }
 
@@ -1056,7 +1112,7 @@ export async function handleTextNano(
   return generateTextWithModel(
     runtime,
     params,
-    getNanoModel(runtime),
+    resolveRequestedModelName(params, getNanoModel(runtime)),
     "small",
     TEXT_NANO_MODEL_TYPE
   );
@@ -1069,7 +1125,7 @@ export async function handleTextMedium(
   return generateTextWithModel(
     runtime,
     params,
-    getMediumModel(runtime),
+    resolveRequestedModelName(params, getMediumModel(runtime)),
     "large",
     TEXT_MEDIUM_MODEL_TYPE
   );
@@ -1082,7 +1138,7 @@ export async function handleTextMega(
   return generateTextWithModel(
     runtime,
     params,
-    getMegaModel(runtime),
+    resolveRequestedModelName(params, getMegaModel(runtime)),
     "large",
     TEXT_MEGA_MODEL_TYPE
   );
@@ -1095,7 +1151,7 @@ export async function handleResponseHandler(
   return generateTextWithModel(
     runtime,
     params,
-    getResponseHandlerModel(runtime),
+    resolveRequestedModelName(params, getResponseHandlerModel(runtime)),
     "small",
     RESPONSE_HANDLER_MODEL_TYPE
   );
@@ -1108,7 +1164,7 @@ export async function handleActionPlanner(
   return generateTextWithModel(
     runtime,
     params,
-    getActionPlannerModel(runtime),
+    resolveRequestedModelName(params, getActionPlannerModel(runtime)),
     "large",
     ACTION_PLANNER_MODEL_TYPE
   );
@@ -1124,7 +1180,7 @@ export async function handleReasoningSmall(
   return generateTextWithModel(
     runtime,
     params,
-    getReasoningSmallModel(runtime),
+    resolveRequestedModelName(params, getReasoningSmallModel(runtime)),
     "small",
     TEXT_REASONING_SMALL_MODEL_TYPE
   );
@@ -1137,7 +1193,7 @@ export async function handleReasoningLarge(
   return generateTextWithModel(
     runtime,
     params,
-    getReasoningLargeModel(runtime),
+    resolveRequestedModelName(params, getReasoningLargeModel(runtime)),
     "large",
     TEXT_REASONING_LARGE_MODEL_TYPE
   );

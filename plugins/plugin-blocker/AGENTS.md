@@ -5,26 +5,21 @@ SelfControl-style hosts engine and macOS / mobile app blocking.
 
 ## Purpose / role
 
-Provides the focus surface for an Eliza agent: a single `BLOCK` umbrella action
-(target = app | website), two read-only providers that surface the user's
-current block state, and two Service classes that own the platform engine
-lifecycle. Persistence lives in a drizzle `pgSchema('app_blocker')`. Ships a
-`focus` overlay view rendered by the dashboard shell.
+Provides the focus surface for an Eliza agent: two read-only providers that
+surface the user's current block state, two Service classes that own the
+platform engine lifecycle, a drizzle `pgSchema('app_blocker')`, and a `focus`
+overlay view rendered by the dashboard shell. The `BLOCK` umbrella action is
+host-adapted by `@elizaos/plugin-personal-assistant`.
 
-This package was scaffolded as part of decomposing the giant
-`@elizaos/plugin-personal-assistant`. The action / providers / services are currently
-stubs that reference the live implementations still in `plugin-lifeops`. See
-`README.md` for the migration mapping.
+This package was split out of `@elizaos/plugin-personal-assistant`. The
+providers, services, schema, and view are owned here. The `BLOCK` action remains
+PA-resident to keep one owner-gated scheduler/chat dispatch path.
 
 ## Plugin surface
 
-### Action
-- `BLOCK` (`src/actions/block.ts`) — umbrella with `target` and `action`
-  parameters. Matrix:
-  - `app`: `block`, `unblock`, `status`
-  - `website`: `block`, `unblock`, `status`, `request_permission`, `release`,
-    `list_active`
-  - Contexts: `focus`, `automation`. Role gate: ADMIN.
+### Actions
+- None registered here. `BLOCK` is registered by
+  `@elizaos/plugin-personal-assistant`.
 
 ### Providers
 - `WEBSITE_BLOCKER` (`src/providers/website-blocker.ts`) — active website block
@@ -52,8 +47,6 @@ src/
   plugin.ts                       blockerPlugin definition
   index.ts                        Public export barrel
   types.ts                        Constants + Block* types
-  actions/
-    block.ts                      BLOCK umbrella action (stub)
   providers/
     website-blocker.ts            WEBSITE_BLOCKER provider (stub)
     app-blocker.ts                APP_BLOCKER provider (stub)
@@ -101,8 +94,8 @@ the lifeops implementations they replace.
 
 ## Conventions / gotchas
 
-- Stubs reference the source in plugin-lifeops via TODO(migration) comments —
-  preserve those when porting; they are the only breadcrumbs.
+- Do not add a second `BLOCK` action here unless the PA-hosted owner gating,
+  scheduler hooks, and chat dispatch behavior move with parity tests.
 - `@elizaos/plugin-sql` is required at runtime — schema registration in the
   Plugin object tells the SQL plugin to migrate `app_blocker`.
 - The view bundle is built independently of the JS / type build (`build:views`
@@ -110,3 +103,45 @@ the lifeops implementations they replace.
 - All services log with the `[Blocker]` prefix.
 - See the root `AGENTS.md` for repo-wide architecture rules, logger
   conventions, and ESM standards.
+
+<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+
+> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
+> works **without reading the code**, from the artifacts you attach. This applies to **every**
+> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+
+- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
+  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  providers/context, the raw model output, every tool/action call, and the result. Then **open
+  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
+  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
+- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
+  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
+  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
+  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
+  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
+  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
+  them is part of your change.
+- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
+  the entire feature or view, start to finish (`bun run test:e2e:record`).
+- **Manually review every artifact the change touches** — never just the green check: client
+  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
+  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
+- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
+  blocker by the **hard path**: build the real architecture, stand up the real
+  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
+  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
+  highest-effort, production-ready version. Keep going until every possibility is exhausted.
+
+Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
+behavior, **re-capture** evidence; stale proof is worse than none.
+
+**Capture & manually review for this package — CLI / tooling:**
+- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
+- Failure paths: bad args, missing deps, partial state, permission/network errors.
+- A recording/log of the actual run end to end — not a unit test of one helper.
+- Any model interaction captured as a live trajectory and reviewed.
+<!-- END: evidence-and-e2e-mandate -->

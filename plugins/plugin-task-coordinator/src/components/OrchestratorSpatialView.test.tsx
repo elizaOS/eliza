@@ -260,7 +260,6 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
       const lines = renderViewToLines(listView, width);
       for (const line of lines) expect(visibleWidth(line)).toBe(width);
       const flat = lines.join("\n");
-      expect(flat).toContain("Orchestrator");
       expect(flat).toContain("Refactor auth pipeline");
       expect(flat).toContain("Fix flaky test suite");
       // Tasks are created conversationally in chat — the workbench is a
@@ -293,9 +292,51 @@ describe("OrchestratorSpatialView one source, three modalities", () => {
     expect(xr).toContain('data-spatial-surface="xr"');
     for (const html of [gui, xr]) {
       expect(html).toContain("Refactor auth pipeline");
-      expect(html).toContain("Orchestrator");
       expect(html).toContain('data-agent-id="open-t1"');
     }
+  });
+
+  it("detail exposes the enriched action bar affordances (non-terminal task)", () => {
+    const gui = renderToStaticMarkup(
+      <SpatialSurface modality="gui">{detailView}</SpatialSurface>,
+    );
+    // Edit-group + lifecycle affordances render for an active (non-terminal) task.
+    for (const agentId of [
+      "fork",
+      "restart",
+      "add-agent",
+      "copy-link",
+      "archive",
+      "delete",
+      "validate",
+      "priority",
+    ]) {
+      expect(gui).toContain(`data-agent-id="${agentId}"`);
+    }
+    // The priority select carries the four priority options.
+    for (const priority of ["low", "normal", "high", "urgent"]) {
+      expect(gui).toContain(priority);
+    }
+  });
+
+  it("detail hides the Edit-group + priority on a terminal (archived) task", () => {
+    const terminal: OrchestratorSnapshot = {
+      ...detailSnapshot,
+      detail: detailSnapshot.detail
+        ? { ...detailSnapshot.detail, status: "archived" }
+        : null,
+    };
+    const gui = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <OrchestratorSpatialView snapshot={terminal} />
+      </SpatialSurface>,
+    );
+    // Terminal guard: Edit-group + priority are hidden; Reopen replaces Archive.
+    for (const agentId of ["fork", "restart", "add-agent", "priority"]) {
+      expect(gui).not.toContain(`data-agent-id="${agentId}"`);
+    }
+    expect(gui).toContain('data-agent-id="reopen"');
+    expect(gui).toContain('data-agent-id="copy-link"');
   });
 
   it("registers as a terminal view the agent terminal can mount and render", () => {

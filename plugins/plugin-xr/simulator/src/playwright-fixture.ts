@@ -13,12 +13,21 @@
  *   });
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test as base, type Page } from "@playwright/test";
 import { MockAgentServer } from "./mock-agent.ts";
-import type { EmulatorStats, XRPose } from "./types.ts";
+import type {
+  DeviceRay,
+  EmulatorStats,
+  Handedness,
+  InputEventRecord,
+  TelemetrySnapshot,
+  Vec3,
+  XRPose,
+  XRSessionMode,
+} from "./types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EMULATOR_DIST = resolve(__dirname, "../dist/emulator.js");
@@ -135,6 +144,148 @@ export class XREmulatorPage {
   async simulateDisconnect(): Promise<void> {
     await this.page.evaluate(() => window.__XREmulator.simulateDisconnect());
   }
+
+  // ── Immersive session + input (IWER-backed) ──────────────────────────────
+
+  /** Start an immersive WebXR session. */
+  async startSession(mode: XRSessionMode = "immersive-vr"): Promise<boolean> {
+    return this.page.evaluate((m) => window.__XREmulator.startSession(m), mode);
+  }
+
+  /** End the active session. */
+  async endSession(): Promise<void> {
+    await this.page.evaluate(() => window.__XREmulator.endSession());
+  }
+
+  /** Set a controller's world pose. */
+  async setControllerPose(
+    handedness: Handedness,
+    pose: Partial<XRPose>,
+  ): Promise<void> {
+    await this.page.evaluate(
+      ({ h, p }) => window.__XREmulator.setControllerPose(h, p),
+      { h: handedness, p: pose },
+    );
+  }
+
+  /** Set a hand's named pose ("default" / "pinch" / …). */
+  async setHandPose(handedness: Handedness, poseId: string): Promise<void> {
+    await this.page.evaluate(
+      ({ h, p }) => window.__XREmulator.setHandPose(h, p),
+      { h: handedness, p: poseId },
+    );
+  }
+
+  /** Aim a controller's ray at an element's screen center. */
+  async aimControllerAt(
+    handedness: Handedness,
+    selector: string,
+  ): Promise<boolean> {
+    return this.page.evaluate(
+      ({ h, s }) => window.__XREmulator.aimControllerAt(h, s),
+      { h: handedness, s: selector },
+    );
+  }
+
+  /** Fire select (trigger) on a controller. */
+  async pressSelect(handedness: Handedness): Promise<void> {
+    await this.page.evaluate(
+      (h) => window.__XREmulator.pressSelect(h),
+      handedness,
+    );
+  }
+
+  /** Fire squeeze (grip) on a controller. */
+  async pressSqueeze(handedness: Handedness): Promise<void> {
+    await this.page.evaluate(
+      (h) => window.__XREmulator.pressSqueeze(h),
+      handedness,
+    );
+  }
+
+  /** Snapshot poses + element rects + aiming rays + computed hits. */
+  async getElementTelemetry(selector?: string): Promise<TelemetrySnapshot> {
+    return this.page.evaluate(
+      (s) => window.__XREmulator.getElementTelemetry(s),
+      selector,
+    );
+  }
+
+  async getSelectLog(): Promise<InputEventRecord[]> {
+    return this.page.evaluate(() => window.__XREmulator.getSelectLog());
+  }
+
+  async getSqueezeLog(): Promise<InputEventRecord[]> {
+    return this.page.evaluate(() => window.__XREmulator.getSqueezeLog());
+  }
+
+  // ── 3D scene (XRSpatialScene) read-back + manipulation ─────────────────────
+
+  /** True once a mounted XRSpatialScene is driving 3D hit-tests. */
+  async hasScene(): Promise<boolean> {
+    return this.page.evaluate(() => window.__XREmulator.hasScene());
+  }
+
+  /** The current emulated headset world pose. */
+  async getHeadPose(): Promise<XRPose> {
+    return this.page.evaluate(() => window.__XREmulator.getHeadPose());
+  }
+
+  /** A connected controller's world pose, or null. */
+  async getControllerPose(handedness: Handedness): Promise<XRPose | null> {
+    return this.page.evaluate(
+      (h) => window.__XREmulator.getControllerPose(h),
+      handedness,
+    );
+  }
+
+  /** A controller's world-space aiming ray, or null. */
+  async getControllerRay(handedness: Handedness): Promise<DeviceRay | null> {
+    return this.page.evaluate(
+      (h) => window.__XREmulator.getControllerRay(h),
+      handedness,
+    );
+  }
+
+  /** Drag the panel a controller is aimed at by a world delta; returns new position. */
+  async dragController(
+    handedness: Handedness,
+    delta: Vec3,
+  ): Promise<Vec3 | null> {
+    return this.page.evaluate(
+      ({ h, d }) => window.__XREmulator.dragController(h, d),
+      { h: handedness, d: delta },
+    );
+  }
+
+  // ── Capture ──────────────────────────────────────────────────────────────
+
+  /** Write a PNG screenshot of the page into the artifact dir. */
+  async captureScreenshot(name: string): Promise<string> {
+    const dir = artifactDir();
+    mkdirSync(dir, { recursive: true });
+    const out = join(dir, `${name}.png`);
+    await this.page.screenshot({ path: out });
+    return out;
+  }
+
+  /** Write the per-frame pose/ray/hit telemetry log as JSON into the artifact dir. */
+  async captureFrameLog(name: string): Promise<string> {
+    const dir = artifactDir();
+    mkdirSync(dir, { recursive: true });
+    const log = await this.page.evaluate(() =>
+      window.__XREmulator.getFrameLog(),
+    );
+    const out = join(dir, `${name}.frames.json`);
+    writeFileSync(out, `${JSON.stringify(log, null, 2)}\n`);
+    return out;
+  }
+}
+
+/** Where capture artifacts land (override with XR_E2E_ARTIFACT_DIR). */
+export function artifactDir(): string {
+  if (process.env.XR_E2E_ARTIFACT_DIR) return process.env.XR_E2E_ARTIFACT_DIR;
+  return resolve(__dirname, "..", "e2e-artifacts");
 }
 
 // ── Playwright fixture extensions ─────────────────────────────────────────
@@ -145,7 +296,7 @@ interface XRFixtures {
 }
 
 export const test = base.extend<XRFixtures>({
-  mockAgent: async (_fixtures, use, testInfo) => {
+  mockAgent: async ({}, use, testInfo) => {
     // Use a unique port per worker to allow parallel test runs
     const port = 31338 + testInfo.workerIndex;
     const server = new MockAgentServer({ port });

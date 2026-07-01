@@ -1,7 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType, type Plugin, resolveSetting } from "@elizaos/core";
 import { EdgeTTS } from "node-edge-tts";
 
 /**
@@ -68,6 +68,10 @@ const VOICE_PRESETS: Record<string, string> = {
   // Direct Edge TTS voice names pass through
 };
 
+// Runtime per-agent setting first, then `process.env`, then the fallback.
+// Thin wrapper over core `resolveSetting` so the precedence lives in one
+// canonical place; the env fallback uses dotenv semantics (trimmed; empty
+// strings treated as unset).
 function getSetting(runtime: IAgentRuntime | null, key: string): string | undefined;
 function getSetting(runtime: IAgentRuntime | null, key: string, fallback: string): string;
 function getSetting(
@@ -75,11 +79,9 @@ function getSetting(
   key: string,
   fallback?: string
 ): string | undefined {
-  const envValue =
-    typeof process !== "undefined" && (process as { env?: Record<string, string> }).env
-      ? (process as { env: Record<string, string> }).env[key]
-      : undefined;
-  return (runtime?.getSetting(key) as string | undefined) ?? envValue ?? fallback;
+  return fallback === undefined
+    ? resolveSetting(runtime, key)
+    : resolveSetting(runtime, key, { defaultValue: fallback });
 }
 
 function getEdgeTTSSettings(runtime: IAgentRuntime | null): EdgeTTSSettings {
@@ -194,6 +196,29 @@ function inferExtension(outputFormat: string): string {
   return ".mp3";
 }
 
+function isSubpath(target: string, root: string): boolean {
+  const relative = path.relative(root, target);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function removeEdgeTempDir(tempDir: string, tempRoot = tmpdir()): boolean {
+  let rootRealPath: string;
+  let tempRealPath: string;
+  try {
+    rootRealPath = realpathSync(tempRoot);
+    tempRealPath = realpathSync(tempDir);
+  } catch {
+    return false;
+  }
+
+  if (!isSubpath(tempRealPath, rootRealPath)) {
+    return false;
+  }
+
+  rmSync(tempRealPath, { recursive: true, force: true });
+  return true;
+}
+
 /**
  * Generate speech using Microsoft Edge TTS
  */
@@ -233,7 +258,7 @@ async function generateSpeech(settings: EdgeTTSSettings, params: EdgeTTSParams):
   } finally {
     // Cleanup temp directory
     try {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeEdgeTempDir(tempDir);
     } catch {
       // Ignore cleanup errors
     }
@@ -445,4 +470,5 @@ export const _test = {
   inferExtension,
   getEdgeTTSSettings,
   normalizeEdgeTTSParams,
+  removeEdgeTempDir,
 };

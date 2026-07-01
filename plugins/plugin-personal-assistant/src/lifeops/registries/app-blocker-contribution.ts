@@ -14,7 +14,7 @@ import {
   getAppBlockerStatus,
   startAppBlock,
   stopAppBlock,
-} from "@elizaos/plugin-blocker";
+} from "@elizaos/plugin-blocker/services/app-blocker/index";
 import type {
   BlockerAvailability,
   BlockerContribution,

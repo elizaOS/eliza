@@ -9,6 +9,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
+  lane: "live-only",
   id: "followup.relationship-overdue-3-month-cadence",
   title: "Surface relationships whose 90-day cadence has elapsed",
   domain: "lifeops.followup",

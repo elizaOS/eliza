@@ -69,35 +69,66 @@ export class FarcasterClient {
   async sendCast({
     content,
     inReplyTo,
+    embeds,
   }: {
     content: Content;
     inReplyTo?: CastId;
+    /** Media URLs to attach as Farcaster cast embeds (#8876). */
+    embeds?: string[];
   }): Promise<NeynarCast[]> {
     const text = (content.text ?? "").trim();
-    if (text.length === 0) {
+    const mediaEmbeds = (embeds ?? []).filter(
+      (url) => typeof url === "string" && url.trim().length > 0
+    );
+    // An embeds-only cast (media with no prose) is valid; only bail when there
+    // is neither text nor media to send.
+    if (text.length === 0 && mediaEmbeds.length === 0) {
       return [];
     }
 
-    const chunks = splitPostContent(text);
+    const chunks = text.length > 0 ? splitPostContent(text) : [""];
     const sent: NeynarCast[] = [];
 
-    for (const chunk of chunks) {
-      const result = await this.publishCast(chunk, inReplyTo);
+    for (let i = 0; i < chunks.length; i++) {
+      // Attach the embeds once, on the first cast in the thread.
+      const result = await this.publishCast(
+        chunks[i],
+        inReplyTo,
+        i === 0 ? mediaEmbeds : undefined
+      );
       sent.push(result);
     }
     return sent;
   }
 
-  private async publishCast(cast: string, parentCastId?: CastId): Promise<NeynarCast> {
+  private async publishCast(
+    cast: string,
+    parentCastId?: CastId,
+    embeds?: string[]
+  ): Promise<NeynarCast> {
     try {
       const result = await logNeynarCall(
         "publishCast",
-        { textLen: cast.length, parentHash: parentCastId?.hash ?? null },
+        {
+          textLen: cast.length,
+          parentHash: parentCastId?.hash ?? null,
+          embedCount: embeds?.length ?? 0,
+        },
         async () =>
           this.neynar.publishCast({
             signerUuid: this.signerUuid,
             text: cast,
             parent: parentCastId?.hash,
+            // Neynar's embed type is a loose union; a url-only embed is valid at
+            // runtime (the documented image/link embed) but the SDK types want
+            // the cast_id variant's fields too — cast at this SDK boundary.
+            ...(embeds && embeds.length > 0
+              ? {
+                  embeds: embeds.map((url) => ({ url })) as Parameters<
+                    NeynarAPIClient["publishCast"]
+                  >[0]["embeds"],
+                }
+              : {}),
           })
       );
       if (result.success) {

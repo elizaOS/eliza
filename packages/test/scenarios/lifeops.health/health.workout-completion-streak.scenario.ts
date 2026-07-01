@@ -8,6 +8,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "health.workout-completion-streak",
   title: "Workout completion streak from health data",
   domain: "lifeops.health",

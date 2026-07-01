@@ -49,7 +49,8 @@ export type SpatialKind =
   | "field"
   | "divider"
   | "spacer"
-  | "image";
+  | "image"
+  | "escape";
 
 type Branded<P> = ((props: P) => ReactNode) & { [SPATIAL_KIND]: SpatialKind };
 
@@ -133,6 +134,22 @@ export interface SpacerProps extends CommonProps {
 export interface ImageProps extends CommonProps {
   src: string;
   alt?: string;
+}
+
+/**
+ * The DOM-escape hatch: render arbitrary real DOM (canvas / WebGL / 3D / charts /
+ * `<audio>`) in GUI/XR, with a spatial-primitive fallback for TUI.
+ *
+ * In GUI/XR the {@link Escape} component renders `children` as real DOM inside a
+ * growing flex box. In TUI the evaluator never renders the DOM children (they
+ * can't run in a terminal) — it emits the evaluated `tui` fallback instead, or a
+ * placeholder when none is given.
+ */
+export interface EscapeProps extends CommonProps {
+  /** The real DOM/canvas content rendered in GUI/XR. */
+  children?: ReactNode;
+  /** Spatial-primitive fallback rendered in TUI. */
+  tui?: ReactNode;
 }
 
 function normalizeAgent(
@@ -604,6 +621,7 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
   if (spec.orientation === "vertical") {
     return (
       <div
+        aria-hidden="true"
         data-spatial-kind="divider"
         style={{
           width: 1,
@@ -613,6 +631,9 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
       />
     );
   }
+  // A labeled divider is a section header: the caption is meaningful content,
+  // so render it (not aria-hidden) between two decorative rules. The plain rule
+  // stays decorative/aria-hidden. (Restores rendering #9486 collapsed away.)
   if (spec.label) {
     return (
       <div
@@ -625,6 +646,7 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
         }}
       >
         <div
+          aria-hidden="true"
           style={{
             flex: 1,
             height: 1,
@@ -633,6 +655,7 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
         />
         <span style={{ fontSize: "0.75rem" }}>{spec.label}</span>
         <div
+          aria-hidden="true"
           style={{
             flex: 1,
             height: 1,
@@ -644,6 +667,7 @@ export const Divider = brand<DividerProps>("divider", function Divider(props) {
   }
   return (
     <div
+      aria-hidden="true"
       data-spatial-kind="divider"
       style={{
         height: 1,
@@ -686,6 +710,42 @@ export const Image = brand<ImageProps>("image", function Image(props) {
   );
 });
 
+/**
+ * DOM-escape primitive. In GUI/XR it renders its real DOM `children` inside a
+ * growing flex box so a `<canvas>`/WebGL/3D/chart surface can size to it. In TUI
+ * it is never rendered — `evaluate.ts` intercepts the `escape` kind and emits the
+ * `tui` fallback instead (the DOM children can't run in a terminal).
+ *
+ * The box defaults to `grow: 1` and `minHeight: 0` so a canvas styled
+ * `width:100%; height:100%` (or `flex:1`) fills the available space.
+ */
+export const Escape = brand<EscapeProps>("escape", function Escape(props) {
+  const { modality } = useSpatialContext();
+  const cell = CELL_REM[modality];
+  const agent = normalizeAgent(props.agent);
+  const style: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    boxSizing: "border-box",
+    minWidth: 0,
+    minHeight: 0,
+    ...commonFlexStyle(
+      {
+        grow: props.grow ?? 1,
+        shrink: props.shrink,
+        width: props.width,
+        height: props.height,
+      },
+      cell,
+    ),
+  };
+  return (
+    <div data-spatial-kind="escape" style={style} {...agentDataProps(agent)}>
+      {props.children}
+    </div>
+  );
+});
+
 // --- Authoring sugar (all compile to `box`) ---------------------------------
 
 export function HStack(props: Omit<StackProps, "direction">) {
@@ -694,14 +754,20 @@ export function HStack(props: Omit<StackProps, "direction">) {
 export function VStack(props: Omit<StackProps, "direction">) {
   return <Stack {...props} direction="column" />;
 }
-/** A bordered, padded surface. */
-export function Card(props: StackProps) {
+/** A compact grouped surface without a visible frame by default. */
+export function Card({
+  border,
+  gap,
+  padding,
+  title: _title,
+  ...props
+}: StackProps) {
   return (
     <Stack
       {...props}
-      border={props.border ?? "round"}
-      padding={props.padding ?? 2}
-      gap={props.gap ?? 1}
+      border={border ?? "none"}
+      padding={padding ?? 1}
+      gap={gap ?? 1}
     />
   );
 }

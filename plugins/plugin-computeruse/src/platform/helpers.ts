@@ -7,20 +7,52 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { platform } from "node:os";
+import { psSpawnTimeoutMs } from "./windows-timeouts.js";
 
 // ── Command Execution ───────────────────────────────────────────────────────
 
 /**
  * Check if a CLI tool is available on the system.
+ *
+ * Memoized: tool availability on PATH does not change within a process run, and
+ * the hot CUA paths call this per click/op (e.g. `commandExists("cliclick")` on
+ * every macOS click) — each uncached call spawns `which`/`where` (~50-100ms, and
+ * far worse on Defender-heavy Windows where any spawn is ~10s). Caching collapses
+ * it to a single probe per tool. `clearCommandExistsCache()` resets it for tests.
  */
+const commandExistsCache = new Map<string, boolean>();
 export function commandExists(cmd: string): boolean {
+  const cached = commandExistsCache.get(cmd);
+  if (cached !== undefined) return cached;
+  let exists = false;
   try {
     const which = platform() === "win32" ? "where" : "which";
     execSync(`${which} ${cmd}`, { stdio: "ignore", timeout: 3000 });
-    return true;
+    exists = true;
   } catch {
-    return false;
+    exists = false;
   }
+  commandExistsCache.set(cmd, exists);
+  return exists;
+}
+
+/** Reset the {@link commandExists} memo (test-only / PATH change). */
+export function clearCommandExistsCache(): void {
+  commandExistsCache.clear();
+}
+
+/**
+ * Resolve the effective spawn timeout for a command. PowerShell spawns pay the
+ * Defender cold-spawn tax on Windows (~10-16s, #9581); raise their budget to the
+ * `ELIZA_COMPUTERUSE_PS_TIMEOUT_MS` floor so a legacy-driver call site's small
+ * hardcoded timeout (e.g. the 5s WinForms cursor-position query in `desktop.ts`)
+ * can't false-fail with `ETIMEDOUT` on an extreme host. Non-PowerShell commands
+ * (cliclick/xdotool/osascript/…) and the unset env var are no-ops.
+ */
+function effectiveSpawnTimeout(command: string, timeout: number): number {
+  return command === "powershell" || command === "pwsh"
+    ? psSpawnTimeoutMs(timeout)
+    : timeout;
 }
 
 /**
@@ -33,7 +65,7 @@ export function runCommand(
   timeout: number,
 ): string {
   const result = execFileSync(command, args, {
-    timeout,
+    timeout: effectiveSpawnTimeout(command, timeout),
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf-8",
   });
@@ -49,7 +81,7 @@ export function runCommandBuffer(
   timeout: number,
 ): void {
   execFileSync(command, args, {
-    timeout,
+    timeout: effectiveSpawnTimeout(command, timeout),
     stdio: ["ignore", "pipe", "pipe"],
   });
 }

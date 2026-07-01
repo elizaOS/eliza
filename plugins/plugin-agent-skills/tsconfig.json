@@ -22,6 +22,12 @@
       ],
       "@elizaos/skills/*": [
         "../../packages/skills/dist/*"
+      ],
+      "@elizaos/shared": [
+        "../../packages/shared/dist/index.d.ts"
+      ],
+      "@elizaos/shared/*": [
+        "../../packages/shared/dist/*"
       ]
     },
     "outDir": "./dist",

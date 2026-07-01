@@ -6,7 +6,7 @@
 "use client";
 
 import { Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { Streamdown } from "streamdown";
 import { Button } from "../../../components/ui/button";
 import Image from "../../runtime/image";
@@ -37,6 +37,170 @@ function normalizeMarkdownLists(text: string): string {
   result = result.replace(/^\*\*(\d+)\.\*\*\s*[\r\n]+\s*/gm, "$1. ");
 
   return result;
+}
+
+// Static keyframe/class definitions shared by every chat message. These were
+// previously rendered as an inline <style> inside each message, duplicating the
+// same CSS once per message in a conversation. They are fully static, so we
+// inject each stylesheet into the document head exactly once.
+const REASONING_ANIMATION_CSS = `
+  @keyframes reasoningFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes reasoningTextAppear {
+    from {
+      opacity: 0.3;
+    }
+    to {
+      opacity: 0.65;
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 88, 0, 0);
+      border-color: rgba(255, 88, 0, 0.15);
+    }
+    50% {
+      box-shadow: 0 0 8px 2px rgba(255, 88, 0, 0.1);
+      border-color: rgba(255, 88, 0, 0.25);
+    }
+  }
+
+  @keyframes dotPulse {
+    0%,
+    80%,
+    100% {
+      transform: scale(0.8);
+      opacity: 0.4;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .reasoning-container {
+    animation: reasoningFadeIn 300ms ease-out forwards;
+  }
+
+  .reasoning-border {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+
+  .reasoning-text {
+    animation: reasoningTextAppear 200ms ease-out forwards;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .thinking-dots span {
+    display: inline-block;
+    animation: dotPulse 1.4s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .thinking-dots span:nth-child(2) {
+    animation-delay: 200ms;
+  }
+  .thinking-dots span:nth-child(3) {
+    animation-delay: 400ms;
+  }
+`;
+
+const STREAMING_ANIMATION_CSS = `
+  @keyframes streamTextFadeIn {
+    0% {
+      opacity: 0.4;
+      filter: blur(1px);
+    }
+    100% {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+
+  @keyframes cursorBlink {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    51%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes cursorPulse {
+    0%,
+    100% {
+      opacity: 0.9;
+      transform: scaleY(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scaleY(0.85);
+    }
+  }
+
+  .streaming-text-wrapper {
+    /* Smooth text rendering for animation */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  .streaming-text-content {
+    animation: streamTextFadeIn 200ms ease-out forwards;
+  }
+
+  /* Smooth transitions for text changes */
+  .streaming-text-content p,
+  .streaming-text-content span,
+  .streaming-text-content div {
+    transition: opacity 150ms ease-out;
+  }
+
+  .streaming-cursor {
+    animation: cursorPulse 800ms ease-in-out infinite;
+    will-change: opacity, transform;
+  }
+
+  /* Non-streaming messages - subtle entrance */
+  .message-text-complete {
+    animation: streamTextFadeIn 300ms ease-out forwards;
+  }
+`;
+
+function ensureStyleInjected(id: string, css: string): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+function useChatMessageAnimationStyles(): void {
+  useEffect(() => {
+    ensureStyleInjected(
+      "eliza-chat-reasoning-animations",
+      REASONING_ANIMATION_CSS,
+    );
+    ensureStyleInjected(
+      "eliza-chat-streaming-animations",
+      STREAMING_ANIMATION_CSS,
+    );
+  }, []);
 }
 
 export interface MemoizedChatMessageMessage {
@@ -115,6 +279,8 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
   } = props;
   const isThinking = message.id.startsWith("thinking-");
 
+  useChatMessageAnimationStyles();
+
   // Detect streaming from message id if not explicitly passed
   const isStreamingMessage = isStreaming || message.id.startsWith("streaming-");
 
@@ -171,79 +337,6 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
           <div className="flex flex-col gap-0.5">
             {isThinking ? (
               <div className="py-2.5 px-3.5 bg-white/[0.02] border border-white/[0.05] rounded-sm">
-                <style>{`
-                  @keyframes reasoningFadeIn {
-                    from {
-                      opacity: 0;
-                      transform: translateY(2px);
-                    }
-                    to {
-                      opacity: 1;
-                      transform: translateY(0);
-                    }
-                  }
-
-                  @keyframes reasoningTextAppear {
-                    from {
-                      opacity: 0.3;
-                    }
-                    to {
-                      opacity: 0.65;
-                    }
-                  }
-
-                  @keyframes pulseGlow {
-                    0%,
-                    100% {
-                      box-shadow: 0 0 0 0 rgba(255, 88, 0, 0);
-                      border-color: rgba(255, 88, 0, 0.15);
-                    }
-                    50% {
-                      box-shadow: 0 0 8px 2px rgba(255, 88, 0, 0.1);
-                      border-color: rgba(255, 88, 0, 0.25);
-                    }
-                  }
-
-                  @keyframes dotPulse {
-                    0%,
-                    80%,
-                    100% {
-                      transform: scale(0.8);
-                      opacity: 0.4;
-                    }
-                    40% {
-                      transform: scale(1);
-                      opacity: 1;
-                    }
-                  }
-
-                  .reasoning-container {
-                    animation: reasoningFadeIn 300ms ease-out forwards;
-                  }
-
-                  .reasoning-border {
-                    animation: pulseGlow 2s ease-in-out infinite;
-                  }
-
-                  .reasoning-text {
-                    animation: reasoningTextAppear 200ms ease-out forwards;
-                    -webkit-font-smoothing: antialiased;
-                  }
-
-                  .thinking-dots span {
-                    display: inline-block;
-                    animation: dotPulse 1.4s ease-in-out infinite;
-                  }
-                  .thinking-dots span:nth-child(1) {
-                    animation-delay: 0ms;
-                  }
-                  .thinking-dots span:nth-child(2) {
-                    animation-delay: 200ms;
-                  }
-                  .thinking-dots span:nth-child(3) {
-                    animation-delay: 400ms;
-                  }
-                `}</style>
                 {hasReasoning ? (
                   // Show chain-of-thought reasoning with smooth animation
                   <div className="reasoning-container space-y-2.5">
@@ -302,70 +395,6 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                 )}
                 {/* Message Text - Always show content immediately, upgrade to markdown when ready */}
                 <div className="overflow-hidden">
-                  {/* Streaming text animation styles - smooth typewriter effect */}
-                  <style>{`
-                    @keyframes streamTextFadeIn {
-                      0% {
-                        opacity: 0.4;
-                        filter: blur(1px);
-                      }
-                      100% {
-                        opacity: 1;
-                        filter: blur(0);
-                      }
-                    }
-
-                    @keyframes cursorBlink {
-                      0%,
-                      50% {
-                        opacity: 1;
-                      }
-                      51%,
-                      100% {
-                        opacity: 0;
-                      }
-                    }
-
-                    @keyframes cursorPulse {
-                      0%,
-                      100% {
-                        opacity: 0.9;
-                        transform: scaleY(1);
-                      }
-                      50% {
-                        opacity: 0.5;
-                        transform: scaleY(0.85);
-                      }
-                    }
-
-                    .streaming-text-wrapper {
-                      /* Smooth text rendering for animation */
-                      -webkit-font-smoothing: antialiased;
-                      -moz-osx-font-smoothing: grayscale;
-                      text-rendering: optimizeLegibility;
-                    }
-
-                    .streaming-text-content {
-                      animation: streamTextFadeIn 200ms ease-out forwards;
-                    }
-
-                    /* Smooth transitions for text changes */
-                    .streaming-text-content p,
-                    .streaming-text-content span,
-                    .streaming-text-content div {
-                      transition: opacity 150ms ease-out;
-                    }
-
-                    .streaming-cursor {
-                      animation: cursorPulse 800ms ease-in-out infinite;
-                      will-change: opacity, transform;
-                    }
-
-                    /* Non-streaming messages - subtle entrance */
-                    .message-text-complete {
-                      animation: streamTextFadeIn 300ms ease-out forwards;
-                    }
-                  `}</style>
                   <div
                     className={`streaming-text-wrapper text-[15px] leading-relaxed text-white/90 prose prose-invert prose-sm max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-headings:my-3 prose-pre:my-2 break-words [&_pre]:overflow-x-auto [&_pre_code]:whitespace-pre-wrap [&_pre_code]:break-words ${isStreamingMessage ? "streaming-text-content" : "message-text-complete"}`}
                   >

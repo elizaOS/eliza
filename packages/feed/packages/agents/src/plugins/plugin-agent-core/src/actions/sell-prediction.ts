@@ -26,6 +26,7 @@ import {
 } from "@feed/engine";
 import { AgentPnLService } from "../../../../services/AgentPnLService";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 const agentPnLService = new AgentPnLService();
 
@@ -33,7 +34,7 @@ export const sellPredictionAction: Action = {
   name: "SELL_PREDICTION",
   description:
     "Sell shares from YOUR prediction market position. IMPORTANT: Call CHECK_PNL first to see your holdings - you need the position ID and your actual share count. Do NOT rely on conversation history. Requires positionId and shares.",
-  parameters: {
+  parameters: defineActionParameters({
     positionId: {
       type: "string",
       description: "The ID of the position to sell from",
@@ -44,7 +45,7 @@ export const sellPredictionAction: Action = {
       description: "Number of shares to sell",
       required: true,
     },
-  } as unknown as Action["parameters"],
+  }),
   examples: [
     [
       {

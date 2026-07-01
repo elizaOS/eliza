@@ -48,7 +48,7 @@ export const REAL_LLM_BILLING_SOURCE = "cerebras";
 /**
  * The model's max output tokens (gpt-oss-120b on Cerebras: 40960, per the
  * `CEREBRAS_DEFAULT_TEXT_SMALL_MODEL` catalog entry in
- * cloud-shared/lib/models/catalog.ts). gpt-oss-120b is a reasoning model, so a
+ * cloud/shared/lib/models/catalog.ts). gpt-oss-120b is a reasoning model, so a
  * small cap is spent entirely on reasoning and returns empty content — give it
  * the model's full output budget.
  */

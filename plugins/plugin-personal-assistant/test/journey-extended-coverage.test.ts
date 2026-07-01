@@ -25,30 +25,6 @@
  * de-facto composition behavior of the W1-A spine.
  */
 
-import { describe, expect, it } from "vitest";
-import {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-} from "@elizaos/plugin-scheduling";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "@elizaos/plugin-scheduling";
-import {
-  createEscalationLadderRegistry,
-  registerDefaultEscalationLadders,
-} from "@elizaos/plugin-scheduling";
-import {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-} from "@elizaos/plugin-scheduling";
-import {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  type ScheduledTaskRunnerHandle,
-  TestNoopScheduledTaskDispatcher,
-} from "@elizaos/plugin-scheduling";
-import { createInMemoryScheduledTaskLogStore } from "@elizaos/plugin-scheduling";
 import type {
   ActivitySignalBusView,
   GlobalPauseView,
@@ -59,6 +35,22 @@ import type {
   ScheduledTaskTrigger,
   SubjectStoreView,
 } from "@elizaos/plugin-scheduling";
+import {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "@elizaos/plugin-scheduling";
+import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Test harness — same shape as journey-domain-coverage.test.ts.

@@ -6,9 +6,9 @@
  * endpoints.
  */
 
-import { copyApiKeyToClipboard } from "@elizaos/cloud-shared/lib/client/api-keys";
 import { Check, Copy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useState } from "react";
+import { copyApiKeyToClipboard } from "../api-keys/copy-api-key";
 import { toast } from "./toast";
 import type { ExplorerApiKey } from "./use-explorer-api-key";
 
@@ -117,7 +117,7 @@ export function AuthManager({
               type={showToken ? "text" : "password"}
               value={authToken}
               readOnly
-              className="w-full h-10 px-3 pr-10 rounded-sm border border-white/10 bg-black/40 text-white font-mono text-sm focus:outline-none"
+              className="w-full h-10 px-3 pr-10 rounded-sm border border-white/10 bg-black/40 text-white font-mono text-sm "
             />
             <button
               type="button"
@@ -163,7 +163,7 @@ export function AuthManager({
               type="text"
               placeholder="Enter custom API key..."
               onChange={(e) => onTokenChange(e.target.value)}
-              className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50"
+              className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500   "
             />
             <button
               type="button"

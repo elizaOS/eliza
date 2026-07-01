@@ -1,27 +1,28 @@
-import { build } from "bun";
+#!/usr/bin/env bun
+import { buildPlugin } from "../plugin-build";
 
-await build({
-	entrypoints: ["./src/index.ts"],
-	outdir: "./dist",
-	target: "node",
-	format: "esm",
-	splitting: false,
-	sourcemap: "external",
-	minify: false,
-	external: ["@elizaos/core"],
+await buildPlugin({
+	name: "@elizaos/plugin-commands",
+	externals: ["@elizaos/core"],
+	targets: [
+		{
+			label: "Node (ESM)",
+			entry: "./src/index.ts",
+			outSubdir: "",
+			target: "node",
+			format: "esm",
+			splitting: false,
+		},
+		{
+			label: "Node (CJS)",
+			entry: "./src/index.ts",
+			outSubdir: "cjs",
+			target: "node",
+			format: "cjs",
+			splitting: false,
+			naming: { entry: "[dir]/[name].cjs" },
+		},
+	],
+	dtsProject: "tsconfig.json",
+	dtsEmitDeclarationOnly: true,
 });
-
-// Build CJS version
-await build({
-	entrypoints: ["./src/index.ts"],
-	outdir: "./dist/cjs",
-	target: "node",
-	format: "cjs",
-	splitting: false,
-	sourcemap: "external",
-	minify: false,
-	external: ["@elizaos/core"],
-	naming: "[dir]/[name].cjs",
-});
-
-console.log("Build complete!");

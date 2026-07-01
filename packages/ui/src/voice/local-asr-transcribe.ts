@@ -23,6 +23,30 @@ export interface TranscribeWavOptions {
 export interface TranscribeWavResult {
   /** Trimmed transcript text. Never empty — the helper throws instead. */
   text: string;
+  /** Per-word timings (ms from this utterance's start) when the fused ASR
+   *  build (ABI v12+) emits them; empty otherwise (segment-level highlight). */
+  words: ReadonlyArray<{ text: string; startMs: number; endMs: number }>;
+}
+
+/** Validate the `words` array shape from the ASR response (drop malformed). */
+function parseWords(
+  value: unknown,
+): ReadonlyArray<{ text: string; startMs: number; endMs: number }> {
+  if (!Array.isArray(value)) return [];
+  const out: { text: string; startMs: number; endMs: number }[] = [];
+  for (const w of value) {
+    if (
+      w &&
+      typeof w === "object" &&
+      typeof (w as { text?: unknown }).text === "string" &&
+      typeof (w as { startMs?: unknown }).startMs === "number" &&
+      typeof (w as { endMs?: unknown }).endMs === "number"
+    ) {
+      const word = w as { text: string; startMs: number; endMs: number };
+      out.push({ text: word.text, startMs: word.startMs, endMs: word.endMs });
+    }
+  }
+  return out;
 }
 
 /**
@@ -30,8 +54,8 @@ export interface TranscribeWavResult {
  * `GET /api/asr/local-inference/status` (`{ ready, provider }`).
  *
  * Capture surfaces use this to choose a backend that can actually transcribe:
- * routing audio to `/api/asr/local-inference` when the server has no whisper
- * model / native adapter 502s at `stop()` with no recoverable fallback, so an
+ * routing audio to `/api/asr/local-inference` when the server has no local ASR
+ * assets / native adapter 502s at `stop()` with no recoverable fallback, so an
  * unready (or unreachable) server must degrade to browser ASR instead. A
  * failed probe deliberately resolves `false` — "unknown readiness" is treated
  * as "not ready" so we never capture audio we can't transcribe.
@@ -63,9 +87,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(
-      ...(bytes.subarray(i, i + chunk) as unknown as number[]),
-    );
+    binary += String.fromCharCode(...Array.from(bytes.subarray(i, i + chunk)));
   }
   return btoa(binary);
 }
@@ -93,10 +115,11 @@ export async function transcribeLocalInferenceWav(
   }
   const parsed = (await res.json().catch(() => null)) as {
     text?: unknown;
+    words?: unknown;
   } | null;
   const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
   if (!text) {
     throw new Error("Local inference ASR returned an empty transcript");
   }
-  return { text };
+  return { text, words: parseWords(parsed?.words) };
 }

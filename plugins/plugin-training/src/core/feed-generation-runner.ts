@@ -2,7 +2,10 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { trainingStateRoot } from "./training-config.js";
-import { defaultBunCommand, resolveWorkspaceRoot } from "./workspace-runtime.js";
+import {
+  defaultBunCommand,
+  resolveWorkspaceRoot,
+} from "./workspace-runtime.js";
 
 export interface FeedGenerationRunOptions {
   workspaceRoot?: string;
@@ -55,7 +58,10 @@ function collectProcess(
   cwd: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf-8");
@@ -208,7 +214,9 @@ async function discoverFeedGenerationArtifacts(
   const artifacts: FeedGenerationArtifact[] = [];
   for (const manifestPath of manifestPaths) {
     try {
-      const payload = asRecord(JSON.parse(await readFile(manifestPath, "utf8")));
+      const payload = asRecord(
+        JSON.parse(await readFile(manifestPath, "utf8")),
+      );
       if (!payload) continue;
       const schema = stringOrNull(payload.schema);
       if (

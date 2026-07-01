@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 
 // z-[9998] mirrors Z_SYSTEM_BANNER in ../../lib/floating-layers.ts.
@@ -13,7 +13,14 @@ export function RestartBanner() {
     dismissRestartBanner,
     triggerRestart,
     t,
-  } = useApp();
+  } = useAppSelectorShallow((s) => ({
+    pendingRestart: s.pendingRestart,
+    pendingRestartReasons: s.pendingRestartReasons,
+    restartBannerDismissed: s.restartBannerDismissed,
+    dismissRestartBanner: s.dismissRestartBanner,
+    triggerRestart: s.triggerRestart,
+    t: s.t,
+  }));
 
   const [restarting, setRestarting] = useState(false);
 
@@ -46,7 +53,6 @@ export function RestartBanner() {
         border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
         color: "var(--text)",
         maxWidth: "22rem",
-        backdropFilter: "blur(12px)",
       }}
       role="status"
       aria-live="polite"

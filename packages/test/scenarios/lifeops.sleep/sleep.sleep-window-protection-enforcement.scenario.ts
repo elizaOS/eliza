@@ -11,6 +11,7 @@ import {
 import { seedMeetingPreferences } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "sleep.sleep-window-protection-enforcement",
   title: "Sleep window protects user from being scheduled before wake-up",
   domain: "lifeops.sleep",

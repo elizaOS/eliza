@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACTION_BENCHMARK_REPORT_SCHEMA,
+  type ActionBenchmarkReport,
   buildBenchmarkReportArtifact,
   caseMatches,
   determineFailureMode,
   isAcceptableNoActionResponse,
   parsePlannedActionsFromResponse,
   pickObservedAction,
-  type ActionBenchmarkReport,
 } from "./action-selection-runner.ts";
 
 describe("action selection benchmark scoring helpers", () => {

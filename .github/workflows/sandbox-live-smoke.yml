@@ -26,9 +26,9 @@ on:
       - "packages/agent/scripts/live-sandbox-smoke.ts"
       - "packages/agent/src/services/e2b-capability-router.ts"
       - "packages/agent/src/services/e2b-capability-router.test.ts"
-      - "packages/cloud-services/coding-remote-runner/**"
-      - "packages/cloud-shared/src/lib/config/containers-env.ts"
-      - "packages/cloud-shared/src/lib/services/coding-containers.ts"
+      - "packages/cloud/services/coding-remote-runner/**"
+      - "packages/cloud/shared/src/lib/config/containers-env.ts"
+      - "packages/cloud/shared/src/lib/services/coding-containers.ts"
       - "plugins/plugin-elizacloud/**"
   push:
     branches: [develop, main]
@@ -39,9 +39,9 @@ on:
       - "packages/agent/scripts/live-sandbox-smoke.ts"
       - "packages/agent/src/services/e2b-capability-router.ts"
       - "packages/agent/src/services/e2b-capability-router.test.ts"
-      - "packages/cloud-services/coding-remote-runner/**"
-      - "packages/cloud-shared/src/lib/config/containers-env.ts"
-      - "packages/cloud-shared/src/lib/services/coding-containers.ts"
+      - "packages/cloud/services/coding-remote-runner/**"
+      - "packages/cloud/shared/src/lib/config/containers-env.ts"
+      - "packages/cloud/shared/src/lib/services/coding-containers.ts"
       - "plugins/plugin-elizacloud/**"
 
 concurrency:

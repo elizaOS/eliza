@@ -22,6 +22,7 @@ import { db, eq, userAgentConfigs } from "@feed/db";
 import type { PriceAlert } from "@feed/db/schema";
 import { logger } from "../../../../shared/logger";
 import { generateSnowflakeId } from "../../../../shared/snowflake";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 // ─── SET_PRICE_ALERT ────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export const setPriceAlertAction: Action = {
   description:
     "Set a price alert on a perpetual market token. You will be notified when the price crosses the threshold. Delivery goes to your team chat by default, or a specific group chat.",
 
-  parameters: {
+  parameters: defineActionParameters({
     tokenSymbol: {
       type: "string",
       description:
@@ -73,7 +74,7 @@ export const setPriceAlertAction: Action = {
         "Minutes between re-triggers (default 15). Prevents alert spam.",
       required: false,
     },
-  } as unknown as Action["parameters"],
+  }),
 
   examples: [
     [
@@ -349,7 +350,7 @@ export const removePriceAlertAction: Action = {
   description:
     "Remove a price alert by its ID, or by token symbol and condition.",
 
-  parameters: {
+  parameters: defineActionParameters({
     alertId: {
       type: "string",
       description: "The alert ID to remove (from LIST_PRICE_ALERTS)",
@@ -367,7 +368,7 @@ export const removePriceAlertAction: Action = {
         '"above" or "below" — used with tokenSymbol when alertId not provided',
       required: false,
     },
-  } as unknown as Action["parameters"],
+  }),
 
   examples: [
     [

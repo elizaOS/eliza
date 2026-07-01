@@ -12,19 +12,14 @@
  *   primitives, stubbed to plain DOM exactly like CalendarSection.test.tsx.
  */
 
-import type {
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  ReactNode,
-} from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 
 export const client = {
   getBaseUrl: () => "http://test.local",
   sendChatMessage: (..._args: unknown[]) => {},
   // Real hook calls this when useCalendarWeek is NOT stubbed; the harness
   // always stubs useCalendarWeek, so this is a never-resolving guard.
-  getLifeOpsCalendarFeed: (..._args: unknown[]) =>
-    new Promise<never>(() => {}),
+  getLifeOpsCalendarFeed: (..._args: unknown[]) => new Promise<never>(() => {}),
   stopWebsiteBlock: async () => ({ success: true, removed: true }),
 };
 

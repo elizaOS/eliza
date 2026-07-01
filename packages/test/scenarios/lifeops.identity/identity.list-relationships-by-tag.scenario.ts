@@ -6,6 +6,7 @@ import {
 } from "../_helpers/action-assertions.ts";
 
 export default scenario({
+  lane: "live-only",
   id: "identity.list-relationships-by-tag",
   title: "List rolodex entries filtered by tag (e.g. 'family' or 'mentor')",
   domain: "lifeops.identity",

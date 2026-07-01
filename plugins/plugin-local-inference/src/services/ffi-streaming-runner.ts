@@ -62,6 +62,12 @@ export interface FfiStreamingGenerateArgs {
 	cacheTypeK?: string | null;
 	cacheTypeV?: string | null;
 	/**
+	 * Runtime context window in tokens (ABI v9). Forwarded into the fused
+	 * session config on `llmStreamOpen`; `undefined` keeps the native
+	 * ELIZA_LLM_N_CTX/default fallback.
+	 */
+	contextSize?: number;
+	/**
 	 * GBNF grammar source forcing the structured-reply envelope. Passed to
 	 * the native session's `llmStreamOpen` config so sampling is
 	 * grammar-constrained. `null` disables the constraint (free generation).
@@ -69,6 +75,16 @@ export interface FfiStreamingGenerateArgs {
 	gbnfGrammar?: string | null;
 	/** Cancellation signal — fires `llmStreamCancel` on the active session. */
 	signal?: AbortSignal;
+	/**
+	 * Per-step token cap for the native decode loop. Lower values make the
+	 * local UI stream in finer-grained jumps (smoother token-by-token render)
+	 * at the cost of more JS↔FFI round-trips per reply; higher values batch
+	 * more tokens per step. When omitted, falls back to
+	 * `resolveMaxTokensPerStep()` (env `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP`,
+	 * else `DEFAULT_MAX_TOKENS_PER_STEP`). Clamped to
+	 * `[MIN_MAX_TOKENS_PER_STEP, MAX_MAX_TOKENS_PER_STEP]`.
+	 */
+	maxTokensPerStep?: number;
 	/** Per-chunk text callback. */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	/** Speculative accept/reject events from MTP verification. */
@@ -86,6 +102,37 @@ export interface FfiStreamingGenerateResult {
 /** Default per-step caps. Match upstream llama-server's `n_predict` chunk size. */
 const DEFAULT_MAX_TOKENS_PER_STEP = 32;
 const DEFAULT_MAX_TEXT_BYTES = 1024;
+/**
+ * Sane bounds for the per-step token cap. The floor is 1 (true
+ * token-by-token); the ceiling guards against pathological values that would
+ * defeat streaming by emitting the whole reply in one step.
+ */
+const MIN_MAX_TOKENS_PER_STEP = 1;
+const MAX_MAX_TOKENS_PER_STEP = 512;
+
+/** Clamp a caller-supplied per-step cap into the supported range. */
+function clampMaxTokensPerStep(value: number): number {
+	if (!Number.isFinite(value)) return DEFAULT_MAX_TOKENS_PER_STEP;
+	return Math.min(
+		MAX_MAX_TOKENS_PER_STEP,
+		Math.max(MIN_MAX_TOKENS_PER_STEP, Math.trunc(value)),
+	);
+}
+
+/**
+ * Resolve the per-step token cap for the native decode loop. Override via the
+ * `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` env var (e.g. set to `8` for smoother
+ * local streaming, weighed against the extra JS↔FFI round-trips and the shared
+ * voice phrase-chunker). Falls back to `DEFAULT_MAX_TOKENS_PER_STEP` (32) when
+ * unset or invalid; clamped to `[MIN_MAX_TOKENS_PER_STEP, MAX_MAX_TOKENS_PER_STEP]`.
+ */
+export function resolveMaxTokensPerStep(): number {
+	const raw = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP?.trim();
+	if (!raw) return DEFAULT_MAX_TOKENS_PER_STEP;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed)) return DEFAULT_MAX_TOKENS_PER_STEP;
+	return clampMaxTokensPerStep(parsed);
+}
 
 /**
  * Backend used by the mobile and desktop FFI routes.
@@ -285,6 +332,7 @@ export class FfiStreamingRunner {
 				gpuLayers: args.gpuLayers,
 				cacheTypeK: args.cacheTypeK,
 				cacheTypeV: args.cacheTypeV,
+				contextSize: args.contextSize,
 			},
 		});
 
@@ -307,6 +355,11 @@ export class FfiStreamingRunner {
 				return;
 			}
 
+			const maxTokensPerStep =
+				args.maxTokensPerStep !== undefined
+					? clampMaxTokensPerStep(args.maxTokensPerStep)
+					: resolveMaxTokensPerStep();
+
 			let tokenIndex = 0;
 			while (true) {
 				if (args.signal?.aborted) {
@@ -315,7 +368,7 @@ export class FfiStreamingRunner {
 				}
 				const step = this.ffi.llmStreamNext({
 					stream,
-					maxTokensPerStep: DEFAULT_MAX_TOKENS_PER_STEP,
+					maxTokensPerStep,
 					maxTextBytes: DEFAULT_MAX_TEXT_BYTES,
 				});
 				onStep(step);

@@ -1,8 +1,7 @@
 /**
  * Pure helpers for the WebSocket event-buffer replay on (re)connect.
  *
- * Extracted from server.ts so the cursor-replay slice logic can be unit-tested
- * in isolation. See loadperf research report 05 (Network & Data Sync),
+ * See loadperf research report 05 (Network & Data Sync),
  * Finding 4: on every (re)connect the server replays the tail of
  * `state.eventBuffer`, re-flooding the client with up to `DEFAULT_REPLAY_LIMIT`
  * historical envelopes even after a brief reconnect. A client that tracks the

@@ -12,7 +12,8 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import { createTestRuntime } from "./plugin-lifecycle-test-utils.ts";
 
 /** Returns true if the runtime has a registered route whose path includes the given segment. */
@@ -251,6 +252,134 @@ describe("mixed plugins — two plugins coexist, one unloads cleanly", () => {
     expect(runtime.actions.some((a) => a.name === "USE_SKILL")).toBe(false);
     expect(runtime.actions.some((a) => a.name === "APP_ACTION")).toBe(true);
     expect(hasRoutePath(runtime.routes, "/api/app/status")).toBe(true);
+  });
+});
+
+describe("schema-bearing plugin registration", () => {
+  it("runs plugin migrations after a schema plugin registers against a ready adapter", async () => {
+    const runtime = createTestRuntime();
+    installRuntimePluginLifecycle(runtime);
+    const runPluginMigrations = vi.fn(async () => {});
+
+    runtime.registerDatabaseAdapter({
+      isReady: async () => true,
+      runPluginMigrations,
+    } as never);
+
+    await runtime.registerPlugin({
+      name: "schema-ready-plugin",
+      description: "plugin with a database schema",
+      schema: {
+        widgets: {
+          id: "text",
+        },
+      },
+      actions: [
+        {
+          name: "SCHEMA_READY_ACTION",
+          description: "action",
+          examples: [],
+          similes: [],
+          validate: async () => true,
+          handler: async () => ({ success: true }),
+        },
+      ],
+    });
+
+    expect(runPluginMigrations).toHaveBeenCalledOnce();
+    expect(runPluginMigrations).toHaveBeenCalledWith(
+      [
+        {
+          name: "schema-ready-plugin",
+          schema: {
+            widgets: {
+              id: "text",
+            },
+          },
+        },
+      ],
+      {
+        verbose: true,
+        force: false,
+        dryRun: false,
+      },
+    );
+  });
+
+  it("skips schema migration while the adapter is not ready", async () => {
+    const runtime = createTestRuntime();
+    installRuntimePluginLifecycle(runtime);
+    const runPluginMigrations = vi.fn(async () => {});
+
+    runtime.registerDatabaseAdapter({
+      isReady: async () => false,
+      runPluginMigrations,
+    } as never);
+
+    await runtime.registerPlugin({
+      name: "schema-not-ready-plugin",
+      description: "plugin with a database schema",
+      schema: {
+        widgets: {
+          id: "text",
+        },
+      },
+    });
+
+    expect(runPluginMigrations).not.toHaveBeenCalled();
+  });
+
+  it("rolls back plugin components when schema migration fails", async () => {
+    const runtime = createTestRuntime();
+    installRuntimePluginLifecycle(runtime);
+    const runPluginMigrations = vi.fn(async () => {
+      throw new Error("migration failed");
+    });
+
+    runtime.registerDatabaseAdapter({
+      isReady: async () => true,
+      runPluginMigrations,
+    } as never);
+
+    await expect(
+      runtime.registerPlugin({
+        name: "schema-failure-plugin",
+        description: "plugin with a failing database schema",
+        schema: {
+          widgets: {
+            id: "text",
+          },
+        },
+        actions: [
+          {
+            name: "SCHEMA_FAILURE_ACTION",
+            description: "action",
+            examples: [],
+            similes: [],
+            validate: async () => true,
+            handler: async () => ({ success: true }),
+          },
+        ],
+        routes: [
+          {
+            type: "GET",
+            path: "/api/schema-failure",
+            rawPath: true,
+            handler: async (_req, res) => {
+              res.json({ ok: true });
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow("migration failed");
+
+    expect(
+      runtime.plugins.some((p) => p.name === "schema-failure-plugin"),
+    ).toBe(false);
+    expect(
+      runtime.actions.some((a) => a.name === "SCHEMA_FAILURE_ACTION"),
+    ).toBe(false);
+    expect(hasRoutePath(runtime.routes, "/api/schema-failure")).toBe(false);
   });
 });
 

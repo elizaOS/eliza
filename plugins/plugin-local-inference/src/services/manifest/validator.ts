@@ -23,6 +23,13 @@
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 
 import {
+	collectQwenAsrProvenanceBlockers,
+	QWEN_PROVENANCE_RE,
+} from "../asr-provenance";
+import { readBundleTextArchitectureBlockers } from "../text-provenance";
+import {
+	ELIZA_1_TOKENIZER_FAMILY,
+	ELIZA_1_TOKENIZER_VOCAB_SIZE,
 	Eliza1ManifestSchema,
 	EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD,
 	EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT,
@@ -61,7 +68,10 @@ export type ValidationResult = ValidationOk | ValidationErr;
  * `{ ok: false, errors }`. Truly exceptional cases (non-object input)
  * surface as Zod issues, not exceptions.
  */
-export function validateManifest(input: unknown): ValidationResult {
+export function validateManifest(
+	input: unknown,
+	opts?: { bundleRoot?: string },
+): ValidationResult {
 	const parsed = Eliza1ManifestSchema.safeParse(input);
 	if (!parsed.success) {
 		return {
@@ -75,6 +85,13 @@ export function validateManifest(input: unknown): ValidationResult {
 	const errors = collectContractErrors(parsed.data, {
 		allowVersionStaging: true,
 	});
+	// Ground-truth provenance: when the caller has the staged bundle on disk and
+	// the manifest claims a strict release, verify the text GGUF's architecture
+	// is actually Gemma-4. `lineage.text.base` (checked above) is operator-
+	// authored and can drift from the bytes shipped; the GGUF header cannot.
+	if (opts?.bundleRoot && isStrictReleaseManifest(parsed.data)) {
+		errors.push(...readBundleTextArchitectureBlockers(opts.bundleRoot));
+	}
 	if (errors.length > 0) {
 		return { ok: false, errors };
 	}
@@ -180,7 +197,6 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 ]);
 
 const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -189,7 +205,6 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 ]);
 
 const MTP_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -232,6 +247,37 @@ function collectContractErrors(
 			)) ||
 		(releaseState !== undefined && STRICT_RELEASE_STATES.has(releaseState));
 
+	// Gemma 4 cutover: a release-shaped (strict/defaultEligible) bundle must be
+	// the real Gemma-4 base, never the Qwen3.5 / local-standin placeholder the
+	// pre-cutover bundles shipped. Block a stand-in from defining the default.
+	if (strictRelease) {
+		const textBase = m.lineage.text.base;
+		if (
+			/^local-standin:/i.test(textBase) ||
+			QWEN_PROVENANCE_RE.test(textBase)
+		) {
+			errors.push(
+				`lineage.text.base: a strict/defaultEligible release must ship the real Gemma-4 base, not a stand-in (${textBase})`,
+			);
+		}
+		errors.push(...collectQwenAsrProvenanceBlockers(m));
+	}
+
+	// Tokenizer identity: when the bundle stamps the Gemma 4 tokenizer block
+	// (schemaVersion 2), it must be the shared Gemma 4 tokenizer.
+	if (m.tokenizer) {
+		if (m.tokenizer.family !== ELIZA_1_TOKENIZER_FAMILY) {
+			errors.push(
+				`tokenizer.family: expected ${ELIZA_1_TOKENIZER_FAMILY}, got ${m.tokenizer.family}`,
+			);
+		}
+		if (m.tokenizer.vocabSize !== ELIZA_1_TOKENIZER_VOCAB_SIZE) {
+			errors.push(
+				`tokenizer.vocabSize: expected ${ELIZA_1_TOKENIZER_VOCAB_SIZE}, got ${m.tokenizer.vocabSize}`,
+			);
+		}
+	}
+
 	// Required-kernel coverage.
 	const declaredRequired = new Set<Eliza1Kernel>(m.kernels.required);
 	const tierRequired = REQUIRED_KERNELS_BY_TIER[m.tier];
@@ -258,18 +304,12 @@ function collectContractErrors(
 		}
 	}
 
-	// Long-context tiers MUST require turbo3_tcq once any text variant has
-	// ctx > 64k. AGENTS.md §3 Required for desktop/pro/server (#6).
-	const hasLongContextVariant = m.files.text.some(
-		(f) => typeof f.ctx === "number" && f.ctx > 65536,
-	);
-	if (hasLongContextVariant) {
-		if (!declaredRequired.has("turbo3_tcq")) {
-			errors.push(
-				"kernels.required: text variant with ctx > 64k requires turbo3_tcq",
-			);
-		}
-	}
+	// Gemma 4 cutover (#9033): long-context KV is handled by Gemma's native
+	// windowed-SWA + shared-KV at stock q8_0, so the legacy turbo3_tcq trellis
+	// KV-cache kernel is no longer a required long-context kernel — it is an
+	// optional (head_dim=128) accelerator the Gemma stock-KV path doesn't use.
+	// Required kernels are governed by REQUIRED_KERNELS_BY_TIER (turboquant_q4
+	// weight-quant), checked above; nothing extra is gated on context length.
 
 	const visionEnabled = VISION_TIERS.has(m.tier);
 	if (visionEnabled) {
@@ -282,11 +322,37 @@ function collectContractErrors(
 
 	const mtpEnabled = MTP_TIERS.has(m.tier);
 	if (mtpEnabled) {
-		if (m.files.mtp.length === 0) {
-			errors.push(`files.mtp: required for MTP-enabled tier ${m.tier}`);
-		}
-		if (!m.lineage.drafter) {
-			errors.push(`lineage.drafter: required for MTP-enabled tier ${m.tier}`);
+		// Gemma 4 MTP is separate-drafter: every MTP tier bundles a dedicated
+		// drafter GGUF at `mtp/drafter-<tier>.gguf` (loaded by llama.cpp as
+		// `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`). A strict release
+		// that omits the drafter is not release-shaped (AGENTS.md §1/§3 require
+		// MTP on every tier); a candidate/staging bundle may still be
+		// materialized without it. The legacy embedded-draft-head shape — no
+		// shipped Gemma tier uses it — is honored only when the manifest
+		// explicitly declares `mtp: "embedded-draft-head"`.
+		if (m.mtp === "embedded-draft-head") {
+			if (m.files.mtp.length > 0) {
+				errors.push(
+					`files.mtp: must be empty for embedded-draft-head MTP tier ${m.tier}`,
+				);
+			}
+		} else {
+			const expectedDrafterPath = `mtp/drafter-${m.tier}.gguf`;
+			if (m.files.mtp.length === 0) {
+				if (strictRelease) {
+					errors.push(
+						`files.mtp: MTP drafter not bundled — separate-drafter tier ${m.tier} must ship ${expectedDrafterPath}`,
+					);
+				}
+			} else {
+				for (const [i, entry] of m.files.mtp.entries()) {
+					if (entry.path !== expectedDrafterPath) {
+						errors.push(
+							`files.mtp[${i}].path: separate-drafter tier ${m.tier} must bundle the drafter at ${expectedDrafterPath}, got ${entry.path}`,
+						);
+					}
+				}
+			}
 		}
 		if (!m.evals.mtp) {
 			errors.push(`evals.mtp: required for MTP-enabled tier ${m.tier}`);
@@ -395,6 +461,13 @@ function collectContractErrors(
 		if (lineage && files.length === 0) {
 			errors.push(`files.${slot}: required when lineage.${slot} is present`);
 		}
+	}
+	// Gemma 4 separate-drafter MTP: the bundled drafter GGUF carries its own
+	// lineage, governed by the same files<->lineage consistency rule as every
+	// other component slot above. (Embedded-draft-head bundles ship no separate
+	// drafter, so both files.mtp and lineage.drafter are empty — also satisfied.)
+	if (m.files.mtp.length > 0 && !m.lineage.drafter) {
+		errors.push("lineage.drafter: required when files.mtp is non-empty");
 	}
 	if (m.lineage.drafter && m.files.mtp.length === 0) {
 		errors.push("files.mtp: required when lineage.drafter is present");
@@ -528,17 +601,19 @@ function collectContractErrors(
 		}
 	}
 
-	// EAGLE3 bench metadata is always optional. When
-	// present, it may record a not-run/failure state; only a passing claim must
-	// include measured acceptance/speedup values.
-	if (m.evals.eagle3) {
-		const eagle3Passed = m.evals.eagle3.passed ?? m.evals.eagle3.pass;
+	// Speculative-decode bench metadata is always optional. When present, it may
+	// record a not-run/failure state; only a passing claim must include measured
+	// acceptance/speedup values. The canonical key is `specDecode`; `eagle3` is
+	// the back-compat alias accepted for one release.
+	const specDecodeEval = m.evals.specDecode ?? m.evals.eagle3;
+	if (specDecodeEval) {
+		const specDecodePassed = specDecodeEval.passed ?? specDecodeEval.pass;
 		if (
-			eagle3Passed === true &&
-			(m.evals.eagle3.acceptanceRate == null || m.evals.eagle3.speedup == null)
+			specDecodePassed === true &&
+			(specDecodeEval.acceptanceRate == null || specDecodeEval.speedup == null)
 		) {
 			errors.push(
-				"evals.eagle3: passed=true requires measured acceptanceRate and speedup",
+				"evals.specDecode: passed=true requires measured acceptanceRate and speedup",
 			);
 		}
 	}

@@ -132,6 +132,13 @@ export interface WakeWordConfig {
 	/** P(wake) above this fires a detection. openWakeWord default ~0.5. */
 	threshold?: number;
 	/**
+	 * Consecutive frames at or above `threshold` required before a detection
+	 * fires. The eliza-1 real-audio tier shows positives sustain for 10-17
+	 * frames while hard negatives spike for at most 7, so the default 8-frame
+	 * gate rejects transient false accepts without changing the model score.
+	 */
+	minActivationFrames?: number;
+	/**
 	 * Refractory frames after a detection during which no new detection
 	 * fires (debounce a single utterance into one event).
 	 */
@@ -140,6 +147,7 @@ export interface WakeWordConfig {
 
 const DEFAULTS: Required<WakeWordConfig> = {
 	threshold: 0.5,
+	minActivationFrames: 8,
 	refractoryFrames: 25, // ~2 s @ 80 ms frames
 };
 
@@ -497,11 +505,18 @@ export async function loadBundledWakeWordModel(opts: {
 	});
 }
 
+/** Carried to `onWake` on each fresh detection. */
+export interface WakeFireInfo {
+	/** The classifier probability that crossed threshold, in [0, 1]. */
+	confidence: number;
+}
+
 /**
  * Streaming wake-word detector. Feed frames; `onWake` fires once per
- * detected utterance (refractory-debounced). The voice loop wires
- * `onWake` to "start a listening window" — exactly what a push-to-talk
- * press does.
+ * detected utterance (refractory-debounced) with the firing
+ * {@link WakeFireInfo}. The voice loop wires `onWake` to "start a listening
+ * window" — exactly what a push-to-talk press does — and to the fused-wake
+ * bridge so the firing reaches the renderer as `eliza:fused-wake` (#10351).
  *
  * Only constructed in `local` mode. `cloud` mode never instantiates this
  * (and `resolveWakeWordModel` is never called there), so the surface is
@@ -511,15 +526,20 @@ export class OpenWakeWordDetector {
 	private readonly model: WakeWordModel;
 	private readonly cfg: Required<WakeWordConfig>;
 	private cooldown = 0;
-	private readonly onWake: () => void;
+	private activationStreak = 0;
+	private readonly onWake: (info: WakeFireInfo) => void;
 
 	constructor(args: {
 		model: WakeWordModel;
 		config?: WakeWordConfig;
-		onWake: () => void;
+		onWake: (info: WakeFireInfo) => void;
 	}) {
 		this.model = args.model;
-		this.cfg = { ...DEFAULTS, ...(args.config ?? {}) };
+		const cfg = { ...DEFAULTS, ...(args.config ?? {}) };
+		this.cfg = {
+			...cfg,
+			minActivationFrames: Math.max(1, Math.floor(cfg.minActivationFrames)),
+		};
 		this.onWake = args.onWake;
 	}
 
@@ -535,20 +555,28 @@ export class OpenWakeWordDetector {
 		}
 		if (this.cooldown > 0) {
 			this.cooldown--;
+			this.activationStreak = 0;
 			await this.model.scoreFrame(frame); // keep the streaming state warm
 			return false;
 		}
 		const p = await this.model.scoreFrame(frame);
 		if (p >= this.cfg.threshold) {
+			this.activationStreak++;
+			if (this.activationStreak < this.cfg.minActivationFrames) {
+				return false;
+			}
 			this.cooldown = this.cfg.refractoryFrames;
-			this.onWake();
+			this.activationStreak = 0;
+			this.onWake({ confidence: p });
 			return true;
 		}
+		this.activationStreak = 0;
 		return false;
 	}
 
 	reset(): void {
 		this.model.reset();
 		this.cooldown = 0;
+		this.activationStreak = 0;
 	}
 }

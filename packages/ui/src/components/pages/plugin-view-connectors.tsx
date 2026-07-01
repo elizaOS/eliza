@@ -13,7 +13,7 @@ import {
   client,
   type PluginInfo,
 } from "../../api";
-import { useApp } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { PagePanel } from "../composites/page-panel";
 import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
@@ -386,7 +386,13 @@ function ConnectorPluginCard({
   testResults,
   togglingPlugins,
 }: ConnectorPluginCardProps) {
-  const { elizaCloudConnected, setActionNotice, setState, setTab } = useApp();
+  const { elizaCloudConnected, setActionNotice, setState, setTab } =
+    useAppSelectorShallow((s) => ({
+      elizaCloudConnected: s.elizaCloudConnected,
+      setActionNotice: s.setActionNotice,
+      setState: s.setState,
+      setTab: s.setTab,
+    }));
   const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
   const [managedDiscordBusy, setManagedDiscordBusy] = useState(false);
   // Keyed by role so the "agent" and "your account" buttons can each show

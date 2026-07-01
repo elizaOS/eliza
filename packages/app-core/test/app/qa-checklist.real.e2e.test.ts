@@ -103,38 +103,6 @@ type QaRequestFailure = {
   duringResetTransition: boolean;
 };
 
-type QaEmoteEventRecord = {
-  type: string;
-  emoteId: string | null;
-  path: string | null;
-  duration: number | null;
-  loop: boolean | null;
-  at: number;
-};
-
-type QaPlayEmoteRecord = {
-  role: string | null;
-  vrmPath: string | null;
-  path: string | null;
-  duration: number | null;
-  loop: boolean | null;
-  at: number;
-};
-
-type QaTeleportRecord = {
-  type: string;
-  at: number;
-};
-
-type QaVrmRegistryEntry = {
-  role: string | null;
-  vrmPath: string | null;
-  worldUrl: string | null;
-  avatarLoaded: boolean;
-  avatarReady: boolean;
-  cameraProfile: string | null;
-};
-
 type QaVoiceStats = {
   audioStarts: number;
   speechCalls: number;
@@ -148,19 +116,6 @@ type QaRemoteSnapshot = {
   remoteApiBase: string;
   remoteError: string | null;
   remoteTokenLength: number;
-};
-
-type CharacterRosterState = {
-  labels: string[];
-  selectedLabel: string | null;
-  selectedTestId: string | null;
-};
-
-type CharacterRosterEntryState = {
-  label: string;
-  testId: string | null;
-  selected: boolean;
-  previewSrc: string | null;
 };
 
 type Profile = {
@@ -241,9 +196,7 @@ function isIgnorableQaRequestFailure(failure: QaRequestFailure): boolean {
   if (
     (failure.errorText === "net::ERR_FAILED" ||
       failure.errorText === "net::ERR_ABORTED") &&
-    ["/api/config", "/api/first-run/status", "/api/vincent/status"].includes(
-      pathname,
-    )
+    ["/api/config", "/api/first-run/status"].includes(pathname)
   ) {
     return true;
   }
@@ -358,16 +311,12 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
       ];
       try {
         logQaStep(profile, "open onboarding");
-        await navigate(page, `${UI_URL}/?test_force_vrm=1`);
+        await navigate(page, `${UI_URL}/`);
 
         logQaStep(profile, "complete local provider onboarding");
         await completeLocalProviderOnboarding(page);
 
         expect(await firstRunComplete()).toBe(true);
-        logQaStep(profile, "enter companion mode");
-        await enterCompanionMode(page);
-        await waitForCompanionReady(page, 120_000);
-        logQaStep(profile, "companion shell ready");
 
         if (REQUIRE_STRICT_TTS_ASSERTIONS) {
           const voiceConfig = await waitFor(async () => {
@@ -384,9 +333,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           }, 60_000);
           expect(voiceConfig.elevenlabs?.voiceId).toBe(EXPECTED_SARAH_VOICE_ID);
         }
-        await page.evaluate(() => {
-          window.dispatchEvent(new Event("eliza:vrm-teleport-complete"));
-        });
         await page.waitForSelector('[data-testid="chat-composer-textarea"]');
         await page.mouse.click(24, 24);
 
@@ -446,10 +392,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           body: JSON.stringify({ enabled: true }),
         });
 
-        await clickSelector(
-          page,
-          '[data-testid="companion-shell-toggle-desktop"]',
-        );
         await navigate(page, `${UI_URL}/character/documents`);
         await page.waitForSelector('[data-testid="documents-view"]', {
           visible: true,
@@ -583,8 +525,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         await smokeTabs(page, profile);
         logQaStep(profile, "wallet rpc provider roundtrip");
         await qaWalletRpcRoundtrip(page, profile);
-        logQaStep(profile, "verify character switch dance emote and voice");
-        await qaCharacterSwitchAndDance(page, profile);
 
         logQaStep(profile, "reset back to onboarding");
         await navigate(page, `${UI_URL}/settings`);
@@ -665,7 +605,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
 
       try {
         logQaStep(profile, "avatar-voice QA open onboarding");
-        await navigate(page, `${UI_URL}/?test_force_vrm=1`);
+        await navigate(page, `${UI_URL}/`);
 
         logQaStep(
           profile,
@@ -673,15 +613,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         );
         await completeLocalProviderOnboarding(page);
 
-        logQaStep(profile, "avatar-voice QA enter companion mode");
-        await enterCompanionMode(page);
-
-        logQaStep(profile, "avatar-voice QA verify companion avatar");
-        await waitForCompanionReady(page, 120_000);
-        logQaStep(profile, "avatar-voice QA companion avatar ready");
-        await page.evaluate(() => {
-          window.dispatchEvent(new Event("eliza:vrm-teleport-complete"));
-        });
         await page.waitForSelector('[data-testid="chat-composer-textarea"]');
         await page.mouse.click(24, 24);
 
@@ -728,12 +659,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           responseVoiceSignals,
           45_000,
         );
-
-        logQaStep(
-          profile,
-          "avatar-voice QA validate character switch dance and emotes",
-        );
-        await qaCharacterSwitchAndDance(page, profile);
 
         expect(pageErrors).toEqual([]);
         expect(actionableQaRequestFailures(sameOriginFailures)).toEqual([]);
@@ -1391,108 +1316,15 @@ async function qaWalletRpcRoundtrip(page: Page, profile: Profile) {
 
 async function installQaInstrumentation(page: Page) {
   await page.evaluateOnNewDocument(() => {
-    type QaRegistryEngine = {
-      playEmote?: (...args: unknown[]) => unknown;
-      __qaPlayEmoteWrapped?: boolean;
-    };
-
-    type QaRegistryEntry = {
-      engine?: QaRegistryEngine;
-      role?: string;
-      vrmPath?: string;
-    };
-
     const qaWindow = window as typeof window & {
       __qaAudioStarts?: Array<{ at: number }>;
-      __qaEmoteEvents?: QaEmoteEventRecord[];
       __qaFetches?: QaFetchRecord[];
-      __qaPlayEmoteCalls?: QaPlayEmoteRecord[];
       __qaSpeechCalls?: Array<{ text: string; at: number }>;
-      __qaTeleportEvents?: QaTeleportRecord[];
     };
 
     qaWindow.__qaAudioStarts = [];
-    qaWindow.__qaEmoteEvents = [];
     qaWindow.__qaFetches = [];
-    qaWindow.__qaPlayEmoteCalls = [];
     qaWindow.__qaSpeechCalls = [];
-    qaWindow.__qaTeleportEvents = [];
-
-    const QA_EMOTE_EVENT_NAME = "eliza:app-emote";
-    const QA_TELEPORT_EVENT_NAME = "eliza:vrm-teleport-complete";
-    let vrmRegistryStore: QaRegistryEntry[] = [];
-
-    const recordWindowEvent = (event: Event) => {
-      if (event.type === QA_EMOTE_EVENT_NAME) {
-        const detail =
-          event instanceof CustomEvent && typeof event.detail === "object"
-            ? (event.detail as Record<string, unknown> | null)
-            : null;
-        qaWindow.__qaEmoteEvents?.push({
-          type: event.type,
-          emoteId: typeof detail?.emoteId === "string" ? detail.emoteId : null,
-          path: typeof detail?.path === "string" ? detail.path : null,
-          duration:
-            typeof detail?.duration === "number" &&
-            Number.isFinite(detail.duration)
-              ? detail.duration
-              : null,
-          loop: typeof detail?.loop === "boolean" ? detail.loop : null,
-          at: Date.now(),
-        });
-      }
-      if (event.type === QA_TELEPORT_EVENT_NAME) {
-        qaWindow.__qaTeleportEvents?.push({
-          type: event.type,
-          at: Date.now(),
-        });
-      }
-    };
-
-    const originalDispatchEvent = window.dispatchEvent.bind(window);
-    window.dispatchEvent = (event: Event) => {
-      recordWindowEvent(event);
-      return originalDispatchEvent(event);
-    };
-
-    const patchRegistryEntry = (entry: QaRegistryEntry) => {
-      const engine = entry.engine;
-      if (!engine || typeof engine.playEmote !== "function") {
-        return;
-      }
-      if (engine.__qaPlayEmoteWrapped === true) {
-        return;
-      }
-      const originalPlayEmote = engine.playEmote.bind(engine);
-      engine.playEmote = (...args: unknown[]) => {
-        qaWindow.__qaPlayEmoteCalls?.push({
-          role: typeof entry.role === "string" ? entry.role : null,
-          vrmPath: typeof entry.vrmPath === "string" ? entry.vrmPath : null,
-          path: typeof args[0] === "string" ? args[0] : null,
-          duration:
-            typeof args[1] === "number" && Number.isFinite(args[1])
-              ? args[1]
-              : null,
-          loop: typeof args[2] === "boolean" ? args[2] : null,
-          at: Date.now(),
-        });
-        return originalPlayEmote(...args);
-      };
-      engine.__qaPlayEmoteWrapped = true;
-    };
-
-    Object.defineProperty(window, "__ELIZA_VRM_ENGINES__", {
-      configurable: true,
-      get() {
-        return vrmRegistryStore;
-      },
-      set(value) {
-        vrmRegistryStore = Array.isArray(value) ? value : [];
-        vrmRegistryStore.forEach((entry) => {
-          patchRegistryEntry(entry);
-        });
-      },
-    });
 
     const OriginalAudioContext =
       window.AudioContext ||
@@ -1734,21 +1566,6 @@ async function waitForOnboardingEntry(page: Page, timeout = 45_000) {
   );
 }
 
-async function waitForCompanionReady(page: Page, timeout = 90_000) {
-  await page.waitForSelector('[data-testid="companion-root"]', {
-    visible: true,
-    timeout,
-  });
-  await page.waitForSelector('[data-testid="companion-header-shell"]', {
-    visible: true,
-    timeout,
-  });
-  await page.waitForSelector('[data-testid="chat-composer-textarea"]', {
-    visible: true,
-    timeout,
-  });
-}
-
 async function pageContainsText(page: Page, text: string): Promise<boolean> {
   const bodyText = await page.evaluate(() => {
     const body = document.body;
@@ -1757,160 +1574,6 @@ async function pageContainsText(page: Page, text: string): Promise<boolean> {
     return `${visibleText}\n${domText}`.toLowerCase();
   });
   return bodyText.includes(text.toLowerCase());
-}
-
-async function currentVrmRegistry(page: Page): Promise<QaVrmRegistryEntry[]> {
-  return page.evaluate(() => {
-    const qaWindow = window as typeof window & {
-      __ELIZA_VRM_ENGINES__?: Array<{
-        role?: string;
-        vrmPath?: string;
-        worldUrl?: string | null;
-        getDebugInfo?: () => {
-          avatar?: {
-            loaded?: boolean;
-            ready?: boolean;
-          };
-          cameraProfile?: string;
-        };
-      }>;
-    };
-
-    return (qaWindow.__ELIZA_VRM_ENGINES__ ?? []).map((entry) => {
-      const debug =
-        typeof entry.getDebugInfo === "function" ? entry.getDebugInfo() : null;
-      return {
-        role: typeof entry.role === "string" ? entry.role : null,
-        vrmPath: typeof entry.vrmPath === "string" ? entry.vrmPath : null,
-        worldUrl:
-          typeof entry.worldUrl === "string" || entry.worldUrl === null
-            ? entry.worldUrl
-            : null,
-        avatarLoaded: debug?.avatar?.loaded === true,
-        avatarReady: debug?.avatar?.ready === true,
-        cameraProfile:
-          typeof debug?.cameraProfile === "string" ? debug.cameraProfile : null,
-      };
-    });
-  });
-}
-
-async function _waitForWorldStageAvatar(
-  page: Page,
-  expectedSlug?: string | null,
-  timeout = 90_000,
-): Promise<QaVrmRegistryEntry> {
-  return waitFor(async () => {
-    const entries = await currentVrmRegistry(page);
-    const worldStage =
-      entries.find((entry) => entry.role === "world-stage") ?? null;
-    if (!worldStage) return null;
-    if (!worldStage.avatarLoaded || !worldStage.avatarReady) return null;
-    if (expectedSlug && assetSlug(worldStage.vrmPath) !== expectedSlug)
-      return null;
-    return worldStage;
-  }, timeout);
-}
-
-async function qaEmoteEvents(page: Page): Promise<QaEmoteEventRecord[]> {
-  return page.evaluate(() => {
-    const qaWindow = window as typeof window & {
-      __qaEmoteEvents?: QaEmoteEventRecord[];
-    };
-    return qaWindow.__qaEmoteEvents ?? [];
-  });
-}
-
-async function _qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
-  return page.evaluate(() => {
-    const qaWindow = window as typeof window & {
-      __qaPlayEmoteCalls?: QaPlayEmoteRecord[];
-    };
-    return qaWindow.__qaPlayEmoteCalls ?? [];
-  });
-}
-
-async function _qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
-  return page.evaluate(() => {
-    const qaWindow = window as typeof window & {
-      __qaTeleportEvents?: QaTeleportRecord[];
-    };
-    return qaWindow.__qaTeleportEvents ?? [];
-  });
-}
-
-async function waitForCharacterRoster(
-  page: Page,
-  timeout = 90_000,
-): Promise<CharacterRosterState> {
-  await page.waitForSelector('[data-testid="character-roster-grid"]', {
-    visible: true,
-    timeout,
-  });
-  await waitFor(async () => {
-    const roster = await page.$$eval(
-      '[data-testid^="character-preset-"]',
-      (buttons) => {
-        const visibleButtons = buttons.filter((button) => {
-          const style = window.getComputedStyle(button);
-          return style.display !== "none" && style.visibility !== "hidden";
-        });
-        const selected = visibleButtons.find(
-          (button) => button.getAttribute("aria-pressed") === "true",
-        );
-        return visibleButtons.length > 0 && selected
-          ? {
-              count: visibleButtons.length,
-              selectedTestId: selected.getAttribute("data-testid"),
-            }
-          : null;
-      },
-    );
-    return roster?.count ? roster : null;
-  }, timeout);
-
-  return page.$$eval('[data-testid^="character-preset-"]', (buttons) => {
-    const labels = buttons
-      .map((button) => (button.textContent ?? "").trim())
-      .filter(Boolean);
-    const selected = buttons.find(
-      (button) => button.getAttribute("aria-pressed") === "true",
-    );
-
-    return {
-      labels,
-      selectedLabel: selected?.textContent?.trim() || null,
-      selectedTestId: selected?.getAttribute("data-testid") ?? null,
-    };
-  });
-}
-
-async function characterRosterEntries(
-  page: Page,
-): Promise<CharacterRosterEntryState[]> {
-  return page.$$eval('[data-testid^="character-preset-"]', (buttons) => {
-    return buttons.map((button) => {
-      const image = button.querySelector("img");
-      return {
-        label: (button.textContent ?? "").trim(),
-        testId: button.getAttribute("data-testid"),
-        selected: button.getAttribute("aria-pressed") === "true",
-        previewSrc:
-          image?.getAttribute("src") ?? image?.getAttribute("data-src") ?? null,
-      };
-    });
-  });
-}
-
-async function _selectedCharacterPreviewSrc(page: Page): Promise<string> {
-  const previewSrc = await page.$eval(
-    '[data-testid^="character-preset-"][aria-pressed="true"] img',
-    (img) => img.getAttribute("src"),
-  );
-  if (!previewSrc) {
-    throw new Error("Selected character preview src was empty.");
-  }
-  return previewSrc;
 }
 
 async function clickByText(page: Page, text: string) {
@@ -2221,140 +1884,6 @@ async function completeLocalProviderOnboarding(page: Page) {
   await waitFor(async () => (await firstRunComplete()) || null, 120_000);
 }
 
-async function enterCompanionMode(page: Page) {
-  try {
-    await clickSelector(page, '[data-testid="ui-shell-toggle-companion"]');
-  } catch {
-    await navigate(page, `${UI_URL}/apps/companion`);
-  }
-  await page.waitForFunction(
-    () => {
-      return (
-        window.location.pathname.endsWith("/apps/companion") &&
-        Boolean(document.querySelector('[data-testid="companion-root"]')) &&
-        Boolean(
-          document.querySelector('[data-testid="companion-header-shell"]'),
-        )
-      );
-    },
-    { timeout: 30_000 },
-  );
-}
-
-async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
-  if (profile) {
-    logQaStep(profile, "character-switch QA open companion character view");
-  }
-  await enterCompanionMode(page);
-  await clickSelector(page, '[data-testid="companion-shell-toggle-character"]');
-  const roster = await waitForCharacterRoster(page, 120_000);
-  const entries = await characterRosterEntries(page);
-  const currentEntry = entries.find((entry) => entry.selected);
-  expect(currentEntry?.testId).toBe(roster.selectedTestId);
-
-  const nextEntry = entries.find(
-    (entry) => entry.testId && entry.testId !== roster.selectedTestId,
-  );
-  if (!nextEntry?.testId) {
-    throw new Error(
-      "No alternate character entry was available for switching.",
-    );
-  }
-
-  if (profile) {
-    logQaStep(profile, `character-switch QA select ${nextEntry.testId}`);
-  }
-  await clickSelector(page, `[data-testid="${nextEntry.testId}"]`);
-  await page
-    .waitForSelector(
-      `[data-testid="${nextEntry.testId}"][aria-pressed="true"]`,
-      {
-        visible: true,
-        timeout: 20_000,
-      },
-    )
-    .catch(() => null);
-
-  const danceFetchBaseline = (await qaFetches(page)).length;
-  const danceEmoteBaseline = (await qaEmoteEvents(page)).length;
-
-  if (profile) {
-    logQaStep(profile, "character-switch QA open dance emote picker");
-  }
-  await page.evaluate(() => {
-    document.dispatchEvent(new Event("eliza:emote-picker"));
-  });
-  await page.waitForSelector('button[title="Dance Happy"]', {
-    visible: true,
-    timeout: 30_000,
-  });
-  await clickSelector(page, 'button[title="Dance Happy"]');
-  await waitFor(
-    async () => {
-      const overlayVisible = await page
-        .waitForSelector(
-          '[data-testid="global-emote-overlay"][data-emote-id="dance-happy"]',
-          {
-            visible: true,
-            timeout: 1000,
-          },
-        )
-        .then(() => true)
-        .catch(() => false);
-      if (overlayVisible) {
-        return true;
-      }
-
-      const events = await qaEmoteEvents(page);
-      return events
-        .slice(danceEmoteBaseline)
-        .some((event) => event.emoteId === "dance-happy")
-        ? true
-        : null;
-    },
-    45_000,
-    1000,
-  );
-
-  if (profile) {
-    logQaStep(profile, "character-switch QA wait for dance emote API");
-  }
-  const emoteFetches = await waitFor(async () => {
-    const fetches = await qaFetches(page);
-    const latest = fetches.slice(danceFetchBaseline);
-    return latest.some(
-      (record) =>
-        record.method === "POST" &&
-        String(record.url).includes("/api/emote") &&
-        record.status === 200,
-    )
-      ? latest
-      : null;
-  }, 45_000);
-  expect(
-    emoteFetches.some(
-      (record) =>
-        record.method === "POST" &&
-        String(record.url).includes("/api/emote") &&
-        record.status === 200,
-    ),
-  ).toBe(true);
-
-  if (profile) {
-    logQaStep(profile, "character-switch QA wait for dance emote event");
-  }
-  const danceEvents = await waitFor(async () => {
-    const events = await qaEmoteEvents(page);
-    const latest = events.slice(danceEmoteBaseline);
-    return latest.some((event) => event.emoteId === "dance-happy")
-      ? latest
-      : null;
-  }, 45_000);
-  expect(danceEvents.some((event) => event.emoteId === "dance-happy")).toBe(
-    true,
-  );
-}
-
 async function writeDocumentFile(profileId: string): Promise<string> {
   const filename = `eliza-qa-knowledge-${profileId}.txt`;
   const fullPath = path.join(os.tmpdir(), filename);
@@ -2577,14 +2106,10 @@ async function navigate(page: Page, url: string) {
 async function saveScreenshot(page: Page, profile: Profile, step: string) {
   const filename = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.png`);
   try {
-    await captureScreenshotWithQualityRetry(
-      page,
-      `${profile.id} ${step}`,
-      {
-        path: filename,
-        fullPage: true,
-      },
-    );
+    await captureScreenshotWithQualityRetry(page, `${profile.id} ${step}`, {
+      path: filename,
+      fullPage: true,
+    });
   } catch (error) {
     const noteFile = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.txt`);
     await fs.writeFile(
@@ -2707,18 +2232,6 @@ function expectValidGreetingMessage(value: string): void {
   expect(normalized.length).toBeGreaterThan(2);
   expect(normalized).not.toContain("reply with exactly these two words");
   expect(normalized).not.toContain("qa codeword from the uploaded file");
-}
-
-function assetSlug(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    const pathname = value.startsWith("http") ? new URL(value).pathname : value;
-    const filename = pathname.split("/").pop() ?? "";
-    if (!filename) return null;
-    return filename.replace(/\.vrm(\.gz)?$/i, "").replace(/\.png$/i, "");
-  } catch {
-    return null;
-  }
 }
 
 function ensureBrowser(value: Browser | null): Browser {

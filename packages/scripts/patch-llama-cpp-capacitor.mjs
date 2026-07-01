@@ -123,8 +123,12 @@ function ensureGradleMtpContract(pkgDir) {
     `}\n` +
     `\n` +
     `def resolveElizaSkipMtpAndroidLib = { ->\n` +
-    `    return project.findProperty('elizaSkipForkLlamaLib') == 'true' ||\n` +
-    `        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'\n` +
+    `    // The retired llama-cpp-capacitor Android module is dropped from the\n` +
+    `    // gradle build by default (run-mobile-build dropRetiredLlamaCppFromAndroidGradle),\n` +
+    `    // so its CMake never runs and there is no stub. If it is explicitly\n` +
+    `    // re-included (ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1) build the real\n` +
+    `    // MTP lib — never a no-op stub.\n` +
+    `    return false\n` +
     `}\n`;
 
   // Self-heal duplicate helper blocks. An older non-idempotent version of

@@ -39,7 +39,6 @@ const BYTES_PER_GB = 1024 ** 3;
  * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
-const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
@@ -49,33 +48,33 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
-  // 4B is the shipped mobile minimum — the 0.8B/2B tiers are too small for a
+  // 4B is the shipped mobile minimum — the 2B entry tier is too small for a
   // quality chat experience, so the mobile ladder floors at 4B for both slots.
   // If a low-RAM phone genuinely can't fit 4B, `fallbackCandidates` still
-  // degrades to a smaller eligible tier rather than failing outright.
+  // degrades to the 2B entry tier rather than failing outright.
   mobile: {
     TEXT_SMALL: [TIER_4B],
     TEXT_LARGE: [TIER_4B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_SMALL: [TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_SMALL: [TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_SMALL: [TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_SMALL: [TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_SMALL: [TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B],
   },
 };
 
