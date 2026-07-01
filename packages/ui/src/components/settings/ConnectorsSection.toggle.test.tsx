@@ -261,7 +261,7 @@ describe("ConnectorsSection enable toggle", () => {
       appMock.value.plugins = [
         plugin({ id: "discord", name: "Discord", enabled: false }),
       ];
-      render(<ConnectorsSection />);
+      const { rerender } = render(<ConnectorsSection />);
 
       const sw = screen.getByRole("switch", { name: "Enable Discord" });
       fireEvent.click(sw);
@@ -273,10 +273,26 @@ describe("ConnectorsSection enable toggle", () => {
 
       await flush();
 
-      // Store never confirmed the enable → switch still reads OFF (not
-      // optimistically checked) and the busy lock has released for a retry.
+      // Store never confirmed the enable → switch still reads OFF and the busy
+      // lock released for a retry (removing the catch/finally that clears the
+      // busy latch on throw would leave it disabled — this line breaks then).
       expect(sw.getAttribute("aria-checked")).toBe("false");
       expect(sw.hasAttribute("disabled")).toBe(false);
+
+      // Prove that "reads OFF" is real store-truth, not just an immutable value:
+      // flip the store to enabled and re-render — the switch now tracks it. So
+      // the failed toggle genuinely did NOT optimistically flip (it's controlled
+      // by plugin.enabled, which said off), rather than the assertion being
+      // structurally unfalsifiable.
+      appMock.value.plugins = [
+        plugin({ id: "discord", name: "Discord", enabled: true }),
+      ];
+      rerender(<ConnectorsSection />);
+      // The label flips Enable→Disable when enabled, so query the single switch
+      // by role; it now reads checked, proving it reflects store truth.
+      expect(
+        screen.getByRole("switch").getAttribute("aria-checked"),
+      ).toBe("true");
     } finally {
       window.removeEventListener("unhandledrejection", onUnhandled);
       process.off("unhandledRejection", onNodeUnhandled);

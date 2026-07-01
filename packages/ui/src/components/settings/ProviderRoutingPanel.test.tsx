@@ -222,12 +222,18 @@ describe("ProviderRoutingPanel — per-task override wiring", () => {
 describe("ProviderRoutingPanel — save status", () => {
   it("shows a saving indicator while a routing write is in flight", () => {
     render(<ProviderRoutingPanel {...baseProps({ modelSaving: true })} />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    // Assert the DISTINGUISHING label (savingRestarting), not just role=status —
+    // otherwise a saving/success label swap would pass both tests.
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("aria-label")).toMatch(/saving/i);
+    expect(status.getAttribute("aria-label")).not.toMatch(/saved/i);
   });
 
   it("shows a success indicator after a routing write lands", () => {
     render(<ProviderRoutingPanel {...baseProps({ modelSaveSuccess: true })} />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("aria-label")).toMatch(/saved/i);
+    expect(status.getAttribute("aria-label")).not.toMatch(/saving/i);
   });
 
   it("shows no status indicator at rest", () => {

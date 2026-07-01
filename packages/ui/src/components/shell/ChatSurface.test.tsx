@@ -64,13 +64,22 @@ describe("ChatSurface", () => {
 
     const input = getInput();
     fireEvent.change(input, { target: { value: "via enter" } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    // fireEvent returns false when the handler called preventDefault — this is
+    // how we prove the keystroke was SWALLOWED (no stray newline), the half the
+    // name promises. A regression that dropped preventDefault returns true.
+    const enterNotSwallowed = fireEvent.keyDown(input, { key: "Enter" });
+    expect(enterNotSwallowed).toBe(false);
 
     expect(onSend).toHaveBeenCalledTimes(1);
     expect(onSend).toHaveBeenCalledWith("via enter");
-    // Shift+Enter must NOT send (newline composition).
+    // Shift+Enter must NOT send AND must NOT be swallowed (newline composition
+    // passes through to the textarea).
     fireEvent.change(input, { target: { value: "line one" } });
-    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    const shiftEnterDefault = fireEvent.keyDown(input, {
+      key: "Enter",
+      shiftKey: true,
+    });
+    expect(shiftEnterDefault).toBe(true);
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 

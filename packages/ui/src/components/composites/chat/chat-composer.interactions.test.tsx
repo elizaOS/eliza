@@ -227,7 +227,15 @@ describe("ChatComposer — compose & send", () => {
     expect(getSendButton().disabled).toBe(true);
   });
 
-  it("sends on Enter but inserts a newline on Shift+Enter without sending", async () => {
+  // NOTE: ChatComposer is presentational — it only forwards the raw keydown to
+  // the `onKeyDown` prop and owns NO Enter/Shift+Enter routing. This test drives
+  // the composer wired with a keydown handler that MIRRORS ChatView.handleKeyDown
+  // (see the harness). It verifies that wiring end-to-end (composer forwards →
+  // handler submits on Enter / newlines on Shift+Enter → onSend + clear), NOT
+  // ChatView's own handler, which is verbatim-copied here. The authoritative
+  // Enter/Shift+Enter routing + preventDefault is exercised on a real component
+  // in ChatSurface.test.tsx ("sends on Enter … and swallows the keystroke").
+  it("submits on Enter / newlines on Shift+Enter when wired with a ChatView-style keydown handler", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
     render(<ComposerHarness onSend={onSend} />);

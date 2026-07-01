@@ -228,7 +228,23 @@ describe("Live query latency", () => {
     }
 
     const count = await finalCount;
-    expect(count).toBeGreaterThanOrEqual(3);
+    // `count >= 3` alone is near-tautological — the live callback only resolves
+    // the promise once count reaches 3. Cross-check the reactive count against an
+    // INDEPENDENT direct read so we prove it is ACCURATE, not merely "reached the
+    // resolve threshold": the live COUNT must equal the real row count (exactly
+    // the 3 we inserted).
+    const direct = await db.execute(
+      sql.raw("SELECT COUNT(*)::text AS count FROM memories")
+    );
+    const dbCount = parseInt(
+      String(
+        (direct as unknown as { rows: Array<{ count: string }> }).rows[0]
+          ?.count ?? "0"
+      ),
+      10
+    );
+    expect(count).toBe(dbCount);
+    expect(count).toBe(3);
   }, 10_000);
 
   // ------------------------------------------------------------------

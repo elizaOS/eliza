@@ -328,10 +328,19 @@ describe("RuntimeView", () => {
     // Mount fetch fired.
     expect(clientMock.getRuntimeSnapshot).toHaveBeenCalledTimes(1);
 
-    // Advance past the 5s poll interval.
+    // The already-rendered snapshot is on screen before the poll.
+    expect(screen.getByText("Ada")).toBeTruthy();
+
+    // Advance past the 5s poll interval and let the re-fetch resolve.
     await act(async () => {
       vi.advanceTimersByTime(5000);
+      await Promise.resolve();
     });
     expect(clientMock.getRuntimeSnapshot).toHaveBeenCalledTimes(2);
+    // "Silently, without clearing": the prior snapshot must stay painted (no
+    // loading flash) across the poll — the half the name promised but never checked.
+    expect(screen.getByText("Ada")).toBeTruthy();
+    expect(screen.getByText("gpt-5.5")).toBeTruthy();
+    expect(screen.queryByText("runtimeview.AgentRuntimeIsNot")).toBeNull();
   });
 });
