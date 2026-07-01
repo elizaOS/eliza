@@ -85,4 +85,4 @@ if (isMain) {
   main();
 }
 
-export { parseArgs, main };
+export { main, parseArgs };

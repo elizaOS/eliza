@@ -71,7 +71,14 @@ export default scenario({
   lane: "pr-deterministic",
   title: "Deterministic Settings subview deep-link via the VIEWS action",
   domain: "scenario-runner",
-  tags: ["pr", "deterministic", "zero-cost", "app-control", "views", "settings"],
+  tags: [
+    "pr",
+    "deterministic",
+    "zero-cost",
+    "app-control",
+    "views",
+    "settings",
+  ],
   isolation: "shared-runtime",
   requires: {
     plugins: ["@elizaos/plugin-app-control"],

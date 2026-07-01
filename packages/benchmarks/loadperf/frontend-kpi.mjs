@@ -22,18 +22,20 @@ import { createServer } from "node:http";
 import {
   APP_DIST,
   existsSync,
-  readFileSync,
-  recordResult,
+  join,
+  kb,
   loadBudgets,
   ms,
-  kb,
-  join,
+  readFileSync,
+  recordResult,
 } from "./lib.mjs";
 
 const NOW = new Date().toISOString();
 const JSON_ONLY = process.argv.includes("--json");
 const urlArg = process.argv.find((a) => a.startsWith("--url="));
-const TARGET_URL = urlArg ? urlArg.slice("--url=".length) : process.env.LOADPERF_FE_URL ?? null;
+const TARGET_URL = urlArg
+  ? urlArg.slice("--url=".length)
+  : (process.env.LOADPERF_FE_URL ?? null);
 const SETTLE_MS = Number(process.env.LOADPERF_FE_SETTLE_MS ?? 8000);
 
 const MIME = {
@@ -65,18 +67,27 @@ function contentTypeFor(path) {
 function serveDist() {
   const indexPath = join(APP_DIST, "index.html");
   if (!existsSync(indexPath)) {
-    throw new Error(`no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`);
+    throw new Error(
+      `no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`,
+    );
   }
   const server = createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
     const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
     // block path traversal
-    const safe = rel.split("/").filter((seg) => seg && seg !== "..").join("/");
+    const safe = rel
+      .split("/")
+      .filter((seg) => seg && seg !== "..")
+      .join("/");
     const candidate = join(APP_DIST, safe);
-    const file = existsSync(candidate) && !candidate.endsWith("/") ? candidate : indexPath;
+    const file =
+      existsSync(candidate) && !candidate.endsWith("/") ? candidate : indexPath;
     try {
       const buf = readFileSync(file);
-      res.writeHead(200, { "content-type": contentTypeFor(file), "content-length": buf.length });
+      res.writeHead(200, {
+        "content-type": contentTypeFor(file),
+        "content-length": buf.length,
+      });
       res.end(buf);
     } catch {
       res.writeHead(404, { "content-type": "text/plain" });
@@ -142,11 +153,29 @@ function checkBudgets(metrics) {
   const checks = [
     { name: "fcpMs", value: metrics.fcpMs, budget: b.fcpMs, unit: "ms" },
     { name: "lcpMs", value: metrics.lcpMs, budget: b.lcpMs, unit: "ms" },
-    { name: "jsTransferredBytes", value: metrics.jsTransferredBytes, budget: b.jsTransferredBytes, unit: "bytes" },
-    { name: "requestCount", value: metrics.requestCount, budget: b.requestCount, unit: "count" },
-    { name: "longTasksMs", value: metrics.longTasksMs, budget: b.longTasksMs, unit: "ms" },
+    {
+      name: "jsTransferredBytes",
+      value: metrics.jsTransferredBytes,
+      budget: b.jsTransferredBytes,
+      unit: "bytes",
+    },
+    {
+      name: "requestCount",
+      value: metrics.requestCount,
+      budget: b.requestCount,
+      unit: "count",
+    },
+    {
+      name: "longTasksMs",
+      value: metrics.longTasksMs,
+      budget: b.longTasksMs,
+      unit: "ms",
+    },
   ];
-  return checks.map((c) => ({ ...c, pass: c.value != null && c.value <= c.budget }));
+  return checks.map((c) => ({
+    ...c,
+    pass: c.value != null && c.value <= c.budget,
+  }));
 }
 
 async function main() {
@@ -154,10 +183,16 @@ async function main() {
   try {
     playwright = await import("playwright");
   } catch (err) {
-    const payload = { skipped: true, error: `playwright unavailable: ${err?.message ?? String(err)}` };
+    const payload = {
+      skipped: true,
+      error: `playwright unavailable: ${err?.message ?? String(err)}`,
+    };
     const { file } = recordResult("frontend", payload, NOW);
     if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
-    else console.error(`[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`);
+    else
+      console.error(
+        `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
+      );
     process.exit(2);
   }
 
@@ -171,7 +206,10 @@ async function main() {
       const payload = { skipped: true, error: err?.message ?? String(err) };
       const { file } = recordResult("frontend", payload, NOW);
       if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
-      else console.error(`[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`);
+      else
+        console.error(
+          `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
+        );
       process.exit(2);
     }
   }
@@ -188,7 +226,11 @@ async function main() {
 
     const checks = checkBudgets(metrics);
     const result = {
-      summary: { url: target, served: served ? "static-dist" : "remote", ...metrics },
+      summary: {
+        url: target,
+        served: served ? "static-dist" : "remote",
+        ...metrics,
+      },
       checks,
       pass: checks.every((c) => c.pass),
     };
@@ -211,17 +253,34 @@ async function main() {
       console.log("\n-- budget checks --");
       for (const c of checks) {
         const fmt = (v) =>
-          v == null ? "—" : c.unit === "ms" ? ms(v) : c.unit === "bytes" ? kb(v) : String(v);
-        console.log(`  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${fmt(c.value)} / budget ${fmt(c.budget)}`);
+          v == null
+            ? "—"
+            : c.unit === "ms"
+              ? ms(v)
+              : c.unit === "bytes"
+                ? kb(v)
+                : String(v);
+        console.log(
+          `  ${c.pass ? "PASS" : "FAIL"}  ${c.name}: ${fmt(c.value)} / budget ${fmt(c.budget)}`,
+        );
       }
-      console.log(`\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`);
+      console.log(
+        `\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`,
+      );
     }
     process.exit(result.pass ? 0 : 1);
   } catch (err) {
-    const payload = { skipped: true, url: target, error: err?.message ?? String(err) };
+    const payload = {
+      skipped: true,
+      url: target,
+      error: err?.message ?? String(err),
+    };
     const { file } = recordResult("frontend", payload, NOW);
     if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
-    else console.error(`[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`);
+    else
+      console.error(
+        `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
+      );
     process.exit(2);
   } finally {
     if (browser) await browser.close().catch(() => {});

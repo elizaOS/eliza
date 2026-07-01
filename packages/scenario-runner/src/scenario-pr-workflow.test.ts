@@ -529,9 +529,7 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicMediaActionsScenario).toContain(
       "Deterministic media generation actions",
     );
-    expect(deterministicMediaActionsScenario).toContain(
-      "GENERATE_MEDIA_AUDIO",
-    );
+    expect(deterministicMediaActionsScenario).toContain("GENERATE_MEDIA_AUDIO");
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );

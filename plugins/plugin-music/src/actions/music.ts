@@ -49,6 +49,8 @@ const MUSIC_SUBACTIONS = [
   // library
   "playlist_play",
   "playlist_save",
+  "playlist_delete",
+  "playlist_add",
   "search",
   "play_query",
   "download",
@@ -79,7 +81,7 @@ type DispatchKind =
     };
 
 type LibraryOp = "playlist" | "play_query" | "search_youtube" | "download";
-type PlaylistOp = "save" | "load";
+type PlaylistOp = "save" | "load" | "delete" | "add";
 
 /**
  * Legacy alias → canonical verb. Both the old MUSIC ops (e.g. `playlist`,
@@ -105,6 +107,10 @@ const SUBACTION_ALIASES: Record<string, MusicSubaction> = {
   play_playlist: "playlist_play",
   load_playlist: "playlist_play",
   save_playlist: "playlist_save",
+  create_playlist: "playlist_save",
+  delete_playlist: "playlist_delete",
+  remove_playlist: "playlist_delete",
+  add_to_playlist: "playlist_add",
   search_youtube: "search",
   youtube_search: "search",
   find: "search",
@@ -166,6 +172,16 @@ const PLAYLIST_SAVE_TOKENS = new Set([
   "playlist_save",
   "playlist_create",
 ]);
+
+const PLAYLIST_DELETE_TOKENS = new Set([
+  "delete",
+  "remove",
+  "playlist_delete",
+  "delete_playlist",
+  "remove_playlist",
+]);
+
+const PLAYLIST_ADD_TOKENS = new Set(["add", "playlist_add", "add_to_playlist"]);
 
 function normalizeToken(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -342,6 +358,8 @@ Allowed actions:
 - queue_clear: clear the queue
 - playlist_play: load or play a saved playlist
 - playlist_save: save the current queue or songs as a playlist
+- playlist_delete: delete or remove a saved playlist
+- playlist_add: add a requested song to a saved playlist
 - search: search YouTube/music results without necessarily playing
 - play_query: research/find music and play or queue the best match
 - download: download/fetch music into the local library
@@ -358,7 +376,7 @@ ${text}
 Output the single best-matching enum token only — no prose, no markdown, no explanation, no alternatives. If the request maps to several actions, choose the one that resolves it.
 
 Return ONLY:
-<response><action>play|pause|resume|skip|stop|queue_view|queue_add|queue_clear|playlist_play|playlist_save|search|play_query|download|play_audio|set_routing|set_zone|generate|extend|custom_generate</action></response>`;
+<response><action>play|pause|resume|skip|stop|queue_view|queue_add|queue_clear|playlist_play|playlist_save|playlist_delete|playlist_add|search|play_query|download|play_audio|set_routing|set_zone|generate|extend|custom_generate</action></response>`;
 
   try {
     const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
@@ -387,12 +405,16 @@ function resolvePlaylistOpFromOptions(
 ): PlaylistOp | null {
   if (subaction === "playlist_save") return "save";
   if (subaction === "playlist_play") return "load";
+  if (subaction === "playlist_delete") return "delete";
+  if (subaction === "playlist_add") return "add";
   const tokens = [merged.playlistOp, merged.subaction, merged.action, merged.op]
     .map((value) => normalizeToken(value))
     .filter((value): value is string => Boolean(value));
   for (const token of tokens) {
     if (PLAYLIST_LOAD_TOKENS.has(token)) return "load";
     if (PLAYLIST_SAVE_TOKENS.has(token)) return "save";
+    if (PLAYLIST_DELETE_TOKENS.has(token)) return "delete";
+    if (PLAYLIST_ADD_TOKENS.has(token)) return "add";
   }
   return null;
 }
@@ -428,6 +450,18 @@ function dispatchKindFor(
         kind: "library",
         libraryOp: "playlist",
         playlistOp: "save",
+      };
+    case "playlist_delete":
+      return {
+        kind: "library",
+        libraryOp: "playlist",
+        playlistOp: "delete",
+      };
+    case "playlist_add":
+      return {
+        kind: "library",
+        libraryOp: "playlist",
+        playlistOp: "add",
       };
     case "search":
       return { kind: "library", libraryOp: "search_youtube" };
@@ -591,19 +625,19 @@ export const musicAction: Action = {
   description:
     "Music action. Use verb-shaped action for everything: " +
     "playback (play, pause, resume, skip, stop), queue (queue_view, queue_add, queue_clear), " +
-    "library (playlist_play, playlist_save, search, play_query, download, play_audio), " +
+    "library (playlist_play, playlist_save, playlist_delete, playlist_add, search, play_query, download, play_audio), " +
     "routing/zones (set_routing, set_zone), " +
     "generation (generate, extend, custom_generate — Suno-backed, requires SUNO_API_KEY). " +
-    "skip, stop, queue_add, queue_clear, playlist_save, and download require confirmed:true.",
+    "skip, stop, queue_add, queue_clear, playlist_save, playlist_delete, playlist_add, and download require confirmation.",
   descriptionCompressed:
-    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save/playlist_delete/playlist_add, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
   parameters: [
     {
       name: "action",
       description:
         "Verb-shaped subaction. Playback: play, pause, resume, skip, stop. " +
         "Queue: queue_view, queue_add, queue_clear. " +
-        "Library: playlist_play, playlist_save, search, play_query, download, play_audio. " +
+        "Library: playlist_play, playlist_save, playlist_delete, playlist_add, search, play_query, download, play_audio. " +
         "Routing/zones: set_routing, set_zone. " +
         "Generation (Suno): generate, extend, custom_generate. " +
         "Legacy aliases (e.g. queue, playlist, search_youtube, routing, zones, custom) are still accepted.",
@@ -627,7 +661,8 @@ export const musicAction: Action = {
     },
     {
       name: "playlistName",
-      description: "Playlist name for playlist_play / playlist_save.",
+      description:
+        "Playlist name for playlist_play / playlist_save / playlist_delete / playlist_add.",
       required: false,
       schema: { type: "string" },
     },

@@ -16,15 +16,15 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeAll, describe, expect, it } from "vitest";
+import {
+  createCalendarActionRunner,
+  extractCalendarPlanWithLlm,
+} from "../src/actions/calendar-handler.ts";
 import type {
   CalendarActionDeps,
   CalendarJsonModelResult,
   CalendarModelCallArgs,
 } from "../src/actions/deps.ts";
-import {
-  createCalendarActionRunner,
-  extractCalendarPlanWithLlm,
-} from "../src/actions/calendar-handler.ts";
 
 const LIVE =
   process.env.CALENDAR_LLM_LIVE_TEST === "1" ||

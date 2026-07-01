@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "estate-admin-document-safe",
-  title: "Assistant organizes estate admin documents with sensitive-data controls",
+  title:
+    "Assistant organizes estate admin documents with sensitive-data controls",
   domain: "executive.legal",
   tags: ["lifeops", "executive-assistant", "legal", "documents", "privacy"],
   isolation: "per-scenario",
@@ -30,7 +31,11 @@ export default scenario({
       kind: "message",
       name: "prepare-counsel-question-list",
       text: "Draft a question list for counsel and create tasks for anything that needs notarization or witness scheduling.",
-      plannerIncludesAny: ["SCHEDULED_TASKS", "owner_send_message", "notarization"],
+      plannerIncludesAny: [
+        "SCHEDULED_TASKS",
+        "owner_send_message",
+        "notarization",
+      ],
       responseIncludesAny: ["counsel", "notarization", "witness"],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },

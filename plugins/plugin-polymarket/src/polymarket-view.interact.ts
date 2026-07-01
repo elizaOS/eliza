@@ -5,11 +5,11 @@
 import { client } from "@elizaos/app-core";
 import "./client";
 import type { PolymarketClient } from "./client";
+import type { PolymarketOrderbookResponse } from "./polymarket-contracts";
 import {
   loadPolymarketTuiState,
   postPolymarketCommand,
 } from "./polymarket-view.helpers";
-import type { PolymarketOrderbookResponse } from "./polymarket-contracts";
 
 export async function interact(
   capability: string,

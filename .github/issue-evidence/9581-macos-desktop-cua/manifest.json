@@ -4,10 +4,7 @@
   "status": "passed",
   "target": {
     "minimumMacos": "macOS 13 or newer",
-    "requiredPermissions": [
-      "Screen Recording",
-      "Accessibility"
-    ],
+    "requiredPermissions": ["Screen Recording", "Accessibility"],
     "driver": "nutjs preferred; legacy cliclick/AppleScript fallback allowed"
   },
   "evidence": {

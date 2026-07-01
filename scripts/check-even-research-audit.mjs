@@ -121,11 +121,15 @@ function implementedSurfaceFailures(auditSource) {
     "packages/examples/smartglasses/simulator-automation-smoke.ts",
   ]) {
     if (!auditSource.includes(expected)) {
-      result.push(`${upstreamAuditPath}: missing implemented surface reference ${expected}`);
+      result.push(
+        `${upstreamAuditPath}: missing implemented surface reference ${expected}`,
+      );
     }
   }
   if (auditSource.includes("src/providers/status.ts")) {
-    result.push(`${upstreamAuditPath}: stale provider path src/providers/status.ts`);
+    result.push(
+      `${upstreamAuditPath}: stale provider path src/providers/status.ts`,
+    );
   }
   return result;
 }
@@ -138,7 +142,9 @@ function docLinkFailures(docsSource) {
     );
   }
   if (docsSource.includes("docs/upstream-audit.md")) {
-    result.push(`${smartglassesDocsPath}: stale link to docs/upstream-audit.md`);
+    result.push(
+      `${smartglassesDocsPath}: stale link to docs/upstream-audit.md`,
+    );
   }
   return result;
 }
@@ -167,7 +173,9 @@ function runSelfTest() {
     slug,
     relPath,
   );
-  if (!missingSource.some((failure) => failure.includes("missing source row"))) {
+  if (
+    !missingSource.some((failure) => failure.includes("missing source row"))
+  ) {
     failures.push("missing source row fixture was not detected");
   }
 
@@ -176,12 +184,16 @@ function runSelfTest() {
     slug,
     relPath,
   );
-  if (!missingPath.some((failure) => failure.includes("missing checkout path"))) {
+  if (
+    !missingPath.some((failure) => failure.includes("missing checkout path"))
+  ) {
     failures.push("missing checkout path fixture was not detected");
   }
 
   const staleSurface = implementedSurfaceFailures("src/providers/status.ts");
-  if (!staleSurface.some((failure) => failure.includes("stale provider path"))) {
+  if (
+    !staleSurface.some((failure) => failure.includes("stale provider path"))
+  ) {
     failures.push("stale provider fixture was not detected");
   }
 

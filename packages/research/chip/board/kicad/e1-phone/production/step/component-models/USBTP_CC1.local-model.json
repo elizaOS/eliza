@@ -42,9 +42,7 @@
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
   "local_step_bound": true,
-  "local_terminal_contract": [
-    "1"
-  ],
+  "local_terminal_contract": ["1"],
   "local_terminal_contract_source": "generated_development_footprint_support_pattern_basis",
   "mechanical_pad_count": 0,
   "mechanical_pads": [],
@@ -68,9 +66,7 @@
     }
   ],
   "pad_count": 1,
-  "pad_names": [
-    "1"
-  ],
+  "pad_names": ["1"],
   "pad_visual_count": 1,
   "pattern_binding_status": "support_pattern_bound_to_explicit_local_terminal_contract",
   "pattern_bound": true,

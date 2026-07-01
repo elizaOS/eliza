@@ -1,13 +1,13 @@
-import { isAuditAction, type AuditAction } from "./actions.js";
+import { type AuditAction, isAuditAction } from "./actions.js";
 import type { AuditSink } from "./sink.js";
 import {
-  AuditEventSchema,
-  newEventId,
-  nowIso,
   type AuditActor,
   type AuditEvent,
+  AuditEventSchema,
   type AuditResource,
   type AuditResult,
+  newEventId,
+  nowIso,
 } from "./types.js";
 
 /**

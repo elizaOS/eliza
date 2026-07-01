@@ -2934,10 +2934,7 @@
       "part": "left_wrist_separated_cuff",
       "blend": 1.0,
       "kind": "part_fields",
-      "fields": [
-        "centerline_radii_yz",
-        "tube_radii_x_radial"
-      ],
+      "fields": ["centerline_radii_yz", "tube_radii_x_radial"],
       "field_deltas": {
         "centerline_radii_yz": [
           {
@@ -2978,11 +2975,7 @@
       "part": "right_wrist_separated_cuff",
       "blend": 1.0,
       "kind": "part_fields",
-      "fields": [
-        "center",
-        "centerline_radii_yz",
-        "tube_radii_x_radial"
-      ],
+      "fields": ["center", "centerline_radii_yz", "tube_radii_x_radial"],
       "field_deltas": {
         "center": [
           {

@@ -63,20 +63,11 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
       "component_reference_count": 2,
-      "component_references": [
-        "J_BATTERY",
-        "U_FG"
-      ],
-      "expected_supplier_step_files": [
-        "J_BATTERY.step",
-        "U_FG.step"
-      ],
+      "component_references": ["J_BATTERY", "U_FG"],
+      "expected_supplier_step_files": ["J_BATTERY.step", "U_FG.step"],
       "file": "board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "BATTERY_4P_1P00_DEV",
-        "FUEL_GAUGE_WLCSP_DEV"
-      ],
+      "footprints": ["BATTERY_4P_1P00_DEV", "FUEL_GAUGE_WLCSP_DEV"],
       "hash_matches_file": true,
       "lane": "battery_pack",
       "manifest_model_reference_count": 2,
@@ -141,17 +132,11 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15600,
       "component_reference_count": 1,
-      "component_references": [
-        "U_CHARGER"
-      ],
-      "expected_supplier_step_files": [
-        "U_CHARGER.step"
-      ],
+      "component_references": ["U_CHARGER"],
+      "expected_supplier_step_files": ["U_CHARGER.step"],
       "file": "board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "ADI_MAX77860_WLP81_DEV"
-      ],
+      "footprints": ["ADI_MAX77860_WLP81_DEV"],
       "hash_matches_file": true,
       "lane": "charger_power_path",
       "manifest_model_reference_count": 1,
@@ -170,11 +155,7 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15660,
       "component_reference_count": 3,
-      "component_references": [
-        "D_DSI_ESD",
-        "D_TOUCH_ESD",
-        "J_DISPLAY_TOUCH"
-      ],
+      "component_references": ["D_DSI_ESD", "D_TOUCH_ESD", "J_DISPLAY_TOUCH"],
       "expected_supplier_step_files": [
         "D_DSI_ESD.step",
         "D_TOUCH_ESD.step",
@@ -182,10 +163,7 @@
       ],
       "file": "board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "DISPLAY_40P_0P30_DEV",
-        "ESD_ARRAY_6CH_DEV"
-      ],
+      "footprints": ["DISPLAY_40P_0P30_DEV", "ESD_ARRAY_6CH_DEV"],
       "hash_matches_file": true,
       "lane": "display_touch",
       "manifest_model_reference_count": 3,
@@ -204,20 +182,14 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
       "component_reference_count": 2,
-      "component_references": [
-        "D_CAM1_ESD",
-        "J_FRONT_CAMERA"
-      ],
+      "component_references": ["D_CAM1_ESD", "J_FRONT_CAMERA"],
       "expected_supplier_step_files": [
         "D_CAM1_ESD.step",
         "J_FRONT_CAMERA.step"
       ],
       "file": "board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "CAMERA_30P_0P50_DEV",
-        "ESD_ARRAY_6CH_DEV"
-      ],
+      "footprints": ["CAMERA_30P_0P50_DEV", "ESD_ARRAY_6CH_DEV"],
       "hash_matches_file": true,
       "lane": "front_camera",
       "manifest_model_reference_count": 2,
@@ -260,10 +232,7 @@
       ],
       "file": "board/kicad/e1-phone/production/sourcing/pmic/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "C0402_DEV",
-        "TESTPOINT_1MM_DEV"
-      ],
+      "footprints": ["C0402_DEV", "TESTPOINT_1MM_DEV"],
       "hash_matches_file": true,
       "lane": "pmic",
       "manifest_model_reference_count": 9,
@@ -282,20 +251,11 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
       "component_reference_count": 2,
-      "component_references": [
-        "D_CAM0_ESD",
-        "J_REAR_CAMERA"
-      ],
-      "expected_supplier_step_files": [
-        "D_CAM0_ESD.step",
-        "J_REAR_CAMERA.step"
-      ],
+      "component_references": ["D_CAM0_ESD", "J_REAR_CAMERA"],
+      "expected_supplier_step_files": ["D_CAM0_ESD.step", "J_REAR_CAMERA.step"],
       "file": "board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "CAMERA_24P_0P50_DEV",
-        "ESD_ARRAY_6CH_DEV"
-      ],
+      "footprints": ["CAMERA_24P_0P50_DEV", "ESD_ARRAY_6CH_DEV"],
       "hash_matches_file": true,
       "lane": "rear_camera",
       "manifest_model_reference_count": 2,
@@ -314,11 +274,7 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15716,
       "component_reference_count": 3,
-      "component_references": [
-        "D_KEYS_ESD",
-        "SW_POWER_VOL",
-        "U_HAPTIC"
-      ],
+      "component_references": ["D_KEYS_ESD", "SW_POWER_VOL", "U_HAPTIC"],
       "expected_supplier_step_files": [
         "D_KEYS_ESD.step",
         "SW_POWER_VOL.step",
@@ -359,9 +315,7 @@
       ],
       "file": "board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "HIROSE_DF40_80P_0P4_DEV"
-      ],
+      "footprints": ["HIROSE_DF40_80P_0P4_DEV"],
       "hash_matches_file": true,
       "lane": "top_bottom_interconnect",
       "manifest_model_reference_count": 2,
@@ -380,17 +334,11 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15576,
       "component_reference_count": 1,
-      "component_references": [
-        "J_USB_C"
-      ],
-      "expected_supplier_step_files": [
-        "J_USB_C.step"
-      ],
+      "component_references": ["J_USB_C"],
+      "expected_supplier_step_files": ["J_USB_C.step"],
       "file": "board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "GCT_USB4105_GF_A_DEV"
-      ],
+      "footprints": ["GCT_USB4105_GF_A_DEV"],
       "hash_matches_file": true,
       "lane": "usb_c_receptacle_evt0",
       "manifest_model_reference_count": 1,
@@ -409,17 +357,11 @@
       "all_component_records_release_credit_false": true,
       "bytes": 15538,
       "component_reference_count": 1,
-      "component_references": [
-        "U_USB_PD"
-      ],
-      "expected_supplier_step_files": [
-        "U_USB_PD.step"
-      ],
+      "component_references": ["U_USB_PD"],
+      "expected_supplier_step_files": ["U_USB_PD.step"],
       "file": "board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step",
       "file_present": true,
-      "footprints": [
-        "TI_TPS65987_RSH_56QFN_DEV"
-      ],
+      "footprints": ["TI_TPS65987_RSH_56QFN_DEV"],
       "hash_matches_file": true,
       "lane": "usb_pd_controller",
       "manifest_model_reference_count": 1,

@@ -39,9 +39,7 @@
       "manifest_key": "verilog",
       "min_bytes": 1024,
       "path": "build/chipyard/eliza_rocket/eliza_rocket_ap.v",
-      "required_strings": [
-        "module eliza_rocket_ap"
-      ],
+      "required_strings": ["module eliza_rocket_ap"],
       "sha256_key": "verilog_sha256"
     }
   },
@@ -56,13 +54,7 @@
         "placeholder transcript"
       ],
       "gate": "rv64gc_isa",
-      "pass_requires": [
-        "ISA profile",
-        "RV64GC",
-        "misa",
-        "Zicsr",
-        "Zifencei"
-      ],
+      "pass_requires": ["ISA profile", "RV64GC", "misa", "Zicsr", "Zifencei"],
       "status": "blocked"
     },
     {
@@ -73,13 +65,7 @@
         "placeholder transcript"
       ],
       "gate": "s_mode_privilege",
-      "pass_requires": [
-        "mstatus",
-        "medeleg",
-        "mideleg",
-        "satp",
-        "sret"
-      ],
+      "pass_requires": ["mstatus", "medeleg", "mideleg", "satp", "sret"],
       "status": "blocked"
     },
     {
@@ -139,11 +125,7 @@
         "placeholder transcript"
       ],
       "gate": "uart_console",
-      "pass_requires": [
-        "UART console",
-        "Linux early console",
-        "UART node"
-      ],
+      "pass_requires": ["UART console", "Linux early console", "UART node"],
       "status": "blocked"
     },
     {
@@ -197,11 +179,7 @@
     }
   ],
   "qemu_reference_evidence": {
-    "allowed_results": [
-      "BLOCKED",
-      "FAIL",
-      "PASS"
-    ],
+    "allowed_results": ["BLOCKED", "FAIL", "PASS"],
     "attempt_log": "build/reports/qemu_os_boot_attempt.log",
     "capture_command": "scripts/run_qemu.sh --check-os",
     "claim_limit": "QEMU virt may exercise software payloads but cannot satisfy generated Chipyard/Rocket AP evidence gates.",
@@ -346,10 +324,7 @@
     "linux_boot_log": {
       "artifact": "Linux AP boot transcript",
       "at_least_one": [
-        [
-          "Kernel command line:",
-          "Forcing kernel command line to:"
-        ]
+        ["Kernel command line:", "Forcing kernel command line to:"]
       ],
       "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake linux-boot --source /path/to/linux-serial.log --command '/exact/external/boot command'",
       "forbidden_strings": [

@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "board-offsite-accessibility-logistics",
-  title: "Assistant coordinates board offsite logistics with accessibility constraints",
+  title:
+    "Assistant coordinates board offsite logistics with accessibility constraints",
   domain: "executive.schedule",
   tags: ["lifeops", "executive-assistant", "schedule", "privacy", "travel"],
   isolation: "per-scenario",

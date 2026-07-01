@@ -129,6 +129,8 @@ All music operations route through a single **`MUSIC`** action with a verb-shape
 | `queue_clear` | Clear the queue (requires `confirmed: true`) |
 | `playlist_play` | Load and play a saved playlist |
 | `playlist_save` | Save current queue as a playlist (requires `confirmed: true`) |
+| `playlist_delete` | Delete a saved playlist (requires confirmation) |
+| `playlist_add` | Add a song to a playlist (requires confirmation) |
 | `search` | Search YouTube for music |
 | `play_query` | Smart natural-language music query (search + play) |
 | `download` | Download a track to the local library (requires `confirmed: true`) |
@@ -172,4 +174,3 @@ This plugin works alongside:
 - **`@elizaos/plugin-discord`** — Provides voice channel playback (wired automatically on init)
 - **`@elizaos/plugin-sql`** — Required for persistent library and playlist storage
 - **`@elizaos/plugin-suno`** — Required for AI generation subactions
-

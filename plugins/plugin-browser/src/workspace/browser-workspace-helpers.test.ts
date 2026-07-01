@@ -24,7 +24,9 @@ describe("parseBrowserWorkspaceNumberLike", () => {
 
   it("returns undefined for non-finite, non-numeric, or non-string/number input", () => {
     expect(parseBrowserWorkspaceNumberLike(Number.NaN)).toBeUndefined();
-    expect(parseBrowserWorkspaceNumberLike(Number.POSITIVE_INFINITY)).toBeUndefined();
+    expect(
+      parseBrowserWorkspaceNumberLike(Number.POSITIVE_INFINITY),
+    ).toBeUndefined();
     expect(parseBrowserWorkspaceNumberLike("abc")).toBeUndefined();
     expect(parseBrowserWorkspaceNumberLike("")).toBeUndefined();
     expect(parseBrowserWorkspaceNumberLike(null)).toBeUndefined();
@@ -34,7 +36,9 @@ describe("parseBrowserWorkspaceNumberLike", () => {
 
 describe("normalizeBrowserWorkspaceText", () => {
   it("collapses whitespace runs to single spaces and trims", () => {
-    expect(normalizeBrowserWorkspaceText("  hello   world \n\t ")).toBe("hello world");
+    expect(normalizeBrowserWorkspaceText("  hello   world \n\t ")).toBe(
+      "hello world",
+    );
   });
 
   it("stringifies null/undefined to empty and coerces non-strings", () => {

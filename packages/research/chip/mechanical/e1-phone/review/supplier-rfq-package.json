@@ -19,9 +19,7 @@
   "packages": [
     {
       "id": "display_touch_stack",
-      "supplier_item_ids": [
-        "display_lcm_ctp"
-      ],
+      "supplier_item_ids": ["display_lcm_ctp"],
       "candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
       "attached_steps": [
         "mechanical/e1-phone/out/screen_cover_glass.step",
@@ -49,9 +47,7 @@
     },
     {
       "id": "usb_c_and_bottom_audio",
-      "supplier_item_ids": [
-        "usb_c"
-      ],
+      "supplier_item_ids": ["usb_c"],
       "candidate": "GCT USB4105 USB2 Type-C receptacle, reinforced shell",
       "attached_steps": [
         "mechanical/e1-phone/out/usb_c_receptacle.step",
@@ -89,10 +85,7 @@
     },
     {
       "id": "camera_stack",
-      "supplier_item_ids": [
-        "rear_camera",
-        "front_camera"
-      ],
+      "supplier_item_ids": ["rear_camera", "front_camera"],
       "candidate": "rear OV13855-class AF plus front 5-8 MP FF module",
       "attached_steps": [
         "mechanical/e1-phone/out/rear_camera_module.step",
@@ -130,9 +123,7 @@
     },
     {
       "id": "buttons_haptics_service",
-      "supplier_item_ids": [
-        "side_buttons"
-      ],
+      "supplier_item_ids": ["side_buttons"],
       "candidate": "XKB TS-1187A-B-A-B side-push tactile switch, 3.5x2.9x1.7 mm",
       "attached_steps": [
         "mechanical/e1-phone/out/power_button_cap.step",

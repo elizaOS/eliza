@@ -1,3 +1,10 @@
+export { ALL_CHECKS } from "./controls/index.js";
+export {
+  defaultOutDir,
+  renderMarkdown,
+  writeReport,
+} from "./evidence/report.js";
+export { hasCriticalFailures, runVerification } from "./runners/run.js";
 export type {
   Check,
   CheckContext,
@@ -8,11 +15,3 @@ export type {
   ReportControlBlock,
   VerificationConfig,
 } from "./types.js";
-
-export { ALL_CHECKS } from "./controls/index.js";
-export { hasCriticalFailures, runVerification } from "./runners/run.js";
-export {
-  defaultOutDir,
-  renderMarkdown,
-  writeReport,
-} from "./evidence/report.js";

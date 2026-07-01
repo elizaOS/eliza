@@ -23,7 +23,12 @@ export default scenario({
       name: "map-diligence-asks",
       text: "Track investor diligence follow-ups: unanswered data requests, owner for each doc, redacted materials, promised timing, and open legal caveats.",
       plannerIncludesAny: ["OWNER_DOCUMENTS", "SCHEDULED_TASKS", "privacy"],
-      responseIncludesAny: ["data requests", "redacted", "timing", "legal caveats"],
+      responseIncludesAny: [
+        "data requests",
+        "redacted",
+        "timing",
+        "legal caveats",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
     {
@@ -31,7 +36,12 @@ export default scenario({
       name: "draft-investor-followup",
       text: "Draft a follow-up note and escalation tracker, but hold anything containing redacted materials until legal approves.",
       plannerIncludesAny: ["owner_send_message", "approval", "privacy"],
-      responseIncludesAny: ["follow-up", "tracker", "redacted", "legal approves"],
+      responseIncludesAny: [
+        "follow-up",
+        "tracker",
+        "redacted",
+        "legal approves",
+      ],
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
     },
   ],

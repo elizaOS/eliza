@@ -35,17 +35,14 @@ describe("validateX402Startup", () => {
   });
 
   it("uses character defaults for partial route configuration", () => {
-    const result = validateX402Startup(
-      [paidRoute({ priceInCents: 25 })],
-      {
-        settings: {
-          x402: {
-            defaultPriceInCents: 10,
-            defaultPaymentConfigs: ["base_usdc"],
-          },
+    const result = validateX402Startup([paidRoute({ priceInCents: 25 })], {
+      settings: {
+        x402: {
+          defaultPriceInCents: 10,
+          defaultPaymentConfigs: ["base_usdc"],
         },
-      } as never,
-    );
+      },
+    } as never);
 
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
@@ -73,9 +70,12 @@ describe("validateX402Startup", () => {
 
   it("rejects protected routes without handlers", () => {
     const result = validateX402Startup([
-      paidRoute({ priceInCents: 25, paymentConfigs: ["base_usdc"] }, {
-        handler: undefined,
-      }),
+      paidRoute(
+        { priceInCents: 25, paymentConfigs: ["base_usdc"] },
+        {
+          handler: undefined,
+        },
+      ),
     ]);
 
     expect(result.valid).toBe(false);

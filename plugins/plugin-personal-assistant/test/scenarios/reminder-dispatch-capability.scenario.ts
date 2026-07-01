@@ -54,7 +54,8 @@ function assertApiBody(options: {
 export default scenario({
   lane: "live-only",
   id: "reminder-dispatch-capability",
-  title: "Reminder dispatch capability fires a due reminder on the delivery path",
+  title:
+    "Reminder dispatch capability fires a due reminder on the delivery path",
   domain: "reminders",
   tags: ["lifeops", "reminders", "reminder_dispatch", "llm-eval"],
   isolation: "per-scenario",

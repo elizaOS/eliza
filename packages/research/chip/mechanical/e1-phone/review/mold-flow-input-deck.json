@@ -18,14 +18,8 @@
   },
   "nominal_process_window": {
     "material_family": "PC+ABS or glass-filled PC/ABS, molded orange",
-    "melt_temp_c": [
-      245,
-      275
-    ],
-    "mold_temp_c": [
-      70,
-      95
-    ],
+    "melt_temp_c": [245, 275],
+    "mold_temp_c": [70, 95],
     "drying": "Dry PC+ABS per resin datasheet before molding; record dryer dew point and residence time.",
     "pack_hold": "Start with 95-99% fill transfer, stepped pack/hold DOE, and gate-freeze study.",
     "venting": "Add vents at end-of-fill around top corners, camera window, USB saddle, and snap-hook roots.",
@@ -48,43 +42,23 @@
   "first_shot_doe": [
     {
       "factor": "melt_temperature_c",
-      "levels": [
-        245,
-        260,
-        275
-      ]
+      "levels": [245, 260, 275]
     },
     {
       "factor": "mold_temperature_c",
-      "levels": [
-        70,
-        82,
-        95
-      ]
+      "levels": [70, 82, 95]
     },
     {
       "factor": "pack_pressure_percent",
-      "levels": [
-        60,
-        75,
-        90
-      ]
+      "levels": [60, 75, 90]
     },
     {
       "factor": "hold_time_s",
-      "levels": [
-        2.0,
-        4.0,
-        6.0
-      ]
+      "levels": [2.0, 4.0, 6.0]
     },
     {
       "factor": "cooling_time_s",
-      "levels": [
-        12.0,
-        18.0,
-        24.0
-      ]
+      "levels": [12.0, 18.0, 24.0]
     }
   ]
 }

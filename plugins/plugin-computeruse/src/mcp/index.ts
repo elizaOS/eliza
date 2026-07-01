@@ -3,6 +3,11 @@
  *  - the pure tool catalog + dispatch (`tools.ts`),
  *  - the optional-SDK transport wiring (`server.ts`).
  */
+
+export {
+  connectComputerUseMcpStdio,
+  createComputerUseMcpServer,
+} from "./server.js";
 export {
   COMPUTERUSE_MCP_TOOLS,
   type ComputerUseCommandRunner,
@@ -10,7 +15,3 @@ export {
   dispatchComputerUseMcpTool,
   findComputerUseMcpTool,
 } from "./tools.js";
-export {
-  connectComputerUseMcpStdio,
-  createComputerUseMcpServer,
-} from "./server.js";

@@ -17,26 +17,20 @@
     {
       "id": "usb_c_insertion_fixture",
       "fixture": "evt_fixture_usb_c_insertion_gauge",
-      "validates": [
-        "usb_c_insertion_capture"
-      ],
+      "validates": ["usb_c_insertion_capture"],
       "pass": true
     },
     {
       "id": "screen_bond_clamp_fixture",
       "fixture": "evt_fixture_screen_bond_clamp_frame",
-      "validates": [
-        "screen_bond_and_fpc_connection"
-      ],
+      "validates": ["screen_bond_and_fpc_connection"],
       "pass": true
     },
     {
       "id": "camera_alignment_fixture",
       "fixture": "evt_fixture_rear_camera_alignment_pin",
       "secondary_fixture": "evt_fixture_front_camera_alignment_pin",
-      "validates": [
-        "camera_glass_and_under_glass_strategy"
-      ],
+      "validates": ["camera_glass_and_under_glass_strategy"],
       "pass": true
     },
     {

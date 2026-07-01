@@ -540,7 +540,10 @@ function validateApp(appPath, options = {}) {
 function main() {
   const app = argValue("--app", process.env.ELIZA_IOS_APP_PATH || "");
   const allowUnsigned = Boolean(
-    argValue("--allow-unsigned", process.env.ELIZA_IOS_VERIFY_ALLOW_UNSIGNED || ""),
+    argValue(
+      "--allow-unsigned",
+      process.env.ELIZA_IOS_VERIFY_ALLOW_UNSIGNED || "",
+    ),
   );
   const target = argValue(
     "--target",

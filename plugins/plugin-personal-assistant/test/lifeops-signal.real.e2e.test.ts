@@ -512,9 +512,9 @@ describe("Real E2E: LifeOps Signal", () => {
     ] as const) {
       const response = await req(routeServer.port, method, path, {});
       expect(response.status).toBe(404);
-      expect(String(response.data.error?.message ?? response.data.message)).toContain(
-        "Unhandled LifeOps route",
-      );
+      expect(
+        String(response.data.error?.message ?? response.data.message),
+      ).toContain("Unhandled LifeOps route");
     }
   });
 });

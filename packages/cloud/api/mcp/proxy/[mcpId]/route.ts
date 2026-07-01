@@ -16,6 +16,7 @@ import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
+import { safeFetch } from "@/lib/security/safe-fetch";
 import { affiliatesService } from "@/lib/services/affiliates";
 import { containersService } from "@/lib/services/containers";
 import { creditsService } from "@/lib/services/credits";
@@ -219,6 +220,13 @@ app.post("/", async (c) => {
   }
 
   let targetUrl: string;
+  // External (user-configured) endpoints are fetched through safeFetch below,
+  // which re-validates AND pins the resolved IP for the actual request (closing
+  // the validate-then-fetch TOCTOU / DNS-rebind window on the Node path).
+  // Container endpoints resolve to a platform-internal load-balancer URL on the
+  // private tailnet, which safeFetch would (correctly) reject as a private IP —
+  // so those stay on the platform fetch.
+  let isExternalEndpoint = false;
 
   if (mcp.endpoint_type === "external" && mcp.external_endpoint) {
     let parsed: URL;
@@ -232,6 +240,7 @@ app.post("/", async (c) => {
       return c.json({ error: "Unsafe external MCP endpoint" }, 400);
     }
     targetUrl = parsed.toString();
+    isExternalEndpoint = true;
   } else if (mcp.endpoint_type === "container" && mcp.container_id) {
     const container = await containersService.getById(
       mcp.container_id,
@@ -248,22 +257,37 @@ app.post("/", async (c) => {
   const proxyBody = await parseJsonBody(c.req.raw);
   const toolName = toolNameFromRpcBody(proxyBody);
 
+  const proxyRequestInit: RequestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(c.req.header("accept") && {
+        Accept: c.req.header("accept"),
+      }),
+    },
+    body: JSON.stringify(proxyBody),
+  };
+
   let mcpResponse: Response;
   try {
-    mcpResponse = await fetch(targetUrl, {
-      method: "POST",
-      redirect: "manual",
-      headers: {
-        "Content-Type": "application/json",
-        ...(c.req.header("accept") && {
-          Accept: c.req.header("accept"),
-        }),
-      },
-      body: JSON.stringify(proxyBody),
-    });
-
-    if (mcpResponse.status >= 300 && mcpResponse.status < 400) {
-      throw new Error("External MCP redirects are not allowed");
+    if (isExternalEndpoint) {
+      // safeFetch validates + IP-pins the request and (redirect: "error")
+      // rejects any redirect — the single SSRF guard for outbound-from-user
+      // fetches, replacing the prior validate-then-raw-fetch pair.
+      mcpResponse = await safeFetch(targetUrl, {
+        ...proxyRequestInit,
+        redirect: "error",
+      });
+    } else {
+      // Platform-internal container LB URL (private tailnet) — not a user-input
+      // SSRF surface; keep the platform fetch with the manual redirect block.
+      mcpResponse = await fetch(targetUrl, {
+        ...proxyRequestInit,
+        redirect: "manual",
+      });
+      if (mcpResponse.status >= 300 && mcpResponse.status < 400) {
+        throw new Error("External MCP redirects are not allowed");
+      }
     }
   } catch (error) {
     logger.error("[MCP Proxy] Failed to reach MCP endpoint", {

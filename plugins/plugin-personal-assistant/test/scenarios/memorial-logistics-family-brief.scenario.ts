@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "memorial-logistics-family-brief",
-  title: "Assistant coordinates memorial logistics across family, travel, and vendors",
+  title:
+    "Assistant coordinates memorial logistics across family, travel, and vendors",
   domain: "executive.family",
   tags: ["lifeops", "executive-assistant", "family", "vendor"],
   isolation: "per-scenario",
@@ -22,7 +23,11 @@ export default scenario({
       kind: "message",
       name: "assemble-memorial-plan",
       text: "Coordinate the memorial plan: family travel, venue hold, florist, obituary draft, and who needs a personal call rather than a group message.",
-      plannerIncludesAny: ["calendar_action", "OWNER_DOCUMENTS", "relationship"],
+      plannerIncludesAny: [
+        "calendar_action",
+        "OWNER_DOCUMENTS",
+        "relationship",
+      ],
       responseIncludesAny: ["travel", "venue", "florist", "call"],
       plannerExcludes: ["OWNER_FINANCES"],
     },

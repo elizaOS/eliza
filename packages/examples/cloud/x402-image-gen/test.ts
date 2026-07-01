@@ -51,7 +51,9 @@ const mock = Bun.serve({
       });
     }
 
-    const settleMatch = pathname.match(/^\/api\/v1\/x402\/requests\/([^/]+)\/settle$/);
+    const settleMatch = pathname.match(
+      /^\/api\/v1\/x402\/requests\/([^/]+)\/settle$/,
+    );
     if (req.method === "POST" && settleMatch) {
       seen.settledId = decodeURIComponent(settleMatch[1]);
       return Response.json({
@@ -83,7 +85,10 @@ const mock = Bun.serve({
       });
     }
 
-    if (req.method === "GET" && pathname === `/api/v1/apps/${APP_ID}/earnings`) {
+    if (
+      req.method === "GET" &&
+      pathname === `/api/v1/apps/${APP_ID}/earnings`
+    ) {
       return Response.json({
         success: true,
         earnings: {
@@ -130,7 +135,10 @@ async function collect(stream: ReadableStream<Uint8Array> | null) {
     output += decoder.decode(chunk.value);
   }
 }
-const readers = [collect(proc.stdout).catch(() => {}), collect(proc.stderr).catch(() => {})];
+const readers = [
+  collect(proc.stdout).catch(() => {}),
+  collect(proc.stderr).catch(() => {}),
+];
 let exited = false;
 proc.exited.then(() => {
   exited = true;
@@ -161,8 +169,14 @@ try {
     price_usd?: number;
   };
   assert(config.configured === true, "expected configured=true");
-  assert(config.app_id === APP_ID, `expected app_id ${APP_ID}, got ${config.app_id}`);
-  assert(config.price_usd === 0.05, `expected price 0.05, got ${config.price_usd}`);
+  assert(
+    config.app_id === APP_ID,
+    `expected app_id ${APP_ID}, got ${config.app_id}`,
+  );
+  assert(
+    config.price_usd === 0.05,
+    `expected price 0.05, got ${config.price_usd}`,
+  );
 
   // step 1: quote → 402
   const quoteRes = await fetch(`${baseUrl}/api/generate`, {
@@ -170,10 +184,22 @@ try {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ prompt: "a neon koi in the rain" }),
   });
-  assert(quoteRes.status === 402, `expected 402 from quote, got ${quoteRes.status}`);
-  const quote = (await quoteRes.json()) as { paymentRequestId?: string; status?: string };
-  assert(quote.paymentRequestId === "pay_test_1", "quote missing paymentRequestId");
-  assert(seen.createAppId === APP_ID, "payment request was not bound to the appId");
+  assert(
+    quoteRes.status === 402,
+    `expected 402 from quote, got ${quoteRes.status}`,
+  );
+  const quote = (await quoteRes.json()) as {
+    paymentRequestId?: string;
+    status?: string;
+  };
+  assert(
+    quote.paymentRequestId === "pay_test_1",
+    "quote missing paymentRequestId",
+  );
+  assert(
+    seen.createAppId === APP_ID,
+    "payment request was not bound to the appId",
+  );
 
   // step 3: settle + generate → 200 with image
   const genRes = await fetch(`${baseUrl}/api/generate`, {
@@ -185,21 +211,39 @@ try {
       paymentPayload: { x402Version: 2, payload: { signature: "0xsig" } },
     }),
   });
-  assert(genRes.status === 200, `expected 200 from generate, got ${genRes.status}`);
-  const gen = (await genRes.json()) as { image?: { url?: string }; transaction?: string };
+  assert(
+    genRes.status === 200,
+    `expected 200 from generate, got ${genRes.status}`,
+  );
+  const gen = (await genRes.json()) as {
+    image?: { url?: string };
+    transaction?: string;
+  };
   assert(
     gen.image?.url === "https://example.test/generated.png",
     "generate did not return the image",
   );
-  assert(gen.transaction === "0xtesthash", "generate did not return the settlement tx");
-  assert(seen.settledId === "pay_test_1", "settle was not called with the payment id");
-  assert(seen.generatePrompt === "a neon koi in the rain", "prompt was not forwarded to generate");
+  assert(
+    gen.transaction === "0xtesthash",
+    "generate did not return the settlement tx",
+  );
+  assert(
+    seen.settledId === "pay_test_1",
+    "settle was not called with the payment id",
+  );
+  assert(
+    seen.generatePrompt === "a neon koi in the rain",
+    "prompt was not forwarded to generate",
+  );
 
   // earnings (money-out side)
   const earnings = (await (await fetch(`${baseUrl}/api/earnings`)).json()) as {
     earnings?: { withdrawableBalance?: number };
   };
-  assert(earnings.earnings?.withdrawableBalance === 0.05, "earnings did not surface");
+  assert(
+    earnings.earnings?.withdrawableBalance === 0.05,
+    "earnings did not surface",
+  );
 
   // idempotency: the same payment cannot mint a second image
   const dupe = await fetch(`${baseUrl}/api/generate`, {
@@ -211,7 +255,10 @@ try {
       paymentPayload: { x402Version: 2, payload: { signature: "0xsig" } },
     }),
   });
-  assert(dupe.status === 409, `expected 409 on duplicate generate, got ${dupe.status}`);
+  assert(
+    dupe.status === 409,
+    `expected 409 on duplicate generate, got ${dupe.status}`,
+  );
 
   console.log("PayPerPixel local flow test passed");
 } finally {

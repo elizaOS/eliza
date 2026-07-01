@@ -49,11 +49,7 @@
     "mapper": "abc",
     "memory_inference": true,
     "name": "yosys",
-    "param_overrides": [
-      "BANKS=2",
-      "SIZE_BYTES=2048",
-      "WAYS=2"
-    ],
+    "param_overrides": ["BANKS=2", "SIZE_BYTES=2048", "WAYS=2"],
     "version": "Yosys 0.64+197 (git sha1 4e35ed595, clang++ 18.1.8 -fPIC -O3)",
     "wall_clock_s": 332.88
   }

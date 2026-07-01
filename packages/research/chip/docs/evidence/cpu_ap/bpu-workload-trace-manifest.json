@@ -31,36 +31,25 @@
     {
       "missing_dependency": "SPEC CPU2017 license and RV64 executable traces",
       "name": "spec2017_intrate",
-      "required_for_claims": [
-        "spec2017_claim",
-        "workload_mpki_claim"
-      ],
+      "required_for_claims": ["spec2017_claim", "workload_mpki_claim"],
       "status": "missing_external_trace"
     },
     {
       "missing_dependency": "AOSP/Cuttlefish RV64 system-server, launcher, and app traces",
       "name": "aosp_system_server_and_launcher",
-      "required_for_claims": [
-        "android_claim",
-        "workload_mpki_claim"
-      ],
+      "required_for_claims": ["android_claim", "workload_mpki_claim"],
       "status": "missing_external_trace"
     },
     {
       "missing_dependency": "JetStream/Speedometer-class RV64 browser and JS-engine traces",
       "name": "browser_js_engine",
-      "required_for_claims": [
-        "v8_claim",
-        "workload_mpki_claim"
-      ],
+      "required_for_claims": ["v8_claim", "workload_mpki_claim"],
       "status": "missing_external_trace"
     },
     {
       "missing_dependency": "real mobile GPU driver/runtime command submission traces",
       "name": "production_gpu_driver_runtime",
-      "required_for_claims": [
-        "workload_mpki_claim"
-      ],
+      "required_for_claims": ["workload_mpki_claim"],
       "status": "missing_external_trace"
     }
   ],
@@ -105,11 +94,7 @@
         "instruction_count": 38475498,
         "return_count": 2646
       },
-      "coverage_buckets": [
-        "agent_runtime",
-        "mode_1",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["agent_runtime", "mode_1", "qemu_rv64"],
       "filename": "agent_decode.btrace.json",
       "full_trace_available": true,
       "instruction_count": 38475498,
@@ -138,10 +123,7 @@
         "instruction_count": 24817722,
         "return_count": 2041
       },
-      "coverage_buckets": [
-        "agent_runtime",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["agent_runtime", "qemu_rv64"],
       "filename": "agent_loop.btrace.json",
       "full_trace_available": true,
       "instruction_count": 24817722,
@@ -170,11 +152,7 @@
         "instruction_count": 2890947,
         "return_count": 1983
       },
-      "coverage_buckets": [
-        "io_media",
-        "mode_4",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["io_media", "mode_4", "qemu_rv64"],
       "filename": "audio_frames.btrace.json",
       "full_trace_available": true,
       "instruction_count": 2890947,
@@ -239,11 +217,7 @@
         "instruction_count": 7784542,
         "return_count": 45455
       },
-      "coverage_buckets": [
-        "mode_0",
-        "qemu_rv64",
-        "system_mix_proxy"
-      ],
+      "coverage_buckets": ["mode_0", "qemu_rv64", "system_mix_proxy"],
       "filename": "build_compiler_proxy.btrace.json",
       "full_trace_available": true,
       "instruction_count": 7784542,
@@ -343,11 +317,7 @@
         "instruction_count": 383296,
         "return_count": 1999
       },
-      "coverage_buckets": [
-        "mode_3",
-        "qemu_rv64",
-        "system_mix_proxy"
-      ],
+      "coverage_buckets": ["mode_3", "qemu_rv64", "system_mix_proxy"],
       "filename": "database_btree_proxy.btrace.json",
       "full_trace_available": true,
       "instruction_count": 383296,
@@ -377,11 +347,7 @@
         "instruction_count": 3139574,
         "return_count": 1985
       },
-      "coverage_buckets": [
-        "io_media",
-        "mode_2",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["io_media", "mode_2", "qemu_rv64"],
       "filename": "file_tlv.btrace.json",
       "full_trace_available": true,
       "instruction_count": 3139574,
@@ -565,11 +531,7 @@
         "instruction_count": 2599051,
         "return_count": 3384
       },
-      "coverage_buckets": [
-        "io_media",
-        "mode_0",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["io_media", "mode_0", "qemu_rv64"],
       "filename": "http_parser.btrace.json",
       "full_trace_available": true,
       "instruction_count": 2599051,
@@ -718,11 +680,7 @@
         "instruction_count": 2668630,
         "return_count": 4685
       },
-      "coverage_buckets": [
-        "io_media",
-        "mode_1",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["io_media", "mode_1", "qemu_rv64"],
       "filename": "text_log.btrace.json",
       "full_trace_available": true,
       "instruction_count": 2668630,
@@ -752,11 +710,7 @@
         "instruction_count": 2641291,
         "return_count": 1983
       },
-      "coverage_buckets": [
-        "io_media",
-        "mode_3",
-        "qemu_rv64"
-      ],
+      "coverage_buckets": ["io_media", "mode_3", "qemu_rv64"],
       "filename": "video_blocks.btrace.json",
       "full_trace_available": true,
       "instruction_count": 2641291,

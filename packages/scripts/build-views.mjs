@@ -59,10 +59,7 @@ function runBun(buildArgs, cwd) {
   });
 }
 
-const concurrency = Math.min(
-  configs.length,
-  Math.max(1, os.cpus().length - 1),
-);
+const concurrency = Math.min(configs.length, Math.max(1, os.cpus().length - 1));
 
 const failures = [];
 let nextIndex = 0;
@@ -83,9 +80,7 @@ async function worker() {
   }
 }
 
-await Promise.all(
-  Array.from({ length: concurrency }, () => worker()),
-);
+await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
 if (failures.length > 0) {
   console.error(
@@ -93,7 +88,8 @@ if (failures.length > 0) {
       .map((failure) => failure.label)
       .join(", ")}`,
   );
-  const exitStatus = failures.find((failure) => failure.status > 0)?.status ?? 1;
+  const exitStatus =
+    failures.find((failure) => failure.status > 0)?.status ?? 1;
   process.exit(exitStatus);
 }
 

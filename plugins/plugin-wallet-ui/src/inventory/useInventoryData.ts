@@ -15,8 +15,8 @@ import {
 } from "./chainConfig.ts";
 import {
   isBscChainName,
-  parseFiniteAmount,
   type NftItem,
+  parseFiniteAmount,
   type TokenRow,
 } from "./constants.ts";
 import {

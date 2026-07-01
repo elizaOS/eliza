@@ -170,10 +170,7 @@ function launcherTile(page: Page, viewId: string) {
   return page.getByTestId(`launcher-tile-${viewId}`).first();
 }
 
-async function expectLauncherTile(
-  page: Page,
-  viewId: string,
-): Promise<void> {
+async function expectLauncherTile(page: Page, viewId: string): Promise<void> {
   await expect(launcherTile(page, viewId)).toBeVisible();
 }
 
@@ -181,10 +178,7 @@ function viewLaunchButton(page: Page, viewId: string) {
   return launcherTile(page, viewId).getByRole("button").first();
 }
 
-async function revealLauncherTile(
-  page: Page,
-  viewId: string,
-): Promise<void> {
+async function revealLauncherTile(page: Page, viewId: string): Promise<void> {
   const tile = launcherTile(page, viewId);
   await expect(tile).toBeAttached();
   const pageTestId = await tile.evaluate((node) =>
@@ -218,10 +212,7 @@ async function revealLauncherTile(
   }
 }
 
-async function launchLauncherView(
-  page: Page,
-  viewId: string,
-): Promise<void> {
+async function launchLauncherView(page: Page, viewId: string): Promise<void> {
   await revealLauncherTile(page, viewId);
   await viewLaunchButton(page, viewId).click();
 }
@@ -258,10 +249,7 @@ async function enterLauncherEditMode(
   ).toBeVisible();
 }
 
-async function exitLauncherEditMode(
-  page: Page,
-  viewId: string,
-): Promise<void> {
+async function exitLauncherEditMode(page: Page, viewId: string): Promise<void> {
   if (await editModeVisible(page)) {
     await longPressLauncherView(page, viewId);
   }
@@ -275,10 +263,7 @@ async function editLauncherView(page: Page, viewId: string): Promise<void> {
   await page.getByTestId(`launcher-edit-${viewId}`).click();
 }
 
-async function deleteLauncherView(
-  page: Page,
-  viewId: string,
-): Promise<void> {
+async function deleteLauncherView(page: Page, viewId: string): Promise<void> {
   await enterLauncherEditMode(page, viewId);
   await page.getByTestId(`launcher-delete-${viewId}`).click();
 }

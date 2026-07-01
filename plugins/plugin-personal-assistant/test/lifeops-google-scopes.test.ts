@@ -115,9 +115,9 @@ describe("googleScopesToCapabilities", () => {
   });
 
   it("requires BOTH modify and settings.basic for gmail.manage", () => {
-    expect(googleScopesToCapabilities([GOOGLE_GMAIL_MODIFY_SCOPE])).not.toContain(
-      "google.gmail.manage",
-    );
+    expect(
+      googleScopesToCapabilities([GOOGLE_GMAIL_MODIFY_SCOPE]),
+    ).not.toContain("google.gmail.manage");
     expect(
       googleScopesToCapabilities([GOOGLE_GMAIL_SETTINGS_BASIC_SCOPE]),
     ).not.toContain("google.gmail.manage");

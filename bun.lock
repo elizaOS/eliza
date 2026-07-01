@@ -44,7 +44,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@capacitor/core": "8.4.0",
         "@elizaos-benchmarks/lib": "workspace:*",
         "@elizaos/agent": "workspace:*",
@@ -409,7 +409,7 @@
         "electrobun": "^1.18.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.8",
         "rcedit": "5.0.2",
         "typescript": "^6.0.3",
@@ -534,7 +534,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@types/pg": "^8.16.0",
         "dotenv": "^17.4.2",
         "pg": "^8.20.0",
@@ -561,7 +561,7 @@
       "name": "@elizaos/cloud-routing",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.0",
         "bun-types": "^1.3.12",
         "fast-check": "^4.8.0",
@@ -611,7 +611,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "bun-types": "^1.3.10",
         "ioredis-mock": "^8.13.1",
@@ -653,7 +653,7 @@
         "ioredis": "^5.10.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@types/hashring": "^3.2.5",
         "@types/node": "22.19.17",
         "bun-types": "1.3.14",
@@ -673,7 +673,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@types/hashring": "^3.2.5",
         "@types/node": "22.19.17",
         "bun-types": "1.3.14",
@@ -690,7 +690,7 @@
         "pepr": "^1.1.7",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "1.3.14",
         "@typescript-eslint/parser": "8.62.0",
         "esbuild": "0.28.1",
@@ -760,7 +760,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "@cloudflare/workers-types": "^4.20260429.1",
         "@types/node": "^25.6.0",
         "@types/nodemailer": "^8.0.0",
@@ -778,7 +778,7 @@
       "name": "@elizaos/contracts",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.1.0",
         "typescript": "^6.0.3",
         "vitest": "^4.1.7",
@@ -1041,7 +1041,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -1114,7 +1114,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@tailwindcss/postcss": "^4.3.1",
         "@types/node": "^22.19.17",
         "@types/react": "^19.0.2",
@@ -1220,7 +1220,7 @@
         "dotenv": "^17.2.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -1255,7 +1255,7 @@
         "dotenv": "^17.2.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
       },
@@ -1575,7 +1575,7 @@
         "dotenv": "^17.2.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
       },
@@ -2238,7 +2238,7 @@
         "three": "^0.184.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@playwright/test": "^1.59.1",
         "@tailwindcss/vite": "^4.3.1",
         "@types/node": "^24.0.0",
@@ -2317,7 +2317,7 @@
         "vite": "^8.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^24.0.0",
         "@types/react": "^19",
         "@types/react-dom": "^19",
@@ -2440,7 +2440,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -2773,7 +2773,7 @@
         "smithers-orchestrator": "0.26.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@electric-sql/pglite": "^0.4.0",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -2799,7 +2799,7 @@
         "fflate": "^0.8.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -2832,7 +2832,7 @@
         "ai": "^6.0.23",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.3",
@@ -2886,7 +2886,7 @@
         "react": "^19.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "24.12.2",
         "tsup": "8.5.1",
         "typescript": "^6.0.3",
@@ -2921,7 +2921,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.1.0",
         "typescript": "^6.0.3",
@@ -2945,7 +2945,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
@@ -2965,7 +2965,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -2990,7 +2990,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^24.0.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3010,7 +3010,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
       },
@@ -3089,7 +3089,7 @@
         "ws": "^8.18.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.12",
         "@types/node": "24.12.2",
         "@types/ws": "^8.5.13",
@@ -3109,7 +3109,7 @@
         "commander": "^15.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "strip-literal": "^3.1.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
@@ -3119,7 +3119,7 @@
       "name": "@elizaos/plugin-cli-inference",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.0.3",
@@ -3150,7 +3150,7 @@
       "name": "@elizaos/plugin-codex-cli",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.0.3",
@@ -3184,7 +3184,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.2.22",
         "@types/node": "^24.5.2",
         "typescript": "^6.0.3",
@@ -3222,7 +3222,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@testing-library/react": "^16.3.2",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -3270,7 +3270,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -3284,7 +3284,7 @@
       "name": "@elizaos/plugin-discord-local",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
       },
@@ -3326,7 +3326,7 @@
         "node-edge-tts": "^1.0.7",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.2.22",
         "@types/node": "^24.5.2",
         "bun-types": "1.3.14",
@@ -3342,7 +3342,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.2.22",
         "@types/node": "^24.5.2",
         "typescript": "^6.0.3",
@@ -3375,7 +3375,7 @@
         "ws": "8.21.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@clack/prompts": "^1.5.1",
         "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
@@ -3390,7 +3390,7 @@
       "name": "@elizaos/plugin-embeddings",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "bun-types": "^1.3.12",
@@ -3413,7 +3413,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "@types/react": "^19.2.3",
         "@types/react-dom": "^19.2.3",
@@ -3444,7 +3444,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "esbuild": "^0.28.0",
         "typescript": "^6.0.3",
@@ -3480,7 +3480,7 @@
         "typescript": "^6.0.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "vitest": "^4.0.0",
       },
     },
@@ -3500,7 +3500,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -3555,7 +3555,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.1.8",
@@ -3577,7 +3577,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
@@ -3605,7 +3605,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.6.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3620,7 +3620,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3633,7 +3633,7 @@
         "@google/genai": "^1.5.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.3",
@@ -3655,7 +3655,7 @@
         "ai": "^6.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/test-harness": "workspace:*",
         "@types/bun": "^1.3.10",
         "@types/node": "^25.0.3",
@@ -3673,7 +3673,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@types/node": "^25.6.0",
         "@types/react": "^19.0.0",
@@ -3721,7 +3721,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3741,7 +3741,7 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -3765,7 +3765,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
       },
@@ -3779,7 +3779,7 @@
         "typescript": "^6.0.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "vitest": "^4.0.0",
       },
     },
@@ -3791,7 +3791,7 @@
         "@line/bot-sdk": "^11.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3805,7 +3805,7 @@
         "@linear/sdk": "^86.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3819,7 +3819,7 @@
         "ai": "^6.0.174",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "bun-types": "^1.3.12",
@@ -3843,7 +3843,7 @@
         "ws": "^8.20.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "24.12.2",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3",
@@ -3862,7 +3862,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "bun-types": "^1.3.14",
         "typescript": "^6.0.3",
@@ -3895,7 +3895,7 @@
         "matrix-js-sdk": "^41.4.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.1.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -3915,7 +3915,7 @@
         "json5": "^2.2.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/json-schema": "^7.0.15",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -3966,7 +3966,7 @@
         "uuid": "^14.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -4114,7 +4114,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@capacitor/filesystem": "^8.1.2",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -4131,7 +4131,7 @@
       "name": "@elizaos/capacitor-gateway",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@capacitor/core": "^8.3.1",
         "@capacitor/docgen": "^0.3.0",
         "rollup": "^4.60.2",
@@ -4203,7 +4203,7 @@
       "name": "@elizaos/capacitor-mobile-agent-bridge",
       "version": "2.0.3-beta.7",
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@capacitor/core": "^8.3.1",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
@@ -4378,7 +4378,7 @@
         "ai": "^6.0.23",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.10",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -4398,7 +4398,7 @@
         "zod": "^4.4.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.1.0",
         "dotenv": "^17.2.3",
@@ -4417,7 +4417,7 @@
         "nostr-tools": "^2.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -4432,7 +4432,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@types/node": "^25.0.3",
         "bun-types": "^1.3.12",
@@ -4452,7 +4452,7 @@
         "js-tiktoken": "^1.0.21",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@elizaos/test-harness": "workspace:*",
         "@types/bun": "^1.3.8",
@@ -4475,7 +4475,7 @@
         "ai": "^6.0.30",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/core": "workspace:*",
         "@elizaos/test-harness": "workspace:*",
         "@types/bun": "^1.3.5",
@@ -4497,7 +4497,7 @@
         "unpdf": "^1.4.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.10",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -4644,7 +4644,7 @@
         "drizzle-orm": "^0.45.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -4672,7 +4672,7 @@
         "drizzle-orm": "^0.45.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.6",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -4704,7 +4704,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.6",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -4752,7 +4752,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/cross-spawn": "^6.0.6",
         "@types/node": "^25.0.3",
         "bun-types": "^1.2.25",
@@ -4793,7 +4793,7 @@
         "qrcode": "^1.5.4",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "@types/qrcode": "^1.5.5",
         "bun-types": "^1.2.25",
@@ -4817,7 +4817,7 @@
         "@slack/web-api": "^7.15.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "bun-types": "^1.2.25",
         "typescript": "^6.0.3",
@@ -4844,7 +4844,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@cypress/react": "^9.0.2",
         "@radix-ui/react-slot": "^1.0.0",
         "@radix-ui/react-tabs": "^1.0.0",
@@ -4880,7 +4880,7 @@
         "ws": "^8.18.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
         "@types/pg": "^8.15.2",
@@ -4915,7 +4915,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -4932,7 +4932,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.6.0",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -4973,7 +4973,7 @@
         "viem": "^2.48.8",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -4993,7 +4993,7 @@
         "type-detect": "^4.1.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/config": "latest",
         "@elizaos/test-harness": "workspace:*",
         "tsup": "^8.5.1",
@@ -5084,7 +5084,7 @@
         "zod": "^4.4.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.1.0",
         "typescript": "^6.0.3",
@@ -5101,7 +5101,7 @@
         "@twurple/chat": "^8.0.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.1.0",
         "typescript": "^6.0.3",
       },
@@ -5155,7 +5155,7 @@
         "sharp": "^0.34.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@elizaos/plugin-computeruse": "workspace:*",
         "@types/bun": "^1.3.5",
         "@types/node": "^25.0.3",
@@ -5236,7 +5236,7 @@
         "@tavily/core": "^0.7.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.0",
+        "@biomejs/biome": "2.5.1",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.7",
@@ -5266,7 +5266,7 @@
         "qrcode-terminal": "^0.12.0",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "@types/qrcode": "^1.5.5",
         "typescript": "^6.0.3",
@@ -5307,7 +5307,7 @@
         "smithers-orchestrator": "0.26.1",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@electric-sql/pglite": "^0.2.17",
         "@elizaos/core": "workspace:*",
         "@types/bun": "^1.3.8",
@@ -5328,7 +5328,7 @@
         "twitter-api-v2": "^1.23.2",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^22.19.17",
         "@vitest/coverage-v8": "^4.0.0",
         "dotenv": "^17.2.3",
@@ -5365,7 +5365,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -5384,7 +5384,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/node": "^25.0.3",
         "@types/ws": "^8.5.10",
         "bun-types": "^1.3.14",
@@ -5402,7 +5402,7 @@
         "ai": "^6.0.23",
       },
       "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
+        "@biomejs/biome": "2.5.1",
         "@types/bun": "^1.3.10",
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
@@ -5483,7 +5483,7 @@
     "@ai-sdk/openai": "3.0.58",
     "@ai-sdk/provider": "3.0.10",
     "@ai-sdk/provider-utils": "4.0.26",
-    "@biomejs/biome": "2.4.16",
+    "@biomejs/biome": "2.5.1",
     "@clack/prompts": "1.3.0",
     "@cloudflare/workerd-darwin-arm64": "1.20260611.1",
     "@electric-sql/pglite": "^0.4.5",
@@ -5758,23 +5758,23 @@
 
     "@bigmi/core": ["@bigmi/core@0.7.1", "", { "dependencies": { "@noble/hashes": "^1.8.0", "bech32": "^2.0.0", "bitcoinjs-lib": "^7.0.1", "bs58": "^6.0.0", "eventemitter3": "^5.0.4", "zustand": "^5.0.11" } }, "sha512-qG7457V8QlsTmoxuAjmc1h7e259cSfzd6Ifnxg/JJOTo4KNzd1Eb01oHQFK0KUwzqEHm6bQ2mPLQwropNUiFjA=="],
 
-    "@biomejs/biome": ["@biomejs/biome@2.4.16", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.4.16", "@biomejs/cli-darwin-x64": "2.4.16", "@biomejs/cli-linux-arm64": "2.4.16", "@biomejs/cli-linux-arm64-musl": "2.4.16", "@biomejs/cli-linux-x64": "2.4.16", "@biomejs/cli-linux-x64-musl": "2.4.16", "@biomejs/cli-win32-arm64": "2.4.16", "@biomejs/cli-win32-x64": "2.4.16" }, "bin": { "biome": "bin/biome" } }, "sha512-x9ajFh1zChVybCiM3TN6OD4phAqLgtPZjFrZF+aTMYCPjwBO+k529TX7PPsAqtGNLeV4UgzwQnowEgS7bGmzcA=="],
+    "@biomejs/biome": ["@biomejs/biome@2.5.1", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.1", "@biomejs/cli-darwin-x64": "2.5.1", "@biomejs/cli-linux-arm64": "2.5.1", "@biomejs/cli-linux-arm64-musl": "2.5.1", "@biomejs/cli-linux-x64": "2.5.1", "@biomejs/cli-linux-x64-musl": "2.5.1", "@biomejs/cli-win32-arm64": "2.5.1", "@biomejs/cli-win32-x64": "2.5.1" }, "bin": { "biome": "bin/biome" } }, "sha512-IXWLCxKmae+rI7LOHS1B3EbVisQ6GRAWbhN9msa6KjNCyFWrvKZWR4oUdinaNssrV852OrSHuSPa95h1GPJc7Q=="],
 
-    "@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.4.16", "", { "os": "darwin", "cpu": "arm64" }, "sha512-wxPvu4XOA85YJk9ixSWUmq/QBHbid85BISbOAqqBM/5xQpPk9ayjk5375tOlSC0BeCwNSbPFafQBm+vBumXq0A=="],
+    "@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.5.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-npqDzvqv7vFaWRiNN1Te71siRgPaqS9MpqgYCdP/CrUbkJ7ApezaeaKjueKHRN/JH/6lRjJQAHi8acQDCAz22w=="],
 
-    "@biomejs/cli-darwin-x64": ["@biomejs/cli-darwin-x64@2.4.16", "", { "os": "darwin", "cpu": "x64" }, "sha512-xFCqGPwYusQJp4N4NJLi1XJiZqjwFdjhT+KqtNy+Ug3qgfczqnTa6MSDvxJF6TkuDLoYJItMapz6tAf7kCekFw=="],
+    "@biomejs/cli-darwin-x64": ["@biomejs/cli-darwin-x64@2.5.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-RgwTqPAM8g2tn1j+b5oRjF/DbSBX8a4gwojtuG9XuhfK7GgomvZ9+T+tqjXiVbjLEeGJOoL6VEk8mvRTVeSybw=="],
 
-    "@biomejs/cli-linux-arm64": ["@biomejs/cli-linux-arm64@2.4.16", "", { "os": "linux", "cpu": "arm64" }, "sha512-2kFb4//jxfZaP6D+Rj5VkHkxgyD9EoRAVBEQb8PKRv+s4NO2zYNJKXFaJmK1CmhufJOWEfpHKaRbOja7qjmdhQ=="],
+    "@biomejs/cli-linux-arm64": ["@biomejs/cli-linux-arm64@2.5.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-yhV35CzZh38VyMvTEXi3JTjxZBs++oCKK9KG8vB6VI5+uvQvZNR3BFWEKKzuOmx9DJJj7sQpZ4LQJcmbGTs3+Q=="],
 
-    "@biomejs/cli-linux-arm64-musl": ["@biomejs/cli-linux-arm64-musl@2.4.16", "", { "os": "linux", "cpu": "arm64" }, "sha512-oYxnW0ARfJkr72ezzF2OR8N/rtkgLUQeYtF8cFhVswbknHxtTcmzSsanVJP8yQKnGpGpc2ck6c5zLvHahL6Cbg=="],
+    "@biomejs/cli-linux-arm64-musl": ["@biomejs/cli-linux-arm64-musl@2.5.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-WMcvMLgByyTqVxGlq918NBBYliq9FRR9GAQVETHb+VjGVqXCZFfHlZHC1FX4ibuYY/Hg6TJE3rHU0xVrdJXNRw=="],
 
-    "@biomejs/cli-linux-x64": ["@biomejs/cli-linux-x64@2.4.16", "", { "os": "linux", "cpu": "x64" }, "sha512-NbcBbi/nJqn5baae6wqRXdS7Gadf2uRpehSh6vMSYpG8OhkXl/Xg8aorWrJ+9VWqAT5ml90alLvorkpMW0nBwQ=="],
+    "@biomejs/cli-linux-x64": ["@biomejs/cli-linux-x64@2.5.1", "", { "os": "linux", "cpu": "x64" }, "sha512-J/7uHSX7NfoYDI7HijAkd8lnQIOrRb2W7j3X+tw4R+N5ExvXGsyXFiGdQcfcxfOmNQmZVSQOCDk757fwpzqQcg=="],
 
-    "@biomejs/cli-linux-x64-musl": ["@biomejs/cli-linux-x64-musl@2.4.16", "", { "os": "linux", "cpu": "x64" }, "sha512-iHDS+MCM65DPqWGu+ECC3uoALyj2H7F4nVUPxIPjz/PIl94EUu+EDfGZDzFP+NY1EOPVt9NQvwFqq7HdMmowdg=="],
+    "@biomejs/cli-linux-x64-musl": ["@biomejs/cli-linux-x64-musl@2.5.1", "", { "os": "linux", "cpu": "x64" }, "sha512-ANTowtlLmPYm5yeMckWY8Xzb9Ix+JJP3tgHR/n6xRj1VWyIzzWtfRfih9hv9VmClwadpBvZduISZIbBsIlYG3A=="],
 
-    "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.4.16", "", { "os": "win32", "cpu": "arm64" }, "sha512-0rgImMsNb5v/chhkIFe3wu7PEFClS6RBAYUijGL9UsYN3PanSaoK24HSSuSJb1pYbYYVjzAyZTl3gtjJ84BM8A=="],
+    "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.5.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-zgXnKNgWPC4iPF7Y1lR3STUeCUuZRpD6IiOrC7TZTlh0Lx6FiVUT05myuMQHQ9D+1cc7uyMldi4forE6lp0ivQ=="],
 
-    "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.16", "", { "os": "win32", "cpu": "x64" }, "sha512-Kp85jgoBHa05gix6UIRjfCDiUV3w/8VIdZ247VyyO2gEjaw12WEVhdIjlxp/AMzXxqxQwbxNTDVZ3Mwd2RG5rw=="],
+    "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.1", "", { "os": "win32", "cpu": "x64" }, "sha512-6uxpR9hvaglANkZemeSiN/FhYgkGasrEGn267eXIWvjrjJ2LhDlk251IhjVJq6MXzkV2/bcXwLwSroLyPtqRZg=="],
 
     "@bitcoinerlab/secp256k1": ["@bitcoinerlab/secp256k1@1.2.0", "", { "dependencies": { "@noble/curves": "^1.7.0" } }, "sha512-jeujZSzb3JOZfmJYI0ph1PVpCRV5oaexCgy+RvCXV8XlY+XFB/2n3WOcvBsKLsOw78KYgnQrQWb2HrKE4be88Q=="],
 

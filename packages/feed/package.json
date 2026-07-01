@@ -133,7 +133,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.0",
+    "@biomejs/biome": "2.5.1",
     "@fal-ai/client": "^1.9.5",
     "@intellectronica/ruler": "0.3.43",
     "@playwright/test": "1.61.1",

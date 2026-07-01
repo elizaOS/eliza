@@ -531,9 +531,7 @@ describe("VectorBrowserView — search control", () => {
     fireEvent.change(input, { target: { value: "nomatch" } });
     fireEvent.click(screen.getByRole("button", { name: "common.search" }));
 
-    expect(
-      await screen.findByText("None"),
-    ).toBeTruthy();
+    expect(await screen.findByText("None")).toBeTruthy();
   });
 });
 

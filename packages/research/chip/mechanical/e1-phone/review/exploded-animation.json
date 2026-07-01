@@ -6,11 +6,7 @@
   "frames_dir": "/home/shaw/milady/eliza/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames",
   "frame_count": 360,
   "keyframe_count": 24,
-  "clips": [
-    "explode",
-    "reassemble",
-    "turntable"
-  ],
+  "clips": ["explode", "reassemble", "turntable"],
   "clip_durations_s": {
     "explode": 3.0,
     "hold_exploded": 1.5,

@@ -6,5 +6,13 @@
   "homepage": "https://github.com/visionsXBT/xynq/tree/main/plugin-eliza",
   "version": "0.1.1",
   "directory": "plugin-eliza",
-  "tags": ["llm", "inference", "decentralized", "solana", "gpu", "crypto", "usdc"]
+  "tags": [
+    "llm",
+    "inference",
+    "decentralized",
+    "solana",
+    "gpu",
+    "crypto",
+    "usdc"
+  ]
 }

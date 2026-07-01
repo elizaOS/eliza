@@ -353,12 +353,9 @@ async function expectMainShellReadyForRoute(
     timeout: STARTUP_SETTLED_TIMEOUT_MS,
   });
   if (!options.allowOnboardingToast) {
-    // #9952: onboarding is in-chat. The in-chat conductor only seeds its runtime
-    // CHOICE while first-run is incomplete, so its absence proves the main shell
-    // is past onboarding (the old full-screen `first-run-chat` gate is gone).
-    await expect(
-      page.getByTestId("choice-__first_run__:runtime:cloud"),
-    ).toHaveCount(0, {
+    // Runtime/provider setup is owned by the floating first-run chooser. Its
+    // absence proves the main shell is past onboarding.
+    await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0, {
       timeout: STARTUP_SETTLED_TIMEOUT_MS,
     });
   }

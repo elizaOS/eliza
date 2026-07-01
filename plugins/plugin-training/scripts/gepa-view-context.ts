@@ -128,10 +128,7 @@ async function main() {
     scorer,
   });
   const out = join(TMP_OUT, `${LABEL.replace(/[^a-z0-9]+/gi, "_")}.json`);
-  writeFileSync(
-    out,
-    JSON.stringify({ ...best, baseline, decision }, null, 2),
-  );
+  writeFileSync(out, JSON.stringify({ ...best, baseline, decision }, null, 2));
   console.log(
     `[${LABEL}] best candidate: ${best.name} ${best.score.toFixed(3)} | gate: ${decision.promote ? "PROMOTE" : "REJECT"} (${decision.reason}) → ${out}`,
   );

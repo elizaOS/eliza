@@ -8,7 +8,7 @@ import { hasLinearAccountConfig } from "../accounts";
 export async function validateLinearActionIntent(
   runtime: IAgentRuntime,
   _message: Memory,
-  _state: State | undefined,
+  _state: State | undefined
 ): Promise<boolean> {
   try {
     return hasLinearAccountConfig(runtime);

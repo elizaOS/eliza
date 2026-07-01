@@ -106,11 +106,9 @@ function isValidIntent(str: string): str is FormIntent {
 }
 
 function isSafeExtractionField(field: string): boolean {
-  return (
-    field
-      .split(".")
-      .every((part) => part.length > 0 && !UNSAFE_OBJECT_KEYS.has(part))
-  );
+  return field
+    .split(".")
+    .every((part) => part.length > 0 && !UNSAFE_OBJECT_KEYS.has(part));
 }
 
 // ============================================================================

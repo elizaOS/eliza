@@ -10,10 +10,7 @@
     {
       "id": "rear_camera_cover_window_margin",
       "actual": {
-        "cover_window_mm": [
-          9.2,
-          9.2
-        ],
+        "cover_window_mm": [9.2, 9.2],
         "lens_diameter_mm": 6.8,
         "radial_margin_mm": 1.2
       },
@@ -23,14 +20,8 @@
     {
       "id": "rear_camera_back_shell_aperture",
       "actual": {
-        "aperture_mm": [
-          10.6,
-          10.6
-        ],
-        "cover_window_mm": [
-          9.2,
-          9.2
-        ],
+        "aperture_mm": [10.6, 10.6],
+        "cover_window_mm": [9.2, 9.2],
         "optical_sight_tunnel_present": true,
         "bezel_part_count": 4
       },
@@ -40,14 +31,8 @@
     {
       "id": "rear_flash_back_shell_aperture",
       "actual": {
-        "aperture_mm": [
-          2.2,
-          2.2
-        ],
-        "window_mm": [
-          1.6,
-          1.6
-        ],
+        "aperture_mm": [2.2, 2.2],
+        "window_mm": [1.6, 1.6],
         "bezel_part_count": 4
       },
       "target": "explicit molded back-shell opening larger than the flush flash light-pipe window with four orange bevel lands",
@@ -65,11 +50,7 @@
     {
       "id": "front_under_glass_margin",
       "actual": {
-        "module_mm": [
-          6.5,
-          6.5,
-          3.2
-        ],
+        "module_mm": [6.5, 6.5, 3.2],
         "lens_diameter_mm": 3.4,
         "radial_margin_mm": 1.55,
         "cover_glass_thickness_mm": 0.7

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -59,9 +59,7 @@ test.describe("launcher catalog interactions", () => {
       timeout: 60_000,
     });
 
-    const firstTile = page
-      .locator('[data-testid^="launcher-tile-"]')
-      .first();
+    const firstTile = page.locator('[data-testid^="launcher-tile-"]').first();
     await expect(firstTile).toBeVisible();
     const tileId = await firstTile.getAttribute("data-testid");
     const viewId = (tileId ?? "").replace("launcher-tile-", "");
@@ -97,9 +95,7 @@ test.describe("launcher catalog interactions", () => {
       timeout: 60_000,
     });
 
-    const firstTile = page
-      .locator('[data-testid^="launcher-tile-"]')
-      .first();
+    const firstTile = page.locator('[data-testid^="launcher-tile-"]').first();
     const tileId = await firstTile.getAttribute("data-testid");
     const viewId = (tileId ?? "").replace("launcher-tile-", "");
     // The tile's launch button carries the view label as its accessible name.

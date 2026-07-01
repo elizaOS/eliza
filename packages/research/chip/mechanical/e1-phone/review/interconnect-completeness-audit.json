@@ -19,7 +19,15 @@
     "review/component-review-audio.md",
     "review/component-review-io-buttons.md"
   ],
-  "totals": {"interconnect_families": 19, "accounted": 19, "partial": 0, "missing": 0, "cad_connection_records": 32, "cad_connection_records_passing_local_marker_checks": 32, "assembly_manifest_part_count": 258},
+  "totals": {
+    "interconnect_families": 19,
+    "accounted": 19,
+    "partial": 0,
+    "missing": 0,
+    "cad_connection_records": 32,
+    "cad_connection_records_passing_local_marker_checks": 32,
+    "assembly_manifest_part_count": 258
+  },
   "register": [
     {
       "interconnect": "Display MIPI-DSI + touch I2C + backlight FPC (40-pin)",

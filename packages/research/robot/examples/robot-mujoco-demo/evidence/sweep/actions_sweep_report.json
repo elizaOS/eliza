@@ -221,9 +221,6 @@
       "post_stop": false
     }
   ],
-  "render_size": [
-    1280,
-    720
-  ],
+  "render_size": [1280, 720],
   "fps": 30.0
 }

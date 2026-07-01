@@ -43,7 +43,8 @@ export const DEFAULT_TIERS: Record<ModelTier, TierSpec> = {
     modelName: "gemma-4-e2b-q4_k_m",
     bundlePath: "~/.eliza/local-inference/models/eliza-1-2b.bundle",
     contextWindow: 65_536,
-    notes: "Tier-A smoke lane; eliza-1 2B entry tier (Gemma 4 E2B) via mtp fork or Ollama fallback",
+    notes:
+      "Tier-A smoke lane; eliza-1 2B entry tier (Gemma 4 E2B) via mtp fork or Ollama fallback",
   },
   mid: {
     tier: "mid",

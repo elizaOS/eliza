@@ -637,8 +637,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     // of the iOS GPU default / explicit useGpu (Metal genuinely cannot run
     // there). Real devices report isSimulator=false and keep Metal.
     const nativeGpuEnabled =
-      resolveNativeGpuEnabled(options.useGpu) &&
-      !(await this.isIosSimulator());
+      resolveNativeGpuEnabled(options.useGpu) && !(await this.isIosSimulator());
     const params: NativeContextParams & Record<string, unknown> = {
       model: options.modelPath,
       n_ctx: options.contextSize ?? 4096,

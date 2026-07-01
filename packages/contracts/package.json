@@ -43,7 +43,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
+    "@biomejs/biome": "2.5.1",
     "@types/node": "^25.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

@@ -87,12 +87,21 @@ export function renderConnectionSetup(
     connectBtn.textContent = "Connect";
     connectBtn.addEventListener("click", () => {
       if (current.mode === "local") {
-        current.host = (document.getElementById("xr-host") as HTMLInputElement)?.value ?? "localhost";
-        current.port = Number((document.getElementById("xr-port") as HTMLInputElement)?.value ?? 31338);
+        current.host =
+          (document.getElementById("xr-host") as HTMLInputElement)?.value ??
+          "localhost";
+        current.port = Number(
+          (document.getElementById("xr-port") as HTMLInputElement)?.value ??
+            31338,
+        );
       } else if (current.mode === "cloud") {
-        current.appId = (document.getElementById("xr-appid") as HTMLInputElement)?.value;
+        current.appId = (
+          document.getElementById("xr-appid") as HTMLInputElement
+        )?.value;
       } else {
-        current.customUrl = (document.getElementById("xr-url") as HTMLInputElement)?.value;
+        current.customUrl = (
+          document.getElementById("xr-url") as HTMLInputElement
+        )?.value;
       }
       saveConfig(current);
       onConnect(current);

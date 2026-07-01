@@ -26,16 +26,20 @@ const { defaultSelfControlStatus } = vi.hoisted(() => ({
 vi.mock(
   "@elizaos/plugin-blocker/services/website-blocker/index",
   async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/plugin-blocker/services/website-blocker/index")
-    >();
-  return {
-    ...actual,
-    getSelfControlStatus: vi.fn(async () => defaultSelfControlStatus),
-    SELFCONTROL_ACCESS_ERROR: "Website blocking is restricted to OWNER users.",
-    getSelfControlAccess: vi.fn(async () => ({ allowed: true, role: "OWNER" })),
-  };
+    const actual =
+      await importOriginal<
+        typeof import("@elizaos/plugin-blocker/services/website-blocker/index")
+      >();
+    return {
+      ...actual,
+      getSelfControlStatus: vi.fn(async () => defaultSelfControlStatus),
+      SELFCONTROL_ACCESS_ERROR:
+        "Website blocking is restricted to OWNER users.",
+      getSelfControlAccess: vi.fn(async () => ({
+        allowed: true,
+        role: "OWNER",
+      })),
+    };
   },
 );
 

@@ -36,7 +36,9 @@ async function main(): Promise<void> {
   }
 
   const sessionId = emulator.getSessionId();
-  console.log(`[facewear-emulator] Connected as ${device} (session: ${sessionId})`);
+  console.log(
+    `[facewear-emulator] Connected as ${device} (session: ${sessionId})`,
+  );
 
   const pingInterval = setInterval(() => {
     emulator.sendControl({ type: "ping" });

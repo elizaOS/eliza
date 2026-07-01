@@ -90,9 +90,7 @@
         "description": "Items not allowed (keepout area 'E1Phone_KEEP_bottom_antenna')",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Track [VBUS] on F.Cu, length 5.4626 mm"
-        ]
+        "item_descriptions": ["Track [VBUS] on F.Cu, length 5.4626 mm"]
       },
       {
         "type": "shorting_items",
@@ -122,10 +120,7 @@
         "description": "Courtyards overlap",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Footprint MH_TR",
-          "Footprint U_ESIM"
-        ]
+        "item_descriptions": ["Footprint MH_TR", "Footprint U_ESIM"]
       },
       {
         "type": "hole_clearance",
@@ -155,9 +150,7 @@
         "description": "Silkscreen clipped by solder mask",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "PCB text '5G REDCAP' on F.Silkscreen"
-        ]
+        "item_descriptions": ["PCB text '5G REDCAP' on F.Silkscreen"]
       },
       {
         "type": "drill_out_of_range",
@@ -165,9 +158,7 @@
         "description": "Hole size out of range (board setup constraints min hole 0.3000 mm; actual 0.2000 mm)",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Via [USB_DP] on F.Cu - B.Cu"
-        ]
+        "item_descriptions": ["Via [USB_DP] on F.Cu - B.Cu"]
       },
       {
         "type": "starved_thermal",
@@ -186,9 +177,7 @@
         "description": "Via diameter (board setup constraints min diameter 0.5000 mm; actual 0.4500 mm)",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Via [USB_DP] on F.Cu - B.Cu"
-        ]
+        "item_descriptions": ["Via [USB_DP] on F.Cu - B.Cu"]
       },
       {
         "type": "track_dangling",
@@ -196,9 +185,7 @@
         "description": "Track has unconnected end",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Track [SYS] on F.Cu, length 5.0000 mm"
-        ]
+        "item_descriptions": ["Track [SYS] on F.Cu, length 5.0000 mm"]
       },
       {
         "type": "holes_co_located",
@@ -206,10 +193,7 @@
         "description": "Drilled holes co-located",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Via [GND] on F.Cu - B.Cu",
-          "NPTH pad of MH_BR"
-        ]
+        "item_descriptions": ["Via [GND] on F.Cu - B.Cu", "NPTH pad of MH_BR"]
       },
       {
         "type": "silk_edge_clearance",
@@ -228,9 +212,7 @@
         "description": "Via is not connected or connected on only one layer",
         "source_bucket": "violations",
         "sheet_path": "",
-        "item_descriptions": [
-          "Via [SYS] on F.Cu - B.Cu"
-        ]
+        "item_descriptions": ["Via [SYS] on F.Cu - B.Cu"]
       }
     ]
   },
@@ -259,9 +241,7 @@
         "description": "Global label not connected anywhere else in the schematic",
         "source_bucket": "",
         "sheet_path": "/",
-        "item_descriptions": [
-          "Global Label 'CHG_I2C_SCL'"
-        ]
+        "item_descriptions": ["Global Label 'CHG_I2C_SCL'"]
       },
       {
         "type": "pin_not_connected",
@@ -269,9 +249,7 @@
         "description": "Pin not connected",
         "source_bucket": "",
         "sheet_path": "/",
-        "item_descriptions": [
-          "Hierarchical Sheet Pin USB_DP"
-        ]
+        "item_descriptions": ["Hierarchical Sheet Pin USB_DP"]
       },
       {
         "type": "label_dangling",
@@ -279,9 +257,7 @@
         "description": "Label not connected to anything",
         "source_bucket": "",
         "sheet_path": "/",
-        "item_descriptions": [
-          "Hierarchical Label 'USB_DP'"
-        ]
+        "item_descriptions": ["Hierarchical Label 'USB_DP'"]
       },
       {
         "type": "power_pin_not_driven",
@@ -289,9 +265,7 @@
         "description": "Input Power pin not driven by any Output Power pins",
         "source_bucket": "",
         "sheet_path": "/compute/",
-        "item_descriptions": [
-          "Symbol #PWR100 Pin 1 [Power input, Line]"
-        ]
+        "item_descriptions": ["Symbol #PWR100 Pin 1 [Power input, Line]"]
       },
       {
         "type": "endpoint_off_grid",
@@ -299,9 +273,7 @@
         "description": "Symbol pin or wire end off connection grid",
         "source_bucket": "",
         "sheet_path": "/",
-        "item_descriptions": [
-          "Symbol U1 Pin 1 [DRAM_DQ0, Bidirectional, Line]"
-        ]
+        "item_descriptions": ["Symbol U1 Pin 1 [DRAM_DQ0, Bidirectional, Line]"]
       },
       {
         "type": "lib_symbol_issues",
@@ -309,9 +281,7 @@
         "description": "The current configuration does not include the symbol library 'e1_phone'",
         "source_bucket": "",
         "sheet_path": "/",
-        "item_descriptions": [
-          "Symbol U1 [E1_PhoneSoC_BGA256]"
-        ]
+        "item_descriptions": ["Symbol U1 [E1_PhoneSoC_BGA256]"]
       },
       {
         "type": "footprint_link_issues",
@@ -319,9 +289,7 @@
         "description": "The current configuration does not include the footprint library 'Package_BGA'.",
         "source_bucket": "",
         "sheet_path": "/",
-        "item_descriptions": [
-          "Symbol U1 [E1_PhoneSoC_BGA256]"
-        ]
+        "item_descriptions": ["Symbol U1 [E1_PhoneSoC_BGA256]"]
       },
       {
         "type": "pin_not_driven",
@@ -329,9 +297,7 @@
         "description": "Input pin not driven by any Output pins",
         "source_bucket": "",
         "sheet_path": "/compute/",
-        "item_descriptions": [
-          "Symbol U1 Pin 68 [DISP_TE, Input, Line]"
-        ]
+        "item_descriptions": ["Symbol U1 Pin 68 [DISP_TE, Input, Line]"]
       },
       {
         "type": "pin_to_pin",

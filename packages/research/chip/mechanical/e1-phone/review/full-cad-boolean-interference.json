@@ -42,26 +42,14 @@
         "orange_side_frame"
       ],
       "concept_pair_checks": [
-        [
-          "display_lcm",
-          "screen_cover_glass"
-        ],
-        [
-          "display_lcm",
-          "orange_side_frame"
-        ],
-        [
-          "screen_cover_glass",
-          "orange_side_frame"
-        ]
+        ["display_lcm", "screen_cover_glass"],
+        ["display_lcm", "orange_side_frame"],
+        ["screen_cover_glass", "orange_side_frame"]
       ],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "screen_stack_to_orange_rails",
-          "pair": [
-            "display_lcm",
-            "screen_cover_glass"
-          ],
+          "pair": ["display_lcm", "screen_cover_glass"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 0.18,
@@ -71,10 +59,7 @@
         },
         {
           "scope_id": "screen_stack_to_orange_rails",
-          "pair": [
-            "display_lcm",
-            "orange_side_frame"
-          ],
+          "pair": ["display_lcm", "orange_side_frame"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 2.46,
@@ -85,10 +70,7 @@
         },
         {
           "scope_id": "screen_stack_to_orange_rails",
-          "pair": [
-            "screen_cover_glass",
-            "orange_side_frame"
-          ],
+          "pair": ["screen_cover_glass", "orange_side_frame"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 0.05,
@@ -108,28 +90,18 @@
     },
     {
       "id": "routed_pcb_components_to_orange_enclosure",
-      "source_clearance_ids": [
-        "battery_to_pcb_islands"
-      ],
+      "source_clearance_ids": ["battery_to_pcb_islands"],
       "required_parts": [
         "main_pcb",
         "battery_pouch",
         "orange_back_shell",
         "orange_side_frame"
       ],
-      "concept_pair_checks": [
-        [
-          "main_pcb",
-          "battery_pouch"
-        ]
-      ],
+      "concept_pair_checks": [["main_pcb", "battery_pouch"]],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "routed_pcb_components_to_orange_enclosure",
-          "pair": [
-            "main_pcb",
-            "battery_pouch"
-          ],
+          "pair": ["main_pcb", "battery_pouch"],
           "missing_parts": [],
           "component_pair_count": 2,
           "min_gap_mm": 0.5,
@@ -159,22 +131,13 @@
         "orange_usb_reinforcement_saddle"
       ],
       "concept_pair_checks": [
-        [
-          "usb_c_receptacle",
-          "bottom_speaker_module"
-        ],
-        [
-          "usb_c_receptacle",
-          "bottom_mic"
-        ]
+        ["usb_c_receptacle", "bottom_speaker_module"],
+        ["usb_c_receptacle", "bottom_mic"]
       ],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
-          "pair": [
-            "usb_c_receptacle",
-            "bottom_speaker_module"
-          ],
+          "pair": ["usb_c_receptacle", "bottom_speaker_module"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 6.53,
@@ -184,10 +147,7 @@
         },
         {
           "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
-          "pair": [
-            "usb_c_receptacle",
-            "bottom_mic"
-          ],
+          "pair": ["usb_c_receptacle", "bottom_mic"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 11.78,
@@ -207,27 +167,17 @@
     },
     {
       "id": "side_buttons_switches_gaskets_labyrinth",
-      "source_clearance_ids": [
-        "button_caps_to_side_frame"
-      ],
+      "source_clearance_ids": ["button_caps_to_side_frame"],
       "required_parts": [
         "power_button_cap",
         "volume_button_cap",
         "orange_side_frame"
       ],
-      "concept_pair_checks": [
-        [
-          "power_button_cap",
-          "volume_button_cap"
-        ]
-      ],
+      "concept_pair_checks": [["power_button_cap", "volume_button_cap"]],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "side_buttons_switches_gaskets_labyrinth",
-          "pair": [
-            "power_button_cap",
-            "volume_button_cap"
-          ],
+          "pair": ["power_button_cap", "volume_button_cap"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 77.1,
@@ -247,31 +197,20 @@
     },
     {
       "id": "front_camera_earpiece_under_glass_stack",
-      "source_clearance_ids": [
-        "front_camera_to_earpiece"
-      ],
+      "source_clearance_ids": ["front_camera_to_earpiece"],
       "required_parts": [
         "front_camera_module",
         "earpiece_receiver",
         "screen_cover_glass"
       ],
       "concept_pair_checks": [
-        [
-          "front_camera_module",
-          "earpiece_receiver"
-        ],
-        [
-          "front_camera_module",
-          "screen_cover_glass"
-        ]
+        ["front_camera_module", "earpiece_receiver"],
+        ["front_camera_module", "screen_cover_glass"]
       ],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "front_camera_earpiece_under_glass_stack",
-          "pair": [
-            "front_camera_module",
-            "earpiece_receiver"
-          ],
+          "pair": ["front_camera_module", "earpiece_receiver"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 9.75,
@@ -281,10 +220,7 @@
         },
         {
           "scope_id": "front_camera_earpiece_under_glass_stack",
-          "pair": [
-            "front_camera_module",
-            "screen_cover_glass"
-          ],
+          "pair": ["front_camera_module", "screen_cover_glass"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 2.6,
@@ -304,9 +240,7 @@
     },
     {
       "id": "rear_camera_window_baffle_adhesive_stack",
-      "source_clearance_ids": [
-        "rear_camera_to_battery"
-      ],
+      "source_clearance_ids": ["rear_camera_to_battery"],
       "required_parts": [
         "rear_camera_module",
         "orange_back_shell",
@@ -314,26 +248,14 @@
         "rear_camera_light_baffle_top"
       ],
       "concept_pair_checks": [
-        [
-          "rear_camera_module",
-          "orange_back_shell"
-        ],
-        [
-          "rear_camera_module",
-          "battery_pouch"
-        ],
-        [
-          "rear_camera_module",
-          "rear_camera_cover_glass"
-        ]
+        ["rear_camera_module", "orange_back_shell"],
+        ["rear_camera_module", "battery_pouch"],
+        ["rear_camera_module", "rear_camera_cover_glass"]
       ],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "rear_camera_window_baffle_adhesive_stack",
-          "pair": [
-            "rear_camera_module",
-            "orange_back_shell"
-          ],
+          "pair": ["rear_camera_module", "orange_back_shell"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 0.4,
@@ -343,10 +265,7 @@
         },
         {
           "scope_id": "rear_camera_window_baffle_adhesive_stack",
-          "pair": [
-            "rear_camera_module",
-            "battery_pouch"
-          ],
+          "pair": ["rear_camera_module", "battery_pouch"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 16.3,
@@ -356,10 +275,7 @@
         },
         {
           "scope_id": "rear_camera_window_baffle_adhesive_stack",
-          "pair": [
-            "rear_camera_module",
-            "rear_camera_cover_glass"
-          ],
+          "pair": ["rear_camera_module", "rear_camera_cover_glass"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 1.05,
@@ -391,26 +307,14 @@
         "split_interconnect_side_flex"
       ],
       "concept_pair_checks": [
-        [
-          "battery_pouch",
-          "main_pcb"
-        ],
-        [
-          "battery_pouch",
-          "haptic_lra"
-        ],
-        [
-          "battery_pouch",
-          "split_interconnect_side_flex"
-        ]
+        ["battery_pouch", "main_pcb"],
+        ["battery_pouch", "haptic_lra"],
+        ["battery_pouch", "split_interconnect_side_flex"]
       ],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "battery_pouch_pcb_flex_haptic",
-          "pair": [
-            "battery_pouch",
-            "main_pcb"
-          ],
+          "pair": ["battery_pouch", "main_pcb"],
           "missing_parts": [],
           "component_pair_count": 2,
           "min_gap_mm": 0.5,
@@ -420,10 +324,7 @@
         },
         {
           "scope_id": "battery_pouch_pcb_flex_haptic",
-          "pair": [
-            "battery_pouch",
-            "haptic_lra"
-          ],
+          "pair": ["battery_pouch", "haptic_lra"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 0.5,
@@ -433,10 +334,7 @@
         },
         {
           "scope_id": "battery_pouch_pcb_flex_haptic",
-          "pair": [
-            "battery_pouch",
-            "split_interconnect_side_flex"
-          ],
+          "pair": ["battery_pouch", "split_interconnect_side_flex"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 1.3,
@@ -456,32 +354,20 @@
     },
     {
       "id": "bottom_audio_microphone_speaker_meshes",
-      "source_clearance_ids": [
-        "bottom_mic_to_usb",
-        "usb_to_bottom_speaker"
-      ],
+      "source_clearance_ids": ["bottom_mic_to_usb", "usb_to_bottom_speaker"],
       "required_parts": [
         "bottom_speaker_module",
         "bottom_mic",
         "usb_c_receptacle"
       ],
       "concept_pair_checks": [
-        [
-          "bottom_speaker_module",
-          "bottom_mic"
-        ],
-        [
-          "bottom_speaker_module",
-          "usb_c_receptacle"
-        ]
+        ["bottom_speaker_module", "bottom_mic"],
+        ["bottom_speaker_module", "usb_c_receptacle"]
       ],
       "concept_aabb_pair_checks": [
         {
           "scope_id": "bottom_audio_microphone_speaker_meshes",
-          "pair": [
-            "bottom_speaker_module",
-            "bottom_mic"
-          ],
+          "pair": ["bottom_speaker_module", "bottom_mic"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 27.25,
@@ -491,10 +377,7 @@
         },
         {
           "scope_id": "bottom_audio_microphone_speaker_meshes",
-          "pair": [
-            "bottom_speaker_module",
-            "usb_c_receptacle"
-          ],
+          "pair": ["bottom_speaker_module", "usb_c_receptacle"],
           "missing_parts": [],
           "component_pair_count": 1,
           "min_gap_mm": 6.53,
@@ -514,9 +397,7 @@
     },
     {
       "id": "rf_shields_antennas_plastic_windows",
-      "source_clearance_ids": [
-        "rf_keepout_to_orange_shell"
-      ],
+      "source_clearance_ids": ["rf_keepout_to_orange_shell"],
       "required_parts": [
         "soc_shield_can",
         "radio_shield_can",
@@ -535,9 +416,7 @@
     },
     {
       "id": "molded_retention_boss_snap_service_features",
-      "source_clearance_ids": [
-        "snap_hooks_to_internal_components"
-      ],
+      "source_clearance_ids": ["snap_hooks_to_internal_components"],
       "required_parts": [
         "orange_back_shell",
         "orange_side_frame",

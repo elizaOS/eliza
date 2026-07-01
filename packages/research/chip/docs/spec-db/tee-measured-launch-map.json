@@ -4,7 +4,16 @@
   "claim_boundary": "Measurement-source map only; not a measured launch, not secure boot, not a signed quote, not silicon. Each measurement's real digest is BLOCKED on the named lane until that lane produces a transcript.",
   "digest_convention": "sha256:<64 lowercase hex>",
   "report_data_binding": "sha256:H(nonce || ephemeral_pubkey) binds the quote to the live RA-TLS channel (06 §3.1, 07 §7.1).",
-  "fold_order": ["boot", "monitor", "os", "policy", "device", "agent", "npuFirmware", "modelWeights"],
+  "fold_order": [
+    "boot",
+    "monitor",
+    "os",
+    "policy",
+    "device",
+    "agent",
+    "npuFirmware",
+    "modelWeights"
+  ],
   "measurements": [
     {
       "field": "boot",
@@ -91,12 +100,40 @@
     }
   ],
   "claims": [
-    {"name": "secureBoot", "set_by": "TSM + RoT: true only when the boot chain verified end-to-end", "lane": "02-root-of-trust"},
-    {"name": "debugDisabled", "set_by": "lifecycle: true only when lifecycle==LOCKED and debug ports gated", "lane": "02-root-of-trust"},
-    {"name": "productionLifecycle", "set_by": "lifecycle: true only when lifecycle==LOCKED", "lane": "02-root-of-trust"},
-    {"name": "memoryEncrypted", "set_by": "MCIE: true only when AES-CTR + integrity tree active on the domain's private pages", "lane": "01-tee-core-architecture"},
-    {"name": "ioProtected", "set_by": "IOMMU/IOPMP: true only when source-ID policy programmed and IOMMU not in BARE for the domain", "lane": "03-secure-io-iommu-npu"},
-    {"name": "npuProtected", "set_by": "NPU runtime: true only when NPU fw measured + private-queue ownership held + counter guard active", "lane": "03-secure-io-iommu-npu"},
-    {"name": "monitorMeasured", "set_by": "TSM-driver: true only when the M-mode TSM image was measured into the monitor register and DICE chain", "lane": "01-tee-core-architecture"}
+    {
+      "name": "secureBoot",
+      "set_by": "TSM + RoT: true only when the boot chain verified end-to-end",
+      "lane": "02-root-of-trust"
+    },
+    {
+      "name": "debugDisabled",
+      "set_by": "lifecycle: true only when lifecycle==LOCKED and debug ports gated",
+      "lane": "02-root-of-trust"
+    },
+    {
+      "name": "productionLifecycle",
+      "set_by": "lifecycle: true only when lifecycle==LOCKED",
+      "lane": "02-root-of-trust"
+    },
+    {
+      "name": "memoryEncrypted",
+      "set_by": "MCIE: true only when AES-CTR + integrity tree active on the domain's private pages",
+      "lane": "01-tee-core-architecture"
+    },
+    {
+      "name": "ioProtected",
+      "set_by": "IOMMU/IOPMP: true only when source-ID policy programmed and IOMMU not in BARE for the domain",
+      "lane": "03-secure-io-iommu-npu"
+    },
+    {
+      "name": "npuProtected",
+      "set_by": "NPU runtime: true only when NPU fw measured + private-queue ownership held + counter guard active",
+      "lane": "03-secure-io-iommu-npu"
+    },
+    {
+      "name": "monitorMeasured",
+      "set_by": "TSM-driver: true only when the M-mode TSM image was measured into the monitor register and DICE chain",
+      "lane": "01-tee-core-architecture"
+    }
   ]
 }

@@ -19,12 +19,12 @@
       "component": "rear_camera",
       "mpn": "Sincere First OV13B10 13MP AF MIPI CSI-2 FPC module (OV13855/OV13850 pin-class alternates)",
       "source_url": "https://www.cameramodule.com/fpc-camera-module/auto-focus-camera-module/ov13b10-sensor-mipi-autofocus-high-resolution.html",
-      "price_100k_usd": 3.90,
+      "price_100k_usd": 3.9,
       "manufacturable": "yes_conditional",
       "min_clearances_mm": {
         "module_height_budget": 5.1,
         "module_height_actual_typ": 4.0,
-        "burial_clearance_to_back_inner_wall": 0.30,
+        "burial_clearance_to_back_inner_wall": 0.3,
         "window_aperture_vs_lens_radial_margin": 1.2,
         "flush_window_flatness_tolerance": 0.05,
         "battery_back_face_to_inner_wall_gap": 0.15
@@ -41,7 +41,7 @@
       "component": "front_camera",
       "mpn": "Sincere First SF-G5035S60FY (GalaxyCore GC5035 5MP fixed-focus MIPI)",
       "source_url": "https://m.alibaba.com/product/62543023652/5mp-camera-module-GC5035-sensor-D5L02C.html",
-      "price_100k_usd": 1.10,
+      "price_100k_usd": 1.1,
       "manufacturable": "yes",
       "min_clearances_mm": {
         "module_envelope_z": 3.2,
@@ -62,11 +62,15 @@
       "source_url": "https://octopart.com/lxcl-pwf1-lumileds-961573",
       "driver_source_url": "https://www.awinic.com/en/productDetail/AW36515EFCR",
       "price_100k_usd": 0.45,
-      "price_100k_breakdown": { "led_usd": 0.20, "driver_ic_usd": 0.25, "note": "not_yet_in_bom_unit_cost_yaml_add_line" },
+      "price_100k_breakdown": {
+        "led_usd": 0.2,
+        "driver_ic_usd": 0.25,
+        "note": "not_yet_in_bom_unit_cost_yaml_add_line"
+      },
       "manufacturable": "conditional",
       "min_clearances_mm": {
         "seat_envelope": [1.0, 1.0, 0.7],
-        "led_actual_footprint_lxcl_pwf1": [1.64, 0.90],
+        "led_actual_footprint_lxcl_pwf1": [1.64, 0.9],
         "window": [1.6, 1.6, 0.5],
         "flash_to_camera_center_recommended": 6.0,
         "flash_to_camera_center_hard_floor": 5.0,
@@ -84,7 +88,7 @@
       "component": "display",
       "mpn": "Chenghao CH550FH01A-CT 5.5in FHD 1080x1920 LTPS MIPI LCD + on-cell CTP, 40-pin FPC (BOE/Tianma/META 055WU01 alternates)",
       "source_url": "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf",
-      "price_100k_usd": 11.80,
+      "price_100k_usd": 11.8,
       "manufacturable": "yes_conditional",
       "min_clearances_mm": {
         "ctp_outline": [77.1, 151.77, 3.39],

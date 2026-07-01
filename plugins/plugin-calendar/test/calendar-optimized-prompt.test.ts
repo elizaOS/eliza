@@ -1,14 +1,14 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import {
+  createCalendarActionRunner,
+  extractCalendarPlanWithLlm,
+} from "../src/actions/calendar-handler.js";
 import type {
   CalendarActionDeps,
   CalendarJsonModelResult,
   CalendarModelCallArgs,
 } from "../src/actions/deps.js";
-import {
-  createCalendarActionRunner,
-  extractCalendarPlanWithLlm,
-} from "../src/actions/calendar-handler.js";
 
 function runtimeWithOptimizedPrompt(prompt: string): IAgentRuntime {
   return {

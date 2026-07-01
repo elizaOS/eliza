@@ -2,10 +2,7 @@
   "obsbot": {
     "available": false,
     "device": null,
-    "resolution": [
-      1280,
-      720
-    ],
+    "resolution": [1280, 720],
     "intrinsics": {
       "fx": 1280.0,
       "fy": 1280.0,
@@ -25,10 +22,7 @@
     "body_marker_id": 0,
     "ground_origin_id": 2,
     "marker_size_m": 0.0508,
-    "unique_ids_seen": [
-      0,
-      2
-    ]
+    "unique_ids_seen": [0, 2]
   },
   "joint_divergence_mrad": null,
   "torso_residual_cm_post_anchor": {

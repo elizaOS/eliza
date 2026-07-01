@@ -12,14 +12,8 @@
       "ios",
       "android"
     ],
-    "transcriptionState": [
-      "off",
-      "on"
-    ],
-    "chimeIn": [
-      "should-respond",
-      "should-not-respond"
-    ],
+    "transcriptionState": ["off", "on"],
+    "chimeIn": ["should-respond", "should-not-respond"],
     "wakewordContext": [
       "idle-wake",
       "already-listening-wake-inert",
@@ -31,12 +25,7 @@
       "echo-self-voice",
       "overlapping-speech"
     ],
-    "voices": [
-      "owner",
-      "enrolled-contact",
-      "unknown",
-      "multi-speaker"
-    ]
+    "voices": ["owner", "enrolled-contact", "unknown", "multi-speaker"]
   },
   "host": {
     "platform": "darwin",
@@ -64,10 +53,7 @@
         "voices": "multi-speaker"
       },
       "class": "stt-evaluation",
-      "command": [
-        "node",
-        "packages/scripts/voice-stage-b-eval.mjs"
-      ],
+      "command": ["node", "packages/scripts/voice-stage-b-eval.mjs"],
       "evidence": [
         "$ELIZA_VOICE_MATRIX_OUT/stt.stage-b.evaluation/stage-b-eval.json",
         "$ELIZA_VOICE_STAGE_B_REPORT"

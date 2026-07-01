@@ -28,10 +28,7 @@
   "deprecations_observed": {
     "mps_backend": "Apple MPS backend marked deprecated in v1.2.0 README. Repo grep on 2026-05-20 confirms no chip-package code path depends on executorch MPS / torch.backends.mps; only research/landscape docs mention it. No action required."
   },
-  "python_requirements": [
-    "torch>=2.5,<3",
-    "executorch==1.2.0"
-  ],
+  "python_requirements": ["torch>=2.5,<3", "executorch==1.2.0"],
   "backend_registration": {
     "name": "elizanpu",
     "module": "compiler.executorch_eliza.backend",

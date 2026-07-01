@@ -62,10 +62,7 @@
         "steel_safe_tuning_plan",
         "reviewer_disposition"
       ],
-      "linked_cad_evidence": [
-        "orange_snap_hook_1",
-        "orange_snap_hook_8"
-      ],
+      "linked_cad_evidence": ["orange_snap_hook_1", "orange_snap_hook_8"],
       "release_blocker": "Toolmaker has not returned approved steel design, mold-flow note, and reviewer disposition for this action.",
       "pass": true
     },
@@ -110,10 +107,7 @@
         "steel_safe_tuning_plan",
         "reviewer_disposition"
       ],
-      "linked_cad_evidence": [
-        "power_button_cap",
-        "volume_button_cap"
-      ],
+      "linked_cad_evidence": ["power_button_cap", "volume_button_cap"],
       "release_blocker": "Toolmaker has not returned approved steel design, mold-flow note, and reviewer disposition for this action.",
       "pass": true
     },

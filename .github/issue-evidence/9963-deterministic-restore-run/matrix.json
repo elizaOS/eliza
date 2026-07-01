@@ -8,12 +8,7 @@
       "id": "backup.restore-recall",
       "title": "Agent recalls a restored memory after local backup restore",
       "domain": "backup",
-      "tags": [
-        "backup",
-        "restore",
-        "live-model",
-        "issue-9963"
-      ],
+      "tags": ["backup", "restore", "live-model", "issue-9963"],
       "status": "passed",
       "durationMs": 1027,
       "turns": [

@@ -5,10 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const currentDir = new URL(".", import.meta.url).pathname;
 const swiftSource = readFileSync(
-  resolve(
-    currentDir,
-    "../ios/Sources/CalendarPlugin/CalendarPlugin.swift",
-  ),
+  resolve(currentDir, "../ios/Sources/CalendarPlugin/CalendarPlugin.swift"),
   "utf8",
 );
 
@@ -28,7 +25,12 @@ describe("Apple Calendar Swift bridge contract", () => {
   });
 
   it("keeps unsupported recurrence and attendee edits out of EventKit writes", () => {
-    for (const key of ["recurrence", "recurrenceRule", "recurrenceRules", "rrule"]) {
+    for (const key of [
+      "recurrence",
+      "recurrenceRule",
+      "recurrenceRules",
+      "rrule",
+    ]) {
       expect(swiftSource).toContain(`"${key}"`);
     }
 

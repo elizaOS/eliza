@@ -34,7 +34,10 @@ import { lifeOpsCalendarEventFromGoogle } from "../src/internal/google-delegates
 
 const recorded = JSON.parse(
   readFileSync(
-    resolve(import.meta.dirname, "./__fixtures__/google-calendar.recorded.json"),
+    resolve(
+      import.meta.dirname,
+      "./__fixtures__/google-calendar.recorded.json",
+    ),
     "utf8",
   ),
 ) as {

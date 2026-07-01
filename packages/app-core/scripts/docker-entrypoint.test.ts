@@ -8,8 +8,7 @@ import { describe, expect, test } from "vitest";
 // which only exists on POSIX. The Docker images these entrypoints belong
 // to are Linux-only (alpine/debian), so on Windows we skip the whole
 // suite rather than fail. Run on Linux/macOS (or inside WSL) to exercise.
-const describeIfPosix =
-  process.platform === "win32" ? describe.skip : describe;
+const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
 const cloudAgentEntrypoint = path.resolve(
   import.meta.dirname,

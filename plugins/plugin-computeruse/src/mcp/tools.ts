@@ -210,7 +210,8 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
   },
   {
     name: "computer_set_value",
-    description: "Set the value of the UI element at a coordinate (a11y write).",
+    description:
+      "Set the value of the UI element at a coordinate (a11y write).",
     command: "set_value",
     destructive: true,
     properties: {

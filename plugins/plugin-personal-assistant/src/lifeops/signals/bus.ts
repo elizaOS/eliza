@@ -21,12 +21,12 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsBusFamily, LifeOpsTelemetryFamily } from "@elizaos/shared";
-import type { FamilyRegistry } from "../registries/family-registry.js";
 import type {
   ActivitySignalBusView,
   ScheduledTaskSubject,
 } from "@elizaos/plugin-scheduling";
+import type { LifeOpsBusFamily, LifeOpsTelemetryFamily } from "@elizaos/shared";
+import type { FamilyRegistry } from "../registries/family-registry.js";
 
 export interface ActivitySignalEnvelope {
   family: LifeOpsBusFamily;

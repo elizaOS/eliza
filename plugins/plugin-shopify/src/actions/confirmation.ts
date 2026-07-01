@@ -43,7 +43,11 @@ export async function requireShopifyConfirmation(args: {
     return {
       success: true,
       text: `${args.preview} Reply yes to confirm or no to cancel.`,
-      data: { requiresConfirmation: true, preview: args.preview, awaitingUserInput: true },
+      data: {
+        requiresConfirmation: true,
+        preview: args.preview,
+        awaitingUserInput: true,
+      },
     };
   }
   return { success: true, text: "Cancelled.", data: { cancelled: true } };

@@ -4,10 +4,11 @@
 // recording of the walk. Evidence for #8833 item 4 (view rendering + UX).
 //
 // Run: bun .github/issue-evidence/8833-lifeops-live-validation/capture-views.mjs
-import { chromium } from "playwright";
+
 import { mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
 const OUT = dirname(fileURLToPath(import.meta.url));
 const SHOTS = join(OUT, "views");

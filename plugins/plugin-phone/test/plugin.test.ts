@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-
-import { appPhonePlugin } from "../src/plugin.ts";
 import * as phoneExports from "../src/index.ts";
+import { appPhonePlugin } from "../src/plugin.ts";
 
 describe("appPhonePlugin manifest", () => {
   it("keeps VOICE_CALL host-adapted by personal-assistant", () => {

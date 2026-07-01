@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "private-chef-dietary-firebreak",
-  title: "Assistant coordinates private chef dietary constraints with privacy firebreaks",
+  title:
+    "Assistant coordinates private chef dietary constraints with privacy firebreaks",
   domain: "executive.household",
   tags: ["lifeops", "executive-assistant", "household", "privacy", "vendor"],
   isolation: "per-scenario",

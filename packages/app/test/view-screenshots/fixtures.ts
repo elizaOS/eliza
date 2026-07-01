@@ -567,7 +567,9 @@ function relationshipsFetchers() {
           entityId: "ent-pat",
           type: "person",
           preferredName: "Pat Doe",
-          identities: [{ platform: "discord", handle: "pat#1", verified: true }],
+          identities: [
+            { platform: "discord", handle: "pat#1", verified: true },
+          ],
         }),
         relEntity({
           entityId: "ent-acme",
@@ -702,7 +704,14 @@ export interface ViewSpec {
 
 export const VIEW_SPECS: Record<string, ViewSpec> = {
   focus: {
-    states: ["loading", "error", "unavailable", "permission", "empty", "active"],
+    states: [
+      "loading",
+      "error",
+      "unavailable",
+      "permission",
+      "empty",
+      "active",
+    ],
     propsFor: (s) => focusFixtures[s](),
   },
   health: {

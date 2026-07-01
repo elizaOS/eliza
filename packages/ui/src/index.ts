@@ -215,8 +215,8 @@ export {
   CockpitView,
   type CockpitViewProps,
   cockpitModeToProviderPolicy,
-  type ElizaCloudTier,
   ELIZA_CLOUD_TIER_MODEL,
+  type ElizaCloudTier,
 } from "./components/cockpit/index";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.

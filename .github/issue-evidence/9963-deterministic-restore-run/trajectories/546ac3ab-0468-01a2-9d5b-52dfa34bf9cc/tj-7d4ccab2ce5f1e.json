@@ -82,10 +82,7 @@
                         "description": "Operation type. 'abort' preempts turn; others stage mutations for lifeops_thread_control."
                       },
                       "workThreadId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
+                        "type": ["string", "null"],
                         "description": "Target thread id. Required for steer/stop/merge/attach_source/schedule_followup/mark_*; optional for abort (current turn) and create."
                       },
                       "sourceWorkThreadIds": {
@@ -96,62 +93,35 @@
                         }
                       },
                       "sourceRef": {
-                        "type": [
-                          "object",
-                          "null"
-                        ],
+                        "type": ["object", "null"],
                         "additionalProperties": false,
                         "properties": {
                           "connector": {
                             "type": "string"
                           },
                           "channelName": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "channelKind": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "roomId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "externalThreadId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "accountId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "grantId": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "canRead": {
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
+                            "type": ["boolean", "null"]
                           },
                           "canMutate": {
-                            "type": [
-                              "boolean",
-                              "null"
-                            ]
+                            "type": ["boolean", "null"]
                           }
                         },
                         "required": [
@@ -168,17 +138,11 @@
                         "description": "For attach_source: the source ref to attach."
                       },
                       "instruction": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
+                        "type": ["string", "null"],
                         "description": "What to do for create/steer/schedule_followup. Brief, action-oriented."
                       },
                       "reason": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
+                        "type": ["string", "null"],
                         "description": "Why this op (especially useful for abort and stop)."
                       }
                     },

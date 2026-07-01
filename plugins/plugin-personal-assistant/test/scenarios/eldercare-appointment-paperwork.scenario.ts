@@ -3,7 +3,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "eldercare-appointment-paperwork",
-  title: "Assistant coordinates eldercare appointment paperwork with privacy guardrails",
+  title:
+    "Assistant coordinates eldercare appointment paperwork with privacy guardrails",
   domain: "executive.family",
   tags: ["lifeops", "executive-assistant", "family", "documents", "privacy"],
   isolation: "per-scenario",

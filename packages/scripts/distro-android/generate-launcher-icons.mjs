@@ -107,7 +107,12 @@ const svg = fs.readFileSync(LOGO_SVG);
 
 async function markPng(edge) {
   return sharp(svg)
-    .resize({ width: Math.round(edge), height: Math.round(edge), fit: "contain", background: TRANSPARENT })
+    .resize({
+      width: Math.round(edge),
+      height: Math.round(edge),
+      fit: "contain",
+      background: TRANSPARENT,
+    })
     .png()
     .toBuffer();
 }
@@ -181,14 +186,26 @@ if (CHECK) {
 
 for (const [dir, edge] of Object.entries(LAUNCHER_SIZES)) {
   const markEdge = Math.round(edge * LEGACY_MARK_RATIO);
-  await write(dir, "ic_launcher.png", await compositeOnField(edge, markEdge, BLUE));
+  await write(
+    dir,
+    "ic_launcher.png",
+    await compositeOnField(edge, markEdge, BLUE),
+  );
   await write(dir, "ic_launcher_round.png", await roundIcon(edge, markEdge));
 }
 
 for (const [dir, edge] of Object.entries(FOREGROUND_SIZES)) {
   const markEdge = Math.round(edge * FOREGROUND_MARK_RATIO);
-  await write(dir, "ic_launcher_foreground.png", await markOnTransparent(edge, markEdge));
-  await write(dir, "ic_launcher_monochrome.png", await markOnTransparent(edge, markEdge));
+  await write(
+    dir,
+    "ic_launcher_foreground.png",
+    await markOnTransparent(edge, markEdge),
+  );
+  await write(
+    dir,
+    "ic_launcher_monochrome.png",
+    await markOnTransparent(edge, markEdge),
+  );
 }
 
 for (const [dir, [w, h]] of Object.entries(SPLASH_SIZES)) {

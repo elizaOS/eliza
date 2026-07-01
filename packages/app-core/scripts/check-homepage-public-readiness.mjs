@@ -126,7 +126,9 @@ function dig(name, type = null) {
 function fetchJson(url) {
   const result = run("curl", ["-sS", "--max-time", "10", url]);
   if (result.status !== 0) {
-    throw new Error(result.stderr.trim() || result.stdout.trim() || "curl failed");
+    throw new Error(
+      result.stderr.trim() || result.stdout.trim() || "curl failed",
+    );
   }
   return JSON.parse(result.stdout);
 }
@@ -146,7 +148,9 @@ function findJsAssets() {
   );
   return output
     .split(/\r?\n/)
-    .filter((path) => /^assets\/(get-started|connected|contact)-.*\.js$/.test(path));
+    .filter((path) =>
+      /^assets\/(get-started|connected|contact)-.*\.js$/.test(path),
+    );
 }
 
 function writeEvidence({ evidencePath, ok, next, details }) {
@@ -201,10 +205,15 @@ function main() {
   }
 
   try {
-    const cname = decodeGhContent(`repos/${repo}/contents/CNAME?ref=gh-pages`).trim();
+    const cname = decodeGhContent(
+      `repos/${repo}/contents/CNAME?ref=gh-pages`,
+    ).trim();
     allPassed =
-      check("gh-pages-cname", cname === expectedDomain, `CNAME=${cname || "empty"}`) &&
-      allPassed;
+      check(
+        "gh-pages-cname",
+        cname === expectedDomain,
+        `CNAME=${cname || "empty"}`,
+      ) && allPassed;
   } catch (error) {
     allPassed =
       check(
@@ -220,12 +229,16 @@ function main() {
       throw new Error("no get-started asset found on gh-pages");
     }
     const bundle = assets
-      .map((asset) => decodeGhContent(`repos/${repo}/contents/${asset}?ref=gh-pages`))
+      .map((asset) =>
+        decodeGhContent(`repos/${repo}/contents/${asset}?ref=gh-pages`),
+      )
       .join("\n");
     const hasGateway =
       bundle.includes(expectedGatewayNumber) &&
       bundle.includes(expectedFormattedNumber);
-    const hasPersonalNumber = disallowedNumbers.some((value) => bundle.includes(value));
+    const hasPersonalNumber = disallowedNumbers.some((value) =>
+      bundle.includes(value),
+    );
     assetSummary = {
       count: assets.length,
       assets,
@@ -256,7 +269,9 @@ function main() {
     registryNameservers = Array.isArray(rdap.nameservers)
       ? rdap.nameservers
           .map((entry) =>
-            typeof entry?.ldhName === "string" ? entry.ldhName.toLowerCase() : "",
+            typeof entry?.ldhName === "string"
+              ? entry.ldhName.toLowerCase()
+              : "",
           )
           .filter(Boolean)
       : [];
@@ -265,7 +280,9 @@ function main() {
       check(
         "registry-status",
         !clientHold,
-        registryStatuses.length ? registryStatuses.join(", ") : "no status flags",
+        registryStatuses.length
+          ? registryStatuses.join(", ")
+          : "no status flags",
       ) && allPassed;
   } catch (error) {
     allPassed =
@@ -348,6 +365,8 @@ function main() {
 try {
   main();
 } catch (error) {
-  console.error(`[homepage-public] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `[homepage-public] ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 }

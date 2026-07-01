@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN,
-  createBrowserWorkspaceJsdomScriptExecutionError,
-} from "../browser-workspace-helpers.js";
-import {
   __resetBrowserWorkspaceStateForTests,
   executeBrowserWorkspaceCommand,
   openBrowserWorkspaceTab,
 } from "../browser-workspace.js";
+import {
+  BROWSER_WORKSPACE_JSDOM_SCRIPT_FORBIDDEN,
+  createBrowserWorkspaceJsdomScriptExecutionError,
+} from "../browser-workspace-helpers.js";
 
 describe("browser workspace JSDOM script execution (GHSA-mhhr-9ph9-64j7)", () => {
   const webEnv: NodeJS.ProcessEnv = {};
@@ -61,7 +61,8 @@ describe("browser workspace JSDOM script execution (GHSA-mhhr-9ph9-64j7)", () =>
         },
         webEnv,
       ),
-    ).rejects.toThrow(createBrowserWorkspaceJsdomScriptExecutionError("eval")
-      .message);
+    ).rejects.toThrow(
+      createBrowserWorkspaceJsdomScriptExecutionError("eval").message,
+    );
   });
 });

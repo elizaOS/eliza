@@ -15,28 +15,28 @@
  *   node scripts/e2e-recordings/generate-viewer.mjs
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const RECORDINGS_DIR = path.join(REPO_ROOT, 'e2e-recordings');
-const MANIFEST_PATH = path.join(RECORDINGS_DIR, 'manifest.json');
-const OUTPUT_PATH = path.join(RECORDINGS_DIR, 'index.html');
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const RECORDINGS_DIR = path.join(REPO_ROOT, "e2e-recordings");
+const MANIFEST_PATH = path.join(RECORDINGS_DIR, "manifest.json");
+const OUTPUT_PATH = path.join(RECORDINGS_DIR, "index.html");
 
 function esc(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function jsonStr(obj) {
-  return JSON.stringify(obj).replace(/<\//g, '<\\/');
+  return JSON.stringify(obj).replace(/<\//g, "<\\/");
 }
 
 function buildHtml(manifest) {
@@ -315,13 +315,13 @@ function buildHtml(manifest) {
 
 <div class="page-header">
   <h1><span class="logo"></span> E2E Recordings</h1>
-  <div class="meta">Generated: ${esc(manifest.generated ?? '')} &nbsp;·&nbsp; ${allTests.length} test${allTests.length !== 1 ? 's' : ''} across ${packageNames.length} package${packageNames.length !== 1 ? 's' : ''}</div>
+  <div class="meta">Generated: ${esc(manifest.generated ?? "")} &nbsp;·&nbsp; ${allTests.length} test${allTests.length !== 1 ? "s" : ""} across ${packageNames.length} package${packageNames.length !== 1 ? "s" : ""}</div>
 </div>
 
 <div class="toolbar">
   <div class="filter-tabs" id="filterTabs">
     <button class="tab-btn active" data-pkg="__all__">All</button>
-    ${packageNames.map((p) => `<button class="tab-btn" data-pkg="${esc(p)}">${esc(p)}</button>`).join('\n    ')}
+    ${packageNames.map((p) => `<button class="tab-btn" data-pkg="${esc(p)}">${esc(p)}</button>`).join("\n    ")}
   </div>
   <div class="search-wrap">
     <input class="search-input" id="searchInput" type="search" placeholder="Search tests…">
@@ -445,7 +445,7 @@ function buildHtml(manifest) {
       : '';
 
     return (
-      '<div class="test-card" data-pkg="' + esc(t.package) + '" data-frames=\'' + escAttr(JSON.stringify(frames)) + '\'>' +
+      '<div class="test-card" data-pkg="' + esc(t.package) + '" data-frames='' + escAttr(JSON.stringify(frames)) + ''>' +
       filmstrip +
       '<div class="card-body">' +
         '<div class="card-top">' +
@@ -498,27 +498,29 @@ function buildHtml(manifest) {
 function main() {
   if (!fs.existsSync(MANIFEST_PATH)) {
     console.error(`manifest.json not found at ${MANIFEST_PATH}`);
-    console.error('Run generate-contact-sheets.mjs first.');
+    console.error("Run generate-contact-sheets.mjs first.");
     process.exit(1);
   }
 
   let manifest;
   try {
-    manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
   } catch (err) {
     console.error(`Failed to parse manifest.json: ${err.message}`);
     process.exit(1);
   }
 
   const html = buildHtml(manifest);
-  fs.writeFileSync(OUTPUT_PATH, html, 'utf8');
+  fs.writeFileSync(OUTPUT_PATH, html, "utf8");
   console.log(`Viewer written: ${OUTPUT_PATH}`);
 
   const totalTests = Object.values(manifest.packages ?? {}).reduce(
     (sum, pkg) => sum + (pkg.tests?.length ?? 0),
     0,
   );
-  console.log(`Indexed ${totalTests} test(s) across ${Object.keys(manifest.packages ?? {}).length} package(s).`);
+  console.log(
+    `Indexed ${totalTests} test(s) across ${Object.keys(manifest.packages ?? {}).length} package(s).`,
+  );
 }
 
 main();

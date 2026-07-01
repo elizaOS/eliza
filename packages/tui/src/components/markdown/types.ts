@@ -10,7 +10,9 @@ import type { Token } from "marked";
 export function hasNestedTokens(
   token: Token,
 ): token is Token & { tokens: Token[] } {
-  return "tokens" in token && Array.isArray((token as { tokens?: unknown }).tokens);
+  return (
+    "tokens" in token && Array.isArray((token as { tokens?: unknown }).tokens)
+  );
 }
 
 /**

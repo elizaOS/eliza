@@ -27,6 +27,29 @@ function getRedis(env: Bindings): CompatibleRedis | null {
 }
 
 /**
+ * Verdict for the production rate-limit config guard (#9853 P1.1). The limiters
+ * fall open whenever Redis is unreachable, so production must never silently run
+ * with limiting disabled:
+ *   - `ok`            — limiting is on and Redis is reachable (or not production).
+ *   - `fail-closed`   — prod + REDIS_RATE_LIMITING="true" but no reachable Redis:
+ *                       a deploy misconfiguration — reject traffic + alert loudly.
+ *   - `warn-disabled` — prod + limiting not enabled: falls open; warn loudly so
+ *                       the ops cutover (provision Redis, flip the flag) is visible.
+ * Pure (takes a resolved `hasRedisClient`) so it is unit-testable without booting
+ * the Worker or a live Redis.
+ */
+export type RateLimitConfigVerdict = "ok" | "fail-closed" | "warn-disabled";
+export function rateLimitConfigVerdict(opts: {
+  environment?: string;
+  redisRateLimiting?: string;
+  hasRedisClient: boolean;
+}): RateLimitConfigVerdict {
+  if (opts.environment !== "production") return "ok";
+  if (opts.redisRateLimiting !== "true") return "warn-disabled";
+  return opts.hasRedisClient ? "ok" : "fail-closed";
+}
+
+/**
  * Resolve the client IP, preferring `cf-connecting-ip` (set by Cloudflare and
  * not spoofable by the client) over `x-forwarded-for` so a forged XFF header
  * cannot evade IP-keyed limits. Returns `undefined` when no IP is known.

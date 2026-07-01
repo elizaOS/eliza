@@ -36,7 +36,9 @@ describe("extractRegistrableDomain", () => {
   });
 
   it("normalizeAutofillDomain is an alias", () => {
-    expect(normalizeAutofillDomain("https://x.example.com")).toBe("example.com");
+    expect(normalizeAutofillDomain("https://x.example.com")).toBe(
+      "example.com",
+    );
     expect(normalizeAutofillDomain("localhost")).toBeNull();
   });
 });
@@ -52,7 +54,9 @@ describe("isUrlWhitelisted", () => {
   });
 
   it("allows a subdomain of a whitelisted domain", () => {
-    expect(isUrlWhitelisted("https://login.example.com/", wl).allowed).toBe(true);
+    expect(isUrlWhitelisted("https://login.example.com/", wl).allowed).toBe(
+      true,
+    );
     expect(isUrlWhitelisted("https://a.b.example.com/", wl).allowed).toBe(true);
   });
 
@@ -64,7 +68,9 @@ describe("isUrlWhitelisted", () => {
   });
 
   it("denies prefix-spoofing (evil-example.com vs example.com)", () => {
-    expect(isUrlWhitelisted("https://evil-example.com/", wl).allowed).toBe(false);
+    expect(isUrlWhitelisted("https://evil-example.com/", wl).allowed).toBe(
+      false,
+    );
     expect(isUrlWhitelisted("https://notexample.com/", wl).allowed).toBe(false);
   });
 
@@ -82,10 +88,13 @@ describe("isUrlWhitelisted", () => {
   });
 
   it("matches case-insensitively and ignores empty whitelist entries", () => {
-    expect(isUrlWhitelisted("https://LOGIN.EXAMPLE.COM/", wl).allowed).toBe(true);
-    expect(isUrlWhitelisted("https://example.com/", ["", "  ", "example.com"]).allowed).toBe(
+    expect(isUrlWhitelisted("https://LOGIN.EXAMPLE.COM/", wl).allowed).toBe(
       true,
     );
+    expect(
+      isUrlWhitelisted("https://example.com/", ["", "  ", "example.com"])
+        .allowed,
+    ).toBe(true);
   });
 
   it("denies everything against an empty whitelist", () => {

@@ -21,10 +21,10 @@ import {
 } from "./onboarding-to-home.shared";
 
 // CRITICAL FLOW (#9952) — onboarding is now PART OF THE CHAT. A fresh profile
-// (firstRunComplete=false) paints the homescreen + the auto-opened REAL floating
-// ContinuousChatOverlay, and a headless conductor seeds the onboarding as inline
-// chat messages: greeting → runtime CHOICE → (Cloud OAuth | provider CHOICE) →
-// tutorial CHOICE. There is NO separate full-screen onboarding surface anymore.
+// (firstRunComplete=false) paints the homescreen + floating runtime chooser. The
+// headless conductor still seeds transcript-only follow-ups like Cloud OAuth,
+// cloud-agent picks, and the tutorial CHOICE. There is NO separate full-screen
+// onboarding surface anymore.
 //
 // These specs boot a fresh device (no first-run-complete) and drive the in-chat
 // flow in the REAL shell to completion, then assert the post-onboarding landing

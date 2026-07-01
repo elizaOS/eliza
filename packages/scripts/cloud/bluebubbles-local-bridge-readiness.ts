@@ -1,4 +1,7 @@
-export type BlueBubblesSendMethod = "apple-script" | "private-api" | "shortcuts";
+export type BlueBubblesSendMethod =
+  | "apple-script"
+  | "private-api"
+  | "shortcuts";
 
 export type BlueBubblesServerInfoForReadiness =
   | {
@@ -84,14 +87,22 @@ export function outboundReadiness(args: {
   }
 
   if (args.method !== "shortcuts" && "error" in args.serverInfo) {
-    reasons.push(`BlueBubbles server info unavailable: ${args.serverInfo.error}`);
+    reasons.push(
+      `BlueBubbles server info unavailable: ${args.serverInfo.error}`,
+    );
   }
 
   if (args.method === "private-api") {
-    if (!hasServerInfoData(args.serverInfo) || args.serverInfo.data.private_api !== true) {
+    if (
+      !hasServerInfoData(args.serverInfo) ||
+      args.serverInfo.data.private_api !== true
+    ) {
       reasons.push("BlueBubbles private API is not enabled");
     }
-    if (!hasServerInfoData(args.serverInfo) || args.serverInfo.data.helper_connected !== true) {
+    if (
+      !hasServerInfoData(args.serverInfo) ||
+      args.serverInfo.data.helper_connected !== true
+    ) {
       reasons.push("BlueBubbles private API helper is not connected");
     }
     if (!args.sipStatus.toLowerCase().includes("disabled")) {
@@ -107,7 +118,9 @@ export function outboundReadiness(args: {
       reasons.push(`Messages AppleEvents unavailable: ${messagesProbe.error}`);
     }
 
-    const lastError = args.pendingReplies.find((reply) => reply.lastError)?.lastError;
+    const lastError = args.pendingReplies.find(
+      (reply) => reply.lastError,
+    )?.lastError;
     if (lastError?.toLowerCase().includes("timed out")) {
       reasons.push(`Last AppleScript send failed: ${lastError}`);
     }
@@ -154,7 +167,9 @@ export function outboundReadiness(args: {
   };
 }
 
-export function senderOptions(args: Omit<Parameters<typeof outboundReadiness>[0], "method">): OutboundReadiness[] {
+export function senderOptions(
+  args: Omit<Parameters<typeof outboundReadiness>[0], "method">,
+): OutboundReadiness[] {
   return (["apple-script", "private-api", "shortcuts"] as const).map((method) =>
     outboundReadiness({ ...args, method }),
   );

@@ -31,9 +31,7 @@
       "fixture": "evt_fixture_usb_c_insertion_gauge",
       "calibration_standard": "certified USB-C plug gauge, port-axis alignment block, and force gauge",
       "max_error": "axis <= 0.10 mm TIR and force <= +/-0.5 N",
-      "measurement_ids": [
-        "usb_c_insertion_force_no_rub"
-      ],
+      "measurement_ids": ["usb_c_insertion_force_no_rub"],
       "required_standard_artifacts": [
         "usb_c_plug_gauge_certificate",
         "port_axis_alignment_record",
@@ -68,9 +66,7 @@
       "fixture": "evt_fixture_rear_camera_alignment_pin",
       "calibration_standard": "CMM or optical comparator against released camera-window datum",
       "max_error": "pin center <= +/-0.03 mm and pin diameter <= +/-0.01 mm",
-      "measurement_ids": [
-        "rear_camera_lens_center_error"
-      ],
+      "measurement_ids": ["rear_camera_lens_center_error"],
       "required_standard_artifacts": [
         "camera_window_datum_drawing",
         "cmm_or_comparator_report",
@@ -86,9 +82,7 @@
       "fixture": "evt_fixture_front_camera_alignment_pin",
       "calibration_standard": "CMM or optical comparator against front glass aperture datum",
       "max_error": "pin center <= +/-0.03 mm and pin diameter <= +/-0.01 mm",
-      "measurement_ids": [
-        "front_camera_under_glass_center_error"
-      ],
+      "measurement_ids": ["front_camera_under_glass_center_error"],
       "required_standard_artifacts": [
         "front_glass_aperture_datum_drawing",
         "cmm_or_comparator_report",
@@ -104,9 +98,7 @@
       "fixture": "evt_fixture_bottom_acoustic_leak_mask",
       "calibration_standard": "flatness plate, leak reference orifice, and acoustic calibrator",
       "max_error": "seal leak delta <= 0.5 dB against reference",
-      "measurement_ids": [
-        "bottom_audio_leak_delta"
-      ],
+      "measurement_ids": ["bottom_audio_leak_delta"],
       "required_standard_artifacts": [
         "flatness_plate_certificate",
         "leak_reference_orifice_certificate",
@@ -122,9 +114,7 @@
       "fixture": "evt_fixture_earpiece_leak_mask",
       "calibration_standard": "flatness plate, leak reference orifice, and acoustic calibrator",
       "max_error": "seal leak delta <= 0.5 dB against reference",
-      "measurement_ids": [
-        "handset_receiver_leak_delta"
-      ],
+      "measurement_ids": ["handset_receiver_leak_delta"],
       "required_standard_artifacts": [
         "flatness_plate_certificate",
         "leak_reference_orifice_certificate",

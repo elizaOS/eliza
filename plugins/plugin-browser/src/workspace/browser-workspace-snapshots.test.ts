@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { BrowserWorkspaceSnapshotRecord } from "./browser-workspace-types.js";
 import {
   diffBrowserWorkspaceSnapshots,
   escapeBrowserWorkspacePdfText,
   readBrowserWorkspaceCookies,
   readBrowserWorkspaceStorage,
 } from "./browser-workspace-snapshots.js";
+import type { BrowserWorkspaceSnapshotRecord } from "./browser-workspace-types.js";
 
 /**
  * Browser-workspace snapshot helpers. PDF-text escaping must neutralize the

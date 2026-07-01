@@ -22,7 +22,11 @@ export default scenario({
       kind: "message",
       name: "triage-outage-claim",
       text: "The power outage damaged refrigerated medicine and food. Pull utility claim rules, receipts, outage timestamps, insurance overlap, and filing deadline.",
-      plannerIncludesAny: ["OWNER_DOCUMENTS", "OWNER_FINANCES", "SCHEDULED_TASKS"],
+      plannerIncludesAny: [
+        "OWNER_DOCUMENTS",
+        "OWNER_FINANCES",
+        "SCHEDULED_TASKS",
+      ],
       responseIncludesAny: ["claim", "receipts", "timestamps", "deadline"],
       plannerExcludes: ["PAYMENT_EXECUTED"],
     },

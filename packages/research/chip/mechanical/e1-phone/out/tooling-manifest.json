@@ -5,18 +5,7 @@
     "material": "sprue bushing placeholder",
     "obj": "mechanical/e1-phone/out/mold_sprue_bushing.obj",
     "stl": "mechanical/e1-phone/out/mold_sprue_bushing.stl",
-    "bounds_mm": [
-      [
-        -2.0,
-        -98.8,
-        -14.9
-      ],
-      [
-        2.0,
-        -94.8,
-        -6.9
-      ]
-    ]
+    "bounds_mm": [[-2.0, -98.8, -14.9], [2.0, -94.8, -6.9]]
   },
   {
     "name": "mold_primary_runner",
@@ -24,18 +13,7 @@
     "material": "cold runner",
     "obj": "mechanical/e1-phone/out/mold_primary_runner.obj",
     "stl": "mechanical/e1-phone/out/mold_primary_runner.stl",
-    "bounds_mm": [
-      [
-        -1.1,
-        -99.8,
-        -12.0
-      ],
-      [
-        1.1,
-        -65.8,
-        -9.8
-      ]
-    ]
+    "bounds_mm": [[-1.1, -99.8, -12.0], [1.1, -65.8, -9.8]]
   },
   {
     "name": "mold_left_submarine_gate",
@@ -43,18 +21,7 @@
     "material": "submarine gate into back shell",
     "obj": "mechanical/e1-phone/out/mold_left_submarine_gate.obj",
     "stl": "mechanical/e1-phone/out/mold_left_submarine_gate.stl",
-    "bounds_mm": [
-      [
-        -30.0,
-        -77.625,
-        -11.325
-      ],
-      [
-        -6.0,
-        -76.775,
-        -10.475
-      ]
-    ]
+    "bounds_mm": [[-30.0, -77.625, -11.325], [-6.0, -76.775, -10.475]]
   },
   {
     "name": "mold_right_submarine_gate",
@@ -62,18 +29,7 @@
     "material": "submarine gate into back shell",
     "obj": "mechanical/e1-phone/out/mold_right_submarine_gate.obj",
     "stl": "mechanical/e1-phone/out/mold_right_submarine_gate.stl",
-    "bounds_mm": [
-      [
-        6.0,
-        -77.625,
-        -11.325
-      ],
-      [
-        30.0,
-        -76.775,
-        -10.475
-      ]
-    ]
+    "bounds_mm": [[6.0, -77.625, -11.325], [30.0, -76.775, -10.475]]
   },
   {
     "name": "mold_parting_line_reference",
@@ -81,18 +37,7 @@
     "material": "mid-plane parting line reference",
     "obj": "mechanical/e1-phone/out/mold_parting_line_reference.obj",
     "stl": "mechanical/e1-phone/out/mold_parting_line_reference.stl",
-    "bounds_mm": [
-      [
-        -40.0,
-        -77.8,
-        -0.075
-      ],
-      [
-        40.0,
-        77.8,
-        0.075
-      ]
-    ]
+    "bounds_mm": [[-40.0, -77.8, -0.075], [40.0, 77.8, 0.075]]
   },
   {
     "name": "screw_core_pin_clearance_1",
@@ -100,18 +45,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_1.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_1.stl",
-    "bounds_mm": [
-      [
-        -35.9,
-        57.1,
-        -5.35
-      ],
-      [
-        -34.1,
-        58.9,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[-35.9, 57.1, -5.35], [-34.1, 58.9, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_2",
@@ -119,18 +53,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_2.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_2.stl",
-    "bounds_mm": [
-      [
-        34.1,
-        57.1,
-        -5.35
-      ],
-      [
-        35.9,
-        58.9,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[34.1, 57.1, -5.35], [35.9, 58.9, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_3",
@@ -138,18 +61,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_3.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_3.stl",
-    "bounds_mm": [
-      [
-        -35.9,
-        -58.9,
-        -5.35
-      ],
-      [
-        -34.1,
-        -57.1,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[-35.9, -58.9, -5.35], [-34.1, -57.1, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_4",
@@ -157,18 +69,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_4.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_4.stl",
-    "bounds_mm": [
-      [
-        34.1,
-        -58.9,
-        -5.35
-      ],
-      [
-        35.9,
-        -57.1,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[34.1, -58.9, -5.35], [35.9, -57.1, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_5",
@@ -176,18 +77,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_5.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_5.stl",
-    "bounds_mm": [
-      [
-        -35.9,
-        19.1,
-        -5.35
-      ],
-      [
-        -34.1,
-        20.9,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[-35.9, 19.1, -5.35], [-34.1, 20.9, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_6",
@@ -195,18 +85,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_6.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_6.stl",
-    "bounds_mm": [
-      [
-        34.1,
-        19.1,
-        -5.35
-      ],
-      [
-        35.9,
-        20.9,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[34.1, 19.1, -5.35], [35.9, 20.9, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_7",
@@ -214,18 +93,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_7.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_7.stl",
-    "bounds_mm": [
-      [
-        -35.9,
-        -20.9,
-        -5.35
-      ],
-      [
-        -34.1,
-        -19.1,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[-35.9, -20.9, -5.35], [-34.1, -19.1, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_8",
@@ -233,18 +101,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_8.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_8.stl",
-    "bounds_mm": [
-      [
-        34.1,
-        -20.9,
-        -5.35
-      ],
-      [
-        35.9,
-        -19.1,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[34.1, -20.9, -5.35], [35.9, -19.1, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_9",
@@ -252,18 +109,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_9.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_9.stl",
-    "bounds_mm": [
-      [
-        -35.9,
-        37.1,
-        -5.35
-      ],
-      [
-        -34.1,
-        38.9,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[-35.9, 37.1, -5.35], [-34.1, 38.9, -2.35]]
   },
   {
     "name": "screw_core_pin_clearance_10",
@@ -271,18 +117,7 @@
     "material": "modeled core-pin clearance marker",
     "obj": "mechanical/e1-phone/out/screw_core_pin_clearance_10.obj",
     "stl": "mechanical/e1-phone/out/screw_core_pin_clearance_10.stl",
-    "bounds_mm": [
-      [
-        34.1,
-        37.1,
-        -5.35
-      ],
-      [
-        35.9,
-        38.9,
-        -2.35
-      ]
-    ]
+    "bounds_mm": [[34.1, 37.1, -5.35], [35.9, 38.9, -2.35]]
   },
   {
     "name": "mold_ejector_pin_1",
@@ -290,18 +125,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_1.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_1.stl",
-    "bounds_mm": [
-      [
-        -31.0,
-        59.0,
-        -9.9
-      ],
-      [
-        -29.0,
-        61.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[-31.0, 59.0, -9.9], [-29.0, 61.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_2",
@@ -309,18 +133,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_2.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_2.stl",
-    "bounds_mm": [
-      [
-        -1.0,
-        59.0,
-        -9.9
-      ],
-      [
-        1.0,
-        61.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[-1.0, 59.0, -9.9], [1.0, 61.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_3",
@@ -328,18 +141,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_3.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_3.stl",
-    "bounds_mm": [
-      [
-        29.0,
-        59.0,
-        -9.9
-      ],
-      [
-        31.0,
-        61.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[29.0, 59.0, -9.9], [31.0, 61.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_4",
@@ -347,18 +149,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_4.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_4.stl",
-    "bounds_mm": [
-      [
-        -31.0,
-        -1.0,
-        -9.9
-      ],
-      [
-        -29.0,
-        1.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[-31.0, -1.0, -9.9], [-29.0, 1.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_5",
@@ -366,18 +157,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_5.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_5.stl",
-    "bounds_mm": [
-      [
-        29.0,
-        -1.0,
-        -9.9
-      ],
-      [
-        31.0,
-        1.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[29.0, -1.0, -9.9], [31.0, 1.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_6",
@@ -385,18 +165,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_6.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_6.stl",
-    "bounds_mm": [
-      [
-        -31.0,
-        -61.0,
-        -9.9
-      ],
-      [
-        -29.0,
-        -59.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[-31.0, -61.0, -9.9], [-29.0, -59.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_7",
@@ -404,18 +173,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_7.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_7.stl",
-    "bounds_mm": [
-      [
-        -1.0,
-        -61.0,
-        -9.9
-      ],
-      [
-        1.0,
-        -59.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[-1.0, -61.0, -9.9], [1.0, -59.0, -7.9]]
   },
   {
     "name": "mold_ejector_pin_8",
@@ -423,18 +181,7 @@
     "material": "ejector pin witness placeholder",
     "obj": "mechanical/e1-phone/out/mold_ejector_pin_8.obj",
     "stl": "mechanical/e1-phone/out/mold_ejector_pin_8.stl",
-    "bounds_mm": [
-      [
-        29.0,
-        -61.0,
-        -9.9
-      ],
-      [
-        31.0,
-        -59.0,
-        -7.9
-      ]
-    ]
+    "bounds_mm": [[29.0, -61.0, -9.9], [31.0, -59.0, -7.9]]
   },
   {
     "name": "mold_cooling_channel_1",
@@ -442,18 +189,7 @@
     "material": "straight cooling channel placeholder",
     "obj": "mechanical/e1-phone/out/mold_cooling_channel_1.obj",
     "stl": "mechanical/e1-phone/out/mold_cooling_channel_1.stl",
-    "bounds_mm": [
-      [
-        -2.0,
-        -99.8,
-        -20.9
-      ],
-      [
-        2.0,
-        -5.8,
-        -16.9
-      ]
-    ]
+    "bounds_mm": [[-2.0, -99.8, -20.9], [2.0, -5.8, -16.9]]
   },
   {
     "name": "mold_cooling_channel_2",
@@ -461,18 +197,7 @@
     "material": "straight cooling channel placeholder",
     "obj": "mechanical/e1-phone/out/mold_cooling_channel_2.obj",
     "stl": "mechanical/e1-phone/out/mold_cooling_channel_2.stl",
-    "bounds_mm": [
-      [
-        -2.0,
-        -47.0,
-        -20.9
-      ],
-      [
-        2.0,
-        47.0,
-        -16.9
-      ]
-    ]
+    "bounds_mm": [[-2.0, -47.0, -20.9], [2.0, 47.0, -16.9]]
   },
   {
     "name": "mold_cooling_channel_3",
@@ -480,17 +205,6 @@
     "material": "straight cooling channel placeholder",
     "obj": "mechanical/e1-phone/out/mold_cooling_channel_3.obj",
     "stl": "mechanical/e1-phone/out/mold_cooling_channel_3.stl",
-    "bounds_mm": [
-      [
-        -2.0,
-        5.8,
-        -20.9
-      ],
-      [
-        2.0,
-        99.8,
-        -16.9
-      ]
-    ]
+    "bounds_mm": [[-2.0, 5.8, -20.9], [2.0, 99.8, -16.9]]
   }
 ]

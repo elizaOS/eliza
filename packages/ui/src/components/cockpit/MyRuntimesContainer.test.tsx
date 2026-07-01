@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => ({
   addAgentProfile: vi.fn(),
   // The container only reads `ok` + `reason`; type the mock to the subset it
   // consumes so both success and the untrusted-remote case are assignable.
-  switchRuntimeNonDestructive: vi.fn(
-    (): { ok: boolean; reason?: string } => ({ ok: true }),
-  ),
+  switchRuntimeNonDestructive: vi.fn((): { ok: boolean; reason?: string } => ({
+    ok: true,
+  })),
   isTrustedRestoreApiBaseUrl: vi.fn(() => true),
   isStoreBuild: vi.fn(() => false),
   isAndroidCloudBuild: vi.fn(() => false),
