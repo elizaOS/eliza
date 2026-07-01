@@ -32,11 +32,18 @@ import { dbWrite } from "../../db/client";
 import type { CryptoPayment } from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import type { Bindings } from "../../types/cloud-worker-env";
+import { ValidationError } from "../api/cloud-worker-errors";
 import { PAYMENT_EXPIRATION_MS, validatePaymentAmount } from "../config/crypto";
 import { createCryptoCustomerId, createCryptoInvoiceId } from "../constants/invoice-ids";
 import { logger, redact } from "../utils/logger";
 import { type BnbPriceQuote, getBnbUsdQuote } from "./bnb-price-oracle";
 import { creditsService } from "./credits";
+import {
+  buildDirectWalletPayerProofMessage,
+  type DirectWalletPayerProofScheme,
+  payerProofSchemeForNetwork,
+  verifyDirectWalletPayerProof,
+} from "./direct-wallet-payer-proof";
 import { invoicesService } from "./invoices";
 
 export type DirectWalletNetwork = "base" | "bsc" | "solana";
@@ -458,6 +465,8 @@ function directMetadata(payment: CryptoPayment): {
   expectedTokenUnits: bigint;
   bonusCredits: number;
   slippageBps: number;
+  payerProofMessage: string;
+  payerProofScheme: DirectWalletPayerProofScheme;
 } {
   const metadata = metadataOf(payment);
   if (metadata.kind !== "direct_wallet_credit_purchase") {
@@ -495,6 +504,52 @@ function directMetadata(payment: CryptoPayment): {
     expectedTokenUnits: BigInt(String(metadata.expected_token_units ?? "0")),
     bonusCredits: Number(metadata.bonus_credits ?? 0),
     slippageBps: Number(metadata.slippage_bps ?? 0),
+    payerProofMessage: String(metadata.payer_proof_message ?? ""),
+    payerProofScheme:
+      metadata.payer_proof_scheme === "solana-ed25519"
+        ? "solana-ed25519"
+        : payerProofSchemeForNetwork(network),
+  };
+}
+
+async function verifyPayerProofOrThrow(
+  direct: ReturnType<typeof directMetadata>,
+  signature: string | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (
+    typeof direct.metadata.payer_proof_verified_at === "string" &&
+    typeof direct.metadata.payer_proof_address === "string"
+  ) {
+    if (
+      direct.metadata.payer_proof_address === normalizePayer(direct.network, direct.payerAddress) &&
+      direct.metadata.payer_proof_scheme === direct.payerProofScheme
+    ) {
+      return null;
+    }
+    throw new Error("Payer wallet proof metadata mismatch");
+  }
+  if (!direct.payerProofMessage) {
+    throw new Error("Payer wallet proof challenge missing");
+  }
+  if (!signature?.trim()) {
+    throw ValidationError("Payer wallet signature required");
+  }
+
+  const valid = await verifyDirectWalletPayerProof({
+    network: direct.network,
+    payerAddress: direct.payerAddress,
+    message: direct.payerProofMessage,
+    signature: signature.trim(),
+  });
+  if (!valid) {
+    throw ValidationError("Invalid payer wallet signature");
+  }
+
+  return {
+    payer_proof_verified_at: new Date().toISOString(),
+    payer_proof_address: normalizePayer(direct.network, direct.payerAddress),
+    payer_proof_scheme: direct.payerProofScheme,
+    payer_proof_signature: signature.trim(),
   };
 }
 
@@ -925,6 +980,21 @@ export class DirectWalletPaymentsService {
       return created;
     });
 
+    const payerProofMessage = buildDirectWalletPayerProofMessage({
+      paymentId: payment.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      network: params.network,
+      payerAddress: params.payerAddress,
+      receiveAddress: cfg.receiveAddress ?? "",
+      tokenSymbol: selectedToken.symbol,
+      tokenAddress: selectedToken.tokenAddress ?? null,
+      tokenMint: selectedToken.tokenMint ?? null,
+      expectedTokenUnits,
+      expiresAt: payment.expires_at,
+    });
+    const payerProofScheme = payerProofSchemeForNetwork(params.network);
+
     const { signature: quoteSignature, canonicalInput: quoteCanonicalInput } = await signQuote(
       env,
       {
@@ -945,6 +1015,9 @@ export class DirectWalletPaymentsService {
         metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify({
           quote_signature: quoteSignature,
           quote_canonical_input: quoteCanonicalInput,
+          payer_proof_message: payerProofMessage,
+          payer_proof_scheme: payerProofScheme,
+          payer_proof_required: true,
         })}::jsonb`,
         updated_at: new Date(),
       })
@@ -969,6 +1042,8 @@ export class DirectWalletPaymentsService {
         expiresAt: payment.expires_at.toISOString(),
         quoteSignature,
         quoteCanonicalInput,
+        payerProofMessage,
+        payerProofScheme,
       },
     };
   }
@@ -983,7 +1058,12 @@ export class DirectWalletPaymentsService {
    * Idempotent: a second call with the same hash is a no-op. A different
    * hash on an already-attached payment errors.
    */
-  async attachTransaction(params: { paymentId: string; txHash: string; userId: string }): Promise<{
+  async attachTransaction(params: {
+    paymentId: string;
+    txHash: string;
+    userId: string;
+    payerSignature?: string;
+  }): Promise<{
     payment: CryptoPayment;
     alreadyAttached: boolean;
   }> {
@@ -1011,6 +1091,8 @@ export class DirectWalletPaymentsService {
       if (payment.status !== "pending") {
         throw new Error(`Cannot attach tx to payment in status ${payment.status}`);
       }
+      const direct = directMetadata(payment);
+      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature);
 
       // Guard against the same tx being attached to two different payments.
       const existingTx = await tx
@@ -1027,6 +1109,11 @@ export class DirectWalletPaymentsService {
         .set({
           transaction_hash: params.txHash,
           status: "broadcast",
+          ...(payerProofPatch && {
+            metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify(
+              payerProofPatch,
+            )}::jsonb`,
+          }),
           updated_at: new Date(),
         })
         .where(eq(cryptoPayments.id, payment.id))
@@ -1098,6 +1185,7 @@ export class DirectWalletPaymentsService {
       // the user-facing expiry. The on-chain tx is real money — refusing to
       // credit it because of a clock-side timeout would orphan a paid sale.
       allowExpired?: boolean;
+      payerSignature?: string;
     },
   ) {
     const result = await dbWrite.transaction(async (tx) => {
@@ -1160,6 +1248,8 @@ export class DirectWalletPaymentsService {
       if (!sigOk) {
         throw new Error("Quote signature mismatch — payment may have been tampered with.");
       }
+
+      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature);
 
       const existingTx = await tx
         .select()
@@ -1230,6 +1320,7 @@ export class DirectWalletPaymentsService {
           updated_at: confirmedAt,
           metadata: {
             ...metadataOf(payment),
+            ...(payerProofPatch ?? {}),
             confirmed_at: confirmedAt.toISOString(),
             received_token_units: verification.receivedUnits.toString(),
             sweep,

@@ -30,6 +30,7 @@ import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
 import {
   sendTransaction,
+  signMessage,
   waitForTransactionReceipt,
   writeContract,
 } from "wagmi/actions";
@@ -71,6 +72,8 @@ interface DirectPaymentResponse {
     amountToken: string;
     creditsToAdd: string;
     bonusCredits: number;
+    payerProofMessage: string;
+    payerProofScheme: "evm-personal-sign" | "solana-ed25519";
   };
 }
 
@@ -83,6 +86,15 @@ const NETWORK_LABELS: Record<DirectNetwork, string> = {
 function formatAddress(value: string | null | undefined) {
   if (!value) return "";
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 }
 
 async function createDirectPayment(params: {
@@ -101,10 +113,11 @@ async function createDirectPayment(params: {
 async function confirmDirectPayment(
   paymentId: string,
   transactionHash: string,
+  payerSignature: string,
 ) {
   return api(`/api/crypto/direct-payments/${paymentId}/confirm`, {
     method: "POST",
-    json: { transactionHash },
+    json: { transactionHash, payerSignature },
   });
 }
 
@@ -116,11 +129,12 @@ async function confirmDirectPayment(
 async function attachDirectPaymentTx(
   paymentId: string,
   transactionHash: string,
+  payerSignature: string,
 ): Promise<void> {
   try {
     await apiFetch(`/api/crypto/direct-payments/${paymentId}/attach-tx`, {
       method: "POST",
-      json: { transactionHash },
+      json: { transactionHash, payerSignature },
     });
   } catch (error) {
     console.warn("[direct-crypto] attach-tx failed", error);
@@ -312,6 +326,34 @@ export function DirectCryptoCreditCard({
     return await solana.sendTransaction(tx, connection);
   }
 
+  async function signPayerProof(
+    payment: DirectPaymentResponse,
+    paymentNetwork: DirectNetwork,
+  ): Promise<string> {
+    const message = payment.instructions.payerProofMessage?.trim();
+    if (!message) {
+      throw new Error("Payment is missing its wallet proof challenge");
+    }
+
+    if (paymentNetwork === "solana") {
+      if (!solana.publicKey || !solana.signMessage) {
+        throw new Error(
+          "Your Solana wallet must support message signing to pay this way",
+        );
+      }
+      const signature = await solana.signMessage(
+        new TextEncoder().encode(message),
+      );
+      return bytesToBase64(signature);
+    }
+
+    if (!evm.address) throw new Error("Connect your EVM wallet first");
+    return await signMessage(wagmiConfig, {
+      account: evm.address,
+      message,
+    });
+  }
+
   async function handlePay() {
     if (!amount || !selected) return;
     if (!connectedAddress) {
@@ -332,7 +374,7 @@ export function DirectCryptoCreditCard({
         promoCode,
       });
 
-      // Persist BEFORE asking the wallet to sign — if the user reloads while the
+      // Persist BEFORE asking the wallet to sign — if the user reloads while a
       // wallet popup is open, we'll resume the wait once they return.
       pendingPaymentStore.save({
         paymentId: payment.paymentId,
@@ -341,6 +383,7 @@ export function DirectCryptoCreditCard({
         createdAt: Date.now(),
       });
 
+      const payerSignature = await signPayerProof(payment, selected.network);
       const hash =
         selected.network === "solana"
           ? await sendSolanaPayment(payment)
@@ -357,10 +400,10 @@ export function DirectCryptoCreditCard({
         createdAt: Date.now(),
       });
       setActivePaymentId(payment.paymentId);
-      void attachDirectPaymentTx(payment.paymentId, hash);
+      void attachDirectPaymentTx(payment.paymentId, hash, payerSignature);
 
       try {
-        await confirmDirectPayment(payment.paymentId, hash);
+        await confirmDirectPayment(payment.paymentId, hash, payerSignature);
       } catch (confirmError) {
         console.warn(
           "[direct-crypto] inline confirm failed; relying on cron",

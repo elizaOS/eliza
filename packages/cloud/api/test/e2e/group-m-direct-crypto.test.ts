@@ -168,6 +168,8 @@ describe("/api/crypto/direct-payments", () => {
         receiveAddress?: string;
         creditsToAdd?: string;
         bonusCredits?: number;
+        payerProofMessage?: string;
+        payerProofScheme?: string;
       };
     };
     expect(created.paymentId).toBeTruthy();
@@ -181,10 +183,17 @@ describe("/api/crypto/direct-payments", () => {
       bonusCredits: 0,
     });
     expect(created.instructions?.receiveAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(created.instructions?.payerProofScheme).toBe("evm-personal-sign");
+    expect(created.instructions?.payerProofMessage).toContain(
+      `Payment ID: ${created.paymentId}`,
+    );
+    expect(created.instructions?.payerProofMessage).toContain(
+      `Payer address: ${payerAddress.toLowerCase()}`,
+    );
 
     const confirmRes = await api.post(
       `/api/crypto/direct-payments/${created.paymentId}/confirm`,
-      { transactionHash: "not-a-tx" },
+      { transactionHash: "not-a-tx", payerSignature: "0x00" },
       {
         headers: { Cookie: sessionCookie, "Content-Type": "application/json" },
       },

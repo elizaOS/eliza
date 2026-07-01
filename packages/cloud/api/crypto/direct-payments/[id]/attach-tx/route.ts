@@ -34,6 +34,7 @@ const bodySchema = z.object({
       (h) => evmTxHashRegex.test(h) || solanaTxHashRegex.test(h),
       "Invalid transaction hash for EVM or Solana network",
     ),
+  payerSignature: z.string().min(1),
 });
 
 const app = new Hono<AppEnv>();
@@ -58,6 +59,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       paymentId: id,
       txHash: parsed.data.transactionHash,
       userId: user.id,
+      payerSignature: parsed.data.payerSignature,
     });
 
     return c.json({
