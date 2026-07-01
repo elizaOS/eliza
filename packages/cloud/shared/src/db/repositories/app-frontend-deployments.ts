@@ -16,11 +16,22 @@ import {
   type FrontendManifest,
 } from "../schemas/app-frontend-deployments";
 
+/** True when an error is a unique-violation on the (app_id, version) index. */
+function isVersionRaceConflict(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  const cause = (error as { cause?: { code?: string } })?.cause?.code;
+  if (code === "23505" || cause === "23505") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /app_frontend_deployments_app_version_idx|duplicate key value/i.test(message);
+}
+
 export class AppFrontendDeploymentsRepository {
   /**
-   * Create a new `pending` deployment. Version is assigned atomically as
-   * max(version)+1 within the write transaction; the (app_id, version) unique
-   * index is the race backstop.
+   * Create a new `pending` deployment. Version is assigned as max(version)+1
+   * within the write transaction; the (app_id, version) unique index is the
+   * race backstop. A concurrent create that loses the version race hits that
+   * index — re-read + retry a bounded number of times so it surfaces as a fresh
+   * version rather than a raw 500.
    */
   async create(input: {
     appId: string;
@@ -28,25 +39,32 @@ export class AppFrontendDeploymentsRepository {
     createdByUserId?: string | null;
     buildMeta?: FrontendBuildMeta;
   }): Promise<AppFrontendDeployment> {
-    return await dbWrite.transaction(async (tx) => {
-      const [maxRow] = await tx
-        .select({ maxVersion: max(appFrontendDeployments.version) })
-        .from(appFrontendDeployments)
-        .where(eq(appFrontendDeployments.app_id, input.appId));
-      const version = (maxRow?.maxVersion ?? 0) + 1;
-      const [row] = await tx
-        .insert(appFrontendDeployments)
-        .values({
-          app_id: input.appId,
-          version,
-          status: "pending",
-          r2_prefix: input.r2Prefix,
-          created_by_user_id: input.createdByUserId ?? null,
-          build_meta: input.buildMeta ?? {},
-        })
-        .returning();
-      return row;
-    });
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await dbWrite.transaction(async (tx) => {
+          const [maxRow] = await tx
+            .select({ maxVersion: max(appFrontendDeployments.version) })
+            .from(appFrontendDeployments)
+            .where(eq(appFrontendDeployments.app_id, input.appId));
+          const version = (maxRow?.maxVersion ?? 0) + 1;
+          const [row] = await tx
+            .insert(appFrontendDeployments)
+            .values({
+              app_id: input.appId,
+              version,
+              status: "pending",
+              r2_prefix: input.r2Prefix,
+              created_by_user_id: input.createdByUserId ?? null,
+              build_meta: input.buildMeta ?? {},
+            })
+            .returning();
+          return row;
+        });
+      } catch (error) {
+        if (attempt >= MAX_ATTEMPTS || !isVersionRaceConflict(error)) throw error;
+      }
+    }
   }
 
   async getById(id: string): Promise<AppFrontendDeployment | undefined> {
