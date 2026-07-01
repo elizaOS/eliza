@@ -29,6 +29,7 @@ import {
   writeLauncherLayout,
 } from "../../state/launcher-layout";
 import { emitViewInteraction } from "../../view-telemetry";
+import { PagerEdgeButtons } from "../shell/PagerEdgeButtons";
 import { ViewTileImage } from "../views/ViewTileImage";
 
 export interface LauncherProps {
@@ -612,6 +613,21 @@ export function Launcher({
             )}
           </div>
         </div>
+
+        {/* Web/desktop `< >` edge buttons (hidden on touch, and while editing so
+            they never fight the reorder gesture). Self-hide at the first/last
+            page via canPrev/canNext. */}
+        {!editing ? (
+          <PagerEdgeButtons
+            idPrefix="launcher"
+            canPrev={pager.canPrev}
+            canNext={pager.canNext}
+            goPrev={pager.goPrev}
+            goNext={pager.goNext}
+            prevLabel="Previous page"
+            nextLabel="Next page"
+          />
+        ) : null}
 
         {/* Page dots — rendered only for STANDALONE usage. When nested in the
             home/launcher rail, `showPageDots` is false and the rail owns the
