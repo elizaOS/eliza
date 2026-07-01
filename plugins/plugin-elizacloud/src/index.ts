@@ -11,6 +11,7 @@ import {
   handleActionPlanner,
   handleImageDescription,
   handleImageGeneration,
+  handleAudioGeneration,
   handleResearch,
   handleResponseHandler,
   handleBatchTextEmbedding,
@@ -21,6 +22,7 @@ import {
   handleTextNano,
   handleTextSmall,
   handleTextToSpeech,
+  handleVideoGeneration,
 } from "./models";
 // Cloud services
 import { CloudAuthService } from "./services/cloud-auth";
@@ -236,6 +238,8 @@ export const elizaOSCloudPlugin: Plugin = {
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
     [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
+    [ModelType.AUDIO]: handleAudioGeneration,
+    [ModelType.VIDEO]: handleVideoGeneration,
   },
 
   tests: [
