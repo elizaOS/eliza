@@ -609,3 +609,36 @@ On closer reading, part of the fresh-sweep backlog is NOT actionable-as-larp:
 Discipline applied throughout: nothing red or unverified was shipped. Every test
 committed this pass was proven to fail without its fix, and infra changes were only
 made where the resulting lane was verified green locally.
+
+## 9. Phase 5 — QA-tester UI coverage campaign (looping) + backlog resolution
+
+Resuming the loop against the remaining backlog, prioritizing the fully-local,
+verifiable UI gaps ("especially ui") and the surmountable infra items.
+
+**Shipped:**
+- **7 zero-coverage security-sensitive UI surfaces → 91 real behavioral tests**
+  (batch 1): CustomActionEditor (21), useBackgroundApplyChannel (10), GameViewOverlay
+  postMessage-auth (7), ConnectionRecoveryBanners (18), shell-mode/kiosk,
+  RelationshipsCandidateMergesPanel (double-merge safety), LogsView. Each drives the
+  real component (only the API/store/transport boundary mocked), covers adversarial
+  input + rapid-fire idempotency, and was adversarially larp-reviewed (all
+  verdict=real, each names a concrete regression it catches). The weak
+  empty-history-undo case flagged by review was strengthened.
+- **examples de-larp:** vercel `test` was a failure-swallowing (`|| echo`) endpoint
+  client → real in-process edge-handler suite (surfaced + fixed a 500-on-malformed-JSON
+  bug → 400); discord `passWithNoTests` → real character-contract test.
+- A further batch (settings/chat surfaces: RemotePluginHostSection, SecuritySettingsSection,
+  ConnectorsSection, RuntimeView, chat-composer, chat-message-actions,
+  RelationshipsWorkspaceView, VoiceSection) is in progress.
+
+**Backlog re-triaged after attempting:**
+- **Confirmed environment-gated (cannot verify green here):** local Postgres (no
+  `postgres` binary; the 442 PGlite plugin-sql tests already run, Postgres self-skips
+  and gains coverage under a CI Postgres service); per-plugin harness lane
+  (`plugin-goals` fails resolving `@elizaos/registry/first-party/*.json` through the
+  `@elizaos/shared` chain in its vitest setup — the registry package's exports map +
+  files are correct, so it's a plugin-local resolution/config issue, not a registry bug).
+- **Scale:** the 12 checklists enumerate ~2,000 GAP-tagged items; the UI batches are
+  chipping the highest-risk surfaces first (security/auth/identity-graph/destructive
+  actions), then the data/content views (memory, trajectories, plugins, database,
+  skills, transcripts, background).
