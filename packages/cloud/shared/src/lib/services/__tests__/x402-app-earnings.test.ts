@@ -67,6 +67,7 @@ const whereMock = mock();
 const setMock = mock(() => ({ where: whereMock }));
 const updateMock = mock(() => ({ set: setMock }));
 mock.module("../../../db/helpers", () => ({
+  dbRead: {},
   dbWrite: { update: updateMock },
 }));
 

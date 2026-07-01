@@ -82,6 +82,10 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   },
 }));
 
+mock.module("@/lib/security/safe-fetch", () => ({
+  safeFetch: webhookFetch,
+}));
+
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: mock(() => undefined),
@@ -103,7 +107,6 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     shutdownSandbox.mockClear();
     sendContainerShutdownWarningEmail.mockClear();
     webhookFetch.mockClear();
-    globalThis.fetch = webhookFetch as unknown as typeof fetch;
     listBillableSandboxes.mockImplementation(async () => ({
       runningSandboxes: [runningSandbox],
       stoppedWithBackups: [],

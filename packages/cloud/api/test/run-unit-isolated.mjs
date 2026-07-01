@@ -15,7 +15,7 @@
  * between concurrent bun processes. The unit suite is small; correctness first.
  *
  * Usage:
- *   node test/run-unit-isolated.mjs            # every test file under __tests__
+ *   node test/run-unit-isolated.mjs            # every unit test file in this package
  *   node test/run-unit-isolated.mjs <substr>   # only files whose path matches
  */
 import { spawnSync } from "node:child_process";
