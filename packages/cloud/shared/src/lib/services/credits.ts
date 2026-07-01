@@ -192,7 +192,9 @@ function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
  */
 export class CreditsService {
   private async applyCreditIncrease(
-    params: AddCreditsParams & { transactionType: "credit" | "refund" },
+    params: AddCreditsParams & {
+      transactionType: "credit" | "refund" | "clawback";
+    },
   ): Promise<{
     transaction: CreditTransaction;
     newBalance: number;
@@ -815,6 +817,61 @@ export class CreditsService {
       });
       return result;
     });
+  }
+
+  /**
+   * Claw back credits after a Stripe refund / chargeback (#10920). Decrements the
+   * balance by `amount` USD, ALLOWING it to go negative — the org was refunded
+   * (or lost a dispute for) credits it may already have spent, so it genuinely
+   * owes the difference; flooring at zero would silently forgive the retained
+   * value. Idempotent on `stripePaymentIntentId` (key it on the refund/dispute so
+   * a re-delivered webhook doesn't double-claw). Records a negative `clawback`
+   * transaction.
+   */
+  async clawbackCredits(params: {
+    organizationId: string;
+    amount: number;
+    description: string;
+    stripePaymentIntentId: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ transaction: CreditTransaction; newBalance: number }> {
+    if (params.amount <= 0) {
+      throw new Error("Clawback amount must be positive");
+    }
+
+    const result = await this.applyCreditIncrease({
+      organizationId: params.organizationId,
+      // Negative → the shared path decrements the balance (with no zero floor)
+      // and writes a negative-amount transaction.
+      amount: -params.amount,
+      description: params.description,
+      metadata: params.metadata,
+      stripePaymentIntentId: params.stripePaymentIntentId,
+      transactionType: "clawback",
+    });
+    invalidateOrganizationCache(params.organizationId).catch((error) => {
+      logger.error("[CreditsService] Failed to invalidate org cache:", error);
+    });
+    return result;
+  }
+
+  /**
+   * Total USD already clawed back for a Stripe payment intent (sum of prior
+   * `clawback` debits tagged with it). Lets the refund handler claw back only the
+   * DELTA of a cumulative `amount_refunded` across multiple partial refunds
+   * without double-charging. (#10920)
+   */
+  async getClawedBackUsdForPaymentIntent(paymentIntentId: string): Promise<number> {
+    const rows = await sqlRows<{ total: string | number | null }>(
+      dbWrite,
+      sql`
+        SELECT COALESCE(SUM(-amount), 0) AS total
+        FROM credit_transactions
+        WHERE type = 'clawback'
+          AND metadata->>'payment_intent_id' = ${paymentIntentId}
+      `,
+    );
+    return parseNumeric(rows[0]?.total ?? 0, "clawed_back_total");
   }
 
   /**
