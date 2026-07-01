@@ -111,7 +111,7 @@ function ParticipantRow({
         />
         {isSubAgent ? (
           <span
-            className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-bg ${
+            className={`absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full border border-bg ${
               live ? "bg-ok" : "bg-muted/40"
             }`}
             role="img"
