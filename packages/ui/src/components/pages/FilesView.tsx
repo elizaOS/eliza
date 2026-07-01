@@ -183,7 +183,6 @@ function FileShareButton({
       type="button"
       variant="outline"
       size="sm"
-      className="rounded-sm"
       data-testid="file-share"
       aria-label={t("filesview.shareFile", {
         name: file.fileName,
@@ -247,7 +246,7 @@ const FileCard = memo(function FileCard({
 
   return (
     <li
-      className="flex flex-col gap-3 rounded-sm p-3"
+      className="flex flex-col gap-3 p-3"
       data-testid="file-card"
       data-file-name={file.fileName}
       data-file-kind={kind}
@@ -291,7 +290,6 @@ const FileCard = memo(function FileCard({
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-sm"
           data-testid="file-download"
           aria-label={t("filesview.downloadFile", {
             name: file.fileName,
@@ -316,7 +314,7 @@ const FileCard = memo(function FileCard({
           type="button"
           variant="surfaceDestructive"
           size="sm"
-          className="ml-auto rounded-sm"
+          className="ml-auto"
           data-testid="file-delete"
           disabled={deleting}
           aria-label={t("filesview.deleteFile", {
