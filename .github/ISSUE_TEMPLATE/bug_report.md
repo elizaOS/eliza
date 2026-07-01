@@ -32,8 +32,8 @@ Attach proof that lets a maintainer reproduce and inspect the real failure:
 - [ ] Domain artifacts when relevant (DB rows, memories, scheduled tasks, generated files, wallet/on-chain output).
 
 Store large or durable artifacts under
-`.github/issue-evidence/<issue#>-<short-slug>.<ext>`. If an item is unavailable,
-write `N/A - <reason>`.
+`.github/issue-evidence/<issue#>-<slug>.<ext>`. If an item is unavailable, keep
+the row visible and write `N/A - <reason>`.
 
 **Additional context**
 

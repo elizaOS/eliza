@@ -2,7 +2,7 @@
  * Media Provider Abstraction Layer
  *
  * Provides a single interface for media generation across multiple providers:
- * - Image Generation: FAL.ai, OpenAI (DALL-E), Google (Imagen), xAI, Eliza Cloud
+ * - Image Generation: FAL.ai, OpenAI (DALL-E), Google (Imagen), xAI
  * - Video Generation: FAL.ai, OpenAI (Sora), Google (Veo), Eliza Cloud
  * - Audio Generation: Suno, ElevenLabs (SFX), Eliza Cloud
  * - Vision (Analysis): OpenAI, Google, Anthropic, xAI, Eliza Cloud
@@ -297,57 +297,6 @@ export interface VisionAnalysisProvider {
 // ============================================================================
 // Eliza Cloud Provider Implementations
 // ============================================================================
-
-class ElizaCloudImageProvider implements ImageGenerationProvider {
-  name = "eliza-cloud";
-  private baseUrl: string;
-  private apiKey?: string;
-
-  constructor(baseUrl: string, apiKey?: string) {
-    this.baseUrl = baseUrl;
-    this.apiKey = apiKey;
-  }
-
-  async generate(
-    options: ImageGenerationOptions,
-  ): Promise<MediaProviderResult<ImageGenerationResult>> {
-    const response = await fetchWithTimeout(
-      `${this.baseUrl}/media/image/generate`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          prompt: options.prompt,
-          size: options.size,
-          quality: options.quality,
-          style: options.style,
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const text = await response.text();
-      return { success: false, error: `Eliza Cloud error: ${text}` };
-    }
-
-    const data = (await response.json()) as {
-      imageUrl?: string;
-      imageBase64?: string;
-      revisedPrompt?: string;
-    };
-    return {
-      success: true,
-      data: {
-        imageUrl: data.imageUrl,
-        imageBase64: data.imageBase64,
-        revisedPrompt: data.revisedPrompt,
-      },
-    };
-  }
-}
 
 class ElizaCloudVideoProvider implements VideoGenerationProvider {
   name = "eliza-cloud";
@@ -1879,7 +1828,8 @@ export function createImageProvider(
   config: ImageConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): ImageGenerationProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
   const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
 
   switch (provider) {
@@ -1911,9 +1861,9 @@ export function createImageProvider(
         "Configure a direct provider (fal, openai, google, xai) or enable cloud media.",
     );
   }
-  return new ElizaCloudImageProvider(
-    options.elizaCloudBaseUrl ?? "https://elizacloud.ai/api/v1",
-    options.elizaCloudApiKey,
+  throw new Error(
+    "Cloud image generation is handled by the registered ModelType.IMAGE model. " +
+      "Enable @elizaos/plugin-elizacloud with ELIZAOS_CLOUD_API_KEY, or configure a direct provider (fal, openai, google, xai).",
   );
 }
 
@@ -1921,7 +1871,8 @@ export function createVideoProvider(
   config: VideoConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): VideoGenerationProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
   const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
 
   switch (provider) {
@@ -2101,7 +2052,8 @@ export function createVisionProvider(
   config: VisionConfig | undefined,
   options: MediaProviderFactoryOptions,
 ): VisionAnalysisProvider {
-  const mode = config?.mode ?? (options.cloudMediaDisabled ? "local" : "cloud");
+  const mode =
+    config?.mode ?? (options.cloudMediaDisabled ? "own-key" : "cloud");
   const provider = mode === "cloud" ? "cloud" : (config?.provider ?? "cloud");
 
   switch (provider) {
