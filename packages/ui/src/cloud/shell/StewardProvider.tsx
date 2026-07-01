@@ -162,7 +162,7 @@ export function StewardAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Suspense fallback={children}>
+    <Suspense fallback={null}>
       <StewardAuthRuntimeProvider apiUrl={apiUrl} tenantId={tenantId}>
         {children}
       </StewardAuthRuntimeProvider>

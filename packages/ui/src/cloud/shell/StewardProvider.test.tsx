@@ -58,6 +58,7 @@ describe("StewardAuthProvider", () => {
 
     renderAt("/app-auth/authorize?app_id=app_123");
 
+    expect(screen.queryByTestId("protected-child")).toBeNull();
     expect(await screen.findByTestId("steward-runtime")).toBeTruthy();
     expect(screen.getByTestId("protected-child")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
