@@ -257,6 +257,46 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
     expect(prompt).toContain("completion-evidence.jsonl");
   });
 
+  it("does NOT label a URL merely mentioned in prose as verified", async () => {
+    const acp = new BundleFakeAcp(workdir);
+    const prompts: string[] = [];
+    const service = new OrchestratorTaskService(
+      runtime(acp, async (_modelType, params) => {
+        prompts.push((params as { prompt: string }).prompt);
+        return '{"passed": false, "summary": "unverified", "missing": ["live"]}';
+      }),
+      { store: new OrchestratorTaskStore({ backend: "memory" }) },
+    );
+    await service.start();
+
+    const task = await service.createTask({
+      title: "Ship the landing page",
+      goal: "Build and deploy the landing page",
+      acceptanceCriteria: ["the live URL returns HTTP 200"],
+    });
+    const detail = await service.spawnAgentForTask(task.id);
+    const sessionId = detail?.sessions[0]?.sessionId;
+    if (!sessionId) throw new Error("expected a spawned session");
+
+    // A sub-agent that CLAIMS a deploy in prose — no router URL probe ran, so
+    // `subAgentVerifiedUrls` metadata is absent.
+    acp.emit(sessionId, "task_complete", {
+      response:
+        "Done — deployed to https://claimed-but-not-probed.example.com/",
+    });
+    await flush();
+    await flush();
+
+    expect(prompts).toHaveLength(1);
+    const [prompt] = prompts;
+    // The URL is surfaced, but explicitly as an unproven claim...
+    expect(prompt).toContain("## CLAIMED URLS");
+    expect(prompt).toContain("NOT probe-verified");
+    expect(prompt).toContain("https://claimed-but-not-probed.example.com/");
+    // ...and NEVER under the probe-verified header.
+    expect(prompt).not.toContain("## VERIFIED URLS");
+  });
+
   it("writes the bundle as a JSONL line and records its path on a task event", async () => {
     const acp = new BundleFakeAcp(workdir);
     const service = new OrchestratorTaskService(

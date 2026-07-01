@@ -994,8 +994,11 @@ export class OrchestratorTaskService extends Service {
    *    and `mirrorChangeSetToStore` use, rendered with {@link renderChangeSetBody};
    *  - `toolOutput` — test/build/lint stdout mined from recorded `tool_running`
    *    events (and sub-agent messages) and classified by {@link classifyToolOutput};
-   *  - `verifiedUrls` — URLs probed at completion (session/task `subAgentVerifiedUrls`
-   *    metadata plus URLs mined from the summary and sub-agent replies);
+   *  - `verifiedUrls` — ONLY URLs the router actually probed at completion
+   *    (session/task `subAgentVerifiedUrls` metadata); URLs merely mentioned in
+   *    the summary / sub-agent replies go to `mentionedUrls`, rendered as an
+   *    explicitly-unverified claim so a written "deployed to https://…" cannot
+   *    masquerade as a probe-verified deploy;
    *  - `screenshots` — screenshot artifact paths on the task/session.
    *
    * Pure with respect to throwing: returns at least the summary on any error.
@@ -1055,11 +1058,20 @@ export class OrchestratorTaskService extends Service {
     ];
     const toolOutput = classifyToolOutput(toolSignals);
 
+    // ONLY router-probed URLs are "verified". URLs merely mined from the
+    // sub-agent's prose are claims, not proof, and must not be labelled verified
+    // to the judge (a sub-agent could otherwise pass by writing "deployed to
+    // https://…"). They are surfaced separately as `mentionedUrls`.
     const verifiedUrls = [
-      ...new Set([
-        ...this.metadataVerifiedUrls(doc, sessionId),
-        ...collectUrls([summary, ...subAgentReplies]),
-      ]),
+      ...new Set(this.metadataVerifiedUrls(doc, sessionId)),
+    ];
+    const verifiedSet = new Set(verifiedUrls);
+    const mentionedUrls = [
+      ...new Set(
+        collectUrls([summary, ...subAgentReplies]).filter(
+          (url) => !verifiedSet.has(url),
+        ),
+      ),
     ];
 
     const screenshots = this.collectArtifactRefs(doc, sessionId).flatMap(
@@ -1071,6 +1083,7 @@ export class OrchestratorTaskService extends Service {
       diffSummary,
       toolOutput,
       verifiedUrls,
+      mentionedUrls,
       screenshots: [...new Set(screenshots)],
     };
   }
