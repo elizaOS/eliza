@@ -143,20 +143,26 @@ jobs:
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          # http.version=HTTP/1.1: with 3 deploy jobs (+ CodeQL) fetching this
+          # large repo concurrently on one loaded box, HTTP/2 fetches die with
+          # `RPC failed; curl 92 ... stream was not closed cleanly: CANCEL` /
+          # `early EOF` / `fetch-pack: invalid index-pack output` (observed run
+          # 28544777730, both attempts). HTTP/1.1 avoids the h2 stream-reset
+          # path entirely at negligible cost for a single-stream shallow fetch.
           fetched=
-          for attempt in 1 2; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+          for attempt in 1 2 3; do
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            if [ "$attempt" -lt 2 ]; then
+            if [ "$attempt" -lt 3 ]; then
               rm -rf "$CHECKOUT_DIR"
               sleep 10
               init_checkout_dir
             fi
           done
-          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 3 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
           # tree a second time, doubling the slowest part on this large repo. Keep
@@ -407,24 +413,28 @@ jobs:
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          # http.version=HTTP/1.1: concurrent fetches of this large repo on the
+          # loaded box die under HTTP/2 (`curl 92 ... CANCEL` / `early EOF` /
+          # `invalid index-pack output`, observed run 28544777730); HTTP/1.1
+          # avoids the h2 stream-reset path at negligible single-stream cost.
           fetched=
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             # Pages builds materialize packages/app + linked UI/core workspaces.
             # Blobless fetch pushes that cost into checkout as lazy hydration and
             # has repeatedly timed out on the deploy fleet, so use a normal
             # shallow fetch here.
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            if [ "$attempt" -lt 2 ]; then
+            if [ "$attempt" -lt 3 ]; then
               rm -rf "$CHECKOUT_DIR"
               sleep 10
               init_checkout_dir
             fi
           done
-          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 3 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
           # tree a second time, doubling the slowest part on this large repo. Keep
@@ -706,24 +716,28 @@ jobs:
           # Worker suite): a single shallow fetch can stall for minutes or wedge
           # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
+          # http.version=HTTP/1.1: concurrent fetches of this large repo on the
+          # loaded box die under HTTP/2 (`curl 92 ... CANCEL` / `early EOF` /
+          # `invalid index-pack output`, observed run 28544777730); HTTP/1.1
+          # avoids the h2 stream-reset path at negligible single-stream cost.
           fetched=
-          for attempt in 1 2; do
+          for attempt in 1 2 3; do
             # Pages builds materialize packages/app + linked UI/core workspaces.
             # Blobless fetch pushes that cost into checkout as lazy hydration and
             # has repeatedly timed out on the deploy fleet, so use a normal
             # shallow fetch here.
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
             echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            if [ "$attempt" -lt 2 ]; then
+            if [ "$attempt" -lt 3 ]; then
               rm -rf "$CHECKOUT_DIR"
               sleep 10
               init_checkout_dir
             fi
           done
-          [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
+          [ -n "$fetched" ] || { echo "::error::git fetch failed after 3 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
           # tree a second time, doubling the slowest part on this large repo. Keep
