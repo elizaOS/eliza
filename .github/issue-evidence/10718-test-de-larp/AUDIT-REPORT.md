@@ -657,3 +657,24 @@ wake-word master switch (`voice/useWakeController` — "the user's wake-word set
 left for a focused voice-subsystem change rather than a guessed persistence target.
 Tracked here so the VoiceSectionMount test asserts the REAL current behavior + the
 gap rather than pinning the bug.
+
+### 9b. Phase-5 UI coverage — cumulative (batches 1–5 shipped, 6 running)
+
+Every UI test below drives the REAL component (only API/store/transport mocked), covers
+adversarial input + rapid-fire idempotency, was adversarially larp-reviewed (verdict=real),
+and was independently re-run green before commit.
+
+| Batch | Surfaces | Tests | Notable real bugs / findings |
+| --- | --- | ---: | --- |
+| 1 | CustomActionEditor, useBackgroundApplyChannel, GameViewOverlay (postMessage auth), ConnectionRecoveryBanners, shell-mode/kiosk, RelationshipsCandidateMerges, LogsView | 91 | HomeWidgetCard hover no-op **(fixed)**; NotificationCenter mutations |
+| solo | DatabasePageView routing, SSRF block-path (web-fetch) | 16 | caught+fixed larp in my own SSRF test (throw-masked-blocked) |
+| 2 | RemotePluginHostSection, SecuritySettingsSection, ConnectorsSection, RuntimeView, chat-composer, chat-message-actions, RelationshipsWorkspaceView, VoiceSectionMount | 86 | **dead wake-word toggle in Settings** (§9a); fixed a test render-loop hang |
+| 3 | MemoryViewerView, TrajectoriesView, PluginsView, DatabaseView, SkillsView, TranscriptsPage, FilesView, BackgroundSettingsControls | 92 | no confirm-gate on destructive SQL |
+| 4 | AppsView, ElizaOsAppsView permission-gate (proves #10196), StreamView, CameraPageView, CharacterEditor, TaskEditor, AutomationsFeed, BrowserWorkspaceView | 79 | unguarded catalog-launch + run-now double-fire |
+| 5 | Identity/Appearance/AppsManagement/AppPermissions settings, PolicyControlsView, ReleaseCenterView, wallet-balance + todo widgets | 73 | no empty-name validation in IdentitySettings |
+| 6 | CompactOnboarding, LoginView, TutorialView, HelpView, workflow/music/messages/feed widgets | _running_ | — |
+
+**Total shipped: ~437 real UI behavioral tests** across ~47 previously zero/thin-coverage
+surfaces, each proven to fail on a concrete regression. The remaining checklist GAP items
+(the largest being home-shell variants, per-section provider panels, and connector detail
+panels) continue via the batch loop.
