@@ -55,6 +55,8 @@ interface AddEarningsResult {
   success: boolean;
   newBalance: number;
   ledgerEntryId: string;
+  /** True when an existing (source, sourceId) ledger entry was reused (dedupeBySourceId). */
+  deduplicated?: boolean;
   error?: string;
 }
 
@@ -333,6 +335,7 @@ class RedeemableEarningsService {
         success: true,
         newBalance: Number(result.earnings?.available_balance ?? 0),
         ledgerEntryId: result.ledgerEntryId,
+        deduplicated: true,
       };
     }
 
@@ -348,6 +351,7 @@ class RedeemableEarningsService {
       success: true,
       newBalance: Number(result.earnings.available_balance),
       ledgerEntryId: result.ledgerEntryId,
+      deduplicated: false,
     };
   }
 
