@@ -2,9 +2,11 @@
 
 PR: #10627
 
-Validated code commit: `daafb53fc0e3b309ee75a6feb02b7e8d2c3b1d78`
+Validated smoke-test code commit: `5a8687bd0b1487702fed6515c77c848269bd6197`
 
-The final PR head adds this evidence README only; the smoke-test code validated above is unchanged.
+Evidence README commit: `d07d444e03747a7733b2c9d32f48f4b7a5ecef6b`
+
+The final PR head adds this evidence README plus evidence-only corrections; the smoke-test code validated above is unchanged from `5a8687bd0b1487702fed6515c77c848269bd6197`.
 
 Scope:
 - Test-only update to `packages/app/test/ui-smoke/cloud-provisioning-startup.spec.ts`.
