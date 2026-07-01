@@ -158,7 +158,7 @@ jobs:
         # Only fires when an OVA was actually produced (the convert
         # step is gated on the format input).
         if: steps.ova.outputs.ova_path != ''
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
         with:
           subject-path: ${{ steps.ova.outputs.ova_path }}
 
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
           files: |
             elizaos-vm-*.ova

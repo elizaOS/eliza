@@ -26,6 +26,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -62,6 +63,7 @@ function parseArgs(argv) {
     skipReview: false,
     skipStitch: false,
     platform: "web",
+    viewerOnly: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -71,6 +73,7 @@ function parseArgs(argv) {
     else if (arg === "--skip-review") a.skipReview = true;
     else if (arg === "--skip-stitch") a.skipStitch = true;
     else if (arg === "--platform") a.platform = argv[++i];
+    else if (arg === "--viewer-only") a.viewerOnly = argv[++i];
   }
   return a;
 }
@@ -253,31 +256,198 @@ async function stitchViewport({ ffmpeg, runDir, viewport, outDir, font }) {
   };
 }
 
-function writeViewerHtml({ outDir, runId, lane, stitched, verdictMdPath }) {
+/** Per-frame dwell used by {@link stitchViewport}; keep in sync so the viewer's
+ * "jump to video" timestamps line up with the stitched MP4. */
+const STEP_DWELL_SECONDS = 2.6;
+
+function escHtml(value) {
+  return String(value).replace(
+    /[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+  );
+}
+
+function formatClock(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = Math.floor(totalSeconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Copy a viewport's steps.json, per-step screenshots, and logs into the viewer
+ * bundle so `outDir` is self-contained (portable evidence). */
+function copyViewportArtifacts(runDir, outDir, viewport) {
+  const src = join(runDir, viewport);
+  if (!existsSync(src)) return;
+  const dst = join(outDir, viewport);
+  mkdirSync(dst, { recursive: true });
+  for (const file of readdirSync(src)) {
+    if (/\.(png|json)$/.test(file))
+      copyFileSync(join(src, file), join(dst, file));
+  }
+  const logsSrc = join(src, "logs");
+  if (existsSync(logsSrc)) {
+    mkdirSync(join(dst, "logs"), { recursive: true });
+    for (const file of readdirSync(logsSrc)) {
+      copyFileSync(join(logsSrc, file), join(dst, "logs", file));
+    }
+  }
+}
+
+function readViewportSteps(runDir, viewport) {
+  const file = join(runDir, viewport, "steps.json");
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Render one step card: thumbnail, route, assertions, error badges, and a
+ * "jump to video" link at the step's timestamp in the stitched MP4. */
+function renderStepCard(step, viewport, frameIndex) {
+  const time = frameIndex * STEP_DWELL_SECONDS;
+  const consoleErrors = step.newConsoleErrors?.length ?? 0;
+  const serverErrors = step.newServerErrors?.length ?? 0;
+  const badge = (label, count) =>
+    count > 0
+      ? `<span class="bad">${label} ${count}</span>`
+      : `<span class="ok">${label} 0</span>`;
+  const thumb = step.screenshotRelPath
+    ? `<a href="${escHtml(step.screenshotRelPath)}" target="_blank"><img src="${escHtml(step.screenshotRelPath)}" loading="lazy" alt="${escHtml(step.id)}"></a>`
+    : '<div class="noshot">skipped</div>';
+  const assertions = (step.assertions ?? [])
+    .map((a) => `<li>${escHtml(a)}</li>`)
+    .join("");
+  return `
+      <article class="step${step.skipped ? " skipped" : ""}">
+        ${thumb}
+        <div class="meta">
+          <h3>${escHtml(step.n)} · ${escHtml(step.title)}</h3>
+          <p class="exp">${escHtml(step.expectation)}</p>
+          <p class="route"><code>${escHtml(step.url)}</code></p>
+          <p class="badges">
+            <a href="#" onclick="jump('vid-${viewport}', ${time.toFixed(2)}); return false;">▶ ${formatClock(time)}</a>
+            ${badge("console", consoleErrors)} ${badge("5xx", serverErrors)}
+            ${step.skipped ? `<span class="skip">skipped: ${escHtml(step.skipReason ?? "")}</span>` : ""}
+          </p>
+          ${assertions ? `<details><summary>${step.assertions.length} assertions</summary><ul>${assertions}</ul></details>` : ""}
+        </div>
+      </article>`;
+}
+
+function writeViewerHtml({
+  outDir,
+  runDir,
+  runId,
+  lane,
+  stitched,
+  verdictMdPath,
+}) {
   const sections = stitched
-    .map(
-      (s) => `
+    .map((s) => {
+      copyViewportArtifacts(runDir, outDir, s.viewport);
+      const report = readViewportSteps(runDir, s.viewport);
+      const gate = report?.gate;
+      const gateLine = gate
+        ? `gate ${gate.ok ? "✅" : "❌"} · page/console errors: ${gate.pageAndConsoleErrors ?? 0} · 5xx: ${gate.serverErrors ?? 0}`
+        : "gate: (no steps.json)";
+      let frameIndex = 0;
+      const cards = (report?.steps ?? [])
+        .map((step) => {
+          const card = renderStepCard(step, s.viewport, frameIndex);
+          if (step.screenshotRelPath) frameIndex += 1;
+          return card;
+        })
+        .join("\n");
+      return `
     <section>
-      <h2>${s.viewport}</h2>
-      <video src="walkthrough-${s.viewport}.mp4" controls loop playsinline style="max-width:100%;border:1px solid #333"></video>
-      <p>${s.frameCount} steps · <a href="contact-sheet-${s.viewport}.png">contact sheet</a></p>
-    </section>`,
-    )
+      <h2>${s.viewport} — ${s.frameCount} captured steps</h2>
+      <video id="vid-${s.viewport}" src="walkthrough-${s.viewport}.mp4" controls loop playsinline></video>
+      <p class="gate">${gateLine} · <a href="contact-sheet-${s.viewport}.png">contact sheet</a></p>
+      <div class="steps">${cards || "<em>(no per-step report — steps.json missing)</em>"}</div>
+    </section>`;
+    })
     .join("\n");
   const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Full Walkthrough ${runId}</title>
-<style>body{font-family:system-ui,sans-serif;background:#0d0d0d;color:#eee;max-width:1100px;margin:24px auto;padding:0 16px}
-a{color:#ff7a18}h1{font-size:20px}h2{font-size:16px;text-transform:capitalize}</style></head>
+<style>
+body{font-family:system-ui,sans-serif;background:#0d0d0d;color:#eee;max-width:1200px;margin:24px auto;padding:0 16px}
+a{color:#ff7a18;text-decoration:none}a:hover{text-decoration:underline}
+h1{font-size:20px}h2{font-size:16px;text-transform:capitalize;border-top:1px solid #333;padding-top:16px}
+video{max-width:100%;border:1px solid #333;position:sticky;top:8px;background:#000}
+.gate{color:#aaa;font-size:13px}
+.steps{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:12px}
+.step{border:1px solid #262626;border-radius:8px;overflow:hidden;background:#151515}
+.step.skipped{opacity:.55}
+.step img{width:100%;display:block;border-bottom:1px solid #262626}
+.noshot{padding:40px;text-align:center;color:#777;background:#111}
+.meta{padding:8px 10px}
+.meta h3{font-size:13px;margin:0 0 4px}
+.exp{color:#9aa;font-size:12px;margin:0 0 6px}
+.route code{font-size:11px;color:#7ab7ff;word-break:break-all}
+.badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;margin:6px 0 0}
+.ok{color:#4ade80}.bad{color:#f87171;font-weight:600}.skip{color:#fbbf24}
+details summary{cursor:pointer;color:#aaa;font-size:12px;margin-top:6px}
+details ul{margin:6px 0;padding-left:18px;font-size:12px;color:#bbb}
+</style></head>
 <body>
 <h1>Full Walkthrough — ${runId}</h1>
-<p>Lane: <b>${lane}</b>. Verdicts: <code>${verdictMdPath}</code></p>
+<p>Lane: <b>${lane}</b> · Verdicts: <code>${escHtml(verdictMdPath)}</code></p>
+<p>Each step links its screenshot, route, assertions, console/5xx error counts, and a jump to that moment in the stitched video.</p>
 ${sections}
+<script>
+function jump(id, t){var v=document.getElementById(id);if(v){v.currentTime=t;v.play();v.scrollIntoView({behavior:'smooth',block:'center'});}}
+</script>
 </body></html>`;
   writeFileSync(join(outDir, "index.html"), html, "utf8");
 }
 
+/** Re-render the per-step viewer for an already-captured run, without
+ * re-walking. Reconstructs the stitched-viewport metadata from the on-disk
+ * frames; the MP4s from the original run are reused in place. */
+function regenerateViewer(runId, viewports) {
+  const runDir = join(REPO_ROOT, "reports", "walkthrough", runId);
+  const outDir = join(REPO_ROOT, "e2e-recordings", "app", "walkthrough", runId);
+  if (!existsSync(runDir)) {
+    console.error(`[walkthrough] no run dir for ${runId} at ${runDir}`);
+    return 1;
+  }
+  mkdirSync(outDir, { recursive: true });
+  const stitched = viewports
+    .split(",")
+    .map((v) => v.trim())
+    .map((viewport) => {
+      const vpDir = join(runDir, viewport);
+      if (!existsSync(vpDir)) return null;
+      const frameCount = readdirSync(vpDir).filter((f) =>
+        /^\d\d-.*\.png$/.test(f),
+      ).length;
+      return frameCount ? { viewport, frameCount } : null;
+    })
+    .filter(Boolean);
+  if (!stitched.length) {
+    console.error(`[walkthrough] no captured frames under ${runDir}`);
+    return 1;
+  }
+  writeViewerHtml({
+    outDir,
+    runDir,
+    runId,
+    lane: runId.endsWith("_live") ? "live" : "mock",
+    stitched,
+    verdictMdPath: "(regenerated viewer)",
+  });
+  console.log(`[walkthrough] viewer → ${join(outDir, "index.html")}`);
+  return 0;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+
+  if (args.viewerOnly) {
+    process.exit(regenerateViewer(args.viewerOnly, args.viewports));
+  }
 
   if (args.platform !== "web") {
     // Native platforms are driven by the device-matrix runner.
@@ -445,6 +615,7 @@ async function main() {
       if (stitched.length) {
         writeViewerHtml({
           outDir,
+          runDir,
           runId,
           lane,
           stitched,

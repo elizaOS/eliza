@@ -27,7 +27,9 @@ import {
 import {
   buildApplicationMenu,
   findAppMenuEntryBySlug,
+  findViewMenuEntryById,
   parseSettingsWindowAction,
+  parseViewWindowAction,
 } from "./application-menu";
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
@@ -1970,6 +1972,23 @@ async function setupUpdater(): Promise<void> {
     };
 
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
+      // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in
+      // its own window via the same app-window path detached surfaces use.
+      // Checked before the generic `new-window:` surface branch because that
+      // prefix also matches.
+      const viewId = parseViewWindowAction(action);
+      if (viewId) {
+        const entry = findViewMenuEntryById(viewId);
+        if (entry) {
+          void getDesktopManager().openAppWindow({
+            slug: `view-${entry.id}`,
+            title: entry.label,
+            path: entry.path,
+            alwaysOnTop: false,
+          });
+        }
+        return true;
+      }
       if (action?.startsWith("new-window:")) {
         const surface = action.slice("new-window:".length);
         if (surfaceWindowManager && isDetachedSurface(surface)) {

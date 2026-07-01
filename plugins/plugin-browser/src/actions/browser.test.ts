@@ -363,6 +363,88 @@ describe("BROWSER action", () => {
     expect(result?.text).toContain("callback?code=abc");
   });
 
+  it("wait_for_url falls back to tab-list URLs when get/state cannot read an unloaded page", async () => {
+    let listPolls = 0;
+    const service = {
+      execute: vi.fn(async (command: { id?: string; subaction: string }) => {
+        if (command.subaction === "open") {
+          return {
+            mode: "workspace",
+            subaction: "open",
+            tab: {
+              id: "tab-10",
+              title: "OAuth",
+              url: "https://gh.example/oauth",
+            },
+          };
+        }
+        if (command.subaction === "get") {
+          throw new Error("page is still loading");
+        }
+        if (command.subaction === "state") {
+          return { mode: "workspace", subaction: "state" };
+        }
+        if (command.subaction === "list") {
+          listPolls += 1;
+          return {
+            mode: "workspace",
+            subaction: "list",
+            tabs: [
+              {
+                id: "tab-10",
+                title: "OAuth",
+                url:
+                  listPolls >= 2
+                    ? "https://gh.example/callback?code=abc"
+                    : "https://gh.example/oauth",
+              },
+            ],
+          };
+        }
+        return { mode: "workspace", subaction: command.subaction };
+      }),
+    };
+    const runtime = runtimeWithService(service);
+    const callback = vi.fn(async () => []);
+
+    const result = await browserAction.handler?.(
+      runtime as never,
+      { content: { text: "" } } as never,
+      undefined,
+      {
+        parameters: {
+          action: "wait_for_url",
+          url: "https://gh.example/oauth",
+          pattern: "callback?code=",
+          timeoutMs: 1_000,
+          pollIntervalMs: 50,
+        },
+      } as never,
+      callback as never,
+    );
+
+    expect(service.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "list" }),
+      undefined,
+    );
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("still waiting"),
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          outcome: expect.objectContaining({
+            lastUrl: "https://gh.example/callback?code=abc",
+            matched: true,
+          }),
+        }),
+      }),
+    );
+  });
+
   it("wait_for_url fails fast when no pattern is supplied", async () => {
     const service = browserService();
     const runtime = runtimeWithService(service);

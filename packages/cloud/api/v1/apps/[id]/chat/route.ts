@@ -44,6 +44,7 @@ import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { reconcileStreamProcessingError } from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -408,6 +409,11 @@ async function handlePOST(
       let outputTokens = 0;
       let fullContent = "";
       let writerClosed = false;
+      // True once the FULL answer has been delivered to the client and the
+      // writer closed. Distinguishes "stream failed mid-delivery" (refund) from
+      // "stream succeeded, only post-stream accounting threw" (do NOT refund —
+      // the user already received the whole answer).
+      let streamCompleted = false;
 
       // Process stream in background with error handling
       (async () => {
@@ -523,6 +529,9 @@ async function handlePOST(
 
           writerClosed = true;
           writer.close();
+          // The client has now received the complete answer. Anything that
+          // throws below is post-delivery accounting only — must not refund.
+          streamCompleted = true;
 
           // Fallback: estimate tokens if usage not provided
           if (inputTokens === 0 && outputTokens === 0) {
@@ -587,30 +596,27 @@ async function handlePOST(
             },
           });
         } catch (error) {
-          // Stream failed - refund the reserved charge since we don't know actual usage
           const errorMessage =
             error instanceof Error ? error.message : "Unknown error";
-          logger.error(
-            "[App Chat] Stream processing failed, refunding reserved",
+
+          // Refund the reserved charge ONLY when the stream failed before the
+          // client got the full answer. If it already completed and only the
+          // post-stream accounting threw, keeping the charge avoids handing out
+          // free inference. (See reconcileStreamProcessingError.)
+          const { refunded } = await reconcileStreamProcessingError(
             {
+              streamCompleted,
               appId,
               userId: user.id,
               reservedBaseCost,
-              error: errorMessage,
+              errorMessage,
             },
+            appCreditsService,
           );
 
-          await appCreditsService.reconcileCredits({
-            appId,
-            userId: user.id,
-            estimatedBaseCost: reservedBaseCost,
-            actualBaseCost: 0, // Refund full reserved amount
-            description: "Refund due to stream error",
-            metadata: { error: true, streaming: true },
-          });
-
-          // Send error event to client if writer is still open
-          if (!writerClosed) {
+          // Notify the client only when the stream failed mid-delivery (a
+          // completed stream already closed the writer with the full answer).
+          if (refunded && !writerClosed) {
             const errorEvent = `data: ${JSON.stringify({
               error: {
                 message: "Stream interrupted. Credits refunded.",

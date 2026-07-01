@@ -1855,7 +1855,9 @@ async function handleNonStreamingRequest(
             estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
             actualBaseCost: billing.totalCost,
             description: `Chat: ${model}`,
-            metadata: { model, provider, billingSource, streaming: false },
+            // #10423: stable per-request key so a non-streaming settlement retry
+            // doesn't double-credit the app creator's redeemable earnings.
+            metadata: { model, provider, billingSource, streaming: false, idempotencyKey },
           });
         }
 

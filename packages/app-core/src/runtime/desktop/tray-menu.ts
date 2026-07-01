@@ -6,6 +6,98 @@ interface DesktopTrayMenuItem {
   /** i18n key for {@link label}; resolved at menu-build time. */
   labelKey?: string;
   type?: "normal" | "separator";
+  /** Nested items — rendered as a native tray submenu. */
+  submenu?: DesktopTrayMenuItem[];
+}
+
+/**
+ * Curated desktop-eligible view windows for the tray "Views" submenu (#10716).
+ *
+ * Mirror of the `desktopTabEnabled: true` entries in
+ * `packages/agent/src/api/builtin-views.ts` (`BUILTIN_VIEWS`) that also run on
+ * desktop (i.e. `camera` is android-only and excluded). Duplicated here — the
+ * same reason `application-menu.ts` duplicates `APP_MENU_ENTRIES`: this module
+ * is consumed by the renderer/browser bundle and the tray is built
+ * synchronously at desktop boot, so it must not pull `@elizaos/agent` (the view
+ * catalog owner) into the browser graph or wait on a `/api/views` round-trip.
+ * `desktop-view-windows.test.ts` (standard app-core lane, which can import the
+ * agent catalog) asserts this list stays in sync with `BUILTIN_VIEWS`.
+ */
+export interface DesktopViewWindow {
+  /** Stable builtin view id (matches the entry in `builtin-views.ts`). */
+  readonly id: string;
+  readonly label: string;
+  /** i18n key for {@link label}; resolved at menu-build time. */
+  readonly labelKey: string;
+  /** Hash route the view window loads (matches `ViewDeclaration.path`). */
+  readonly path: string;
+}
+
+export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
+  {
+    id: "tutorial",
+    label: "Tutorial",
+    labelKey: "desktop.views.tutorial",
+    path: "/tutorial",
+  },
+  { id: "help", label: "Help", labelKey: "desktop.views.help", path: "/help" },
+  { id: "chat", label: "Chat", labelKey: "desktop.views.chat", path: "/chat" },
+  {
+    id: "character",
+    label: "Character",
+    labelKey: "desktop.views.character",
+    path: "/character",
+  },
+  {
+    id: "documents",
+    label: "Knowledge",
+    labelKey: "desktop.views.documents",
+    path: "/character/documents",
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    labelKey: "desktop.views.settings",
+    path: "/settings",
+  },
+  {
+    id: "background",
+    label: "Background",
+    labelKey: "desktop.views.background",
+    path: "/background",
+  },
+] as const;
+
+/** Prefix for tray item ids that open a view in its own desktop window. */
+export const TRAY_OPEN_VIEW_PREFIX = "tray-open-view-";
+
+/** Tray item id that opens `viewId` in its own desktop window. */
+export function trayOpenViewItemId(viewId: string): string {
+  return `${TRAY_OPEN_VIEW_PREFIX}${viewId}`;
+}
+
+/**
+ * Parse a `tray-open-view-<id>` item id back to its view id, or `null` when the
+ * id is not a view-window item. The renderer handler resolves the id against
+ * {@link DESKTOP_VIEW_WINDOWS} before opening a window.
+ */
+export function parseTrayOpenViewItemId(itemId: string): string | null {
+  return itemId.startsWith(TRAY_OPEN_VIEW_PREFIX)
+    ? itemId.slice(TRAY_OPEN_VIEW_PREFIX.length)
+    : null;
+}
+
+/**
+ * Build the tray "Views" submenu items from {@link DESKTOP_VIEW_WINDOWS}. Each
+ * item id is `tray-open-view-<viewId>`; the renderer opens the matching view in
+ * its own desktop window. Pure so the menu shape is unit-testable.
+ */
+export function buildTrayViewItems(): DesktopTrayMenuItem[] {
+  return DESKTOP_VIEW_WINDOWS.map((view) => ({
+    id: trayOpenViewItemId(view.id),
+    label: view.label,
+    labelKey: view.labelKey,
+  }));
 }
 
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
@@ -28,6 +120,14 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
     id: "tray-open-voice-controls",
     label: "Open Voice Controls",
     labelKey: "desktop.tray.openVoiceControls",
+  },
+  // "Views" submenu (#10716): open any desktop-eligible builtin view in its own
+  // window from the tray, not just switch the main-window tab.
+  {
+    id: "tray-views",
+    label: "Views",
+    labelKey: "desktop.tray.views",
+    submenu: buildTrayViewItems(),
   },
   { id: "tray-sep-0", type: "separator" },
   {
@@ -68,11 +168,16 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
 export function buildLocalizedTrayMenu(
   t: (key: string, vars?: { defaultValue?: string }) => string,
 ): DesktopTrayMenuItem[] {
-  return DESKTOP_TRAY_MENU_ITEMS.map((item) =>
-    item.labelKey
+  const localize = (item: DesktopTrayMenuItem): DesktopTrayMenuItem => {
+    const localized: DesktopTrayMenuItem = item.labelKey
       ? { ...item, label: t(item.labelKey, { defaultValue: item.label }) }
-      : { ...item },
-  );
+      : { ...item };
+    if (item.submenu) {
+      localized.submenu = item.submenu.map(localize);
+    }
+    return localized;
+  };
+  return DESKTOP_TRAY_MENU_ITEMS.map(localize);
 }
 
 export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
