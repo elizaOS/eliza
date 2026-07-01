@@ -4,7 +4,7 @@ Eliza Cloud integration — multi-model inference, container provisioning, agent
 
 ## Purpose / role
 
-Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured.
+Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured — **unless the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`** (`applyCloudConfigToEnv`), in which case the chat-brain handlers (`TEXT_*`, `RESPONSE_HANDLER`, `ACTION_PLANNER`) are not registered at all and only the capability handlers (IMAGE, IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings, RESEARCH) stay active. This capability-only mode is how an agent keeps Cloud image/media/TTS while an external provider (a CLI/SDK subscription brain, a local model) owns the text brain (elizaOS/eliza#10819).
 
 The plugin has two distinct export surfaces:
 
@@ -13,11 +13,27 @@ The plugin has two distinct export surfaces:
 
 ## Plugin surface
 
-### Model handlers (registered in `models` map)
+### Model handlers
+
+Two registration groups (elizaOS/eliza#10819):
+
+**Capability handlers — always registered (static `models` map).** These don't
+compete with the chat brain and must survive an external text provider:
 
 | Slot | Handler | File |
 |---|---|---|
 | `TEXT_EMBEDDING` | `handleTextEmbedding` | `src/models/embeddings.ts` |
+| `RESEARCH` | `handleResearch` | `src/models/research.ts` |
+| `IMAGE` | `handleImageGeneration` | `src/models/image.ts` |
+| `IMAGE_DESCRIPTION` | `handleImageDescription` | `src/models/image.ts` |
+| `TEXT_TO_SPEECH` | `handleTextToSpeech` | `src/models/speech.ts` |
+
+**Chat-brain handlers — registered from `init()`** (`registerTextInferenceModels`,
+`src/index.ts`), skipped when the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`
+(registered when it is `true` or unset — unset preserves standalone plugin use):
+
+| Slot | Handler | File |
+|---|---|---|
 | `TEXT_NANO` | `handleTextNano` | `src/models/text.ts` |
 | `TEXT_SMALL` | `handleTextSmall` | `src/models/text.ts` |
 | `TEXT_MEDIUM` | `handleTextMedium` | `src/models/text.ts` |
@@ -25,10 +41,6 @@ The plugin has two distinct export surfaces:
 | `TEXT_MEGA` | `handleTextMega` | `src/models/text.ts` |
 | `RESPONSE_HANDLER` | `handleResponseHandler` | `src/models/text.ts` |
 | `ACTION_PLANNER` | `handleActionPlanner` | `src/models/text.ts` |
-| `RESEARCH` | `handleResearch` | `src/models/research.ts` |
-| `IMAGE` | `handleImageGeneration` | `src/models/image.ts` |
-| `IMAGE_DESCRIPTION` | `handleImageDescription` | `src/models/image.ts` |
-| `TEXT_TO_SPEECH` | `handleTextToSpeech` | `src/models/speech.ts` |
 
 ### Providers
 

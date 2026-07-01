@@ -2124,7 +2124,22 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     );
   }
 
-  setCloudUsageEnv("ELIZAOS_CLOUD_USE_INFERENCE", effectivelyEnabled);
+  // USE_INFERENCE is a TRI-state contract with plugin-elizacloud's chat-brain
+  // registration (registerTextInferenceModels): "true" → Cloud serves the text
+  // slots; explicit "false" → the plugin is loaded for its capabilities only
+  // (image/media/TTS/embeddings/research) and must NOT register the chat-brain
+  // handlers another provider owns; unset → no host policy (standalone plugin
+  // use keeps its historical register-everything behavior). Deleting the var
+  // when inference is off (the old behavior) was indistinguishable from "no
+  // policy", so the plugin could never load capability-only — the host nuked
+  // the API key instead and lost image generation as collateral (#10819).
+  if (effectivelyEnabled) {
+    process.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  } else if (shouldLoadCloudPlugin) {
+    process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
+  } else {
+    delete process.env.ELIZAOS_CLOUD_USE_INFERENCE;
+  }
   setCloudUsageEnv(
     "ELIZAOS_CLOUD_USE_TTS",
     topology.services.tts || isCloudContainer,
@@ -2152,17 +2167,25 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     logger.info(
       `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
     );
-    // Only propagate the API key when cloud is enabled AND it is a real
-    // credential — never set the literal "[REDACTED]" placeholder (which can
-    // leak into the config via UI round-trips through the redacted GET → PUT
-    // cycle). WHY: when enabled is false (BYOK / disconnected), leaving the key
-    // in process.env still auto-loads @elizaos/plugin-elizacloud and steals
-    // TEXT_LARGE even if the JSON says cloud is off.
+    // Only propagate the API key from config when it is a real credential —
+    // never set the literal "[REDACTED]" placeholder (which can leak into the
+    // config via UI round-trips through the redacted GET → PUT cycle). When
+    // config carries no key, an env-provided key is KEPT: this branch means at
+    // least one cloud service is selected, and the selected capabilities need
+    // the credential. The historical wholesale delete here existed to stop the
+    // key from auto-loading @elizaos/plugin-elizacloud and stealing TEXT_LARGE;
+    // that is now prevented structurally by ELIZAOS_CLOUD_USE_INFERENCE=false
+    // (the plugin skips chat-brain registration), so deleting the key — and
+    // losing image/media/TTS with it — is no longer necessary (#10819). Only a
+    // leaked placeholder is still scrubbed.
     const isRealApiKey =
       cloud?.apiKey && cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
     if (isRealApiKey) {
       process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
-    } else if (!isCloudContainer) {
+    } else if (
+      !isCloudContainer &&
+      process.env.ELIZAOS_CLOUD_API_KEY?.trim().toUpperCase() === "[REDACTED]"
+    ) {
       delete process.env.ELIZAOS_CLOUD_API_KEY;
     }
     if (cloud?.baseUrl) {
