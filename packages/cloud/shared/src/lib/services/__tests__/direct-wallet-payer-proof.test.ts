@@ -100,6 +100,102 @@ describe("direct wallet payer proof", () => {
     ).resolves.toBe(false);
   });
 
+  test("uses the supplied verifyEvmTypedData verifier so ERC-1271/6492 contract wallets can pass", async () => {
+    const payer = privateKeyToAccount(PAYER_KEY);
+    const typedData = buildDirectWalletPayerProofTypedData({
+      paymentId: "00000000-0000-4000-8000-000000000031",
+      organizationId: "00000000-0000-4000-8000-000000000032",
+      userId: "00000000-0000-4000-8000-000000000033",
+      network: "base",
+      chainId: 8453,
+      payerAddress: payer.address,
+      receiveAddress: "0x000000000000000000000000000000000000ba5e",
+      tokenSymbol: "USDC",
+      tokenAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      expectedTokenUnits: 10_000_000n,
+      nonce: "payer-proof-nonce-4",
+      expiresAt: "2026-07-01T20:00:00.000Z",
+    });
+    // A contract-wallet signature is opaque to ecrecover — the offline path
+    // rejects it. A client-backed verifier (viem publicClient.verifyTypedData)
+    // validates it via ERC-1271/6492 on chain; simulate that here.
+    const contractWalletSignature = `0x${"77".repeat(65)}` as const;
+    const calls: Array<{ address: string; signature: string; paymentId: string }> = [];
+
+    await expect(
+      verifyDirectWalletPayerProof({
+        network: "base",
+        payerAddress: payer.address,
+        typedData,
+        signature: contractWalletSignature,
+        verifyEvmTypedData: async (params) => {
+          calls.push({
+            address: params.address,
+            signature: params.signature,
+            paymentId: params.message.paymentId,
+          });
+          return true;
+        },
+      }),
+    ).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].address).toBe(payer.address.toLowerCase());
+    expect(calls[0].signature).toBe(contractWalletSignature);
+    expect(calls[0].paymentId).toBe("00000000-0000-4000-8000-000000000031");
+
+    // Without the verifier the same signature fails offline ecrecover.
+    await expect(
+      verifyDirectWalletPayerProof({
+        network: "base",
+        payerAddress: payer.address,
+        typedData,
+        signature: contractWalletSignature,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  test("fails closed when the verifyEvmTypedData verifier rejects or errors", async () => {
+    const payer = privateKeyToAccount(PAYER_KEY);
+    const typedData = buildDirectWalletPayerProofTypedData({
+      paymentId: "00000000-0000-4000-8000-000000000041",
+      organizationId: "00000000-0000-4000-8000-000000000042",
+      userId: null,
+      network: "bsc",
+      chainId: 56,
+      payerAddress: payer.address,
+      receiveAddress: "0x0000000000000000000000000000000000000b5c",
+      tokenSymbol: "BNB",
+      expectedTokenUnits: "100000000000000000",
+      nonce: "payer-proof-nonce-5",
+      expiresAt: "2026-07-01T20:00:00.000Z",
+    });
+    const signature = await payer.signTypedData(
+      toDirectWalletPayerProofSigningTypedData(typedData),
+    );
+
+    await expect(
+      verifyDirectWalletPayerProof({
+        network: "bsc",
+        payerAddress: payer.address,
+        typedData,
+        signature,
+        verifyEvmTypedData: async () => false,
+      }),
+    ).resolves.toBe(false);
+
+    await expect(
+      verifyDirectWalletPayerProof({
+        network: "bsc",
+        payerAddress: payer.address,
+        typedData,
+        signature,
+        verifyEvmTypedData: async () => {
+          throw new Error("RPC unavailable");
+        },
+      }),
+    ).resolves.toBe(false);
+  });
+
   test("verifies the Solana payer signature over the canonical payment challenge", async () => {
     const payer = Keypair.fromSeed(new Uint8Array(32).fill(7));
     const message = buildDirectWalletPayerProofMessage({

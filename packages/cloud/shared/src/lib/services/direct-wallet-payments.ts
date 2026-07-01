@@ -596,11 +596,45 @@ function evmPayerProofVerifier(
   return async (params) => await client.verifyTypedData(params);
 }
 
-async function verifyPayerProofOrThrow(
-  direct: ReturnType<typeof directMetadata>,
-  signature: string | undefined,
-  cfg?: DirectWalletNetworkConfig,
-): Promise<Record<string, unknown> | null> {
+/**
+ * Distinct, greppable marker for payments created before the current
+ * payer-proof challenge shipped. Such rows lack `payer_proof_message` (or,
+ * for EVM, `payer_proof_typed_data`) in metadata, so they can never pass
+ * verification — attach/confirm fail closed with this code so ops can
+ * identify orphaned legacy deposits and reconcile them manually (verify the
+ * on-chain sender by hand, then credit via admin tooling).
+ */
+export const LEGACY_PAYMENT_MISSING_PAYER_PROOF = "LEGACY_PAYMENT_MISSING_PAYER_PROOF";
+
+function throwLegacyPaymentMissingProof(params: {
+  paymentId: string;
+  network: DirectWalletNetwork;
+  missing: "challenge" | "typed-data";
+}): never {
+  logger.error(
+    "[DirectWalletPayments] Payment predates the payer-proof challenge — failing closed. " +
+      "Legacy deposit must be reconciled manually.",
+    {
+      code: LEGACY_PAYMENT_MISSING_PAYER_PROOF,
+      paymentId: redact.paymentId(params.paymentId),
+      network: params.network,
+      missing: params.missing,
+    },
+  );
+  throw new Error(
+    `${LEGACY_PAYMENT_MISSING_PAYER_PROOF}: this payment was created before the current ` +
+      "payer-proof challenge existed and cannot be verified automatically. Create a new " +
+      "payment; the legacy deposit must be reconciled manually by support.",
+  );
+}
+
+async function verifyPayerProofOrThrow(params: {
+  paymentId: string;
+  direct: ReturnType<typeof directMetadata>;
+  signature: string | undefined;
+  cfg?: DirectWalletNetworkConfig;
+}): Promise<Record<string, unknown> | null> {
+  const { direct, signature, cfg } = params;
   if (
     typeof direct.metadata.payer_proof_verified_at === "string" &&
     typeof direct.metadata.payer_proof_address === "string"
@@ -614,10 +648,20 @@ async function verifyPayerProofOrThrow(
     throw new Error("Payer wallet proof metadata mismatch");
   }
   if (!direct.payerProofMessage) {
-    throw new Error("Payer wallet proof challenge missing");
+    throwLegacyPaymentMissingProof({
+      paymentId: params.paymentId,
+      network: direct.network,
+      missing: "challenge",
+    });
   }
   if (direct.network !== "solana" && !direct.payerProofTypedData) {
-    throw new Error("Payer wallet EIP-712 challenge missing");
+    // Rows from the short-lived personal-sign era carry a message but no
+    // EIP-712 payload — same legacy shape, same manual-reconcile path.
+    throwLegacyPaymentMissingProof({
+      paymentId: params.paymentId,
+      network: direct.network,
+      missing: "typed-data",
+    });
   }
   if (!signature?.trim()) {
     throw ValidationError("Payer wallet signature required");
@@ -672,14 +716,14 @@ async function verifyEvmTokenPayment(params: {
   });
   if (receipt.status !== "success") throw new Error("Transaction failed");
 
-  const tx = await client.getTransaction({ hash: params.txHash as Hex });
-  if (tx.from.toLowerCase() !== normalizeEvmAddress(params.payerAddress)) {
-    throw new Error("Transaction sender does not match account wallet");
-  }
-  if (tx.to?.toLowerCase() !== params.tokenAddress.toLowerCase()) {
-    throw new Error("Transaction is not a transfer of the expected token");
-  }
-
+  // The authoritative payer binding for token payments is the Transfer event:
+  // the configured token contract must have emitted Transfer(payer →
+  // treasury) for at least the expected amount. We deliberately do NOT
+  // require tx.from == payer or tx.to == tokenAddress here — for a Safe
+  // execTransaction tx.from is the relayer and tx.to is the Safe, and for an
+  // ERC-4337 op tx.from is the bundler and tx.to is the EntryPoint. The
+  // event's `from` is the account whose balance decreased, which is exactly
+  // the proven payer wallet, regardless of who carried the transaction.
   const receiveAddress = normalizeEvmAddress(params.cfg.receiveAddress);
   const payerAddress = normalizeEvmAddress(params.payerAddress);
   const tokenAddressLc = params.tokenAddress.toLowerCase();
@@ -728,14 +772,29 @@ async function verifyEvmNativePayment(params: {
   });
   if (receipt.status !== "success") throw new Error("Transaction failed");
 
-  // For native value transfers we do NOT compare tx.from to the payer EOA.
-  // Smart-contract wallets (Safe, Argent, Coinbase Smart Wallet) and ERC-4337
-  // setups have `tx.from = contract / bundler`, not the user's EOA. The
-  // recipient + value checks below are sufficient because a contract-relayed
-  // value transfer still has tx.to = receiveAddress and tx.value carries the
-  // BNB. (For tokens, the Transfer-event check enforces sender identity
-  // separately.)
+  // Native value transfers carry no Transfer event, so the ONLY on-chain
+  // payer binding available without trace APIs is tx.from. Require it to be
+  // the proven payer wallet — otherwise the payer proof proves nothing: an
+  // attacker could sign the challenge with their own key and attach someone
+  // else's native deposit of matching value (the #10903 theft, re-opened).
+  //
+  // Consequence (deliberate, fail-closed): contract-wallet native transfers
+  // are NOT creditable on this path. A Safe/4337 native send has tx.from =
+  // relayer/bundler and tx.to = Safe/EntryPoint, so the value source cannot
+  // be bound to the proven payer from the outer transaction alone. Contract
+  // wallets must pay via the token path, where the Transfer event binds the
+  // value source, or use an exchange/deposit-address flow if one ships
+  // later. CEX hot-wallet withdrawals are rejected for the same reason —
+  // the sender is not the proven payer.
   const tx = await client.getTransaction({ hash: params.txHash as Hex });
+  if (tx.from.toLowerCase() !== normalizeEvmAddress(params.payerAddress)) {
+    throw new Error(
+      "Transaction sender does not match the proven payer wallet. Native-coin payments must " +
+        "be sent directly from the wallet that signed the payment challenge — smart-contract " +
+        "wallets and exchange withdrawals are not supported for native transfers; pay with a " +
+        "token (USDT/USDC) instead.",
+    );
+  }
   if (!tx.to || tx.to.toLowerCase() !== normalizeEvmAddress(params.cfg.receiveAddress)) {
     throw new Error("Transaction recipient does not match the receive address");
   }
@@ -1131,7 +1190,6 @@ export class DirectWalletPaymentsService {
           payer_proof_nonce: payerProofNonce,
           payer_proof_expires_at: payment.expires_at.toISOString(),
           payer_proof_scheme: payerProofScheme,
-          payer_proof_required: true,
         })}::jsonb`,
         updated_at: new Date(),
       })
@@ -1211,7 +1269,12 @@ export class DirectWalletPaymentsService {
       }
       const direct = directMetadata(payment);
       const cfg = directPaymentConfig(env, direct.network);
-      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature, cfg);
+      const payerProofPatch = await verifyPayerProofOrThrow({
+        paymentId: payment.id,
+        direct,
+        signature: params.payerSignature,
+        cfg,
+      });
 
       // Guard against the same tx being attached to two different payments.
       const existingTx = await tx
@@ -1368,7 +1431,12 @@ export class DirectWalletPaymentsService {
         throw new Error("Quote signature mismatch — payment may have been tampered with.");
       }
 
-      const payerProofPatch = await verifyPayerProofOrThrow(direct, params.payerSignature, cfg);
+      const payerProofPatch = await verifyPayerProofOrThrow({
+        paymentId: payment.id,
+        direct,
+        signature: params.payerSignature,
+        cfg,
+      });
 
       const existingTx = await tx
         .select()

@@ -14,7 +14,12 @@
  *   - mock `bnb-price-oracle` so we don't hit the network for BNB quotes.
  */
 
+import { privateKeyToAccount } from "viem/accounts";
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  type DirectWalletPayerProofTypedData,
+  toDirectWalletPayerProofSigningTypedData,
+} from "../direct-wallet-payer-proof";
 
 // This integration test relies on Vitest-only module-mock plumbing
 // (`vi.mock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
@@ -74,7 +79,7 @@ interface FakeTx {
 
 const chainTxs = new Map<string, FakeTx>();
 
-if (SUPPORTS_VITEST_MOCK_API)
+if (SUPPORTS_VITEST_MOCK_API) {
   vi.mock("viem", async () => {
     const actual = (await vi.importActual("viem")) as typeof import("viem");
     return {
@@ -118,6 +123,13 @@ if (SUPPORTS_VITEST_MOCK_API)
         async readContract() {
           return 18n;
         },
+        // Real typed-data verification (offline ecrecover) so integration
+        // tests can drive the actual payer-proof verify path. The production
+        // client layers ERC-1271/6492 contract-wallet validation on top of
+        // this; for the EOA test keys used here offline recovery is
+        // behaviourally identical.
+        verifyTypedData: (args: Parameters<typeof actual.verifyTypedData>[0]) =>
+          actual.verifyTypedData(args),
       }),
       parseEventLogs: ({ logs }: { logs: Array<{ address: string }> }) => {
         // Map the stub-receipt log back to a parsed Transfer event using the
@@ -145,9 +157,10 @@ if (SUPPORTS_VITEST_MOCK_API)
       },
     };
   });
+}
 
 // BNB price oracle — fixed quote so the math is predictable.
-if (SUPPORTS_VITEST_MOCK_API)
+if (SUPPORTS_VITEST_MOCK_API) {
   vi.mock("../bnb-price-oracle", async () => {
     const Decimal = (await import("decimal.js")).default;
     return {
@@ -160,16 +173,27 @@ if (SUPPORTS_VITEST_MOCK_API)
       })),
     };
   });
+}
 
-const createSolanaTestState = () => ({
-  ataOwnerOverride: null as Uint8Array | null,
-  parsedTxOverride: null as unknown,
-});
+interface SolanaTestState {
+  ataOwnerOverride: Uint8Array | null;
+  parsedTxOverride: unknown;
+}
 
-const solanaTestState =
-  typeof vi.hoisted === "function" ? vi.hoisted(createSolanaTestState) : createSolanaTestState();
+// Shared via globalThis instead of vi.hoisted: vitest's mock-hoisting
+// transform mis-emits a `vi.hoisted(...)` call that sits in expression
+// position (missing statement terminator → parse failure), which used to
+// make this whole file unparseable under vitest. The mock factories only
+// touch this state lazily (inside stub method bodies), so plain module
+// state reached through globalThis is safe under hoisting.
+const solanaStateHost = globalThis as { __dwpSolanaTestState?: SolanaTestState };
+solanaStateHost.__dwpSolanaTestState ??= {
+  ataOwnerOverride: null,
+  parsedTxOverride: null,
+};
+const solanaTestState = solanaStateHost.__dwpSolanaTestState;
 
-if (SUPPORTS_VITEST_MOCK_API)
+if (SUPPORTS_VITEST_MOCK_API) {
   vi.mock("@solana/spl-token", async () => {
     const actual = (await vi.importActual(
       "@solana/spl-token",
@@ -190,8 +214,9 @@ if (SUPPORTS_VITEST_MOCK_API)
       }),
     };
   });
+}
 
-if (SUPPORTS_VITEST_MOCK_API)
+if (SUPPORTS_VITEST_MOCK_API) {
   vi.mock("@solana/web3.js", async () => {
     const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
     return {
@@ -206,6 +231,7 @@ if (SUPPORTS_VITEST_MOCK_API)
       },
     };
   });
+}
 
 // creditsService stand-in: respects stripePaymentIntentId idempotency, which
 // is the contract that prevents double-credit on retry.
@@ -215,7 +241,7 @@ const creditsLedger: Array<{
   stripePaymentIntentId: string | undefined;
 }> = [];
 
-if (SUPPORTS_VITEST_MOCK_API)
+if (SUPPORTS_VITEST_MOCK_API) {
   vi.mock("../credits", () => ({
     creditsService: {
       async addCredits(params: {
@@ -242,8 +268,9 @@ if (SUPPORTS_VITEST_MOCK_API)
       },
     },
   }));
+}
 
-if (SUPPORTS_VITEST_MOCK_API)
+if (SUPPORTS_VITEST_MOCK_API) {
   vi.mock("../invoices", () => ({
     invoicesService: {
       async getByStripeInvoiceId() {
@@ -254,6 +281,7 @@ if (SUPPORTS_VITEST_MOCK_API)
       },
     },
   }));
+}
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -263,6 +291,10 @@ const ORG_ID = "00000000-0000-4000-8000-000000000001";
 const USER_ID = "00000000-0000-4000-8000-000000000002";
 const PAYER_EVM = "0x1111111111111111111111111111111111111111";
 const PAYER_SOL = "So11111111111111111111111111111111111111112";
+// Well-known Hardhat/Anvil dev keys — used to produce REAL payer-proof
+// signatures for the tests that drive the un-shortcut verify path.
+const PROOF_PAYER_KEY = "0x59c6995e998f97a5a0044966f0945387dc9e86dae66c3a618469c6e0e8c9ee3a";
+const ATTACKER_KEY = "0x8b3a350cf5c34c9194ca3a9d8b542a7d542a20a6039b332cf98b472c25e11e6b";
 
 // Loaded after env is set
 let dbWrite: typeof import("../../../db/client").dbWrite;
@@ -326,6 +358,10 @@ async function resetTable() {
   await dbWrite.execute("DELETE FROM crypto_payments");
 }
 
+// Shortcut for state-machine-focused tests: stamps the server-written
+// "already verified" proof metadata so attach/confirm skip signature
+// verification. The "real verify path" tests further down do NOT use this —
+// they sign the actual EIP-712 challenge and exercise the production verify.
 async function trustPayerProof(payment: { id: string; metadata: unknown }) {
   const metadata = payment.metadata as Record<string, unknown>;
   const network = String(metadata.direct_network ?? "");
@@ -965,6 +1001,378 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
         userId: USER_ID,
       });
       expect(missing).toBeNull();
+    });
+
+    // -------------------------------------------------------------------------
+    // Payer-proof: real verify path (no trustPayerProof shortcut). These tests
+    // sign the actual EIP-712 challenge returned by createPayment with a real
+    // key and drive attach/confirm through verifyPayerProofOrThrow → the
+    // (mocked-RPC) client.verifyTypedData, i.e. the same code path production
+    // runs.
+    // -------------------------------------------------------------------------
+
+    async function createSignedBscPayment(opts?: { tokenSymbol?: "USDT" | "BNB" }) {
+      const proofAccount = privateKeyToAccount(PROOF_PAYER_KEY);
+      const created = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: proofAccount.address,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: opts?.tokenSymbol ?? "USDT",
+      });
+      const typedData = created.paymentInstructions
+        .payerProofTypedData as DirectWalletPayerProofTypedData | null;
+      if (!typedData) throw new Error("expected an EIP-712 payer proof challenge");
+      expect(typedData.message.paymentId).toBe(created.payment.id);
+      const signature = await proofAccount.signTypedData(
+        toDirectWalletPayerProofSigningTypedData(typedData),
+      );
+      return { proofAccount, payment: created.payment, typedData, signature };
+    }
+
+    test("attach-tx verifies a real payer signature and records the proof metadata", async () => {
+      await resetTable();
+      const { proofAccount, payment, signature } = await createSignedBscPayment();
+      const hash = `0x${"91".repeat(32)}`;
+      const attached = await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+        payerSignature: signature,
+      });
+      expect(attached.payment.status).toBe("broadcast");
+      const meta = attached.payment.metadata as Record<string, unknown>;
+      expect(meta.payer_proof_address).toBe(proofAccount.address.toLowerCase());
+      expect(meta.payer_proof_scheme).toBe("evm-eip712");
+      expect(typeof meta.payer_proof_verified_at).toBe("string");
+      expect(typeof meta.payer_proof_nonce_burned_at).toBe("string");
+    });
+
+    test("attach-tx rejects a missing signature", async () => {
+      await resetTable();
+      const { payment } = await createSignedBscPayment();
+      await expect(
+        service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: `0x${"92".repeat(32)}`,
+          userId: USER_ID,
+        }),
+      ).rejects.toThrow(/Payer wallet signature required/);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("pending");
+      expect(row?.transaction_hash).toBeNull();
+    });
+
+    test("attach-tx rejects a signature from a different wallet", async () => {
+      await resetTable();
+      const { payment, typedData } = await createSignedBscPayment();
+      const attacker = privateKeyToAccount(ATTACKER_KEY);
+      const attackerSignature = await attacker.signTypedData(
+        toDirectWalletPayerProofSigningTypedData(typedData),
+      );
+      await expect(
+        service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: `0x${"93".repeat(32)}`,
+          userId: USER_ID,
+          payerSignature: attackerSignature,
+        }),
+      ).rejects.toThrow(/Invalid payer wallet signature/);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("pending");
+      expect(row?.transaction_hash).toBeNull();
+    });
+
+    test("attach-tx rejects when the stored challenge was tampered with", async () => {
+      await resetTable();
+      const { payment, signature } = await createSignedBscPayment();
+      // Tamper the persisted EIP-712 challenge — the (valid) signature no
+      // longer matches the payload the server verifies against.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata =
+           jsonb_set(metadata, '{payer_proof_typed_data,message,amountUnits}', '"999"')
+         WHERE id = '${payment.id}'`,
+      );
+      await expect(
+        service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: `0x${"94".repeat(32)}`,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/Invalid payer wallet signature/);
+    });
+
+    test("attach-tx rejects an expired proof challenge", async () => {
+      await resetTable();
+      const { payment, signature } = await createSignedBscPayment();
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata =
+           metadata || '{"payer_proof_expires_at":"2000-01-01T00:00:00.000Z"}'::jsonb
+         WHERE id = '${payment.id}'`,
+      );
+      await expect(
+        service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: `0x${"9d".repeat(32)}`,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/challenge expired/);
+    });
+
+    test("attach-tx and confirm fail closed with a distinct error on legacy rows without a challenge", async () => {
+      await resetTable();
+      const { payment, signature } = await createSignedBscPayment();
+      // Simulate a row created before the payer-proof deploy: no challenge,
+      // no EIP-712 payload in metadata.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata =
+           (metadata - 'payer_proof_message') - 'payer_proof_typed_data'
+         WHERE id = '${payment.id}'`,
+      );
+      const hash = `0x${"95".repeat(32)}`;
+      await expect(
+        service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/LEGACY_PAYMENT_MISSING_PAYER_PROOF/);
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/LEGACY_PAYMENT_MISSING_PAYER_PROOF/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("legacy personal-sign-era rows (message but no typed data) also fail closed", async () => {
+      await resetTable();
+      const { payment, signature } = await createSignedBscPayment();
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata - 'payer_proof_typed_data'
+         WHERE id = '${payment.id}'`,
+      );
+      await expect(
+        service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: `0x${"9e".repeat(32)}`,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/LEGACY_PAYMENT_MISSING_PAYER_PROOF/);
+    });
+
+    test("confirm rejects a missing signature before touching the chain", async () => {
+      await resetTable();
+      const { proofAccount, payment } = await createSignedBscPayment();
+      const meta = payment.metadata as Record<string, unknown>;
+      const hash = `0x${"96".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: proofAccount.address,
+        to: meta.token_address as string,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        erc20: {
+          tokenAddress: meta.token_address as string,
+          from: proofAccount.address,
+          to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      await expect(
+        service.confirmPayment(env, { paymentId: payment.id, txHash: hash, userId: USER_ID }),
+      ).rejects.toThrow(/Payer wallet signature required/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("confirm rejects a wrong-wallet signature and grants no credits", async () => {
+      await resetTable();
+      const { proofAccount, payment, typedData } = await createSignedBscPayment();
+      const attacker = privateKeyToAccount(ATTACKER_KEY);
+      const attackerSignature = await attacker.signTypedData(
+        toDirectWalletPayerProofSigningTypedData(typedData),
+      );
+      const meta = payment.metadata as Record<string, unknown>;
+      const hash = `0x${"97".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: proofAccount.address,
+        to: meta.token_address as string,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        erc20: {
+          tokenAddress: meta.token_address as string,
+          from: proofAccount.address,
+          to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+          payerSignature: attackerSignature,
+        }),
+      ).rejects.toThrow(/Invalid payer wallet signature/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("confirm rejects an expired payment even with a valid real signature", async () => {
+      await resetTable();
+      const { proofAccount, payment, signature } = await createSignedBscPayment();
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET expires_at = now() - interval '1 hour' WHERE id = '${payment.id}'`,
+      );
+      const meta = payment.metadata as Record<string, unknown>;
+      const hash = `0x${"98".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: proofAccount.address,
+        to: meta.token_address as string,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        erc20: {
+          tokenAddress: meta.token_address as string,
+          from: proofAccount.address,
+          to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/Payment has expired/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("native BNB confirm rejects a tx whose sender is not the proven payer (theft path)", async () => {
+      await resetTable();
+      // Attacker signs the challenge with their OWN wallet (valid proof of
+      // their own key), then attaches a native deposit sent by someone else.
+      // The tx.from binding must reject it.
+      const { payment, signature } = await createSignedBscPayment({ tokenSymbol: "BNB" });
+      const meta = payment.metadata as Record<string, unknown>;
+      const victimSender = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+      const hash = `0x${"99".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: victimSender,
+        to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        value: BigInt(meta.expected_token_units as string),
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+      });
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/does not match the proven payer wallet/);
+      expect(creditsLedger).toHaveLength(0);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).not.toBe("confirmed");
+    });
+
+    test("native BNB confirm credits when tx.from is the proven payer (real verify)", async () => {
+      await resetTable();
+      const { proofAccount, payment, signature } = await createSignedBscPayment({
+        tokenSymbol: "BNB",
+      });
+      const meta = payment.metadata as Record<string, unknown>;
+      const hash = `0x${"9a".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: proofAccount.address,
+        to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        value: BigInt(meta.expected_token_units as string),
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+      });
+      await service.confirmPayment(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+        payerSignature: signature,
+      });
+      expect(creditsLedger).toHaveLength(1);
+      expect(creditsLedger[0].amount).toBeCloseTo(10);
+    });
+
+    test("token confirm accepts a contract-wallet-shaped tx: relayer tx.from, payer bound via Transfer event", async () => {
+      await resetTable();
+      // Safe/4337 shape: the outer transaction is carried by a relayer or
+      // bundler (tx.from = relayer, tx.to = wallet contract / EntryPoint),
+      // while the Transfer event shows the proven payer wallet funding the
+      // treasury. The event is the authoritative binding.
+      const { proofAccount, payment, signature } = await createSignedBscPayment();
+      const meta = payment.metadata as Record<string, unknown>;
+      const relayer = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+      const walletContract = "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+      const hash = `0x${"9b".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: relayer,
+        to: walletContract,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        erc20: {
+          tokenAddress: meta.token_address as string,
+          from: proofAccount.address,
+          to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      await service.confirmPayment(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+        payerSignature: signature,
+      });
+      expect(creditsLedger).toHaveLength(1);
+    });
+
+    test("token confirm still rejects when the Transfer event source is not the proven payer", async () => {
+      await resetTable();
+      const { payment, signature } = await createSignedBscPayment();
+      const meta = payment.metadata as Record<string, unknown>;
+      const victim = "0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+      const hash = `0x${"9c".repeat(32)}`;
+      chainTxs.set(hash, {
+        from: victim,
+        to: meta.token_address as string,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        erc20: {
+          tokenAddress: meta.token_address as string,
+          from: victim,
+          to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+          payerSignature: signature,
+        }),
+      ).rejects.toThrow(/lower than the expected/);
+      expect(creditsLedger).toHaveLength(0);
     });
   },
 );
