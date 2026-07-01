@@ -8,8 +8,8 @@ export function getSegmenter(): Intl.Segmenter {
 }
 
 /**
- * Check if a grapheme cluster (after segmentation) could possibly be an RGI emoji.
- * This is a fast heuristic to avoid expensive exact emoji classification.
+ * Check if a grapheme cluster (after segmentation) could possibly be an emoji.
+ * This is a fast heuristic that avoids depending on newer RegExp Unicode sets.
  * The tested Unicode blocks are deliberately broad so newer Unicode versions
  * keep matching likely emoji ranges.
  */
@@ -51,8 +51,8 @@ const widthCache = new Map<string, number>();
 
 /**
  * Calculate the terminal width of a single grapheme cluster.
- * Based on code from the string-width library, but includes a possible-emoji
- * check to avoid exact emoji classification unnecessarily.
+ * Based on code from the string-width library, with a possible-emoji check
+ * that works under older TypeScript targets.
  */
 function graphemeWidth(segment: string): number {
   // Zero-width clusters

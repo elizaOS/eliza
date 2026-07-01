@@ -188,6 +188,12 @@ export class BrowserBenchmarkAdapter {
         return { subaction: "check", selector: action.selector };
       case "uncheck":
         return { subaction: "uncheck", selector: action.selector };
+      case "select":
+        return {
+          subaction: "select",
+          selector: action.selector,
+          value: action.value,
+        };
       case "press":
         return {
           subaction: "press",

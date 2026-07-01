@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-01T03:15:30.374Z",
+  "generatedAt": "2026-07-01T03:15:34.471Z",
   "benchmark": "external-web-dataset",
-  "engine": "jsdom-web",
+  "engine": "chromium",
   "policy": "oracle",
   "seedsPerTask": 1,
   "episodes": [
@@ -10,7 +10,7 @@
       "family": "mind2web-lite",
       "seed": 0,
       "utterance": "Search for an economy flight from SFO to JFK on 2026-07-14 and include flexible dates.",
-      "engine": "jsdom-web",
+      "engine": "chromium",
       "policy": "oracle",
       "reward": 1,
       "success": true,
@@ -23,7 +23,7 @@
             "value": "SFO",
             "note": "origin"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -33,7 +33,7 @@
             "value": "JFK",
             "note": "destination"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -43,7 +43,7 @@
             "value": "2026-07-14",
             "note": "date"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -53,7 +53,7 @@
             "value": "economy",
             "note": "cabin"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -62,7 +62,7 @@
             "selector": "#flexible",
             "note": "flexible dates"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -71,7 +71,7 @@
             "selector": "#search",
             "note": "submit search"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -89,7 +89,7 @@
       "family": "mind2web-lite",
       "seed": 0,
       "utterance": "Open returns, enter order A-1042, and confirm the prepaid label request.",
-      "engine": "jsdom-web",
+      "engine": "chromium",
       "policy": "oracle",
       "reward": 1,
       "success": true,
@@ -101,7 +101,7 @@
             "selector": "#returns-link",
             "note": "open returns"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -111,7 +111,7 @@
             "value": "A-1042",
             "note": "order id"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -120,7 +120,7 @@
             "selector": "#prepaid-label",
             "note": "prepaid label"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -129,7 +129,7 @@
             "selector": "#submit-return",
             "note": "submit return"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -147,7 +147,7 @@
       "family": "webarena-lite",
       "seed": 0,
       "utterance": "Invite robin@example.com as an administrator and send the welcome email.",
-      "engine": "jsdom-web",
+      "engine": "chromium",
       "policy": "oracle",
       "reward": 1,
       "success": true,
@@ -160,7 +160,7 @@
             "value": "robin@example.com",
             "note": "invite email"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -169,7 +169,7 @@
             "selector": "#admin-role",
             "note": "admin role"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -178,7 +178,7 @@
             "selector": "#send-welcome",
             "note": "welcome email"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {
@@ -187,7 +187,7 @@
             "selector": "#invite",
             "note": "send invite"
           },
-          "resultMode": "web",
+          "resultMode": "chromium",
           "error": null
         },
         {

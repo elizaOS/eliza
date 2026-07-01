@@ -68,7 +68,11 @@ export class WrongPolicy implements BenchmarkPolicy {
     if (history.length > 0) return { type: "done", note: "wrong-done" };
     const first = task.oracle(seed)[0];
     if (!first) return { type: "done", note: "wrong-empty" };
-    if (first.type === "type" || first.type === "fill") {
+    if (
+      first.type === "type" ||
+      first.type === "fill" ||
+      first.type === "select"
+    ) {
       return {
         ...first,
         value: `${first.value ?? ""}-WRONG`,
