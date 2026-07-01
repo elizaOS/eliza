@@ -10,6 +10,7 @@ import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
+  diagnoseCodingAccountFallback,
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
@@ -608,6 +609,18 @@ export class AcpService extends Service {
         label: resolvedAccount.meta.label,
         strategy: resolvedAccount.meta.strategy,
       });
+    } else {
+      // A degraded pool must not hard-fail a spawn, but it must not degrade
+      // invisibly either (#9960). Warn loudly only when accounts are connected
+      // yet none are healthy — a benign empty pool stays quiet.
+      const fallbackWarning = diagnoseCodingAccountFallback(agentType);
+      if (fallbackWarning) {
+        this.log("warn", "coding account pool degraded to single-account", {
+          sessionId: id,
+          agentType,
+          detail: fallbackWarning,
+        });
+      }
     }
 
     const now = new Date();

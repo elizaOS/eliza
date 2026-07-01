@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accountMetaFromSessionMetadata,
+  diagnoseCodingAccountFallback,
   getCodingAccountBridge,
   isMultiAccountAgentType,
   resolveCodingAccountStrategy,
@@ -127,5 +128,81 @@ describe("selectCodingAccount", () => {
       }),
     };
     expect(await selectCodingAccount("codex", {})).toBeNull();
+  });
+});
+
+describe("diagnoseCodingAccountFallback (#9960 loud degradation)", () => {
+  function installDescribe(
+    describe: () => Record<
+      string,
+      { providerId: string; total: number; enabled: number; healthy: number }[]
+    >,
+  ) {
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = { describe };
+  }
+
+  it("is silent for a benign empty/single-account host (no bridge, no accounts)", () => {
+    clearBridge();
+    expect(diagnoseCodingAccountFallback("claude")).toBeNull();
+    installDescribe(() => ({
+      claude: [
+        {
+          providerId: "anthropic-subscription",
+          total: 0,
+          enabled: 0,
+          healthy: 0,
+        },
+      ],
+    }));
+    // Zero accounts connected → single-account by choice, not a misconfig.
+    expect(diagnoseCodingAccountFallback("claude")).toBeNull();
+  });
+
+  it("is silent for non-multi-account agent types", () => {
+    installDescribe(() => ({
+      claude: [
+        {
+          providerId: "anthropic-subscription",
+          total: 2,
+          enabled: 0,
+          healthy: 0,
+        },
+      ],
+    }));
+    expect(diagnoseCodingAccountFallback("elizaos")).toBeNull();
+  });
+
+  it("warns loudly when accounts are connected but NONE are healthy", () => {
+    installDescribe(() => ({
+      codex: [
+        { providerId: "openai-codex", total: 2, enabled: 2, healthy: 0 },
+        { providerId: "openai-api", total: 0, enabled: 0, healthy: 0 },
+      ],
+    }));
+    const msg = diagnoseCodingAccountFallback("codex");
+    expect(msg).toContain("codex");
+    expect(msg).toContain("2 account(s) connected but 0 healthy");
+    expect(msg).toContain("single-account credentials");
+  });
+
+  it("stays silent when at least one account is healthy (rotation works)", () => {
+    installDescribe(() => ({
+      claude: [
+        {
+          providerId: "anthropic-subscription",
+          total: 2,
+          enabled: 2,
+          healthy: 1,
+        },
+      ],
+    }));
+    expect(diagnoseCodingAccountFallback("claude")).toBeNull();
+  });
+
+  it("never throws when describe() throws", () => {
+    installDescribe(() => {
+      throw new Error("describe exploded");
+    });
+    expect(diagnoseCodingAccountFallback("codex")).toBeNull();
   });
 });
