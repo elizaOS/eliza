@@ -788,25 +788,25 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "cold-launch",
     title: "Cold app launch",
     expectation:
-      "First app load from / with first-run incomplete: the floating first-run runtime chooser renders over the app shell. No render failure, no stack trace.",
+      "First app load from / with first-run incomplete: the real chat overlay renders first-run choices in the transcript. No render failure, no stack trace.",
     async run({ page }) {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       const overlay = page.getByTestId("continuous-chat-overlay");
       await expect(overlay).toBeVisible({ timeout: 20_000 });
-      const chooser = page.getByTestId("first-run-runtime-chooser");
-      await expect(chooser).toBeVisible({ timeout: 20_000 });
       await expect(
-        chooser.getByText("Choose how Eliza should run", { exact: true }),
+        page.getByText("First, where should your agent run?", { exact: false }),
       ).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(
+        0,
+      );
       return {
         assertions: [
           "Loaded / with first-run incomplete",
-          "continuous-chat-overlay + runtime chooser became visible within 20s",
+          "continuous-chat-overlay + transcript runtime choices became visible within 20s",
         ],
         dom: await domMarkers(page, {
           chatOverlay: '[data-testid="continuous-chat-overlay"]',
-          runtimeChooser: '[data-testid="first-run-runtime-chooser"]',
-          runtimeChoice: '[data-testid="first-run-chooser-cloud"]',
+          runtimeChoice: '[data-testid="choice-__first_run__:runtime:cloud"]',
           root: "#root",
         }),
       };
@@ -817,19 +817,16 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     id: "onboarding-runtime",
     title: "Onboarding runtime choice",
     expectation:
-      "The first-run chooser asks how the agent should run, with Eliza Cloud, on-device, and Advanced bring-your-own-keys options.",
+      "The chat transcript asks how the agent should run, with Eliza Cloud, on-device, and bring-your-own-keys options.",
     async run({ page }) {
-      const chooser = page.getByTestId("first-run-runtime-chooser");
-      await expect(chooser).toBeVisible({ timeout: 15_000 });
       await expect(
-        chooser.getByText("Choose how Eliza should run", { exact: true }),
+        page.getByText("First, where should your agent run?", { exact: false }),
       ).toBeVisible({ timeout: 15_000 });
-      const cloud = chooser.getByTestId("first-run-chooser-cloud");
-      const local = chooser.getByTestId("first-run-chooser-local");
-      const other = chooser.getByTestId("first-run-chooser-other");
+      const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
+      const local = page.getByTestId("choice-__first_run__:runtime:local");
+      const other = page.getByTestId("choice-__first_run__:runtime:other");
       await expect(cloud).toBeVisible();
       await expect(local).toBeVisible();
-      await chooser.getByRole("button", { name: /Advanced setup/i }).click();
       await expect(other).toBeVisible();
       return {
         assertions: [
@@ -837,9 +834,9 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
           "runtime cloud / local / other choices all visible",
         ],
         dom: await domMarkers(page, {
-          cloud: '[data-testid="first-run-chooser-cloud"]',
-          local: '[data-testid="first-run-chooser-local"]',
-          other: '[data-testid="first-run-chooser-other"]',
+          cloud: '[data-testid="choice-__first_run__:runtime:cloud"]',
+          local: '[data-testid="choice-__first_run__:runtime:local"]',
+          other: '[data-testid="choice-__first_run__:runtime:other"]',
         }),
       };
     },
@@ -852,18 +849,18 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       "Choosing the local runtime advances first-run to the provider step and resolves to a ready agent: the chat overlay + composer are reachable.",
     async run(ctx) {
       const { page } = ctx;
-      // Drive the local-runtime selection: picking Local advances the chooser to
+      // Drive the local-runtime selection: picking Local advances the chat to
       // the on-device provider step. We intentionally STOP before picking the
       // provider, because the on-device finish would POST /api/first-run + probe
       // local-inference, which the keyless mock lane does not stub (it would 501
       // and trip the 5xx gate). Real cloud/local provisioning is out of scope per
       // JOURNEY.md's surface decision, so reachChatReady force-resolves first-run
       // to land the journey on a ready agent — exactly as before #9952.
-      const local = page.getByTestId("first-run-chooser-local");
+      const local = page.getByTestId("choice-__first_run__:runtime:local");
       if (await local.isVisible().catch(() => false)) {
         await local.click().catch(() => undefined);
         await page
-          .getByTestId("first-run-provider-on-device")
+          .getByTestId("choice-__first_run__:provider:on-device")
           .waitFor({ state: "visible", timeout: 15_000 })
           .catch(() => undefined);
       }

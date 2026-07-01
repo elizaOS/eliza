@@ -335,6 +335,7 @@ export interface AppState {
   backgroundConfig: BackgroundConfig;
   /** True when there is a previous background config to undo to. */
   canUndoBackground: boolean;
+  canRedoBackground: boolean;
   ownerName: string | null;
   connected: boolean;
   agentStatus: AgentStatus | null;
@@ -773,6 +774,7 @@ export interface AppActions {
   setBackgroundConfig: (config: BackgroundConfig) => void;
   /** Restore the most recent previous background config (no-op when empty). */
   undoBackgroundConfig: () => void;
+  redoBackgroundConfig: () => void;
 
   // Lifecycle
   handleStart: () => Promise<void>;

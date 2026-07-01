@@ -36,7 +36,7 @@ export function ThinkingBlock({
         Thinking
       </button>
       {open ? (
-        <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto">
+        <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words opacity-80 m-0 overflow-x-auto">
           {trimmed}
         </pre>
       ) : null}

@@ -146,11 +146,18 @@ function AppProviderInner({
   // --- Display preferences (extracted to useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
-    state: { uiTheme, uiThemeMode, backgroundConfig, canUndoBackground },
+    state: {
+      uiTheme,
+      uiThemeMode,
+      backgroundConfig,
+      canUndoBackground,
+      canRedoBackground,
+    },
     setUiTheme,
     setUiThemeMode,
     setBackgroundConfig,
     undoBackgroundConfig,
+    redoBackgroundConfig,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -1929,6 +1936,7 @@ function AppProviderInner({
       uiThemeMode,
       backgroundConfig,
       canUndoBackground,
+      canRedoBackground,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2214,6 +2222,7 @@ function AppProviderInner({
       setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
+      redoBackgroundConfig,
       handleStart,
       handleStop,
 
@@ -2341,6 +2350,7 @@ function AppProviderInner({
       uiThemeMode,
       backgroundConfig,
       canUndoBackground,
+      canRedoBackground,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2633,6 +2643,7 @@ function AppProviderInner({
       setUiThemeMode,
       setBackgroundConfig,
       undoBackgroundConfig,
+      redoBackgroundConfig,
       handleStart,
       handleStop,
       handleRestart,

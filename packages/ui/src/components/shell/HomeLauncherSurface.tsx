@@ -8,6 +8,7 @@ import {
   useShellSurface,
 } from "../../state/shell-surface-store";
 import type { HomeLauncherPage } from "./home-launcher-events";
+import { PagerEdgeButtons } from "./PagerEdgeButtons";
 
 export interface HomeLauncherSurfaceProps {
   home: React.ReactNode;
@@ -43,12 +44,15 @@ export function HomeLauncherSurface({
   // A committed flick must swallow the click that the browser synthesizes from
   // the same press, so the flick doesn't also tap-launch the tile underneath.
   const suppressClickRef = React.useRef(false);
+  // The rail owns the gesture on the home half, and on the launcher's first app
+  // page / while editing. Deeper in the launcher pages the inner Launcher owns
+  // swipes (and its own edge buttons), so the rail's `< >` buttons hide there to
+  // avoid stacking two arrow sets on one edge.
+  const railEnabled = page === "home" || launcherPage === 0 || launcherEditing;
   const pager = useHorizontalPager<HTMLElement>({
     page: page === "launcher" ? 1 : 0,
     pageCount: 2,
-    // Let the inner Launcher own app-page swipes after page 1. On the first
-    // app page, or while editing, the parent owns the right-swipe home gesture.
-    enabled: page === "home" || launcherPage === 0 || launcherEditing,
+    enabled: railEnabled,
     onPageChange: (nextPage) => {
       suppressClickRef.current = true;
       window.setTimeout(() => {
@@ -129,6 +133,20 @@ export function HomeLauncherSurface({
           })}
         </div>
       </div>
+      {/* Web/desktop `< >` edge buttons for the home↔launcher rail (hidden on
+          touch). Only while the rail owns the gesture: right → launcher on the
+          home half, left → home on the launcher's first page. */}
+      {railEnabled ? (
+        <PagerEdgeButtons
+          idPrefix="rail"
+          canPrev={pager.canPrev}
+          canNext={pager.canNext}
+          goPrev={pager.goPrev}
+          goNext={pager.goNext}
+          prevLabel="Home"
+          nextLabel="Launcher"
+        />
+      ) : null}
     </section>
   );
 }

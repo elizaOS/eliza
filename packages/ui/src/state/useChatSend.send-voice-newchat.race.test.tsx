@@ -187,7 +187,10 @@ function makeHarness(seed: {
     },
     inFlightCount: () => pending.length,
     newChat: (id, roomId) => {
-      conversationsRef.current = [conversation(id, roomId), ...conversationsRef.current];
+      conversationsRef.current = [
+        conversation(id, roomId),
+        ...conversationsRef.current,
+      ];
       activeConversationIdRef.current = id;
     },
     activeId: () => activeConversationIdRef.current,
@@ -327,7 +330,9 @@ describe("#10700 shell send() → new-chat routing race", () => {
       await Promise.all([p1, p2]);
     });
 
-    expect(h.streamCalls.find((c) => c.text === "typed")?.convId).toBe("conv-A");
+    expect(h.streamCalls.find((c) => c.text === "typed")?.convId).toBe(
+      "conv-A",
+    );
   });
 });
 
@@ -419,9 +424,7 @@ describe("#10700 seeded fuzz — send-text / send-voice / new-chat invariants", 
       });
 
       // INVARIANT 1: no lost / no duplicate — exactly one stream per turn.
-      expect(h.streamCalls.length).toBe(
-        expected.length,
-      );
+      expect(h.streamCalls.length).toBe(expected.length);
 
       // INVARIANT 2: each turn routed to the conversation active at ITS enqueue,
       // regardless of any new-chat that happened while it was queued.

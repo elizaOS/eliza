@@ -96,6 +96,7 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
+      CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
       - name: Checkout repository
         timeout-minutes: 20
@@ -123,9 +124,15 @@ jobs:
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
-          # tree a second time, doubling the slowest part on this large repo.
-          timeout 300s git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD \
-            || { echo "::error::git checkout (working-tree materialization) timed out or failed after 300s"; exit 1; }
+          # tree a second time, doubling the slowest part on this large repo. Keep
+          # this bounded, but give the large monorepo enough time on busy deploy
+          # runners and let Git parallelize path materialization when supported.
+          timeout "${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s" \
+            git -C "$CHECKOUT_DIR" \
+              -c checkout.workers=8 \
+              -c checkout.thresholdForParallelism=100 \
+              checkout --force --detach FETCH_HEAD \
+            || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -289,6 +296,7 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
+      CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
       - name: Checkout repository
         timeout-minutes: 20
@@ -306,7 +314,11 @@ jobs:
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
           fetched=
           for attempt in 1 2; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"; then
+            # Pages builds materialize packages/app + linked UI/core workspaces.
+            # Blobless fetch pushes that cost into checkout as lazy hydration and
+            # has repeatedly timed out on the deploy fleet, so use a normal
+            # shallow fetch here.
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
@@ -316,9 +328,15 @@ jobs:
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
-          # tree a second time, doubling the slowest part on this large repo.
-          timeout 300s git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD \
-            || { echo "::error::git checkout (working-tree materialization) timed out or failed after 300s"; exit 1; }
+          # tree a second time, doubling the slowest part on this large repo. Keep
+          # this bounded, but give the large monorepo enough time on busy deploy
+          # runners and let Git parallelize path materialization when supported.
+          timeout "${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s" \
+            git -C "$CHECKOUT_DIR" \
+              -c checkout.workers=8 \
+              -c checkout.thresholdForParallelism=100 \
+              checkout --force --detach FETCH_HEAD \
+            || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -422,12 +440,25 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
+          PAGES_PROJECT: eliza-cloud
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload
         # (so `_middleware.ts` never runs and `/api/*` falls through to the
         # SPA's index.html instead of being proxied to the API Worker).
-        run: bunx wrangler pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
+        run: |
+          for attempt in 1 2 3; do
+            if bunx wrangler pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Cloudflare Pages deploy failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "::warning::Cloudflare Pages deploy attempt ${attempt} failed; retrying"
+            sleep $((attempt * 20))
+          done
 
       # Same-origin checks against the SITE_URL custom domains were removed: those
       # domains were served by Vercel, which has been decommissioned. We verify the
@@ -500,6 +531,7 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_CACHE: remote:rw
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
+      CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
       - name: Checkout repository
         timeout-minutes: 20
@@ -517,7 +549,11 @@ jobs:
           # retries instead of burning the whole step budget (the #10310 stuck-checkout).
           fetched=
           for attempt in 1 2; do
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 --filter=blob:none origin "$GITHUB_SHA"; then
+            # Pages builds materialize packages/app + linked UI/core workspaces.
+            # Blobless fetch pushes that cost into checkout as lazy hydration and
+            # has repeatedly timed out on the deploy fleet, so use a normal
+            # shallow fetch here.
+            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
               fetched=1
               break
             fi
@@ -527,9 +563,15 @@ jobs:
           [ -n "$fetched" ] || { echo "::error::git fetch failed after 2 attempts"; exit 1; }
           # checkout --force --detach fully materializes the working tree from the
           # fetched commit; the prior extra `git reset --hard` re-wrote the entire
-          # tree a second time, doubling the slowest part on this large repo.
-          timeout 300s git -C "$CHECKOUT_DIR" checkout --force --detach FETCH_HEAD \
-            || { echo "::error::git checkout (working-tree materialization) timed out or failed after 300s"; exit 1; }
+          # tree a second time, doubling the slowest part on this large repo. Keep
+          # this bounded, but give the large monorepo enough time on busy deploy
+          # runners and let Git parallelize path materialization when supported.
+          timeout "${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s" \
+            git -C "$CHECKOUT_DIR" \
+              -c checkout.workers=8 \
+              -c checkout.thresholdForParallelism=100 \
+              checkout --force --detach FETCH_HEAD \
+            || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -634,10 +676,23 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
+          PAGES_PROJECT: eliza-app
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
-        run: bunx wrangler pages deploy --project-name=eliza-app --branch=${{ steps.pages.outputs.branch }}
+        run: |
+          for attempt in 1 2 3; do
+            if bunx wrangler pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Cloudflare Pages deploy failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "::warning::Cloudflare Pages deploy attempt ${attempt} failed; retrying"
+            sleep $((attempt * 20))
+          done
 
       - name: Clean temp checkout
         if: always()

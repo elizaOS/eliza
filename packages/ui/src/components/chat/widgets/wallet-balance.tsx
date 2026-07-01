@@ -38,7 +38,8 @@ function formatPrice(priceUsd: number): string {
 
 /** Signed 24h-change label, e.g. "+1.2%" / "-0.4%"; empty when ~0. */
 function formatChange(change24hPct: number): string {
-  if (!Number.isFinite(change24hPct) || Math.abs(change24hPct) < 0.01) return "";
+  if (!Number.isFinite(change24hPct) || Math.abs(change24hPct) < 0.01)
+    return "";
   const sign = change24hPct > 0 ? "+" : "";
   return `${sign}${change24hPct.toFixed(1)}%`;
 }

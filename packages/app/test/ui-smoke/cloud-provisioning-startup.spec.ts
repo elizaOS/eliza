@@ -120,11 +120,11 @@ async function clickIfVisible(
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
-  const cloudRuntime = page.getByTestId("first-run-chooser-cloud");
+  const cloudRuntime = page.getByTestId("choice-__first_run__:runtime:cloud");
   if (await clickIfVisible(cloudRuntime, 10_000)) return;
 
   // Some authenticated recovery paths can still hydrate directly at the agent
-  // picker before the floating runtime chooser paints.
+  // picker before the in-chat runtime choice paints.
   const createNew = page
     .getByTestId("onboarding-agent-create")
     .or(page.getByRole("button", { name: /create a new agent/i }));
@@ -295,32 +295,26 @@ async function installDirectCloudLoginRoutes(
     });
   });
 
-  await page.route(
-    "https://api.elizacloud.ai/api/auth/cli-session",
-    async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      await fulfillJson(route, 200, { ok: true });
-    },
-  );
+  await page.route("**/api/auth/cli-session", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, { ok: true });
+  });
 
-  await page.route(
-    "https://api.elizacloud.ai/api/auth/cli-session/**",
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      await fulfillJson(route, 200, {
-        status: "authenticated",
-        apiKey: CLOUD_AUTH_TOKEN,
-        organizationId: "ui-smoke-org",
-        userId,
-      });
-    },
-  );
+  await page.route("**/api/auth/cli-session/**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      status: "authenticated",
+      apiKey: CLOUD_AUTH_TOKEN,
+      organizationId: "ui-smoke-org",
+      userId,
+    });
+  });
 }
 
 async function installFirstRunSubmitRoute(

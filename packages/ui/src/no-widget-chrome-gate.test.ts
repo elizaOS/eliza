@@ -26,7 +26,8 @@ const WIDGET_ROOTS = [
 
 const RADIUS = /\brounded-(?:sm|md|lg|xl|2xl|3xl|\[[^\]]+\])\b/; // not rounded-full (pills/dots)
 const BORDER = /\bborder\s+border-[a-z0-9/[\]-]+/; // an explicit colored border
-const BG_FILL = /\bbg-(?:black|white|bg-accent|accent|danger|warn|success)\/[0-9]+/; // translucent fill
+const BG_FILL =
+  /\bbg-(?:black|white|bg-accent|accent|danger|warn|success)\/[0-9]+/; // translucent fill
 
 function collectFiles(dir: string, out: string[] = []): string[] {
   let entries: string[];

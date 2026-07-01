@@ -175,15 +175,6 @@
 ### custom-actions (1)
 - src\components\custom-actions\CustomActionsView.tsx
 
-### CompactOnboarding.tsx (1)
-- src\first-run\CompactOnboarding.tsx
-
-### FirstRunScreen.tsx (1)
-- src\first-run\FirstRunScreen.tsx
-
-### OnboardingVoicePill.tsx (1)
-- src\first-run\OnboardingVoicePill.tsx
-
 ### renderer.tsx (1)
 - src\genui\renderer.tsx
 

@@ -56,11 +56,14 @@ async function clickIfVisible(
   }
 }
 
-// Drive the cloud entry point of first-run: the floating chooser's Eliza Cloud
-// option, then the SensitiveRequestBlock "Connect Eliza Cloud" OAuth authorize
+// Drive the cloud entry point of first-run: the transcript's Eliza Cloud option,
+// then the SensitiveRequestBlock "Connect Eliza Cloud" OAuth authorize
 // affordance if shown.
 async function chooseCloudRuntime(page: Page): Promise<void> {
-  await clickIfVisible(page.getByTestId("first-run-chooser-cloud"), 30_000);
+  await clickIfVisible(
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+    30_000,
+  );
   await clickIfVisible(
     page.getByTestId("sensitive-request-oauth-start"),
     5_000,

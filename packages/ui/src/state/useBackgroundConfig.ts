@@ -13,16 +13,22 @@ export function useBackgroundConfig(): {
   backgroundConfig: BackgroundConfig;
   setBackgroundConfig: (config: BackgroundConfig) => void;
   undoBackgroundConfig: () => void;
+  redoBackgroundConfig: () => void;
   canUndoBackground: boolean;
+  canRedoBackground: boolean;
 } {
   const backgroundConfig = useAppSelectorShallow((s) => s.backgroundConfig);
   const setBackgroundConfig = useAppSelector((s) => s.setBackgroundConfig);
   const undoBackgroundConfig = useAppSelector((s) => s.undoBackgroundConfig);
+  const redoBackgroundConfig = useAppSelector((s) => s.redoBackgroundConfig);
   const canUndoBackground = useAppSelector((s) => s.canUndoBackground);
+  const canRedoBackground = useAppSelector((s) => s.canRedoBackground);
   return {
     backgroundConfig,
     setBackgroundConfig,
     undoBackgroundConfig,
+    redoBackgroundConfig,
     canUndoBackground,
+    canRedoBackground,
   };
 }
