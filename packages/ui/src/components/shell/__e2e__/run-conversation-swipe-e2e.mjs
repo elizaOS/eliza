@@ -30,6 +30,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import { touchSwipe } from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-conversation-swipe");
@@ -181,58 +182,19 @@ async function assertInvariants(p, label, { expectIndex } = {}) {
   return harness;
 }
 
-/** Dispatch a real touch-pointer drag from an element's centre by (dx, dy). */
+/**
+ * Drive a REAL touch drag from an element's centre by (dx, dy) via CDP
+ * Input.dispatchTouchEvent (the shared #10722 helper). This replaces the former
+ * synthetic `el.dispatchEvent(new PointerEvent(..., {pointerType:"touch"}))`
+ * inside page.evaluate, which bypassed hit-testing, `touch-action`, and implicit
+ * pointer capture — so the conversation swipe is now verified the way a finger
+ * drives it, not a fabricated event.
+ */
 async function drag(p, selector, dx, dy, { steps = 12, slow = false } = {}) {
-  const box = await p.locator(selector).boundingBox();
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await p.evaluate(
-    ({ cx, cy, selector }) => {
-      const el = document.querySelector(selector);
-      window.__t = el;
-      el?.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: cx,
-          clientY: cy,
-          bubbles: true,
-        }),
-      );
-    },
-    { cx, cy, selector },
-  );
-  for (let i = 1; i <= steps; i += 1) {
-    const x = cx + (dx * i) / steps;
-    const y = cy + (dy * i) / steps;
-    await p.evaluate(
-      ({ x, y }) =>
-        window.__t?.dispatchEvent(
-          new PointerEvent("pointermove", {
-            pointerId: 1,
-            pointerType: "touch",
-            clientX: x,
-            clientY: y,
-            bubbles: true,
-          }),
-        ),
-      { x, y },
-    );
-    if (slow) await p.waitForTimeout(20);
-  }
-  await p.evaluate(
-    ({ x, y }) =>
-      window.__t?.dispatchEvent(
-        new PointerEvent("pointerup", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: x,
-          clientY: y,
-          bubbles: true,
-        }),
-      ),
-    { x: cx + dx, y: cy + dy },
-  );
+  await touchSwipe(p, selector, dx, dy, {
+    steps,
+    stepDelayMs: slow ? 20 : 0,
+  });
 }
 
 /** Browser-hit-tested drag by screen coordinates. Used for #10715: the pointer
