@@ -72,4 +72,30 @@ describe("buildSkillsManifest", () => {
     expect(manifest.markdown).toContain("Build Monetized App");
     expect(manifest.markdown).not.toContain("Disabled");
   });
+
+  it("appends the ViewKind contract when includeViewKindContract is set (#8917)", async () => {
+    const manifest = await buildSkillsManifest(createRuntime(), {
+      recommendedSlugs: [PARENT_AGENT_BROKER_SLUG],
+      virtualSkills: [PARENT_AGENT_BROKER_MANIFEST_ENTRY],
+      includeViewKindContract: true,
+    });
+
+    expect(manifest.markdown).toContain("## View kind");
+    expect(manifest.markdown).toContain("`release`");
+    expect(manifest.markdown).toContain("`preview`");
+    expect(manifest.markdown).toContain("`developer`");
+    expect(manifest.markdown).toContain("`system`");
+    expect(manifest.markdown).toContain("Do not use");
+    // Default resolution is documented so an omitted viewKind is unambiguous.
+    expect(manifest.markdown).toContain("resolves to `release`");
+  });
+
+  it("omits the ViewKind contract from the generic manifest by default (#8917)", async () => {
+    const manifest = await buildSkillsManifest(createRuntime(), {
+      virtualSkills: [PARENT_AGENT_BROKER_MANIFEST_ENTRY],
+    });
+
+    // The generic manifest must stay clean — ViewKind is app-build-only.
+    expect(manifest.markdown).not.toContain("View kind");
+  });
 });

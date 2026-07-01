@@ -48,6 +48,13 @@ export interface BuildSkillsManifestOptions {
   recommendedSlugs?: string[];
   /** Additional task-scoped skills handled by the orchestrator bridge. */
   virtualSkills?: ManifestSkillEntry[];
+  /**
+   * Append a "View kind" contract section so a Cloud-deploying sub-agent
+   * categorizes any `Plugin.views` entry it ships (release default / preview /
+   * developer; never system). Only relevant to app-building / economics tasks,
+   * so it is opt-in and off by default for the generic manifest. (#8917)
+   */
+  includeViewKindContract?: boolean;
 }
 
 export interface SkillsManifestResult {
@@ -84,10 +91,32 @@ function renderEntries(entries: ManifestSkillEntry[]): string {
     .join("\n");
 }
 
+/**
+ * The ViewKind taxonomy a Cloud-deploying sub-agent must set on any view it
+ * ships. Kept in sync with `resolveViewKind` in
+ * `packages/core/src/types/view-kind.ts` (default `release`). (#8917)
+ */
+function renderViewKindContract(): string[] {
+  return [
+    "## View kind (if you ship a view)",
+    "",
+    "Any `Plugin.views` entry you create must set `viewKind` so the shell categorizes it correctly. The four kinds:",
+    "",
+    "- `release` — a finished, public, production-ready view. **This is the default** for a user-facing view; omitting `viewKind` resolves to `release`.",
+    "- `preview` — unfinished/experimental; hidden until the user enables it in Settings.",
+    "- `developer` — dev tooling (logs, DB inspectors, trajectory viewers); shown in dev builds, hidden in production until enabled.",
+    "- `system` — reserved for built-in core views. **Do not use** for a view you create.",
+    "",
+    "Pick `release` for anything you intend users to see, `preview` while it is still rough, and `developer` for an inspector/diagnostic surface.",
+    "",
+  ];
+}
+
 function renderManifest(
   recommended: ManifestSkillEntry[],
   available: ManifestSkillEntry[],
   virtualSkills: ManifestSkillEntry[],
+  includeViewKindContract = false,
 ): string {
   const lines: string[] = [];
   lines.push("# Available skills");
@@ -123,6 +152,10 @@ function renderManifest(
     lines.push(renderEntries(virtualSkills));
     lines.push("");
   }
+
+  if (includeViewKindContract) {
+    lines.push(...renderViewKindContract());
+  }
   return lines.join("\n");
 }
 
@@ -154,7 +187,12 @@ export async function buildSkillsManifest(
       .map((slug) => virtualBySlug.get(slug))
       .filter((entry): entry is ManifestSkillEntry => Boolean(entry));
     return {
-      markdown: renderManifest(recommendedVirtualEntries, [], virtualEntries),
+      markdown: renderManifest(
+        recommendedVirtualEntries,
+        [],
+        virtualEntries,
+        opts.includeViewKindContract ?? false,
+      ),
       slugs: virtualEntries.map((entry) => entry.slug),
     };
   }
@@ -203,6 +241,7 @@ export async function buildSkillsManifest(
       recommendedEntries,
       availableEntries,
       virtualEntries,
+      opts.includeViewKindContract ?? false,
     ),
     slugs: dedupedSlugs,
   };
