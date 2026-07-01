@@ -1,7 +1,34 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+/**
+ * Executive-assistant scenario corpus gate.
+ *
+ * Loads every `*.scenario.ts` in `test/scenarios/` through the REAL
+ * scenario-runner loader (`discoverScenarios` + `loadScenarioFile` — the same
+ * code path `eliza-scenarios run` uses) and inspects the loaded structure:
+ *
+ *  - every file loads and passes the loader's ScenarioDefinition shape check;
+ *  - scenario ids are unique and match their filename (discoverability);
+ *  - every scenario carries at least one load-bearing assertion (finalChecks,
+ *    assertTurn, planner matchers, expectedActions, forbiddenActions,
+ *    assertResponse, responseJudge, or responseExcludes). `responseIncludesAny`
+ *    / `responseIncludesAll` alone do NOT count — a scenario whose only
+ *    assertion is "the reply echoes a keyword" is vacuous coverage (#9310);
+ *  - the required executive-assistant ids exist and are tagged;
+ *  - the chief-of-staff domains are covered by loaded `domain` fields.
+ *
+ * A previous version of this gate only asserted that files exist and contain
+ * substrings ("executive-assistant", `domain: "..."`) — a scenario file full
+ * of prose with zero runnable turns satisfied it. This version fails on a
+ * scenario that does not load or asserts nothing.
+ */
+
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
+import {
+  discoverScenarios,
+  loadScenarioFile,
+} from "../../../packages/scenario-runner/src/loader.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scenarioDir = resolve(here, "scenarios");
@@ -158,34 +185,103 @@ const requiredDomains = [
   "executive.vendor",
 ] as const;
 
-function scenarioFiles(): string[] {
-  return readdirSync(scenarioDir)
-    .filter((file) => file.endsWith(".scenario.ts"))
-    .sort();
+/**
+ * Turn-level assertion fields the executor enforces that a canned/echoing
+ * reply cannot trivially satisfy. `responseIncludesAny` / `responseIncludesAll`
+ * are deliberately absent: keyword-echo assertions are tracked (and only
+ * allowed to shrink) by the scenario-runner echo-assertion ratchet.
+ */
+const LOAD_BEARING_TURN_FIELDS = [
+  "assertTurn",
+  "assertResponse",
+  "expectedActions",
+  "forbiddenActions",
+  "plannerIncludesAll",
+  "plannerIncludesAny",
+  "plannerExcludes",
+  "responseExcludes",
+  "responseJudge",
+] as const;
+
+function hasLoadBearingAssertion(scenario: ScenarioDefinition): boolean {
+  const finalChecks = (scenario as { finalChecks?: unknown[] }).finalChecks;
+  if (Array.isArray(finalChecks) && finalChecks.length > 0) return true;
+  return scenario.turns.some((turn) =>
+    LOAD_BEARING_TURN_FIELDS.some(
+      (field) => (turn as Record<string, unknown>)[field] !== undefined,
+    ),
+  );
 }
 
-function readScenario(id: string): string {
-  return readFileSync(resolve(scenarioDir, `${id}.scenario.ts`), "utf8");
+async function loadCorpus(): Promise<
+  Array<{ file: string; scenario: ScenarioDefinition }>
+> {
+  const files = await discoverScenarios(scenarioDir);
+  return Promise.all(files.map((file) => loadScenarioFile(file)));
 }
+
+// Loading ~190 scenario modules through the real loader is one shared,
+// order-independent read — do it once for the whole suite.
+const corpusPromise = loadCorpus();
 
 describe("executive assistant scenario coverage", () => {
-  it("keeps expanding LifeOps beyond habit reminders", () => {
-    const files = scenarioFiles();
+  it("every scenario file loads through the real scenario loader", async () => {
+    const corpus = await corpusPromise;
 
-    expect(files.length).toBeGreaterThanOrEqual(155);
-    for (const id of requiredScenarioIds) {
-      expect(files).toContain(`${id}.scenario.ts`);
-      expect(readScenario(id)).toContain("executive-assistant");
+    // Deletion guard: the corpus may only grow.
+    expect(corpus.length).toBeGreaterThanOrEqual(155);
+
+    // Unique ids, and each id matches its filename so `--filter <id>` and the
+    // file on disk always agree.
+    const ids = new Set<string>();
+    for (const { file, scenario } of corpus) {
+      expect(
+        ids.has(scenario.id),
+        `duplicate scenario id ${scenario.id} (${file})`,
+      ).toBe(false);
+      ids.add(scenario.id);
+      expect(basename(file), `id/filename mismatch in ${file}`).toBe(
+        `${scenario.id}.scenario.ts`,
+      );
+      expect(
+        scenario.turns.length,
+        `${scenario.id} has no turns — nothing to run`,
+      ).toBeGreaterThan(0);
     }
   });
 
-  it("covers the core chief-of-staff domains", () => {
-    const corpus = scenarioFiles()
-      .map((file) => readFileSync(resolve(scenarioDir, file), "utf8"))
-      .join("\n");
+  it("every scenario carries at least one load-bearing assertion", async () => {
+    const corpus = await corpusPromise;
+    const vacuous = corpus
+      .filter(({ scenario }) => !hasLoadBearingAssertion(scenario))
+      .map(({ scenario }) => scenario.id);
+    expect(
+      vacuous,
+      "scenarios with no enforceable assertion beyond keyword echo — add finalChecks, assertTurn, planner matchers, or expectedActions",
+    ).toEqual([]);
+  });
 
+  it("keeps expanding LifeOps beyond habit reminders", async () => {
+    const corpus = await corpusPromise;
+    const byId = new Map(corpus.map(({ scenario }) => [scenario.id, scenario]));
+    for (const id of requiredScenarioIds) {
+      const scenario = byId.get(id);
+      expect(scenario, `required scenario ${id} is missing`).toBeDefined();
+      expect(
+        (scenario as { tags?: string[] }).tags ?? [],
+        `${id} lost its executive-assistant tag`,
+      ).toContain("executive-assistant");
+    }
+  });
+
+  it("covers the core chief-of-staff domains", async () => {
+    const corpus = await corpusPromise;
+    const domains = new Set(corpus.map(({ scenario }) => scenario.domain));
     for (const domain of requiredDomains) {
-      expect(corpus).toContain(`domain: "${domain}"`);
+      expect(
+        domains.has(domain),
+        `no loaded scenario covers domain ${domain}`,
+      ).toBe(true);
     }
   });
 });
