@@ -1,22 +1,22 @@
 {
   "issue": 9943,
-  "serial": "emulator-5554",
+  "serial": "emulator-5556",
   "url": "https://localhost/",
-  "eventCount": 16,
+  "eventCount": 24,
   "eventTypes": {
     "pointerdown": 1,
     "touchstart": 1,
-    "pointermove": 6,
-    "touchmove": 6,
+    "pointermove": 10,
+    "touchmove": 10,
     "pointerup": 1,
     "touchend": 1
   },
   "pointerTypes": {
-    "touch": 8,
-    "none": 8
+    "touch": 12,
+    "none": 12
   },
   "targetTestIds": {
-    "chat-sheet-grabber": 16
+    "chat-sheet-grabber": 24
   },
   "firstEvents": [
     {
@@ -24,8 +24,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 206,
-      "clientY": 842
+      "clientX": 160,
+      "clientY": 591
     },
     {
       "type": "touchstart",
@@ -40,8 +40,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 192,
-      "clientY": 841
+      "clientX": 132,
+      "clientY": 590
     },
     {
       "type": "touchmove",
@@ -56,8 +56,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 171,
-      "clientY": 840
+      "clientX": 119,
+      "clientY": 589
     },
     {
       "type": "touchmove",
@@ -72,8 +72,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 152,
-      "clientY": 840
+      "clientX": 108,
+      "clientY": 589
     },
     {
       "type": "touchmove",
@@ -88,8 +88,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 126,
-      "clientY": 839
+      "clientX": 100,
+      "clientY": 589
     },
     {
       "type": "touchmove",
@@ -104,8 +104,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 102,
-      "clientY": 838
+      "clientX": 87,
+      "clientY": 588
     },
     {
       "type": "touchmove",
