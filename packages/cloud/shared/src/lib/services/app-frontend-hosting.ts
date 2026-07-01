@@ -90,6 +90,8 @@ export const frontendHostingLimits = {
   maxFiles: () => intFromEnv("ELIZA_FRONTEND_MAX_FILES", 2000),
   maxTotalBytes: () => intFromEnv("ELIZA_FRONTEND_MAX_TOTAL_BYTES", 25 * 1024 * 1024),
   maxFileBytes: () => intFromEnv("ELIZA_FRONTEND_MAX_FILE_BYTES", 10 * 1024 * 1024),
+  /** Superseded deployments retained per app for rollback before GC. */
+  keepSuperseded: () => intFromEnv("ELIZA_FRONTEND_KEEP_SUPERSEDED", 5),
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -217,8 +219,12 @@ export class AppFrontendHostingService {
       buildMeta: input.buildMeta ?? { source: "upload" },
     });
 
+    const r2Prefix = this.prefixFor(input.app.organization_id, input.app.id, deployment.id);
+    const writtenKeys: string[] = [];
+
+    // Phase 1 — upload + finalize. A failure here marks the deployment `failed`
+    // and best-effort cleans the partial R2 objects it wrote (no orphans).
     try {
-      const r2Prefix = this.prefixFor(input.app.organization_id, input.app.id, deployment.id);
       await appFrontendDeploymentsRepository.markStatus(deployment.id, "uploading");
 
       const bucket = requireBucket();
@@ -243,9 +249,9 @@ export class AppFrontendHostingService {
 
         const contentType = file.contentType ?? inferContentType(path);
         const hash = await sha256Hex(bytes);
-        await bucket.put(`${r2Prefix}${hash}`, bytes, {
-          httpMetadata: { contentType },
-        });
+        const key = `${r2Prefix}${hash}`;
+        await bucket.put(key, bytes, { httpMetadata: { contentType } });
+        writtenKeys.push(key);
         entries.push({ path, hash, contentType, size: bytes.byteLength });
       }
 
@@ -264,17 +270,8 @@ export class AppFrontendHostingService {
         fileCount: entries.length,
         totalBytes,
       });
-
-      if (input.activate ?? true) {
-        const activated = await appFrontendDeploymentsRepository.activate(
-          input.app.id,
-          deployment.id,
-        );
-        if (activated) return activated;
-      }
-      const fresh = await appFrontendDeploymentsRepository.getById(deployment.id);
-      return fresh ?? deployment;
     } catch (error) {
+      await this.cleanupKeys(writtenKeys);
       await appFrontendDeploymentsRepository.markFailed(
         deployment.id,
         error instanceof Error ? error.message : String(error),
@@ -285,6 +282,66 @@ export class AppFrontendHostingService {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
+    }
+
+    // Phase 2 — activation is SEPARATE: a lost activation race (unique-violation
+    // on the single-active index) must NOT flip a fully-uploaded, `ready`
+    // deployment to `failed`. On activation failure we leave it `ready` (the
+    // client can re-activate) and return the ready row.
+    if (input.activate ?? true) {
+      try {
+        const activated = await appFrontendDeploymentsRepository.activate(
+          input.app.id,
+          deployment.id,
+        );
+        if (activated) {
+          // Bounded retention: prune superseded deployments (+ their R2 bytes)
+          // beyond keep-N so storage doesn't grow without bound. Best-effort.
+          await this.pruneSuperseded(input.app.id).catch((error) =>
+            logger.warn("[AppFrontendHosting] prune superseded failed", {
+              appId: input.app.id,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+          return activated;
+        }
+      } catch (error) {
+        logger.warn("[AppFrontendHosting] activation failed; deployment left ready", {
+          appId: input.app.id,
+          deploymentId: deployment.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    const fresh = await appFrontendDeploymentsRepository.getById(deployment.id);
+    return fresh ?? deployment;
+  }
+
+  /** Best-effort delete a set of R2 object keys (partial-upload cleanup). */
+  private async cleanupKeys(keys: string[]): Promise<void> {
+    const bucket = getRuntimeR2Bucket();
+    if (!bucket) return;
+    for (const key of keys) {
+      try {
+        await bucket.delete(key);
+      } catch {
+        // best-effort — a leftover object is GC-swept by prune/delete later.
+      }
+    }
+  }
+
+  /**
+   * Retain at most keep-N superseded deployments per app (for rollback); delete
+   * older superseded deployments and their R2 artifacts. Active/ready/failed are
+   * left untouched. Best-effort — a failure here never fails a deploy.
+   */
+  private async pruneSuperseded(appId: string): Promise<void> {
+    const keep = frontendHostingLimits.keepSuperseded();
+    const all = await appFrontendDeploymentsRepository.listByApp(appId, 500);
+    const superseded = all.filter((d) => d.status === "superseded");
+    for (const dep of superseded.slice(keep)) {
+      await this.deleteArtifacts(dep);
+      await appFrontendDeploymentsRepository.delete(dep.id);
     }
   }
 

@@ -24,6 +24,7 @@ import type {
   FrontendManifest,
 } from "@/db/schemas/app-frontend-deployments";
 import { AuthenticationError } from "@/lib/api/cloud-worker-errors";
+import * as realFrontendRepo from "@/db/repositories/app-frontend-deployments";
 import * as realAuth from "@/lib/auth/workers-hono-auth";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import * as realApps from "@/lib/services/apps";
@@ -244,8 +245,11 @@ const previewRoute = (
 ).default;
 
 afterAll(() => {
+  // Restore ALL mocked modules — bun's mock.module is process-global, so a
+  // leaked repo mock corrupts sibling real-DB suites in a combined run.
   mock.module("@/lib/auth/workers-hono-auth", () => realAuth);
   mock.module("@/lib/services/apps", () => realApps);
+  mock.module("@/db/repositories/app-frontend-deployments", () => realFrontendRepo);
   setRuntimeR2Bucket(null);
 });
 

@@ -20,6 +20,7 @@ import {
 import { Hono } from "hono";
 import type { AppFrontendDeployment } from "@/db/schemas/app-frontend-deployments";
 import { sha256Hex } from "@/lib/services/app-frontend-hosting";
+import * as realFrontendRepo from "@/db/repositories/app-frontend-deployments";
 import * as realApps from "@/lib/services/apps";
 import * as realManaged from "@/lib/services/managed-domains";
 import {
@@ -135,6 +136,7 @@ beforeAll(async () => {
 afterAll(() => {
   mock.module("@/lib/services/apps", () => realApps);
   mock.module("@/lib/services/managed-domains", () => realManaged);
+  mock.module("@/db/repositories/app-frontend-deployments", () => realFrontendRepo);
   setRuntimeR2Bucket(null);
 });
 
@@ -218,6 +220,18 @@ describe("public hosted-frontend serve", () => {
     );
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("<h1>Live</h1>");
+  });
+
+  test("404 for a de-approved (is_approved=false) app on its system host — takedown gate", async () => {
+    getBySlugImpl = async (slug) =>
+      slug === "cool" ? { ...APP, is_approved: false } : undefined;
+    getActiveImpl = async () => activeDeployment;
+    const res = await app.request(
+      "/api/v1/hosted-frontend/serve?host=cool.sites.elizacloud.ai",
+      {},
+      ENV,
+    );
+    expect(res.status).toBe(404);
   });
 
   test("404 for an unknown host (fails closed)", async () => {

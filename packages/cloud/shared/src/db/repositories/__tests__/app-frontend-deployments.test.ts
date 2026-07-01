@@ -24,6 +24,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { and, eq } from "drizzle-orm";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { appFrontendDeployments } from "../../schemas/app-frontend-deployments";
@@ -241,5 +242,113 @@ describe("AppFrontendHostingService.deployBundle", () => {
     const rolled = await service.activate(appId, v1.id);
     expect(rolled?.id).toBe(v1.id);
     expect((await appFrontendDeploymentsRepository.getActive(appId))?.id).toBe(v1.id);
+  });
+});
+
+describe("AppFrontendHosting — DB invariants + GC + failure cleanup (#10690 review)", () => {
+  test("pglite applied (loud, never a silent no-op pass)", () => {
+    expect(pgliteReady).toBe(true);
+  });
+
+  test("the partial-unique index rejects a second ACTIVE deployment for an app", async () => {
+    if (!pgliteReady) return;
+    const { appId } = await seedApp();
+    await dbWrite
+      .insert(appFrontendDeployments)
+      .values({ app_id: appId, version: 1, status: "active", r2_prefix: "p1/" });
+    // A second active row for the same app must violate the partial-unique index.
+    // (Explicit try/catch — drizzle's insert builder is a lazy thenable that
+    // expect().rejects does not reliably await.)
+    let threw = false;
+    try {
+      await dbWrite
+        .insert(appFrontendDeployments)
+        .values({ app_id: appId, version: 2, status: "active", r2_prefix: "p2/" });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    // Exactly one active row remains. Query dbWrite directly (not the repo) so
+    // this DB-invariant assertion is immune to a leaked cross-file repo mock.
+    const activeRows = await dbWrite
+      .select({ version: appFrontendDeployments.version })
+      .from(appFrontendDeployments)
+      .where(
+        and(
+          eq(appFrontendDeployments.app_id, appId),
+          eq(appFrontendDeployments.status, "active"),
+        ),
+      );
+    expect(activeRows).toHaveLength(1);
+    expect(activeRows[0]?.version).toBe(1);
+  });
+
+  test("a failed deploy cleans up the partial R2 objects it wrote (no orphans)", async () => {
+    if (!pgliteReady) return;
+    const objects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(objects));
+    const { appId, organizationId } = await seedApp();
+    // A bundle whose second file is over the per-file cap fails mid-upload after
+    // the first file is already in R2; deployBundle must delete what it wrote.
+    process.env.ELIZA_FRONTEND_MAX_FILE_BYTES = "8";
+    try {
+      await expect(
+        service.deployBundle({
+          app: { id: appId, organization_id: organizationId },
+          files: [
+            { path: "index.html", content: "abc" },
+            { path: "big.js", content: "0123456789" },
+          ],
+        }),
+      ).rejects.toThrow(/too large/i);
+    } finally {
+      delete process.env.ELIZA_FRONTEND_MAX_FILE_BYTES;
+    }
+    expect(objects.size).toBe(0); // the first file's object was cleaned up
+  });
+
+  test("activating prunes superseded deployments beyond keep-N + deletes their R2 bytes", async () => {
+    if (!pgliteReady) return;
+    const objects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(objects));
+    const { appId, organizationId } = await seedApp();
+    const app = { id: appId, organization_id: organizationId };
+    process.env.ELIZA_FRONTEND_KEEP_SUPERSEDED = "1";
+    try {
+      const v1 = await service.deployBundle({
+        app,
+        files: [{ path: "index.html", content: "<html><head></head><body>1</body></html>" }],
+      });
+      await service.deployBundle({
+        app,
+        files: [{ path: "index.html", content: "<html><head></head><body>2</body></html>" }],
+      });
+      await service.deployBundle({
+        app,
+        files: [{ path: "index.html", content: "<html><head></head><body>3</body></html>" }],
+      });
+      // v1 is the oldest superseded; with keep=1 it is pruned (row + R2 gone).
+      expect(await appFrontendDeploymentsRepository.getById(v1.id)).toBeUndefined();
+      for (const key of objects.keys()) {
+        expect(key.startsWith(v1.r2_prefix)).toBe(false);
+      }
+    } finally {
+      delete process.env.ELIZA_FRONTEND_KEEP_SUPERSEDED;
+    }
+  });
+
+  test("a duplicate normalized path is rejected", async () => {
+    if (!pgliteReady) return;
+    setRuntimeR2Bucket(memoryBucket(new Map()));
+    const { appId, organizationId } = await seedApp();
+    await expect(
+      service.deployBundle({
+        app: { id: appId, organization_id: organizationId },
+        files: [
+          { path: "index.html", content: "<html></html>" },
+          { path: "/index.html", content: "<html></html>" },
+        ],
+      }),
+    ).rejects.toThrow(/duplicate/i);
   });
 });

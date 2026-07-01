@@ -133,6 +133,15 @@ describe("injectSeo", () => {
   test("no-op without a head", () => {
     expect(injectSeo("<body>hi</body>", { title: "x" })).toBe("<body>hi</body>");
   });
+  test("escapes a </script> breakout in injected JSON-LD", () => {
+    const out = injectSeo("<head></head>", {
+      jsonLd: { x: "</script><img src=x onerror=alert(1)>" },
+    });
+    expect(out).toContain("application/ld+json");
+    // the literal breakout must not appear — `<` is escaped to <
+    expect(out).not.toContain("</script><img");
+    expect(out).toContain("\\u003c/script");
+  });
 });
 
 describe("injectBeacon", () => {
