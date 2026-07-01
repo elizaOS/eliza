@@ -875,11 +875,22 @@ async function runCreate(
     for (const [index, session] of sessions.entries()) {
       const hint = sessionAttachHints[index];
       try {
+        // Every session that resolved fulfilled above was driven through
+        // runPromptAndClose / runPromptViaSmithers, which stop it in their
+        // `finally` before we reach here. So the `SpawnResult.status` captured
+        // at spawn time is a stale `ready` snapshot — passing it would make
+        // attachSession falsely promote the task to `active` and count a
+        // finished single-turn session as live. Read the real post-run status
+        // from the service instead; a fulfilled outcome always means the
+        // session was stopped, so fall back to a terminal status if its record
+        // is already gone.
+        const refreshed = await service.getSession(session.sessionId);
+        const effectiveStatus = refreshed?.status ?? "stopped";
         await taskService.attachSession(threadId, {
           sessionId: session.sessionId,
           agentType: session.agentType,
           workdir: session.workdir,
-          status: session.status,
+          status: effectiveStatus,
           ...(session.metadata ? { metadata: session.metadata } : {}),
           ...(hint?.label ? { label: hint.label } : {}),
           ...(hint?.originalTask ? { originalTask: hint.originalTask } : {}),
