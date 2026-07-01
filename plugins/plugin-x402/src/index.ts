@@ -88,6 +88,8 @@ export {
   type X402ScanNetwork,
 } from "./x402-types.js";
 
+export { wrapWithGadgetHumansX402 } from "./gadgethumans-bridge.js";
+
 import type { Plugin } from "@elizaos/core";
 
 /**

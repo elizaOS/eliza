@@ -68,6 +68,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@gadgethumans/x402": "^1.0.2",
     "@solana/web3.js": "1.98.4",
     "drizzle-orm": "0.45.2",
     "viem": "^2.48.8"
