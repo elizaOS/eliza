@@ -28,11 +28,16 @@ async function syncChatOverlayShortcut(
     params: { id: "chat-overlay" },
   });
   if (enabled) {
-    await invokeDesktopBridgeRequest<{ success: boolean }>({
+    const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
       rpcMethod: "desktopRegisterShortcut",
       ipcChannel: "desktop:registerShortcut",
       params: { id: "chat-overlay", accelerator },
     });
+    if (result?.success === false) {
+      throw new Error(
+        `The operating system rejected ${accelerator}. Choose a different shortcut.`,
+      );
+    }
   }
 }
 
@@ -49,9 +54,9 @@ export function ChatHotkeySettingsGroup() {
   const [error, setError] = useState<string | null>(null);
 
   const apply = useCallback(async (accelerator: string, enabled: boolean) => {
-    setChatOverlayHotkey({ accelerator, enabled });
     try {
       await syncChatOverlayShortcut(accelerator, enabled);
+      setChatOverlayHotkey({ accelerator, enabled });
       setError(null);
     } catch (syncError) {
       setError(

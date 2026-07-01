@@ -19,7 +19,7 @@ const invokeDesktopBridgeRequest = vi.fn(
     rpcMethod: string;
     ipcChannel: string;
     params?: unknown;
-  }) => undefined,
+  }) => ({ success: true }),
 );
 vi.mock("../../bridge", () => ({
   invokeDesktopBridgeRequest: (options: {
@@ -47,7 +47,10 @@ beforeEach(() => {
     accelerator: DEFAULT_CHAT_OVERLAY_ACCELERATOR,
     enabled: true,
   });
-  invokeDesktopBridgeRequest.mockClear();
+  invokeDesktopBridgeRequest.mockReset();
+  invokeDesktopBridgeRequest.mockImplementation(async () => ({
+    success: true,
+  }));
   seed();
 });
 
@@ -65,11 +68,12 @@ describe("ChatHotkeySettingsGroup", () => {
     expect(sw.getAttribute("data-state")).toBe("checked");
   });
 
-  it("disabling the toggle persists disabled and unregisters the shortcut", () => {
+  it("disabling the toggle persists disabled and unregisters the shortcut", async () => {
     render(<ChatHotkeySettingsGroup />);
     const sw = screen.getByRole("switch") as HTMLButtonElement;
-    act(() => {
+    await act(async () => {
       fireEvent.click(sw);
+      await Promise.resolve();
     });
     expect(getChatOverlayHotkey().enabled).toBe(false);
     // Disabling only unregisters — no re-register call.
@@ -111,5 +115,33 @@ describe("ChatHotkeySettingsGroup", () => {
     });
     expect(getChatOverlayHotkey().accelerator).toBe("CommandOrControl+Shift+C");
     expect(screen.getByText("Record")).toBeTruthy();
+  });
+
+  it("surfaces an OS-rejected accelerator without persisting it", async () => {
+    invokeDesktopBridgeRequest.mockImplementation(async (options) => {
+      if (options.rpcMethod === "desktopRegisterShortcut") {
+        return { success: false };
+      }
+      return { success: true };
+    });
+
+    render(<ChatHotkeySettingsGroup />);
+    act(() => {
+      fireEvent.click(screen.getByText("Record"));
+    });
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getChatOverlayHotkey().accelerator).toBe(
+      DEFAULT_CHAT_OVERLAY_ACCELERATOR,
+    );
+    expect(
+      screen.getByText(
+        "The operating system rejected CommandOrControl+J. Choose a different shortcut.",
+      ),
+    ).toBeTruthy();
   });
 });
