@@ -23,6 +23,7 @@ export * from "./types";
 export * from "./ui-preferences";
 export * from "./useApp";
 export * from "./useBackgroundConfig";
+export * from "./useChatOverlayHotkey";
 export * from "./useContentPack";
 export * from "./useDeveloperMode";
 export * from "./usePreviewMode";

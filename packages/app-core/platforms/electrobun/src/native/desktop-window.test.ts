@@ -492,6 +492,54 @@ describe("DesktopManager main window controls", () => {
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
   });
 
+  it("reports global shortcut registration rejection without tracking the shortcut", async () => {
+    const manager = new DesktopManager();
+    electrobunMock.GlobalShortcut.register.mockReturnValueOnce(false);
+
+    await expect(
+      manager.registerShortcut({
+        id: "chat-overlay",
+        accelerator: "CommandOrControl+Shift+C",
+      }),
+    ).resolves.toEqual({ success: false });
+
+    await manager.unregisterShortcut({ id: "chat-overlay" });
+
+    expect(electrobunMock.GlobalShortcut.register).toHaveBeenCalledWith(
+      "CommandOrControl+Shift+C",
+      expect.any(Function),
+    );
+    expect(electrobunMock.GlobalShortcut.unregister).not.toHaveBeenCalled();
+  });
+
+  it("tracks successfully registered global shortcuts for replacement and unregister", async () => {
+    const manager = new DesktopManager();
+    electrobunMock.GlobalShortcut.register
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true);
+
+    await expect(
+      manager.registerShortcut({
+        id: "chat-overlay",
+        accelerator: "CommandOrControl+Shift+C",
+      }),
+    ).resolves.toEqual({ success: true });
+    await expect(
+      manager.registerShortcut({
+        id: "chat-overlay",
+        accelerator: "CommandOrControl+J",
+      }),
+    ).resolves.toEqual({ success: true });
+    await manager.unregisterShortcut({ id: "chat-overlay" });
+
+    expect(electrobunMock.GlobalShortcut.unregister).toHaveBeenCalledWith(
+      "CommandOrControl+Shift+C",
+    );
+    expect(electrobunMock.GlobalShortcut.unregister).toHaveBeenCalledWith(
+      "CommandOrControl+J",
+    );
+  });
+
   it("opens tray popover as an app renderer with preload, rpc, partition, and API injection", async () => {
     const manager = new DesktopManager();
     const rpc = { request: {}, send: {}, setTransport: vi.fn() };
