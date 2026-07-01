@@ -144,7 +144,25 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
+        # The shared self-hosted deploy box can stall or kill a single bun
+        # install mid-flight (contended cache/IO), which surfaced as a
+        # "cancelled" install step failing an otherwise-green deploy while every
+        # sibling deploy job on the same run succeeded. Retry with a per-attempt
+        # timeout so a stuck/killed install aborts and retries instead of failing
+        # the deploy — the same resilience the checkout step already uses (#10310).
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if timeout 300s bun install --no-save --ignore-scripts; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::bun install failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+          done
+          git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -348,7 +366,25 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
+        # The shared self-hosted deploy box can stall or kill a single bun
+        # install mid-flight (contended cache/IO), which surfaced as a
+        # "cancelled" install step failing an otherwise-green deploy while every
+        # sibling deploy job on the same run succeeded. Retry with a per-attempt
+        # timeout so a stuck/killed install aborts and retries instead of failing
+        # the deploy — the same resilience the checkout step already uses (#10310).
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if timeout 300s bun install --no-save --ignore-scripts; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::bun install failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+          done
+          git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -583,7 +619,25 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun install --no-save --ignore-scripts && git diff --exit-code -- bun.lock
+        # The shared self-hosted deploy box can stall or kill a single bun
+        # install mid-flight (contended cache/IO), which surfaced as a
+        # "cancelled" install step failing an otherwise-green deploy while every
+        # sibling deploy job on the same run succeeded. Retry with a per-attempt
+        # timeout so a stuck/killed install aborts and retries instead of failing
+        # the deploy — the same resilience the checkout step already uses (#10310).
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if timeout 300s bun install --no-save --ignore-scripts; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::bun install failed after ${attempt} attempts"
+              exit 1
+            fi
+            echo "::warning::bun install attempt ${attempt} stalled or failed; retrying"
+          done
+          git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
         working-directory: ${{ env.CHECKOUT_DIR }}
