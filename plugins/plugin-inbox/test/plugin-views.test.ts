@@ -48,4 +48,20 @@ describe("inboxPlugin view registration", () => {
     expect(inboxPlugin.views?.[0]?.componentExport).toBe(InboxView.name);
     expect(typeof InboxView).toBe("function");
   });
+
+  it("registers the triage and queue operation HTTP routes", () => {
+    const paths = (inboxPlugin.routes ?? []).map((route) => ({
+      type: route.type,
+      path: route.path,
+    }));
+
+    expect(paths).toEqual([
+      { type: "GET", path: "/api/lifeops/inbox/triage" },
+      { type: "POST", path: "/api/lifeops/inbox/triage" },
+      { type: "POST", path: "/api/lifeops/inbox/:id/reply" },
+      { type: "POST", path: "/api/lifeops/inbox/:id/snooze" },
+      { type: "POST", path: "/api/lifeops/inbox/:id/archive" },
+      { type: "POST", path: "/api/lifeops/inbox/:id/approve" },
+    ]);
+  });
 });

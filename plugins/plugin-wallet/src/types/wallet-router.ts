@@ -11,6 +11,7 @@ export const WALLET_ROUTER_SUBACTIONS = [
   "swap",
   "bridge",
   "gov",
+  "pump_fun_buy",
 ] as const;
 
 export type WalletRouterSubaction = (typeof WALLET_ROUTER_SUBACTIONS)[number];

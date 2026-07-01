@@ -28,6 +28,7 @@ import type {
   WalletRouterExecution,
   WalletRouterParams,
 } from "../types/wallet-router.js";
+import type { SolanaSigner } from "../wallet/backend.js";
 import { buildSendTxParams } from "./evm/actions/helpers";
 import { SwapAction } from "./evm/actions/swap";
 import { TransferAction } from "./evm/actions/transfer";
@@ -42,6 +43,9 @@ import type { SolanaService } from "./solana/service";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
+const PUMPFUN_TRADE_LOCAL_URL = "https://pumpportal.fun/api/trade-local";
+const PUMPFUN_DEFAULT_PRIORITY_FEE_SOL = 0.00005;
+const PUMPFUN_DEFAULT_SLIPPAGE_BPS = 1_000;
 
 function getRuntimeSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
@@ -386,6 +390,219 @@ function getSolanaConnection(runtime: IAgentRuntime): Connection {
   return new Connection(rpcUrl);
 }
 
+type BrowserAutomationService = {
+  execute: (
+    command: Record<string, unknown>,
+    targetId?: string,
+  ) => Promise<unknown>;
+};
+
+function isBrowserAutomationService(
+  value: unknown,
+): value is BrowserAutomationService {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { execute?: unknown }).execute === "function"
+  );
+}
+
+function isSolanaMintAddress(value: string): boolean {
+  try {
+    const pubkey = new PublicKey(value);
+    return pubkey.toBase58() === value;
+  } catch {
+    return false;
+  }
+}
+
+async function openPumpFunCoinPage(
+  runtime: IAgentRuntime,
+  mint: string,
+): Promise<{ opened: boolean; result?: unknown; error?: string }> {
+  const browser = runtime.getService("browser");
+  if (!isBrowserAutomationService(browser)) {
+    return { opened: false, error: "browser service is not available" };
+  }
+  const url = `https://pump.fun/coin/${encodeURIComponent(mint)}`;
+  try {
+    const result = await browser.execute({
+      subaction: "navigate",
+      url,
+      show: true,
+    });
+    return { opened: true, result };
+  } catch (error) {
+    return {
+      opened: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function getNumberSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  fallback: number,
+): number {
+  const raw = getRuntimeSetting(runtime, key);
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+async function pumpPortalResponseBytes(response: Response): Promise<Buffer> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const json = (await response.json()) as {
+      error?: unknown;
+      errors?: unknown;
+      message?: unknown;
+    };
+    throw new Error(
+      `PumpPortal trade-local failed: ${String(json.error ?? json.errors ?? json.message ?? "unexpected JSON response")}`,
+    );
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function resolvePumpFunSigner(context: WalletRouterContext): Promise<{
+  readonly publicKey: PublicKey;
+  signTransaction(tx: VersionedTransaction): Promise<VersionedTransaction>;
+}> {
+  if (context.walletBackend) {
+    if (!context.walletBackend.canSign("solana")) {
+      throw new Error(
+        "Solana signing is not available in this wallet backend.",
+      );
+    }
+    const signer: SolanaSigner = context.walletBackend.getSolanaSigner();
+    return {
+      publicKey: signer.publicKey,
+      signTransaction: async (tx) => {
+        const signed = await signer.signTransaction(tx);
+        if (!(signed instanceof VersionedTransaction)) {
+          throw new Error("PumpPortal returned a versioned transaction.");
+        }
+        return signed;
+      },
+    };
+  }
+
+  const { keypair } = await getWalletKey(context.runtime, true);
+  if (!keypair) {
+    throw new Error("Solana keypair is not available.");
+  }
+  return {
+    publicKey: keypair.publicKey,
+    signTransaction: async (tx) => {
+      const copy = VersionedTransaction.deserialize(tx.serialize());
+      copy.sign([keypair]);
+      return copy;
+    },
+  };
+}
+
+async function executePumpFunBuy(
+  params: WalletRouterParams,
+  context: WalletRouterContext,
+): Promise<WalletRouterExecution> {
+  const mint = params.toToken?.trim();
+  if (!mint || !isSolanaMintAddress(mint)) {
+    throw new Error("toToken must be a valid pump.fun token mint address.");
+  }
+  const amountSol = Number(params.amount);
+  if (!Number.isFinite(amountSol) || amountSol <= 0) {
+    throw new Error("amount must be a positive SOL amount.");
+  }
+
+  const signer = await resolvePumpFunSigner(context);
+
+  const browser = await openPumpFunCoinPage(context.runtime, mint);
+  const tradeLocalUrl =
+    getRuntimeSetting(context.runtime, "PUMPFUN_TRADE_LOCAL_URL") ??
+    PUMPFUN_TRADE_LOCAL_URL;
+  const priorityFee = getNumberSetting(
+    context.runtime,
+    "PUMPFUN_PRIORITY_FEE_SOL",
+    PUMPFUN_DEFAULT_PRIORITY_FEE_SOL,
+  );
+  const pool = getRuntimeSetting(context.runtime, "PUMPFUN_POOL") ?? "auto";
+  const slippage = (params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS) / 100;
+
+  const response = await fetch(tradeLocalUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      publicKey: signer.publicKey.toBase58(),
+      action: "buy",
+      mint,
+      amount: amountSol,
+      denominatedInSol: "true",
+      slippage,
+      priorityFee,
+      pool,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `PumpPortal trade-local failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}`,
+    );
+  }
+
+  const transaction = VersionedTransaction.deserialize(
+    await pumpPortalResponseBytes(response),
+  );
+  const signedTransaction = await signer.signTransaction(transaction);
+
+  const connection = getSolanaConnection(context.runtime);
+  const signature = await connection.sendTransaction(signedTransaction, {
+    skipPreflight: false,
+    maxRetries: 3,
+    preflightCommitment: "confirmed",
+  });
+
+  const latestBlockhash = await connection.getLatestBlockhash();
+  const confirmation = await connection.confirmTransaction(
+    {
+      signature,
+      blockhash: latestBlockhash.blockhash,
+      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+    },
+    "confirmed",
+  );
+  if (confirmation.value.err) {
+    throw new Error(
+      `Pump.fun buy failed: ${JSON.stringify(confirmation.value.err)}`,
+    );
+  }
+
+  return {
+    status: "submitted",
+    chain: "pumpfun",
+    chainId: "pump.fun-solana",
+    subaction: "pump_fun_buy",
+    dryRun: false,
+    mode: params.mode,
+    signature,
+    from: signer.publicKey.toBase58(),
+    amount: params.amount,
+    fromToken: "SOL",
+    toToken: mint,
+    metadata: {
+      pumpFunUrl: `https://pump.fun/coin/${mint}`,
+      browser,
+      tradeLocalUrl,
+      denominatedInSol: true,
+      slippage,
+      priorityFee,
+      pool,
+    },
+  };
+}
+
 async function getSolanaTokenDecimals(
   connection: Connection,
   mintAddress: string,
@@ -651,6 +868,43 @@ function createSolanaHandler(): WalletChainHandler {
   };
 }
 
+function createPumpFunHandler(): WalletChainHandler {
+  return {
+    chainId: "pump.fun-solana",
+    chain: "pumpfun",
+    name: "pump.fun",
+    aliases: ["pumpfun", "pump.fun", "pump-fun", "pump"],
+    supportedActions: ["pump_fun_buy"],
+    tokens: [
+      {
+        symbol: "SOL",
+        address: SOL_MINT,
+        decimals: 9,
+        native: true,
+      },
+    ],
+    signer: {
+      required: true,
+      kind: "solana",
+      source: "WalletBackend Solana signer or SOLANA_PRIVATE_KEY",
+      description:
+        "Required for locally signing the PumpPortal trade-local transaction after owner confirmation.",
+    },
+    dryRun: {
+      supported: true,
+      supportedActions: ["pump_fun_buy"],
+      description:
+        "Dry-run/prepare returns pump.fun handler metadata without signing.",
+    },
+    async execute(params, context) {
+      if (params.subaction === "pump_fun_buy") {
+        return executePumpFunBuy(params, context);
+      }
+      throw new Error(`pump.fun does not support ${params.subaction}.`);
+    },
+  };
+}
+
 export function registerDefaultWalletChainHandlers(
   service: WalletBackendService,
   runtime: IAgentRuntime,
@@ -664,5 +918,6 @@ export function registerDefaultWalletChainHandlers(
   );
   if (!solanaNoActions) {
     service.registerChainHandler(createSolanaHandler());
+    service.registerChainHandler(createPumpFunHandler());
   }
 }

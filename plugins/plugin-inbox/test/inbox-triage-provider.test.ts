@@ -45,6 +45,7 @@ function triageRow(
     suggested_response: null,
     draft_response: null,
     auto_replied: false,
+    snoozed_until: null,
     resolved: false,
     resolved_at: null,
     created_at: "2026-06-17T10:00:00.000Z",

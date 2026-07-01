@@ -10,6 +10,11 @@
  *   - `list`       — list recent messages across selected platforms
  *   - `search`     — search across selected platforms by `query`
  *   - `summarize`  — return a per-platform count + a single rolled-up summary
+ *   - `triage`     — list persisted triage queue entries
+ *   - `reply`      — draft or send a connector-backed reply
+ *   - `snooze`     — hide a triage entry until a future timestamp
+ *   - `archive`    — archive through the connector adapter and resolve
+ *   - `approve`    — send the stored draft/suggested response
  *
  * Behavior: fan out to each platform's adapter via the injectable fetcher hook,
  * dedupe by `id` and thread topic, merge into a single result list ordered by
@@ -31,12 +36,24 @@ import type {
   Memory,
   MessageRef,
   MessageSource,
+  ProviderDataRecord,
 } from "@elizaos/core";
 import { getDefaultTriageService, logger } from "@elizaos/core";
+import { InboxRepository } from "../inbox/repository.ts";
+import type { TriageClassification, TriageEntry } from "../inbox/types.ts";
 
 const ACTION_NAME = "INBOX";
 
-const SUBACTIONS = ["list", "search", "summarize"] as const;
+const SUBACTIONS = [
+  "list",
+  "search",
+  "summarize",
+  "triage",
+  "reply",
+  "snooze",
+  "archive",
+  "approve",
+] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
 
@@ -59,6 +76,14 @@ const PLATFORMS = [
 
 export type InboxPlatform = (typeof PLATFORMS)[number];
 
+const TRIAGE_CLASSIFICATIONS = new Set<TriageClassification>([
+  "ignore",
+  "info",
+  "notify",
+  "needs_reply",
+  "urgent",
+]);
+
 export interface InboxItem {
   readonly id: string;
   readonly platform: InboxPlatform;
@@ -71,7 +96,7 @@ export interface InboxItem {
   readonly unread?: boolean;
 }
 
-interface InboxActionParameters {
+export interface InboxActionParameters {
   subaction?: Subaction | string;
   action?: Subaction | string;
   op?: Subaction | string;
@@ -79,6 +104,17 @@ interface InboxActionParameters {
   since?: string;
   limit?: number;
   query?: string;
+  id?: string;
+  entryId?: string;
+  messageId?: string;
+  body?: string;
+  text?: string;
+  draft?: string;
+  until?: string;
+  snoozedUntil?: string;
+  confirmed?: boolean;
+  classification?: string;
+  includeSnoozed?: boolean;
 }
 
 export interface InboxSummaryEntry {
@@ -95,6 +131,12 @@ export interface InboxResult {
   readonly query?: string;
   readonly since?: string;
   readonly totalBeforeDedupe: number;
+}
+
+export interface InboxQueueOperationResult {
+  readonly success: boolean;
+  readonly text: string;
+  readonly data: ProviderDataRecord;
 }
 
 /**
@@ -300,6 +342,305 @@ function buildSummary(
   });
 }
 
+const MESSAGE_SOURCES = new Set<MessageSource>([
+  "gmail",
+  "discord",
+  "telegram",
+  "twitter",
+  "imessage",
+  "signal",
+  "whatsapp",
+  "browser_bridge",
+]);
+
+function normalizeMessageSource(value: string): MessageSource | null {
+  const normalized = value.trim().toLowerCase();
+  const source =
+    normalized === "x" || normalized === "x_dm" || normalized === "twitter_dm"
+      ? "twitter"
+      : normalized;
+  return MESSAGE_SOURCES.has(source as MessageSource)
+    ? (source as MessageSource)
+    : null;
+}
+
+function parseEntryId(params: InboxActionParameters): string | null {
+  const raw = params.entryId ?? params.id ?? params.messageId;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function parseReplyBody(params: InboxActionParameters): string | null {
+  const raw = params.body ?? params.text ?? params.draft;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function parseConfirmation(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return ["true", "1", "yes", "y", "confirmed"].includes(normalized);
+  }
+  return false;
+}
+
+function parseSnoozeUntil(params: InboxActionParameters): string | null {
+  const raw = params.snoozedUntil ?? params.until;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+}
+
+function parseClassification(value: unknown): TriageClassification | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return TRIAGE_CLASSIFICATIONS.has(normalized as TriageClassification)
+    ? (normalized as TriageClassification)
+    : null;
+}
+
+function requireEntryId(params: InboxActionParameters): string {
+  const entryId = parseEntryId(params);
+  if (!entryId) {
+    throw new Error("entry id is required");
+  }
+  return entryId;
+}
+
+async function loadEntry(
+  repo: InboxRepository,
+  id: string,
+): Promise<TriageEntry> {
+  const entry = await repo.getById(id);
+  if (!entry) {
+    throw new Error(`inbox entry ${id} was not found`);
+  }
+  return entry;
+}
+
+function ensureMessageSource(entry: TriageEntry): MessageSource {
+  const source = normalizeMessageSource(entry.source);
+  if (!source) {
+    throw new Error(
+      `inbox entry ${entry.id} source "${entry.source}" is not supported by MESSAGE dispatch`,
+    );
+  }
+  return source;
+}
+
+function ensureSourceMessageId(entry: TriageEntry): string {
+  if (entry.sourceMessageId) return entry.sourceMessageId;
+  throw new Error(
+    `inbox entry ${entry.id} has no source message id for connector dispatch`,
+  );
+}
+
+function seedMessageRefForEntry(
+  runtime: IAgentRuntime,
+  entry: TriageEntry,
+): void {
+  const source = ensureMessageSource(entry);
+  const messageId = ensureSourceMessageId(entry);
+  const threadId = entry.sourceRoomId ?? entry.sourceMessageId;
+  const service = getDefaultTriageService();
+  if (service.getStore().getMessage(messageId)) return;
+  service.getStore().saveMessage({
+    id: messageId,
+    source,
+    externalId: messageId,
+    from: {
+      identifier: entry.sourceEntityId ?? entry.senderName ?? messageId,
+      ...(entry.senderName ? { displayName: entry.senderName } : {}),
+    },
+    to: [{ identifier: runtime.agentId }],
+    snippet: entry.snippet,
+    body: entry.threadContext?.join("\n") ?? entry.snippet,
+    receivedAtMs: Date.parse(entry.createdAt) || Date.now(),
+    hasAttachments: false,
+    isRead: false,
+    metadata: {
+      inboxEntryId: entry.id,
+      deepLink: entry.deepLink,
+      triageReasoning: entry.triageReasoning,
+    },
+    ...(threadId ? { threadId } : {}),
+    ...(entry.source === "gmail" ? { subject: entry.channelName } : {}),
+    ...(entry.sourceRoomId
+      ? { worldId: entry.sourceRoomId, channelId: entry.sourceRoomId }
+      : {}),
+  });
+}
+
+async function replyToEntry(args: {
+  runtime: IAgentRuntime;
+  repo: InboxRepository;
+  entry: TriageEntry;
+  body: string;
+  confirmed: boolean;
+}): Promise<InboxQueueOperationResult> {
+  seedMessageRefForEntry(args.runtime, args.entry);
+  const service = getDefaultTriageService();
+  const draft = await service.draftReply(
+    args.runtime,
+    ensureSourceMessageId(args.entry),
+    args.body,
+  );
+  await args.repo.updateDraftResponse(args.entry.id, args.body);
+
+  if (!args.confirmed) {
+    return {
+      success: true,
+      text: `Drafted reply for ${args.entry.senderName ?? args.entry.channelName}. Confirm before sending.`,
+      data: {
+        subaction: "reply",
+        requiresConfirmation: true,
+        entryId: args.entry.id,
+        draftId: draft.draftId,
+        preview: draft.preview,
+        source: draft.source,
+      },
+    };
+  }
+
+  const sent = await service.sendDraft(args.runtime, draft.draftId);
+  await args.repo.markResolved(args.entry.id, {
+    draftResponse: args.body,
+    autoReplied: true,
+  });
+  return {
+    success: true,
+    text: `Sent reply on ${sent.source}.`,
+    data: {
+      subaction: "reply",
+      entryId: args.entry.id,
+      draftId: sent.draftId,
+      source: sent.source,
+      externalId: sent.sentExternalId ?? null,
+    },
+  };
+}
+
+async function archiveEntry(
+  runtime: IAgentRuntime,
+  repo: InboxRepository,
+  entry: TriageEntry,
+): Promise<InboxQueueOperationResult> {
+  seedMessageRefForEntry(runtime, entry);
+  const service = getDefaultTriageService();
+  const source = ensureMessageSource(entry);
+  const messageId = ensureSourceMessageId(entry);
+  const result = await service.manage(
+    runtime,
+    messageId,
+    { kind: "archive" },
+    { source },
+  );
+  if (!result.ok) {
+    return {
+      success: false,
+      text: `Could not archive inbox entry ${entry.id}: ${result.reason ?? "adapter rejected archive"}.`,
+      data: {
+        subaction: "archive",
+        entryId: entry.id,
+        error: "ARCHIVE_FAILED",
+        reason: result.reason ?? null,
+      },
+    };
+  }
+  await repo.markResolved(entry.id);
+  return {
+    success: true,
+    text: `Archived ${entry.channelName}.`,
+    data: { subaction: "archive", entryId: entry.id, source },
+  };
+}
+
+export async function executeInboxQueueOperation(args: {
+  runtime: IAgentRuntime;
+  subaction: Extract<
+    Subaction,
+    "triage" | "reply" | "snooze" | "archive" | "approve"
+  >;
+  params: InboxActionParameters;
+}): Promise<InboxQueueOperationResult> {
+  const repo = new InboxRepository(args.runtime);
+  switch (args.subaction) {
+    case "triage": {
+      const limit =
+        typeof args.params.limit === "number" && args.params.limit > 0
+          ? Math.floor(args.params.limit)
+          : 50;
+      const classification = parseClassification(args.params.classification);
+      const entries = classification
+        ? await repo.getByClassification(classification, {
+            limit,
+            includeSnoozed: args.params.includeSnoozed === true,
+          })
+        : await repo.getUnresolved({
+            limit,
+            includeSnoozed: args.params.includeSnoozed === true,
+          });
+      return {
+        success: true,
+        text:
+          entries.length === 0
+            ? "No inbox triage items are pending."
+            : `Loaded ${entries.length} pending inbox triage items.`,
+        data: { subaction: "triage", entries },
+      };
+    }
+    case "snooze": {
+      const id = requireEntryId(args.params);
+      const until = parseSnoozeUntil(args.params);
+      if (!until) {
+        throw new Error("valid snooze timestamp is required");
+      }
+      await loadEntry(repo, id);
+      await repo.snoozeUntil(id, until);
+      return {
+        success: true,
+        text: `Snoozed inbox entry ${id} until ${until}.`,
+        data: { subaction: "snooze", entryId: id, snoozedUntil: until },
+      };
+    }
+    case "archive": {
+      const entry = await loadEntry(repo, requireEntryId(args.params));
+      return archiveEntry(args.runtime, repo, entry);
+    }
+    case "reply": {
+      const entry = await loadEntry(repo, requireEntryId(args.params));
+      const body = parseReplyBody(args.params);
+      if (!body) {
+        throw new Error("reply body is required");
+      }
+      return replyToEntry({
+        runtime: args.runtime,
+        repo,
+        entry,
+        body,
+        confirmed: parseConfirmation(args.params.confirmed),
+      });
+    }
+    case "approve": {
+      const entry = await loadEntry(repo, requireEntryId(args.params));
+      const body =
+        parseReplyBody(args.params) ??
+        entry.draftResponse ??
+        entry.suggestedResponse;
+      if (!body) {
+        throw new Error("approved entry has no draft or suggested response");
+      }
+      return replyToEntry({
+        runtime: args.runtime,
+        repo,
+        entry,
+        body,
+        confirmed: true,
+      });
+    }
+  }
+}
+
 /**
  * Owner-access guard for INBOX. Mirrors the LifeOps `hasLifeOpsAccess`
  * predicate exactly: reject when the runtime agent id or the message entity id
@@ -360,9 +701,9 @@ export const inboxAction: Action & {
     "surface:internal",
   ],
   description:
-    "Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed. Subactions: list, search, summarize.",
+    "Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage, reply, snooze, archive, approve.",
   descriptionCompressed:
-    "INBOX list|search|summarize gmail|slack|discord|telegram|signal|imessage|whatsapp",
+    "INBOX list|search|summarize|triage|reply|snooze|archive|approve gmail|slack|discord|telegram|signal|imessage|whatsapp",
   routingHint:
     'cross-channel inbox ("show inbox", "all messages", "search every channel", "summarize inboxes") -> INBOX; per-channel -> MESSAGE',
   contexts: ["inbox", "messaging", "cross-channel"],
@@ -372,7 +713,8 @@ export const inboxAction: Action & {
   parameters: [
     {
       name: "action",
-      description: "Inbox op: list | search | summarize.",
+      description:
+        "Inbox op: list | search | summarize | triage | reply | snooze | archive | approve.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -396,6 +738,27 @@ export const inboxAction: Action & {
       description: "Required for search. Free-form query.",
       schema: { type: "string" as const },
     },
+    {
+      name: "entryId",
+      description:
+        "Persisted triage entry id for reply, snooze, archive, or approve.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "body",
+      description: "Reply body for reply/approve.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "until",
+      description: "Snooze-until timestamp for snooze. ISO-8601.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirmed",
+      description: "Explicit owner confirmation for sending reply/approve.",
+      schema: { type: "boolean" as const },
+    },
   ],
   examples,
   handler: async (
@@ -416,9 +779,44 @@ export const inboxAction: Action & {
     if (!subaction) {
       return {
         success: false,
-        text: "Tell me which operation: list, search, or summarize.",
+        text: "Tell me which operation: list, search, summarize, triage, reply, snooze, archive, or approve.",
         data: { error: "MISSING_SUBACTION" },
       };
+    }
+
+    if (
+      subaction === "triage" ||
+      subaction === "reply" ||
+      subaction === "snooze" ||
+      subaction === "archive" ||
+      subaction === "approve"
+    ) {
+      try {
+        const result = await executeInboxQueueOperation({
+          runtime,
+          subaction,
+          params,
+        });
+        await callback?.({
+          text: result.text,
+          source: "action",
+          action: ACTION_NAME,
+        });
+        return {
+          success: result.success,
+          text: result.text,
+          data: result.data,
+        };
+      } catch (error) {
+        const text =
+          error instanceof Error ? error.message : "Inbox operation failed.";
+        await callback?.({ text, source: "action", action: ACTION_NAME });
+        return {
+          success: false,
+          text,
+          data: { subaction, error: "INBOX_OPERATION_FAILED" },
+        };
+      }
     }
 
     const platforms = resolvePlatforms(params.platforms);

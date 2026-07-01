@@ -14,6 +14,7 @@ Replaces the former fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydiu
 | `swap` | Token swap via Li.Fi (EVM) or Jupiter (Solana). |
 | `bridge` | Cross-chain transfer via Li.Fi route finding or CCTP (Circle's native USDC bridge). |
 | `gov` | On-chain governance: propose, vote, queue, execute via OpenZeppelin Governor. |
+| `pump_fun_buy` | Buy a pump.fun token on Solana through PumpPortal trade-local, local signing, and Solana RPC submission. |
 
 All write operations default to `mode=prepare` (stages the transaction but does not sign or send). The agent asks the user to confirm before submitting. `dryRun=true` returns metadata without signing.
 
@@ -68,6 +69,9 @@ Additional optional variables:
 | `BIRDEYE_WALLET_ADDR` | Enables portfolio provider for a specific address |
 | `BIRDEYE_NO_TRENDING` | Disable trending provider |
 | `ELIZA_AGENT_WALLET_AUTO_ENABLE` | Set to `0` to disable auto-enable |
+| `PUMPFUN_TRADE_LOCAL_URL` | Override PumpPortal local transaction API; default `https://pumpportal.fun/api/trade-local` |
+| `PUMPFUN_PRIORITY_FEE_SOL` | Priority fee in SOL for `pump_fun_buy`; default `0.00005` |
+| `PUMPFUN_POOL` | PumpPortal pool selector for `pump_fun_buy`; default `auto` |
 | `X402_SUPPORTED_NETWORKS` | Comma-separated networks for x402 micropayments |
 | `X402_GLOBAL_DAILY_LIMIT` | Daily USDC spending cap for x402 |
 | `X402_PER_REQUEST_MAX` | Per-request USDC cap for x402 |
@@ -80,7 +84,9 @@ The plugin auto-enables when any signing path is present (EVM or Solana private 
 
 ## Security model
 
-All on-chain writes (`transfer`, `swap`, `bridge`, `gov`) require an explicit user confirmation before execution. The LLM cannot authorize a transaction by itself — a confirmed human reply turn is always required. EVM recipient addresses on transfers are additionally validated via `assertEvmTransferRecipientAuthorized`.
+All on-chain writes (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) require an explicit user confirmation before execution. The LLM cannot authorize a transaction by itself — a confirmed human reply turn is always required. EVM recipient addresses on transfers are additionally validated via `assertEvmTransferRecipientAuthorized`.
+
+`pump_fun_buy` accepts `toToken`, `token`, `tokenAddress`, `mint`, `query`, or `address` as the pump.fun/Solana token mint, with `amount` interpreted as SOL. When a browser service is loaded, execution opens `https://pump.fun/coin/<mint>` before requesting the serialized transaction from PumpPortal and signing through `WalletBackend.getSolanaSigner()` or the existing local Solana wallet path.
 
 `src/audit/audit-log.ts` defines `AuditLogRow` plus hash-chain helpers for action validate/handler lifecycle events and signing requests. Runtime callers own where those rows are stored.
 
