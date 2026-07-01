@@ -3,6 +3,7 @@
 //
 //   src/lifeops/scheduled-task/scheduler.integration.test.ts
 //   src/lifeops/scheduled-task/scheduler-recurrence.integration.test.ts
+//   test/global-pause.integration.test.ts
 //
 // These were dead in CI: the package's unit lane (vitest.config.ts) excludes
 // the *.integration.test.ts suffix, and the repo integration lane only globs
@@ -10,6 +11,14 @@
 // full resolve/alias/setup wiring and swaps the include to the src
 // integration suffix. Wired into the package's test:integration script so
 // the orchestrator (run-all-tests.mjs EXTRA_SCRIPT_NAMES) drains it.
+//
+// test/global-pause.integration.test.ts is included by name: it drives the
+// same real-runtime tick (`processDueScheduledTasks` + PGlite) and needs this
+// config's alias wiring. The repo-level integration config cannot boot the PA
+// plugin barrel (its `@elizaos/core` string alias breaks the `/node` subpath
+// import that `@elizaos/plugin-x`'s dist pulls in), and the package's
+// test:integration script only names two test/ files there — so the pause
+// test never ran anywhere before this wiring.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +38,10 @@ export default defineConfig({
   ...baseConfig,
   test: {
     ...baseConfig.test,
-    include: [`${packageRootFromRepo}/src/**/*.integration.test.{ts,tsx}`],
+    include: [
+      `${packageRootFromRepo}/src/**/*.integration.test.{ts,tsx}`,
+      `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
+    ],
     exclude: [
       "dist/**",
       "**/node_modules/**",
