@@ -17,27 +17,28 @@ Status column reflects the branch `fix/lifeops-pa-delarp-battletest`. Items mark
 
 | # | Behavior | Status |
 |---|---|---|
-| 1.1 | The 60s heartbeat actually runs more than once per boot (task tick re-arms) | wave-1 `fix:core-tick` |
-| 1.2 | A task created after boot is picked up without restart | wave-1 `fix:core-tick` |
-| 1.3 | 5 consecutive tick failures do NOT permanently pause the heartbeat; restarts self-heal a paused heartbeat | wave-1 `fix:core-tick` |
-| 1.4 | One failing subsystem (legacy reminders/workflows) does not abort the rest of the tick | wave-1 `fix:core-tick` |
+| 1.1 | The 60s heartbeat actually runs more than once per boot (task tick re-arms) | [fixed+auto: packages/core/src/services/task.test.ts (1d7d008741) — 8 fail without fix] |
+| 1.2 | A task created after boot is picked up without restart | [fixed+auto: task.test.ts — create/update/delete nudge markDirty] |
+| 1.3 | 5 consecutive tick failures do NOT permanently pause the heartbeat; restarts self-heal a paused heartbeat | [fixed+auto: PA scheduler-task.test.ts (54f45b152e) — maxFailures:0 + boot self-heal] |
+| 1.4 | One failing subsystem (legacy reminders/workflows) does not abort the rest of the tick | [fixed+auto: reminders-service.process-scheduled-work.test.ts — 5 isolation tests fail without fix] |
 | 1.5 | Atomic fire claim: two concurrent ticks never double-fire one task | [auto: plugins/plugin-personal-assistant/src/lifeops/scheduled-task/scheduler.integration.test.ts] |
-| 1.6 | Tick limit respected; low-priority tasks past the limit are deferred not lost | wave-2 `deterministic-lifeops-concurrent-day` |
-| 1.7 | Runner clock follows the tick clock (not frozen at boot) — firedAt is the real fire time | wave-1 `fix:recurrence-clock` |
+| 1.6 | Tick limit respected; low-priority tasks past the limit are deferred not lost | wave-2 in flight (`deterministic-lifeops-concurrent-day`) |
+| 1.7 | Runner clock follows the tick clock (not frozen at boot) — firedAt is the real fire time | [fixed+auto: plugin-scheduling runner-service.test.ts (15fe56184b) — fails against cache-by-closure] |
 | 1.8 | State-log rows written for every transition; history endpoint shows the chain | [auto: packages/scenario-runner/test/scenarios/deterministic-lifeops-scheduled-tasks.scenario.ts] |
+| 1.9 | State log does not grow unbounded — nightly rollup runs (90-day retention) | [fixed+auto: reminders-service.state-log-rollover.test.ts (94396230eb) — 2 fail without wiring] |
 
 ## 2. Recurrence & missed fires
 
 | # | Behavior | Status |
 |---|---|---|
-| 2.1 | A completed daily task fires again the next day | wave-1 `fix:recurrence-clock` |
-| 2.2 | A fired-but-never-completed (zombie) recurring task fires at the next occurrence | wave-1 `fix:recurrence-clock` |
-| 2.3 | An acknowledged recurring task fires at the next occurrence | wave-1 `fix:recurrence-clock` |
-| 2.4 | An interval task fires N times across N intervals | wave-1 `fix:recurrence-clock` |
-| 2.5 | A completed `once` task never refires | wave-1 `fix:recurrence-clock` |
-| 2.6 | A dismissed recurring task never refires | wave-1 `fix:recurrence-clock` |
-| 2.7 | Missed-fire catch-up: offline 3 days → cron fires exactly once (no storm) | wave-1 `fix:recurrence-clock` |
-| 2.8 | during_window fires once per window per day, across consecutive days | wave-1 `fix:recurrence-clock` |
+| 2.1 | A completed daily task fires again the next day | [fixed+auto: recurrence-refire.test.ts + PA scheduler-recurrence.integration.test.ts (488814580d) — 14 fail without fix] |
+| 2.2 | A fired-but-never-completed (zombie) recurring task fires at the next occurrence | [fixed+auto: same suites] |
+| 2.3 | An acknowledged recurring task fires at the next occurrence | [fixed+auto: same suites] |
+| 2.4 | An interval task fires N times across N intervals | [fixed+auto: same suites] |
+| 2.5 | A completed `once` task never refires | [auto: recurrence-refire.test.ts] |
+| 2.6 | A dismissed recurring task never refires | [auto: recurrence-refire.test.ts] |
+| 2.7 | Missed-fire catch-up: offline 3 days → cron fires exactly once (no storm) | [fixed+auto: scheduler-recurrence.integration.test.ts] |
+| 2.8 | during_window fires once per window per day, across consecutive days | [fixed+auto: same suites] |
 | 2.9 | Property: no trigger/clock sequence double-fires one occurrence | wave-2 `test:fuzz-dst` |
 
 ## 3. Snooze / defer / reopen
@@ -49,7 +50,7 @@ Status column reflects the branch `fix/lifeops-pa-delarp-battletest`. Items mark
 | 3.3 | Snoozed once task stays indexed (not NULL-scan escape hatch) | [fixed+auto: same] |
 | 3.4 | Gate-defer (e.g. quiet hours) on a recurring task re-fires at the defer time (no infinite re-defer) | [fixed+auto: same mechanism] + wave-2 property |
 | 3.5 | Snooze resets the escalation ladder AND any dispatch-retry continuation | [fixed+auto: plugins/plugin-scheduling/src/scheduled-task/dispatch-policy-enforcement.test.ts] |
-| 3.6 | Snooze duration honored — "snooze 45" ≠ hardcoded 30 | wave-1 `fix:reminder-datetime` |
+| 3.6 | Snooze duration honored — "snooze 45" ≠ hardcoded 30 | [fixed+auto: life-reminder-datetime.test.ts (a46f9eff13)] |
 | 3.7 | Reopen within window → due immediately; outside window → typed error | [auto: plugins/plugin-scheduling/src/scheduled-task/runner.test.ts] |
 
 ## 4. Dispatch & escalation (message actually reaches the user)
@@ -64,30 +65,32 @@ Status column reflects the branch `fix/lifeops-pa-delarp-battletest`. Items mark
 | 4.6 | Parked retry row is indexed AND due at the retry time | [fixed+auto: same] |
 | 4.7 | Scenario-level: dispatch retry visible in state-log via real tick | wave-2 `deterministic-lifeops-dispatch-retry` |
 | 4.8 | No-reply escalation (user ignores reminder → next channel, not skip) | [GAP — product decision pending; today completion-timeout skips. Tracked as residual] |
-| 4.9 | in_app dispatch with no live surface returns ok:false (no fabricated success) | wave-1 residual check — [GAP if unlanded] |
+| 4.9 | in_app dispatch with no live surface returns ok:false (no fabricated success) | [fixed+auto: scheduled-task-in-app-dispatch.test.ts (66e5d9d2c9) — 2 fail without fix; notification write awaited] |
 
 ## 5. Reminders (NL creation → fire → resolution)
 
 | # | Behavior | Status |
 |---|---|---|
-| 5.1 | "remind me Friday at 5pm" schedules Friday 17:00 owner-tz, never `now` | wave-1 `fix:reminder-datetime` |
-| 5.2 | "in 2 hours" → now+2h | wave-1 `fix:reminder-datetime` |
-| 5.3 | Unresolvable time expression → clarification question, nothing scheduled | wave-1 `fix:reminder-datetime` |
-| 5.4 | Reschedule actually moves the stored time (no silent no-op "Updated") | wave-1 `fix:reminder-datetime` |
-| 5.5 | Multilingual phrasing trusted from LLM classification (no English-keyword veto) | wave-1 `fix:reminder-datetime` |
+| 5.1 | "remind me Friday at 5pm" schedules Friday 17:00 owner-tz, never `now` | [fixed+auto: life-reminder-datetime.test.ts (a46f9eff13)] |
+| 5.2 | "in 2 hours" → now+2h | [fixed+auto: same] |
+| 5.3 | Unresolvable time expression → clarification question, nothing scheduled | [fixed+auto: same] |
+| 5.4 | Reschedule actually moves the stored time (no silent no-op "Updated") | [fixed+auto: a46f9eff13 + date-level moves ac78e9875a — "move it to Friday 3pm" moves the DATE too; past dates reject] |
+| 5.5 | Multilingual phrasing trusted from LLM classification (no English-keyword veto) | [fixed+auto: extract-task-plan.test.ts] |
 | 5.6 | Reminder CRUD + snooze + complete + history via SCHEDULED_TASKS action | [auto: deterministic-lifeops-scheduled-tasks.scenario.ts] |
 | 5.7 | Cross-platform reminder ladder delivers per-rung (process endpoint) | wave-2 relabel to pr-deterministic |
 | 5.8 | Quiet-hours + DST + timezone-mismatch + idempotent-retry reminder outcomes | [auto: 7 deterministic reminder outcome scenarios from #10192 — verify still green] |
 | 5.9 | Persona inputs (elderly/ESL/typo/voice-transcription/run-on) produce correct schedules | wave-2 `test:personas-longhorizon` (live lane) |
+| 5.10 | SCHEDULED_TASKS create tolerates natural LLM trigger shapes (type/cron/schedule/timezone/at/minutes aliases); incomplete triggers fail with a teaching message, never a bare success:false | [fixed+auto: scheduled-task-trigger-boundary.test.ts (7273e0d981) — 7 fail without fix] |
+| 5.11 | Cross-turn re-ask does not create a duplicate reminder (content-level dedupe) | [fixed+auto: same — observed live before fix] |
 
 ## 6. Calendar
 
 | # | Behavior | Status |
 |---|---|---|
-| 6.1 | No fabricated flight-conflict template — conflict answers derive from real data | wave-1 `fix:fabrications` |
-| 6.2 | CONFLICT_DETECT reads real events; reports real overlaps | wave-1 `fix:fabrications` |
-| 6.3 | 3-way overlap detected; back-to-back is NOT a conflict | wave-1 `fix:fabrications` |
-| 6.4 | No calendar source → honest unavailable, not "No conflicts detected" | wave-1 `fix:fabrications` |
+| 6.1 | No fabricated flight-conflict template — conflict answers derive from real data | [fixed+auto: 883068c93b — both interceptor copies deleted, regression tests] |
+| 6.2 | CONFLICT_DETECT reads real events; reports real overlaps | [fixed+auto: 8446a9d797 — CalendarService feed loader wired at init] |
+| 6.3 | 3-way overlap detected; back-to-back is NOT a conflict | [fixed+auto: same] |
+| 6.4 | No calendar source → honest unavailable, not "No conflicts detected" | [fixed+auto: same — CALENDAR_UNAVAILABLE] |
 | 6.5 | Triple-overlap + declined-attendee exclusion (LLM reasoning) | wave-2 `calendar-triple-overlap` (live) |
 | 6.6 | Conflict detect→reschedule→conflict gone (outcome round-trip) | [auto-live: plugins/plugin-personal-assistant/test/scenarios/calendar-conflict-resolve-outcome.scenario.ts] |
 | 6.7 | DST reschedule keeps local wall-clock (fall-back day) | [auto-live: packages/test/scenarios/lifeops.calendar/calendar.reschedule.dst-fall-back.scenario.ts] |
@@ -120,10 +123,10 @@ Status column reflects the branch `fix/lifeops-pa-delarp-battletest`. Items mark
 
 | # | Behavior | Status |
 |---|---|---|
-| 9.1 | Approve → the approved action executes (send/workflow/sign) | wave-1 `fix:approvals` |
-| 9.2 | Reject → zero side effects | wave-1 `fix:approvals` |
-| 9.3 | Unknown/executor-less action → hard failure, never fake "Approved." | wave-1 `fix:approvals` |
-| 9.4 | Expired request cannot be resurrected (TOCTOU CAS) | wave-1 `fix:approvals` |
+| 9.1 | Approve → the approved action executes (send/workflow/sign) | [fixed+auto: owner-send-approval-worker.test.ts + resolve-request-executor.test.ts (87dccd1d71); executor-less actions fail loudly NO_EXECUTOR] |
+| 9.2 | Reject → zero side effects | [fixed+auto: same] |
+| 9.3 | Unknown/executor-less action → hard failure, never fake "Approved." | [fixed+auto: same] |
+| 9.4 | Expired request cannot be resurrected (TOCTOU CAS) | [fixed+auto: PA approval-queue.toctou.integration.test.ts (79f673d4cd) AND the agent-side duplicate store (0fce62eb2e) — both CAS-guarded] |
 | 9.5 | Approval queue state machine + validation | [auto: existing approval-queue tests + approval-queue-resolve-outcome.scenario.ts] |
 
 ## 10. Check-ins / follow-ups / proactive
@@ -161,12 +164,12 @@ Status column reflects the branch `fix/lifeops-pa-delarp-battletest`. Items mark
 
 | # | Behavior | Status |
 |---|---|---|
-| 13.1 | LifeOps-tagged trajectories increment their own capability counters | wave-1 `feat:optimization-loop` |
-| 13.2 | Failed-scenario trajectories excluded/down-weighted from training data | wave-1 `feat:optimization-loop` |
-| 13.3 | Judge scores serialized numerically in reports + native export | wave-1 `feat:optimization-loop` |
-| 13.4 | Batch trajectory-quality review produces per-capability scoreboard | wave-1 `feat:optimization-loop` |
-| 13.5 | Live scenario lane runnable on subscription-only host (no API key) | wave-1 `feat:cli-live-lane` |
-| 13.6 | Manual trajectory review of real-LLM runs, by hand | wave-3 (depends on 13.5) |
+| 13.1 | LifeOps-tagged trajectories increment their own capability counters | [fixed+auto: training-trigger.test.ts (7cb9a1e46b)] |
+| 13.2 | Failed-scenario trajectories excluded/down-weighted from training data | [fixed+auto: trajectory-task-datasets.quality.test.ts (3534324f1a)] |
+| 13.3 | Judge scores serialized numerically in reports + native export | [fixed+auto: scenario-runner native-export.test.ts (66d6e5e0ad)] |
+| 13.4 | Batch trajectory-quality review produces per-capability scoreboard | [fixed+auto: trajectories:review script (7ad4351c4d), keyless --dry-run tested] |
+| 13.5 | Live scenario lane runnable on subscription-only host (no API key) | [fixed+auto+manual: cli provider (7d62df0a57); live run evidence 10757-cli-live-lane/ — hand review found + fixed 3 more bugs (7273e0d981)] |
+| 13.6 | Manual trajectory review of real-LLM runs, by hand | [manual: 10757-cli-live-lane/report.json reviewed call-by-call — found trigger-alias rejection, unlabeled success:false, cross-turn duplicate; all three fixed in 7273e0d981] |
 | 13.7 | lifeops-bench real-model cell enforced in CI (not skip-not-fail) | [GAP — needs stable secrets + score history; documented defer] |
 | 13.8 | PR-lane orchestrator judge not a hardcoded 1.0 stub | [GAP — wave-3 candidate] |
 
