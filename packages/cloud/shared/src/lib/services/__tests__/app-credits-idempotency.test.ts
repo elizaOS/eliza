@@ -91,6 +91,11 @@ async function creatorBalance(userId: string): Promise<number> {
   return Number(row?.available_balance ?? 0);
 }
 
+async function appCreatorEarningsCounter(appId: string): Promise<number> {
+  const [row] = await dbWrite.select().from(apps).where(eq(apps.id, appId));
+  return Number(row?.total_creator_earnings ?? 0);
+}
+
 beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
@@ -179,5 +184,106 @@ describe("deductCredits creator-earnings idempotency (#10423)", () => {
       }),
     );
     expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.02, 6);
+  });
+
+  test("true retry leaves apps.total_creator_earnings unchanged (no counter drift)", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, creatorUserId } = await seed();
+
+    const deduct = () =>
+      runWithRequestContext({ idempotencyKey: "settle-counter" }, async () =>
+        appCreditsService.deductCredits({
+          appId,
+          userId: payerUserId,
+          baseCost: 0.01,
+          description: "inference",
+        }),
+      );
+
+    await deduct();
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.01, 6);
+
+    await deduct(); // settlement retry: redeemable dedupes AND the counter must not move
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.01, 6);
+  });
+});
+
+describe("deduct + reconcile legs under ONE request key (#10847 follow-up)", () => {
+  test("reconcile-overage credit is NOT deduped against the deduct-time credit", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, creatorUserId } = await seed();
+
+    // The apps/[id]/chat shape: deduct the (1.5x-buffered) estimate, then
+    // reconcile to the higher actual — both inside the SAME request context.
+    const runRequest = () =>
+      runWithRequestContext({ idempotencyKey: "settle-two-legs" }, async () => {
+        const deduction = await appCreditsService.deductCredits({
+          appId,
+          userId: payerUserId,
+          baseCost: 0.01,
+          description: "inference (estimate)",
+        });
+        expect(deduction.success).toBe(true);
+        await appCreditsService.reconcileCredits({
+          appId,
+          userId: payerUserId,
+          estimatedBaseCost: 0.01,
+          actualBaseCost: 0.03,
+          description: "inference (reconcile)",
+        });
+      });
+
+    await runRequest();
+    // markup = 100%: deduct leg credits 0.01, reconcile-charge leg credits the
+    // 0.02 overage. Before the leg-keyed sourceId the second credit collided
+    // with the first and was silently dropped (creator got 0.01, not 0.03).
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.03, 6);
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.03, 6);
+
+    // Replay the WHOLE request with the same key (a full settlement retry):
+    // both legs dedupe, balance and counter stay exactly where they were.
+    await runRequest();
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.03, 6);
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.03, 6);
+  });
+
+  test("reconcile-refund replay reverses the creator exactly once (balance + counter)", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, creatorUserId } = await seed();
+
+    await runWithRequestContext({ idempotencyKey: "settle-refund" }, async () => {
+      await appCreditsService.deductCredits({
+        appId,
+        userId: payerUserId,
+        baseCost: 0.03,
+        description: "inference (estimate)",
+      });
+      await appCreditsService.reconcileCredits({
+        appId,
+        userId: payerUserId,
+        estimatedBaseCost: 0.03,
+        actualBaseCost: 0.01,
+        description: "inference (reconcile refund)",
+      });
+    });
+    // +0.03 (deduct leg) − 0.02 (refund leg) at 100% markup.
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.01, 6);
+
+    // Retry ONLY the refund settlement with the same key: the reduce dedupes
+    // and the GREATEST(0, …) counter decrement must be skipped with it —
+    // before the fix the counter drifted 0.01 → 0 while the balance held.
+    await runWithRequestContext({ idempotencyKey: "settle-refund" }, async () =>
+      appCreditsService.reconcileCredits({
+        appId,
+        userId: payerUserId,
+        estimatedBaseCost: 0.03,
+        actualBaseCost: 0.01,
+        description: "inference (reconcile refund retry)",
+      }),
+    );
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);
+    expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.01, 6);
   });
 });

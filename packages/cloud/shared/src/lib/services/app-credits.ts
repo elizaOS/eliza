@@ -60,6 +60,23 @@ async function invalidateAppCacheKeys(appId: string, slug?: string): Promise<voi
 const RECONCILIATION_THRESHOLD = 0.000001;
 
 /**
+ * The charge stage ("leg") of a creator-earnings movement, threaded explicitly
+ * from every call site into the dedupe key.
+ *
+ * #10847 follow-up: one request legitimately makes SEVERAL distinct earnings
+ * movements under the SAME request idempotency key — e.g. `apps/[id]/chat`
+ * calls `deductCredits` (estimate) and then `reconcileCredits` (actual) in one
+ * request. Keying dedupe on `${chargeKey}:${type}` alone made the reconcile
+ * top-up collide with the deduct-time credit and get silently dropped
+ * (creator under-credited). The leg keeps a true retry of the SAME movement
+ * idempotent while never conflating two DIFFERENT movements.
+ */
+type CreatorEarningsLeg = "deduct" | "reconcile_charge" | "purchase";
+
+/** Charge stage for earnings reversals — same rationale as {@link CreatorEarningsLeg}. */
+type CreatorEarningsReversalLeg = "reconcile_refund" | "compensation_reversal";
+
+/**
  * Maximum metadata size in bytes (10KB) to prevent storage bloat and DOS attacks
  */
 const MAX_METADATA_SIZE_BYTES = 10240;
@@ -271,11 +288,12 @@ export class AppCreditsService {
     // CRITICAL: Always create a transaction record for deduplication purposes
     // Even when monetization is disabled, we need to track the purchase
     if (app.monetization_enabled && creatorEarnings > 0) {
-      await this.recordCreatorEarnings(
+      const { deduplicated } = await this.recordCreatorEarnings(
         appId,
         userId,
         "purchase_share",
         creatorEarnings,
+        "purchase",
         {
           purchaseAmount,
           platformOffset,
@@ -285,14 +303,18 @@ export class AppCreditsService {
         app, // Pass app to avoid N+1 query
       );
 
-      await dbWrite
-        .update(apps)
-        .set({
-          total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorEarnings}`,
-          total_platform_revenue: sql`${apps.total_platform_revenue} + ${platformOffset}`,
-          updated_at: new Date(),
-        })
-        .where(eq(apps.id, appId));
+      // A dedup retry already counted this purchase — incrementing again would
+      // drift the apps aggregate away from the redeemable ledger (#10847).
+      if (!deduplicated) {
+        await dbWrite
+          .update(apps)
+          .set({
+            total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorEarnings}`,
+            total_platform_revenue: sql`${apps.total_platform_revenue} + ${platformOffset}`,
+            updated_at: new Date(),
+          })
+          .where(eq(apps.id, appId));
+      }
     } else if (stripePaymentIntentId) {
       // Monetization disabled but still need transaction record for deduplication
       await appEarningsRepository.createTransaction({
@@ -408,11 +430,12 @@ export class AppCreditsService {
       await this.trackAppUserActivity(app, userId, totalCost.toFixed(4), metadata);
 
       if (app.monetization_enabled && creatorMarkup > 0) {
-        await this.recordCreatorEarnings(
+        const { deduplicated } = await this.recordCreatorEarnings(
           appId,
           userId,
           "inference_markup",
           creatorMarkup,
+          "deduct",
           {
             baseCost,
             markupPercentage,
@@ -424,17 +447,21 @@ export class AppCreditsService {
           app, // Pass app to avoid N+1 query
         );
         // Earnings (app-earnings ledger + creator redeemable balance) are now
-        // committed; the apps aggregate counter below is a separate write.
-        creatorEarningsRecorded = true;
+        // committed; the apps aggregate counter below is a separate write. On a
+        // dedup retry THIS attempt minted nothing new, so there is nothing to
+        // reverse in the compensation path and nothing to count again (#10847).
+        creatorEarningsRecorded = !deduplicated;
 
-        await dbWrite
-          .update(apps)
-          .set({
-            total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorMarkup}`,
-            total_platform_revenue: sql`${apps.total_platform_revenue} + ${baseCost}`,
-            updated_at: new Date(),
-          })
-          .where(eq(apps.id, appId));
+        if (!deduplicated) {
+          await dbWrite
+            .update(apps)
+            .set({
+              total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorMarkup}`,
+              total_platform_revenue: sql`${apps.total_platform_revenue} + ${baseCost}`,
+              updated_at: new Date(),
+            })
+            .where(eq(apps.id, appId));
+        }
       }
     } catch (postDebitError) {
       logger.error("[AppCredits] Post-debit accounting failed, compensating charge", {
@@ -456,7 +483,7 @@ export class AppCreditsService {
       // not mask the original error or block the consumer refund.
       if (creatorEarningsRecorded) {
         try {
-          await this.reverseCreatorEarnings(appId, userId, creatorMarkup, {
+          await this.reverseCreatorEarnings(appId, userId, creatorMarkup, "compensation_reversal", {
             type: "compensation_reversal",
             baseCost,
             markupPercentage,
@@ -474,10 +501,7 @@ export class AppCreditsService {
               userId,
               creatorMarkup,
               chargeTransactionId: orgDeduct.transaction?.id,
-              error:
-                reversalError instanceof Error
-                  ? reversalError.message
-                  : String(reversalError),
+              error: reversalError instanceof Error ? reversalError.message : String(reversalError),
             },
           );
         }
@@ -624,23 +648,33 @@ export class AppCreditsService {
 
       // Reverse creator earnings if monetization is enabled and there was markup
       if (app.monetization_enabled && creatorEarningsReduction > 0) {
-        await this.reverseCreatorEarnings(appId, userId, creatorEarningsReduction, {
-          type: "reconciliation_refund",
-          baseCostDifference,
-          estimatedBaseCost,
-          actualBaseCost,
-          description,
-          ...metadata,
-        });
+        const { deduplicated } = await this.reverseCreatorEarnings(
+          appId,
+          userId,
+          creatorEarningsReduction,
+          "reconcile_refund",
+          {
+            type: "reconciliation_refund",
+            baseCostDifference,
+            estimatedBaseCost,
+            actualBaseCost,
+            description,
+            ...metadata,
+          },
+        );
 
-        await dbWrite
-          .update(apps)
-          .set({
-            total_creator_earnings: sql`GREATEST(0, ${apps.total_creator_earnings} - ${creatorEarningsReduction})`,
-            total_platform_revenue: sql`GREATEST(0, ${apps.total_platform_revenue} - ${Math.abs(baseCostDifference)})`,
-            updated_at: new Date(),
-          })
-          .where(eq(apps.id, appId));
+        // A dedup retry already applied this reduction — decrementing again
+        // would drift the apps aggregate below the redeemable ledger (#10847).
+        if (!deduplicated) {
+          await dbWrite
+            .update(apps)
+            .set({
+              total_creator_earnings: sql`GREATEST(0, ${apps.total_creator_earnings} - ${creatorEarningsReduction})`,
+              total_platform_revenue: sql`GREATEST(0, ${apps.total_platform_revenue} - ${Math.abs(baseCostDifference)})`,
+              updated_at: new Date(),
+            })
+            .where(eq(apps.id, appId));
+        }
       }
 
       logger.info("[AppCredits] Reconciliation: Refunded overcharge to org balance", {
@@ -686,11 +720,12 @@ export class AppCreditsService {
 
     if (orgDeduct.success) {
       if (app.monetization_enabled && creatorMarkupDifference > 0) {
-        await this.recordCreatorEarnings(
+        const { deduplicated } = await this.recordCreatorEarnings(
           appId,
           userId,
           "inference_markup",
           creatorMarkupDifference,
+          "reconcile_charge",
           {
             type: "reconciliation_adjustment",
             baseCostDifference,
@@ -700,14 +735,17 @@ export class AppCreditsService {
           app,
         );
 
-        await dbWrite
-          .update(apps)
-          .set({
-            total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorMarkupDifference}`,
-            total_platform_revenue: sql`${apps.total_platform_revenue} + ${baseCostDifference}`,
-            updated_at: new Date(),
-          })
-          .where(eq(apps.id, appId));
+        // A dedup retry already counted this top-up — see the deduct leg (#10847).
+        if (!deduplicated) {
+          await dbWrite
+            .update(apps)
+            .set({
+              total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorMarkupDifference}`,
+              total_platform_revenue: sql`${apps.total_platform_revenue} + ${baseCostDifference}`,
+              updated_at: new Date(),
+            })
+            .where(eq(apps.id, appId));
+        }
       }
 
       logger.info("[AppCredits] Reconciliation: Charged additional to org balance", {
@@ -850,9 +888,10 @@ export class AppCreditsService {
     userId: string,
     type: "inference_markup" | "purchase_share",
     amount: number,
+    leg: CreatorEarningsLeg,
     metadata: Record<string, unknown>,
     providedApp?: App,
-  ): Promise<void> {
+  ): Promise<{ deduplicated: boolean }> {
     // CRITICAL: Credit the app creator's redeemable_earnings balance FIRST — it
     // is the idempotency gate. #10423: a settlement retry (a re-run of the
     // chat/message `onFinish` for the SAME request, or a webhook retry) must not
@@ -870,7 +909,17 @@ export class AppCreditsService {
 
     let deduplicated = false;
     if (app?.created_by_user_id) {
-      const sourceId = chargeKey ? `${chargeKey}:${type}` : appId;
+      // Dedupe key scheme (uniform across recordCreatorEarnings and
+      // reverseCreatorEarnings): `${chargeKey}:${type}:${leg}`.
+      // - `chargeKey`: stable per-charge id (explicit metadata.idempotencyKey,
+      //   Stripe payment intent, or the per-request ALS key).
+      // - `type`: what kind of earning ("inference_markup" | "purchase_share").
+      // - `leg`: WHICH movement within the request (deduct vs reconcile_charge
+      //   vs purchase; reversals use reconcile_refund vs compensation_reversal).
+      // A true retry of one movement reuses all three parts and dedupes; two
+      // different movements in the same request differ in `leg` and never
+      // collide (#10847 follow-up).
+      const sourceId = chargeKey ? `${chargeKey}:${type}:${leg}` : appId;
       const result = await redeemableEarningsService.addEarnings({
         userId: app.created_by_user_id,
         amount,
@@ -916,8 +965,9 @@ export class AppCreditsService {
 
     // A dedup retry already recorded everything on the first pass — skip the
     // shadow app_earnings + audit-transaction writes so they don't double-count
-    // the withdrawable ceiling (#10423).
-    if (deduplicated) return;
+    // the withdrawable ceiling (#10423). Callers gate their apps-counter
+    // updates on the returned flag for the same reason.
+    if (deduplicated) return { deduplicated: true };
 
     // Shadow app-level earnings tracking (analytics / withdrawable ceiling).
     if (type === "inference_markup") {
@@ -936,6 +986,8 @@ export class AppCreditsService {
         type === "inference_markup" ? "Inference markup earnings" : "Credit purchase share",
       metadata,
     });
+
+    return { deduplicated: false };
   }
 
   /**
@@ -948,13 +1000,17 @@ export class AppCreditsService {
     appId: string,
     userId: string,
     amount: number,
+    leg: CreatorEarningsReversalLeg,
     metadata: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<{ deduplicated: boolean }> {
     // #10423 (symmetry with recordCreatorEarnings): the reversal must also be
     // idempotent, or a retried reconciliation would double-DEBIT the creator.
-    // Key the reduce on the SAME per-charge id + a distinct suffix so a retry
-    // of the same refund reuses the prior ledger entry instead of reducing
-    // twice. reduceEarnings is the gate; skip the shadow writes on a dedup retry.
+    // Key the reduce on the SAME per-charge id + the reversal leg (see the
+    // scheme comment in recordCreatorEarnings) so a retry of the same refund
+    // reuses the prior ledger entry instead of reducing twice, while two
+    // DIFFERENT reversals in one request (reconcile refund vs #10910
+    // compensation reversal) never collide. reduceEarnings is the gate; skip
+    // the shadow writes on a dedup retry.
     const app = await appsRepository.findById(appId);
     const chargeKey =
       (typeof metadata.idempotencyKey === "string" && metadata.idempotencyKey) ||
@@ -968,7 +1024,7 @@ export class AppCreditsService {
         userId: app.created_by_user_id,
         amount,
         source: "miniapp",
-        sourceId: chargeKey ? `${chargeKey}:reconciliation_refund` : appId,
+        sourceId: chargeKey ? `${chargeKey}:inference_markup:${leg}` : appId,
         dedupeBySourceId: chargeKey !== null,
         description: `Reconciliation adjustment for app: ${app.name || appId}`,
         metadata: {
@@ -1003,7 +1059,7 @@ export class AppCreditsService {
       }
     }
 
-    if (deduplicated) return;
+    if (deduplicated) return { deduplicated: true };
 
     // Shadow app-level reduction (use negative value) + audit trail.
     await appEarningsRepository.addInferenceEarnings(appId, -amount);
@@ -1018,6 +1074,8 @@ export class AppCreditsService {
         type: "reconciliation_refund",
       },
     });
+
+    return { deduplicated: false };
   }
 
   /**

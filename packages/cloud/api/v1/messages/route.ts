@@ -829,12 +829,13 @@ async function handleNonStream(
         estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
         actualBaseCost: billing.totalCost,
         description: `Messages API: ${model}`,
+        // #10423: the dedupe key is the per-request ALS idempotency key
+        // (injected by bootstrap-app), not a per-invocation value.
         metadata: {
           model,
           provider,
           billingSource,
           streaming: false,
-          idempotencyKey: requestId,
         },
       });
     }
@@ -986,12 +987,13 @@ async function handleStream(
             estimatedBaseCost: appCreditsInfo.estimatedBaseCost,
             actualBaseCost: billing.totalCost,
             description: `Messages API stream: ${model}`,
+            // #10423: the dedupe key is the per-request ALS idempotency key
+            // (injected by bootstrap-app), not a per-invocation value.
             metadata: {
               model,
               provider,
               billingSource,
               streaming: true,
-              idempotencyKey: requestId,
             },
           });
         }
