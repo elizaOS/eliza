@@ -495,6 +495,109 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+  # The real-touch device matrix (#10104 Tier-2, descends from #9943/#9950):
+  # the ui-smoke config has always defined touch-enabled projects — Pixel 7
+  # `mobile-chromium` (hasTouch, real CDP touch specs) and the `dashboard-*`
+  # portrait/landscape/iPad viewports — but no workflow ever ran them, so every
+  # "swipe" gated on PRs executed only as desktop mouse, and the unwatched
+  # mobile lane rotted (15/16 red when first re-run). Two jobs so each lane
+  # fails independently and boots its own live stack.
+  app-browser-touch-dashboard:
+    name: Zero-Key app browser dashboard device matrix
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      # The assertion-grade dashboard specs (browser-workspace, character-editor,
+      # wallet-inventory, workflow-editor) across mobile-portrait/-landscape,
+      # iPad portrait (all hasTouch), and 1440×900 desktop.
+      - name: Dashboard device-matrix browser coverage (portrait/landscape/iPad/desktop)
+        run: bun run --cwd packages/app test:e2e --project=dashboard-mobile-portrait --project=dashboard-mobile-landscape --project=dashboard-ipad-portrait --project=dashboard-desktop-landscape
+
+      - name: Upload dashboard device-matrix artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-touch-dashboard
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  app-browser-touch-mobile:
+    name: Zero-Key app browser Pixel-7 real-touch lane
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      # Pixel 7 (hasTouch, isMobile) lane: the decomposed personal-assistant
+      # views + the real-CDP-touch chat gesture/fuzz specs at the WebView
+      # viewport that ships on Capacitor iOS/Android.
+      - name: Pixel-7 real-touch browser coverage
+        run: bun run --cwd packages/app test:e2e --project=mobile-chromium
+
+      - name: Upload Pixel-7 real-touch artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-touch-mobile
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
   app-walkthrough-mock:
     name: Zero-Key full-walkthrough (mock lane)
     needs: changes

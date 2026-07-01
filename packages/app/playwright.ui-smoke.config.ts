@@ -129,11 +129,12 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
-      // Mobile-viewport (Pixel 7) lane: background rendering + the decomposed
-      // personal-assistant domain views, so each lifeops view is exercised at
-      // the same WebView viewport that ships on Capacitor iOS/Android.
+      // Mobile-viewport (Pixel 7, hasTouch) lane: the decomposed
+      // personal-assistant domain views plus the real-touch chat gesture specs,
+      // so each surface is exercised at the same WebView viewport that ships on
+      // Capacitor iOS/Android.
       testMatch:
-        /(backgrounds|apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz)\.spec\.ts/,
+        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz)\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
     {
