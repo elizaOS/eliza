@@ -50,6 +50,7 @@ function normalizeOp(value: unknown): OAuthOp | null {
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
   const aliases: Record<string, OAuthOp> = {
+    oauth_connect: "connect",
     connect_account: "connect",
     connect_oauth: "connect",
     link: "connect",
@@ -58,17 +59,24 @@ function normalizeOp(value: unknown): OAuthOp | null {
     add_connection: "connect",
     authorize: "connect",
     authorize_app: "connect",
+    oauth_get: "get",
     check: "get",
     check_connection: "get",
     verify: "get",
     verify_connection: "get",
     status: "get",
     is_connected: "get",
+    did_it_work: "get",
+    oauth_list: "list",
     show: "list",
     show_connections: "list",
     list_connections: "list",
     my_accounts: "list",
     connected_apps: "list",
+    what_is_connected: "list",
+    my_integrations: "list",
+    show_integrations: "list",
+    oauth_revoke: "revoke",
     disconnect: "revoke",
     disconnect_account: "revoke",
     disconnect_oauth: "revoke",
@@ -82,47 +90,17 @@ function normalizeOp(value: unknown): OAuthOp | null {
   return (OAUTH_OPS as readonly string[]).includes(normalized) ? (normalized as OAuthOp) : null;
 }
 
-function inferOpFromMessage(text: string): OAuthOp | null {
-  const lower = text.toLowerCase();
-  if (
-    /\b(disconnect|unlink|remove|revoke)\b/.test(lower) &&
-    /\b(account|connection|oauth)\b/.test(lower)
-  ) {
-    return "revoke";
-  }
-  if (
-    /\b(disconnect|unlink|revoke)\b/.test(lower) ||
-    /\bdisconnect\s+(google|slack|github|twitter|x|microsoft|notion|jira|linkedin|asana|dropbox|salesforce|airtable|zoom|linear)\b/.test(
-      lower,
-    )
-  ) {
-    return "revoke";
-  }
-  if (
-    /\b(connect|link|authorize|add)\b.*\b(google|slack|github|twitter|x|microsoft|notion|jira|linkedin|asana|dropbox|salesforce|airtable|zoom|linear|account|oauth|integration)\b/.test(
-      lower,
-    ) ||
-    /\bconnect\s+(google|slack|github|twitter|x|microsoft|notion|jira|linkedin|asana|dropbox|salesforce|airtable|zoom|linear)\b/.test(
-      lower,
-    )
-  ) {
-    return "connect";
-  }
-  if (
-    /\b(list|show|what)\b.*\b(connection|account|integration)s?\b/.test(lower) ||
-    /\b(my|all)\s+(connection|account|integration)s?\b/.test(lower) ||
-    /\bconnected\s+apps?\b/.test(lower)
-  ) {
-    return "list";
-  }
-  if (
-    /\b(check|verify|status|is\s+(my|the))\b.*\b(connect|connection|connected)\b/.test(lower) ||
-    /^\s*(done|finished|completed)\s*[!?.]?\s*$/.test(lower) ||
-    /\bdid\s+it\s+work\b/.test(lower)
-  ) {
-    return "get";
-  }
-  return null;
+function readStructuredOp(message: Memory, state?: State): OAuthOp | null {
+  const params = extractParams(message, state);
+  const content = message.content as Record<string, unknown>;
+  return normalizeOp(
+    params.op ??
+      params.subaction ??
+      params.operation ??
+      params.action ??
+      content.action ??
+      content.actionName,
+  );
 }
 
 function failureResult(
@@ -523,14 +501,14 @@ export const oauthAction: ActionWithParams = {
     "REVOKE_CONNECTION",
   ],
   description:
-    "Manage cloud OAuth connections. Operations: connect (start an OAuth flow), get (check connection status), list (show all connected accounts), revoke (disconnect a platform). Supported platforms: google, linear, slack, github, notion, twitter, jira, linkedin, microsoft, asana, dropbox, salesforce, airtable, zoom. The op is inferred from message text when not explicitly provided.",
+    "Manage cloud OAuth connections. Operations: connect (start an OAuth flow), get (check connection status), list (show all connected accounts), revoke (disconnect a platform). Supported platforms: google, linear, slack, github, notion, twitter, jira, linkedin, microsoft, asana, dropbox, salesforce, airtable, zoom. The op must be supplied as a structured op/subaction/operation/action parameter.",
 
   parameters: defineActionParameters({
     op: {
       type: "string",
       description:
-        "Operation to perform: connect, get, list, or revoke. Inferred from message text when omitted.",
-      required: false,
+        "Operation to perform: connect, get, list, or revoke. Required as structured data; natural-language message text is not parsed for OAuth intent.",
+      required: true,
       enum: ["connect", "get", "list", "revoke"],
     },
     platform: {
@@ -568,11 +546,7 @@ export const oauthAction: ActionWithParams = {
     _options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const params = extractParams(message, state);
-    const explicitOp = normalizeOp(params.op ?? params.subaction);
-    const op =
-      explicitOp ??
-      inferOpFromMessage(typeof message.content?.text === "string" ? message.content.text : "");
+    const op = readStructuredOp(message, state);
 
     if (!op) {
       const text = `OAUTH could not determine the operation. Specify one of: ${OAUTH_OPS.join(", ")}.`;
@@ -602,7 +576,13 @@ export const oauthAction: ActionWithParams = {
 
   examples: [
     [
-      { name: "{{name1}}", content: { text: "connect google" } },
+      {
+        name: "{{name1}}",
+        content: {
+          text: "connect google",
+          actionParams: { op: "connect", platform: "google" },
+        },
+      },
       {
         name: "{{name2}}",
         content: {
@@ -612,7 +592,13 @@ export const oauthAction: ActionWithParams = {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "is my google connected?" } },
+      {
+        name: "{{name1}}",
+        content: {
+          text: "is my google connected?",
+          actionParams: { op: "get", platform: "google" },
+        },
+      },
       {
         name: "{{name2}}",
         content: {
@@ -622,7 +608,13 @@ export const oauthAction: ActionWithParams = {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "what accounts are connected?" } },
+      {
+        name: "{{name1}}",
+        content: {
+          text: "what accounts are connected?",
+          actionParams: { op: "list" },
+        },
+      },
       {
         name: "{{name2}}",
         content: {
@@ -632,7 +624,13 @@ export const oauthAction: ActionWithParams = {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "disconnect google" } },
+      {
+        name: "{{name1}}",
+        content: {
+          text: "disconnect google",
+          actionParams: { op: "revoke", platform: "google" },
+        },
+      },
       {
         name: "{{name2}}",
         content: {
