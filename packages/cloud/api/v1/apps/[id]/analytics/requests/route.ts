@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
   RateLimitPresets,
   rateLimit,
@@ -32,7 +33,7 @@ async function handleGET(
 ): Promise<Response> {
   const { params } = context ?? { params: Promise.resolve({ id: "" }) };
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
 
@@ -46,6 +47,12 @@ async function handleGET(
     }
 
     if (existingApp.organization_id !== user.organization_id) {
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
+    }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
       return Response.json(
         { success: false, error: "Access denied" },
         { status: 403 },

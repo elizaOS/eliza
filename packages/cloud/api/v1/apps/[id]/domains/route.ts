@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
 import { appsService } from "@/lib/services/apps";
@@ -29,6 +30,9 @@ async function loadOwnedApp(c: AppContext) {
   const appRow = await appsService.getById(appId);
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
+  }
+  if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+    return { error: "Access denied", status: 403 as const };
   }
   return { user, app: appRow, appId };
 }

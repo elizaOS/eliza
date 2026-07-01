@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { appsService } from "@/lib/services/apps";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
@@ -136,7 +137,7 @@ async function __hono_PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
+    const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
     const existingApp = await appsService.getById(id);
@@ -149,6 +150,12 @@ async function __hono_PUT(
     }
 
     if (existingApp.organization_id !== user.organization_id) {
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
+    }
+    if (await isAppKeyOutOfScope(apiKey?.id, id)) {
       return Response.json(
         { success: false, error: "Access denied" },
         { status: 403 },

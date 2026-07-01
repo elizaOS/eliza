@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -49,6 +50,10 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
+    // An app-scoped API key may only act on its own app, never a sibling (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
 
     const body = await c.req.json().catch(() => null);
     const parsed = CreateChargeSchema.safeParse(body);
@@ -93,6 +98,10 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const appId = c.req.param("id");
     if (!appId) return c.json({ success: false, error: "Missing app id" }, 400);
+    // An app-scoped API key may only read its own app's charges (#10852).
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+      return c.json({ success: false, error: "Access denied" }, 403);
+    }
 
     const limitParam = c.req.query("limit");
     const limit = limitParam ? Number.parseInt(limitParam, 10) : 50;

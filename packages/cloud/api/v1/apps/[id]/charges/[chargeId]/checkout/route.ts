@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
 import {
@@ -37,6 +38,9 @@ app.post("/", async (c) => {
     const chargeId = c.req.param("chargeId");
     if (!appId || !chargeId) {
       return c.json({ success: false, error: "Missing route parameters" }, 400);
+    }
+    if (await isAppKeyOutOfScope(c.get("apiKeyId"), appId)) {
+      return c.json({ success: false, error: "Access denied" }, 403);
     }
 
     const body = await c.req.json().catch(() => null);
