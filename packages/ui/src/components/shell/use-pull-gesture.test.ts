@@ -49,6 +49,21 @@ describe("resolveSwipe", () => {
     expect(resolveSwipe(70, 0.5, -90, DIST_X, VEL_X)).toBeNull();
   });
 
+  it("fires on a slightly-diagonal horizontal swipe (#10715)", () => {
+    // 65px across (past the 64px distance threshold) with 75px of vertical
+    // drift: clearly a horizontal-intent swipe. The old strict 45° cone
+    // (|x| <= |y|) rejected this; the widened cone commits it.
+    expect(resolveSwipe(65, 0.1, 75, DIST_X, VEL_X)).toBe("left");
+    expect(resolveSwipe(-65, -0.1, -75, DIST_X, VEL_X)).toBe("right");
+    // horizontal beating vertical outright still fires (regression guard).
+    expect(resolveSwipe(80, 0.1, 70, DIST_X, VEL_X)).toBe("left");
+  });
+
+  it("still rejects a drag whose horizontal is well under the dominance ratio (#10715)", () => {
+    // 60px across vs 90px vertical → 60 < 90*0.8 (72) → still vertical intent.
+    expect(resolveSwipe(60, 0.1, 90, DIST_X, VEL_X)).toBeNull();
+  });
+
   it("ignores small, slow horizontal movements", () => {
     expect(resolveSwipe(12, 0.1, 2, DIST_X, VEL_X)).toBeNull();
   });

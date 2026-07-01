@@ -87,6 +87,16 @@ export function resolvePull(
 }
 
 /**
+ * Fraction of the vertical travel the horizontal travel must reach to count as a
+ * horizontal-dominant swipe (#10715). At 1.0 a swipe had to STRICTLY beat the
+ * vertical (a 45° cone), which rejected clearly-horizontal swipes with moderate
+ * vertical drift; 0.8 widens the cone to ~51° so a deliberate diagonal commits
+ * while a mostly-vertical scroll/pull (horizontal well under 0.8× vertical) does
+ * not.
+ */
+const HORIZONTAL_DOMINANCE_RATIO = 0.8;
+
+/**
  * Decide whether a release should fire a horizontal swipe, and in which
  * direction. Requires horizontal dominance over the vertical travel so a
  * mostly-vertical drag never registers as a swipe. `deltaLeft` is positive when
@@ -99,8 +109,12 @@ export function resolveSwipe(
   distanceThresholdX: number,
   velocityThresholdX: number,
 ): "left" | "right" | null {
-  // Horizontal must clearly dominate the vertical component.
-  if (Math.abs(deltaLeft) <= Math.abs(deltaUp)) return null;
+  // Horizontal must dominate the vertical component — but not STRICTLY (#10715):
+  // accept a wider (~51°) cone so a deliberate diagonal swipe commits while a
+  // mostly-vertical scroll/pull is still rejected. See HORIZONTAL_DOMINANCE_RATIO.
+  if (Math.abs(deltaLeft) < Math.abs(deltaUp) * HORIZONTAL_DOMINANCE_RATIO) {
+    return null;
+  }
   const passed =
     Math.abs(deltaLeft) >= distanceThresholdX ||
     Math.abs(velocityLeft) >= velocityThresholdX;
