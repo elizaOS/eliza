@@ -49,6 +49,28 @@ const DEFAULT_RESTART_AFTER_TURNS = 20;
 /** Fully-qualified name the SDK assigns our in-process MCP tool. */
 const ROUTE_TOOL = "mcp__eliza__route_action";
 
+/**
+ * When the monthly Agent SDK credit runs dry (documented caveat: the subscription
+ * limit can be hit mid-month), the SDK ends the turn CLEANLY but streams the
+ * subscription limit UI string as the assistant text — e.g. "You've hit your
+ * session limit · resets 9:30pm (UTC)". Without this guard that meta-string is
+ * returned as the turn's completion and relayed verbatim to the user as the reply.
+ * Match the SDK's own limit envelope (a fixed provider string, NOT user content)
+ * so the caller can THROW to failover / a graceful rate-limit reply instead of
+ * leaking it. Kept narrow to the subscription-limit signature to avoid catching a
+ * genuine model answer that happens to discuss limits.
+ */
+export function isClaudeSubscriptionLimitMessage(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (t.length > 160) return false; // the real limit string is short; a long answer isn't it
+  return (
+    /\b(hit|reached|exceeded)\b[^.]*\b(session|usage|rate|weekly|daily|monthly)\s+limit\b/.test(
+      t,
+    ) ||
+    (/\blimit\b/.test(t) && /\bresets?\b[^.]*\(utc\)/.test(t))
+  );
+}
+
 /** The model's captured routing decision (ROUTE mode). */
 export interface RouteDecision {
   action: string;
@@ -382,6 +404,18 @@ export class ClaudeSdkSession {
         if (typeof msg.result === "string") resultText = msg.result;
         break;
       }
+    }
+
+    // A dried-up subscription credit ends the turn cleanly but streams the limit
+    // string as the "answer". Detect it BEFORE either mode returns so it fails
+    // over / becomes a graceful rate-limit reply instead of leaking "You've hit
+    // your session limit ..." to the user (route mode would otherwise relay it as
+    // a REPLY, text mode as the completion). "rate limit" in the thrown message
+    // routes it through isRateLimitError.
+    if (sawResult && isClaudeSubscriptionLimitMessage(text)) {
+      throw new Error(
+        `[cli-inference:sdk] subscription rate limit reached: ${text.trim().slice(0, 120)}`,
+      );
     }
 
     if (mode === "route") {

@@ -56,6 +56,12 @@ export function isRateLimitError(error: unknown): boolean {
 		haystack.includes("requests per second") ||
 		haystack.includes("requests per hour") ||
 		haystack.includes("slow down") ||
+		// Subscription-credit exhaustion (Claude/Codex CLI-SDK brains): the SDK
+		// surfaces "you've hit your session/usage limit" when the monthly credit
+		// runs dry. Treat it as a rate limit so the graceful "temporarily
+		// unavailable" reply path handles it instead of leaking the raw string.
+		haystack.includes("session limit") ||
+		haystack.includes("usage limit") ||
 		/\b429\b/.test(haystack)
 	);
 }
