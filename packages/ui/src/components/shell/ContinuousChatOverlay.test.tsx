@@ -684,7 +684,7 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
-  it("fades the backdrop in with the chat and COLLAPSES on a backdrop click", () => {
+  it("fades the backdrop in with the chat and COLLAPSES on an outside tap", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const backdrop = screen.getByTestId("chat-sheet-backdrop");
@@ -693,8 +693,10 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(backdrop.getAttribute("data-active")).toBe("true");
-    // Clicking the dimmed view behind now collapses the chat back to the input.
-    fireEvent.click(backdrop);
+    // Tapping the dimmed view behind collapses the chat back to the input while
+    // the visual backdrop itself remains pointer-transparent for drags.
+    fireEvent.pointerDown(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
+    fireEvent.pointerUp(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
