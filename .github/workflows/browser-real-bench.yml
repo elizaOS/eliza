@@ -4,7 +4,7 @@ name: Browser Benchmark Lanes
 # - MiniWoB++ benchmark suite against a REAL Chromium engine (puppeteer-core)
 # - ScreenSpot-Web-style grounding against a REAL Chromium engine
 # - committed Mind2Web/WebArena-style external dataset fixtures through the
-#   plugin-browser BROWSER command router
+#   plugin-browser BROWSER command router, including a REAL Chromium pass
 #
 # The `*.real.test.ts` lanes are excluded from the default `vitest run` and
 # self-skip without a Chromium binary, so they only execute here after
@@ -21,9 +21,9 @@ on:
     paths:
       - "plugins/plugin-browser/src/benchmark/**"
       - "plugins/plugin-browser/vitest.real.config.ts"
-      - "plugins/plugin-browser/scripts/run-miniwob-chromium-benchmark.mjs"
+      - "plugins/plugin-browser/scripts/*benchmark*.mjs"
       - "plugins/plugin-browser/scripts/capture-web-grounding-evidence.mjs"
-      - "plugins/plugin-browser/scripts/run-external-dataset-benchmark.mjs"
+      - "plugins/plugin-browser/package.json"
       - ".github/workflows/browser-real-bench.yml"
 
 concurrency:
@@ -39,8 +39,8 @@ env:
   BUN_VERSION: "canary"
 
 jobs:
-  miniwob-chromium:
-    name: MiniWoB++ on real Chromium
+  browser-real-bench:
+    name: Browser benchmarks on real Chromium
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -69,101 +69,33 @@ jobs:
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
 
-      - name: Run MiniWoB++ on real Chromium (engine-parity lane)
+      - name: Run real Chromium benchmark lanes
         run: bun run --cwd plugins/plugin-browser test:real-chromium
 
-      - name: Generate run-report artifacts (oracle + noop)
+      - name: Generate MiniWoB++ run-report artifacts (oracle + noop)
         run: |
           bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy oracle --seeds 3
           bun run --cwd plugins/plugin-browser bench:miniwob:chromium --policy noop --seeds 2
+
+      - name: Generate web-grounding artifacts
+        run: bun run --cwd plugins/plugin-browser bench:grounding:chromium
+
+      - name: Generate external-dataset artifacts
+        run: |
+          bun run --cwd plugins/plugin-browser bench:external --policy oracle
+          bun run --cwd plugins/plugin-browser bench:external --policy noop
+          bun run --cwd plugins/plugin-browser bench:external --policy wrong
+          bun run --cwd plugins/plugin-browser bench:external:chromium --policy oracle
+          bun run --cwd plugins/plugin-browser bench:external:chromium --policy noop
+          bun run --cwd plugins/plugin-browser bench:external:chromium --policy wrong
 
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: miniwob-chromium-run
-          path: .github/issue-evidence/10333-browser-real-chromium/*.json
-          if-no-files-found: warn
-
-  web-grounding-chromium:
-    name: Web grounding on real Chromium
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          submodules: false
-          show-progress: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
-
-      - name: Run web-element grounding on real Chromium
-        run: bun run --cwd plugins/plugin-browser test:real:grounding
-
-      - name: Generate grounding artifacts
-        run: bun run --cwd plugins/plugin-browser bench:grounding:chromium
-
-      - name: Upload grounding artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: web-grounding-chromium-run
-          path: .github/issue-evidence/10333-web-grounding/*
-          if-no-files-found: warn
-
-  external-dataset:
-    name: External dataset benchmark
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          submodules: false
-          show-progress: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Assert external dataset benchmark contract
-        run: bunx vitest run src/benchmark/__tests__/external-dataset.test.ts
-        working-directory: plugins/plugin-browser
-
-      - name: Generate external dataset artifacts
-        run: |
-          bun run --cwd plugins/plugin-browser bench:external --policy oracle
-          bun run --cwd plugins/plugin-browser bench:external --policy noop
-          bun run --cwd plugins/plugin-browser bench:external --policy wrong
-
-      - name: Upload external dataset artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: external-dataset-run
-          path: .github/issue-evidence/10333-browser-external-dataset/*.json
+          name: browser-real-benchmark-runs
+          path: |
+            .github/issue-evidence/10333-browser-real-chromium/*
+            .github/issue-evidence/10333-web-grounding/*
+            .github/issue-evidence/10333-browser-external-dataset/*.json
           if-no-files-found: warn
