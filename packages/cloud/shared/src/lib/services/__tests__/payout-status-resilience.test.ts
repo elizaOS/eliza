@@ -68,3 +68,23 @@ test("isNetworkAvailable() reports unavailable instead of throwing", async () =>
   expect(result.available).toBe(false);
   expect(typeof result.message).toBe("string");
 });
+
+test("production refuses PAYOUT_STATUS_ASSUME_OPERATIONAL instead of reporting networks available", async () => {
+  getCloudAwareEnv.mockReturnValue({
+    ENVIRONMENT: "production",
+    PAYOUT_STATUS_ASSUME_OPERATIONAL: "1",
+    PAYOUT_STATUS_SKIP_LIVE_BALANCE: "1",
+    EVM_PAYOUT_WALLET_ADDRESS: "0x0000000000000000000000000000000000000001",
+    SOLANA_PAYOUT_WALLET_ADDRESS: "11111111111111111111111111111111",
+  });
+
+  const status = await payoutStatusService.getStatus(true);
+
+  expect(status.operational).toBe(false);
+  expect(status.warnings[0]).toContain("PAYOUT_STATUS_ASSUME_OPERATIONAL");
+  expect(status.networks.every((network) => network.status !== "operational")).toBe(true);
+
+  const result = await payoutStatusService.isNetworkAvailable("base");
+  expect(result.available).toBe(false);
+  expect(result.message).toContain("PAYOUT_STATUS_ASSUME_OPERATIONAL");
+});

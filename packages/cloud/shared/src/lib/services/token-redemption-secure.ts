@@ -39,6 +39,7 @@ import {
   type TokenRedemption,
   tokenRedemptions,
 } from "../../db/schemas/token-redemptions";
+import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import {
   checkKnownAddress,
@@ -877,6 +878,20 @@ export class SecureTokenRedemptionService {
     requiredAmount: number,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
     const env = getCloudAwareEnv();
+    if (shouldBlockPayoutAssumeOperational(env)) {
+      logger.error(
+        "[SecureRedemption] Refusing assumed-operational payout availability in production",
+        {
+          network,
+        },
+      );
+      return {
+        available: false,
+        balance: 0,
+        error:
+          "Token redemption is temporarily unavailable while payout infrastructure is being verified.",
+      };
+    }
     // When the operator has explicitly opted out of live balance reads
     // (PAYOUT_STATUS_ASSUME_OPERATIONAL=1, e.g. local/e2e with no funded wallet),
     // trust the configured wallet here too. The on-chain payout cron still

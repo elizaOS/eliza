@@ -30,3 +30,13 @@ export function shouldBlockDevnetBypass(env: EnvLike = process.env): boolean {
 export function shouldBlockRegistrarStub(env: EnvLike = process.env): boolean {
   return env.ELIZA_CF_REGISTRAR_DEV_STUB === "1" && isProductionDeployment(env);
 }
+
+/**
+ * Block payout availability from being marked operational by assertion in
+ * production. This flag is useful for local/staging e2e stacks that skip live
+ * hot-wallet balance reads, but in production it can accept redemption requests
+ * without proving the payout wallet can actually deliver tokens.
+ */
+export function shouldBlockPayoutAssumeOperational(env: EnvLike = process.env): boolean {
+  return env.PAYOUT_STATUS_ASSUME_OPERATIONAL === "1" && isProductionDeployment(env);
+}
