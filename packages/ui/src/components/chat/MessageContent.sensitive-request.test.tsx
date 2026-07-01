@@ -414,6 +414,79 @@ describe("MessageContent sensitive requests", () => {
     expect(payload.seed_photo.startsWith("data:image/png")).toBe(true);
   });
 
+  it("renders a non-image file field as a file input without camera capture (#8910)", async () => {
+    updateSecretsMock.mockResolvedValueOnce({ ok: true, updated: ["doc"] });
+    const request = pendingImageSecretRequest();
+    // Turn it into a generic file field (e.g. a keystore/backup file upload).
+    const field = request?.form?.fields?.[0];
+    if (field) {
+      field.name = "doc";
+      field.label = "Backup file";
+      field.input = "file";
+      field.mimeTypes = ["application/json"];
+    }
+    render(
+      <MessageContent message={baseMessage({ secretRequest: request })} />,
+    );
+
+    const input = screen.getByTestId(
+      "sensitive-request-file-doc",
+    ) as HTMLInputElement;
+    expect(input.type).toBe("file");
+    expect(input.accept).toBe("application/json");
+    // Non-image uploads must NOT force the rear camera.
+    expect(input.getAttribute("capture")).toBeNull();
+
+    const file = new File([new Uint8Array([1, 2, 3])], "backup.json", {
+      type: "application/json",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => {
+      expect(
+        (screen.getByTestId("sensitive-request-submit") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByTestId("sensitive-request-submit"));
+    await waitFor(() => {
+      expect(updateSecretsMock).toHaveBeenCalledTimes(1);
+    });
+    const payload = updateSecretsMock.mock.calls[0]?.[0] as Record<
+      string,
+      string
+    >;
+    expect(payload.doc.startsWith("data:application/json")).toBe(true);
+  });
+
+  it("rejects an upload over maxBytes and does not submit (#8910)", async () => {
+    const request = pendingImageSecretRequest();
+    const field = request?.form?.fields?.[0];
+    if (field) field.maxBytes = 3; // 3 bytes — a 4-byte file must be rejected.
+    render(
+      <MessageContent message={baseMessage({ secretRequest: request })} />,
+    );
+
+    const input = screen.getByTestId(
+      "sensitive-request-file-seed_photo",
+    ) as HTMLInputElement;
+    const tooBig = new File([new Uint8Array([1, 2, 3, 4])], "big.png", {
+      type: "image/png",
+    });
+    fireEvent.change(input, { target: { files: [tooBig] } });
+
+    // The error surfaces and no value is captured, so submit stays disabled.
+    await waitFor(() => {
+      expect(screen.getByTestId("sensitive-request").textContent).toContain(
+        "too large",
+      );
+    });
+    expect(
+      (screen.getByTestId("sensitive-request-submit") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(updateSecretsMock).not.toHaveBeenCalled();
+  });
+
   it("renders an OAuth request with a Connect button and never shows the URL in chat", () => {
     const { container } = render(
       <MessageContent

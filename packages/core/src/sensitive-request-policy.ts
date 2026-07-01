@@ -84,6 +84,17 @@ export interface SensitiveRequestSecretTarget {
 	scope?: "organization" | "app" | "agent" | "global" | (string & {});
 	appId?: string;
 	validation?: Record<string, unknown>;
+	/**
+	 * How the value should be collected. Defaults to `secret` (masked text).
+	 * `image`/`file` let a secret be captured as an upload — e.g. photograph a
+	 * 2FA seed or scan a recovery QR — delivered as a base64 data URL through the
+	 * same submit path. Additive; omit for a normal typed secret. (#8910)
+	 */
+	input?: "secret" | "text" | "image" | "file";
+	/** For `input: "image" | "file"` — accepted MIME types (maps to the file input `accept`). */
+	mimeTypes?: string[];
+	/** For `input: "image" | "file"` — max upload size in bytes. */
+	maxBytes?: number;
 }
 
 export interface SensitiveRequestPrivateInfoField {
