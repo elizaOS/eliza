@@ -41,16 +41,29 @@ Spawned code agents should load or request both skills for Cloud app builds.
 ## Default Build Flow
 
 For new agent-built apps, defer to `build-monetized-app`: register a Cloud app,
-build and push a container image, deploy that container, enable monetization,
-patch the app URL/origins, and then offer a custom domain. Static hosting is
-only for legacy/local apps or edits to an existing static app.
+publish the frontend, deploy a container only if the app needs server-side code,
+enable monetization, and then offer a custom domain.
 
-Cloud is the app platform contract, but managed frontend hosting is not
-first-class yet. Until the Worker/R2 frontend host described in
-`packages/cloud/APP_PLATFORM_REVIEW.md` lands, use an external/static frontend
-URL for frontend-only apps, and deploy a container only when the app needs
-server-side code. Do not promise that Cloud can upload and serve arbitrary
-frontend build artifacts as a managed static site yet.
+Managed frontend hosting is now first-class. To ship a full app on Cloud:
+
+1. Create or reuse a Cloud app.
+2. **Publish the frontend**: `POST /api/v1/apps/:id/frontend` with the built site
+   files (or the `DEPLOY_FRONTEND` agent action pointed at the build directory,
+   e.g. `./dist`). Cloud content-addresses the files to R2, finalizes an
+   immutable deployment, and activates it. The active deployment is served with
+   SEO metadata + a page-view analytics beacon injected at response time.
+   - Deployments are immutable + versioned: `POST .../frontend/:deploymentId/activate`
+     switches the live version, which is also **rollback** (activate an older one).
+   - `GET .../frontend` lists deployments + the active id.
+3. **Deploy a backend container** only when the app needs server-side code
+   (`POST /api/v1/apps/:id/deploy`). A static/frontend-only app does not need one.
+4. **Attach a custom domain** (`domains/buy` + attach), or use the app's system
+   frontend host. The same domain can target the hosted frontend or a backend.
+
+The public site is served by Cloud at the app's frontend host / verified custom
+domain (operator DNS points the host at the Cloud Worker). Until a host is
+pointed at Cloud, preview the active deployment at
+`/api/v1/apps/:id/frontend/preview`.
 
 For existing app work:
 
