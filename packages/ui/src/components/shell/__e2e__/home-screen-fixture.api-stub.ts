@@ -35,4 +35,9 @@ export const client = {
   getOrchestratorAccounts: async () => ({ accounts: [] }),
   getOrchestratorRooms: async () => ({ rooms: [] }),
   listAccounts: async () => ({ accounts: [] }),
+  // Unified-tasks home widget (useUnifiedTasks) — empty so it self-hides. These
+  // prototype methods are bare side-effect patches in production, dropped from
+  // this esbuild bundle, so stub them here explicitly.
+  listAutomations: async () => ({ automations: [] }),
+  listScheduledTasks: async () => ({ tasks: [] }),
 };

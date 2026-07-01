@@ -59,36 +59,42 @@ function heroDataUri(hue: number): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-// A roster big enough to fill TWO launcher pages (page size 20). The four
-// dock favorites (settings/activity/files/tasks) pin to the dock; the rest pack
-// into the page grid, so the launcher has 2 pages — which is what makes the
-// doubled-dots regression observable (a single page never rendered inner dots),
-// and gives the icon-distinctness check real, varied glyphs to compare.
-const GRID_ICONS = [
-  "Inbox", "Mail", "CalendarDays", "Heart", "Target", "Network",
-  "Database", "Terminal", "Wallet", "ShoppingBag", "Rss", "Bot",
-  "BrainCircuit", "Monitor", "Radio", "ScrollText", "Globe", "Plug",
-  "Sparkles", "Phone", "Users", "ImageIcon",
-];
-
+// The curated launcher view set: page 1 is the everyday apps, page 2 is the
+// developer tools (trajectories/database/runtime/logs/skills/plugins). A few
+// carry real branded hero IMAGES so the tiles render <img> icons, proving the
+// launcher shows real image icons (not the glyph fallback). Duplicate/removed
+// registrations are included so the e2e proves curation drops + dedupes them.
 export function useRoutableViews() {
-  const gridViews = GRID_ICONS.map((icon, i) =>
-    builtinView(`app${i}`, `App ${i}`, `/apps/app${i}`, icon, true),
-  );
   return {
     views: [
-      // chat/views are filtered out of the launcher (self-links) — kept so
-      // the e2e can assert their ABSENCE.
+      // Shell surfaces + removed apps — kept so the e2e asserts their ABSENCE.
       builtinView("chat", "Chat", "/chat"),
       builtinView("views", "Views", "/views"),
-      // Dock favorites — real branded hero IMAGES (the agent serves these on
-      // device); rendered as <img> tiles, proving the launcher shows real
-      // image icons, not the glyph fallback (task: real image icons).
+      builtinView("shopify", "Shopify", "/shopify", "ShoppingBag", true),
+      builtinView("hyperliquid", "Hyperliquid", "/hyperliquid", "TrendingUp", true),
+      // Page 1 — everyday apps (curated order is enforced by launcher-curation).
+      builtinView("wallet", "Wallet", "/wallet", "Wallet", true, heroDataUri(28)),
+      // Duplicate wallet registration — must collapse to the single Wallet tile.
+      builtinView("inventory", "Wallet", "/wallet", "Wallet"),
+      builtinView("automations", "Automations", "/automations", "Clock3", true, heroDataUri(64)),
+      // Duplicate automations registration — folds into the one Automations tile.
+      builtinView("triggers", "Automations", "/automations", "Clock3"),
+      builtinView("browser", "Browser", "/browser", "Globe", true, heroDataUri(150)),
+      builtinView("character", "Character", "/character", "Bot", true, heroDataUri(200)),
+      builtinView("documents", "Knowledge", "/character/documents", "FileText", true, heroDataUri(240)),
+      builtinView("transcripts", "Transcripts", "/apps/transcripts", "AudioLines", true),
+      builtinView("relationships", "Relationships", "/apps/relationships", "Network", true),
+      builtinView("memories", "Memories", "/apps/memories", "Brain", true),
+      builtinView("feed", "Feed", "/feed", "Rss", true),
+      builtinView("stream", "Stream", "/stream", "Radio", true),
       builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28)),
-      builtinView("activity", "Activity", "/activity", "Activity", true, heroDataUri(150)),
-      builtinView("files", "Files", "/apps/files", "FolderClosed", false, heroDataUri(210)),
-      builtinView("tasks", "Tasks", "/apps/tasks", "ListTodo", false, heroDataUri(280)),
-      ...gridViews,
+      // Page 2 — developer tools.
+      builtinView("trajectories", "Trajectories", "/apps/trajectories", "Activity", true, heroDataUri(300)),
+      builtinView("database", "Databases", "/apps/database", "Database", true),
+      builtinView("runtime", "Runtime", "/apps/runtime", "Terminal", false),
+      builtinView("logs", "Logs", "/apps/logs", "ScrollText", true),
+      builtinView("skills", "Skills", "/apps/skills", "Sparkles", false),
+      builtinView("plugins", "Plugins", "/apps/plugins", "Plug", true),
     ],
     loading: false,
     error: null,
