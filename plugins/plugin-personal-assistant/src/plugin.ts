@@ -179,15 +179,6 @@ function looksLikeMissedCallRepairApproval(text: string): boolean {
   );
 }
 
-function looksLikeFlightConflictQuestion(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(normalized) &&
-    /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
-    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(normalized)
-  );
-}
-
 function looksLikeDocumentSignatureRequest(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
@@ -282,13 +273,6 @@ async function queueDocumentSignatureRequest(args: {
       approvalRequestId: request.id,
     },
   };
-}
-
-function buildFlightConflictPreview(text: string): string {
-  if (/8\s*(?:am|a\.m\.)/iu.test(text) && /9\s*(?:am|a\.m\.)/iu.test(text)) {
-    return "The 8 AM JFK arrival is too tight for a 9 AM board meeting. I would treat that as a conflict unless the meeting is at the airport or remote. The concrete options are to rebook to an earlier flight or the night before, move the meeting later, or plan to join remotely while in transit.";
-  }
-  return "Your 8 AM JFK arrival is too tight for the 9 AM board meeting on that calendar day. I would treat it as a conflict and propose one of these concrete options: rebook to an arrival no later than 6:30 AM, fly in the night before, move the board meeting to 10:30 AM or later, or join remotely while in transit.";
 }
 
 function approvalChannelFromSource(source: string | null): ApprovalChannel {
@@ -406,7 +390,7 @@ async function handleLifeOpsMessageAction(
   };
 }
 
-async function handleLifeOpsDirectMessageRequest(args: {
+export async function handleLifeOpsDirectMessageRequest(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State;
@@ -419,16 +403,6 @@ async function handleLifeOpsDirectMessageRequest(args: {
       message: args.message,
       state: args.state,
     });
-  }
-  if (looksLikeFlightConflictQuestion(text)) {
-    return {
-      text: buildFlightConflictPreview(text),
-      success: true,
-      data: {
-        actionName: "CALENDAR",
-        subaction: "flight_conflict_rebooking",
-      },
-    };
   }
   if (looksLikeDocumentSignatureRequest(text)) {
     return queueDocumentSignatureRequest(args);
