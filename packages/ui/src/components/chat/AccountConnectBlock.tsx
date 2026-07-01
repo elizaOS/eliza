@@ -127,7 +127,7 @@ export function AccountConnectBlock({
                         defaultValue: "Loading accounts…",
                       })
                     : t("accounts.connect.currentCount", {
-                        defaultValue: "{{count}} connected",
+                        defaultValue: `${count} connected`,
                         count,
                       })}
                 </div>
