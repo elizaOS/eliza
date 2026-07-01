@@ -352,7 +352,7 @@ export class PayoutProcessorService {
         count: exhausted.length,
         redemptionIds: exhausted.map((r) => r.id),
       });
-      void payoutAlertsService.sendAlert({
+      await payoutAlertsService.sendAlert({
         severity: "high",
         title: "Payout retries exhausted",
         message: `${exhausted.length} stale redemption(s) exceeded retry attempts before any broadcast was detected. Manual review required to release or refund the payout.`,
@@ -364,7 +364,7 @@ export class PayoutProcessorService {
         "[PayoutProcessor] Stale processing locks with a broadcast tx require on-chain reconciliation (NOT auto-retried to avoid double-pay)",
         { count: stuck.length, redemptions: stuck },
       );
-      void payoutAlertsService.sendAlert({
+      await payoutAlertsService.sendAlert({
         severity: "high",
         title: "Payout stuck after broadcast",
         message: `${stuck.length} redemption(s) broadcast a transaction but never confirmed. Manual on-chain reconciliation required — these are intentionally NOT auto-retried to avoid double-paying.`,
@@ -842,6 +842,7 @@ export class PayoutProcessorService {
         .where(
           and(
             eq(tokenRedemptions.id, redemptionId),
+            eq(tokenRedemptions.status, "processing"),
             lt(
               sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`,
               config.MAX_RETRY_ATTEMPTS - 1,
@@ -863,7 +864,9 @@ export class PayoutProcessorService {
             broadcast_tx_hash: null,
             updated_at: new Date(),
           })
-          .where(eq(tokenRedemptions.id, redemptionId))
+          .where(
+            and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "processing")),
+          )
           .returning({ id: tokenRedemptions.id });
 
         if (failedRows.length > 0) {

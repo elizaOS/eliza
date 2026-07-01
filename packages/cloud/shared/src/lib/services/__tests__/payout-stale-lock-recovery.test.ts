@@ -529,4 +529,40 @@ describe("payout stale-lock recovery (#10553)", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "(h) final retryable failure does not overwrite a row no longer processing",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "approved",
+        retryCount: 2,
+      });
+
+      readContractMock.mockImplementation(async () => {
+        await dbWrite.execute(
+          `UPDATE token_redemptions
+           SET status = 'completed',
+               tx_hash = '${BROADCAST_HASH}',
+               broadcast_tx_hash = '${BROADCAST_HASH}',
+               processing_started_at = NULL
+           WHERE id = '${id}';`,
+        );
+        return 0n;
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.failed).toBe(1);
+      expect(row.status).toBe("completed");
+      expect(row.tx_hash).toBe(BROADCAST_HASH);
+      expect(row.broadcast_tx_hash).toBe(BROADCAST_HASH);
+      expect(Number(row.retry_count)).toBe(2);
+      expect(row.requires_review).toBe(false);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
 });
