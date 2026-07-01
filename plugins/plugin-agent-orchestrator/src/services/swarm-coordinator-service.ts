@@ -658,6 +658,16 @@ export class SwarmCoordinatorService extends Service {
     const verify = verificationService?.[method];
     if (typeof verify !== "function") {
       logger.warn("[SwarmCoordinator] app-verification service unavailable");
+      await this.dispatchCustomValidatorResult(sessionId, "escalation", {
+        ...enrichedData,
+        summary: "App verification service unavailable.",
+        verification: {
+          source: "custom-validator",
+          validator: { service: "app-verification", method },
+          params: isRecord(validator.params) ? validator.params : {},
+          verdict: "fail",
+        },
+      });
       return;
     }
     const params = {
@@ -683,11 +693,10 @@ export class SwarmCoordinatorService extends Service {
           : failed.length > 0
             ? `App verification failed: ${failed.join(", ")}`
             : "App verification failed.";
-      this.dispatchSwarmEvent({
-        type: verdict === "pass" ? "task_complete" : "escalation",
+      await this.dispatchCustomValidatorResult(
         sessionId,
-        timestamp: Date.now(),
-        data: {
+        verdict === "pass" ? "task_complete" : "escalation",
+        {
           ...enrichedData,
           summary,
           verification: {
@@ -698,29 +707,39 @@ export class SwarmCoordinatorService extends Service {
             result,
           },
         },
-      });
+      );
     } catch (err) {
       logger.warn(
         `[SwarmCoordinator] custom validator failed: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      this.dispatchSwarmEvent({
-        type: "escalation",
-        sessionId,
-        timestamp: Date.now(),
-        data: {
-          ...enrichedData,
-          summary: err instanceof Error ? err.message : String(err),
-          verification: {
-            source: "custom-validator",
-            validator: { service: "app-verification", method },
-            params,
-            verdict: "fail",
-          },
+      await this.dispatchCustomValidatorResult(sessionId, "escalation", {
+        ...enrichedData,
+        summary: err instanceof Error ? err.message : String(err),
+        verification: {
+          source: "custom-validator",
+          validator: { service: "app-verification", method },
+          params,
+          verdict: "fail",
         },
       });
     }
+  }
+
+  private async dispatchCustomValidatorResult(
+    sessionId: string,
+    event: "task_complete" | "escalation",
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    this.updateLegacyTaskContext(sessionId, event, data);
+    this.dispatchSwarmEvent({
+      type: event,
+      sessionId,
+      timestamp: Date.now(),
+      data,
+    });
+    await this.maybeFireSwarmComplete(sessionId, event, data);
   }
 
   /**

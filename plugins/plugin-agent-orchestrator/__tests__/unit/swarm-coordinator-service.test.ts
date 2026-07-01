@@ -230,6 +230,105 @@ describe("SwarmCoordinatorService", () => {
         },
       },
     });
+    expect(coordinator.tasks.get("sess-3")).toMatchObject({
+      sessionId: "sess-3",
+      status: "completed",
+      label: "build-site",
+      workdir: "/tmp/wd",
+    });
+    await coordinator.stop();
+  });
+
+  it("fires swarm-complete synthesis after app-verification passes", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        initialTask: "build the landing page",
+        originRoomId: "origin-room-7",
+        originConnectorMessageId: "discord-msg-7",
+        validator: {
+          service: "app-verification",
+          method: "verifyApp",
+          params: { appName: "demo-app" },
+        },
+      },
+    });
+    const verification = {
+      verifyApp: vi.fn(async () => ({ verdict: "pass", checks: [] })),
+    };
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      "app-verification": verification,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-validated", "task_complete", { response: "deployed" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    expect(fired.mock.calls[0][0]).toMatchObject({
+      total: 1,
+      completed: 1,
+      tasks: [
+        {
+          sessionId: "sess-validated",
+          label: "build-site",
+          status: "completed",
+          completionSummary: "deployed",
+          roomId: "origin-room-7",
+          replyToExternalMessageId: "discord-msg-7",
+        },
+      ],
+    });
+    await coordinator.stop();
+  });
+
+  it("emits a custom-validator escalation when app-verification is unavailable", async () => {
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        validator: {
+          service: "app-verification",
+          method: "verifyApp",
+          params: { appName: "demo-app" },
+        },
+      },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((event) => received.push(event));
+
+    acp.emit("sess-missing-verifier", "task_complete", {});
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      type: "escalation",
+      sessionId: "sess-missing-verifier",
+      data: {
+        summary: "App verification service unavailable.",
+        verification: {
+          source: "custom-validator",
+          validator: { service: "app-verification", method: "verifyApp" },
+          params: { appName: "demo-app" },
+          verdict: "fail",
+        },
+      },
+    });
+    expect(coordinator.tasks.get("sess-missing-verifier")).toMatchObject({
+      sessionId: "sess-missing-verifier",
+      status: "escalation",
+      label: "build-site",
+    });
     await coordinator.stop();
   });
 
