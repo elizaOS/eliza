@@ -40,7 +40,6 @@ import { FTU_WELCOME_HOME_WIDGET } from "../components/chat/widgets/ftu-welcome"
 import { GOALS_HOME_WIDGET } from "../components/chat/widgets/goals-attention";
 import { HEALTH_HOME_WIDGET } from "../components/chat/widgets/health-sleep";
 import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
-import { MessagesWidget } from "../components/chat/widgets/messages";
 import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
@@ -70,8 +69,6 @@ registerWidgetComponent(
   "notifications.recent",
   NotificationsWidget,
 );
-// Messages (recent conversations) is likewise a core surface — always-visible.
-registerWidgetComponent("messages", "messages.recent", MessagesWidget);
 // Curated home-grid widgets backed by core API surfaces (conversations, agent
 // activity, wallet, running workflows). Each renders populated data, a
 // connected-but-empty state, or self-hides — always-visible so the home grid is
@@ -194,10 +191,23 @@ const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
       signalKinds: ["reminder", "check-in", "notification"],
     },
     {
+      // The @elizaos/plugin-messages app plugin no longer ships its own home
+      // tile — the standalone Messages widget was removed as redundant with the
+      // always-present chat overlay (#10697). Follow-up-worthy messages surface
+      // as `category: "message"` notifications, so it folds into that rail.
+      pluginId: "messages",
+      label: "Messages",
+      icon: "MessageSquare",
+      defaultWidget: "notifications",
+      signalKinds: ["message", "notification"],
+    },
+    {
       pluginId: "phone",
       label: "Phone",
       icon: "Phone",
-      defaultWidget: "messages",
+      // Follow-up messages fold into the notification rail (#10697); the
+      // standalone Messages tile was removed as redundant with the chat overlay.
+      defaultWidget: "notifications",
       signalKinds: ["message", "notification"],
     },
     {
@@ -332,9 +342,9 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     // Boosted by any notification; urgent ones map to escalation-level weight.
     signalKinds: ["notification", "approval", "escalation"],
   },
-  // Recent conversations occupy the home slot as a naked 2x1 tile (declared in
-  // the curated home-grid block below). The `messages.default-home` sink was
-  // dropped — it rendered the same MessagesWidget and would duplicate that tile.
+  // The standalone Recent-conversations tile was removed (#10697) — it
+  // duplicated the always-present chat overlay. Follow-up-worthy messages now
+  // surface as `category: "message"` notifications in the notification rail.
   // Agent Orchestrator — app runs
   {
     id: "agent-orchestrator.apps",
@@ -478,17 +488,6 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     order: AGENT_PROVISIONING_HOME_WIDGET.order,
     defaultEnabled: true,
     signalKinds: AGENT_PROVISIONING_HOME_WIDGET.signalKinds,
-    size: { cols: 2, rows: 1 },
-  },
-  {
-    id: "messages.recent",
-    pluginId: "messages",
-    slot: "home",
-    label: "Recent conversations",
-    icon: "MessageSquare",
-    order: 60,
-    defaultEnabled: true,
-    signalKinds: ["message"],
     size: { cols: 2, rows: 1 },
   },
   {
@@ -637,7 +636,6 @@ const ALWAYS_VISIBLE_BUILTIN_WIDGET_PLUGIN_IDS = new Set([
   // plugins. They must render regardless of the plugin snapshot so the home
   // grid is populated on first paint; each shows populated data, a
   // connected-but-empty state, or self-hides when empty.
-  "messages",
   "feed",
   "wallet",
   "calendar",
@@ -712,7 +710,10 @@ export const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
   Record<DefaultHomeWidgetSink, { pluginId: string; id: string }>
 > = {
   notifications: { pluginId: "notifications", id: "notifications.recent" },
-  messages: { pluginId: "messages", id: "messages.recent" },
+  // The `messages` sink now folds into the notification rail (#10697) — the
+  // standalone Messages widget was removed as redundant with the chat overlay,
+  // so a plugin declaring `defaultWidget: "messages"` resolves to notifications.
+  messages: { pluginId: "notifications", id: "notifications.recent" },
   activity: {
     pluginId: "agent-orchestrator",
     id: "agent-orchestrator.activity",

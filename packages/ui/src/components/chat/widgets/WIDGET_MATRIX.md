@@ -72,7 +72,6 @@ ChatView today (see divergence D1).
 | Widget id | Slot | Data source / updates | Component | Host mount | Status |
 |---|---|---|---|---|---|
 | `notifications.recent` | home | notification-store <- WS `agent_event` `stream:"notification"` | `notifications.tsx` | ViewCatalog (home) | wired |
-| `messages.recent` | home | conversation store | `messages.tsx` | ViewCatalog (home) | wired |
 | `agent-orchestrator.activity` | chat-sidebar + home | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel + ViewCatalog | wired |
 | `agent-orchestrator.apps` | chat-sidebar + home | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel + ViewCatalog | wired |
 | `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
