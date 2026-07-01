@@ -9,6 +9,7 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../api";
+import { StreamGenerationError } from "../api/client-base";
 import { CLOUD_HANDOFF_PHASE_EVENT } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
@@ -981,5 +982,89 @@ describe("buildSendFailureNotice (#10231)", () => {
     const notice = buildSendFailureNotice(new Error("boom"));
     expect(notice.length).toBeGreaterThan(0);
     expect(notice).toContain("resend");
+  });
+});
+
+describe("useChatSend — structured SSE error surfaces the gate (#10231)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+  });
+
+  it("surfaces the no_provider gate on the assistant turn, not a generic notice", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      new StreamGenerationError({
+        message: "no provider configured",
+        failureKind: "no_provider",
+      }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // The assistant turn carries the structured gate (renderer swaps in the
+    // "Connect a provider" UI) — the empty placeholder is NOT dropped…
+    const messages = deps.conversationMessagesRef.current;
+    const assistant = messages.find(
+      (m) => m.role === "assistant",
+    ) as (ConversationMessage & { failureKind?: string }) | undefined;
+    expect(assistant?.failureKind).toBe("no_provider");
+    // …and no generic error notice is shown (the gate replaces it).
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a connect-account request from an error event", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      new StreamGenerationError({
+        message: "connect an account",
+        // Minimal connect request — only its presence drives the block.
+        accountConnect: {
+          provider: "google",
+          reason: "reconnect",
+        } as never,
+      }),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (m) => m.role === "assistant",
+    ) as (ConversationMessage & { accountConnect?: unknown }) | undefined;
+    expect(assistant?.accountConnect).toBeTruthy();
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("still shows a generic notice for a plain (unstructured) stream error", async () => {
+    mocks.client.sendConversationMessageStream.mockRejectedValue(
+      new Error("network blip"),
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // No structured gate → the existing generic-notice path is preserved.
+    expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
   });
 });

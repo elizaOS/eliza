@@ -18,6 +18,7 @@ import {
   type MessageAttachmentContentType,
 } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
+import { isStreamGenerationError } from "../api/client-base";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
@@ -1109,6 +1110,32 @@ export function useChatSend(deps: UseChatSendDeps) {
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
           dropEmptyAssistantPlaceholder(assistantMsgId);
+          return;
+        }
+
+        // A terminal SSE `error` event that carried a structured gate must
+        // surface that gate on the assistant turn — the same UI the completed
+        // response shows — instead of collapsing to a generic error notice that
+        // loses the actionable signal (#10231). `no_provider` → the provider
+        // gate; a connect-account request → the AccountConnectBlock.
+        if (
+          isStreamGenerationError(err) &&
+          (err.failureKind || err.accountConnect)
+        ) {
+          if (err.failureKind) {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "fail",
+              failureKind: err.failureKind,
+            });
+          } else if (err.accountConnect) {
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "complete",
+              fullText: "",
+              accountConnect: err.accountConnect,
+            });
+          }
           return;
         }
 

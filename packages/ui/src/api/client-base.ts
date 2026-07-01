@@ -92,6 +92,34 @@ type StreamChatEvent = {
   };
 };
 
+/**
+ * A terminal SSE `error` event carries a structured reason — a `failureKind`
+ * gate (e.g. `no_provider`) or a "connect another account" request — that a
+ * generic `Error` would drop, leaving the caller unable to render the gate/CTA
+ * and falling back to a plain error notice (#10231). Throw this instead so the
+ * chat-send catch can surface the same gate UI the completed-response path does.
+ */
+export class StreamGenerationError extends Error {
+  readonly failureKind?: ChatFailureKind;
+  readonly accountConnect?: AccountConnectRequest;
+  constructor(options: {
+    message: string;
+    failureKind?: ChatFailureKind;
+    accountConnect?: AccountConnectRequest;
+  }) {
+    super(options.message);
+    this.name = "StreamGenerationError";
+    this.failureKind = options.failureKind;
+    this.accountConnect = options.accountConnect;
+  }
+}
+
+export function isStreamGenerationError(
+  value: unknown,
+): value is StreamGenerationError {
+  return value instanceof StreamGenerationError;
+}
+
 const CHAT_TURN_STATUS_KINDS: ReadonlySet<ChatTurnStatus["kind"]> = new Set<
   ChatTurnStatus["kind"]
 >([
@@ -264,7 +292,13 @@ function applyStreamChatDataLine(
     return applyStreamChatDoneEvent(parsed, state);
   }
   if (parsed.type === "error") {
-    throw new Error(parsed.message ?? "generation failed");
+    // Preserve the structured gate (failureKind / accountConnect) so the
+    // chat-send catch can surface the actionable UI instead of a plain notice.
+    throw new StreamGenerationError({
+      message: parsed.message ?? "generation failed",
+      failureKind: parsed.failureKind,
+      accountConnect: parsed.accountConnect,
+    });
   }
   return false;
 }
