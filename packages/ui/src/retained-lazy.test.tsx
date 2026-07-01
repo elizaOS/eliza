@@ -149,6 +149,7 @@ describe("RetainedLazyComponent", () => {
     const rendered = render(
       <RetainedLazyComponent
         loader={loader}
+        cacheKey="pause-panel"
         componentProps={{ label: "pause panel" }}
       />,
     );
@@ -168,11 +169,13 @@ describe("RetainedLazyComponent", () => {
         expect.objectContaining({
           source: "retained-lazy",
           action: "evict",
+          key: "pause-panel",
           reason: "app-pause",
         }),
         expect.objectContaining({
           source: "retained-lazy",
           action: "cleanup",
+          key: "pause-panel",
           reason: "app-pause",
         }),
       ]),

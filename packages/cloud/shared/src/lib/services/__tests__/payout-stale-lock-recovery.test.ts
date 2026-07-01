@@ -114,6 +114,7 @@ let pgliteReady = true;
 
 interface SeedOpts {
   status: string;
+  network?: string;
   broadcastTxHash?: string | null;
   retryCount?: number;
   /** processing_started_at, expressed as minutes in the PAST (undefined → NULL). */
@@ -150,7 +151,7 @@ async function seedRedemption(opts: SeedOpts): Promise<string> {
         processing_started_at, broadcast_tx_hash, retry_count)
      VALUES
        ('${id}', '${userId}', '1000.00', '10.0000', '0.10000000', '100.00000000',
-        now() + interval '1 hour', 'base', '${opts.payoutAddress ?? OK_ADDRESS}', '${opts.status}',
+        now() + interval '1 hour', '${opts.network ?? "base"}', '${opts.payoutAddress ?? OK_ADDRESS}', '${opts.status}',
         ${started}, ${broadcast}, '${opts.retryCount ?? 0}');`,
   );
   return id;
@@ -158,21 +159,25 @@ async function seedRedemption(opts: SeedOpts): Promise<string> {
 
 async function readRedemption(id: string): Promise<{
   status: string;
+  failure_reason: string | null;
   broadcast_tx_hash: string | null;
   tx_hash: string | null;
   retry_count: string;
   processing_started_at: string | null;
+  requires_review: boolean;
 }> {
   const rows = await dbWrite.execute(
-    `SELECT status, broadcast_tx_hash, tx_hash, retry_count, processing_started_at
+    `SELECT status, failure_reason, broadcast_tx_hash, tx_hash, retry_count, processing_started_at, requires_review
      FROM token_redemptions WHERE id = '${id}';`,
   );
   return rows.rows[0] as {
     status: string;
+    failure_reason: string | null;
     broadcast_tx_hash: string | null;
     tx_hash: string | null;
     retry_count: string;
     processing_started_at: string | null;
+    requires_review: boolean;
   };
 }
 
@@ -340,6 +345,35 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
+    "(b2) #10628: stale Solana rows without a broadcast hash are escalated, not re-approved",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "processing",
+        network: "solana",
+        broadcastTxHash: null,
+        startedMinutesAgo: 10,
+        retryCount: 0,
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.processed).toBe(0);
+      expect(row.status).toBe("failed");
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.tx_hash).toBeNull();
+      expect(Number(row.retry_count)).toBe(1);
+      expect(row.processing_started_at).toBeNull();
+      expect(row.requires_review).toBe(true);
+      expect(row.failure_reason).toContain("Solana stale processing lock");
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "(c) a throw in one redemption does not abort the batch",
     async () => {
       if (!pgliteReady) return;
@@ -462,8 +496,104 @@ describe("payout stale-lock recovery (#10553)", () => {
       const row = await readRedemption(id);
       expect(row.status).toBe("failed");
       expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.requires_review).toBe(true);
       // Never silently re-broadcast.
       expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(f2) #10628: stale-lock recovery fails the row when its recovery strike reaches the retry ceiling",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "processing",
+        broadcastTxHash: null,
+        startedMinutesAgo: 10,
+        retryCount: 2, // recovery strike reaches MAX_RETRY_ATTEMPTS (3)
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.processed).toBe(0);
+      expect(row.status).toBe("failed");
+      expect(Number(row.retry_count)).toBe(3);
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(row.processing_started_at).toBeNull();
+      expect(row.requires_review).toBe(true);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(g) #10628: final retryable failure is failed, not orphaned as unselectable approved",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "approved",
+        retryCount: 2, // next retry reaches MAX_RETRY_ATTEMPTS (3)
+        payoutAddress: FAIL_ADDRESS,
+      });
+
+      prepareTxMock.mockImplementation(async (args: { data: `0x${string}` }) => {
+        if (recipientOf(args.data) === FAIL_ADDRESS.toLowerCase()) {
+          throw new Error("RPC connection reset before broadcast");
+        }
+        return { ...args, nonce: 0 };
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.failed).toBe(1);
+      expect(row.status).toBe("failed");
+      expect(Number(row.retry_count)).toBe(3);
+      expect(row.requires_review).toBe(true);
+      expect(row.processing_started_at).toBeNull();
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(h) final retryable failure does not overwrite a row no longer processing",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({
+        status: "approved",
+        retryCount: 2,
+      });
+
+      readContractMock.mockImplementation(async () => {
+        await dbWrite.execute(
+          `UPDATE token_redemptions
+           SET status = 'completed',
+               tx_hash = '${BROADCAST_HASH}',
+               broadcast_tx_hash = '${BROADCAST_HASH}',
+               processing_started_at = NULL
+           WHERE id = '${id}';`,
+        );
+        return 0n;
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.failed).toBe(1);
+      expect(row.status).toBe("completed");
+      expect(row.tx_hash).toBe(BROADCAST_HASH);
+      expect(row.broadcast_tx_hash).toBe(BROADCAST_HASH);
+      expect(Number(row.retry_count)).toBe(2);
+      expect(row.requires_review).toBe(false);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(0);
     },
     PGLITE_TIMEOUT,
   );

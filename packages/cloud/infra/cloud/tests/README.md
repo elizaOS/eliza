@@ -63,13 +63,13 @@ The **Agent Server** (Elysia HTTP) runs inside the Deployment and exposes:
 | Endpoint | Tested in |
 |---|---|
 | `GET /health` → 200 `{alive:true}` | 02 |
-| `GET /ready` → 200 `{ready:true}` | 02 |
+| `GET /ready` → 200 `{ready:true}` | 02, 10 |
 | `GET /status` → 200 `{serverName, agentCount}` | 02, 03 |
-| `POST /agents` → 201 `{status:"running"}` | 02, 03 |
+| `POST /agents` → 201 `{status:"running"}` | 02, 03, 10 |
 | `POST /agents` → 400 (empty body) | 02 |
 | `POST /agents` → 409 (duplicate agentId) | 03 |
 | `POST /agents` → 503 (at capacity) | 03 |
-| `POST /agents/:id/message` → 200 `{response}` | 02, 03 |
+| `POST /agents/:id/message` → 200 `{response}` | 02, 03, 10 |
 | `POST /agents/:id/message` → 400 (empty body) | 02 |
 | `POST /agents/:id/message` → 404 (not found/stopped) | 02 |
 | `POST /agents/:id/stop` → 200 `{status:"stopped"}` | 02 |
@@ -94,6 +94,7 @@ The **Agent Server** (Elysia HTTP) runs inside the Deployment and exposes:
 | `observedGeneration` advances with each reconcile | 05 |
 | KEDA wake: LPUSH to activity list scales pod from 0→1 | 02, 03 |
 | Shared tier auto-starts "eliza" agent (async) | 03 (handled dynamically) |
+| Crash recovery: kill the agent-server container, then delete the running pod, and prove `/health`, `/ready`, and messaging recover | 10 |
 
 ---
 
@@ -185,6 +186,25 @@ Patch a Server CR, verify operator re-reconciles child resources.
 | Patch secretRef → Deployment envFrom updated | K8s assert after patch |
 | observedGeneration > 1 after multiple patches | Script checking jsonpath |
 
+### 10-agent-crash-recovery (~90s, requires running pod)
+
+Cloud crash-recovery lane for issue #10197. Wakes a real agent-server pod,
+asserts baseline `/health` and `/ready`, kills PID 1 inside the agent-server
+container and waits for the same pod's `restartCount` to increase, deletes the
+running pod, waits for a replacement pod with a different UID to become Ready,
+then proves the recovered Service answers `/health`, `/ready`, `POST /agents`,
+and `POST /agents/:id/message`.
+
+| Assertion | Method |
+|---|---|
+| KEDA wake via LPUSH scales pod 0→1 | Redis LPUSH + wait pod Ready |
+| Baseline Service health and readiness answer before crash injection | port-forward + curl |
+| Running container is killed (`kill -9 1`) and restarts in the same pod | `kubectl exec` + `restartCount` |
+| Running pod is deleted (`kubectl delete pod --wait=false`) | direct K8s pod-loss injection |
+| Replacement pod has a different UID and Ready container status | K8s jsonpath loop |
+| Recovered Service health/readiness answer | port-forward + curl |
+| Recovered agent-server can create an agent and answer a message | authenticated HTTP |
+
 ---
 
 ## Architecture
@@ -211,15 +231,18 @@ infra/tests/
 │   ├── server-beta.yaml                        # Input: dedicated/beta
 │   ├── assert-alpha-deployment.yaml            # Expected alpha labels
 │   └── assert-beta-deployment.yaml             # Expected beta labels
-└── 05-vertical-scaling/
-    ├── chainsaw-test.yaml                      # Patch + re-reconcile
-    └── server-cr.yaml                          # Input: maxReplicas=1, cloud
+├── 05-vertical-scaling/
+│   ├── chainsaw-test.yaml                      # Patch + re-reconcile
+│   └── server-cr.yaml                          # Input: maxReplicas=1, cloud
+└── 10-agent-crash-recovery/
+    ├── chainsaw-test.yaml                      # Pod delete + recovered health/message
+    └── server-cr.yaml                          # Input: capacity=5, shared
 ```
 
 **Fast suites (K8s assertions only):** 01, 04, 05 — ~7-11s each, no pods needed.
-**HTTP suites (require running pod):** 02, 03 — ~55s each, KEDA wake + port-forward.
+**HTTP suites (require running pod):** 02, 03, 10 — KEDA wake + port-forward; 10 also injects pod death.
 
-All 5 suites run in parallel. Cleanup is automatic via Chainsaw (resources created with `apply` are deleted after each test).
+All suites run in parallel. Cleanup is automatic via Chainsaw (resources created with `apply` are deleted after each test).
 
 ## Not tested (out of scope)
 

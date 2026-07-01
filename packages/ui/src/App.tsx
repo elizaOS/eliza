@@ -635,6 +635,7 @@ function RegisteredAppShellPage({
     return (
       <RetainedLazyComponent
         loader={registration.loader}
+        cacheKey={registration.id}
         componentProps={APP_SHELL_VIEW_PROPS}
         fallback={
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">

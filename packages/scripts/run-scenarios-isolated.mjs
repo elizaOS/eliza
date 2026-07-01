@@ -27,18 +27,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-const CLI = path.join(
-  REPO_ROOT,
-  "eliza",
-  "packages",
-  "scenario-runner",
-  "src",
-  "cli.ts",
-);
+export function resolveScenarioIsolatedPaths() {
+  const repoRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "..",
+  );
+  return {
+    repoRoot,
+    cli: path.join(repoRoot, "packages", "scenario-runner", "src", "cli.ts"),
+  };
+}
+
+const { repoRoot: REPO_ROOT, cli: CLI } = resolveScenarioIsolatedPaths();
+
+if (process.argv.includes("--print-paths")) {
+  console.log(JSON.stringify({ repoRoot: REPO_ROOT, cli: CLI }));
+  process.exit(0);
+}
 
 const args = process.argv.slice(2);
 if (args.length === 0) {

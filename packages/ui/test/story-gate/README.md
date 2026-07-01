@@ -13,6 +13,8 @@ aliases and native/host stubs) — no parallel bundler config to drift.
 | Check | Source | Fails build? |
 |-------|--------|:---:|
 | Story threw on render | Storybook `.sb-show-errordisplay` / `nopreview` | yes |
+| Story `play` interaction did not finish | Storybook preview render phase | yes |
+| Story tagged `play-fn` has no runtime `playFunction` | Storybook story store | yes |
 | Uncaught `pageerror` | Playwright | yes |
 | Blank / one-color render | `sharp` (downscaled distinct-color count) | yes |
 | **New** console error (vs baseline) | Playwright `console` | yes |
@@ -57,7 +59,8 @@ intentional change).
 
 ## Outputs (`test/story-gate/output/`)
 
-- `report.json` — machine-readable per-story verdicts + `failures[]`.
+- `report.json` — machine-readable per-story verdicts + `failures[]` +
+  `totals.playPrepared/playExpected`.
 - `contact-sheet.html` — gallery; broken=red, warn=orange border.
 - `screenshots/<storyId>.png` — deterministic per-story captures.
 

@@ -239,7 +239,7 @@ export const catalogAwarenessProvider: Provider = {
 
 	get: async (
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
 		try {
@@ -248,47 +248,34 @@ export const catalogAwarenessProvider: Provider = {
 			);
 			if (!service) return { text: "" };
 
-		const text = (message.content.text || "").toLowerCase();
-		const capabilityKeywords = [
-			"what can you",
-			"what skills",
-			"capabilities",
-			"what do you know",
-			"help with",
-		];
+			const catalog = await service.getCatalog({ notOlderThan: Infinity });
+			if (catalog.length === 0) return { text: "" };
 
-		if (!capabilityKeywords.some((kw) => text.includes(kw))) {
-			return { text: "" };
-		}
+			const categories = groupByCategory(catalog);
 
-		const catalog = await service.getCatalog({ notOlderThan: Infinity });
-		if (catalog.length === 0) return { text: "" };
+			let categoryText = "";
+			for (const [category, skills] of Object.entries(categories).slice(
+				0,
+				MAX_CATALOG_CATEGORIES,
+			)) {
+				const skillNames = skills
+					.slice(0, MAX_CATALOG_SKILLS_PER_CATEGORY)
+					.map((s) => s.name)
+					.join(", ");
+				const more =
+					skills.length > MAX_CATALOG_SKILLS_PER_CATEGORY
+						? ` +${skills.length - MAX_CATALOG_SKILLS_PER_CATEGORY} more`
+						: "";
+				categoryText += `- **${category}**: ${skillNames}${more}\n`;
+			}
 
-		const categories = groupByCategory(catalog);
-
-		let categoryText = "";
-		for (const [category, skills] of Object.entries(categories).slice(
-			0,
-			MAX_CATALOG_CATEGORIES,
-		)) {
-			const skillNames = skills
-				.slice(0, MAX_CATALOG_SKILLS_PER_CATEGORY)
-				.map((s) => s.name)
-				.join(", ");
-			const more =
-				skills.length > MAX_CATALOG_SKILLS_PER_CATEGORY
-					? ` +${skills.length - MAX_CATALOG_SKILLS_PER_CATEGORY} more`
-					: "";
-			categoryText += `- **${category}**: ${skillNames}${more}\n`;
-		}
-
-		return {
-			text: `## Available Skill Categories
+			return {
+				text: `## Available Skill Categories
 
 ${categoryText}
 Use USE_SKILL to invoke an enabled skill, or SKILL op=search to find one.`,
-			data: { categories },
-		};
+				data: { categories },
+			};
 		} catch {
 			return { text: "", values: {}, data: {} };
 		}

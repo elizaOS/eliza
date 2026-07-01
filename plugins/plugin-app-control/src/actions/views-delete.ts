@@ -4,16 +4,16 @@
  * delete sub-mode of the VIEWS action.
  *
  * Resolves the target view plugin, checks it against the protected-apps list,
- * requires a multi-turn confirmation ("yes" reply), then unloads the plugin
- * via POST /api/apps/stop (which triggers plugin uninstall when the stopScope
+ * requires a structured multi-turn confirmation, then unloads the plugin via
+ * POST /api/apps/stop (which triggers plugin uninstall when the stopScope
  * supports it). The view registry entry is cleaned up by the plugin lifecycle
  * hook.
  *
  * Two-turn flow:
  *  1. First turn  — match view, check protection, render confirmation prompt,
  *     store pending-delete Task tagged "views-delete-confirm" keyed by roomId.
- *  2. Second turn — user replies "yes"; delete task is consumed, plugin
- *     unloaded, confirmation emitted.
+ *  2. Second turn — planner supplies confirm=true/false; delete task is
+ *     consumed, plugin unloaded or cancellation emitted.
  */
 
 import type {
@@ -99,38 +99,15 @@ function resolveTargetView(
 }
 
 function extractDeleteTarget(
-	message: Memory,
 	options: Record<string, unknown> | undefined,
 ): string | null {
 	return (
 		readStringOption(options, "view") ??
 		readStringOption(options, "viewId") ??
 		readStringOption(options, "id") ??
-		readStringOption(options, "name") ??
-		extractTargetFromText(message.content.text ?? "")
+		readStringOption(options, "target") ??
+		readStringOption(options, "name")
 	);
-}
-
-const DELETE_VERBS = ["delete", "remove", "uninstall", "destroy", "drop"];
-const FILLER = new Set(["the", "view", "plugin", "a", "an"]);
-
-function extractTargetFromText(text: string): string | null {
-	const lower = text.toLowerCase();
-	for (const verb of DELETE_VERBS) {
-		const idx = lower.indexOf(verb);
-		if (idx === -1) continue;
-		const rest = text.slice(idx + verb.length).trim();
-		if (!rest) continue;
-		const tokens = rest
-			.split(/[\s,!.?]+/)
-			.map((t) => t.trim())
-			.filter((t) => t.length > 0);
-		let i = 0;
-		while (i < tokens.length && FILLER.has(tokens[i].toLowerCase())) i++;
-		const candidate = tokens.slice(i).join(" ").toLowerCase();
-		if (candidate && !FILLER.has(candidate)) return candidate;
-	}
-	return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -313,15 +290,28 @@ async function unloadPlugin(
 // Confirmation reply detection
 // ---------------------------------------------------------------------------
 
-const YES_RE = /^\s*yes\s*\.?\s*$/i;
-const NO_RE = /^\s*(no|cancel|abort|nope|n)\s*\.?\s*$/i;
-
-export function isDeleteConfirmation(text: string): boolean {
-	return YES_RE.test(text);
+export function readDeleteConfirmationOption(
+	options: Record<string, unknown> | undefined,
+): boolean | null {
+	const value = options?.confirm;
+	if (typeof value === "boolean") return value;
+	if (typeof value !== "string") return null;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "true" || normalized === "1") return true;
+	if (normalized === "false" || normalized === "0") return false;
+	return null;
 }
 
-export function isDeleteCancellation(text: string): boolean {
-	return NO_RE.test(text);
+export function isDeleteConfirmation(
+	options: Record<string, unknown> | undefined,
+): boolean {
+	return readDeleteConfirmationOption(options) === true;
+}
+
+export function isDeleteCancellation(
+	options: Record<string, unknown> | undefined,
+): boolean {
+	return readDeleteConfirmationOption(options) === false;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,12 +328,13 @@ export async function runViewsDelete({
 }: ViewsDeleteInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content.text ?? "").trim();
 
-	// Follow-up turn: user replied "yes" / "no" to a pending confirmation.
+	// Follow-up turn: planner supplied a structured confirm boolean for a
+	// pending confirmation.
 	const existingConfirm = await findConfirmTask(runtime, roomId);
 	if (existingConfirm) {
-		if (isDeleteConfirmation(userText)) {
+		const confirmation = readDeleteConfirmationOption(options);
+		if (confirmation === true) {
 			await deleteConfirmTask(runtime, existingConfirm.taskId);
 
 			const { metadata } = existingConfirm;
@@ -373,7 +364,7 @@ export async function runViewsDelete({
 			};
 		}
 
-		if (isDeleteCancellation(userText)) {
+		if (confirmation === false) {
 			await deleteConfirmTask(runtime, existingConfirm.taskId);
 			const text = "Canceled. No views were deleted.";
 			await callback?.({ text });
@@ -385,22 +376,17 @@ export async function runViewsDelete({
 		}
 
 		// Unrecognised reply — re-prompt.
-		const text = `Reply "yes" to confirm deletion of ${existingConfirm.metadata.viewLabel}, or "cancel" to abort.`;
+		const text = `Confirm deletion of ${existingConfirm.metadata.viewLabel} with confirm=true, or cancel with confirm=false.`;
 		await callback?.({ text });
 		return { success: false, text };
 	}
 
 	// First turn: resolve the view the user wants to delete.
-	const targetStr =
-		readStringOption(options, "confirm") === "true"
-			? (readStringOption(options, "view") ??
-				readStringOption(options, "viewId") ??
-				userText)
-			: extractDeleteTarget(message, options);
+	const targetStr = extractDeleteTarget(options);
 
 	if (!targetStr) {
 		const text =
-			'Tell me which view to delete. Try: "delete the wallet view" or "remove the LifeOps plugin".';
+			"Tell me which view to delete by passing a structured view, viewId, id, target, or name parameter.";
 		await callback?.({ text });
 		return { success: false, text };
 	}
@@ -437,8 +423,8 @@ export async function runViewsDelete({
 	}
 
 	// Explicit confirm=true in options short-circuits the multi-turn flow.
-	const explicitConfirm = readStringOption(options, "confirm");
-	if (explicitConfirm === "true" || explicitConfirm === "yes") {
+	const explicitConfirm = readDeleteConfirmationOption(options);
+	if (explicitConfirm === true) {
 		logger.info(
 			`[plugin-app-control] VIEWS/delete explicit-confirm viewId=${view.id} pluginName=${view.pluginName}`,
 		);
@@ -467,7 +453,7 @@ export async function runViewsDelete({
 		pluginName: view.pluginName,
 	});
 
-	const text = `Are you sure you want to delete the ${view.label} view (${view.pluginName})? Reply "yes" to confirm or "cancel" to abort.`;
+	const text = `Are you sure you want to delete the ${view.label} view (${view.pluginName})? Confirm with confirm=true, or cancel with confirm=false.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] VIEWS/delete awaiting confirmation viewId=${view.id} pluginName=${view.pluginName} room=${roomId}`,

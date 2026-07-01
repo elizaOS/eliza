@@ -12,30 +12,6 @@ import {
   getRecentSongs,
 } from "../components/musicLibrary";
 
-/**
- * Check if the message is asking about available tracks/library
- */
-function isAskingAboutAvailable(messageText: string): boolean {
-  const lower = messageText.toLowerCase();
-  const patterns = [
-    /what.*(do you|can you).*have/i,
-    /what.*available/i,
-    /what.*in.*library/i,
-    /what.*tracks/i,
-    /what.*songs/i,
-    /list.*(tracks|songs|music)/i,
-    /show.*(tracks|songs|music|library)/i,
-    /what.*you.*got/i,
-    /what.*can.*play/i,
-    /available.*tracks/i,
-    /available.*songs/i,
-    /your.*library/i,
-    /music.*library/i,
-  ];
-
-  return patterns.some((pattern) => pattern.test(lower));
-}
-
 export const musicLibraryProvider: Provider = {
   name: "MUSIC_LIBRARY",
   contexts: ["media", "knowledge"],
@@ -44,68 +20,40 @@ export const musicLibraryProvider: Provider = {
   cacheScope: "turn",
   get: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const messageText = (message.content.text || "").trim();
-      const isAskingForList = isAskingAboutAvailable(messageText);
-
-      if (isAskingForList) {
-        const stats = await getLibraryStats(runtime);
-        const mostPlayed = await getMostPlayedSongs(runtime, 20);
-        const recentSongs = await getRecentSongs(runtime, 10);
-
-        return {
-          text: JSON.stringify(
-            {
-              music_library: {
-                total_tracks: stats.totalSongs,
-                total_plays: stats.totalPlays,
-                most_played: stats.mostPlayed ?? null,
-                top_tracks: mostPlayed.map((song, index) => ({
-                  rank: index + 1,
-                  title: song.title,
-                  artist: song.artist || song.channel || "Unknown Artist",
-                  play_count: song.playCount,
-                  duration: song.duration,
-                })),
-                recent_tracks: recentSongs.map((song, index) => ({
-                  rank: index + 1,
-                  title: song.title,
-                  artist: song.artist || song.channel || "Unknown Artist",
-                  play_count: song.playCount,
-                  last_played: formatTimeAgo(Date.now() - song.lastPlayed),
-                })),
-                note:
-                  stats.totalSongs === 0
-                    ? "Library is empty. Tracks are added as they are played."
-                    : 'References like "it", "that", or "this song" usually mean the most recent track.',
-              },
-            },
-            null,
-            2,
-          ),
-        };
-      }
-
-      const recentSongs = await getRecentSongs(runtime, 5);
-      if (recentSongs.length === 0) {
-        return { text: "" };
-      }
+      const stats = await getLibraryStats(runtime);
+      const mostPlayed = await getMostPlayedSongs(runtime, 20);
+      const recentSongs = await getRecentSongs(runtime, 10);
 
       return {
         text: JSON.stringify(
           {
-            recent_music: recentSongs.map((song, index) => ({
-              rank: index + 1,
-              title: song.title,
-              artist: song.artist || song.channel || "Unknown Artist",
-              play_count: song.playCount,
-              last_played: formatTimeAgo(Date.now() - song.lastPlayed),
-            })),
-            reference_note:
-              'References like "it", "that", or "this song" usually mean the most recent track.',
+            music_library: {
+              total_tracks: stats.totalSongs,
+              total_plays: stats.totalPlays,
+              most_played: stats.mostPlayed ?? null,
+              top_tracks: mostPlayed.map((song, index) => ({
+                rank: index + 1,
+                title: song.title,
+                artist: song.artist || song.channel || "Unknown Artist",
+                play_count: song.playCount,
+                duration: song.duration,
+              })),
+              recent_tracks: recentSongs.map((song, index) => ({
+                rank: index + 1,
+                title: song.title,
+                artist: song.artist || song.channel || "Unknown Artist",
+                play_count: song.playCount,
+                last_played: formatTimeAgo(Date.now() - song.lastPlayed),
+              })),
+              note:
+                stats.totalSongs === 0
+                  ? "Library is empty. Tracks are added as they are played."
+                  : 'References like "it", "that", or "this song" usually mean the most recent track.',
+            },
           },
           null,
           2,

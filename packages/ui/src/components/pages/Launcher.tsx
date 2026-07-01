@@ -544,8 +544,8 @@ export function Launcher({
                       key={id}
                       className="flex flex-col items-center gap-1.5 opacity-60"
                     >
-                      <div className="h-16 w-16 rounded-2xl bg-bg-accent/50" />
-                      <div className="h-2.5 w-12 rounded-full bg-bg-accent/50" />
+                      <div className="h-16 w-16 rounded-2xl border border-white/10 bg-white/15 shadow-sm" />
+                      <div className="h-2.5 w-12 rounded-full bg-white/25" />
                     </div>
                   ))}
                 </div>

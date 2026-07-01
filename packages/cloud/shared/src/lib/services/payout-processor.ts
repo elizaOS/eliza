@@ -33,7 +33,7 @@
  */
 
 import bs58 from "bs58";
-import { and, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import {
   type Address,
   createPublicClient,
@@ -264,8 +264,12 @@ export class PayoutProcessorService {
    *
    * Splits stuck rows by what is PROVABLY known about their on-chain state:
    *
-   *  - No broadcast tx hash recorded → the payout never left this process. Safe
-   *    to return to `approved` and retry, bounded by MAX_RETRY_ATTEMPTS.
+   *  - No broadcast tx hash recorded on an EVM payout → the payout never left
+   *    this process. Safe to return to `approved` and retry, bounded by
+   *    MAX_RETRY_ATTEMPTS.
+   *  - No broadcast tx hash recorded on a Solana payout → escalate instead of
+   *    re-approving. A slow-but-alive worker can still later sign with a fresh
+   *    blockhash, so auto-retry would risk two distinct Solana transfers.
    *  - No broadcast hash but retries exhausted → fail for manual intervention
    *    (mirrors the non-retryable markFailed path; never silently re-tried).
    *  - A broadcast hash IS recorded → a transaction may already be confirmed
@@ -277,7 +281,35 @@ export class PayoutProcessorService {
     const config = getPayoutConfig();
     const staleThreshold = new Date(Date.now() - config.LOCK_TIMEOUT_MS);
 
-    // (1) Provably-safe, retries remaining → re-approve for retry.
+    // (1) Solana stale locks are not provably safe to re-approve. Unlike EVM,
+    // there is no account-nonce fence; a slow-but-alive worker can still later
+    // sign and send a distinct transaction with a fresh blockhash.
+    const solanaEscalated = await dbWrite
+      .update(tokenRedemptions)
+      .set({
+        status: "failed",
+        failure_reason:
+          "Solana stale processing lock requires manual review (no nonce fence; no broadcast detected)",
+        retry_count: sql`LEAST(CAST(${tokenRedemptions.retry_count} AS INTEGER) + 1, ${config.MAX_RETRY_ATTEMPTS})`,
+        requires_review: true,
+        processing_started_at: null,
+        processing_worker_id: null,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(tokenRedemptions.status, "processing"),
+          eq(tokenRedemptions.network, "solana"),
+          lt(tokenRedemptions.processing_started_at, staleThreshold),
+          isNull(tokenRedemptions.broadcast_tx_hash),
+        ),
+      )
+      .returning({ id: tokenRedemptions.id });
+
+    // (2) Provably-safe EVM rows, retries remaining after this recovery strike →
+    // re-approve for retry. The `< MAX_RETRY_ATTEMPTS - 1` boundary is
+    // intentional: recovery increments retry_count here, and approved rows with
+    // retry_count >= MAX_RETRY_ATTEMPTS are never selected by processBatch().
     const reapproved = await dbWrite
       .update(tokenRedemptions)
       .set({
@@ -291,19 +323,24 @@ export class PayoutProcessorService {
       .where(
         and(
           eq(tokenRedemptions.status, "processing"),
+          ne(tokenRedemptions.network, "solana"),
           lt(tokenRedemptions.processing_started_at, staleThreshold),
           isNull(tokenRedemptions.broadcast_tx_hash),
-          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS),
+          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS - 1),
         ),
       )
       .returning({ id: tokenRedemptions.id });
 
-    // (2) Provably-safe, retries exhausted → fail (manual intervention).
+    // (3) Provably-safe EVM rows, retries exhausted by this recovery strike → fail
+    // (manual intervention) instead of orphaning an approved row at the retry
+    // ceiling.
     const exhausted = await dbWrite
       .update(tokenRedemptions)
       .set({
         status: "failed",
-        failure_reason: "Stale processing lock exceeded MAX_RETRY_ATTEMPTS (no broadcast detected)",
+        failure_reason: "Stale processing lock reached MAX_RETRY_ATTEMPTS (no broadcast detected)",
+        retry_count: sql`LEAST(CAST(${tokenRedemptions.retry_count} AS INTEGER) + 1, ${config.MAX_RETRY_ATTEMPTS})`,
+        requires_review: true,
         processing_started_at: null,
         processing_worker_id: null,
         updated_at: new Date(),
@@ -311,14 +348,15 @@ export class PayoutProcessorService {
       .where(
         and(
           eq(tokenRedemptions.status, "processing"),
+          ne(tokenRedemptions.network, "solana"),
           lt(tokenRedemptions.processing_started_at, staleThreshold),
           isNull(tokenRedemptions.broadcast_tx_hash),
-          gte(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS),
+          gte(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS - 1),
         ),
       )
       .returning({ id: tokenRedemptions.id });
 
-    // (3) Broadcast-but-unconfirmed → NEVER re-approve. Surface for reconciliation.
+    // (4) Broadcast-but-unconfirmed → NEVER re-approve. Surface for reconciliation.
     const stuck = await dbWrite
       .select({
         id: tokenRedemptions.id,
@@ -334,6 +372,21 @@ export class PayoutProcessorService {
         ),
       );
 
+    if (solanaEscalated.length > 0) {
+      logger.error(
+        "[PayoutProcessor] Solana stale processing locks require manual review (NOT auto-retried to avoid double-pay)",
+        {
+          count: solanaEscalated.length,
+          redemptionIds: solanaEscalated.map((r) => r.id),
+        },
+      );
+      await payoutAlertsService.sendAlert({
+        severity: "high",
+        title: "Solana payout stale lock requires review",
+        message: `${solanaEscalated.length} Solana redemption(s) exceeded the processing lock timeout before any broadcast was detected. They were not auto-retried because Solana lacks an account-nonce fence; manual review is required to release or refund the payout.`,
+        details: { redemptionIds: solanaEscalated.map((r) => r.id) },
+      });
+    }
     if (reapproved.length > 0) {
       logger.warn("[PayoutProcessor] Recovered stale processing locks for retry", {
         count: reapproved.length,
@@ -345,13 +398,19 @@ export class PayoutProcessorService {
         count: exhausted.length,
         redemptionIds: exhausted.map((r) => r.id),
       });
+      await payoutAlertsService.sendAlert({
+        severity: "high",
+        title: "Payout retries exhausted",
+        message: `${exhausted.length} stale redemption(s) exceeded retry attempts before any broadcast was detected. Manual review required to release or refund the payout.`,
+        details: { redemptionIds: exhausted.map((r) => r.id) },
+      });
     }
     if (stuck.length > 0) {
       logger.error(
         "[PayoutProcessor] Stale processing locks with a broadcast tx require on-chain reconciliation (NOT auto-retried to avoid double-pay)",
         { count: stuck.length, redemptions: stuck },
       );
-      void payoutAlertsService.sendAlert({
+      await payoutAlertsService.sendAlert({
         severity: "high",
         title: "Payout stuck after broadcast",
         message: `${stuck.length} redemption(s) broadcast a transaction but never confirmed. Manual on-chain reconciliation required — these are intentionally NOT auto-retried to avoid double-paying.`,
@@ -814,12 +873,8 @@ export class PayoutProcessorService {
     retryable: boolean,
   ): Promise<void> {
     if (retryable) {
-      // Increment retry count and reset to approved for retry. Clear the
-      // broadcast hash: a retryable failure only ever reaches here when nothing
-      // was transferred (pre-broadcast failure, on-chain revert, or atomic
-      // Solana failure), so the next attempt starts from a clean
-      // "never broadcast" state and recovery treats it as safe again.
-      await dbWrite
+      const config = getPayoutConfig();
+      const retryableRows = await dbWrite
         .update(tokenRedemptions)
         .set({
           status: "approved", // Reset to approved for retry
@@ -830,7 +885,46 @@ export class PayoutProcessorService {
           broadcast_tx_hash: null,
           updated_at: new Date(),
         })
-        .where(eq(tokenRedemptions.id, redemptionId));
+        .where(
+          and(
+            eq(tokenRedemptions.id, redemptionId),
+            eq(tokenRedemptions.status, "processing"),
+            lt(
+              sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`,
+              config.MAX_RETRY_ATTEMPTS - 1,
+            ),
+          ),
+        )
+        .returning({ id: tokenRedemptions.id });
+
+      if (retryableRows.length === 0) {
+        const failedRows = await dbWrite
+          .update(tokenRedemptions)
+          .set({
+            status: "failed",
+            failure_reason: `Retry attempts exhausted: ${reason}`,
+            retry_count: sql`LEAST(CAST(${tokenRedemptions.retry_count} AS INTEGER) + 1, ${config.MAX_RETRY_ATTEMPTS})`,
+            requires_review: true,
+            processing_started_at: null,
+            processing_worker_id: null,
+            broadcast_tx_hash: null,
+            updated_at: new Date(),
+          })
+          .where(
+            and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "processing")),
+          )
+          .returning({ id: tokenRedemptions.id });
+
+        if (failedRows.length > 0) {
+          await payoutAlertsService.sendAlert({
+            severity: "high",
+            title: "Payout retries exhausted",
+            message:
+              "A retryable payout failure reached MAX_RETRY_ATTEMPTS and was marked failed for manual review instead of being orphaned in approved.",
+            details: { redemptionId, reason },
+          });
+        }
+      }
     } else {
       // Mark as failed (requires manual intervention)
       await dbWrite
@@ -838,6 +932,9 @@ export class PayoutProcessorService {
         .set({
           status: "failed",
           failure_reason: reason,
+          requires_review: true,
+          processing_started_at: null,
+          processing_worker_id: null,
           updated_at: new Date(),
         })
         .where(eq(tokenRedemptions.id, redemptionId));

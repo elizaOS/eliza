@@ -18,6 +18,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 import { MessageManager } from "./messageManager";
 
 const HTTPS_EMBED_URL = "https://app.eliza.example/embed";
+const HTTPS_TELEGRAM_EMBED_URL =
+  "https://app.eliza.example/embed?platform=telegram";
 
 function setup(settings: Record<string, string> = {}) {
   const runtime = {
@@ -77,7 +79,7 @@ describe("Telegram embedded-app launch button (#9947)", () => {
     hasRoleAccess.mockResolvedValue(true);
   });
 
-  it("emits a web_app button with the https /embed url for an OWNER sender", async () => {
+  it("emits a web_app button with the platform-tagged https /embed url for an OWNER sender", async () => {
     const { manager, ctx, sendMessage } = setup({
       ELIZA_EMBED_URL: HTTPS_EMBED_URL,
     });
@@ -86,7 +88,7 @@ describe("Telegram embedded-app launch button (#9947)", () => {
 
     const buttons = webAppButtons(lastKeyboard(sendMessage));
     expect(buttons).toHaveLength(1);
-    expect(buttons[0].web_app.url).toBe(HTTPS_EMBED_URL);
+    expect(buttons[0].web_app.url).toBe(HTTPS_TELEGRAM_EMBED_URL);
     expect(buttons[0].text.length).toBeGreaterThan(0);
   });
 
@@ -99,7 +101,7 @@ describe("Telegram embedded-app launch button (#9947)", () => {
 
     const buttons = webAppButtons(lastKeyboard(sendMessage));
     expect(buttons).toHaveLength(1);
-    expect(buttons[0].web_app.url).toBe(HTTPS_EMBED_URL);
+    expect(buttons[0].web_app.url).toBe(HTTPS_TELEGRAM_EMBED_URL);
   });
 
   it("emits NO web_app button for a non-elevated sender", async () => {

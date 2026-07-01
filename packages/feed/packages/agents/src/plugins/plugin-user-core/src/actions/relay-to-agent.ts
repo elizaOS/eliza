@@ -18,12 +18,12 @@
 import type {
   Action,
   ActionResult,
-  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { defineActionParameters } from "../../../shared/action-parameters";
 import type { BroadcastFn, DispatchAgentChatFn } from "./dispatch-types";
 
 export const relayToAgentAction: Action = {
@@ -32,7 +32,7 @@ export const relayToAgentAction: Action = {
     "Dispatch to an agent with context from previous agent responses. Use after gathering information from other agents to pass their findings to an execution agent.",
 
   // Cast needed: alpha elizaos expects ActionParameter[] (protobuf array).
-  parameters: {
+  parameters: defineActionParameters({
     agentId: {
       type: "string",
       required: true,
@@ -50,7 +50,7 @@ export const relayToAgentAction: Action = {
       description:
         'Structured context from other agents to pass along (e.g., "Agent A found: X, Agent B found: Y")',
     },
-  },
+  }),
 
   examples: [
     [
@@ -118,7 +118,7 @@ export const relayToAgentAction: Action = {
         success: false,
         text: "Missing required parameters for relay dispatch.",
       };
-      _callback?.({ content: failResult });
+      _callback?.({ text: failResult.text });
       return failResult;
     }
 
@@ -143,7 +143,7 @@ export const relayToAgentAction: Action = {
         text: `Failed to relay to agent: ${result.error ?? "Unknown error"}`,
         values: { agentId, command, relayContext, error: result.error },
       };
-      _callback?.({ content: failResult });
+      _callback?.({ text: failResult.text, agentId, command, relayContext });
       return failResult;
     }
 
@@ -159,7 +159,13 @@ export const relayToAgentAction: Action = {
         actionsExecuted: result.actionsExecuted,
       },
     };
-    _callback?.({ content: successResult });
+    _callback?.({
+      text: successResult.text,
+      agentId: result.agentId,
+      agentUsername: result.agentUsername,
+      dispatchedCommand: command,
+      actionsExecuted: result.actionsExecuted,
+    });
     return successResult;
   },
 };

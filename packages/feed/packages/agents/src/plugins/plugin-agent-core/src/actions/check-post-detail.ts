@@ -28,6 +28,7 @@ import {
 import { StaticDataRegistry } from "@feed/engine";
 import type { MessageTag } from "@feed/shared";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 /** Extended ActionResult with optional tag for UI */
 interface ActionResultWithTag extends ActionResult {
@@ -150,13 +151,13 @@ export const checkPostDetailAction: Action = {
   description:
     "Get detailed information about a post including all comments with thread structure.",
 
-  parameters: {
+  parameters: defineActionParameters({
     postId: {
       type: "string",
       description: "The ID of the post to retrieve",
       required: true,
     },
-  },
+  }),
 
   examples: [
     [

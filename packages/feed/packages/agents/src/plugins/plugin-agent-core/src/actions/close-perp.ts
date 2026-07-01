@@ -21,6 +21,7 @@ import {
 } from "@feed/engine";
 import { AgentPnLService } from "../../../../services/AgentPnLService";
 import { logger } from "../../../../shared/logger";
+import { defineActionParameters } from "../../../shared/action-parameters";
 
 const agentPnLService = new AgentPnLService();
 
@@ -28,7 +29,7 @@ export const closePerpAction: Action = {
   name: "CLOSE_PERP",
   description:
     "Close YOUR perpetual position (full or partial). IMPORTANT: Call CHECK_PNL first to see your open positions and get the position ID. Optionally specify amount for partial close.",
-  parameters: {
+  parameters: defineActionParameters({
     positionId: {
       type: "string",
       description: "The ID of the perpetual position to close",
@@ -40,7 +41,7 @@ export const closePerpAction: Action = {
         "Dollar amount of position to close. If not specified, closes the entire position.",
       required: false,
     },
-  },
+  }),
   examples: [
     [
       {

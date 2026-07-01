@@ -40,6 +40,9 @@ export const ORIGIN = "https://localhost";
 // route coverage on an emulator where the embedded agent can't run. Cloud/remote
 // modes seed their own active-server out of band.
 const BACKEND = (process.env.ELIZA_ANDROID_BACKEND ?? "local").toLowerCase();
+const ALLOW_FIRST_RUN =
+  process.env.ELIZA_ANDROID_ALLOW_FIRST_RUN === "1" ||
+  process.env.ELIZA_ANDROID_ALLOW_FIRST_RUN === "true";
 
 function activeServerSeed(): string {
   if (BACKEND === "host") {
@@ -288,6 +291,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         // task. Let those writes land before the reload that rehydrates startup
         // state from Preferences.
         await delay(750);
+        if (ALLOW_FIRST_RUN && (await isFirstRunShowing(page))) {
+          await use(page);
+          return;
+        }
         if (!(await isShellReady(page)) || (await isFirstRunShowing(page))) {
           await page
             .goto(`${ORIGIN}/`, {

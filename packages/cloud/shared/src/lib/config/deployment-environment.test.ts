@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { isProductionDeployment, shouldBlockRegistrarStub } from "./deployment-environment";
+import {
+  isProductionDeployment,
+  shouldBlockPayoutAssumeOperational,
+  shouldBlockRegistrarStub,
+} from "./deployment-environment";
 
 describe("isProductionDeployment", () => {
   it("uses ENVIRONMENT when it is set", () => {
@@ -54,5 +58,39 @@ describe("shouldBlockRegistrarStub", () => {
         ENVIRONMENT: "production",
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldBlockPayoutAssumeOperational", () => {
+  it("blocks assumed payout availability in production", () => {
+    expect(
+      shouldBlockPayoutAssumeOperational({
+        PAYOUT_STATUS_ASSUME_OPERATIONAL: "1",
+        ENVIRONMENT: "production",
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockPayoutAssumeOperational({
+        PAYOUT_STATUS_ASSUME_OPERATIONAL: "1",
+        NODE_ENV: "production",
+      }),
+    ).toBe(true);
+  });
+
+  it("allows the assumption outside production and when the flag is off", () => {
+    expect(
+      shouldBlockPayoutAssumeOperational({
+        PAYOUT_STATUS_ASSUME_OPERATIONAL: "1",
+        ENVIRONMENT: "staging",
+        NODE_ENV: "production",
+      }),
+    ).toBe(false);
+    expect(
+      shouldBlockPayoutAssumeOperational({
+        PAYOUT_STATUS_ASSUME_OPERATIONAL: "true",
+        ENVIRONMENT: "production",
+      }),
+    ).toBe(false);
+    expect(shouldBlockPayoutAssumeOperational({ ENVIRONMENT: "production" })).toBe(false);
   });
 });

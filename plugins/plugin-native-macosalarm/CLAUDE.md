@@ -10,7 +10,7 @@ Adds the `ALARM` action to an Eliza agent so it can schedule, cancel, and list m
 
 | Kind | Name | Description |
 |------|------|-------------|
-| Action | `ALARM` | Schedule (`set`), remove (`cancel`), or enumerate (`list`) macOS alarms. Subaction is inferred from message text when not explicitly passed as a parameter. Role-gated to `ADMIN`. |
+| Action | `ALARM` | Schedule (`set`), remove (`cancel`), or enumerate (`list`) macOS alarms. Subaction comes from structured parameters (`action` / `subaction` / `op`) or from the structured parameter shape. Role-gated to `ADMIN`. |
 
 No providers, services, evaluators, routes, or events are registered.
 
@@ -60,7 +60,7 @@ No runtime config keys are read from the agent runtime settings object. The only
 
 | Parameter | Required for | Description |
 |-----------|-------------|-------------|
-| `action` / `subaction` / `op` | — | `set`, `cancel`, or `list` (inferred from text if absent) |
+| `action` / `subaction` / `op` | — | `set`, `cancel`, or `list` (if absent, inferred from structured parameter shape: schedule payload → `set`, id → `cancel`, otherwise `list`) |
 | `timeIso` | `set` | ISO-8601 timestamp for the alarm |
 | `title` | `set` | Notification title |
 | `body` | `set` (optional) | Notification body |
@@ -88,7 +88,7 @@ No runtime config keys are read from the agent runtime settings object. The only
 - **IPC protocol is line-delimited JSON.** The Swift process reads one JSON object from stdin and writes exactly one JSON object to stdout. The TS layer takes the last non-empty line of stdout as the response.
 - **Notification permission.** `schedule` calls `ensureAuthorization()` in Swift, which requests the `UNUserNotificationCenter` permission prompt on first use. If the user has denied notifications, the binary exits with code `3` and returns `{ "success": false, "error": "permission-denied: ..." }`.
 - **Role gate.** The `ALARM` action has `roleGate: { minRole: "ADMIN" }`, so only admin-role users can trigger it.
-- **Context gate.** The action matches the `tasks`, `calendar`, and `automation` contexts; `hasAlarmSignal` also fires on keyword matching (supports several languages including Spanish, French, German, Chinese, Japanese, Korean, Vietnamese).
+- **Context gate.** The action matches the `tasks`, `calendar`, and `automation` contexts from canonical turn routing plus legacy `activeContexts` / `selectedContexts` signals. It does not validate from alarm keywords in raw message text.
 - **Testing the Swift layer.** Use the `spawnImpl` and `binPathOverride` options in `HelperRunOptions` to inject a mock process in tests without needing a compiled binary.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
