@@ -147,6 +147,28 @@ const normalizeLedgerMetadata = (metadata?: Record<string, unknown>): Record<str
 // ============================================================================
 
 class RedeemableEarningsService {
+  async hasEarningForSourceId(params: {
+    userId: string;
+    source: EarningsSource;
+    sourceId: string;
+  }): Promise<boolean> {
+    const ledgerSourceId = normalizeLedgerSourceId(params.sourceId);
+    const [existingLedger] = await dbWrite
+      .select({ id: redeemableEarningsLedger.id })
+      .from(redeemableEarningsLedger)
+      .where(
+        and(
+          eq(redeemableEarningsLedger.user_id, params.userId),
+          eq(redeemableEarningsLedger.entry_type, "earning"),
+          eq(redeemableEarningsLedger.earnings_source, params.source),
+          eq(redeemableEarningsLedger.source_id, ledgerSourceId),
+        ),
+      )
+      .limit(1);
+
+    return !!existingLedger;
+  }
+
   /**
    * Get user's current redeemable balance
    */

@@ -112,6 +112,28 @@ async function handleTransfer(c: AppContext) {
       { status: 409 },
     );
   }
+  if (debit.deduplicated) {
+    const priorRefund = await redeemableEarningsService.hasEarningForSourceId({
+      userId: user_id,
+      source: "creator_revenue_share",
+      sourceId: `${idempotency_key}:refund`,
+    });
+    if (priorRefund) {
+      logger.warn("[StripeConnect] refunded payout retry blocked", {
+        userId: user_id,
+        idempotencyKey: idempotency_key,
+      });
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Prior payout attempt was rejected and refunded; use a fresh idempotency_key",
+          requiresFreshIdempotencyKey: true,
+        },
+        { status: 409 },
+      );
+    }
+  }
 
   try {
     const { transferId, amountCents } = await transferToConnectAccount(

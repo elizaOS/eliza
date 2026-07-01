@@ -57,8 +57,14 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 const getBalance = mock();
 const reduceEarnings = mock();
 const addEarnings = mock();
+const hasEarningForSourceId = mock();
 mock.module("@/lib/services/redeemable-earnings", () => ({
-  redeemableEarningsService: { getBalance, reduceEarnings, addEarnings },
+  redeemableEarningsService: {
+    getBalance,
+    reduceEarnings,
+    addEarnings,
+    hasEarningForSourceId,
+  },
 }));
 
 mock.module("@/lib/stripe", () => ({
@@ -100,6 +106,7 @@ beforeEach(() => {
   getBalance.mockReset();
   reduceEarnings.mockReset();
   addEarnings.mockReset();
+  hasEarningForSourceId.mockReset();
 
   requireAdmin.mockResolvedValue({ userId: "admin-1" });
   findByUserId.mockResolvedValue({
@@ -120,6 +127,7 @@ beforeEach(() => {
     ledgerEntryId: "led_1",
   });
   addEarnings.mockResolvedValue({ success: true, newBalance: 100 });
+  hasEarningForSourceId.mockResolvedValue(false);
 });
 
 describe("Stripe Connect transfer route — money-path invariants (#10279)", () => {
@@ -180,6 +188,65 @@ describe("Stripe Connect transfer route — money-path invariants (#10279)", () 
     expect(refundArg.sourceId).toBe(`${IDEMPOTENCY_KEY}:refund`);
     expect(refundArg.dedupeBySourceId).toBe(true);
     expect(refundArg.amount).toBe(10);
+  });
+
+  test("refunded same-key retry is blocked before a fresh Stripe transfer", async () => {
+    reduceEarnings.mockResolvedValue({
+      success: true,
+      newBalance: 100,
+      ledgerEntryId: "led_original_debit",
+      deduplicated: true,
+    });
+    hasEarningForSourceId.mockResolvedValue(true);
+
+    const res = await callTransfer(10);
+    const body = (await res.json()) as {
+      success: boolean;
+      error: string;
+      requiresFreshIdempotencyKey?: boolean;
+    };
+
+    expect(res.status).toBe(409);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe(
+      "Prior payout attempt was rejected and refunded; use a fresh idempotency_key",
+    );
+    expect(body.requiresFreshIdempotencyKey).toBe(true);
+    expect(hasEarningForSourceId).toHaveBeenCalledWith({
+      userId: USER_ID,
+      source: "creator_revenue_share",
+      sourceId: `${IDEMPOTENCY_KEY}:refund`,
+    });
+    expect(transferToConnectAccount).not.toHaveBeenCalled();
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  test("deduped same-key retry without refund still reaches Stripe idempotency replay", async () => {
+    reduceEarnings.mockResolvedValue({
+      success: true,
+      newBalance: 90,
+      ledgerEntryId: "led_original_debit",
+      deduplicated: true,
+    });
+    hasEarningForSourceId.mockResolvedValue(false);
+    transferToConnectAccount.mockResolvedValue({
+      transferId: "tr_replayed",
+      amountCents: 1000,
+    });
+
+    const res = await callTransfer(10);
+    const body = (await res.json()) as {
+      success: boolean;
+      transferId?: string;
+      newBalance?: number;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.transferId).toBe("tr_replayed");
+    expect(body.newBalance).toBe(90);
+    expect(transferToConnectAccount).toHaveBeenCalledTimes(1);
+    expect(addEarnings).not.toHaveBeenCalled();
   });
 
   test("AMBIGUOUS Stripe failure (5xx) HOLDS the debit — no re-credit, needsReconciliation", async () => {
