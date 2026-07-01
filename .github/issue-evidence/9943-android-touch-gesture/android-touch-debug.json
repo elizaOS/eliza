@@ -2,21 +2,21 @@
   "issue": 9943,
   "serial": "emulator-5556",
   "url": "https://localhost/",
-  "eventCount": 24,
+  "eventCount": 34,
   "eventTypes": {
     "pointerdown": 1,
     "touchstart": 1,
-    "pointermove": 10,
-    "touchmove": 10,
+    "pointermove": 15,
+    "touchmove": 15,
     "pointerup": 1,
     "touchend": 1
   },
   "pointerTypes": {
-    "touch": 12,
-    "none": 12
+    "touch": 17,
+    "none": 17
   },
   "targetTestIds": {
-    "chat-sheet-grabber": 24
+    "chat-sheet-grabber": 34
   },
   "firstEvents": [
     {
@@ -40,7 +40,7 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 132,
+      "clientX": 143,
       "clientY": 590
     },
     {
@@ -56,7 +56,23 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 119,
+      "clientX": 130,
+      "clientY": 590
+    },
+    {
+      "type": "touchmove",
+      "pointerType": null,
+      "touchCount": 1,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": null,
+      "clientY": null
+    },
+    {
+      "type": "pointermove",
+      "pointerType": "touch",
+      "touchCount": null,
+      "targetTestId": "chat-sheet-grabber",
+      "clientX": 121,
       "clientY": 589
     },
     {
@@ -72,7 +88,7 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 108,
+      "clientX": 112,
       "clientY": 589
     },
     {
@@ -88,24 +104,8 @@
       "pointerType": "touch",
       "touchCount": null,
       "targetTestId": "chat-sheet-grabber",
-      "clientX": 100,
+      "clientX": 103,
       "clientY": 589
-    },
-    {
-      "type": "touchmove",
-      "pointerType": null,
-      "touchCount": 1,
-      "targetTestId": "chat-sheet-grabber",
-      "clientX": null,
-      "clientY": null
-    },
-    {
-      "type": "pointermove",
-      "pointerType": "touch",
-      "touchCount": null,
-      "targetTestId": "chat-sheet-grabber",
-      "clientX": 87,
-      "clientY": 588
     },
     {
       "type": "touchmove",

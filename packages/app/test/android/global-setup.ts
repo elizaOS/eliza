@@ -5,6 +5,9 @@
 // start). It does NOT stage models or boot the agent itself; run the local
 // bring-up (scripts/android-e2e.mjs, or mobile-local-chat-smoke) first.
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   AGENT_API_PORT,
   APP_ID,

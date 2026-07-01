@@ -4,14 +4,14 @@
   "route": "https://localhost/",
   "beforePage": "home",
   "afterPage": "launcher",
-  "touchEventCount": 12,
-  "pointerTouchCount": 12,
+  "touchEventCount": 17,
+  "pointerTouchCount": 17,
   "pointerMouseCount": 0,
   "eventTypes": {
     "pointerdown": 1,
     "touchstart": 1,
-    "pointermove": 10,
-    "touchmove": 10,
+    "pointermove": 15,
+    "touchmove": 15,
     "pointerup": 1,
     "touchend": 1
   }
