@@ -79,8 +79,12 @@ function looksLikeOwnerAppPrivate(input: {
 interface SensitiveRequestFormField {
   name: string;
   label?: string;
-  input: "secret" | "text";
+  input: "secret" | "text" | "image" | "file";
   required: boolean;
+  /** For `input: "image" | "file"` — accepted MIME types (file input `accept`). */
+  mimeTypes?: string[];
+  /** For `input: "image" | "file"` — max upload size in bytes. */
+  maxBytes?: number;
 }
 
 interface SensitiveRequestForm {
@@ -155,12 +159,29 @@ function buildInlineEnvelope(
       type: "sensitive_request_form",
       kind: "secret",
       mode: "inline_owner_app",
-      fields: fieldKeys.map((key) => ({
-        name: key,
-        label: key,
-        input: "secret",
-        required: true,
-      })),
+      // Multi-key tunnel requests are always typed secrets; a single-key secret
+      // target may opt into an image/file upload via its `input` descriptor
+      // (e.g. photograph a 2FA seed). #8910
+      fields: fieldKeys.map((key) => {
+        const isTargetKey = key === target.key;
+        const input =
+          isTargetKey && target.input ? target.input : ("secret" as const);
+        const field: SensitiveRequestFormField = {
+          name: key,
+          label: key,
+          input,
+          required: true,
+        };
+        if (input === "image" || input === "file") {
+          if (target.mimeTypes && target.mimeTypes.length > 0) {
+            field.mimeTypes = target.mimeTypes;
+          }
+          if (typeof target.maxBytes === "number") {
+            field.maxBytes = target.maxBytes;
+          }
+        }
+        return field;
+      }),
       submitLabel: "Save secret",
       statusOnly: true,
     },
