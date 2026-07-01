@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   onWsEvent: vi.fn(),
   invokeDesktopBridgeRequest: vi.fn(),
   showNativeNotification: vi.fn(),
+  navigateDeepLink: vi.fn(),
 }));
 
 vi.mock("../../state", () => ({
@@ -51,6 +52,10 @@ vi.mock("../../bridge/electrobun-rpc", () => ({
 vi.mock("../../bridge/native-notifications", () => ({
   showNativeNotification: (...args: unknown[]) =>
     mocks.showNativeNotification(...args),
+}));
+
+vi.mock("../../state/notifications/navigate-deep-link", () => ({
+  navigateDeepLink: (...args: unknown[]) => mocks.navigateDeepLink(...args),
 }));
 
 function notification(
@@ -96,6 +101,7 @@ describe("NotificationCenter", () => {
     mocks.onWsEvent.mockReset();
     mocks.invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
     mocks.showNativeNotification.mockReset().mockResolvedValue("none");
+    mocks.navigateDeepLink.mockReset();
   });
 
   afterEach(() => {
@@ -155,5 +161,112 @@ describe("NotificationCenter", () => {
         name: "Filter notifications by category",
       }),
     ).toBeNull();
+  });
+
+  // Mutation coverage (#10719): the panel's write actions — mark-all-read,
+  // clear-all, row-open (mark-read + deep-link nav), and per-row dismiss — were
+  // wired but unasserted; only category filtering was tested. Each mutation
+  // flows through the real notification store into the mocked `client`, so a
+  // fired `mocks.client.*` proves the real store path ran.
+  describe("mutations", () => {
+    async function openPanel() {
+      const user = userEvent.setup();
+      render(<NotificationCenter />);
+      await user.click(screen.getByRole("button", { name: /notifications/i }));
+      await screen.findByRole("button", { name: "Mark all read" });
+      return user;
+    }
+
+    it("mark-all-read fires the store write (idempotent under a double-click)", async () => {
+      seedNotifications([
+        notification("reminder-1", "Take medication", "reminder"),
+        notification("message-1", "Discord reply waiting", "message"),
+      ]);
+      const user = await openPanel();
+
+      const markAll = screen.getByRole("button", { name: "Mark all read" });
+      await user.click(markAll);
+      await user.click(markAll); // QA: mashing it must not corrupt state
+      expect(mocks.markAllNotificationsRead).toHaveBeenCalled();
+      // Never routes a mark-all through the single-row endpoint.
+      expect(mocks.markNotificationRead).not.toHaveBeenCalled();
+    });
+
+    it("clear-all fires the store write and empties the list", async () => {
+      seedNotifications([
+        notification("reminder-1", "Take medication", "reminder"),
+        notification("system-1", "Update installed", "system"),
+      ]);
+      const user = await openPanel();
+
+      await user.click(screen.getByRole("button", { name: "Clear all" }));
+      expect(mocks.clearNotifications).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.queryByText("Take medication")).toBeNull();
+        expect(screen.queryByText("Update installed")).toBeNull();
+      });
+    });
+
+    it("opening an UNREAD row marks it read and navigates its deep link", async () => {
+      const withLink: AgentNotification = {
+        ...notification("reminder-1", "Take medication", "reminder"),
+        deepLink: "/apps/health",
+      };
+      seedNotifications([withLink]);
+      const user = await openPanel();
+
+      await user.click(screen.getByText("Take medication"));
+      expect(mocks.markNotificationRead).toHaveBeenCalledWith("reminder-1");
+      expect(mocks.navigateDeepLink).toHaveBeenCalledWith("/apps/health");
+    });
+
+    it("opening an ALREADY-READ row navigates but does NOT re-mark it read", async () => {
+      const readWithLink: AgentNotification = {
+        ...notification("reminder-1", "Take medication", "reminder"),
+        readAt: Date.UTC(2026, 0, 2),
+        deepLink: "/apps/health",
+      };
+      seedNotifications([readWithLink]);
+      const user = await openPanel();
+
+      await user.click(screen.getByText("Take medication"));
+      expect(mocks.markNotificationRead).not.toHaveBeenCalled();
+      expect(mocks.navigateDeepLink).toHaveBeenCalledWith("/apps/health");
+    });
+
+    it("per-row dismiss removes only that row and does not open its deep link", async () => {
+      const withLink: AgentNotification = {
+        ...notification("reminder-1", "Take medication", "reminder"),
+        deepLink: "/apps/health",
+      };
+      seedNotifications([
+        withLink,
+        notification("system-1", "Update installed", "system"),
+      ]);
+      const user = await openPanel();
+
+      await user.click(
+        screen.getAllByRole("button", { name: "Dismiss notification" })[0],
+      );
+      // Dismiss must stopPropagation — it removes, it does NOT navigate.
+      expect(mocks.removeNotification).toHaveBeenCalledWith("reminder-1");
+      expect(mocks.navigateDeepLink).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.queryByText("Take medication")).toBeNull();
+        expect(screen.queryByText("Update installed")).not.toBeNull();
+      });
+    });
+
+    it("caps the unread badge at 99+ for large inboxes", async () => {
+      const many = Array.from({ length: 150 }, (_, i) =>
+        notification(`n-${i}`, `Item ${i}`, "system"),
+      );
+      seedNotifications(many);
+      render(<NotificationCenter />);
+      // The bell's aria-label reports the true unread count…
+      await screen.findByRole("button", { name: /150 unread/i });
+      // …while the on-badge text is capped so it never overflows the pill.
+      expect(screen.getByText("99+")).not.toBeNull();
+    });
   });
 });
