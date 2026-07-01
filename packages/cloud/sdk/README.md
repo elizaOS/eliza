@@ -74,7 +74,7 @@ window.location.assign(authorizeUrl);
 ```
 
 The generated URL is
-`https://www.elizacloud.ai/app-auth/authorize?app_id=...&redirect_uri=...&state=...`.
+`https://elizacloud.ai/app-auth/authorize?app_id=...&redirect_uri=...&state=...`.
 Use `/app-auth/authorize`; do not use `/authorize`.
 
 `waitForCliLogin(sessionId, { timeoutMs?, intervalMs?, signal? })` and the

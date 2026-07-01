@@ -40,7 +40,7 @@ const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
-const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://elizacloud.ai";
 const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
 const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;

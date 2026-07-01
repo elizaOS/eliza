@@ -62,7 +62,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
-const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
 const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
 const STAGING_DIRECT_CLOUD_API_BASE_URL = "https://api-staging.elizacloud.ai";

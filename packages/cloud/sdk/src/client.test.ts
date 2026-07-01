@@ -367,7 +367,7 @@ describe("ElizaCloudClient CLI login", () => {
 
     expect(requestedUrl).toBe("https://api.elizacloud.ai/api/auth/cli-session");
     expect(result.browserUrl).toBe(
-      "https://www.elizacloud.ai/auth/cli-login?session=cli-test-session",
+      "https://elizacloud.ai/auth/cli-login?session=cli-test-session",
     );
   });
 });

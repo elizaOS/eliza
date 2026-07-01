@@ -530,7 +530,7 @@ export async function bindCloudAgent(
       )
     : ["An autonomous AI agent."];
   const selectedAgent = await client.selectOrProvisionCloudAgent({
-    cloudApiBase: getBootConfig().cloudApiBase || "https://www.elizacloud.ai",
+    cloudApiBase: getBootConfig().cloudApiBase || "https://elizacloud.ai",
     authToken,
     name,
     bio,
@@ -580,7 +580,7 @@ export async function bindCloudAgent(
   ) {
     const sharedAgentId = selectedAgent.agentId;
     const cloudApiBase =
-      getBootConfig().cloudApiBase || "https://www.elizacloud.ai";
+      getBootConfig().cloudApiBase || "https://elizacloud.ai";
     const createDedicatedHandoffTarget = async (): Promise<string> => {
       const dedicated = await client.createCloudCompatAgent({
         agentName: name,
