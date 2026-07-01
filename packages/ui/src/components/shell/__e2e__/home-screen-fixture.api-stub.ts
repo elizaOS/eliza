@@ -46,9 +46,9 @@ export const client = {
   listConnectorAccounts: async () => ({
     accounts: [{ id: "google-owner", provider: "google", status: "connected" }],
   }),
-  // MessagesWidget cold-seeds from the conversation list then fetches each
-  // candidate's messages; empty results make it self-hide cleanly instead of
-  // throwing (which would surface a "Widget failed to render" fallback).
+  // Conversation stubs kept for any home surface that reads the conversation
+  // list; the standalone Messages tile was removed (#10697), so nothing renders
+  // a conversation list on the home grid now.
   listConversations: async () => ({ conversations: [] }),
   getConversationMessages: async () => ({ messages: [] }),
 };

@@ -20,9 +20,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api/client-types-chat";
 
-// The home WidgetHost reads `s.plugins` (none active on a cold launch) and the
-// MessagesWidget reads `s.conversations`. Empty plugins still resolve the
-// always-visible core widgets.
+// The home WidgetHost reads `s.plugins` (none active on a cold launch). Empty
+// plugins still resolve the always-visible core widgets (notifications).
 const DEFAULT_CONVERSATIONS = [
   {
     id: "c1",
@@ -137,10 +136,6 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     const notifications = screen.getByTestId("widget-notifications");
     expect(notifications.textContent).toContain("PR review requested");
     expect(notifications.textContent).toContain("2");
-    // Recent conversations is a curated home-grid tile; with conversation data
-    // present it renders alongside notifications.
-    const messages = await screen.findByTestId("widget-messages");
-    expect(messages.textContent).toContain("Trip planning");
   });
 
   it("self-hides every card when there is no data (the #9143 clean home)", () => {
@@ -154,6 +149,5 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
       />,
     );
     expect(screen.queryByTestId("widget-notifications")).toBeNull();
-    expect(screen.queryByTestId("widget-messages")).toBeNull();
   });
 });
