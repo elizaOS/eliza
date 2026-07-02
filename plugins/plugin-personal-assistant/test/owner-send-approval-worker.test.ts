@@ -9,7 +9,9 @@
  * in the task row at enqueue time and the worker reconstructs the send from
  * that persisted state (adapter.createDraft + adapter.sendDraft), never from
  * a closure. Task rows are modelled as a Map shared across "restarted"
- * runtimes, mirroring the database-backed task table.
+ * runtimes and every row round-trips through JSON on write and read,
+ * mirroring the JSONB-backed task table — a payload that is not
+ * JSON-serializable cannot fake persistence here.
  *
  * Run: bunx vitest run test/owner-send-approval-worker.test.ts
  */
@@ -44,6 +46,17 @@ interface FakeRuntimeHarness {
   readonly workers: Map<string, TaskWorker>;
 }
 
+/**
+ * Model the database boundary: real task rows live in a JSONB column, so
+ * everything written at enqueue time round-trips through JSON. Anything not
+ * JSON-safe (a closure, a Date, an `undefined` field) is lost here exactly
+ * as it would be in the real task table — a payload that only "persists"
+ * inside process memory cannot pass these tests.
+ */
+function jsonRoundTrip<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function makeRuntime(rows?: Map<string, Task>): FakeRuntimeHarness {
   const workers = new Map<string, TaskWorker>();
   const taskRows = rows ?? new Map<string, Task>();
@@ -56,10 +69,13 @@ function makeRuntime(rows?: Map<string, Task>): FakeRuntimeHarness {
     getTaskWorker: (name: string) => workers.get(name),
     createTask: async (task: Task) => {
       const id = randomUUID() as UUID;
-      taskRows.set(String(id), { ...task, id });
+      taskRows.set(String(id), jsonRoundTrip({ ...task, id }));
       return id;
     },
-    getTask: async (id: UUID) => taskRows.get(String(id)) ?? null,
+    getTask: async (id: UUID) => {
+      const row = taskRows.get(String(id));
+      return row ? jsonRoundTrip(row) : null;
+    },
     deleteTask: async (id: UUID) => {
       taskRows.delete(String(id));
       deletedTaskIds.push(id);
