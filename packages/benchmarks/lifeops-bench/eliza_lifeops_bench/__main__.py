@@ -520,9 +520,9 @@ def _build_world_factory():
         spec = specs_by_seed.get(seed)
         if spec is not None:
             return build_world_for(spec)
-        return WorldGenerator(seed=seed, now_iso=now_iso).generate_default_world(
-            scale="small"
-        )
+        return WorldGenerator(
+            seed=seed, now_iso=now_iso, scale="small"
+        ).generate_default_world()
 
     return factory
 
