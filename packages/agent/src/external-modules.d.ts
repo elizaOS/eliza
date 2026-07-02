@@ -436,6 +436,7 @@ declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-pty";
+declare module "@elizaos/plugin-birdclaw";
 declare module "@elizaos/plugin-x402" {
   import type {
     IAgentRuntime,

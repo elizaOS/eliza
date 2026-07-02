@@ -58,7 +58,13 @@ export default scenario({
       ],
       // "sleep"/"night" echoed this turn's own text; the recap either reports
       // real duration figures or plainly admits missing data.
-      responseIncludesAny: ["hour", "hrs", "minutes", "no data", "not available"],
+      responseIncludesAny: [
+        "hour",
+        "hrs",
+        "minutes",
+        "no data",
+        "not available",
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
