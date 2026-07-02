@@ -140,6 +140,113 @@ describe("local inference registry removal", () => {
 		expect(listed[0]?.bundleRoot).toBe(currentBundleRoot);
 		expect(listed[0]?.manifestPath).toBe(currentManifestPath);
 		expect(fs.existsSync(listed[0]?.path ?? "")).toBe(true);
+
+		// Self-heal: the reanchored legacy row must be rewritten on disk in
+		// canonical container-relative form so the migration happens once.
+		const healed = readRawRegistry().models?.[0];
+		expect(healed?.path).toBe("models/eliza-1-2b/text/model.gguf");
+		expect(healed?.bundleRoot).toBe("models/eliza-1-2b");
+		expect(healed?.manifestPath).toBe(
+			"models/eliza-1-2b/eliza-1.manifest.json",
+		);
+	});
+
+	it("drops a legacy absolute row whose artifact does not exist under the current root", async () => {
+		useTempStateDir();
+		const previousStateDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-local-inference-dead-state-"),
+		);
+		tempDirs.push(previousStateDir);
+
+		// Registry points at a dead container and the model was NOT migrated:
+		// the real state is "not downloaded", so the row must not survive.
+		const legacyModelPath = path.join(
+			previousStateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+			"text",
+			"model.gguf",
+		);
+		fs.mkdirSync(path.dirname(registryPath()), { recursive: true });
+		fs.writeFileSync(
+			registryPath(),
+			JSON.stringify({
+				version: 1,
+				models: [installedModel("eliza-1-2b", legacyModelPath)],
+			}),
+		);
+
+		expect(await listInstalledModels()).toEqual([]);
+		expect(readRawRegistry().models).toEqual([]);
+	});
+
+	it("drops a relative row whose artifact was deleted from disk", async () => {
+		const stateDir = useTempStateDir();
+		const modelPath = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+			"text",
+			"model.gguf",
+		);
+		fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+		fs.writeFileSync(modelPath, "fake-model");
+		await upsertElizaModel(installedModel("eliza-1-2b", modelPath));
+		expect((await listInstalledModels()).map((m) => m.id)).toEqual([
+			"eliza-1-2b",
+		]);
+
+		fs.rmSync(modelPath);
+
+		expect(await listInstalledModels()).toEqual([]);
+		expect(readRawRegistry().models).toEqual([]);
+	});
+
+	it("keeps healthy rows while healing a mixed registry", async () => {
+		const stateDir = useTempStateDir();
+		const keptModelPath = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+			"text",
+			"model.gguf",
+		);
+		fs.mkdirSync(path.dirname(keptModelPath), { recursive: true });
+		fs.writeFileSync(keptModelPath, "fake-model");
+
+		const previousStateDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-local-inference-mixed-state-"),
+		);
+		tempDirs.push(previousStateDir);
+		const deadModelPath = path.join(
+			previousStateDir,
+			"local-inference",
+			"models",
+			"gone.gguf",
+		);
+
+		fs.mkdirSync(path.dirname(registryPath()), { recursive: true });
+		fs.writeFileSync(
+			registryPath(),
+			JSON.stringify({
+				version: 1,
+				models: [
+					installedModel("eliza-1-2b", keptModelPath),
+					installedModel("gone-model", deadModelPath),
+				],
+			}),
+		);
+
+		const listed = await listInstalledModels();
+		expect(listed.map((m) => m.id)).toEqual(["eliza-1-2b"]);
+		expect(listed[0]?.path).toBe(keptModelPath);
+
+		const rawModels = readRawRegistry().models;
+		expect(rawModels?.map((m) => m.id)).toEqual(["eliza-1-2b"]);
+		expect(rawModels?.[0]?.path).toBe("models/eliza-1-2b/text/model.gguf");
 	});
 
 	it("removes an Eliza-owned bundle directory and clears the registry entry", async () => {

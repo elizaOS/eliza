@@ -10,6 +10,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { scanExternalModels } from "./external-scanner";
 import {
 	isWithinElizaRoot,
@@ -47,18 +48,113 @@ async function ensureRootDir(): Promise<void> {
 }
 
 async function readElizaOwned(): Promise<InstalledModel[]> {
+	return (await readElizaOwnedDetailed()).models;
+}
+
+async function readElizaOwnedDetailed(): Promise<{
+	models: InstalledModel[];
+	/** True when the on-disk rows are not in canonical relative form. */
+	needsRewrite: boolean;
+}> {
 	try {
 		const raw = await fs.readFile(registryPath(), "utf8");
 		const parsed = JSON.parse(raw) as RegistryFile;
 		if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
-			return [];
+			return { models: [], needsRewrite: false };
 		}
-		return parsed.models
-			.map(hydrateStoredElizaModel)
-			.filter((model): model is InstalledModel => Boolean(model));
+		let needsRewrite = false;
+		const models: InstalledModel[] = [];
+		for (const stored of parsed.models) {
+			const hydrated = hydrateStoredElizaModel(stored);
+			if (!hydrated) {
+				needsRewrite = true;
+				continue;
+			}
+			if (!storedRowIsCanonical(stored, hydrated)) needsRewrite = true;
+			models.push(hydrated);
+		}
+		return { models, needsRewrite };
 	} catch {
-		return [];
+		return { models: [], needsRewrite: false };
 	}
+}
+
+/**
+ * Self-healing read used by the list boundary: hydrate rows against the
+ * CURRENT local-inference root, drop rows whose model artifact is genuinely
+ * missing on disk (so callers surface a real not-downloaded state instead of
+ * loading a dead path), and rewrite the registry once when legacy
+ * absolute-path rows were migrated or dangling rows were dropped (#11669).
+ */
+async function readElizaOwnedHealed(): Promise<InstalledModel[]> {
+	const { models, needsRewrite } = await readElizaOwnedDetailed();
+	const present: InstalledModel[] = [];
+	let dropped = false;
+	for (const model of models) {
+		if (await modelArtifactPresent(model.path)) {
+			present.push(model);
+		} else {
+			dropped = true;
+			logger.warn(
+				`[LocalInferenceRegistry] Dropping registry entry "${model.id}": model file missing at ${model.path}; the model must be downloaded again`,
+			);
+		}
+	}
+	if (needsRewrite || dropped) {
+		try {
+			await writeElizaOwned(present);
+			logger.info(
+				`[LocalInferenceRegistry] Healed registry.json: ${present.length} model(s) persisted with container-relative paths`,
+			);
+		} catch (error) {
+			logger.warn(
+				`[LocalInferenceRegistry] Could not rewrite healed registry.json: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	}
+	return present;
+}
+
+async function modelArtifactPresent(modelPath: string): Promise<boolean> {
+	try {
+		return (await fs.stat(modelPath)).isFile();
+	} catch {
+		return false;
+	}
+}
+
+function storedRowIsCanonical(
+	stored: StoredInstalledModel,
+	hydrated: InstalledModel,
+): boolean {
+	if (stored.path !== toLocalInferenceStoredPath(hydrated.path)) return false;
+	if (
+		(stored.bundleRoot === undefined) !==
+		(hydrated.bundleRoot === undefined)
+	) {
+		return false;
+	}
+	if (
+		hydrated.bundleRoot &&
+		stored.bundleRoot !== toLocalInferenceStoredPath(hydrated.bundleRoot)
+	) {
+		return false;
+	}
+	if (
+		(stored.manifestPath === undefined) !==
+		(hydrated.manifestPath === undefined)
+	) {
+		return false;
+	}
+	if (
+		hydrated.manifestPath &&
+		stored.manifestPath !== toLocalInferenceStoredPath(hydrated.manifestPath)
+	) {
+		return false;
+	}
+	return true;
 }
 
 async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
@@ -95,8 +191,15 @@ function hydrateStoredElizaModel(
 			? resolveLocalInferenceStoredPath(model.manifestPath)
 			: null;
 
+	// Build explicitly so a stored bundleRoot/manifestPath that failed to
+	// resolve is dropped instead of leaking its raw stored string through.
+	const {
+		bundleRoot: _bundleRoot,
+		manifestPath: _manifestPath,
+		...rest
+	} = model;
 	return {
-		...model,
+		...rest,
 		path: modelPath,
 		...(bundleRoot ? { bundleRoot } : {}),
 		...(manifestPath ? { manifestPath } : {}),
@@ -206,7 +309,7 @@ async function scanExternalModelsCached(): Promise<InstalledModel[]> {
  * arrive in bursts during active downloads.
  */
 export async function listInstalledModels(): Promise<InstalledModel[]> {
-	const owned = await readElizaOwned();
+	const owned = await readElizaOwnedHealed();
 	if (!externalScanEnabled()) return owned;
 
 	// Filter out Eliza-owned files that also survived a reboot of the local

@@ -37,6 +37,7 @@ import {
 	resolveStateDir,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
+import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
 
 const DEVICE_BRIDGE_PATH = "/api/local-inference/device-bridge";
 const PROVIDER = "capacitor-llama";
@@ -745,8 +746,12 @@ function readTimeoutMs(envKey: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function localInferenceRoot(): string {
+	return path.join(resolveStateDir(), "local-inference");
+}
+
 function modelsDir(): string {
-	return path.join(resolveStateDir(), "local-inference", "models");
+	return path.join(localInferenceRoot(), "models");
 }
 
 function registryPath(): string {
@@ -802,9 +807,10 @@ function resolveFromRegistry(slot: string): string | null {
 
 	const models = readRegistryModels();
 	const matched = models.find((model) => model.id === assigned);
-	return typeof matched?.path === "string" && existsSync(matched.path)
-		? matched.path
-		: null;
+	if (typeof matched?.path !== "string") return null;
+	// Rows are stored relative to the local-inference root; legacy rows may
+	// hold absolute paths from a dead app container (#11669).
+	return resolveStoredModelPath(matched.path, localInferenceRoot());
 }
 
 function readRegistryModels(): RegistryModelEntry[] {
@@ -826,12 +832,15 @@ function resolveAssignedRegistryModel(slot: string): {
 
 	const models = readRegistryModels();
 	const matched = models.find((model) => model.id === assigned);
-	if (typeof matched?.path !== "string" || !existsSync(matched.path)) {
-		return null;
-	}
+	if (typeof matched?.path !== "string") return null;
+	const resolvedPath = resolveStoredModelPath(
+		matched.path,
+		localInferenceRoot(),
+	);
+	if (!resolvedPath) return null;
 	return {
 		id: assigned,
-		path: matched.path,
+		path: resolvedPath,
 		dimensions: matched.dimensions,
 		embeddingDimension: matched.embeddingDimension,
 		embeddingDimensions: matched.embeddingDimensions,

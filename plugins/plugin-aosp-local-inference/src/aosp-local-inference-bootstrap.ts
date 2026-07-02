@@ -925,6 +925,18 @@ function mapExistingModelPath(raw: unknown, modelsDir: string): string | null {
   if (typeof raw !== "string" || raw.trim().length === 0) return null;
   const candidate = raw.trim();
   const normalized = candidate.replaceAll("\\", "/");
+  // Container-relative rows (the canonical registry format since #11669) are
+  // stored relative to the local-inference dir — the parent of modelsDir.
+  if (!path.isAbsolute(candidate) && !/^[A-Za-z]:[\\/]/.test(candidate)) {
+    const parts = normalized.split("/").filter(Boolean);
+    if (parts.length === 0 || parts.some((p) => p === "." || p === "..")) {
+      return null;
+    }
+    const mapped = path.join(path.dirname(modelsDir), ...parts);
+    return existsSync(mapped) ? mapped : null;
+  }
+  // Legacy absolute rows from a previous container/state root: re-anchor by
+  // the `/local-inference/models/` suffix.
   const marker = "/local-inference/models/";
   const markerIndex = normalized.lastIndexOf(marker);
   if (markerIndex >= 0) {

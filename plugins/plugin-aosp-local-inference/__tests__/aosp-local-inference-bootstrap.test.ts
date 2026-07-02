@@ -448,6 +448,65 @@ describe("readAssignedBundledModels", () => {
 
     expect(readAssignedBundledModels(modelsDir).chat).toBe(defaultModel);
   });
+
+  it("resolves container-relative registry rows against the current device root (#11669)", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-assigned-relative-"));
+    const modelsDir = path.join(root, "local-inference", "models");
+    const defaultBundle = path.join(modelsDir, "eliza-1-2b.bundle", "text");
+    mkdirSync(defaultBundle, { recursive: true });
+    const defaultModel = path.join(defaultBundle, "eliza-1-2b-32k.gguf");
+    writeFileSync(defaultModel, "default");
+    writeFileSync(
+      path.join(root, "local-inference", "assignments.json"),
+      JSON.stringify({
+        version: 1,
+        assignments: { TEXT_SMALL: "eliza-1-2b" },
+      }),
+    );
+    writeFileSync(
+      path.join(root, "local-inference", "registry.json"),
+      JSON.stringify({
+        version: 1,
+        models: [
+          {
+            id: "eliza-1-2b",
+            path: "models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
+            source: "eliza-download",
+          },
+        ],
+      }),
+    );
+
+    expect(readAssignedBundledModels(modelsDir).chat).toBe(defaultModel);
+  });
+
+  it("returns no chat model when the registry row's artifact is genuinely absent", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-assigned-missing-"));
+    const modelsDir = path.join(root, "local-inference", "models");
+    mkdirSync(modelsDir, { recursive: true });
+    writeFileSync(
+      path.join(root, "local-inference", "assignments.json"),
+      JSON.stringify({
+        version: 1,
+        assignments: { TEXT_SMALL: "eliza-1-2b" },
+      }),
+    );
+    writeFileSync(
+      path.join(root, "local-inference", "registry.json"),
+      JSON.stringify({
+        version: 1,
+        models: [
+          {
+            id: "eliza-1-2b",
+            path: "models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
+            source: "eliza-download",
+          },
+        ],
+      }),
+    );
+
+    expect(readAssignedBundledModels(modelsDir).chat).toBeNull();
+  });
 });
 
 describe("removeAospGeneratedStagingDir", () => {
