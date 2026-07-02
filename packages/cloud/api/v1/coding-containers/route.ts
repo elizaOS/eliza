@@ -51,10 +51,11 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import {
@@ -66,7 +67,10 @@ import {
   type RequestCodingAgentContainerRequest,
   RequestCodingAgentContainerRequestSchema,
 } from "@/lib/services/coding-containers";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  AgentQuotaExceededError,
+  elizaSandboxService,
+} from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -249,14 +253,41 @@ async function createCodingContainer(
   // The service takes a transaction-scoped advisory lock before checking for a
   // pending/provisioning/running sandbox, closing retry races without applying a
   // broad schema constraint that would collide with warm-pool rows.
-  const createResult = await elizaSandboxService.createCodingContainerAgent({
-    organizationId: user.organization_id,
-    userId: user.id,
-    agentName: payload.name || payload.project_name,
-    environmentVars: payload.environment_vars,
-    dockerImage: payload.image,
-    executionTier: "custom",
-  });
+  let createResult: Awaited<
+    ReturnType<typeof elizaSandboxService.createCodingContainerAgent>
+  >;
+  try {
+    createResult = await elizaSandboxService.createCodingContainerAgent({
+      organizationId: user.organization_id,
+      userId: user.id,
+      agentName: payload.name || payload.project_name,
+      environmentVars: payload.environment_vars,
+      dockerImage: payload.image,
+      executionTier: "custom",
+      // Per-org ceiling (#11023): the per-image idempotency lock collapses only
+      // same-image retries, so a distinct-image loop under an allowlisted
+      // namespace would otherwise mint unbounded custom containers on the shared
+      // fleet. Bound it by the org's balance tier — the same cap the sibling
+      // POST /api/v1/eliza/agents forceCreate path enforces (#11042).
+      maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(creditCheck.balance),
+    });
+  } catch (error) {
+    if (error instanceof AgentQuotaExceededError) {
+      logger.warn(
+        "[CodingContainers API] provision blocked: per-org quota exceeded",
+        {
+          orgId: user.organization_id,
+          count: error.count,
+          max: error.max,
+        },
+      );
+      throw new ApiError(429, "agent_quota_exceeded", error.message, {
+        count: error.count,
+        max: error.max,
+      });
+    }
+    throw error;
+  }
   if (createResult.idempotent) {
     const existing = createResult.agent;
     logger.info(
