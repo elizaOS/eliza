@@ -329,6 +329,10 @@ export async function runPollingBackend(
   let deadline = Date.now() + policy.backendTimeoutMs;
   let attempts = 0;
   let lastErr: unknown = null;
+  // Boot observability: probe failures below retry silently, which makes a
+  // wedged "Booting up…" splash undiagnosable from a device/simulator
+  // console. Log the first failure, then throttle to one line per 15s.
+  let lastFailureLogAt = 0;
   // Guards a one-shot recovery: if the saved server is unreachable we clear it
   // and re-point the client at the local origin exactly once, never in a loop.
   let fellBackToLocal = false;
@@ -671,6 +675,14 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      if (Date.now() - lastFailureLogAt > 15_000) {
+        lastFailureLogAt = Date.now();
+        logger.info(
+          `[startup-phase-poll] backend probe failed (base=${client.getBaseUrl() || "(none)"}): ${
+            ae?.message ?? (err instanceof Error ? err.message : String(err))
+          }`,
+        );
+      }
       // Terminal native transport / agent-config failure (issue #11030): the
       // iOS local-agent IPC policy gate, a missing full-Bun engine, or the
       // native Agent plugin's missing-endpoint error. These depend only on
