@@ -87,8 +87,7 @@ jobs:
             git ls-files -s \
               packages/native/plugins \
               scripts/build-riscv64-artifacts.sh \
-              packages/app-core/scripts/aosp/compile-libllama.mjs \
-              plugins/plugin-local-inference/native/build-omnivoice.mjs
+              packages/app-core/scripts/aosp/compile-libllama.mjs
           } | sha256sum | awk '{ print "hash=" $1 }' >> "$GITHUB_OUTPUT"
 
       # build-riscv64-artifacts.sh is idempotent via existence sentinels, but its
@@ -104,7 +103,6 @@ jobs:
           path: |
             packages/native/plugins/*/build/riscv64
             packages/app-core/platforms/android/app/src/main/assets/agent/riscv64
-            plugins/plugin-local-inference/native/build-omnivoice-linux-riscv64-cpu
             ~/.cache/eliza-android-agent/seccomp-shim/riscv64
           key: riscv64-out-${{ runner.os }}-${{ steps.riscv64-fp.outputs.hash }}
 

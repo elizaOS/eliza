@@ -57,7 +57,7 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(
   REPO_ROOT,
-  "plugins/plugin-local-inference/native/omnivoice.cpp/examples/freeman.wav",
+  "plugins/plugin-local-inference/native/audio-fixtures/freeman.wav",
 );
 
 function arg(name: string): string | undefined {
