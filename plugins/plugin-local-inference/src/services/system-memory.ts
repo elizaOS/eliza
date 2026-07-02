@@ -107,10 +107,13 @@ function parseVmStatAvailableBytes(text: string): number | null {
  *   `/proc/meminfo` on Linux and returning null elsewhere.
  * @param readVmStat injectable vm_stat reader (tests). Defaults to running
  *   `/usr/bin/vm_stat` on macOS and returning null elsewhere.
+ * @param totalMem injectable total-memory source (tests). Defaults to
+ *   `os.totalmem`.
  */
 export function readSystemMemory(
 	read: MeminfoReader = defaultMeminfoReader,
 	readVmStat: VmStatReader = defaultVmStatReader,
+	totalMem: () => number = os.totalmem,
 ): SystemMemory {
 	const text = read();
 	if (text) {
@@ -123,10 +126,10 @@ export function readSystemMemory(
 	const vmStatText = readVmStat();
 	if (vmStatText) {
 		const availBytes = parseVmStatAvailableBytes(vmStatText);
-		const totalBytes = os.totalmem();
+		const totalBytes = totalMem();
 		if (availBytes !== null && totalBytes > 0) {
 			return { freeBytes: Math.min(availBytes, totalBytes), totalBytes };
 		}
 	}
-	return { freeBytes: os.freemem(), totalBytes: os.totalmem() };
+	return { freeBytes: os.freemem(), totalBytes: totalMem() };
 }

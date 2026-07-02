@@ -61,17 +61,29 @@ describe("readSystemMemory", () => {
 	});
 
 	it("counts macOS reclaimable pages from vm_stat, not just Pages free", () => {
+		const totalBytes = 128 * 1024 ** 3; // the capture host: 128 GiB M4 Max
 		const mem = readSystemMemory(
 			() => null,
 			() => SAMPLE_VM_STAT,
+			() => totalBytes,
 		);
 		const pageSize = 16384;
 		const expected = (462_821 + 3_305_280 + 57_490 + 2_266) * pageSize; // free+inactive+spec+purgeable
-		// totalmem() on the test host caps the reading; below the cap the exact
-		// page math must hold.
-		expect(mem.freeBytes).toBe(Math.min(expected, mem.totalBytes));
+		expect(mem.totalBytes).toBe(totalBytes);
+		expect(mem.freeBytes).toBe(expected);
 		// The whole point: available is far more than the bare free-page count.
 		expect(mem.freeBytes).toBeGreaterThan(462_821 * pageSize * 5);
+	});
+
+	it("caps vm_stat availability at total memory", () => {
+		const totalBytes = 8 * 1024 ** 3;
+		const mem = readSystemMemory(
+			() => null,
+			() => SAMPLE_VM_STAT,
+			() => totalBytes,
+		);
+		expect(mem.freeBytes).toBe(totalBytes);
+		expect(mem.totalBytes).toBe(totalBytes);
 	});
 
 	it("falls back to os when vm_stat output is malformed", () => {
