@@ -115,6 +115,48 @@ bun run --cwd packages/app install:ios:sideload
 bun run --cwd packages/app install:android:adb
 ```
 
+### iOS device automation (one command each — no Xcode UI, no manual signing)
+
+Agent-drivable pipeline for physical-device work (codifies the proven #11030
+device-boot recipe in `.github/issue-evidence/11030-ios-boot-fix/device-boot-README.md`).
+Device id comes from `--device <devicectl-id|udid|name>` or `ELIZA_IOS_DEVICE_ID`.
+
+```bash
+# Build (unsigned, run-mobile-build ios-local lane) → auto-discover a matching
+# provisioning profile (~/Library/MobileDevice/'Provisioning Profiles' + prior
+# signed builds in DerivedData; must cover the bundle id + device UDID and be
+# unexpired) → graft profiles (app + each appex) → sign nested dylibs/appexes/
+# app explicitly → codesign verify → devicectl install → launch.
+bun run --cwd packages/app ios:device:deploy -- --device <id>   # flags: --skip-build --no-launch --identity <sha1>
+
+# Bounded console capture (relaunches the app with devicectl --console attached,
+# default 120 s) and/or pull the boot-trace JSON from the app data container.
+bun run --cwd packages/app ios:device:logs -- --device <id> --duration 120
+bun run --cwd packages/app ios:device:logs -- --device <id> --no-console --pull-boot-trace
+
+# Watchable boot capture via the committed AppUITests XCUITest harness
+# (BootCaptureUITests): screenshots every 15 s via XCUIScreen, asserts the boot
+# reaches home or the "Startup failed:"/"Retry startup" card, exports all
+# attachments (filmstrip PNGs + AX hierarchy) from the .xcresult.
+bun run --cwd packages/app capture:ios-sim:boot                  # simulator (booted sim auto-detected)
+bun run --cwd packages/app ios:device:capture -- --device <id> --app-path <signed App.app>  # physical device
+```
+
+Produced artifacts: deploy stages into `ios/build/device-deploy-stage/`; logs
+land in `ios/build/device-logs/`; captures land in
+`ios/build/boot-capture/<timestamp>/` (`attachments/` + `BootCapture.xcresult`
++ `test-summary.json`) unless `--output` is given. The harness source lives in
+the canonical template (`packages/app-core/platforms/ios/App/AppUITests/` +
+the `AppUITests` target/scheme in the template Xcode project) and is
+materialized into the gitignored `packages/app/ios` by cap sync. Pure decision
+logic (profile matching/selection, entitlement derivation, plist/xctestrun
+handling) is in `scripts/ios-device-lib.mjs`, unit-tested by
+`scripts/ios-device-lib.test.mjs` in the package vitest suite. Boot-trace pull
+path defaults to `Documents/eliza-boot-trace.jsonl` (+ best-effort
+`eliza-boot-trace.prev.jsonl` / `eliza-boot-trace.renderer.jsonl` siblings) —
+keep in sync with `ElizaStartupTrace.swift`; `ELIZA_IOS_BOOT_TRACE_PATH`
+overrides.
+
 ## Config / env vars
 
 All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "ELIZA"`). Key vars read at runtime or build:

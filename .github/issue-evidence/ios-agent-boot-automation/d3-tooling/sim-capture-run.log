@@ -1,0 +1,19 @@
+[ios-device-capture] build-for-testing (generic/platform=iOS Simulator) → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/eliza-11030/packages/app/ios/build/xcuitest-dd
+** TEST BUILD SUCCEEDED **
+[ios-device-capture] xctestrun: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/eliza-11030/packages/app/ios/build/xcuitest-dd/Build/Products/AppUITests_AppUITests_iphonesimulator26.4-arm64.xctestrun
+[ios-device-capture] simctl install AppUITests-Runner.app
+[ios-device-capture] simctl install App.app
+[ios-device-capture] destination: platform=iOS Simulator,id=39F890C2-072D-4BFE-9144-5327AF30B10A
+Test Suite 'Selected tests' started at 2026-07-02 00:35:26.009.
+Test Suite 'AppUITests.xctest' started at 2026-07-02 00:35:26.010.
+Test Suite 'BootCaptureUITests' started at 2026-07-02 00:35:26.010.
+Test Case '-[AppUITests.BootCaptureUITests testBootReachesHomeOrErrorCard]' started.
+Test Case '-[AppUITests.BootCaptureUITests testBootReachesHomeOrErrorCard]' passed (6.394 seconds).
+Test Suite 'BootCaptureUITests' passed at 2026-07-02 00:35:32.405.
+Test Suite 'AppUITests.xctest' passed at 2026-07-02 00:35:32.406.
+Test Suite 'Selected tests' passed at 2026-07-02 00:35:32.407.
+** TEST EXECUTE SUCCEEDED **
+Exported 3 attachments for: BootCaptureUITests/testBootReachesHomeOrErrorCard():
+[ios-device-capture] attachments: 4 file(s) in /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/eliza-11030/packages/app/ios/build/boot-capture/d3-validation-final/attachments
+[ios-device-capture] result bundle: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/eliza-11030/packages/app/ios/build/boot-capture/d3-validation-final/BootCapture.xcresult
+[ios-device-capture] boot capture PASSED (home or startup-failure card reached).
