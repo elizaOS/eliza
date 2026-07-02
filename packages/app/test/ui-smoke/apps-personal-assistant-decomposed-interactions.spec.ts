@@ -10,6 +10,7 @@
 // interaction owner that closes INTERACTION_DEBT in
 // view-interaction-coverage.test.ts.
 
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -21,6 +22,29 @@ test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 });
+
+async function expectTopmostAtCenter(
+  locator: Locator,
+  owner: string,
+): Promise<void> {
+  await expect(locator).toBeVisible({ timeout: 15_000 });
+  const isTopmost = await locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const topmost = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    return element === topmost || element.contains(topmost);
+  });
+
+  // #11144 regressed when ShellBackButton visually cleared the content but kept
+  // intercepting first-chip pointer input. This guard asserts the target chip is
+  // the DOM hit-test winner at its own center before clicking it.
+  expect(
+    isTopmost,
+    `${owner} should be topmost at its center, not occluded by the shell back button (#11144)`,
+  ).toBe(true);
+}
 
 test("calendar decomposed view: day/week/month view-mode control switches", async ({
   page,
@@ -79,13 +103,11 @@ test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // Activating a channel chip narrows the server query (?channels=<channel>)
   // and the rendered list: the active chip is renamed "* <Channel>", its
   // thread stays, and the other channel's thread disappears.
-  //
-  // "Email" is the FIRST chip in the row — #11144 (fixed: SpatialSurface's
-  // --shell-backnav-clearance seam + its safe-area term) used to leave it under
-  // the shell's floating "Go back" button. Clicking it directly IS the
-  // occlusion regression check: Playwright's actionability check fails the
-  // click if the button intercepts the chip's center again.
-  await page.getByRole("button", { name: "Email", exact: true }).click();
+  const emailChip = page
+    .getByRole("button", { name: "Email", exact: true })
+    .first();
+  await expectTopmostAtCenter(emailChip, "Inbox Email filter chip");
+  await emailChip.click();
   await expect(
     page.getByRole("button", { name: "* Email", exact: true }),
   ).toBeVisible({ timeout: 15_000 });
@@ -210,24 +232,6 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
-  // #11145 (fixed): the graph container is clamped to the viewport
-  // (`w-full max-w-full` + internal `overflow-auto`), so the zoomed SVG pans
-  // INSIDE it instead of stretching the layout box to the SVG width (was
-  // measured at 1188px on a 412px Pixel-7 viewport → horizontal page scroll).
-  // Assert the container's rendered box never exceeds the viewport width.
-  const viewport = page.viewportSize();
-  if (viewport) {
-    const box = await page
-      .locator("[data-graph-container]")
-      .first()
-      .boundingBox();
-    expect(box, "graph container should be laid out").not.toBeNull();
-    if (box) {
-      // +1px slack for sub-pixel rounding.
-      expect(box.width).toBeLessThanOrEqual(viewport.width + 1);
-    }
-  }
-
   await page
     .getByRole("button", { name: "Organizations", exact: true })
     .click();
@@ -239,18 +243,14 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
     timeout: 15_000,
   });
 
-  // Clicking the active kind chip again deselects it (back to every kind).
-  // The "All" first-chip occlusion is fixed by the same clearance seam as the
-  // inbox "Email" chip (verified there), but this test cannot exercise the
-  // direct "All" click yet: a separate, pre-existing failure — the #11145
-  // `[data-graph-container]` boundingBox guard added above (line ~223) times
-  // out under the force-stub e2e, before this chip interaction is reached, and
-  // reproduces on develop independent of the clearance change. Drive
-  // "Organizations" (clear of the overlay) until that boundingBox failure is
-  // resolved on the relationships lane.
-  await page
-    .getByRole("button", { name: "Organizations", exact: true })
-    .click();
+  // #11144 guard: the first "All" kind chip is the one that used to sit under
+  // ShellBackButton. Drive the real restore path through it, then assert every
+  // kind is visible again.
+  const allChip = page
+    .getByRole("button", { name: "All", exact: true })
+    .first();
+  await expectTopmostAtCenter(allChip, "Relationships All kind chip");
+  await allChip.click();
   await expect(page.getByText("Graph (3)").first()).toBeVisible({
     timeout: 15_000,
   });
@@ -263,7 +263,7 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
  * CDP level so the view keeps its desktop layout; only the gesture is touch.
  */
 async function touchPinch(
-  page: import("@playwright/test").Page,
+  page: Page,
   selector: string,
   scale: number,
   steps = 16,
@@ -386,6 +386,19 @@ test("relationships graph: two-finger pinch-out zooms in under REAL touch (not m
   await openAppPath(page, "/apps/relationships");
   const container = page.locator("[data-graph-container]");
   await expect(container).toBeVisible({ timeout: 60_000 });
+
+  // #11145 (fixed): the graph container is clamped to the viewport
+  // (`w-full max-w-full` + internal `overflow-auto`), so the zoomed SVG pans
+  // inside it instead of stretching the layout box to the SVG width.
+  const viewport = page.viewportSize();
+  if (viewport) {
+    const box = await container.boundingBox();
+    expect(box, "graph container should be laid out").not.toBeNull();
+    if (box) {
+      // +1px slack for sub-pixel rounding.
+      expect(box.width).toBeLessThanOrEqual(viewport.width + 1);
+    }
+  }
 
   const graphSvg = container.locator("svg").first();
   await expect(graphSvg).toBeVisible({ timeout: 15_000 });
