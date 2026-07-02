@@ -23,7 +23,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { api, bearerHeaders, getBaseUrl, isServerReachable } from "./_helpers/api";
+import {
+  api,
+  bearerHeaders,
+  getBaseUrl,
+  isServerReachable,
+} from "./_helpers/api";
 import { approveAppInDb, hasReviewModel } from "./_helpers/review";
 
 let serverReachable = false;
@@ -60,28 +65,40 @@ beforeAll(async () => {
   hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
   serverReachable = await isServerReachable();
   if (!serverReachable) {
-    console.warn(`[group-n-review-gate] ${getBaseUrl()} did not respond. Tests will skip.`);
+    console.warn(
+      `[group-n-review-gate] ${getBaseUrl()} did not respond. Tests will skip.`,
+    );
   }
 });
 
 afterAll(async () => {
   if (!shouldRunAuthed()) return;
   for (const appId of createdAppIds) {
-    await api.delete(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, { headers: bearerHeaders() });
+    await api.delete(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
+      headers: bearerHeaders(),
+    });
   }
 });
 
 describe("App compliance-review gate", () => {
   test("auth gate: submit review without credentials is rejected", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/v1/apps/00000000-0000-4000-8000-000000000000/review", {});
+    const res = await api.post(
+      "/api/v1/apps/00000000-0000-4000-8000-000000000000/review",
+      {},
+    );
     expect([401, 403]).toContain(res.status);
   });
 
   test("a newly created app starts in review_status=draft", async () => {
     if (!shouldRunAuthed()) return;
-    const appId = await createApp("Draft App", "A brand new app awaiting review");
-    const res = await api.get(`/api/v1/apps/${appId}/review`, { headers: bearerHeaders() });
+    const appId = await createApp(
+      "Draft App",
+      "A brand new app awaiting review",
+    );
+    const res = await api.get(`/api/v1/apps/${appId}/review`, {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { review_status?: string };
     expect(body.review_status).toBe("draft");
@@ -89,20 +106,29 @@ describe("App compliance-review gate", () => {
 
   test("draft app CANNOT enable monetization (403)", async () => {
     if (!shouldRunAuthed()) return;
-    const appId = await createApp("Unreviewed Monetizer", "wants to monetize before review");
+    const appId = await createApp(
+      "Unreviewed Monetizer",
+      "wants to monetize before review",
+    );
     const res = await api.put(
       `/api/v1/apps/${appId}/monetization`,
       { monetizationEnabled: true },
       { headers: bearerHeaders() },
     );
     expect(res.status).toBe(403);
-    const body = (await res.json()) as { review_status?: string; error?: string };
+    const body = (await res.json()) as {
+      review_status?: string;
+      error?: string;
+    };
     expect(body.review_status).toBe("draft");
   });
 
   test("draft app CANNOT create a charge (403)", async () => {
     if (!shouldRunAuthed()) return;
-    const appId = await createApp("Unreviewed Charger", "wants to charge before review");
+    const appId = await createApp(
+      "Unreviewed Charger",
+      "wants to charge before review",
+    );
     const res = await api.post(
       `/api/v1/apps/${appId}/charges`,
       { amount: 5 },
@@ -118,10 +144,18 @@ describe("App compliance-review gate", () => {
       "Card Shop",
       "We sell stolen credit cards and cvv dumps to anyone who pays.",
     );
-    const res = await api.post(`/api/v1/apps/${appId}/review`, {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      `/api/v1/apps/${appId}/review`,
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      review?: { disposition?: string; review_status?: string; matched_categories?: string[] };
+      review?: {
+        disposition?: string;
+        review_status?: string;
+        matched_categories?: string[];
+      };
     };
     expect(body.review?.disposition).toBe("ban");
     expect(body.review?.review_status).toBe("rejected");
@@ -138,10 +172,26 @@ describe("App compliance-review gate", () => {
 
   test("approval opens the gate: approved app CAN monetize and charge", async () => {
     if (!shouldRunAuthed()) return;
-    const appId = await createApp("Recipe Finder", "Find dinner recipes from your pantry.");
+    const appId = await createApp(
+      "Recipe Finder",
+      "Find dinner recipes from your pantry.",
+    );
 
     // Deterministic proof the gate keys off review_status: approve directly.
     await approveAppInDb(appId);
+    // approveAppInDb writes Postgres directly, bypassing appsService's
+    // invalidate-on-mutation — so the app row cached at creation (getById, TTL
+    // 300s) still reads `draft` and the monetization gate 403s for up to 5 min
+    // against a Redis-backed staging Worker. A benign API PATCH goes through
+    // appsService.update → invalidateCache, evicting the stale row. (Safe:
+    // review_content_hash is null so the material-change re-gate is skipped.
+    // The REAL review path self-invalidates as of the app-review fix.)
+    const bust = await api.patch(
+      `/api/v1/apps/${appId}`,
+      { logo_url: "https://example.com/logo.png" },
+      { headers: bearerHeaders() },
+    );
+    expect(bust.status).toBe(200);
 
     const mon = await api.put(
       `/api/v1/apps/${appId}/monetization`,
@@ -156,7 +206,10 @@ describe("App compliance-review gate", () => {
       { headers: bearerHeaders() },
     );
     expect(charge.status).toBe(200);
-    const chargeBody = (await charge.json()) as { success?: boolean; charge?: { status?: string } };
+    const chargeBody = (await charge.json()) as {
+      success?: boolean;
+      charge?: { status?: string };
+    };
     expect(chargeBody.success).toBe(true);
     expect(chargeBody.charge?.status).toBe("requested");
   });
@@ -167,10 +220,18 @@ describe("App compliance-review gate", () => {
       "PixelPad",
       "A collaborative pixel-art drawing canvas for hobbyists.",
     );
-    const res = await api.post(`/api/v1/apps/${appId}/review`, {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      `/api/v1/apps/${appId}/review`,
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      review?: { disposition?: string; review_status?: string; model?: string | null };
+      review?: {
+        disposition?: string;
+        review_status?: string;
+        model?: string | null;
+      };
     };
     expect(body.review?.disposition).toBe("allow");
     expect(body.review?.review_status).toBe("approved");

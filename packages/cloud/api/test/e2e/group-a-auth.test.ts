@@ -46,6 +46,16 @@ function internalHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
+ * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
+ * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't
+ * supply, so internal-bearer-authenticated tests must skip rather than fail.
+ */
+function isLocalTarget(): boolean {
+  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
+}
+
 beforeAll(async () => {
   hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
   serverReachable = await isServerReachable();
@@ -191,11 +201,13 @@ describe("Group A: auth + sessions", () => {
   // --------------------------------------------------------------------
   describe("/api/auth/steward-session", () => {
     // /api/auth/steward-session enforces a strict Origin/Referer CSRF check.
-    // E2E POST/DELETE callers (curl, vitest) must send an Origin matching the
-    // dev allowlist (`localhost`/`127.0.0.1`/`0.0.0.0`) or one of the prod
-    // hosts. We send `Origin: http://localhost:8787` (the default wrangler
-    // dev port) so the check passes.
-    const stewardSessionHeaders = { Origin: "http://localhost:8787" };
+    // The dev-only localhost allowlist is gated on `!isProduction`, and the
+    // deployed staging Worker runs NODE_ENV=production — so a localhost Origin
+    // 403s (forbidden_origin) BEFORE body/token validation against staging.
+    // Send a host that is UNCONDITIONALLY in PERMITTED_ORIGIN_HOSTS (works in
+    // local dev AND deployed staging/prod) so the CSRF gate passes and the
+    // handler's real validation is what the test observes.
+    const stewardSessionHeaders = { Origin: "https://staging.elizacloud.ai" };
 
     test("POST validation: missing token returns 400", async () => {
       if (!reachableOnly()) return;
@@ -256,7 +268,9 @@ describe("Group A: auth + sessions", () => {
   // as /api/auth/steward-session.
   // --------------------------------------------------------------------
   describe("POST /api/auth/steward-nonce-exchange", () => {
-    const nonceHeaders = { Origin: "http://localhost:8787" };
+    // Same CSRF-origin reasoning as stewardSessionHeaders above: a permitted
+    // host unconditionally (localhost is dev-only, staging runs production).
+    const nonceHeaders = { Origin: "https://staging.elizacloud.ai" };
 
     test("validation: missing code returns 400 missing_code", async () => {
       if (!reachableOnly()) return;
@@ -495,7 +509,9 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("happy path: resolves bootstrapped test user email", async () => {
-      if (!shouldRun()) return;
+      // Needs an INTERNAL_SECRET that matches the target Worker — only true for
+      // a local dev Worker sharing our .env; skip against deployed targets.
+      if (!shouldRun() || !isLocalTarget()) return;
       const res = await api.post(
         "/api/internal/identity/resolve",
         { identifier: process.env.TEST_USER_EMAIL },
@@ -522,7 +538,9 @@ describe("Group A: auth + sessions", () => {
     });
 
     test("validation: invalid JSON body returns 400", async () => {
-      if (!reachableOnly()) return;
+      // Reaches JSON validation only after the internal-bearer check passes —
+      // which needs the matching secret, so local-target only.
+      if (!reachableOnly() || !isLocalTarget()) return;
       const res = await fetch(`${getBaseUrl()}/api/internal/identity/resolve`, {
         method: "POST",
         headers: internalHeaders(),
@@ -566,6 +584,13 @@ describe("Group A: auth + sessions", () => {
 
     test("happy path: valid Bearer eliza_* mints a session cookie", async () => {
       if (!shouldRun()) return;
+      // /api/test/auth/session is a TEST-ONLY route, disabled (404) on a
+      // production-mode Worker (deployed staging/prod). Probe first and skip
+      // when it isn't mounted rather than fail — the exchange can't work there.
+      const probe = await api.post("/api/test/auth/session", undefined, {
+        headers: { Authorization: "Bearer eliza_definitely-not-real" },
+      });
+      if (probe.status === 404) return;
       const cookie = await exchangeApiKeyForSession();
       _sessionCookie = cookie;
       expect(cookie).toMatch(/^[^=]+=.+/);
@@ -668,8 +693,11 @@ describe("Group A: auth + sessions", () => {
 
     test("auth gate: unknown session_id returns 404 (or 500 if no DB)", async () => {
       if (!reachableOnly()) return;
+      // A FRESH random id — the well-known all-zeros UUID collides with a
+      // persistent expired row in the shared staging DB (returns 200
+      // status=expired instead of 404), so it must be genuinely unknown.
       const res = await api.get(
-        "/api/eliza-app/cli-auth/poll?session_id=00000000-0000-0000-0000-000000000000",
+        `/api/eliza-app/cli-auth/poll?session_id=${crypto.randomUUID()}`,
       );
       expect(res.status).toBe(404);
       const body = (await res.json()) as { success?: boolean; error?: string };
