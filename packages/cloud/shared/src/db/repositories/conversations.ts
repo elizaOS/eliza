@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -236,6 +236,30 @@ export class ConversationsRepository {
    */
   async delete(id: string): Promise<void> {
     await dbWrite.delete(conversations).where(eq(conversations.id, id));
+  }
+
+  /**
+   * Moves a user's conversations from one organization to another. Used when a
+   * sole-member owner accepts an invite into another org (#11332): the vacated
+   * solo org is deleted, and without this re-home the org cascade would
+   * destroy the user's chat history.
+   */
+  async reassignUserOrganization(
+    userId: string,
+    fromOrganizationId: string,
+    toOrganizationId: string,
+  ): Promise<number> {
+    const moved = await dbWrite
+      .update(conversations)
+      .set({ organization_id: toOrganizationId, updated_at: new Date() })
+      .where(
+        and(
+          eq(conversations.user_id, userId),
+          eq(conversations.organization_id, fromOrganizationId),
+        ),
+      )
+      .returning({ id: conversations.id });
+    return moved.length;
   }
 
   /**

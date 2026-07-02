@@ -12,7 +12,7 @@
  * work, not wrapping a one-line insert.
  */
 
-import { and, eq, isNotNull, lte, or } from "drizzle-orm";
+import { and, eq, isNotNull, lte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
   type DomainRegistrantInfo,
@@ -227,6 +227,14 @@ export async function listForOrganization(organizationId: string): Promise<Manag
   });
 }
 
+export async function countForOrganization(organizationId: string): Promise<number> {
+  const [row] = await dbRead
+    .select({ count: sql<number>`count(*)::int` })
+    .from(managedDomains)
+    .where(eq(managedDomains.organizationId, organizationId));
+  return row?.count ?? 0;
+}
+
 export async function listForApp(organizationId: string, appId: string): Promise<ManagedDomain[]> {
   return await dbRead.query.managedDomains.findMany({
     where: and(eq(managedDomains.organizationId, organizationId), eq(managedDomains.appId, appId)),
@@ -418,6 +426,7 @@ export const managedDomainsService = {
   getOwnDomainRow,
   releaseStaleUnverifiedExternals,
   listForOrganization,
+  countForOrganization,
   listForApp,
   listVerifiedAppOrigins,
   listCloudflareRenewalsDue,
