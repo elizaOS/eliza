@@ -217,7 +217,7 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
  * user's identity), then mint a signed app session token for the browser.
  */
 async function handleAuthExchange(req: Request): Promise<Response> {
-  if (!SESSION_SECRET || !APP_ID) {
+  if (!OWNER_CLOUD_KEY || !SESSION_SECRET || !APP_ID) {
     return jsonError(
       500,
       "not_configured",
