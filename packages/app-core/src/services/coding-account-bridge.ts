@@ -44,7 +44,7 @@ import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   LinkedAccountProviderId,
   LinkedAccountUsage,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
 import type { AccountPool, Strategy } from "./account-pool.js";
 
 const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(

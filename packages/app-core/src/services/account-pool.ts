@@ -45,7 +45,7 @@ import type {
   LinkedAccountProviderId,
   LinkedAccountsConfig,
   LinkedAccountUsage,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/service-routing";
 import {
   pollAnthropicUsage,
   pollCodexUsage,

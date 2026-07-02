@@ -16,7 +16,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import type { LinkedAccountUsage } from "@elizaos/shared";
+import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 
 /**
  * Snapshot returned by the provider usage probes. Mirrors

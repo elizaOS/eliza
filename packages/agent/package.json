@@ -149,6 +149,21 @@
       "import": "./dist/auth/*.js",
       "default": "./dist/auth/*.js"
     },
+    "./utils/atomic-json": {
+      "types": "./src/utils/atomic-json.ts",
+      "eliza-source": {
+        "types": "./src/utils/atomic-json.ts",
+        "import": "./src/utils/atomic-json.ts",
+        "default": "./src/utils/atomic-json.ts"
+      },
+      "bun": {
+        "types": "./src/utils/atomic-json.ts",
+        "import": "./src/utils/atomic-json.ts",
+        "default": "./src/utils/atomic-json.ts"
+      },
+      "import": "./dist/utils/atomic-json.js",
+      "default": "./dist/utils/atomic-json.js"
+    },
     "./services/app-session-gate": {
       "eliza-source": {
         "types": "./src/services/app-session-gate.ts",

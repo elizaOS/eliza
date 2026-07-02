@@ -19,7 +19,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import type { SubscriptionCredentialSource } from "@elizaos/shared";
+import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -297,7 +297,7 @@ function hasCodexCliSubscriptionAuth(): boolean {
   }
 }
 
-export type { SubscriptionCredentialSource } from "@elizaos/shared";
+export type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
 
 /**
  * Per-account subscription status row used by the dashboard / API.

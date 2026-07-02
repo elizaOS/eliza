@@ -1684,6 +1684,7 @@ async function handleStreamingRequest(
   const toolChoice = mapToolChoice(request.tool_choice);
   const experimentalOutput = mapResponseFormat(request.response_format);
   const billingPrompt = buildChatPromptForBilling(request);
+  const billingAffiliateCode = pooledCredential ? null : affiliateCode;
   let deliveredText = "";
   let streamingSettlementPromise: Promise<CreditReconciliationResult | null> | null =
     null;
@@ -1714,7 +1715,7 @@ async function handleStreamingRequest(
           provider,
           user,
           apiKey,
-          affiliateCode,
+          affiliateCode: billingAffiliateCode,
           appId,
           requestId,
           idempotencyKey,
@@ -1765,7 +1766,7 @@ async function handleStreamingRequest(
             billingSource,
             requestId,
             appId,
-            affiliateCode,
+            affiliateCode: billingAffiliateCode,
             streaming: true,
           });
           const billing = await billUsage(billingContext, usage);
@@ -2122,6 +2123,7 @@ async function handleNonStreamingRequest(
   const tools = convertTools(request.tools);
   const toolChoice = mapToolChoice(request.tool_choice);
   const experimentalOutput = mapResponseFormat(request.response_format);
+  const billingAffiliateCode = pooledCredential ? null : affiliateCode;
 
   const safeParamsNonStream = getSafeModelParams(model, {
     temperature: request.temperature,
@@ -2191,7 +2193,7 @@ async function handleNonStreamingRequest(
           billingSource,
           requestId,
           appId,
-          affiliateCode,
+          affiliateCode: billingAffiliateCode,
           streaming: false,
         });
         const billing = await billUsage(billingContext, result.usage);

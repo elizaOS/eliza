@@ -8,6 +8,8 @@ Branch: `fix/11586-credential-pool-followups`
 - Added org-scoped repository WHERE paths for pooled credential read/update/delete and pool metadata writes.
 - Wired Worker chat completions to select org pooled direct-provider keys for supported direct models, with strict fallback to platform env on pool miss.
 - Added 401/403/429 provider outcome writeback to pooled credential health.
+- Suppressed affiliate markup/earnings on zero-rated pooled BYO-key completions while still recording pool usage.
+- Added source-condition package exports/imports needed for cloud source typechecks to resolve `@elizaos/app-core/account-pool` and `@elizaos/agent/utils/atomic-json`.
 - Applied `RATE_LIMIT_MULTIPLIER` to the Hono/Cloudflare limiter in non-production only.
 - Mapped `pooled_credential` audit denials to `secret.access`.
 
@@ -17,18 +19,18 @@ Branch: `fix/11586-credential-pool-followups`
 
 ## Verification
 
-- `bunx @biomejs/biome check packages/cloud/shared/src/db/repositories/pooled-credentials.ts packages/cloud/shared/src/lib/services/team-credential-pool/service.ts packages/cloud/shared/src/lib/services/team-credential-pool/pool-deps.ts packages/cloud/shared/src/lib/services/team-credential-pool/registry.ts packages/cloud/shared/src/lib/services/__tests__/team-credential-pool.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts packages/cloud/shared/src/lib/middleware/rate-limit-config-verdict.test.ts packages/cloud/shared/src/lib/providers/language-model.ts packages/cloud/shared/src/lib/providers/language-model-cerebras-fallback.test.ts packages/cloud/api/src/middleware/org-membership.ts packages/cloud/api/__tests__/org-credentials-routes.test.ts packages/cloud/api/v1/chat/completions/route.ts`
+- `bunx @biomejs/biome check packages/cloud/shared/src/db/repositories/pooled-credentials.ts packages/cloud/shared/src/lib/services/team-credential-pool/service.ts packages/cloud/shared/src/lib/services/team-credential-pool/pool-deps.ts packages/cloud/shared/src/lib/services/team-credential-pool/registry.ts packages/cloud/shared/src/lib/services/__tests__/team-credential-pool.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts packages/cloud/shared/src/lib/middleware/rate-limit-config-verdict.test.ts packages/cloud/shared/src/lib/providers/language-model.ts packages/cloud/shared/src/lib/providers/language-model-cerebras-fallback.test.ts packages/cloud/api/src/middleware/org-membership.ts packages/cloud/api/__tests__/org-credentials-routes.test.ts packages/cloud/api/v1/chat/completions/route.ts packages/cloud/api/__tests__/chat-completions-streaming-credit-leak.test.ts packages/agent/package.json packages/agent/src/auth/credentials.ts packages/app-core/package.json packages/app-core/src/services/account-pool.ts packages/app-core/src/services/account-usage.ts packages/app-core/src/services/coding-account-bridge.ts`
   - Passed.
-- `bun test packages/cloud/shared/src/lib/services/__tests__/team-credential-pool.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-config-verdict.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-orphaned-counter.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-default-key.test.ts packages/cloud/shared/src/lib/providers/language-model-cerebras-fallback.test.ts`
+- `bun test --coverage-reporter=lcov --conditions eliza-source packages/cloud/shared/src/lib/services/__tests__/team-credential-pool.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-config-verdict.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-orphaned-counter.test.ts packages/cloud/shared/src/lib/middleware/rate-limit-default-key.test.ts packages/cloud/shared/src/lib/providers/language-model-cerebras-fallback.test.ts`
   - Passed: 36 tests, 136 assertions.
-- `bun test packages/cloud/api/__tests__/org-credentials-routes.test.ts`
+- `bun test --coverage-reporter=lcov --conditions eliza-source packages/cloud/api/__tests__/org-credentials-routes.test.ts`
   - Passed: 12 tests, 34 assertions.
 - `bun run --cwd packages/cloud/shared typecheck`
   - Passed.
 - `bun run --cwd packages/cloud/api typecheck`
   - Passed.
-- `bun test packages/cloud/api/__tests__/chat-completions-streaming-credit-leak.test.ts`
-  - Passed: streaming provider-error reservation tests.
+- `bun test --coverage-reporter=lcov --conditions eliza-source packages/cloud/api/__tests__/chat-completions-streaming-credit-leak.test.ts`
+  - Passed: 10 tests, 74 assertions, including pooled BYO-key success suppressing affiliate markup while recording pool use.
 - `git diff --check`
   - Passed.
 - `bun install`

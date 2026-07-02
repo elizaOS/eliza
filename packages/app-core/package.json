@@ -97,7 +97,17 @@
       "default": "./dist/agent-bridge.js"
     },
     "./account-pool": {
-      "types": "./dist/account-pool.d.ts",
+      "types": "./src/account-pool.ts",
+      "eliza-source": {
+        "types": "./src/account-pool.ts",
+        "import": "./src/account-pool.ts",
+        "default": "./src/account-pool.ts"
+      },
+      "bun": {
+        "types": "./src/account-pool.ts",
+        "import": "./src/account-pool.ts",
+        "default": "./src/account-pool.ts"
+      },
       "import": "./dist/account-pool.js",
       "default": "./dist/account-pool.js"
     },
