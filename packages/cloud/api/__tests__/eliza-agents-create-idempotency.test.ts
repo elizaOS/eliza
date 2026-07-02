@@ -208,9 +208,16 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     });
 
     expect(res.status).toBe(402);
+    const body = (await res.json()) as {
+      success: false;
+      code: "insufficient_credits";
+      error: string;
+      requiredBalance: number;
+      currentBalance: number;
+    };
     // Exact-match on purpose: this is the one insufficient-credits wire shape
     // shared by every credit-gated route (insufficientCredits402).
-    expect(await res.json()).toEqual({
+    expect(body).toEqual({
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits. Please add funds.",

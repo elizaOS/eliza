@@ -69,6 +69,8 @@ const provisionAgent = mock(
 );
 const enqueueAgentProvision = mock(async () => ({ id: "job-1" }));
 
+class AgentQuotaExceededError extends Error {}
+
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey,
   validateServiceKey: requireServiceKey,
@@ -109,6 +111,7 @@ mock.module("@/lib/services/characters/characters", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
+  AgentQuotaExceededError,
   elizaSandboxService: {
     createAgent,
     provision: provisionAgent,

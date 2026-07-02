@@ -39,6 +39,7 @@ mock.module("@/lib/services/agent-billing-gate", () => ({
 
 mock.module("@/lib/eliza-agent-web-ui", () => ({
   getAgentBaseDomain: () => "elizacloud.ai",
+  getElizaAgentDirectWebUiUrl: () => null,
   getElizaAgentPublicWebUiUrl: (sandbox: { id: string }) =>
     `https://${sandbox.id}.elizacloud.ai`,
 }));
@@ -62,9 +63,6 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
     getAgent: mock(async () => undefined),
     updateAgentEnvironment,
   },
-  // #11095 added this export; route.ts imports it, so the mock must provide it
-  // or the whole module (and this test file) fails to load.
-  AgentQuotaExceededError: class AgentQuotaExceededError extends Error {},
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
@@ -221,8 +219,15 @@ describe("coding containers route", () => {
     );
 
     expect(response.status).toBe(402);
+    const body = (await response.json()) as {
+      success: false;
+      code: "insufficient_credits";
+      error: string;
+      currentBalance: number;
+      requiredBalance: number;
+    };
     // Exact-match on purpose: the canonical insufficientCredits402 wire shape.
-    expect(await response.json()).toEqual({
+    expect(body).toEqual({
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits",

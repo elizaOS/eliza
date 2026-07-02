@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { insufficientCredits402, insufficientCreditsBody } from "./agent-billing-gate-402";
@@ -30,6 +30,10 @@ describe("insufficientCreditsBody", () => {
 
 describe("insufficientCredits402", () => {
   const warnSpy = spyOn(logger, "warn").mockImplementation(() => undefined);
+
+  beforeEach(() => {
+    warnSpy.mockClear();
+  });
 
   afterEach(() => {
     warnSpy.mockClear();
