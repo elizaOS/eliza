@@ -17,7 +17,14 @@
 
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
-import { paymentAction } from "./actions/index.ts";
+// Import the action from its defining file, NOT through a re-export-only
+// barrel. When the mobile agent bundle lowers @elizaos/core into lazy
+// CJS-interop module inits (the core barrel graph is cyclic via
+// features/basic-capabilities -> ../index.ts), Bun's tree-shaker drops
+// modules that are reachable only through a pure re-export barrel — this
+// entire feature was silently absent from the shipped mobile bundle
+// (same incident class as sub-agent-credentials/plugin.ts).
+import { paymentAction } from "./actions/payment.ts";
 
 export const paymentsPlugin: Plugin = {
 	name: "payments",

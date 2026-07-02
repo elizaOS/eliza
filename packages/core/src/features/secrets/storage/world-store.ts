@@ -8,7 +8,7 @@
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime, UUID, World } from "../../../types/index.ts";
 import { Role } from "../../../types/index.ts";
-import { isEncryptedSecret, type KeyManager } from "../crypto/index.ts";
+import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
 	EncryptedSecret,
 	SecretConfig,

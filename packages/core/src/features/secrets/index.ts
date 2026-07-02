@@ -11,7 +11,9 @@
 // Actions
 export { maskSecretValue, secretsAction } from "./actions/index.ts";
 
-// Crypto
+// Crypto — re-exported from the defining file, NOT through a re-export-only
+// barrel (Bun.build drops barrel-only-reachable modules when the mobile
+// bundle lowers @elizaos/core to lazy CJS-interop inits; see ./plugin.ts).
 export {
 	ALGORITHM_GCM,
 	createKeyDerivationParams,
@@ -32,7 +34,7 @@ export {
 	KEY_LENGTH,
 	KeyManager,
 	secureCompare,
-} from "./crypto/index.ts";
+} from "./crypto/encryption.ts";
 // Plugin
 export type { SecretsManagerPluginConfig } from "./plugin.ts";
 export {
@@ -43,7 +45,7 @@ export {
 export {
 	secretsInfoProvider,
 	secretsStatusProvider,
-} from "./providers/index.ts";
+} from "./providers/secrets-status.ts";
 // Services
 export type { PluginWithSecrets } from "./services/index.ts";
 export {
@@ -52,7 +54,10 @@ export {
 	SECRETS_SERVICE_TYPE,
 	SecretsService,
 } from "./services/index.ts";
-// Setup — conversational secrets collection for Discord/Telegram
+// Setup — conversational secrets collection for Discord/Telegram.
+// Re-exported per defining file, NOT through a re-export-only barrel
+// (see the crypto note above).
+export { updateSettingsAction } from "./setup/action.ts";
 export {
 	COMMON_API_KEY_SETTINGS,
 	createSetupConfig,
@@ -62,14 +67,14 @@ export {
 	getUnconfiguredOptional,
 	getUnconfiguredRequired,
 	isSetupComplete,
-	missingSecretsProvider,
-	SETUP_SERVICE_TYPE,
 	type SetupConfig,
-	SetupService,
 	type SetupSetting,
+} from "./setup/config.ts";
+export {
+	missingSecretsProvider,
 	setupSettingsProvider,
-	updateSettingsAction,
-} from "./setup/index.ts";
+} from "./setup/provider.ts";
+export { SETUP_SERVICE_TYPE, SetupService } from "./setup/service.ts";
 
 // Storage
 export type { ISecretStorage } from "./storage/index.ts";
