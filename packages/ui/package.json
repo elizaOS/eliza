@@ -52,6 +52,8 @@
     "test:launcher-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs",
     "test:connectors-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-connectors-e2e.mjs",
     "test:view-lifecycle-e2e": "bun run --cwd ../.. packages/ui/src/components/views/__e2e__/run-view-lifecycle-e2e.mjs",
+    "test:frontend-hosting-e2e": "bun run --cwd ../.. packages/ui/src/cloud/applications/__e2e__/run-frontend-hosting-e2e.mjs",
+    "test:credentials-e2e": "bun run --cwd ../.. packages/ui/src/cloud/organization/__e2e__/run-credentials-e2e.mjs",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",

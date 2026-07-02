@@ -143,6 +143,17 @@ jobs:
       - name: Proactive suggestions pipeline + UI e2e
         run: bun run --cwd packages/ui test:suggestions-e2e
 
+      # Frontend-hosting dashboard tab (#10690): real mock cloud stack
+      # publish → activate → rollback → delete lifecycle, desktop + mobile.
+      - name: Frontend hosting e2e
+        run: bun run --cwd packages/ui test:frontend-hosting-e2e
+
+      # Org Team Credential Pool tab (#11332/#11488): real mock cloud stack
+      # contribute (probe fail/pass) → masked list → toggle → invite/connect
+      # link → remove, desktop + mobile.
+      - name: Credentials e2e
+        run: bun run --cwd packages/ui test:credentials-e2e
+
       - name: Upload UI fixture e2e artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -163,5 +174,7 @@ jobs:
             packages/ui/src/components/pages/__e2e__/output-launcher
             packages/ui/src/components/pages/__e2e__/output-background
             packages/ui/src/components/pages/__e2e__/output-suggestions
+            packages/ui/src/cloud/applications/__e2e__/output-frontend-hosting
+            packages/ui/src/cloud/organization/__e2e__/output-credentials
           retention-days: 14
           if-no-files-found: ignore
