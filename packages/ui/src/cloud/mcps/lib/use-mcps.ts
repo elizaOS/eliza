@@ -8,11 +8,11 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { api } from "../../lib/api-client";
 import {
   authenticatedQueryKey,
   useAuthenticatedQueryGate,
-} from "../../api-keys/auth-gate";
-import { api } from "../../lib/api-client";
+} from "../../lib/auth-query";
 import type {
   BuiltinMcpListResponse,
   ListUserMcpsResponse,

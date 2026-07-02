@@ -9,19 +9,20 @@
  * section gets it from `CloudSettingsSectionShell`.
  */
 
-import { useContext } from "react";
 import { PageHeaderProvider } from "../../cloud-ui";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
+import { useSessionAuth } from "../public-pages/lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { LocalStewardAuthContext } from "../shell/StewardProvider";
 import { McpsView } from "./McpsView";
 
 /** The MCPs surface. Embeddable by the settings section and the standalone route. */
 export function McpsSurface() {
   const t = useCloudT();
-  const auth = useContext(LocalStewardAuthContext);
-  const ready = auth ? !auth.isLoading : false;
-  const authenticated = auth?.isAuthenticated ?? false;
+  // Console-wide session truth (SDK context OR persisted JWT) — the raw SDK
+  // context is empty on every full page load (MemoryStorage), which left this
+  // surface stuck on the loading state for signed-in users, same as the
+  // admin-gate bug fixed alongside.
+  const { ready, authenticated } = useSessionAuth();
 
   if (!ready || !authenticated) {
     return (

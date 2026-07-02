@@ -16,7 +16,7 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
 }
 
-async function seedStewardToken(page: Page): Promise<void> {
+async function seedStewardToken(page: Page): Promise<string> {
   const token = makeJwt({
     sub: "cloud-console-route-smoke-user",
     email: "cloud-console-route-smoke@agent.local",
@@ -28,6 +28,7 @@ async function seedStewardToken(page: Page): Promise<void> {
     },
     { key: STEWARD_TOKEN_KEY, value: token },
   );
+  return token;
 }
 
 async function installAdminModerationRoutes(page: Page): Promise<void> {
@@ -61,16 +62,71 @@ async function installAdminModerationRoutes(page: Page): Promise<void> {
   });
 }
 
+async function installMcpRoutes(
+  page: Page,
+  expectedToken: string,
+): Promise<{ requestUrls: string[] }> {
+  const requestUrls: string[] = [];
+
+  await page.route("**/api/v1/mcps**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+
+    expect(request.headers().authorization).toBe(`Bearer ${expectedToken}`);
+
+    const url = new URL(request.url());
+    const scope = url.searchParams.get("scope") ?? "own";
+    requestUrls.push(`${url.pathname}?scope=${scope}`);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        mcps: [],
+        total: 0,
+        scope,
+        filters: {},
+        pagination: { limit: 50, offset: 0 },
+      }),
+    });
+  });
+
+  await page.route("**/api/mcp/list", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+
+    requestUrls.push(new URL(request.url()).pathname);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        mcps: [],
+        total: 0,
+        categories: [],
+      }),
+    });
+  });
+
+  return { requestUrls };
+}
+
 test.describe("cloud console route wiring", () => {
   test.skip(
     !TEST_AUTH_ENABLED,
     "set VITE_PLAYWRIGHT_TEST_AUTH=true so StewardProvider renders the local test-auth route shell",
   );
 
+  let stewardToken: string;
+
   test.beforeEach(async ({ page }) => {
     installPageDiagnosticsGuard(page);
     await installDefaultAppRoutes(page);
-    await seedStewardToken(page);
+    stewardToken = await seedStewardToken(page);
   });
 
   test("registers /dashboard/analytics instead of falling through to the cloud 404", async ({
@@ -99,5 +155,27 @@ test.describe("cloud console route wiring", () => {
     ).toBeVisible();
     await expect(page.getByText("Sign in required")).toHaveCount(0);
     await expectNoPageDiagnostics(page, "dashboard admin persisted token gate");
+  });
+
+  test("MCPs route loads registry data with only a persisted Steward token", async ({
+    page,
+  }) => {
+    const mcpApi = await installMcpRoutes(page, stewardToken);
+
+    await page.goto("/dashboard/mcps", { waitUntil: "domcontentloaded" });
+
+    await expect(
+      page.getByText("You haven't registered any MCP servers yet."),
+    ).toBeVisible();
+    await expect
+      .poll(() => mcpApi.requestUrls)
+      .toEqual(
+        expect.arrayContaining([
+          "/api/v1/mcps?scope=own",
+          "/api/v1/mcps?scope=public",
+          "/api/mcp/list",
+        ]),
+      );
+    await expectNoPageDiagnostics(page, "dashboard MCPs persisted token gate");
   });
 });
