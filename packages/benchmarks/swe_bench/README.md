@@ -1,8 +1,8 @@
 # SWE-bench
 
 elizaOS's SWE-bench Lite harness. The canonical single-shot flow lives in
-`cli.py` (entry: `python -m benchmarks.swe_bench …`). See `RESEARCH.md`
-for design notes and historical results.
+`cli.py` (entry: `python -m benchmarks.swe_bench …`). Design notes and
+historical context live in this README.
 
 ## Head-to-head comparison: elizaOS vs opencode
 
