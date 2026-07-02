@@ -69,8 +69,6 @@ import {
   CONNECT_EVENT,
   dispatchAppEvent,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-  NETWORK_STATUS_CHANGE_EVENT,
-  type NetworkStatusChangeDetail,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
@@ -139,13 +137,21 @@ import {
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
-import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
+import {
+  buildAssistantLaunchHashRoute,
+  type DeepLinkNavigationIntent,
+  resolveDeepLinkNavigationIntent,
+} from "./deep-link-routing";
 import { runEmbedHandshake } from "./embed-bootstrap";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+import {
+  createMobileLifecycle,
+  type MobileLifecycle,
+} from "./mobile-lifecycle";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
@@ -348,7 +354,6 @@ let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
-let networkStatusListenerRegistered = false;
 let activeVisibilityHandler: (() => void) | null = null;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
@@ -1438,7 +1443,7 @@ async function initializePlatform(): Promise<void> {
     await initializeKeyboard();
     initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
-    void initializeNetworkListener();
+    void getMobileLifecycle().initializeNetworkListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
     void registerMobileBlockerBackends();
@@ -1602,28 +1607,30 @@ function initializeAppLifecycle(): void {
 }
 
 /**
- * Listen to {@link Network.addListener "networkStatusChange"} and bridge it
- * to {@link NETWORK_STATUS_CHANGE_EVENT} so renderer-side consumers (notably
- * the WebSocket reconnect scheduler in `client-base.ts`) can stop burning
- * backoff attempts during airplane mode.
- *
- * Idempotent: HMR or repeated `initializePlatform()` invocations return after
- * the first registration (each Capacitor listener fires its handler N times if
- * added N times).
+ * Live Android/Capacitor lifecycle helper. `main.tsx` keeps its own
+ * status-bar / keyboard / app-lifecycle wiring (the app-lifecycle path carries
+ * the hardware-back `minimizeApp` behavior the extracted helper predates), but
+ * the network listener is delegated here so the #10472 window `online`/`offline`
+ * fallback actually runs in the live entrypoint. Before this the fallback lived
+ * only in `mobile-lifecycle.ts` and had zero importers, so on Android — where
+ * the Capacitor `Network` plugin can be absent from the WebView bridge — the
+ * `networkStatusChange` listener never registered and NETWORK_STATUS_CHANGE_EVENT
+ * (consumed by the WebSocket reconnect scheduler) never fired on a connectivity
+ * change. Constructed once, lazily, so the factory's per-instance idempotency
+ * guard holds across repeated `initializePlatform()` calls.
  */
-async function initializeNetworkListener(): Promise<void> {
-  if (networkStatusListenerRegistered) return;
-  networkStatusListenerRegistered = true;
-  try {
-    const { Network } = await import("@capacitor/network");
-    await Network.addListener("networkStatusChange", (status) => {
-      const detail: NetworkStatusChangeDetail = { connected: status.connected };
-      dispatchAppEvent(NETWORK_STATUS_CHANGE_EVENT, detail);
+let mobileLifecycleInstance: MobileLifecycle | null = null;
+function getMobileLifecycle(): MobileLifecycle {
+  if (!mobileLifecycleInstance) {
+    mobileLifecycleInstance = createMobileLifecycle({
+      isNative,
+      isIOS,
+      isAndroid,
+      logPrefix: APP_LOG_PREFIX,
+      handleDeepLink,
     });
-  } catch (error) {
-    networkStatusListenerRegistered = false;
-    logNativePluginUnavailable("Network", error);
   }
+  return mobileLifecycleInstance;
 }
 
 // Universal/App-Link hosts whose `https://<host>/<path>` links route into the
@@ -1725,11 +1732,18 @@ function handleDeepLink(url: string): void {
     return;
   }
 
-  // eliza://settings/connectors/<provider> — open Settings → Connectors.
-  // The new Connectors section renders one inline expansion per connector;
-  // we no longer scroll/highlight a specific provider panel.
-  if (/^settings\/connectors\/[a-z0-9-]+$/i.test(path)) {
-    window.location.hash = "#connectors";
+  // Top-level-surface deep links (settings, wallet, browser, connectors, and
+  // the https://eliza.app/<path> universal links that map to them). Dispatched
+  // on the in-app `eliza:navigate:view` bus rather than written to
+  // `window.location.hash`: on the mobile/Capacitor entrypoint the app is not
+  // served over file: and is not an app-window, so the hash is never read for
+  // tab navigation (`getWindowNavigationPath` returns `location.pathname`) and
+  // the target tab never opened. (Chat-launch deep links below stay on the
+  // hash — the always-mounted ContinuousChatOverlay claims the launch payload
+  // from the hash directly.)
+  const navigationIntent = resolveDeepLinkNavigationIntent(path);
+  if (navigationIntent) {
+    dispatchDeepLinkNavigation(navigationIntent);
     return;
   }
 
@@ -1753,16 +1767,6 @@ function handleDeepLink(url: string): void {
       break;
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
-      break;
-    case "wallet":
-    case "inventory":
-      setHashRoute("wallet", parsed.searchParams);
-      break;
-    case "browser":
-      setHashRoute("browser", parsed.searchParams);
-      break;
-    case "settings":
-      window.location.hash = "#settings";
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -1853,6 +1857,21 @@ function getDeepLinkPath(parsed: URL): string {
 function setHashRoute(route: string, params: URLSearchParams): void {
   const query = params.toString();
   window.location.hash = query ? `#${route}?${query}` : `#${route}`;
+}
+
+/**
+ * Dispatch a top-level-surface deep link on the in-app `eliza:navigate:view`
+ * bus (consumed in packages/ui App.tsx: `viewPath` → `tabFromPath` → `setTab`,
+ * `subview` → Settings section). This is the platform-agnostic navigation path
+ * the rest of the app uses; a raw `window.location.hash` write does not open a
+ * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
+ */
+function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
+  window.dispatchEvent(
+    new CustomEvent<DeepLinkNavigationIntent>("eliza:navigate:view", {
+      detail: intent,
+    }),
+  );
 }
 
 async function initializeDesktopShell(): Promise<void> {
