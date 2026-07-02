@@ -12,8 +12,10 @@ import type {
   RecordLlmCallDetails,
 } from "@elizaos/core";
 import {
+  assertActiveTrajectoryForLlmCall,
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
+  logActiveTrajectoryLlmCall,
   logger,
   ModelType,
   normalizeSchemaForCerebras,
@@ -1087,7 +1089,6 @@ async function generateTextWithTransientRetry(
   maxRetries = 3
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   let attempt = 0;
-  // biome-ignore lint/suspicious/noExplicitAny: AI SDK's generateText overloads can't infer our NativeGenerateTextParams across the generic boundary.
   for (;;) {
     try {
       return (await generateText(
@@ -1333,19 +1334,103 @@ async function generateTextByModelType(
       generateParams
     );
     details.response = "";
-    const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
+    assertActiveTrajectoryForLlmCall({
+      actionType: details.actionType,
+      model: details.model,
+      modelType: details.modelType,
+      purpose: details.purpose,
+    });
+    const startedAt =
+      typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+    const responseChunks: string[] = [];
+    let capturedStreamError: unknown;
+    let companionStreamError: unknown;
+    let telemetryFinalized = false;
+    const result = await streamText({
+      ...generateParams,
+      onError: ({ error }: { error: unknown }) => {
+        capturedStreamError = error;
+      },
+    });
+    const textPromise = handledPromise(result.text);
+    const rawUsagePromise = handledPromise(result.usage);
+    const rawFinishReasonPromise = handledPromise(result.finishReason);
+    const rawToolCallsPromise = handledPromise(result.toolCalls);
+    const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
+    const finishReasonPromise = handledMappedPromise(
+      rawFinishReasonPromise,
+      (r) => r as string | undefined
+    );
+    const finalizeStreamingTelemetry = async () => {
+      if (telemetryFinalized) {
+        return;
+      }
+      telemetryFinalized = true;
+      const [usageResult, finishReasonResult, toolCallsResult] = await Promise.allSettled([
+        rawUsagePromise,
+        rawFinishReasonPromise,
+        rawToolCallsPromise,
+      ]);
+
+      details.response = responseChunks.join("");
+      if (usageResult.status === "fulfilled" && usageResult.value) {
+        applyUsageToDetails(details, usageResult.value);
+        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usageResult.value);
+      } else if (usageResult.status === "rejected") {
+        companionStreamError ??= usageResult.reason;
+      }
+      if (finishReasonResult.status === "fulfilled") {
+        details.finishReason = finishReasonResult.value as string | undefined;
+      } else {
+        companionStreamError ??= finishReasonResult.reason;
+      }
+      if (toolCallsResult.status === "fulfilled") {
+        details.toolCalls = toolCallsResult.value;
+      } else {
+        companionStreamError ??= toolCallsResult.reason;
+      }
+
+      const elapsed =
+        (typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now()) - startedAt;
+      logActiveTrajectoryLlmCall(runtime, {
+        ...details,
+        response: details.response,
+        latencyMs: Math.max(0, Math.round(elapsed)),
+      });
+    };
 
     return {
       textStream: (async function* textStreamWithCallback() {
-        for await (const chunk of result.textStream) {
-          params.onStreamChunk?.(chunk);
-          yield chunk;
+        let streamIterationError: unknown;
+        try {
+          for await (const chunk of result.textStream) {
+            responseChunks.push(chunk);
+            params.onStreamChunk?.(chunk);
+            yield chunk;
+          }
+        } catch (error) {
+          streamIterationError = error;
+        } finally {
+          await finalizeStreamingTelemetry();
+        }
+        if (streamIterationError) {
+          throw streamIterationError;
+        }
+        if (capturedStreamError) {
+          throw capturedStreamError;
+        }
+        if (companionStreamError) {
+          throw companionStreamError;
         }
       })(),
-      text: handledPromise(result.text),
-      ...(shouldReturnNativeResult ? { toolCalls: handledPromise(result.toolCalls) } : {}),
-      usage: handledMappedPromise(result.usage, convertUsage),
-      finishReason: handledMappedPromise(result.finishReason, (r) => r as string | undefined),
+      text: textPromise,
+      ...(shouldReturnNativeResult ? { toolCalls: rawToolCallsPromise } : {}),
+      usage: usagePromise,
+      finishReason: finishReasonPromise,
     };
   }
 

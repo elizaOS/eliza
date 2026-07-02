@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { EventType, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
@@ -76,12 +77,32 @@ vi.mock("../providers", () => ({
   }),
 }));
 
-function createRuntime() {
+interface CapturedLlmCall {
+  stepId: string;
+  actionType: string;
+  response?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  finishReason?: string;
+  toolCalls?: unknown;
+}
+
+function createRuntime(options?: { trajectoryCalls?: CapturedLlmCall[] }) {
+  const trajectoryLogger = options?.trajectoryCalls
+    ? {
+        isEnabled: () => true,
+        logLlmCall: (params: CapturedLlmCall) => {
+          options.trajectoryCalls?.push(params);
+        },
+      }
+    : null;
   const runtime = {
     character: { name: "Ada", system: "system prompt" },
     emitEvent: vi.fn(),
-    getService: vi.fn(() => null),
-    getServicesByType: vi.fn(() => []),
+    getService: vi.fn((name: string) => (name === "trajectories" ? trajectoryLogger : null)),
+    getServicesByType: vi.fn((type: string) =>
+      type === "trajectories" && trajectoryLogger ? [trajectoryLogger] : []
+    ),
     getSetting: vi.fn((key: string) => {
       const settings: Record<string, string> = {
         OPENAI_API_KEY: "test-key",
@@ -299,6 +320,132 @@ describe("OpenAI native text plumbing", () => {
     expect(chunks).toEqual(["hel", "lo"]);
     expect(onStreamChunk).toHaveBeenNthCalledWith(1, "hel");
     expect(onStreamChunk).toHaveBeenNthCalledWith(2, "lo");
+  });
+
+  it("emits usage and records the completed live-stream response after consumption", async () => {
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "hel";
+        yield "lo";
+      })(),
+      text: Promise.resolve("hello"),
+      toolCalls: Promise.resolve(toolCalls),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 2, outputTokens: 1, cachedInputTokens: 1 }),
+    });
+
+    const runtime = createRuntime({ trajectoryCalls });
+    const { handleTextSmall } = await import("../models/text");
+    await runWithTrajectoryContext({ trajectoryStepId: "step-openai-stream" }, async () => {
+      const stream = (await handleTextSmall(runtime, {
+        prompt: "stream",
+        stream: true,
+      } as never)) as { textStream: AsyncIterable<string> };
+
+      const chunks: string[] = [];
+      for await (const chunk of stream.textStream) {
+        chunks.push(chunk);
+      }
+      expect(chunks.join("")).toBe("hello");
+    });
+
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MODEL_USED,
+      expect.objectContaining({
+        source: "openai",
+        provider: "openai",
+        type: ModelType.TEXT_SMALL,
+        prompt: "stream",
+        tokens: { prompt: 2, completion: 1, total: 3, cached: 1 },
+      })
+    );
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({
+      stepId: "step-openai-stream",
+      actionType: "ai.streamText",
+      response: "hello",
+      promptTokens: 2,
+      completionTokens: 1,
+      finishReason: "stop",
+      toolCalls,
+    });
+  });
+
+  it("finalizes live-stream telemetry when the runtime breaks the stream loop early", async () => {
+    const trajectoryCalls: CapturedLlmCall[] = [];
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "first";
+        yield "second";
+      })(),
+      text: Promise.resolve("firstsecond"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 5, outputTokens: 2 }),
+    });
+
+    const runtime = createRuntime({ trajectoryCalls });
+    const { handleTextSmall } = await import("../models/text");
+    await runWithTrajectoryContext({ trajectoryStepId: "step-openai-break" }, async () => {
+      const stream = (await handleTextSmall(runtime, {
+        prompt: "break stream",
+        stream: true,
+      } as never)) as { textStream: AsyncIterable<string> };
+
+      for await (const chunk of stream.textStream) {
+        expect(chunk).toBe("first");
+        break;
+      }
+    });
+
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MODEL_USED,
+      expect.objectContaining({
+        type: ModelType.TEXT_SMALL,
+        prompt: "break stream",
+        tokens: { prompt: 5, completion: 2, total: 7 },
+      })
+    );
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({
+      stepId: "step-openai-break",
+      actionType: "ai.streamText",
+      response: "first",
+      promptTokens: 5,
+      completionTokens: 2,
+      finishReason: "stop",
+    });
+  });
+
+  it("surfaces live-stream provider errors reported through the AI SDK onError hook", async () => {
+    const providerError = new Error("stream provider failed");
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        yield "partial";
+      })(),
+      text: Promise.resolve("partial"),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "stream error",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+    const call = aiMocks.streamText.mock.calls[0][0] as {
+      onError?: (event: { error: unknown }) => void;
+    };
+    call.onError?.({ error: providerError });
+
+    await expect(async () => {
+      for await (const _chunk of stream.textStream) {
+        // consume the stream so the deferred onError hook is checked
+      }
+    }).rejects.toThrow("stream provider failed");
   });
 
   it("maps string responseFormat json_object into the AI SDK responseFormat", async () => {
