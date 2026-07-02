@@ -21,7 +21,7 @@ import { dispatchSecretsManagerOpen } from "./useSecretsManagerModal";
  *      the same toggle dispatch.
  *
  * Mount this hook ONCE in the top-level App component alongside the
- * `<SecretsManagerModalRoot />` mount.
+ * lazy `SecretsManagerModalMount` (App.tsx).
  */
 export function useSecretsManagerShortcut(): void {
   // Renderer-side keydown

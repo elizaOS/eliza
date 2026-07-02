@@ -1,13 +1,4 @@
-import { ConversationsSidebar } from "@elizaos/ui/components/conversations/ConversationsSidebar";
-import { ChatView } from "@elizaos/ui/components/pages/ChatView";
-import { ConfigPageView } from "@elizaos/ui/components/pages/ConfigPageView";
-import { CloudDashboard } from "@elizaos/ui/components/pages/ElizaCloudDashboard";
-import { HeartbeatsView } from "@elizaos/ui/components/pages/HeartbeatsView";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
-import { ReleaseCenterView } from "@elizaos/ui/components/pages/ReleaseCenterView";
-import { PermissionsSection } from "@elizaos/ui/components/settings/PermissionsSection";
-import { ProviderSwitcher } from "@elizaos/ui/components/settings/ProviderSwitcher";
-import { VoiceConfigView } from "@elizaos/ui/components/settings/VoiceConfigView";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
@@ -55,6 +46,49 @@ function lazyNamedView<
 const BrowserWorkspaceView = lazyNamedView(
   () => import("@elizaos/ui/components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
+);
+
+// Detached-window views (#11351): this component is statically imported by the
+// eager entry (main.tsx renders it for `windowShellRoute` detached windows), so
+// any view it imports statically rides the first-paint graph of EVERY window,
+// including the main one. These views' only other importers are lazy (the
+// settings-section registry) or tree-shaken barrels, so a lazy edge here really
+// does move them off the eager path.
+const ConversationsSidebar = lazyNamedView(
+  () => import("@elizaos/ui/components/conversations/ConversationsSidebar"),
+  "ConversationsSidebar",
+);
+const ChatView = lazyNamedView(
+  () => import("@elizaos/ui/components/pages/ChatView"),
+  "ChatView",
+);
+const ConfigPageView = lazyNamedView(
+  () => import("@elizaos/ui/components/pages/ConfigPageView"),
+  "ConfigPageView",
+);
+const CloudDashboard = lazyNamedView(
+  () => import("@elizaos/ui/components/pages/ElizaCloudDashboard"),
+  "CloudDashboard",
+);
+const HeartbeatsView = lazyNamedView(
+  () => import("@elizaos/ui/components/pages/HeartbeatsView"),
+  "HeartbeatsView",
+);
+const ReleaseCenterView = lazyNamedView(
+  () => import("@elizaos/ui/components/pages/ReleaseCenterView"),
+  "ReleaseCenterView",
+);
+const PermissionsSection = lazyNamedView(
+  () => import("@elizaos/ui/components/settings/PermissionsSection"),
+  "PermissionsSection",
+);
+const ProviderSwitcher = lazyNamedView(
+  () => import("@elizaos/ui/components/settings/ProviderSwitcher"),
+  "ProviderSwitcher",
+);
+const VoiceConfigView = lazyNamedView(
+  () => import("@elizaos/ui/components/settings/VoiceConfigView"),
+  "VoiceConfigView",
 );
 
 // Static import: PluginsPageView is statically imported by App.tsx and
@@ -174,7 +208,11 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
         </DetachedLazyBoundary>
       );
     case "chat":
-      return <DetachedChatView />;
+      return (
+        <DetachedLazyBoundary>
+          <DetachedChatView />
+        </DetachedLazyBoundary>
+      );
     case "plugins":
       return (
         <DetachedWorkspaceView chatScope="page-plugins">
@@ -186,7 +224,9 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
     case "triggers":
       return (
         <DetachedWorkspaceView chatScope="page-automations">
-          <HeartbeatsView />
+          <DetachedLazyBoundary>
+            <HeartbeatsView />
+          </DetachedLazyBoundary>
         </DetachedWorkspaceView>
       );
     case "settings":

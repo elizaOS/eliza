@@ -48,7 +48,6 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
-import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -84,6 +83,7 @@ import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runt
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
+import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
   APPS_ENABLED,
@@ -1587,6 +1587,45 @@ function ShellContent(props: ShellContentProps): ReactNode {
   return <RoutedShellContent {...props} />;
 }
 
+/**
+ * Vault modal, loaded on first open (#11351). `SecretsManagerSection` pulls the
+ * whole vault surface (tabs, tables, routing editor) plus its data layer; a
+ * static import here kept all of it on the eager boot graph even though the
+ * modal only ever renders after an explicit open dispatch (launcher row, ⌘⌥⌃V
+ * chord, menu accelerator). The open/close state lives in the lightweight
+ * `useSecretsManagerModal` hook module, so this mount can subscribe eagerly
+ * (never missing an open event) while the modal body stays on a lazy chunk
+ * until the first open. After that it stays mounted so close animations and
+ * in-modal state behave exactly as before.
+ */
+const VaultModal = lazy(() =>
+  import("./components/settings/SecretsManagerSection").then((m) => ({
+    default: m.VaultModal,
+  })),
+);
+
+function SecretsManagerModalMount(): ReactNode {
+  const { isOpen, initialTab, focusKey, focusProfileId, setOpen, clearFocus } =
+    useSecretsManagerModalState();
+  const [hasOpened, setHasOpened] = useState(false);
+  useEffect(() => {
+    if (isOpen) setHasOpened(true);
+  }, [isOpen]);
+  if (!hasOpened) return null;
+  return (
+    <Suspense fallback={null}>
+      <VaultModal
+        open={isOpen}
+        onOpenChange={setOpen}
+        initialTab={initialTab}
+        initialFocusKey={focusKey}
+        initialFocusProfileId={focusProfileId}
+        onConsumeInitial={clearFocus}
+      />
+    </Suspense>
+  );
+}
+
 function ShellFoundationMount() {
   const controller = useShellControllerContext();
   if (!controller) return null;
@@ -2501,7 +2540,7 @@ export function App() {
           onSave={contextMenu.confirmSaveCommand}
           onClose={contextMenu.closeSaveCommandModal}
         />
-        <SecretsManagerModalRoot />
+        <SecretsManagerModalMount />
         <CustomActionEditor
           open={customActionsEditorOpen}
           action={editingAction}

@@ -5,7 +5,8 @@ refresh; ratchet `budgets.json` down as these improve. All sizes are
 **brotli**-compressed bytes.
 
 Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below);
-**re-baselined 2026-07-02** for the #11350 CI gate.
+**re-baselined 2026-07-02** for the #11350 CI gate;
+**ratcheted 2026-07-02** by the #11351 residual lazy-loads (see below).
 
 ## CURRENT CI GATE BASELINE (2026-07-02) — clean `build:web`
 
@@ -31,6 +32,30 @@ future regressions are blocked; #11471 moved 122.6 KB off the eager path and
 the gate preserves that ratchet. Follow-up optimization should split/lazy-load
 remaining eager vendors and ratchet `budgets.json` back down.
 
+### #11351 residual lazy-loads (2026-07-02) — measured ratchet
+
+The #11471 review found two static eager paths that partially defeated its
+lazy split: `DetachedShellRoot` (statically imported by the eager entry for
+detached windows) pulled nine views (ProviderSwitcher, PermissionsSection,
+ReleaseCenterView, ConfigPageView, VoiceConfigView, CloudDashboard,
+HeartbeatsView, ChatView, ConversationsSidebar) into every window's
+first-paint graph, and `App.tsx` statically imported the whole vault surface
+via `SecretsManagerModalRoot`. Both are now lazy (the vault modal loads on
+first open; its open/close event subscription stays eager so no dispatch is
+missed).
+
+Measured on this branch's rebase base vs the change (clean `build:web`, same
+machine, macOS arm64 — TBD-REMEASURE):
+
+| Metric | Before (develop base) | After (#11351 residuals) | Gate budget | Status |
+| --- | --- | --- | --- | --- |
+| eager (first-paint) brotli | TBD | TBD | 3330.0 KB | TBD |
+| initial entry brotli | TBD | TBD | 3260.0 KB | TBD |
+
+Budgets ratcheted down by the realized saving:
+`eagerGraphBrotliBytes` 3,400,000 → **3,330,000**, `initialEntryBrotliBytes`
+3,350,000 → **3,260,000**.
+
 ## CORRECTIONS (2026-06-02) — the original numbers below were wrong
 
 Two of the original baseline numbers were measurement artifacts, not real:
@@ -46,7 +71,7 @@ Two of the original baseline numbers were measurement artifacts, not real:
    Fixing the readiness gate (loadperf W5.0) is a prerequisite for trusting boot
    deltas. (research/03-agent-boot-plugins.md)
 
-## Bundle (`bundle-kpi.mjs`) — CORRECTED, clean `build:web`, measured 2026-06-02
+## Bundle (`bundle-kpi.mjs`) — SUPERSEDED 2026-07-02 (kept for the record), measured 2026-06-02
 
 | Metric | Value | Budget | Status |
 | --- | --- | --- | --- |
