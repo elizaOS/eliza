@@ -187,6 +187,42 @@ describe("programmable GLSL shader plan (#10694)", () => {
 		});
 	});
 
+	it("a resolvable color beats a planner-stuffed preset when the text never asks for a shader (#10694 run-3 finding)", () => {
+		// Live trajectory: "change the app background to teal" arrived as
+		// {op:"set", color:"teal", preset:"aurora"} and the old explicit-preset
+		// precedence turned a plain color request into the aurora shader.
+		expect(
+			inferBackgroundPlan("change the app background to teal", undefined, {
+				op: "set",
+				color: "teal",
+				preset: "aurora",
+			}),
+		).toMatchObject({ op: "set", mode: "shader", color: "#0891b2" });
+	});
+
+	it("an explicit preset still wins when the text asks for a shader — both directions", () => {
+		// Shader noun in the text → the preset is honored even with a color.
+		expect(
+			inferBackgroundPlan("make the background an animated teal", undefined, {
+				preset: "plasma",
+				color: "teal",
+			}),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "plasma" });
+		// Preset vocabulary in the text → same.
+		expect(
+			inferBackgroundPlan("give me a lava background", undefined, {
+				preset: "lava",
+				color: "red",
+			}),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "lava" });
+		// No resolvable color at all → the explicit preset applies as before.
+		expect(
+			inferBackgroundPlan("change my background", undefined, {
+				preset: "waves",
+			}),
+		).toMatchObject({ op: "set", mode: "glsl", presetId: "waves" });
+	});
+
 	it("maps a relative tweak to a glsl-tweak plan (uniform patch)", () => {
 		expect(
 			inferBackgroundPlan("make the background shader slower", undefined),

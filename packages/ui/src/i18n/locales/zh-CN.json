@@ -7396,6 +7396,7 @@
   "desktop.tray.openPlugins": "打开插件",
   "desktop.tray.openDesktopWorkspace": "打开桌面工作区",
   "desktop.tray.openVoiceControls": "打开语音控制",
+  "desktop.tray.notifications": "通知",
   "desktop.tray.toggleLifecycle": "启动/停止智能体",
   "desktop.tray.restartAgent": "重启智能体",
   "desktop.tray.sendTestNotification": "发送测试通知",

@@ -7396,6 +7396,7 @@
   "desktop.tray.openPlugins": "Buksan ang Mga Plugin",
   "desktop.tray.openDesktopWorkspace": "Buksan ang Desktop Workspace",
   "desktop.tray.openVoiceControls": "Buksan ang Mga Kontrol sa Boses",
+  "desktop.tray.notifications": "Mga Notipikasyon",
   "desktop.tray.toggleLifecycle": "Simulan/Itigil ang Agent",
   "desktop.tray.restartAgent": "I-restart ang Agent",
   "desktop.tray.sendTestNotification": "Magpadala ng Test Notification",

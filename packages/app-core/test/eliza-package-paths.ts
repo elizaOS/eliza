@@ -35,6 +35,7 @@ function getRepoLocalWorkspaceRoot(
       "eliza/packages/shared",
       "../eliza/packages/shared",
     ],
+    "@elizaos/ui": ["packages/ui", "eliza/packages/ui", "../eliza/packages/ui"],
   };
 
   for (const relativeRoot of relativeRoots[packageName] ?? []) {

@@ -135,7 +135,10 @@ export async function executePlannedToolCall(
 	);
 	const validation = validateToolArgs(
 		action,
-		dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+		dropEmptyOptionalArgs(
+			action,
+			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+		),
 	);
 	if (!validation.valid) {
 		return emitToolResult(
@@ -538,6 +541,31 @@ export function expandEnumShortForm(
 	}
 
 	return args;
+}
+
+/**
+ * Treat an empty-string value on a declared OPTIONAL parameter as omitted.
+ *
+ * Strict tool schemas force the model to emit every key, so `""` is its only
+ * way to say "unset" for a parameter it doesn't want (observed live in the
+ * #10694 trajectories: the planner emitted `BACKGROUND {preset: ""}` on a
+ * color-only turn and enum validation rejected the whole call). Dropping the
+ * key before validation restores the intended "omitted" semantics. Required
+ * parameters are left untouched so an empty required value still fails loudly.
+ */
+export function dropEmptyOptionalArgs(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	let filtered: Record<string, unknown> | undefined;
+	for (const parameter of action.parameters ?? []) {
+		if (parameter.required === true) continue;
+		if (args[parameter.name] === "") {
+			filtered ??= { ...args };
+			delete filtered[parameter.name];
+		}
+	}
+	return filtered ?? args;
 }
 
 const PLANNER_WRAPPER_ONLY_ARG_KEYS = new Set(["subaction", "thought"]);
