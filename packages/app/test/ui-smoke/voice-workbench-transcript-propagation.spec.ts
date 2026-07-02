@@ -1,16 +1,16 @@
 /**
- * Voice Workbench — transcription-mode scenario class (#8785). Dictation: every
- * turn is captured verbatim and the agent acknowledges (responds) each segment,
- * so transcript WER is the load-bearing assertion.
+ * Voice Workbench — transcript-propagation browser wiring (#8785). The ASR mock
+ * returns deterministic text for each turn, so this lane proves transcript
+ * propagation through the player/report/DOM rather than recognizer accuracy.
  *
- *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-transcription-mode.spec.ts
+ *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-transcript-propagation.spec.ts
  */
 import { runWorkbenchScenarioSpec } from "./voice-workbench-cases";
 
 runWorkbenchScenarioSpec({
-  id: "transcription-dictation",
-  description: "Verbatim dictation segments; each acknowledged.",
-  classes: ["transcription-mode"],
+  id: "transcript-propagation-dictation",
+  description: "Mocked transcript segments propagate into the report.",
+  classes: ["transcript-propagation"],
   participants: [{ label: "owner", isOwner: true }],
   turns: [
     {

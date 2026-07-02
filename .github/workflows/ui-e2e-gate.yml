@@ -1,4 +1,4 @@
-name: UI Chat Gesture E2E
+name: UI Fixture E2E
 
 # #9954/#10722: the chat-sheet drag-detent, TopicGroup gesture, and home-screen
 # e2e runners (src/components/shell/__e2e__/run-*.mjs) esbuild-bundle a fixture
@@ -18,20 +18,28 @@ on:
     paths:
       - "packages/ui/src/components/shell/**"
       - "packages/ui/src/components/pages/**"
+      - "packages/ui/src/components/chat/widgets/**"
+      - "packages/ui/src/components/views/**"
+      - "packages/ui/src/agent-surface/**"
       - "packages/ui/src/state/**"
       - "packages/ui/src/voice/**"
       - "packages/ui/src/testing/**"
       - "packages/ui/src/hooks/**"
+      - "packages/ui/package.json"
       - ".github/workflows/ui-e2e-gate.yml"
   push:
     branches: [main, develop]
     paths:
       - "packages/ui/src/components/shell/**"
       - "packages/ui/src/components/pages/**"
+      - "packages/ui/src/components/chat/widgets/**"
+      - "packages/ui/src/components/views/**"
+      - "packages/ui/src/agent-surface/**"
       - "packages/ui/src/state/**"
       - "packages/ui/src/voice/**"
       - "packages/ui/src/testing/**"
       - "packages/ui/src/hooks/**"
+      - "packages/ui/package.json"
 
 concurrency:
   group: ui-e2e-gate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -45,9 +53,9 @@ env:
   NODE_VERSION: "24.15.0"
 
 jobs:
-  chat-gesture-e2e:
+  ui-fixture-e2e:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -67,12 +75,44 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
+
+      # AgentSurface capability bridge: list/focus/fill/click over synthetic and
+      # real plugin-hosted controls.
+      - name: Agent surface e2e
+        run: bun run --cwd packages/ui test:agent-surface-e2e
+
+      # First-time-use onboarding widget states and retired-state persistence.
+      - name: FTU home widget e2e
+        run: bun run --cwd packages/ui test:ftu-home-e2e
+
+      # Coding account + task-room roster widget visual states.
+      - name: Orchestrator accounts widget e2e
+        run: bun run --cwd packages/ui test:orchestrator-accounts-e2e
+
+      # Background view apply/undo/reset/export flow.
+      - name: Background view e2e
+        run: bun run --cwd packages/ui test:background-e2e
+
+      # Connector setup-panel config fields and screenshots.
+      - name: Connectors view e2e
+        run: bun run --cwd packages/ui test:connectors-e2e
 
       # Chat-sheet drag detents (open/peek/close pull-sheet state machine).
       - name: Chat sheet drag-gesture e2e
         run: bun run --cwd packages/ui test:chat-sheet-e2e
+
+      # Mobile bottom-bar affordances and overlays.
+      - name: Bottom bar e2e
+        run: bun run --cwd packages/ui test:bottombar-e2e
+
+      # Ambient /chat background screenshot pass.
+      - name: Chat ambient e2e
+        run: bun run --cwd packages/ui test:chat-ambient-e2e
 
       # TopicGroup collapse/expand (#8928) under REAL input (#10722): CDP touch
       # taps + the touch-action pan-y contract, and mouse flicks for the
@@ -86,6 +126,10 @@ jobs:
       - name: Home-screen real-touch e2e
         run: bun run --cwd packages/ui test:home-screen-e2e
 
+      # Fused wake phrase + shell integration fixture.
+      - name: Fused wake integration e2e
+        run: bun run --cwd packages/ui test:fused-wake-integration-e2e
+
       # Launcher grid (#10722): genuine CDP long-press pointer drag-to-reorder
       # (section 2b) → onReorder → persisted LAUNCHER_STORAGE_KEY order +
       # reorder telemetry + no duplicate ids. The jsdom Launcher.gestures suite
@@ -93,15 +137,27 @@ jobs:
       - name: Launcher real-drag reorder e2e
         run: bun run --cwd packages/ui test:launcher-e2e
 
-      - name: Upload chat gesture e2e artifacts
+      # App-shell view lifecycle transitions, errors, teardown, and telemetry.
+      - name: View lifecycle e2e
+        run: bun run --cwd packages/ui test:view-lifecycle-e2e
+
+      - name: Upload UI fixture e2e artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chat-gesture-e2e-output
+          name: ui-fixture-e2e-output
           path: |
+            packages/ui/src/agent-surface/__e2e__/output
+            packages/ui/src/components/chat/widgets/__e2e__/output
+            packages/ui/src/components/chat/widgets/__e2e__/output-ftu
+            packages/ui/src/components/pages/__e2e__/output-background
+            packages/ui/src/components/pages/__e2e__/output-connectors
+            packages/ui/src/components/views/__e2e__/output-view-lifecycle
             packages/ui/src/components/shell/__e2e__/output
             packages/ui/src/components/shell/__e2e__/output-chatux
             packages/ui/src/components/shell/__e2e__/output-home
+            packages/ui/src/components/shell/__e2e__/output-bottombar
+            packages/ui/src/components/shell/__e2e__/output-fused-wake-integration
             packages/ui/src/components/pages/__e2e__/output-launcher
           retention-days: 14
           if-no-files-found: ignore

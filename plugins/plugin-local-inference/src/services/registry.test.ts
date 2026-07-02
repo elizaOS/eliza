@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { registryPath } from "./paths";
 import {
 	listInstalledModels,
 	removeElizaModel,
@@ -45,7 +46,102 @@ function installedModel(
 	};
 }
 
+function readRawRegistry(): { models?: InstalledModel[] } {
+	return JSON.parse(fs.readFileSync(registryPath(), "utf8")) as {
+		models?: InstalledModel[];
+	};
+}
+
 describe("local inference registry removal", () => {
+	it("persists Eliza-owned artifact paths relative to the local-inference root", async () => {
+		const stateDir = useTempStateDir();
+		const bundleRoot = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+		);
+		const modelPath = path.join(bundleRoot, "text", "model.gguf");
+		const manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+		fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+		fs.writeFileSync(modelPath, "fake-model");
+		fs.writeFileSync(manifestPath, "{}");
+
+		await upsertElizaModel(
+			installedModel("eliza-1-2b", modelPath, { bundleRoot, manifestPath }),
+		);
+
+		const rawModel = readRawRegistry().models?.[0];
+		expect(rawModel?.path).toBe("models/eliza-1-2b/text/model.gguf");
+		expect(rawModel?.bundleRoot).toBe("models/eliza-1-2b");
+		expect(rawModel?.manifestPath).toBe(
+			"models/eliza-1-2b/eliza-1.manifest.json",
+		);
+
+		const listed = await listInstalledModels();
+		expect(listed[0]?.path).toBe(modelPath);
+		expect(listed[0]?.bundleRoot).toBe(bundleRoot);
+		expect(listed[0]?.manifestPath).toBe(manifestPath);
+	});
+
+	it("reanchors legacy absolute registry paths when the state root changes", async () => {
+		const currentStateDir = useTempStateDir();
+		const previousStateDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-local-inference-old-state-"),
+		);
+		tempDirs.push(previousStateDir);
+
+		const currentBundleRoot = path.join(
+			currentStateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+		);
+		const currentModelPath = path.join(currentBundleRoot, "text", "model.gguf");
+		const currentManifestPath = path.join(
+			currentBundleRoot,
+			"eliza-1.manifest.json",
+		);
+		fs.mkdirSync(path.dirname(currentModelPath), { recursive: true });
+		fs.writeFileSync(currentModelPath, "fake-model");
+		fs.writeFileSync(currentManifestPath, "{}");
+
+		const legacyBundleRoot = path.join(
+			previousStateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+		);
+		const legacyModelPath = path.join(legacyBundleRoot, "text", "model.gguf");
+		const legacyManifestPath = path.join(
+			legacyBundleRoot,
+			"eliza-1.manifest.json",
+		);
+		fs.mkdirSync(path.dirname(registryPath()), { recursive: true });
+		fs.writeFileSync(
+			registryPath(),
+			JSON.stringify(
+				{
+					version: 1,
+					models: [
+						installedModel("eliza-1-2b", legacyModelPath, {
+							bundleRoot: legacyBundleRoot,
+							manifestPath: legacyManifestPath,
+						}),
+					],
+				},
+				null,
+				2,
+			),
+		);
+
+		const listed = await listInstalledModels();
+		expect(listed[0]?.path).toBe(currentModelPath);
+		expect(listed[0]?.bundleRoot).toBe(currentBundleRoot);
+		expect(listed[0]?.manifestPath).toBe(currentManifestPath);
+		expect(fs.existsSync(listed[0]?.path ?? "")).toBe(true);
+	});
+
 	it("removes an Eliza-owned bundle directory and clears the registry entry", async () => {
 		const stateDir = useTempStateDir();
 		const bundleRoot = path.join(

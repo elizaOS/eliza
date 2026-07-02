@@ -1,17 +1,17 @@
 /**
- * Voice Workbench — voice-recognition scenario class (#8785). Each turn carries
- * an enrolled voice that should resolve to an elizaOS entity. The owner's voice
- * is recognized; the player round-trips each turn and records the expected
- * speaker label for the benchmark layer's voice→entity match rate.
+ * Voice Workbench — speaker-label metadata browser wiring (#8785). Each turn
+ * carries an expected speaker label; the browser lane verifies that label is
+ * reported as metadata while predicted labels stay unavailable without a real
+ * attribution/recognition model.
  *
- *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-voice-recognition.spec.ts
+ *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-workbench-speaker-label-metadata.spec.ts
  */
 import { runWorkbenchScenarioSpec } from "./voice-workbench-cases";
 
 runWorkbenchScenarioSpec({
-  id: "voice-recognition-owner",
-  description: "Owner voice resolves to its entity across turns.",
-  classes: ["voice-recognition"],
+  id: "speaker-label-metadata-owner",
+  description: "Expected speaker labels are copied into the per-turn report.",
+  classes: ["speaker-label-metadata"],
   participants: [
     { label: "owner", entityId: "entity-owner", isOwner: true },
     { label: "guest", entityId: "entity-guest" },

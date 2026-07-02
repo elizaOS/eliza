@@ -199,6 +199,8 @@ describeIfPosix("shellAction", () => {
     expect(typeof result.text).toBe("string");
     expect(result.text).toContain("hello");
     expect(result.text).toContain("[exit 0]");
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.command).toBe("echo hello");
   });
 
   it("marks empty stdout and stderr explicitly for successful commands", async () => {
@@ -1084,6 +1086,7 @@ describeIfPosix("shellAction", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("command_failed");
     const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.command).toBe("exit 7");
     expect(data?.exit_code).toBe(7);
   });
 

@@ -26,6 +26,10 @@ import {
 	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 } from "./provider.js";
 import { classifyDeviceTier } from "./services/device-tier.js";
+import {
+	resolveLocalInferenceStoredPath,
+	toLocalInferenceStoredPath,
+} from "./services/paths.js";
 
 // Lazy service handle. Importing `./services/service.js` eagerly evaluates the
 // full engine/voice/catalog/downloader graph (~800ms) — far too heavy for the
@@ -479,9 +483,13 @@ async function readRegistry(): Promise<InstalledModel[]> {
 	const installed: InstalledModel[] = [];
 	for (const model of models) {
 		if (!model.id || !model.path) continue;
+		const modelPath = resolveLocalInferenceStoredPath(model.path);
+		if (!modelPath) continue;
 		try {
-			const stat = await fsp.stat(model.path);
-			if (stat.isFile()) installed.push({ ...model, sizeBytes: stat.size });
+			const stat = await fsp.stat(modelPath);
+			if (stat.isFile()) {
+				installed.push({ ...model, path: modelPath, sizeBytes: stat.size });
+			}
 		} catch {
 			// Ignore stale registry entries.
 		}
@@ -490,7 +498,18 @@ async function readRegistry(): Promise<InstalledModel[]> {
 }
 
 async function writeRegistry(models: InstalledModel[]): Promise<void> {
-	await writeJsonFile(registryPath(), { version: 1, models });
+	await writeJsonFile(registryPath(), {
+		version: 1,
+		models: models.map((model) => {
+			const storedPath = toLocalInferenceStoredPath(model.path);
+			if (!storedPath) {
+				throw new Error(
+					"[local-inference] installed model path must live under the local-inference root",
+				);
+			}
+			return { ...model, path: storedPath };
+		}),
+	});
 }
 
 async function upsertInstalledModel(model: InstalledModel): Promise<void> {

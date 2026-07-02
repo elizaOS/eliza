@@ -74,18 +74,24 @@ def _load_trajectories(
 ) -> dict[str, object]:
     """Resolve canonical trajectory files for one ``(run_group_id, benchmark, task_id)``.
 
-    ``task_id`` doubles as the ``run_id`` segment in the on-disk path
+    ``task_id`` doubles as the selected ``run_id`` segment in the on-disk path
     — the trajectory normalizer hook passes the run id through as the
     task identifier. The endpoint scans the run group directory for
-    every harness that has a canonical JSONL, plus the latest
-    ``random_v1`` baseline for the same benchmark (which has its own
-    run group), and returns each as a list of canonical entries.
+    every harness that has a canonical JSONL for the same benchmark
+    (including ``smithers``), plus the latest ``random_v1`` baseline
+    for the same benchmark (which has its own run group), and returns
+    each as a list of canonical entries. When more than one trajectory
+    exists for the same harness, an exact ``task_id`` match wins.
     """
     benchmark_root = workspace_root / "benchmarks" / "benchmark_results"
     run_group_root = benchmark_root / run_group_id
 
-    by_harness: dict[str, list[dict[str, object]]] = {}
+    candidates_by_harness: dict[
+        str,
+        list[tuple[int, float, Path, list[dict[str, object]]]],
+    ] = {}
     paths: dict[str, str] = {}
+    task_ids: dict[str, list[str]] = {}
 
     if run_group_root.exists():
         for canonical_path in run_group_root.rglob(CANONICAL_TRAJECTORY_FILENAME):
@@ -95,18 +101,44 @@ def _load_trajectories(
                 continue
             if not entries:
                 continue
-            # Match the requested benchmark + task_id (== run_id).
-            matched = [
+            # Match the requested benchmark and keep sibling harness runs in the
+            # same run group. Real orchestrator run ids are harness-specific, so
+            # the selected task_id identifies the request while the benchmark id
+            # is what lets us compare eliza/openclaw/hermes/smithers side by side.
+            benchmark_entries = [
                 e for e in entries
-                if e.get("benchmark_id") == benchmark_id and e.get("task_id") == task_id
+                if e.get("benchmark_id") == benchmark_id
             ]
-            if not matched:
+            if not benchmark_entries:
                 continue
+            exact = [e for e in benchmark_entries if e.get("task_id") == task_id]
+            matched = exact or benchmark_entries
             agent_id = str(matched[0].get("agent_id") or "")
             if not agent_id:
                 continue
-            by_harness[agent_id] = matched
-            paths[agent_id] = str(canonical_path)
+            try:
+                mtime = canonical_path.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            candidates_by_harness.setdefault(agent_id, []).append(
+                (0 if exact else 1, -mtime, canonical_path, matched)
+            )
+
+    by_harness: dict[str, list[dict[str, object]]] = {}
+    for agent_id, candidates in candidates_by_harness.items():
+        _rank, _mtime, canonical_path, matched = min(
+            candidates,
+            key=lambda item: (item[0], item[1], str(item[2])),
+        )
+        by_harness[agent_id] = matched
+        paths[agent_id] = str(canonical_path)
+        task_ids[agent_id] = sorted(
+            {
+                str(entry.get("task_id"))
+                for entry in matched
+                if entry.get("task_id") is not None
+            }
+        )
 
     # Augment with the latest random_v1 baseline for the benchmark
     # (independent of run_group_id, since baselines are typically
@@ -117,6 +149,13 @@ def _load_trajectories(
             random_path, random_entries = latest_random
             by_harness["random_v1"] = random_entries
             paths["random_v1"] = str(random_path)
+            task_ids["random_v1"] = sorted(
+                {
+                    str(entry.get("task_id"))
+                    for entry in random_entries
+                    if entry.get("task_id") is not None
+                }
+            )
 
     return {
         "run_group_id": run_group_id,
@@ -124,6 +163,7 @@ def _load_trajectories(
         "task_id": task_id,
         "harnesses": by_harness,
         "paths": paths,
+        "task_ids": task_ids,
     }
 
 

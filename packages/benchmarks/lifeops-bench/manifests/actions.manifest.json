@@ -209,6 +209,23 @@
             "durationMinutes": {
               "type": "number",
               "description": "Block duration minutes. Omit/null = indefinite until manual removal."
+            },
+            "exceptions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "mode": {
+              "type": "string"
+            },
+            "policy": {
+              "type": "string"
+            },
+            "schedule": {
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "additionalProperties": false
@@ -322,6 +339,9 @@
             "durationMinutes": {
               "type": "number",
               "description": "Block duration minutes. Omit/null = indefinite until manual removal."
+            },
+            "includeScheduled": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -548,6 +568,15 @@
             "durationMinutes": {
               "type": "number",
               "description": "Block duration minutes. Omit/null = indefinite until manual removal."
+            },
+            "confirmationRequired": {
+              "type": "boolean"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "noBypass": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -661,6 +690,9 @@
             "durationMinutes": {
               "type": "number",
               "description": "Block duration minutes. Omit/null = indefinite until manual removal."
+            },
+            "scope": {
+              "type": "string"
             }
           },
           "additionalProperties": false
@@ -838,27 +870,48 @@
               "type": "string"
             },
             "passengers": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "seat_class": {
-                    "type": "string",
-                    "enum": [
-                      "economy",
-                      "business",
-                      "first"
+              "description": "Either an integer passenger count or the canonical passenger array.",
+              "oneOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "seat_class": {
+                        "type": "string",
+                        "enum": [
+                          "economy",
+                          "business",
+                          "first"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "seat_class"
                     ]
                   }
-                },
-                "required": [
-                  "name",
-                  "seat_class"
-                ]
-              }
+                }
+              ]
+            },
+            "approval": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "calendarSync": {
+              "type": "boolean"
+            },
+            "hotelCheckIn": {
+              "type": "string"
+            },
+            "rebookReason": {
+              "type": "string"
             }
           },
           "required": [],
@@ -5600,6 +5653,9 @@
             "evidence": {
               "type": "string",
               "description": "Evidence string for set_identity/set_relationship observations."
+            },
+            "storeAllowed": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -6765,6 +6821,12 @@
             "details": {
               "type": "object",
               "additionalProperties": true
+            },
+            "reason": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
             }
           },
           "required": [
@@ -6876,6 +6938,13 @@
               "type": "string"
             },
             "details": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "target": {
+              "type": "string"
+            },
+            "updates": {
               "type": "object",
               "additionalProperties": true
             }
@@ -7459,6 +7528,9 @@
             },
             "windowDays": {
               "type": "number"
+            },
+            "groupBy": {
+              "type": "string"
             }
           },
           "required": [
@@ -7509,6 +7581,9 @@
             },
             "queryWindowDays": {
               "type": "number"
+            },
+            "category": {
+              "type": "string"
             }
           },
           "required": [
@@ -7565,6 +7640,9 @@
             },
             "confirmed": {
               "type": "boolean"
+            },
+            "candidateId": {
+              "type": "string"
             }
           },
           "required": [
@@ -17936,6 +18014,29 @@
             },
             "ownerVisible": {
               "type": "boolean"
+            },
+            "respectsGlobalPause": {
+              "type": "boolean"
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "subject": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "pipeline": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "escalation": {
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "required": [
@@ -18048,6 +18149,10 @@
               "type": "string"
             },
             "trigger": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "updates": {
               "type": "object",
               "additionalProperties": true
             },
