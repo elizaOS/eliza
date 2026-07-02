@@ -107,4 +107,25 @@ describe("buildApplicationMenu", () => {
     });
     expect(notReady.some((item) => item.label === "Views")).toBe(true);
   });
+
+  it("exposes a Desktop → Notifications item that opens the notification center (#10706)", () => {
+    const menu = buildApplicationMenu({
+      isMac: true,
+      browserEnabled: true,
+      detachedWindows: noWindows,
+    });
+    const desktop = menu.find((item) => item.label === "Desktop");
+    expect(desktop).toBeDefined();
+    const notifications = desktop?.submenu?.find(
+      (item) => item.label === "Notifications",
+    );
+    expect(notifications).toBeDefined();
+    // Routed to the renderer as `open-notifications`
+    // (DesktopSurfaceNavigationRuntime opens the center in place); distinct from
+    // the "Send Test Notification" native-toast smoke item.
+    expect(notifications?.action).toBe("open-notifications");
+    expect(
+      desktop?.submenu?.some((item) => item.action === "desktop-notify"),
+    ).toBe(true);
+  });
 });

@@ -245,4 +245,30 @@ describe("NotificationCenter", () => {
       "Oldest urgent",
     ]);
   });
+
+  it("headless opens the sheet on OPEN_NOTIFICATION_CENTER_EVENT and closes on backdrop (#10706)", async () => {
+    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
+    seedNotifications([notification("n1", "Payment failed", "system")]);
+    const user = userEvent.setup();
+
+    // The headless instance renders nothing until the surface-agnostic open
+    // event fires (the desktop-native "Notifications" menu/tray + the
+    // <scheme>://notifications deep link dispatch it).
+    render(<NotificationCenter headless />);
+    expect(screen.queryByTestId("notification-sheet")).toBeNull();
+
+    window.dispatchEvent(new CustomEvent(OPEN_NOTIFICATION_CENTER_EVENT));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-sheet")).toBeTruthy();
+    });
+    // The seeded notification is visible in the opened sheet.
+    expect(screen.getByText("Payment failed")).toBeTruthy();
+
+    // Backdrop dismiss closes it again.
+    await user.click(screen.getByTestId("notification-sheet-backdrop"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("notification-sheet")).toBeNull();
+    });
+  });
 });

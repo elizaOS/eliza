@@ -1,4 +1,5 @@
 import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
+import { dispatchOpenNotificationCenter } from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { useEffect } from "react";
 import type { Tab } from "../../../../ui/src/navigation";
@@ -21,6 +22,14 @@ export function DesktopSurfaceNavigationRuntime() {
       listener: (payload) => {
         const itemId =
           (payload as { itemId?: string } | null | undefined)?.itemId ?? "";
+        // The desktop-native "Notifications" menu/tray item (#10706): open the
+        // notification center in place instead of navigating a tab — the
+        // visible native way in where the floating bell is hidden.
+        if (itemId === "open-notifications") {
+          switchShellView("desktop");
+          dispatchOpenNotificationCenter();
+          return;
+        }
         let target: Tab | null = null;
         if (itemId.startsWith("show-main:")) {
           const candidate = itemId.slice("show-main:".length) as Tab;
