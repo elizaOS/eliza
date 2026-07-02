@@ -151,7 +151,9 @@ describe("reflection evaluator schemas are strict-structured-output safe", () =>
 	function assertStrictObjectNodes(node: unknown, path: string): void {
 		if (node === null || typeof node !== "object") return;
 		if (Array.isArray(node)) {
-			node.forEach((item, i) => assertStrictObjectNodes(item, `${path}[${i}]`));
+			node.forEach((item, i) => {
+				assertStrictObjectNodes(item, `${path}[${i}]`);
+			});
 			return;
 		}
 		const record = node as Record<string, unknown>;
