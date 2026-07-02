@@ -10,7 +10,7 @@
 - **density probe failures:** none
 - **floating chat overlay present:** yes
 - **floating chat overlay clearance:** clear
-- **readable content chars:** 2735
+- **readable content chars:** 136
 - **border/divider density:** 9.2593 (12 edges / 1M px)
 - **text density:** 4.5139 chars / 10K px
 - **whitespace ratio:** 0.7966
@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: flat stat figures, borderless action pills, bottom-line inputs. Native checkboxes now brand accent (root accent-color). Good.
+Reviewer: Eyeballed: flat stat figures, borderless pills, bottom-line inputs; native checkboxes now brand accent (root accent-color). Good.
 
 Verdict: **good**

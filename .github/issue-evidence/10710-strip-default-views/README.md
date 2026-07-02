@@ -50,24 +50,49 @@ Also fixed while in here:
   `ELIZA_AUDIT_APP_STRICT_NEEDS_WORK=1` with an empty `AESTHETIC_VERDICT_DEBT`
   (the #10970 operator steps).
 
-## Border/divider density (per 1M px², ceiling 45) — before → after
+## Border/divider density (per 1M px², ceiling 45) — before → after (final strict run)
 
-| view | desktop | mobile |
+| view | desktop | mobile-portrait |
 |---|---|---|
 | launcher family (apps/views/rolodex/…) | 89.5 → 6.2 | 303.8 → 24.3 |
 | fine-tuning | 52.5 → 9.3 | 145.8 → 30.4 |
-| automations | 37.0 → 21.6 | 145.8 → 85.1 → (post-polish, see final report) |
-| stream | 15.4 → 12.3 | 60.8 → 48.6 → (post-polish) |
-| documents | 27.8 | 109.4 → (post-polish) |
+| automations | 37.0 → 6.2 | 145.8 → 24.3 |
+| documents | 27.8 → 6.2 | 109.4 → 24.3 |
+| memories | 17.0 → 6.9 | 75.9 → 39.5 |
+| stream | 15.4 → 6.2 | 60.8 → 24.3 |
 
-Final post-polish numbers: `after/report.json`. Baseline (develop tip a9be4f48c70):
+**Final strict-gated run (`ELIZA_AUDIT_APP_STRICT=1` + `_NEEDS_WORK=1`, empty debt):
+349/349 passed — 307 good / 41 needs-eyeball (was 136/212), 0 radius violations
+(was 348/348), 0 blue, 0 needs-work, 0 broken.** The 41 needs-eyeball are
+baselined density entries: developer views (runtime/logs/plugins/skills), plugin
+app views (sibling-issue scope), and 3 single-viewport builtin entries
+(browser + relationships mobile — functional toolbars / a form select on a
+390px viewport — and settings mobile-landscape). Minimalism ratchet baseline
+refreshed from this run: 41 entries (launcher family, documents, automations,
+fine-tuning, memories, stream all cleared out of the debt record).
+
+Full after-report: `after/report.json`. Baseline (develop tip a9be4f48c70):
 `before/report.json`.
 
 ## Evidence
 
 - `before/desktop|mobile/*.png` — develop-tip baseline screenshots (18 views × 2 viewports).
-- `after/desktop|mobile/*.png` — same views after the strip.
-- `after/report.json` — final audit report (strict gates ON).
+- `after/desktop|mobile/*.png` — same views after the strip (final tree: includes the
+  Fine-Tuning tile dedup — one tile, was three — and brand-accent native checkboxes).
+- `after/report.json` — complete strict-gated run (349/349). `after/report-final-328of349.json`
+  — re-run on the final tree (accent-color + dedup): 287 good / 41 needs-eyeball / 0 radius /
+  0 blue through test 328, harness-killed (SIGTERM) before the TUI tail; no failures.
+- `manual-review/*.md` — per-view/per-viewport verdicts with reviewer notes (all default
+  views `good`, eyeballed by hand).
+- **Video walkthroughs** — regenerated from the stripped UI by the checked-in ui e2e
+  runners: `packages/ui/src/components/pages/__e2e__/output-launcher/launcher-walkthrough.webm`
+  and `packages/ui/src/components/shell/__e2e__/output-home/mobile-launcher-flow.webm`
+  (+ per-step screenshots/HTML contact sheets alongside).
+- Clicksafe e2e: `/apps`, `/views`, `/rolodex` probes were failing on develop tip itself
+  (stale text ready-checks pre-dating the launcher surface — verified by running the same
+  tests on a clean develop worktree: 5/5 fail there too); fixed here by anchoring on
+  `[data-testid="launcher"]` — now pass in ~1s each. The `/polymarket`+`/shopify` probe
+  failures are the same pre-existing family (overlay-app shells), fixed separately.
 - Full ui suite: **494 files / 5107 tests passed** (run twice: post-strip and post-polish).
 - Per-group scoped verification by each strip pass: character 26/26, documents 2/2,
   automations 42/42, apps/shell 89, settings/misc 99, training 40 — plus

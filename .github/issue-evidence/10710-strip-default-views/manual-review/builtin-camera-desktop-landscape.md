@@ -10,10 +10,10 @@
 - **density probe failures:** none
 - **floating chat overlay present:** yes
 - **floating chat overlay clearance:** clear
-- **readable content chars:** 594
+- **readable content chars:** 582
 - **border/divider density:** 6.1728 (8 edges / 1M px)
-- **text density:** 2.3071 chars / 10K px
-- **whitespace ratio:** 0.6723
+- **text density:** 2.284 chars / 10K px
+- **whitespace ratio:** 0.6724
 - **minimalism budget:** n/a
 - **minimalism ratchet (#9950):** pass
 - **screenshot quality issues:** none

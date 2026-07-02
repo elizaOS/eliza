@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed (mobile): scope filters + doc chips borderless, Add Knowledge legible accent-on-wash (was illegible accent-fg), no card chrome. Good.
+Reviewer: Eyeballed (mobile): scope filters + doc chips borderless, Add Knowledge legible accent-on-wash, no card chrome. Good.
 
 Verdict: **good**

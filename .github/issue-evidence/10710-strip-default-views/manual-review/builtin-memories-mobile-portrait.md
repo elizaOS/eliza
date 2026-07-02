@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: segmented Feed/Browse borderless, empty-state medallion border removed, feed dividers gone. Good.
+Reviewer: Eyeballed: segmented Feed/Browse borderless, medallion border removed, dividers gone. Good.
 
 Verdict: **good**

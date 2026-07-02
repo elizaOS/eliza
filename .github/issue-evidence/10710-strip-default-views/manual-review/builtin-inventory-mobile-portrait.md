@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: borderless Wallet/Perps/Predictions tabs, flat token rows, allocation bars are data. Good.
+Reviewer: Eyeballed: borderless wallet tabs, flat token rows, bars are data. Good.
 
 Verdict: **good**

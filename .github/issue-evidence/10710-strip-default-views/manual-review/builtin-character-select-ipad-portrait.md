@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Shares the flattened character surface; machine metrics at shell baseline. Good.
+Reviewer: Shares the flattened character surface. Good.
 
 Verdict: **good**

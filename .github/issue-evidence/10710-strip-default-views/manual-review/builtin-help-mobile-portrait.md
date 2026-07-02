@@ -10,7 +10,7 @@
 - **density probe failures:** none
 - **floating chat overlay present:** yes
 - **floating chat overlay clearance:** clear
-- **readable content chars:** 1050
+- **readable content chars:** 1039
 - **border/divider density:** 24.3043 (8 edges / 1M px)
 - **text density:** 18.0156 chars / 10K px
 - **whitespace ratio:** 0.136
@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Near-empty surface at shell-baseline density; flat. Good.
+Reviewer: Near-empty at shell-baseline density; flat. Good.
 
 Verdict: **good**

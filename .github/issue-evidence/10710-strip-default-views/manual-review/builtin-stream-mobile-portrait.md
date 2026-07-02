@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: Go Live now accent (was green), status chips borderless. Good.
+Reviewer: Eyeballed: Go Live now accent (was green), chips borderless. Good.
 
 Verdict: **good**

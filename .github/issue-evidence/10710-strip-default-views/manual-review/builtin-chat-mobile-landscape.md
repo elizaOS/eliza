@@ -10,16 +10,16 @@
 - **density probe failures:** none
 - **floating chat overlay present:** yes
 - **floating chat overlay clearance:** clear
-- **readable content chars:** 594
+- **readable content chars:** 582
 - **border/divider density:** 12.1521 (4 edges / 1M px)
 - **text density:** 6.2584 chars / 10K px
-- **whitespace ratio:** 0.6799
+- **whitespace ratio:** 0.6845
 - **minimalism budget:** pass
 - **minimalism ratchet (#9950):** pass
 - **screenshot quality issues:** none
 
 ## Notes
 
-Reviewer: Chat overlay: HeaderButton borderless icon-only, composer divider removed; glass sheet + bubble tone borders are deliberate design (sibling H/J). Good.
+Reviewer: HeaderButton borderless icon-only, composer divider removed; glass sheet + bubble tone borders deliberate. Good.
 
 Verdict: **good**

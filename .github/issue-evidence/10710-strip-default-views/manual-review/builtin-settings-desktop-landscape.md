@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: flat text nav sidebar, tinted inputs, plain-text status. Good.
+Reviewer: Eyeballed: flat text nav, tinted inputs, plain-text status. Good.
 
 Verdict: **good**

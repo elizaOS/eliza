@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: pure whitespace + icon-anchored type-scale sections, orange accent only, zero boxes. Good.
+Reviewer: Eyeballed: whitespace + icon-anchored type-scale sections, orange accent only, zero boxes. Good.
 
 Verdict: **good**

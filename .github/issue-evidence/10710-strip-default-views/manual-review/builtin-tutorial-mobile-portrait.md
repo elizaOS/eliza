@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Near-empty surface at shell-baseline density; flat. Good.
+Reviewer: Near-empty at shell-baseline density; flat. Good.
 
 Verdict: **good**

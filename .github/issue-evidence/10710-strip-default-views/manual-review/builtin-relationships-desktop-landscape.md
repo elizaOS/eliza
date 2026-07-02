@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed (mobile): filter select is a form input (semantic), CTA accent, suggestion pills bg-only. Density 51.6 on mobile-portrait is the select+shell on a small viewport — baselined, view itself is clean. Human verdict: good.
+Reviewer: Filter select = form input (semantic); mobile-portrait density baselined; view is clean. Human verdict: good.
 
 Verdict: **good**

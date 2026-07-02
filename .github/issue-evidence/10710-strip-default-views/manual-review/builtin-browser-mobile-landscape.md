@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Toolbar borders are functional browser chrome (kept deliberately per prior review); wrapper fills stripped. mobile-portrait density baselined. Human verdict: good.
+Reviewer: Toolbar borders are functional browser chrome (kept per prior review); wrapper fills stripped; mobile density baselined. Human verdict: good.
 
 Verdict: **good**

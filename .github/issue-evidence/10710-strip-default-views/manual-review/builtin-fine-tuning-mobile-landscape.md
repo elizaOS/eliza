@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Eyeballed: flat stat figures, borderless action pills, bottom-line inputs. Native checkboxes now brand accent (root accent-color). Good.
+Reviewer: Eyeballed: flat stat figures, borderless pills, bottom-line inputs; native checkboxes now brand accent (root accent-color). Good.
 
 Verdict: **good**

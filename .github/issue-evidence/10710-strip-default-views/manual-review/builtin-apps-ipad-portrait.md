@@ -10,9 +10,9 @@
 - **density probe failures:** none
 - **floating chat overlay present:** yes
 - **floating chat overlay clearance:** clear
-- **readable content chars:** 594
+- **readable content chars:** 582
 - **border/divider density:** 8.2679 (8 edges / 1M px)
-- **text density:** 3.0901 chars / 10K px
+- **text density:** 3.0591 chars / 10K px
 - **whitespace ratio:** 0.6356
 - **minimalism budget:** pass
 - **minimalism ratchet (#9950):** pass
@@ -20,6 +20,6 @@
 
 ## Notes
 
-Reviewer: Launcher grid eyeballed: dock band now translucent wash (was solid dark card), tiles naked icon+label, no borders. Matches minimal aesthetic.
+Reviewer: Launcher grid eyeballed (final run): dock translucent wash, naked tiles, ONE Fine-Tuning tile (dedup verified in pixels — was three). Good.
 
 Verdict: **good**
