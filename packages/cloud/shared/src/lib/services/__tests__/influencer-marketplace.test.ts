@@ -354,7 +354,7 @@ describe("Influencer marketplace escrow (#10687)", () => {
     expect(await earnings(inf.userId)).toBeCloseTo(25, 2);
   });
 
-  test("refund failure leaves the prior status; retry refunds exactly once", async () => {
+  test("refund failure leaves the claimed `refunding` status; retry resumes and refunds exactly once", async () => {
     if (!pgliteReady) return;
     const adv = await seedOrgUser("50.00");
     const inf = await seedProfile();
@@ -373,10 +373,12 @@ describe("Influencer marketplace escrow (#10687)", () => {
       throw new Error("simulated refund outage");
     };
     try {
-      // Refund fails → the booking MUST NOT be marked rejected.
+      // Refund fails AFTER the claim → the booking MUST NOT be marked rejected;
+      // it rests in `refunding` (the claim fences out deliver/approve) so the
+      // same operation can resume. (#11167)
       const failed = await service.rejectBooking(id, inf.userId);
       expect(failed.ok).toBe(false);
-      expect((await service.getBooking(id))?.status).toBe("offered");
+      expect((await service.getBooking(id))?.status).toBe("refunding");
       expect(await orgBalance(adv.orgId)).toBeCloseTo(30, 2);
     } finally {
       creditsService.refundCredits = originalRefund;
@@ -520,5 +522,85 @@ describe("Influencer marketplace escrow (#10687)", () => {
     expect(resumed.ok).toBe(true);
     expect(await earnings(inf.userId)).toBeCloseTo(30, 2);
     expect(await orgBalance(adv.orgId)).toBeCloseTo(70, 2);
+  });
+
+  // #11167 — the GENERIC refund (offer/accept fork) must claim the booking
+  // before moving money, exactly like the #11116 `delivered` fork. Before the
+  // claim, refund() was refund-then-CAS: it read `accepted`, committed the
+  // refund, and only then CAS'd the status — so during its read→refund gap a
+  // concurrent deliver + approve could pay the influencer out of the SAME
+  // escrow (advertiser refunded AND influencer paid). The gated refundCredits
+  // below deterministically parks the reject inside that gap while the
+  // deliver + approve race in; the claim CAS (`accepted → refunding`) now
+  // fences them out before any money moves.
+  test("generic refund from accepted cannot double-spend vs racing deliver+approve (#11167)", async () => {
+    if (!pgliteReady) return;
+    const adv = await seedOrgUser("100.00");
+    const inf = await seedProfile();
+    const { booking } = await service.createBooking({
+      advertiserOrgId: adv.orgId,
+      profileId: inf.profileId,
+      brief: "b",
+      amount: 40,
+      createdByUserId: adv.userId,
+    });
+    const id = booking?.id as string;
+    await service.acceptBooking(id, inf.userId);
+    // Escrow funded: advertiser debited 40 → 60; nothing paid/refunded yet.
+    expect(await orgBalance(adv.orgId)).toBeCloseTo(60, 2);
+    expect(await earnings(inf.userId)).toBe(0);
+
+    // Park the FIRST refundCredits call on a manual gate: the reject has done
+    // its read (+claim, with the fix) but its money move is frozen mid-flight.
+    const originalRefund = creditsService.refundCredits.bind(creditsService);
+    let releaseGate: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    let gateReached = false;
+    creditsService.refundCredits = async (params) => {
+      if (!gateReached) {
+        gateReached = true;
+        await gate;
+      }
+      return originalRefund(params);
+    };
+
+    const rejectPromise = service.rejectBooking(id, inf.userId);
+    try {
+      // Wait until the reject is actually parked at refundCredits.
+      const deadline = Date.now() + 5_000;
+      while (!gateReached && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(gateReached).toBe(true);
+
+      // While the refund is in its read→money gap, race the payout path in.
+      const submitted = await service.submitDeliverable(id, inf.userId, "https://x/post");
+      const approved = await service.approveBooking(id, adv.orgId);
+
+      releaseGate();
+      const rejected = await rejectPromise;
+
+      const paid = await earnings(inf.userId); // influencer payout (0 or 40)
+      const bal = await orgBalance(adv.orgId); // advertiser (60 held, or 100 refunded)
+      const refunded = bal >= 99.99; // refund returned the 40
+
+      // The invariant: one escrow NEVER funds both a refund and a payout.
+      expect(paid > 0 && refunded).toBe(false);
+
+      // With the claim, the reject owns the booking: deliver/approve are
+      // fenced out, the refund wins, and the advertiser is made whole.
+      expect(submitted.ok).toBe(false);
+      expect(approved.ok).toBe(false);
+      expect(rejected.ok).toBe(true);
+      expect((await service.getBooking(id))?.status).toBe("rejected");
+      expect(bal).toBeCloseTo(100, 2);
+      expect(paid).toBe(0);
+    } finally {
+      releaseGate();
+      creditsService.refundCredits = originalRefund;
+      await rejectPromise;
+    }
   });
 });
