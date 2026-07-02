@@ -28,6 +28,7 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 import {
   touchDragHold,
+  touchSwipe,
   touchTap,
 } from "../../../testing/real-touch-gestures.ts";
 
@@ -480,6 +481,136 @@ try {
   await mobile.waitForSelector('[data-testid="chat-sheet"]');
   await mobile.waitForTimeout(700);
   await runDragSuite(mobile, "touch", "mobile");
+
+  // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
+  // The collapsed grabber's horizontal swipe pages home → launcher through the
+  // shell-surface store (goLauncher). Android's on-device spec drives this with
+  // a real finger; drive it here through Chromium's REAL touch pipeline
+  // (Input.dispatchTouchEvent, hit-test + touch-action + implicit capture), and
+  // ALSO under a janked main thread (fire-and-forget dispatch → the renderer
+  // coalesces the moves), the failure shape of the Davey!-janked WebView.
+  {
+    const surfacePage = (p) =>
+      p.evaluate(
+        () =>
+          globalThis[Symbol.for("elizaos.ui.shell-surface-store")]?.state
+            ?.page ?? "home",
+      );
+    const resetSurface = (p) =>
+      p.evaluate(() => {
+        const s = globalThis[Symbol.for("elizaos.ui.shell-surface-store")];
+        if (s) {
+          s.state = { ...s.state, page: "home" };
+          for (const l of s.listeners) l();
+        }
+      });
+    const grabberSel = '[data-testid="chat-sheet-grabber"]';
+
+    const p = await browser.newPage({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+    });
+    attachConsole(p, sink);
+    await p.goto(url);
+    await p.waitForSelector(grabberSel);
+    await p.waitForTimeout(700);
+
+    // 1. Plain real-touch flick (adb-like: 150px left over ~280ms).
+    assert(
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] starts on the home surface",
+    );
+    await touchSwipe(p, grabberSel, -150, -6, { steps: 14, stepDelayMs: 20 });
+    await p.waitForTimeout(400);
+    assert(
+      (await surfacePage(p)) === "launcher",
+      "[grabber-swipe] REAL-touch left flick on the grabber commits goLauncher (#9943)",
+    );
+    await snap(p, "grabber-real-touch-launcher");
+
+    // 2. Real-touch flick with the main thread JANKED: dispatch the whole
+    // sequence fire-and-forget so the renderer coalesces the moves (this is
+    // what a 700ms+ frame on the Android WebView does to a 280ms finger swipe).
+    await resetSurface(p);
+    const box = await p.locator(grabberSel).first().boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const cdp = await p.context().newCDPSession(p);
+    const touchPoint = (x, y) => [
+      { x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 },
+    ];
+    const busy = p
+      .evaluate((ms) => {
+        const end = performance.now() + ms;
+        while (performance.now() < end) {
+          // burn the main thread across the whole swipe
+        }
+      }, 1200)
+      .catch(() => {});
+    await p.waitForTimeout(80); // let the busy loop engage
+    const sends = [
+      cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: touchPoint(cx, cy),
+      }),
+    ];
+    for (let i = 1; i <= 14; i += 1) {
+      sends.push(
+        cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: touchPoint(cx - (150 * i) / 14, cy - (6 * i) / 14),
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    sends.push(
+      cdp.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      }),
+    );
+    await Promise.allSettled(sends);
+    await busy;
+    await p.waitForTimeout(600);
+    assert(
+      (await surfacePage(p)) === "launcher",
+      "[grabber-swipe] real-touch flick still commits with the main thread janked / moves coalesced (#9943)",
+    );
+    await cdp.detach().catch(() => {});
+
+    // 3. Synthetic PointerEvent path (jsdom-style dispatch) stays green.
+    await resetSurface(p);
+    await p.evaluate((sel) => {
+      const g = document.querySelector(sel);
+      const r = g.getBoundingClientRect();
+      const cx0 = r.x + r.width / 2;
+      const cy0 = r.y + r.height / 2;
+      const fire = (type, x, y) =>
+        g.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 7,
+            pointerType: "touch",
+            isPrimary: true,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      fire("pointerdown", cx0, cy0);
+      fire("pointermove", cx0 - 75, cy0 - 3);
+      fire("pointermove", cx0 - 150, cy0 - 6);
+      fire("pointerup", cx0 - 150, cy0 - 6);
+    }, grabberSel);
+    await p.waitForTimeout(400);
+    assert(
+      (await surfacePage(p)) === "launcher",
+      "[grabber-swipe] synthetic PointerEvent flick still commits (parity)",
+    );
+    await p.close();
+  }
 
   // ===== CONTROLS + INPUT STATES (mobile viewport for the tactile surface) =====
   const ctrl = async () =>
