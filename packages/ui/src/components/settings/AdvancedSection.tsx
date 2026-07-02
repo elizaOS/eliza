@@ -280,7 +280,7 @@ export function AdvancedSection() {
             agentId="advanced-developer-mode"
             group="advanced"
             label="Developer views"
-            description="Developer tooling to verify the app is working — logs, database, trajectories. On by default in dev builds."
+            description="Developer tooling to verify the app is working — logs, database, trajectories. Off by default on every build, dev included."
             checked={developerMode}
             onCheckedChange={(checked) => setDeveloperMode(checked)}
           />

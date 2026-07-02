@@ -7,16 +7,17 @@
  *  - `release`   — public, production-ready views meant for everyone. Always
  *                  visible on every build.
  *  - `developer` — developer-only tooling (logs, database, trajectory viewer)
- *                  so devs can verify the app is working. Visible by default in
- *                  dev builds, hidden in production until enabled in Settings.
+ *                  so devs can verify the app is working. Hidden by default on
+ *                  every build — dev builds included — until enabled in
+ *                  Settings; there is no build-variant bypass.
  *  - `preview`   — unfinished / alpha / experimental views. Hidden by default
  *                  on every build until enabled in Settings.
  *
  * The taxonomy lives in `@elizaos/core` so the agent server (view registry,
  * built-in views) and every front-end (the dashboard shell, the view manager,
  * settings) share one definition. The *enabled* set is owned by the client —
- * which kinds are on depends on the build (dev vs production) and the user's
- * Settings toggles, neither of which the server can know.
+ * which kinds are on follows the user's persisted Settings toggles, which the
+ * server can't know.
  */
 
 /** The four view kinds, in escalating "exposure" order. */
@@ -31,11 +32,11 @@ export const VIEW_KINDS = [
 export type ViewKind = (typeof VIEW_KINDS)[number];
 
 /**
- * The two user/​build-controllable toggles. `system` and `release` are always
- * on, so they are not represented here.
+ * The two user-controllable toggles. `system` and `release` are always on, so
+ * they are not represented here.
  */
 export interface EnabledViewKinds {
-	/** Show `developer`-kind views. Default: on in dev builds, off in prod. */
+	/** Show `developer`-kind views. Default: off on every build. */
 	developer: boolean;
 	/** Show `preview`-kind views. Default: off on every build. */
 	preview: boolean;
