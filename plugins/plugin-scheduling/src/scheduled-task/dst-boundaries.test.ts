@@ -8,6 +8,8 @@
  *    (06:00:00Z). The local hour 01:00-01:59 happens twice.
  *  - Europe/Berlin spring-forward: 2026-03-29 02:00 CET -> 03:00 CEST
  *    (01:00:00Z). Fall-back: 2026-10-25 03:00 CEST -> 02:00 CET (01:00:00Z).
+ *  - Australia/Lord_Howe fall-back: 2026-04-05 02:00 LHDT -> 01:30 LHST
+ *    (15:00:00Z Apr 4). The repeated local span is 30 minutes, not an hour.
  *
  * Where behavior at a nonexistent/ambiguous local time is a judgment call the
  * tests PIN the current behavior with an explicit comment instead of
@@ -28,6 +30,7 @@ import type {
 const MINUTE_MS = 60_000;
 const NY = "America/New_York";
 const BERLIN = "Europe/Berlin";
+const LORD_HOWE = "Australia/Lord_Howe";
 
 function makeTask(args: {
   trigger: ScheduledTaskTrigger;
@@ -300,12 +303,11 @@ describe("cron with tz across DST transitions", () => {
     );
   });
 
-  it("a cron inside the repeated hour fires ONCE on fall-back day (#11046 fixed)", async () => {
-    // `computeNextCronRunAtMs` (@elizaos/core) dedupes ambiguous-hour
-    // matches: an hour-restricted schedule fires on the FIRST pass through
-    // the repeated 01:00-01:59 hour only (01:30 EDT), matching common cron
-    // implementations. The second wall-clock pass (01:30 EST) is skipped and
-    // the next fire is the following local day.
+  it("a cron inside the repeated fall-back hour fires ONCE (first instant), not twice (#11046)", async () => {
+    // `computeNextCronRunAtMs` (@elizaos/core) now dedupes the ambiguous
+    // fall-back hour: "30 1 * * *" fires at 01:30 EDT on 2026-11-01 (the first
+    // pass) but NOT again at 01:30 EST the same day — matching common cron
+    // implementations. Then it resumes firing at 01:30 EST from Nov 2 onward.
     const occurrences = await occurrenceChain(
       "30 1 * * *",
       NY,
@@ -314,13 +316,32 @@ describe("cron with tz across DST transitions", () => {
       3,
     );
     expect(occurrences).toEqual([
-      "2026-11-01T05:30:00.000Z", // 01:30 EDT — first pass only
-      "2026-11-02T06:30:00.000Z", // next local day, 01:30 EST
-      "2026-11-03T06:30:00.000Z",
+      "2026-11-01T05:30:00.000Z", // 01:30 EDT (first pass — the only fall-back-day fire)
+      "2026-11-02T06:30:00.000Z", // 01:30 EST (next day)
+      "2026-11-03T06:30:00.000Z", // 01:30 EST
     ]);
-    // Exactly once per local day.
-    const days = occurrences.map((iso) => localDate(iso, NY));
-    expect(new Set(days).size).toBe(occurrences.length);
+    // Every fire is a distinct local day (no double-fire on the transition day).
+    expect(new Set(occurrences.map((iso) => localDate(iso, NY))).size).toBe(
+      occurrences.length,
+    );
+  });
+
+  it("a cron inside Lord Howe's 30-minute repeated fall-back span also fires once", async () => {
+    const occurrences = await occurrenceChain(
+      "45 1 * * *",
+      LORD_HOWE,
+      "2026-04-03T14:45:00.000Z", // Apr 4 01:45 LHDT
+      "2026-04-08T00:00:00.000Z",
+      3,
+    );
+    expect(occurrences).toEqual([
+      "2026-04-04T14:45:00.000Z", // Apr 5 01:45 LHDT (first pass)
+      "2026-04-05T15:15:00.000Z", // Apr 6 01:45 LHST
+      "2026-04-06T15:15:00.000Z", // Apr 7 01:45 LHST
+    ]);
+    expect(
+      new Set(occurrences.map((iso) => localDate(iso, LORD_HOWE))).size,
+    ).toBe(occurrences.length);
   });
 
   it("daily 03:00 Berlin lands exactly on the spring-forward transition instant", async () => {

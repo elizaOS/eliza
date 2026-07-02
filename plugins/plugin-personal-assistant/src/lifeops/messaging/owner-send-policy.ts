@@ -54,7 +54,9 @@ const MESSAGE_SOURCE_GUARD: Record<MessageSource, true> = {
 };
 
 function isMessageSource(value: unknown): value is MessageSource {
-  return typeof value === "string" && Object.hasOwn(MESSAGE_SOURCE_GUARD, value);
+  return (
+    typeof value === "string" && Object.hasOwn(MESSAGE_SOURCE_GUARD, value)
+  );
 }
 
 function optionalString(value: unknown): string | undefined {

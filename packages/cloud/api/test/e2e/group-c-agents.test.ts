@@ -3,28 +3,27 @@
  * `/api/characters`).
  *
  * For each route in the group, three assertions:
- *   1. **Auth gate** — request without credentials returns 401 (or, for
- *      service-key / public routes, the documented gate response).
+ *   1. **Auth gate** — request without credentials returns the exact
+ *      documented gate status.
  *   2. **Happy path** — with the bootstrapped Bearer eliza_* key, the route
- *      either returns its documented success shape or — for routes acting on
- *      a specific :agentId/:id we don't own — a recognized 401/403/404 from
- *      the auth/ownership gate. Either way the Worker is reachable and
- *      executing the handler.
+ *      returns its documented success shape, or — for routes acting on a
+ *      :agentId/:id we don't own — the exact not-found/ownership status.
  *   3. **Validation** — at least one body / query-param failure returns the
- *      expected 400 (or, where the handler defers validation behind auth,
- *      the auth gate fires first; we accept that and document it).
+ *      exact documented rejection.
  *
- * Mirrors the foundation test at `agent-token-flow.test.ts`. Skips cleanly
- * when the Worker isn't reachable or the preload couldn't bootstrap an API
- * key (`SKIP_DB_DEPENDENT=1`, no Postgres, etc.).
+ * Every status assertion pins the single status the local Worker contract
+ * produces (the CI lane runs this suite against `wrangler dev` with the
+ * PGlite bridge — see run-e2e-batches.mjs). The only tolerated pairs are
+ * genuinely env-keyed (named inline, e.g. HEADSCALE_INTERNAL_TOKEN).
+ *
+ * Skip behavior matches `agent-token-flow.test.ts`: with REQUIRE_E2E_SERVER=0
+ * and no reachable Worker (or no bootstrapped TEST_API_KEY) every test in
+ * this file reports as a counted, named `skip` — never a silent pass.
  *
  * UNOWNED_AGENT_ID — a syntactically-valid UUID we know isn't in the DB.
- * Routes that ownership-check land on 404 (or 401 if the route is service-
- * key only, or 403 for monetization which checks ownership before existence).
- *
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { Client } from "pg";
 
 import {
@@ -37,13 +36,26 @@ import {
 
 const UNOWNED_AGENT_ID = "00000000-0000-4000-8000-000000000000";
 
-let serverReachable = false;
-let hasTestApiKey = false;
-const createdCharacterIds: string[] = [];
-
-function shouldRun(): boolean {
-  return serverReachable && hasTestApiKey;
+const serverReachable = await isServerReachable();
+const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+if (!serverReachable) {
+  console.warn(
+    `[group-c-agents] ${getBaseUrl()} did not respond to /api/health. ` +
+      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
+      "or set TEST_API_BASE_URL to a reachable host.",
+  );
 }
+if (!hasTestApiKey) {
+  console.warn(
+    "[group-c-agents] TEST_API_KEY is not set; the preload could not " +
+      "bootstrap a test API key. Tests will SKIP.",
+  );
+}
+
+// Loud, counted skip instead of a silent pass when the Worker/key is absent.
+const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+
+const createdCharacterIds: string[] = [];
 
 async function seedOwnedCharacter(input: {
   id: string;
@@ -131,26 +143,8 @@ async function seedOwnedCharacter(input: {
   }
 }
 
-beforeAll(async () => {
-  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-  serverReachable = await isServerReachable();
-  if (!serverReachable) {
-    console.warn(
-      `[group-c-agents] ${getBaseUrl()} did not respond to /api/health. ` +
-        "Tests will skip. Start the Worker (bun run dev:api → wrangler dev) " +
-        "or set TEST_API_BASE_URL to a reachable host.",
-    );
-  }
-  if (!hasTestApiKey) {
-    console.warn(
-      "[group-c-agents] TEST_API_KEY is not set; the preload could not " +
-        "bootstrap a test API key. Tests requiring auth will skip.",
-    );
-  }
-});
-
 afterAll(async () => {
-  if (!shouldRun()) return;
+  if (!serverReachable || !hasTestApiKey) return;
   for (const id of createdCharacterIds) {
     await api.delete(`/api/my-agents/characters/${id}`, {
       headers: bearerHeaders(),
@@ -161,17 +155,13 @@ afterAll(async () => {
 // -------------------------------------------------------------------------
 // /api/agents/:id/a2a — public agent A2A endpoint (JSON-RPC POST + GET card)
 // -------------------------------------------------------------------------
-describe("/api/agents/:id/a2a", () => {
+describeE2E("/api/agents/:id/a2a", () => {
   test("GET unknown agent returns 404 even unauthenticated (public route, but agent must exist)", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/agents/${UNOWNED_AGENT_ID}/a2a`);
-    // 404 = no such agent; 403 = exists but not public/a2a-disabled; both are
-    // expected gate responses on a public route with no agent at this UUID.
-    expect([403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("POST without auth on unknown agent returns 404 (handler short-circuits before auth)", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/a2a`, {
       jsonrpc: "2.0",
       method: "chat",
@@ -179,207 +169,192 @@ describe("/api/agents/:id/a2a", () => {
       params: {},
     });
     // The route's flow: lookup agent first → 404 if missing → only then auth.
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("POST with malformed JSON-RPC body to unknown agent returns 404 (agent check first)", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/a2a`, {
       not: "a valid jsonrpc envelope",
     });
-    expect([400, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/agents/:id/headscale-ip — internal-token-only
 // -------------------------------------------------------------------------
-describe("/api/agents/:id/headscale-ip", () => {
-  test("GET without internal token returns 403 (or 503 if not configured)", async () => {
-    if (!serverReachable) return;
+describeE2E("/api/agents/:id/headscale-ip", () => {
+  // Env-keyed pair: with HEADSCALE_INTERNAL_TOKEN / CONTAINER_CONTROL_PLANE_TOKEN
+  // configured a missing/bogus token is rejected 403; the keyless local harness
+  // has neither configured, so the route answers 503 "not configured".
+  test("GET without internal token returns 403 (503 when no internal token is configured)", async () => {
     const res = await api.get(`/api/agents/${UNOWNED_AGENT_ID}/headscale-ip`);
     expect([403, 503]).toContain(res.status);
   });
 
-  test("GET with bogus internal token still 403 (constant-time mismatch)", async () => {
-    if (!serverReachable) return;
+  test("GET with bogus internal token still 403 (503 when no internal token is configured)", async () => {
     const res = await api.get(`/api/agents/${UNOWNED_AGENT_ID}/headscale-ip`, {
       headers: { "x-internal-token": "definitely-not-the-real-token" },
     });
     expect([403, 503]).toContain(res.status);
   });
 
-  test("GET with non-UUID id returns 403 before validation (auth fires first)", async () => {
-    if (!serverReachable) return;
+  test("GET with non-UUID id rejects before validation (auth gate fires first)", async () => {
     const res = await api.get("/api/agents/not-a-uuid/headscale-ip");
     // Without a valid internal token we never reach the UUID validation,
-    // so the response is the auth gate.
-    expect([400, 403, 503]).toContain(res.status);
+    // so the response is the auth gate (same env-keyed pair as above).
+    expect([403, 503]).toContain(res.status);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/agents/:id/mcp — public MCP endpoint
 // -------------------------------------------------------------------------
-describe("/api/agents/:id/mcp", () => {
+describeE2E("/api/agents/:id/mcp", () => {
   test("GET unknown agent returns 404 (public route, but agent must exist)", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/agents/${UNOWNED_AGENT_ID}/mcp`);
-    expect([403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("POST without auth on unknown agent returns 404 (agent check before auth)", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/mcp`, {
       jsonrpc: "2.0",
       method: "tools/list",
       id: 1,
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("POST with malformed JSON-RPC body returns 404 on unknown agent", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/agents/${UNOWNED_AGENT_ID}/mcp`, {
       not: "a valid jsonrpc envelope",
     });
-    expect([400, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId — GET only, requires user/key auth + ownership
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId", () => {
+describeE2E("/api/v1/agents/:agentId", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth on unowned agent returns 404 (not-found from repository)", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
-  test("GET with valid auth on malformed agentId still rejects (404 or 400)", async () => {
-    if (!shouldRun()) return;
+  test("GET with valid auth on malformed agentId returns 500 (no UUID validation on this route)", async () => {
     const res = await api.get("/api/v1/agents/not-a-uuid-at-all", {
       headers: bearerHeaders(),
     });
-    expect([400, 401, 403, 404, 500]).toContain(res.status);
+    // Current contract: the raw id reaches the repository and the Postgres
+    // uuid cast throws → 500. A route-layer UUID validator would make this a
+    // 400; update this pin when one lands.
+    expect(res.status).toBe(500);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/logs — service-key only
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/logs", () => {
+describeE2E("/api/v1/agents/:agentId/logs", () => {
   test("GET without service key returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/logs`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("GET with user Bearer (not service key) still rejected", async () => {
-    if (!shouldRun()) return;
+  test("GET with user Bearer (not service key) returns 401", async () => {
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/logs`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("GET with bogus service key returns 401/403", async () => {
-    if (!serverReachable) return;
+  test("GET with bogus service key returns 401", async () => {
     const res = await api.get(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/logs?tail=10`,
       {
         headers: { "X-Service-Key": "not-a-real-service-key" },
       },
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/monetization — GET + PUT
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/monetization", () => {
+describeE2E("/api/v1/agents/:agentId/monetization", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`,
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth on unowned agent returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`,
       {
         headers: bearerHeaders(),
       },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
-  test("PUT with invalid body schema returns 400 (or 404 if ownership fails first)", async () => {
-    if (!shouldRun()) return;
+  test("PUT with invalid body schema returns 400 (Zod validation fires before ownership)", async () => {
     const res = await api.put(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`,
       // markupPercentage above 1000 fails Zod validation
       { markupPercentage: 99999 },
       { headers: bearerHeaders() },
     );
-    expect([400, 401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(400);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/publish — POST + DELETE (user auth + ownership)
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/publish", () => {
+describeE2E("/api/v1/agents/:agentId/publish", () => {
   test("POST without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/publish`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("POST with valid auth on unowned agent returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/publish`,
       {},
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("DELETE with valid auth on unowned agent returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.delete(`/api/v1/agents/${UNOWNED_AGENT_ID}/publish`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/restart — service-key only
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/restart", () => {
+describeE2E("/api/v1/agents/:agentId/restart", () => {
   test("POST without service key returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/restart`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with user Bearer (not service key) still rejected", async () => {
-    if (!shouldRun()) return;
+  test("POST with user Bearer (not service key) returns 401", async () => {
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/restart`,
       undefined,
@@ -387,11 +362,10 @@ describe("/api/v1/agents/:agentId/restart", () => {
         headers: bearerHeaders(),
       },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with bogus service key still 401/403", async () => {
-    if (!serverReachable) return;
+  test("POST with bogus service key returns 401", async () => {
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/restart`,
       undefined,
@@ -399,22 +373,20 @@ describe("/api/v1/agents/:agentId/restart", () => {
         headers: { "X-Service-Key": "not-a-real-service-key" },
       },
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/resume — service-key only
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/resume", () => {
+describeE2E("/api/v1/agents/:agentId/resume", () => {
   test("POST without service key returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/resume`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with user Bearer (not service key) still rejected", async () => {
-    if (!shouldRun()) return;
+  test("POST with user Bearer (not service key) returns 401", async () => {
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/resume`,
       undefined,
@@ -422,11 +394,10 @@ describe("/api/v1/agents/:agentId/resume", () => {
         headers: bearerHeaders(),
       },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with bogus service key still 401/403", async () => {
-    if (!serverReachable) return;
+  test("POST with bogus service key returns 401", async () => {
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/resume`,
       undefined,
@@ -434,101 +405,91 @@ describe("/api/v1/agents/:agentId/resume", () => {
         headers: { "X-Service-Key": "not-a-real-service-key" },
       },
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/status — service-key only
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/status", () => {
+describeE2E("/api/v1/agents/:agentId/status", () => {
   test("GET without service key returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/status`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("GET with user Bearer (not service key) still rejected", async () => {
-    if (!shouldRun()) return;
+  test("GET with user Bearer (not service key) returns 401", async () => {
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/status`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("GET with bogus service key still 401/403", async () => {
-    if (!serverReachable) return;
+  test("GET with bogus service key returns 401", async () => {
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/status`, {
       headers: { "X-Service-Key": "not-a-real-service-key" },
     });
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/suspend — service-key only
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/suspend", () => {
+describeE2E("/api/v1/agents/:agentId/suspend", () => {
   test("POST without service key returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/suspend`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with user Bearer (not service key) still rejected", async () => {
-    if (!shouldRun()) return;
+  test("POST with user Bearer (not service key) returns 401", async () => {
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/suspend`,
       { reason: "test" },
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with bogus service key still 401/403", async () => {
-    if (!serverReachable) return;
+  test("POST with bogus service key returns 401", async () => {
     const res = await api.post(
       `/api/v1/agents/${UNOWNED_AGENT_ID}/suspend`,
       { reason: "test" },
       { headers: { "X-Service-Key": "not-a-real-service-key" } },
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/:agentId/usage — service-key only
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/:agentId/usage", () => {
+describeE2E("/api/v1/agents/:agentId/usage", () => {
   test("GET without service key returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/usage`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("GET with user Bearer (not service key) still rejected", async () => {
-    if (!shouldRun()) return;
+  test("GET with user Bearer (not service key) returns 401", async () => {
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/usage`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("GET with bogus service key still 401/403", async () => {
-    if (!serverReachable) return;
+  test("GET with bogus service key returns 401", async () => {
     const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/usage`, {
       headers: { "X-Service-Key": "not-a-real-service-key" },
     });
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/v1/agents/by-token — public token lookup
 // -------------------------------------------------------------------------
-describe("/api/v1/agents/by-token", () => {
+describeE2E("/api/v1/agents/by-token", () => {
   test("GET without ?address returns 400", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/v1/agents/by-token");
     expect(res.status).toBe(400);
     const body = (await res.json()) as { success?: boolean; error?: string };
@@ -536,17 +497,14 @@ describe("/api/v1/agents/by-token", () => {
     expect(body.error).toBeTruthy();
   });
 
-  test("GET with bogus address returns 404", async () => {
-    if (!serverReachable) return;
+  test("GET with well-formed unknown address returns 404 (no agent linked)", async () => {
     const res = await api.get(
       `/api/v1/agents/by-token?address=${encodeURIComponent("0xdeadbeef".repeat(4))}&chain=eth`,
     );
-    // 404 = no agent linked. 400 if normalization rejects the address shape.
-    expect([400, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("GET with overlong address returns 400", async () => {
-    if (!serverReachable) return;
     const longAddr = "x".repeat(257);
     const res = await api.get(`/api/v1/agents/by-token?address=${longAddr}`);
     expect(res.status).toBe(400);
@@ -556,54 +514,49 @@ describe("/api/v1/agents/by-token", () => {
 // -------------------------------------------------------------------------
 // /api/my-agents/characters — list + create
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters", () => {
+describeE2E("/api/my-agents/characters", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/my-agents/characters");
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth returns paginated character list", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/my-agents/characters?limit=10", {
       headers: bearerHeaders(),
     });
-    expect([200, 401, 403]).toContain(res.status);
-    if (res.status === 200) {
-      const body = (await res.json()) as {
-        success?: boolean;
-        data?: { characters?: unknown[]; pagination?: { page?: number } };
-      };
-      expect(body.success).toBe(true);
-      expect(Array.isArray(body.data?.characters)).toBe(true);
-      expect(body.data?.pagination?.page).toBe(1);
-    }
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: { characters?: unknown[]; pagination?: { page?: number } };
+    };
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.data?.characters)).toBe(true);
+    expect(body.data?.pagination?.page).toBe(1);
   });
 
-  test("POST with malformed body fails", async () => {
-    if (!shouldRun()) return;
+  test("POST with malformed body returns 500 (create fails at the DB layer)", async () => {
     // Missing the required `name` field — the handler casts to ElizaCharacter
-    // and the create call will fail at the DB layer.
+    // without route-layer validation, so the insert fails in the repository.
+    // Current contract: 500. A route-layer validator would make this a 400;
+    // update this pin when one lands.
     const res = await api.post(
       "/api/my-agents/characters",
       { nope: "no name here" },
       { headers: bearerHeaders() },
     );
-    expect([400, 401, 403, 500]).toContain(res.status);
+    expect(res.status).toBe(500);
   });
 });
 
 // /api/my-agents/characters/avatar — Worker-safe multipart avatar upload.
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/avatar", () => {
+describeE2E("/api/my-agents/characters/avatar", () => {
   test("POST without auth returns 401 before upload validation", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/my-agents/characters/avatar");
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("POST with valid auth and no multipart body returns 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.post("/api/my-agents/characters/avatar", undefined, {
       headers: bearerHeaders(),
     });
@@ -614,7 +567,6 @@ describe("/api/my-agents/characters/avatar", () => {
   });
 
   test("POST with random JSON body returns upload validation error", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       "/api/my-agents/characters/avatar",
       { fake: "payload" },
@@ -627,125 +579,113 @@ describe("/api/my-agents/characters/avatar", () => {
 // -------------------------------------------------------------------------
 // /api/my-agents/characters/:id — GET + PUT + DELETE
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/:id", () => {
+describeE2E("/api/my-agents/characters/:id", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/my-agents/characters/${UNOWNED_AGENT_ID}`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth on unowned id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/my-agents/characters/${UNOWNED_AGENT_ID}`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("DELETE on unowned id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.delete(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}`,
       {
         headers: bearerHeaders(),
       },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/my-agents/characters/:id/clone — POST
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/:id/clone", () => {
+describeE2E("/api/my-agents/characters/:id/clone", () => {
   test("POST without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/clone`,
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("POST with valid auth on unknown source id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/clone`,
       {},
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("POST with non-JSON body still hits not-found gate (handler tolerates empty body)", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/clone`,
       "this is not json",
       { headers: { ...bearerHeaders(), "Content-Type": "text/plain" } },
     );
-    expect([400, 401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/my-agents/characters/:id/share — GET + PUT
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/:id/share", () => {
+describeE2E("/api/my-agents/characters/:id/share", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`,
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth on unowned id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`,
       {
         headers: bearerHeaders(),
       },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
-  test("PUT with invalid body returns 400 (or 404 if ownership fails first)", async () => {
-    if (!shouldRun()) return;
+  test("PUT with invalid body on unowned id returns 404 (ownership fails before body validation)", async () => {
     const res = await api.put(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`,
       { isPublic: "not-a-boolean" },
       { headers: bearerHeaders() },
     );
-    expect([400, 401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/my-agents/characters/:id/stats — GET
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/:id/stats", () => {
+describeE2E("/api/my-agents/characters/:id/stats", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/stats`,
     );
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth on unowned id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/stats`,
       {
         headers: bearerHeaders(),
       },
     );
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("GET with valid auth on owned id returns stored counters", async () => {
-    if (!shouldRun()) return;
     const userId = process.env.TEST_USER_ID;
     const organizationId = process.env.TEST_ORGANIZATION_ID;
     if (!userId || !organizationId) {
@@ -795,7 +735,6 @@ describe("/api/my-agents/characters/:id/stats", () => {
   });
 
   test("GET with malformed id returns 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/my-agents/characters/not-a-uuid/stats", {
       headers: bearerHeaders(),
     });
@@ -804,168 +743,149 @@ describe("/api/my-agents/characters/:id/stats", () => {
 });
 
 // -------------------------------------------------------------------------
-// /api/my-agents/characters/:id/track-interaction — POST (returns 410 gone)
+// /api/my-agents/characters/:id/track-interaction — POST (removed route)
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/:id/track-interaction", () => {
-  test("POST without auth returns 401 (auth gate before 410)", async () => {
-    if (!serverReachable) return;
+describeE2E("/api/my-agents/characters/:id/track-interaction", () => {
+  test("POST without auth returns 401 (global auth middleware fires first)", async () => {
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`,
     );
-    expect([401, 403, 410, 500]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with valid auth lands on 410 Gone", async () => {
-    if (!shouldRun()) return;
+  // Current contract for authed callers is 500, NOT the intended 410: the
+  // handler calls requireUserWithOrg (session-only — it rejects eliza_* API
+  // keys) inside a blanket try/catch that converts the auth rejection into
+  // "Failed to track interaction" 500. Pinned so the contract is visible;
+  // update to 410 if the handler drops the swallow (compare track-view).
+  test("POST with API-key Bearer returns 500 (auth rejection swallowed by the route's catch)", async () => {
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`,
       undefined,
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 410, 500]).toContain(res.status);
-    if (res.status === 410) {
-      const body = (await res.json()) as { success?: boolean; error?: string };
-      expect(body.success).toBe(false);
-      expect(body.error).toBeTruthy();
-    }
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { success?: boolean; error?: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toBeTruthy();
   });
 
-  test("POST with body still 410 (route is removed)", async () => {
-    if (!shouldRun()) return;
+  test("POST with body behaves the same (500 for API-key callers)", async () => {
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`,
       { eventType: "click" },
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 410, 500]).toContain(res.status);
+    expect(res.status).toBe(500);
   });
 });
 
 // -------------------------------------------------------------------------
-// /api/my-agents/characters/:id/track-view — POST (returns 410 gone, no auth)
+// /api/my-agents/characters/:id/track-view — POST (returns 410 gone)
 // -------------------------------------------------------------------------
-describe("/api/my-agents/characters/:id/track-view", () => {
-  test("POST without auth returns 401 (global auth middleware) or 410", async () => {
-    if (!serverReachable) return;
+describeE2E("/api/my-agents/characters/:id/track-view", () => {
+  test("POST without auth returns 401 (global auth middleware fires first)", async () => {
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-view`,
     );
-    expect([401, 403, 410]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("POST with valid auth lands on 410 Gone", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-view`,
       undefined,
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 410]).toContain(res.status);
-    if (res.status === 410) {
-      const body = (await res.json()) as { success?: boolean; error?: string };
-      expect(body.success).toBe(false);
-    }
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { success?: boolean; error?: string };
+    expect(body.success).toBe(false);
   });
 
   test("POST with random body still 410", async () => {
-    if (!shouldRun()) return;
     const res = await api.post(
       `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-view`,
       { random: "data" },
       { headers: bearerHeaders() },
     );
-    expect([401, 403, 410]).toContain(res.status);
+    expect(res.status).toBe(410);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/my-agents/saved — GET
 // -------------------------------------------------------------------------
-describe("/api/my-agents/saved", () => {
+describeE2E("/api/my-agents/saved", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get("/api/my-agents/saved");
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth returns saved-agent list", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/my-agents/saved", {
       headers: bearerHeaders(),
     });
-    expect([200, 401, 403]).toContain(res.status);
-    if (res.status === 200) {
-      const body = (await res.json()) as {
-        success?: boolean;
-        data?: { agents?: unknown[]; count?: number };
-      };
-      expect(body.success).toBe(true);
-      expect(Array.isArray(body.data?.agents)).toBe(true);
-      expect(typeof body.data?.count).toBe("number");
-    }
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: { agents?: unknown[]; count?: number };
+    };
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.data?.agents)).toBe(true);
+    expect(typeof body.data?.count).toBe("number");
   });
 
-  test("GET with junk Bearer is rejected", async () => {
-    if (!serverReachable) return;
+  test("GET with junk Bearer returns 401", async () => {
     const res = await api.get("/api/my-agents/saved", {
       headers: { Authorization: "Bearer eliza_completely-invalid-key" },
     });
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/my-agents/saved/:id — GET + DELETE
 // -------------------------------------------------------------------------
-describe("/api/my-agents/saved/:id", () => {
+describeE2E("/api/my-agents/saved/:id", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/my-agents/saved/${UNOWNED_AGENT_ID}`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with valid auth on unknown saved id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/my-agents/saved/${UNOWNED_AGENT_ID}`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("DELETE with valid auth on unknown saved id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.delete(`/api/my-agents/saved/${UNOWNED_AGENT_ID}`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
-// /api/my-agents/claim-affiliate-characters — POST (session auth)
+// /api/my-agents/claim-affiliate-characters — POST (session auth only)
 // -------------------------------------------------------------------------
-describe("/api/my-agents/claim-affiliate-characters", () => {
+describeE2E("/api/my-agents/claim-affiliate-characters", () => {
   test("POST without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.post("/api/my-agents/claim-affiliate-characters", {});
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with valid Bearer (session-only) — 401 (requires session) or 200", async () => {
-    if (!shouldRun()) return;
-    // requireUserWithOrg accepts API keys too in current impl; if the route
-    // rejects the Bearer with 401 we still consider that a passing assertion
-    // because the route ran the auth gate.
+  test("POST with API-key Bearer returns 401 (route requires a session, rejects eliza_* keys)", async () => {
     const res = await api.post(
       "/api/my-agents/claim-affiliate-characters",
       {},
       { headers: bearerHeaders() },
     );
-    expect([200, 401, 403, 500]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
-  test("POST with non-JSON body is tolerated (route catches JSON parse errors)", async () => {
-    if (!shouldRun()) return;
+  test("POST with non-JSON body still hits the session gate first (401)", async () => {
     const res = await api.post(
       "/api/my-agents/claim-affiliate-characters",
       "not-json-at-all",
@@ -973,22 +893,20 @@ describe("/api/my-agents/claim-affiliate-characters", () => {
         headers: { ...bearerHeaders(), "Content-Type": "text/plain" },
       },
     );
-    expect([200, 400, 401, 403, 500]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/characters/:characterId/mcps — owned character MCP metadata
 // -------------------------------------------------------------------------
-describe("/api/characters/:characterId/mcps", () => {
+describeE2E("/api/characters/:characterId/mcps", () => {
   test("GET without auth returns 401", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/characters/${UNOWNED_AGENT_ID}/mcps`);
-    expect([401, 403]).toContain(res.status);
+    expect(res.status).toBe(401);
   });
 
   test("GET with malformed character id returns 400", async () => {
-    if (!shouldRun()) return;
     const res = await api.get("/api/characters/not-a-uuid/mcps", {
       headers: bearerHeaders(),
     });
@@ -996,15 +914,13 @@ describe("/api/characters/:characterId/mcps", () => {
   });
 
   test("GET with valid auth on unowned id returns 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/characters/${UNOWNED_AGENT_ID}/mcps`, {
       headers: bearerHeaders(),
     });
-    expect([401, 403, 404]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 
   test("GET with valid auth on owned id returns MCP configuration", async () => {
-    if (!shouldRun()) return;
     const userId = process.env.TEST_USER_ID;
     const organizationId = process.env.TEST_ORGANIZATION_ID;
     if (!userId || !organizationId) {
@@ -1063,23 +979,21 @@ describe("/api/characters/:characterId/mcps", () => {
     });
   });
 
-  test("POST with valid auth is not mounted", async () => {
-    if (!shouldRun()) return;
+  test("POST is not mounted — 404", async () => {
     const res = await api.post(
       `/api/characters/${UNOWNED_AGENT_ID}/mcps`,
       { mcpId: "test" },
       { headers: bearerHeaders() },
     );
-    expect([404, 405]).toContain(res.status);
+    expect(res.status).toBe(404);
   });
 });
 
 // -------------------------------------------------------------------------
 // /api/characters/:characterId/public — public character info
 // -------------------------------------------------------------------------
-describe("/api/characters/:characterId/public", () => {
+describeE2E("/api/characters/:characterId/public", () => {
   test("GET unauthenticated for unknown character returns 404", async () => {
-    if (!serverReachable) return;
     const res = await api.get(`/api/characters/${UNOWNED_AGENT_ID}/public`);
     // Public route — no auth required, but unknown character is 404.
     expect(res.status).toBe(404);
@@ -1088,18 +1002,15 @@ describe("/api/characters/:characterId/public", () => {
   });
 
   test("GET with valid auth for unknown character still 404", async () => {
-    if (!shouldRun()) return;
     const res = await api.get(`/api/characters/${UNOWNED_AGENT_ID}/public`, {
       headers: bearerHeaders(),
     });
     expect(res.status).toBe(404);
   });
 
-  test("GET with malformed characterId is rejected", async () => {
-    if (!serverReachable) return;
+  test("GET with malformed characterId returns 400 (UUID validator)", async () => {
     const res = await api.get("/api/characters/not-a-uuid/public");
-    // 404 = service treats it as not-found; 400/500 if a UUID validator fires.
-    expect([400, 404, 500]).toContain(res.status);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -1108,20 +1019,8 @@ describe("/api/characters/:characterId/public", () => {
 // rest of these tests rely on. If this fails, the per-route 200 assertions
 // were always going to skip.
 // -------------------------------------------------------------------------
-describe("Group C sanity: bootstrapped key works", () => {
-  test("test API key is set when not SKIP_DB_DEPENDENT", () => {
-    if (!serverReachable) return;
-    if (process.env.SKIP_DB_DEPENDENT === "1") {
-      expect(hasTestApiKey).toBe(false);
-      return;
-    }
-    if (!hasTestApiKey) {
-      console.warn(
-        "[group-c-agents] preload did not export TEST_API_KEY — local Postgres unavailable",
-      );
-    }
-    if (hasTestApiKey) {
-      expect(getApiKey()).toMatch(/^eliza_/);
-    }
+describeE2E("Group C sanity: bootstrapped key works", () => {
+  test("test API key is set and eliza_-prefixed", () => {
+    expect(getApiKey()).toMatch(/^eliza_/);
   });
 });

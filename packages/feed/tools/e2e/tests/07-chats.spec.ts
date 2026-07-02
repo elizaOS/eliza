@@ -52,7 +52,15 @@ test.describe("Chats - Layout", () => {
 
   test("tab switching works", async ({ page }) => {
     const switched = await clickTab(page, "All");
-    expect(typeof switched).toBe("boolean");
+    test.skip(!switched, 'no "All" tab rendered on the chats page');
+    const hasContent = await pageContainsText(
+      page,
+      "chat",
+      "message",
+      "conversation",
+      "direct",
+    );
+    expect(hasContent).toBe(true);
   });
 
   test("chat list renders", async ({ page }) => {
@@ -66,7 +74,8 @@ test.describe("Chats - Layout", () => {
     const isVisible = await searchInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no search input rendered on the chats page");
+    await expect(searchInput).toBeEnabled();
   });
 });
 
@@ -98,23 +107,34 @@ test.describe("Chats - Messaging", () => {
   });
 
   test("send button present", async ({ page }) => {
-    const sendBtn = page.locator(SELECTORS.SEND_BUTTON).first();
-    const isVisible = await sendBtn
+    // The send button belongs to the composer: if a chat composer is open,
+    // its send button must render alongside it.
+    const chatInput = page.locator(SELECTORS.CHAT_INPUT).first();
+    const composerOpen = await chatInput
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!composerOpen, "no chat composer rendered (no chat open)");
+    await expect(page.locator(SELECTORS.SEND_BUTTON).first()).toBeVisible();
   });
 
   test("message timestamps visible", async ({ page }) => {
-    const hasTimestamps = await pageContainsText(
+    const timeElements = await page
+      .locator("time")
+      .count()
+      .catch(() => 0);
+    const hasRelativeTime = await pageContainsText(
       page,
       "ago",
       "today",
       "yesterday",
-      "am",
-      "pm",
+      "just now",
     );
-    expect(typeof hasTimestamps).toBe("boolean");
+    const hasTimestamps = timeElements > 0 || hasRelativeTime;
+    test.skip(
+      !hasTimestamps,
+      "no message timestamps rendered (no messages in any chat)",
+    );
+    expect(hasTimestamps).toBe(true);
   });
 
   test("SSE connection status indicator", async ({ page }) => {
@@ -124,7 +144,11 @@ test.describe("Chats - Messaging", () => {
       "online",
       "live",
     );
-    expect(typeof hasStatus).toBe("boolean");
+    test.skip(
+      !hasStatus,
+      "no connection-status indicator rendered on the chats page",
+    );
+    expect(hasStatus).toBe(true);
   });
 });
 

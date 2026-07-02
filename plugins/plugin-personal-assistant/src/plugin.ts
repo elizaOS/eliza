@@ -62,6 +62,7 @@ import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { voiceCallAction } from "./actions/voice-call.js";
 import { workThreadAction } from "./actions/work-thread.js";
+import { registerDefaultPackCatalog } from "./default-packs/spine-registration.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -1054,13 +1055,23 @@ const rawPersonalAssistantPlugin: Plugin = {
           await ensureLifeOpsSchedulerTask(runtime);
         },
       });
+      // Register the default-pack catalog (quiet-user watcher, cadence
+      // follow-ups, …) as PA's consumer pack on the spine seed registry.
+      // The spine's boot seeder materializes it once per idempotency key
+      // after runtime init. Records whose logical slot the first-run pack
+      // below already owns (gm/gn/check-in/morning-brief) are reconciled
+      // out — see src/default-packs/spine-registration.ts for the upgrade
+      // story.
+      registerDefaultPackCatalog(runtime);
       // Seed the first-run defaults pack idempotently on EVERY boot — not
       // gated behind first-run completion — so devices that predate the pack
       // still receive the paused weekly-review starter + default routines.
       // The per-key seeded marker makes this seed-once: a default the user
       // deletes is never recreated, and fresh first-run installs are covered
       // by the same marker so there is no double-seed. Uses the production
-      // DB-backed runner so seeded rows reach the scheduler tick.
+      // DB-backed runner so seeded rows reach the scheduler tick. (The
+      // first-run pack keeps its own marker store + keys; the catalog pack
+      // above seeds disjoint keys through the spine registry.)
       scheduleTaskEnsureAfterRuntimeInit({
         runtime,
         prefix: "[lifeops]",

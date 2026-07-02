@@ -141,7 +141,12 @@ export default defineConfig({
       "**/*.e2e.test.{ts,tsx}",
       "**/*.e2e.spec.{ts,tsx}",
       "**/*.integration.test.{ts,tsx}",
-      "**/*.live.test.{ts,tsx}",
+      // #9310 §E: the guarded *.live.test.ts suite (opt-in gated, self-skips)
+      // is invocable only in the post-merge lane, where run-all-tests.mjs
+      // prints a named skip accounting.
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? []
+        : ["**/*.live.test.{ts,tsx}"]),
       "**/*.live.e2e.test.{ts,tsx}",
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",

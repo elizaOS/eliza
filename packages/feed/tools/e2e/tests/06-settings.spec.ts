@@ -60,7 +60,8 @@ test.describe("Settings - Profile Tab", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
-    await clickTab(page, "Profile");
+    const onTab = await clickTab(page, "Profile");
+    test.skip(!onTab, 'no "Profile" tab rendered on the settings page');
   });
 
   test.afterEach(async ({ page }) => {
@@ -81,7 +82,15 @@ test.describe("Settings - Profile Tab", () => {
     const isVisible = await avatar
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(
+      !isVisible,
+      "no avatar image rendered (user has no profile image; Avatar falls back to initials)",
+    );
+    // The avatar image must have actually loaded, not 404'd.
+    const loaded = await avatar
+      .evaluate((el) => el instanceof HTMLImageElement && el.naturalWidth > 0)
+      .catch(() => false);
+    expect(loaded).toBe(true);
   });
 
   test("edit name field", async ({ page }) => {
@@ -90,7 +99,8 @@ test.describe("Settings - Profile Tab", () => {
       'input[name="name"], input[placeholder*="name" i]',
       "Test User",
     );
-    expect(result === null || result === "Test User").toBe(true);
+    test.skip(result === null, "no name input rendered on the profile tab");
+    expect(result).toBe("Test User");
   });
 
   test("edit username field", async ({ page }) => {
@@ -99,7 +109,11 @@ test.describe("Settings - Profile Tab", () => {
       'input[name="username"], input[placeholder*="username" i]',
       "testuser123",
     );
-    expect(result === null || result === "testuser123").toBe(true);
+    test.skip(
+      result === null,
+      "no username input rendered on the profile tab",
+    );
+    expect(result).toBe("testuser123");
   });
 
   test("edit bio field", async ({ page }) => {
@@ -108,15 +122,14 @@ test.describe("Settings - Profile Tab", () => {
       'textarea[name="bio"], textarea[placeholder*="bio" i]',
       "Test bio content",
     );
-    expect(result === null || result === "Test bio content").toBe(true);
+    test.skip(result === null, "no bio textarea rendered on the profile tab");
+    expect(result).toBe("Test bio content");
   });
 
   test("save button visible", async ({ page }) => {
+    // The profile tab always renders its "Save Changes" button.
     const saveBtn = page.locator(SELECTORS.SAVE_BUTTON).first();
-    const isVisible = await saveBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(saveBtn).toBeVisible({ timeout: 5000 });
   });
 
   test("validation on empty required fields", async ({ page }) => {
@@ -149,26 +162,25 @@ test.describe("Settings - Theme Tab", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
-    await clickTab(page, "Theme");
+    const onTab = await clickTab(page, "Theme");
+    test.skip(!onTab, 'no "Theme" tab rendered on the settings page');
   });
 
   test.afterEach(async ({ page }) => {
     await cooldownBetweenTests(page);
   });
 
+  // The theme tab lists exactly Light / Dark / System options.
   test("light theme option visible", async ({ page }) => {
-    const hasLight = await pageContainsText(page, "light");
-    expect(typeof hasLight).toBe("boolean");
+    expect(await pageContainsText(page, "light")).toBe(true);
   });
 
   test("dark theme option visible", async ({ page }) => {
-    const hasDark = await pageContainsText(page, "dark");
-    expect(typeof hasDark).toBe("boolean");
+    expect(await pageContainsText(page, "dark")).toBe(true);
   });
 
   test("system theme option visible", async ({ page }) => {
-    const hasSystem = await pageContainsText(page, "system");
-    expect(typeof hasSystem).toBe("boolean");
+    expect(await pageContainsText(page, "system")).toBe(true);
   });
 
   test("theme switch changes appearance", async ({ page }) => {
@@ -200,7 +212,8 @@ test.describe("Settings - Notifications Tab", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
-    await clickTab(page, "Notifications");
+    const onTab = await clickTab(page, "Notifications");
+    test.skip(!onTab, 'no "Notifications" tab rendered on the settings page');
   });
 
   test.afterEach(async ({ page }) => {
@@ -208,9 +221,10 @@ test.describe("Settings - Notifications Tab", () => {
   });
 
   test("notification toggles visible", async ({ page }) => {
+    // The notifications tab renders at least one Switch control.
     const toggles = page.locator('input[type="checkbox"], [role="switch"]');
     const count = await toggles.count().catch(() => 0);
-    expect(count).toBeGreaterThanOrEqual(0);
+    expect(count).toBeGreaterThan(0);
   });
 });
 
@@ -224,7 +238,8 @@ test.describe("Settings - Privacy Tab", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
-    await clickTab(page, "Privacy");
+    const onTab = await clickTab(page, "Privacy");
+    test.skip(!onTab, 'no "Privacy" tab rendered on the settings page');
   });
 
   test.afterEach(async ({ page }) => {
@@ -232,23 +247,25 @@ test.describe("Settings - Privacy Tab", () => {
   });
 
   test("privacy options visible", async ({ page }) => {
+    // The privacy tab exposes data-export and account controls.
     const hasContent = await pageContainsText(
       page,
       "privacy",
       "data",
       "account",
     );
-    expect(typeof hasContent).toBe("boolean");
+    expect(hasContent).toBe(true);
   });
 
   test("delete account option present", async ({ page }) => {
+    // The privacy tab renders the "Delete Your Account" section.
     const hasDelete = await pageContainsText(
       page,
       "delete",
       "remove",
       "deactivate",
     );
-    expect(typeof hasDelete).toBe("boolean");
+    expect(hasDelete).toBe(true);
   });
 });
 
@@ -262,7 +279,8 @@ test.describe("Settings - Security Tab", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
-    await clickTab(page, "Security");
+    const onTab = await clickTab(page, "Security");
+    test.skip(!onTab, 'no "Security" tab rendered on the settings page');
   });
 
   test.afterEach(async ({ page }) => {
@@ -270,25 +288,19 @@ test.describe("Settings - Security Tab", () => {
   });
 
   test("security settings display", async ({ page }) => {
+    // The security tab renders "Account Security" + "Security Resources".
     const hasContent = await pageContainsText(
       page,
       "security",
       "password",
       "authentication",
     );
-    expect(typeof hasContent).toBe("boolean");
+    expect(hasContent).toBe(true);
   });
 
-  test("2FA option present", async ({ page }) => {
-    const has2FA = await pageContainsText(
-      page,
-      "2fa",
-      "two-factor",
-      "authenticator",
-      "two factor",
-    );
-    expect(typeof has2FA).toBe("boolean");
-  });
+  // "2FA option present" was deleted: the SecurityTab component has no 2FA /
+  // two-factor feature, so the spec tested a feature that does not exist and
+  // could only ever pass vacuously.
 });
 
 test.describe("Settings - API Keys Tab", () => {
@@ -301,7 +313,8 @@ test.describe("Settings - API Keys Tab", () => {
     await loginWithWallet(page, wallets);
     await navigateTo(page, ROUTES.SETTINGS);
     await waitForPageLoad(page);
-    await clickTab(page, "API Keys");
+    const onTab = await clickTab(page, "API Keys");
+    test.skip(!onTab, 'no "API Keys" tab rendered on the settings page');
   });
 
   test.afterEach(async ({ page }) => {
@@ -309,15 +322,13 @@ test.describe("Settings - API Keys Tab", () => {
   });
 
   test("create API key button visible", async ({ page }) => {
+    // The API Keys tab always renders its "Generate Key" button.
     const createBtn = page
       .locator(
         'button:has-text("Create"), button:has-text("Generate"), button:has-text("New Key")',
       )
       .first();
-    const isVisible = await createBtn
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    await expect(createBtn).toBeVisible({ timeout: 5000 });
   });
 
   test("create API key dialog opens", async ({ page }) => {
@@ -340,25 +351,34 @@ test.describe("Settings - API Keys Tab", () => {
   });
 
   test("copy button on API key", async ({ page }) => {
+    // The Copy button only renders right after a key is generated.
     const copyBtn = page
       .locator('button:has-text("Copy"), button[aria-label*="copy" i]')
       .first();
     const isVisible = await copyBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    test.skip(!isVisible, "no freshly generated API key banner rendered");
+    await expect(copyBtn).toBeEnabled();
   });
 
   test("revoke button on API key", async ({ page }) => {
+    // Each existing key row renders a Revoke button; a fresh account shows
+    // the empty state instead.
     const revokeBtn = page
       .locator(
         'button:has-text("Revoke"), button:has-text("Delete"), button:has-text("Remove")',
       )
       .first();
-    const isVisible = await revokeBtn
+    const hasRevoke = await revokeBtn
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    expect(typeof isVisible).toBe("boolean");
+    const hasEmptyState = await pageContainsText(
+      page,
+      "generate your first api key",
+      "no api keys",
+    );
+    expect(hasRevoke || hasEmptyState).toBe(true);
   });
 });
 
@@ -379,26 +399,18 @@ test.describe("Settings - Social Linking", () => {
   });
 
   test("Twitter link option present", async ({ page }) => {
+    // Settings renders a "Twitter/X" social visibility section.
     const hasTwitter = await pageContainsText(
       page,
       "twitter",
       "x.com",
       "connect twitter",
     );
-    expect(typeof hasTwitter).toBe("boolean");
+    expect(hasTwitter).toBe(true);
   });
 
-  test("Discord link option present", async ({ page }) => {
-    const hasDiscord = await pageContainsText(
-      page,
-      "discord",
-      "connect discord",
-    );
-    expect(typeof hasDiscord).toBe("boolean");
-  });
-
-  test("GitHub link option present", async ({ page }) => {
-    const hasGithub = await pageContainsText(page, "github", "connect github");
-    expect(typeof hasGithub).toBe("boolean");
-  });
+  // "Discord link option present" and "GitHub link option present" were
+  // deleted: the settings page has no Discord or GitHub linking feature
+  // (only Twitter/X, Farcaster, and wallet), so those specs tested features
+  // that do not exist and could only ever pass vacuously.
 });

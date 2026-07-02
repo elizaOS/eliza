@@ -106,7 +106,10 @@ class RecordingAdapter implements MessageAdapter {
   ): Promise<{ draftId: string; preview: string }> {
     this.createDraftCalls.push(draft);
     this.seq += 1;
-    return { draftId: `rec-draft-${this.seq}`, preview: draft.body.slice(0, 40) };
+    return {
+      draftId: `rec-draft-${this.seq}`,
+      preview: draft.body.slice(0, 40),
+    };
   }
   async sendDraft(
     _runtime: IAgentRuntime,

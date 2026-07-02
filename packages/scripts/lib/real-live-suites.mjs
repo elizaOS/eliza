@@ -24,6 +24,10 @@
  *   anyOf     groups of env vars; at least one group must be fully satisfied.
  *   optIn     env var that must equal "1" — deliberate operator opt-in gates
  *             that the post-merge lane does NOT auto-set (destructive/heavy).
+ *   guardVia  repo-relative helper file(s) where the guard env vars are read
+ *             when the suite guards through a shared helper instead of
+ *             reading process.env directly (manifest-honesty test follows
+ *             these).
  *   probe     host-capability description; the suite self-skips (or runs)
  *             based on a runtime probe, not an env var.
  *   blocked   the package vitest config excludes the file in EVERY lane; the
@@ -215,13 +219,27 @@ export const GUARDED_REAL_LIVE_SUITES = [
     file: "plugins/plugin-personal-assistant/test/lifeops-life-chat.real.test.ts",
     blocked:
       "plugin-personal-assistant vitest.config.ts excludes *.real.test.ts in every lane; run via the PA real lanes (vitest.background-real.config.ts family)",
-    anyOf: [["ANTHROPIC_API_KEY"], ["OPENAI_API_KEY"], ["GROQ_API_KEY"]],
+    anyOf: [
+      ["CEREBRAS_API_KEY"],
+      ["GROQ_API_KEY"],
+      ["OPENAI_API_KEY"],
+      ["ANTHROPIC_API_KEY"],
+      ["GOOGLE_GENERATIVE_AI_API_KEY"],
+    ],
+    guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
   },
   {
     file: "plugins/plugin-personal-assistant/test/lifeops-llm-extraction.live.test.ts",
     blocked:
       "plugin-personal-assistant vitest.config.ts excludes *.live.test.ts in every lane; run via the PA real lanes (vitest.background-real.config.ts family)",
-    anyOf: [["ANTHROPIC_API_KEY"], ["OPENAI_API_KEY"], ["GROQ_API_KEY"]],
+    anyOf: [
+      ["CEREBRAS_API_KEY"],
+      ["GROQ_API_KEY"],
+      ["OPENAI_API_KEY"],
+      ["ANTHROPIC_API_KEY"],
+      ["GOOGLE_GENERATIVE_AI_API_KEY"],
+    ],
+    guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
   },
   {
     file: "plugins/plugin-polymarket/src/routes.real.test.ts",
@@ -262,6 +280,9 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-wallet/src/chains/evm/__tests__/integration/rpc-providers.live.test.ts",
     optIn: "ELIZA_LIVE_EVM_RPC_TEST",
+    guardVia: [
+      "plugins/plugin-wallet/src/chains/evm/__tests__/integration/live-rpc.ts",
+    ],
   },
   {
     file: "plugins/plugin-wallet/src/chains/solana/__tests__/integration/birdeye-direct.live.test.ts",

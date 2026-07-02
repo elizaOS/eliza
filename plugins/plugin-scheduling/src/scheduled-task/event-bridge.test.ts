@@ -97,9 +97,15 @@ async function getTask(
 /**
  * Minimal runtime standing in for core's event registry: same
  * name-keyed handler map + `runtime`/`source` payload injection semantics as
- * `AgentRuntime.registerEvent` / `emitEvent`.
+ * `AgentRuntime.registerEvent` / `emitEvent`. The `emit` helper takes the
+ * producer's plain data payload (core's `emitEvent` overloads require
+ * `EventPayload`-typed params; production emitters spread `runtime` in
+ * themselves, which `emit` mirrors here).
  */
-function makeEventRuntime(): IAgentRuntime {
+function makeEventRuntime(): {
+  runtime: IAgentRuntime;
+  emit: (event: string, params?: Record<string, unknown>) => Promise<void>;
+} {
   const events = new Map<
     string,
     Array<(params: Record<string, unknown>) => Promise<void>>
@@ -116,18 +122,17 @@ function makeEventRuntime(): IAgentRuntime {
       if (list.length > 0) events.set(event, list);
       else events.delete(event);
     },
-    async emitEvent(event: string, params: object) {
-      const handlers = events.get(event);
-      if (!handlers) return;
-      const paramsWithRuntime = {
-        ...(params as Record<string, unknown>),
-        runtime,
-        source: "runtime",
-      };
-      await Promise.all(handlers.map((handler) => handler(paramsWithRuntime)));
-    },
+  } as unknown as IAgentRuntime;
+  const emit = async (
+    event: string,
+    params: Record<string, unknown> = {},
+  ): Promise<void> => {
+    const handlers = events.get(event);
+    if (!handlers) return;
+    const paramsWithRuntime = { ...params, runtime, source: "runtime" };
+    await Promise.all(handlers.map((handler) => handler(paramsWithRuntime)));
   };
-  return runtime as unknown as IAgentRuntime;
+  return { runtime, emit };
 }
 
 describe("eventFilterMatches", () => {
@@ -273,7 +278,7 @@ describe("fireEventTriggeredTasks", () => {
 describe("installScheduledTaskEventBridge", () => {
   it("fires event tasks from runtime.emitEvent and stops after uninstall", async () => {
     const runner = makeRunner();
-    const runtime = makeEventRuntime();
+    const { runtime, emit } = makeEventRuntime();
     const task = await runner.schedule(
       eventTaskInput("calendar.meeting.ended"),
     );
@@ -284,14 +289,14 @@ describe("installScheduledTaskEventBridge", () => {
       getRunner: () => runner,
     });
 
-    await runtime.emitEvent("calendar.meeting.ended", { meetingId: "m1" });
+    await emit("calendar.meeting.ended", { meetingId: "m1" });
     expect((await getTask(runner, task.taskId)).state.status).toBe("fired");
 
     const second = await runner.schedule(
       eventTaskInput("calendar.meeting.ended"),
     );
     uninstall();
-    await runtime.emitEvent("calendar.meeting.ended", { meetingId: "m2" });
+    await emit("calendar.meeting.ended", { meetingId: "m2" });
     expect((await getTask(runner, second.taskId)).state.status).toBe(
       "scheduled",
     );
@@ -299,7 +304,7 @@ describe("installScheduledTaskEventBridge", () => {
 
   it("strips the injected runtime field before filter matching", async () => {
     const runner = makeRunner();
-    const runtime = makeEventRuntime();
+    const { runtime, emit } = makeEventRuntime();
     const task = await runner.schedule(
       eventTaskInput("calendar.meeting.ended", {
         trigger: {
@@ -316,7 +321,7 @@ describe("installScheduledTaskEventBridge", () => {
       getRunner: () => runner,
     });
 
-    await runtime.emitEvent("calendar.meeting.ended", { calendarId: "work" });
+    await emit("calendar.meeting.ended", { calendarId: "work" });
     expect((await getTask(runner, task.taskId)).state.status).toBe("fired");
   });
 });

@@ -15,7 +15,7 @@
  * when the same event is emitted concurrently — the loser observes `raced`.
  */
 
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type EventPayload, type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   ScheduledTaskFireResult,
   ScheduledTaskRunnerHandle,
@@ -130,8 +130,10 @@ export interface InstallScheduledTaskEventBridgeArgs {
  * Subscribe `runtime.emitEvent(eventKind, …)` to event-triggered task fires.
  * Returns an uninstall function that unregisters every handler.
  *
- * The handler strips the runtime-injected `runtime` field from the payload
- * before filter matching so filters compare against producer data only.
+ * The handler strips the non-data envelope fields (`runtime`, `onComplete`)
+ * from the payload before filter matching and before the payload is handed to
+ * `fireWithResult` as the persisted `eventPayload`. `source` is kept: it is a
+ * plain producer string and a legitimate filter target.
  */
 export function installScheduledTaskEventBridge(
   args: InstallScheduledTaskEventBridgeArgs,
@@ -139,11 +141,11 @@ export function installScheduledTaskEventBridge(
   const { runtime, getRunner } = args;
   const registrations: Array<{
     eventKind: string;
-    handler: (params: Record<string, unknown>) => Promise<void>;
+    handler: (params: EventPayload) => Promise<void>;
   }> = [];
   for (const eventKind of args.eventKinds) {
-    const handler = async (params: Record<string, unknown>): Promise<void> => {
-      const { runtime: _runtime, ...payload } = params ?? {};
+    const handler = async (params: EventPayload): Promise<void> => {
+      const { runtime: _runtime, onComplete: _onComplete, ...payload } = params;
       const outcome = await fireEventTriggeredTasks({
         runner: getRunner(),
         eventKind,

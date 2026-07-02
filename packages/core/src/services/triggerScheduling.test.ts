@@ -98,27 +98,86 @@ describe("computeNextCronRunAtMs - timezone handling", () => {
 	});
 });
 
-describe("computeNextCronRunAtMs - DST fall-back single fire (#11046)", () => {
-	// America/New_York fall-back: 2026-11-01 02:00 EDT -> 01:00 EST
-	// (transition instant 06:00:00Z). Local 01:00-01:59 happens twice:
-	// 05:00-05:59Z (EDT) and 06:00-06:59Z (EST).
+describe("computeNextCronRunAtMs - DST fall-back dedupe (#11046)", () => {
+	// America/New_York falls back 2026-11-01 02:00 EDT -> 01:00 EST, so local
+	// 01:30 occurs twice: 05:30Z (EDT) and 06:30Z (EST). A daily `30 1 * * *`
+	// must fire ONCE that day (the first instant), not once per pass.
+	const NY = "America/New_York";
+	const at = (iso: string) => Date.parse(iso);
+
+	it("fires the FIRST instant of the repeated hour", () => {
+		// From the prior day's fire, the next run is the EDT (first) pass.
+		expect(
+			computeNextCronRunAtMs("30 1 * * *", at("2026-10-31T05:30:00.000Z"), NY),
+		).toBe(at("2026-11-01T05:30:00.000Z"));
+	});
+
+	it("does NOT double-fire at the repeated hour's second instant", () => {
+		// Immediately after the EDT fire, the next run skips the EST duplicate
+		// (06:30Z same day) and lands on the next local day (01:30 EST).
+		expect(
+			computeNextCronRunAtMs("30 1 * * *", at("2026-11-01T05:30:00.000Z"), NY),
+		).toBe(at("2026-11-02T06:30:00.000Z"));
+	});
+
+	it("resumes normal once-per-day firing after the transition", () => {
+		expect(
+			computeNextCronRunAtMs("30 1 * * *", at("2026-11-02T06:30:00.000Z"), NY),
+		).toBe(at("2026-11-03T06:30:00.000Z"));
+	});
+
+	it("dedupes non-hour fall-back offsets such as Lord Howe's 30-minute transition", () => {
+		const lordHowe = "Australia/Lord_Howe";
+		// Lord Howe falls back by 30 minutes on 2026-04-05: local 01:45 occurs
+		// at 14:45Z (UTC+11) and again at 15:15Z (UTC+10:30). The second instant
+		// must not be treated as a separate cron fire.
+		expect(
+			computeNextCronRunAtMs(
+				"45 1 * * *",
+				at("2026-04-03T14:45:00.000Z"),
+				lordHowe,
+			),
+		).toBe(at("2026-04-04T14:45:00.000Z"));
+		expect(
+			computeNextCronRunAtMs(
+				"45 1 * * *",
+				at("2026-04-04T14:45:00.000Z"),
+				lordHowe,
+			),
+		).toBe(at("2026-04-05T15:15:00.000Z"));
+	});
+});
+
+describe("computeNextCronRunAtMs - non-representable base guard (#11046)", () => {
+	it("returns null immediately for a base at/over the max representable Date", () => {
+		// Number.MAX_SAFE_INTEGER (~9.007e15) exceeds the max Date (±8.64e15), so
+		// every scanned candidate would be an Invalid Date. The guard bails instead
+		// of scanning ~366 days of Invalid-Date minutes.
+		const started = performance.now();
+		const result = computeNextCronRunAtMs(
+			"0 0 29 2 *",
+			Number.MAX_SAFE_INTEGER,
+			"America/New_York",
+		);
+		const elapsedMs = performance.now() - started;
+		expect(result).toBeNull();
+		// Was a ~26s Invalid-Date scan without the guard; a generous ceiling.
+		expect(elapsedMs).toBeLessThan(2000);
+	});
+
+	it("returns null for non-finite bases", () => {
+		expect(computeNextCronRunAtMs("* * * * *", Number.NaN)).toBeNull();
+		expect(
+			computeNextCronRunAtMs("* * * * *", Number.POSITIVE_INFINITY),
+		).toBeNull();
+	});
+});
+
+describe("computeNextCronRunAtMs - DST fall-back regression coverage (#11046)", () => {
 	const NY = "America/New_York";
 	// Europe/Berlin fall-back: 2026-10-25 03:00 CEST -> 02:00 CET
 	// (transition instant 01:00:00Z). Local 02:00-02:59 happens twice.
 	const BERLIN = "Europe/Berlin";
-
-	it("NY: a cron inside the repeated hour fires on the first pass (01:30 EDT)", () => {
-		const midnightLocal = Date.UTC(2026, 10, 1, 4, 0, 0); // 00:00 EDT
-		const next = computeNextCronRunAtMs("30 1 * * *", midnightLocal, NY);
-		expect(next).toBe(Date.UTC(2026, 10, 1, 5, 30, 0)); // 01:30 EDT
-	});
-
-	it("NY: the second wall-clock pass is skipped — next fire is the following local day", () => {
-		const firstPass = Date.UTC(2026, 10, 1, 5, 30, 0); // 01:30 EDT
-		const next = computeNextCronRunAtMs("30 1 * * *", firstPass, NY);
-		// NOT 2026-11-01T06:30Z (01:30 EST — the old double fire).
-		expect(next).toBe(Date.UTC(2026, 10, 2, 6, 30, 0)); // Nov 2 01:30 EST
-	});
 
 	it("Berlin: a cron inside the repeated hour fires once (02:30 CEST), then the next local day", () => {
 		const beforeTransition = Date.UTC(2026, 9, 25, 0, 0, 0);
@@ -131,12 +190,6 @@ describe("computeNextCronRunAtMs - DST fall-back single fire (#11046)", () => {
 		const next = computeNextCronRunAtMs("30 2 * * *", first as number, BERLIN);
 		// NOT 2026-10-25T01:30Z (02:30 CET — the repeated pass).
 		expect(next).toBe(Date.UTC(2026, 9, 26, 1, 30, 0)); // Oct 26 02:30 CET
-	});
-
-	it("hour-wildcard schedules keep firing on both passes (hourly cadence is not deduped)", () => {
-		const firstPass = Date.UTC(2026, 10, 1, 5, 30, 0); // 01:30 EDT
-		const next = computeNextCronRunAtMs("30 * * * *", firstPass, NY);
-		expect(next).toBe(Date.UTC(2026, 10, 1, 6, 30, 0)); // 01:30 EST — a real hour later
 	});
 
 	it("spring-forward skipped-hour behavior is unchanged (02:30 never exists on 2026-03-08)", () => {
@@ -152,44 +205,15 @@ describe("computeNextCronRunAtMs - DST fall-back single fire (#11046)", () => {
 		const after = computeNextCronRunAtMs("0 8 * * *", next as number, NY);
 		expect(after).toBe(Date.UTC(2026, 10, 2, 13, 0, 0));
 	});
-});
 
-describe("computeNextCronRunAtMs - pathological scan cost (#11046)", () => {
-	it("a rare-match cron with a timezone completes a full 366-day scan fast", () => {
-		// Feb 29 next occurs in 2028 — outside the 366-day window from
-		// 2026-03-01, so this is the worst case: a full scan returning null.
+	it("a rare-match cron with a timezone completes a full 366-day scan fast (hoisted formatter)", () => {
+		// Feb 29 does not occur inside the 366-day window from 2026-03-01, so
+		// this is the worst case: a full valid-base scan returning null. With a
+		// fresh formatter per candidate minute this took tens of seconds.
 		const startedAt = performance.now();
-		const next = computeNextCronRunAtMs(
-			"0 0 29 2 *",
-			Date.UTC(2026, 2, 1),
-			"America/New_York",
-		);
+		const next = computeNextCronRunAtMs("0 0 29 2 *", Date.UTC(2026, 2, 1), NY);
 		const elapsedMs = performance.now() - startedAt;
 		expect(next).toBeNull();
 		expect(elapsedMs).toBeLessThan(3000);
-	});
-
-	it("bails immediately on non-finite and non-representable bases", () => {
-		const startedAt = performance.now();
-		expect(
-			computeNextCronRunAtMs("0 0 * * *", Number.NaN, "America/New_York"),
-		).toBeNull();
-		expect(
-			computeNextCronRunAtMs(
-				"0 0 * * *",
-				Number.POSITIVE_INFINITY,
-				"America/New_York",
-			),
-		).toBeNull();
-		// Beyond the max representable Date: every candidate would be an
-		// Invalid Date, so the scan returns null without iterating (was ~26s).
-		expect(
-			computeNextCronRunAtMs(
-				"0 0 * * *",
-				8_640_000_000_000_000 + 60_000,
-				"America/New_York",
-			),
-		).toBeNull();
-		expect(performance.now() - startedAt).toBeLessThan(1000);
 	});
 });

@@ -124,7 +124,15 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
   });
 
   it("list_active includes live blocker status when no managed rules exist", async () => {
-    vi.spyOn(websiteBlockerEngine, "getSelfControlStatus").mockResolvedValue({
+    // `getSelfControlStatus` in the factory mock is a shared vi.fn;
+    // `vi.restoreAllMocks()` does not restore a factory-created mock, so a
+    // persistent mockResolvedValue here would leak this pinned "foreign
+    // /etc/hosts block" into later tests and make the writer's OS sync refuse
+    // to engage. Pin exactly the one status read this subaction performs.
+    vi.spyOn(
+      websiteBlockerEngine,
+      "getSelfControlStatus",
+    ).mockResolvedValueOnce({
       available: true,
       active: true,
       hostsFilePath: "/etc/hosts",
