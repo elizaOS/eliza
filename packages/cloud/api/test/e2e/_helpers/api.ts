@@ -37,6 +37,17 @@ export function url(path: string): string {
   return `${getBaseUrl()}${path}`;
 }
 
+/**
+ * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
+ * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
+ * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't
+ * supply, so internal-bearer-authenticated tests must skip rather than fail.
+ * The unauthenticated 401 auth-gate assertions still run everywhere.
+ */
+export function isLocalTarget(): boolean {
+  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
+}
+
 function timeoutSignal(): AbortSignal {
   return AbortSignal.timeout(REQUEST_TIMEOUT_MS);
 }
