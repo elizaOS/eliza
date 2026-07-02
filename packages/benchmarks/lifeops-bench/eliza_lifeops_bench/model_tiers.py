@@ -66,9 +66,11 @@ DEFAULT_TIERS: dict[ModelTier, TierSpec] = {
         provider="cerebras",
         model_name="gemma-4-31b",
         base_url="https://api.cerebras.ai/v1",
-        # Cerebras enforces a 131 000-token window for gemma-4-31b on the paid
-        # tier (live-verified: 200k prompts fail with context_length_exceeded).
-        context_window=131_000,
+        # Cerebras enforces a 131072-token window for gemma-4-31b on the paid
+        # tier (live-verified 2026-07-02: >131072 fails context_length_exceeded
+        # and the context_length param is rejected — the ceiling is not
+        # extensible; there is no 256k path on Cerebras serving).
+        context_window=131_072,
         notes="Default eval provider; prompt caching enabled",
     ),
     "frontier": TierSpec(

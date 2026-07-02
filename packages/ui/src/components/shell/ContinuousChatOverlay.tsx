@@ -1683,9 +1683,19 @@ export function ContinuousChatOverlay({
   );
   // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
   // needs the detent animator); the mount state above still opens FULL first.
-  const pilled = mode === "pill";
-  const sheetOpen = mode === "half" || mode === "full";
-  const expanded = mode === "full";
+  //
+  // During onboarding the sheet MUST stay open — the seeded greeting + choices
+  // are the only way forward and the composer is frozen behind them. Deriving
+  // openness from the effect alone proved raceable on a home-view boot (the
+  // sheet could settle collapsed with the options hidden behind the grabber and
+  // only a misleading "tap an option above" hint showing). Pin it STRUCTURALLY:
+  // while firstRunOpen, the derived openness is always FULL regardless of the
+  // underlying `mode` transition state. The effect still drives the real `mode`
+  // so the falling edge (onboarding done) collapses correctly.
+  const effectiveMode: ChatMode = firstRunOpen ? "full" : mode;
+  const pilled = effectiveMode === "pill";
+  const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
+  const expanded = effectiveMode === "full";
   // Free-drag rest height (px): when set, the sheet rests exactly where the user
   // released a deliberate drag instead of snapping to a detent. Cleared whenever
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
@@ -4603,7 +4613,7 @@ export function ContinuousChatOverlay({
                 disabled={firstRunOpen}
                 placeholder={
                   firstRunOpen
-                    ? "Choose an option to continue"
+                    ? "Tap a highlighted option above to continue"
                     : booting
                       ? `Ask ${agentName} — waking up…`
                       : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
@@ -4615,7 +4625,13 @@ export function ContinuousChatOverlay({
                 // and only when a slash catalog is wired in — a plain message
                 // box otherwise.
                 {...comboboxAria}
-                className="max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] placeholder:text-white/45 [&::-webkit-scrollbar]:hidden"
+                // During onboarding the composer is frozen (choice widgets are
+                // the only input), so brighten the placeholder from the resting
+                // 45% to 70% — a directive hint the user can actually read,
+                // rather than a greyed-out box that reads as dead.
+                className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                  firstRunOpen ? "placeholder:text-white/70" : "placeholder:text-white/45"
+                }`}
               />
               <span id="cc-booting-hint" className="sr-only">
                 {agentName} is waking up — you can type now; your message sends

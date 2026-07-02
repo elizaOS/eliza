@@ -49,6 +49,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         role: result.invite.invited_role,
         expires_at: result.invite.expires_at,
         status: result.invite.status,
+        // Raw invite token, echoed exactly once at creation so the inviter
+        // can copy a shareable accept link (only its hash is stored). Same
+        // trust boundary as the invite email, which carries the same token.
+        token: result.token,
       },
       message: "Invitation sent successfully",
     });

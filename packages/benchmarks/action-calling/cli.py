@@ -419,7 +419,15 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
         _ensure_adapter_path("hermes-adapter")
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-        client = HermesClient(provider=provider, model=model, base_url=args.base_url)
+        # Default to the venv-free in_process bridge (same as standard/_base.py):
+        # the one-shot subprocess mode needs ~/.eliza/agents/hermes-agent-src/.venv,
+        # which is not provisioned for the direct openai-compatible harness path.
+        client = HermesClient(
+            provider=provider,
+            model=model,
+            base_url=args.base_url,
+            mode=(os.environ.get("HERMES_MODE") or "in_process").strip() or "in_process",
+        )
         client.wait_until_ready(timeout=120)
         return client
     if harness == "openclaw":

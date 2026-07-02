@@ -85,11 +85,48 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     );
 
     expect(addEarnings).toHaveBeenCalledTimes(1);
-    const arg = addEarnings.mock.calls[0][0] as { userId: string; amount: number; source: string };
+    const arg = addEarnings.mock.calls[0][0] as {
+      userId: string;
+      amount: number;
+      source: string;
+    };
     expect(arg.userId).toBe(AFFILIATE_USER);
     expect(arg.source).toBe("affiliate");
     expect(arg.amount).toBeCloseTo(0.3 * 0.1, 6); // 10% of the $0.30 cost
     // Affiliate markup was layered onto the charged cost for the paying org.
     expect(result.totalCost).toBeCloseTo(0.3 + 0.03, 6);
+  });
+
+  test("paying org affiliate earnings use deterministic request sourceId for dedupe", async () => {
+    await billUsage(
+      {
+        ...BASE,
+        organizationId: "00000000-0000-4000-8000-0000000000org",
+        requestId: "req-affiliate-1",
+      },
+      USAGE,
+    );
+    await billUsage(
+      {
+        ...BASE,
+        organizationId: "00000000-0000-4000-8000-0000000000org",
+        requestId: "req-affiliate-1",
+      },
+      USAGE,
+    );
+
+    expect(addEarnings).toHaveBeenCalledTimes(2);
+    const first = addEarnings.mock.calls[0][0] as {
+      sourceId: string;
+      dedupeBySourceId: boolean;
+    };
+    const second = addEarnings.mock.calls[1][0] as {
+      sourceId: string;
+      dedupeBySourceId: boolean;
+    };
+    expect(first.sourceId).toBe("ai_billing:usage:req-affiliate-1");
+    expect(second.sourceId).toBe(first.sourceId);
+    expect(first.dedupeBySourceId).toBe(true);
+    expect(second.dedupeBySourceId).toBe(true);
   });
 });

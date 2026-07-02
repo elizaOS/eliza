@@ -30,6 +30,7 @@ import {
   type OptimizedPromptTask,
 } from "@elizaos/core";
 import { CALENDAR_PLAN_INSTRUCTIONS } from "../../plugin-calendar/src/actions/optimized-prompt-instructions.ts";
+import { HEALTH_PLAN_INSTRUCTIONS } from "../../plugin-health/src/actions/optimized-prompt-instructions.ts";
 import { INBOX_TRIAGE_INSTRUCTIONS } from "../../plugin-inbox/src/inbox/triage-classifier.ts";
 import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../plugin-personal-assistant/src/lifeops/optimized-prompt-instructions.ts";
 import { getTrainingUseModelAdapter } from "../src/core/cerebras-eval-model.ts";
@@ -132,6 +133,38 @@ function inboxClassificationInput(args: {
 }
 
 function expectedInboxClassification(fields: Record<string, unknown>): string {
+  return JSON.stringify(fields);
+}
+
+interface HealthPlannerInputArgs {
+  currentMessage: string;
+  intent?: string;
+  params?: Record<string, unknown>;
+  recentConversation?: string;
+}
+
+// Mirrors resolveHealthPlanWithLlm's composed prompt body
+// (plugin-health/src/actions/health.ts) so GEPA optimizes the production
+// health_checkin planner, not a divergent shape.
+function healthPlannerInput(args: HealthPlannerInputArgs): string {
+  const intent = args.intent ?? args.currentMessage;
+  const params = args.params ?? {};
+  const paramLines = Object.entries(params)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join("\n");
+  return [
+    "Current request:",
+    args.currentMessage,
+    "Resolved intent:",
+    intent,
+    "Structured parameters:",
+    paramLines || "(none)",
+    "Recent conversation:",
+    args.recentConversation ?? "(none)",
+  ].join("\n");
+}
+
+function expectedHealthPlan(fields: Record<string, unknown>): string {
   return JSON.stringify(fields);
 }
 
@@ -532,6 +565,148 @@ export const SEED_TASKS: Record<string, SeedTask> = {
       },
     ],
   },
+  // health_checkin is the live HEALTH action planner
+  // (resolveHealthPlanWithLlm → HEALTH_PLAN_INSTRUCTIONS). It returns a JSON
+  // object with subaction / metric / days / shouldAct. Rows cover every
+  // subaction, the by_metric enum, day-window inference, the vague guard
+  // (shouldAct=false), and multilingual phrasing — the same discipline as
+  // schedule_plan so the structured-field scorer is discriminative.
+  health_checkin: {
+    task: "health_checkin",
+    baseline: HEALTH_PLAN_INSTRUCTIONS,
+    dataset: [
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "How am I doing health-wise today?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "today",
+          metric: null,
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "Show me my activity trend over the last week.",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "trend",
+          metric: null,
+          days: 7,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "How many steps did I take today?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "by_metric",
+          metric: "steps",
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "What's my resting heart rate lately?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "by_metric",
+          metric: "heart_rate",
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "How much did I sleep last night?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "by_metric",
+          metric: "sleep_hours",
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "Is my health tracker actually connected?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "status",
+          metric: null,
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "Give me my calorie burn for the past 30 days.",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "trend",
+          metric: "calories",
+          days: 30,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "¿Cuántos pasos di hoy?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "by_metric",
+          metric: "steps",
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "Comment va ma santé aujourd'hui ?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: "today",
+          metric: null,
+          days: null,
+          shouldAct: true,
+        }),
+      },
+      {
+        input: {
+          user: healthPlannerInput({
+            currentMessage: "Can you help me with health stuff?",
+          }),
+        },
+        expectedOutput: expectedHealthPlan({
+          subaction: null,
+          metric: null,
+          days: null,
+          shouldAct: false,
+        }),
+      },
+    ],
+  },
 };
 
 export function parseBoundedIntegerArg(
@@ -627,6 +802,19 @@ function validateOptimizedPromptForTask(
       "cancel",
       "list_active",
       "list_proposals",
+    ],
+    health_checkin: [
+      "subaction",
+      "metric",
+      "days",
+      "shouldAct",
+      "today",
+      "trend",
+      "by_metric",
+      "status",
+      "steps",
+      "heart_rate",
+      "sleep_hours",
     ],
   };
   const requiredFragments = requiredFragmentsByTask[task] ?? [];

@@ -6,10 +6,12 @@ import { applyLaunchConnectionFromUrl } from "./browser-launch";
 const mocks = vi.hoisted(() => ({
   createPersistedActiveServer: vi.fn((input) => ({
     id: "test-server",
+    label: "Test Server",
     ...input,
   })),
   getBootConfig: vi.fn(() => ({ cloudApiBase: "https://api.elizacloud.ai" })),
   savePersistedActiveServer: vi.fn(),
+  upsertAndActivateAgentProfile: vi.fn(),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
 }));
@@ -28,6 +30,10 @@ vi.mock("../config/boot-config-store", () => ({
 vi.mock("../state/persistence", () => ({
   createPersistedActiveServer: mocks.createPersistedActiveServer,
   savePersistedActiveServer: mocks.savePersistedActiveServer,
+}));
+
+vi.mock("../state/agent-profiles", () => ({
+  upsertAndActivateAgentProfile: mocks.upsertAndActivateAgentProfile,
 }));
 
 describe("browser launch connection handling", () => {
@@ -75,6 +81,14 @@ describe("browser launch connection handling", () => {
       expect.objectContaining({
         apiBase: "https://api.elizacloud.ai/v1",
         kind: "remote",
+      }),
+    );
+    // The agent-profile registry is kept in sync so the connection shows up in
+    // "My Runtimes" (guards the cross-surface state-drift bug).
+    expect(mocks.upsertAndActivateAgentProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "remote",
+        apiBase: "https://api.elizacloud.ai/v1",
       }),
     );
     expect(window.location.href).toBe("http://localhost/");

@@ -194,16 +194,6 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function requestsDeferredUserReply(text: string): boolean {
-  const normalized = text.toLowerCase();
-  return (
-    /\b(?:reply|respond)\s+only\s+after\b/.test(normalized) ||
-    /\b(?:reply|respond)\s+only\s+when\b/.test(normalized) ||
-    /\bdo\s+not\s+(?:reply|respond)\s+until\b/.test(normalized) ||
-    /\bdon't\s+(?:reply|respond)\s+until\b/.test(normalized)
-  );
-}
-
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = [
     params.action,
@@ -1095,9 +1085,10 @@ async function runSpawnAgent(
       "keepAliveAfterComplete",
     );
     const extraMetadata = additionalSessionMetadata(params, content);
+    // Structural only: the planner emits deferUserReply when the user asked for
+    // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
-      pickBoolean(params, content, "deferUserReply") === true ||
-      requestsDeferredUserReply(task);
+      pickBoolean(params, content, "deferUserReply") === true;
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
@@ -1182,9 +1173,14 @@ async function runSpawnAgent(
       const cap = maxSpawnsPerOrigin(runtime);
       if (spawnCapRouter.spawnCountForOrigin(spawnOriginKey) >= cap) {
         const best = spawnCapRouter.bestResultFor(spawnOriginKey);
+        // Relay the captured deliverable when we have one (the router records
+        // it before its early returns too). Only when there is genuinely no
+        // result do we fall back — and then be HONEST that we hit the attempt
+        // cap rather than implying it's still in progress ("still working"),
+        // which conflates capped-and-failed with in-flight.
         const replyText =
           (best?.deliverable ?? best?.text ?? "").trim() ||
-          "I'm still working on that — the coding sub-agent took longer than expected.";
+          `I attempted this task ${cap} times but couldn't complete it. Try giving me more specific instructions, or breaking it into smaller steps.`;
         logger(runtime).warn(
           `[TASKS:spawn_agent] per-origin spawn cap (${cap}) reached for ${spawnOriginKey}; relaying best result instead of re-spawning`,
         );

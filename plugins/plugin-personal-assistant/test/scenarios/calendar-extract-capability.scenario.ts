@@ -116,5 +116,11 @@ export default scenario({
         "CALENDAR_TRIP_WINDOW",
       ],
     },
+    {
+      type: "modelCallOccurred",
+      name: "calendar_extract optimized-prompt model call fired",
+      purpose: "calendar_extract",
+      minCount: 1,
+    },
   ],
 });

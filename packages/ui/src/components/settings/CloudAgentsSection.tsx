@@ -18,6 +18,7 @@ import type { CloudCompatAgent } from "../../api/client-types-cloud";
 import { getBootConfig } from "../../config/boot-config";
 import { useBranding } from "../../config/branding";
 import { useAppSelector } from "../../state";
+import { upsertAndActivateAgentProfile } from "../../state/agent-profiles";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -145,15 +146,25 @@ export function CloudAgentsSection() {
   const bindAndReload = useCallback(
     (agentId: string, apiBase: string, label: string) => {
       const token = currentCloudToken();
-      savePersistedActiveServer(
-        createPersistedActiveServer({
-          kind: "cloud",
-          id: `cloud:${agentId}`,
-          apiBase,
-          ...(token ? { accessToken: token } : {}),
-          label,
-        }),
-      );
+      const persisted = createPersistedActiveServer({
+        kind: "cloud",
+        id: `cloud:${agentId}`,
+        apiBase,
+        ...(token ? { accessToken: token } : {}),
+        label,
+      });
+      savePersistedActiveServer(persisted);
+      // Mirror into the agent-profile registry so the switched-to cloud agent
+      // shows up (and is marked Active) in "My Runtimes" — a bind here otherwise
+      // only writes the active-server and leaves the runtime switcher stale.
+      upsertAndActivateAgentProfile({
+        kind: "cloud",
+        label,
+        ...(persisted.apiBase !== undefined
+          ? { apiBase: persisted.apiBase }
+          : {}),
+        ...(token ? { accessToken: token } : {}),
+      });
       setActionNotice(`Switched to ${label}. Reloading…`, "success", 3000);
       // Re-boot the web app so startup restore re-binds the client + chat to
       // the newly-selected agent (same path a returning user takes).

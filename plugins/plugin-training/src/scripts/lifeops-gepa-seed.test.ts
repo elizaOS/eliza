@@ -20,12 +20,42 @@ function makeResult(
 }
 
 describe("lifeops-gepa-seed", () => {
-  it("exposes calendar, schedule, and inbox seed tasks", () => {
+  it("exposes calendar, schedule, inbox, and health seed tasks", () => {
     expect(Object.keys(SEED_TASKS).sort()).toEqual([
       "calendar_extract",
+      "health_checkin",
       "inbox_triage",
       "schedule_plan",
     ]);
+  });
+
+  it("uses the live health planner baseline and JSON-shaped examples", () => {
+    const seed = SEED_TASKS.health_checkin;
+    expect(seed.baseline).toContain("Plan the HEALTH action");
+    expect(seed.baseline).toContain("subaction");
+    expect(seed.baseline).toContain("by_metric");
+
+    expect(seed.dataset.length).toBeGreaterThanOrEqual(8);
+
+    const subactions = seed.dataset.map(
+      (example) =>
+        (JSON.parse(example.expectedOutput) as { subaction: string | null })
+          .subaction,
+    );
+    // Every actionable subaction plus the vague-guard null appears at least once.
+    for (const subaction of ["today", "trend", "by_metric", "status", null]) {
+      expect(subactions).toContain(subaction);
+    }
+
+    for (const example of seed.dataset) {
+      expect(example.input.user).toContain("Current request:");
+      const parsed = JSON.parse(example.expectedOutput) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed).toHaveProperty("subaction");
+      expect(parsed).toHaveProperty("shouldAct");
+    }
   });
 
   it("uses the live calendar planner baseline and schema-shaped examples", () => {

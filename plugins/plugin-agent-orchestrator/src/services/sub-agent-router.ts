@@ -535,6 +535,31 @@ export class SubAgentRouter extends Service {
   }
 
   /**
+   * Capture a completed task's deliverable for its origin BEFORE any early
+   * return (verify-retry handoff, stale-continuation suppression, lineage
+   * dedupe). Those paths return before the main recordOriginResult call
+   * further down, so without this bestResultFor() is undefined when the spawn
+   * cap later fires — a real finished deliverable is lost and the user sees a
+   * generic cap message instead of the answer. recordOriginResult is monotonic
+   * (longest-wins), so recording here AND later is always safe. Keys exactly
+   * like the main call site (#8875).
+   */
+  private captureOriginResultForCompletion(
+    origin: OriginInfo,
+    session: SessionInfo,
+    text: string,
+    deliverable: string | undefined,
+  ): void {
+    const originResultKey =
+      origin.parentConnectorMessageId ?? origin.spawnRootMessageId;
+    if (!originResultKey) return;
+    this.recordOriginResult(`${originResultKey}\0${session.agentType}`, {
+      text,
+      deliverable,
+    });
+  }
+
+  /**
    * The per-session round-trip count the loop guard has accumulated so far
    * (0 when the session has not round-tripped yet). Read-only: the count is
    * owned by the loop-guard reducer; this only exposes it so the watchdog can
@@ -1074,6 +1099,12 @@ export class SubAgentRouter extends Service {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
       if (retried) {
         this.verifyRetryHandedOffSessions.add(sessionId);
+        this.captureOriginResultForCompletion(
+          origin,
+          session,
+          text,
+          deliverable,
+        );
         rollbackRoundTrip();
         return;
       }
@@ -1082,6 +1113,12 @@ export class SubAgentRouter extends Service {
           "debug",
           "suppressing stale verification failure; newer continuation exists",
           { sessionId, deadCount: deadUrls.length },
+        );
+        this.captureOriginResultForCompletion(
+          origin,
+          session,
+          text,
+          deliverable,
         );
         rollbackRoundTrip();
         return;
@@ -1122,6 +1159,12 @@ export class SubAgentRouter extends Service {
             completionKey,
             event,
           },
+        );
+        this.captureOriginResultForCompletion(
+          origin,
+          session,
+          text,
+          deliverable,
         );
         rollbackRoundTrip();
         return;

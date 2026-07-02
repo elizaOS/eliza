@@ -242,6 +242,42 @@ describe("recordedTrajectoryToNativeRows", () => {
     expect(row.metadata.domain).toBe("lifeops");
   });
 
+  it("preserves LifeOps task/domain buckets from optimized-prompt purposes", () => {
+    const taskKinds = [
+      "schedule_plan",
+      "reminder_dispatch",
+      "inbox_triage",
+      "meeting_prep",
+      "morning_brief",
+    ];
+    const traj = syntheticTrajectory() as Record<string, unknown> & {
+      stages: Array<Record<string, unknown>>;
+    };
+    traj.scenarioId = "lifeops.capability-purpose-smoke";
+    traj.stages = taskKinds.map((kind, index) => ({
+      stageId: `stage-${kind}`,
+      kind,
+      startedAt: 1_700_000_000_300 + index,
+      endedAt: 1_700_000_000_800 + index,
+      latencyMs: 500,
+      model: {
+        modelType: "TEXT_SMALL",
+        modelName: "test-model",
+        provider: "test",
+        prompt: `Capability prompt for ${kind}.`,
+        response: `{"ok":true,"task":"${kind}"}`,
+        usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
+        finishReason: "stop",
+      },
+    }));
+
+    const rows = recordedTrajectoryToNativeRows(traj as never);
+    expect(rows.map((row) => row.metadata.task_type)).toEqual(taskKinds);
+    expect(new Set(rows.map((row) => row.metadata.domain))).toEqual(
+      new Set(["lifeops"]),
+    );
+  });
+
   it("preserves orchestrator goal-verification task/domain buckets", () => {
     const traj = syntheticTrajectory() as Record<string, unknown> & {
       stages: Array<Record<string, unknown>>;

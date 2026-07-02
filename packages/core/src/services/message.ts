@@ -2775,7 +2775,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.',
+			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.',
 	});
 
 	const replyReferenceEvent = replyReferenceEventForContext(args.message);
@@ -3007,6 +3007,14 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			shouldRun: ({ message, messageHandler, runtime }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
 				if (messageHandler.plan.requiresTool === true) return false;
+				// A sub-agent completion relay is owned by the sub-agent-completion
+				// evaluator — its only job is to deliver the finished result. Its text
+				// echoes the original task ("[sub-agent: Build and deploy a dice
+				// roller…]"), which the action-inference below reads as fresh coding
+				// work and promotes to requiresTool — forcing a TASKS tool the relay
+				// can't satisfy → required_tool_misses exhaustion → a SUCCESSFUL build
+				// reports a false "hit a snag". Never promote a relay turn to tooling.
+				if (isSubAgentCompletionArtifact(message)) return false;
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);

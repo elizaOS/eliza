@@ -199,7 +199,11 @@ describe("TASKS:spawn_agent", () => {
     ]);
   });
 
-  it("suppresses the spawn acknowledgement when the user requested a deferred reply", async () => {
+  it("does NOT defer from task text alone — deferral is structural, not regex", async () => {
+    // The planner emits the structured `deferUserReply` flag when the user asks
+    // for no interim reply; the orchestrator no longer regex-scans the task text
+    // for "reply only after …" phrasings (that was message-text inspection,
+    // which the project bans). The next test covers the structural path.
     const svc = serviceMock();
     const cb = callback();
     const result = await spawnAgentAction.handler(
@@ -214,9 +218,8 @@ describe("TASKS:spawn_agent", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toBe("");
-    expect(result?.data).toMatchObject({ deferredUserReply: true });
-    expect(cb).not.toHaveBeenCalled();
+    // No structured flag → not deferred, even though the text says "reply only after".
+    expect(result?.data).not.toMatchObject({ deferredUserReply: true });
   });
 
   it("honors explicit deferUserReply from planner parameters", async () => {

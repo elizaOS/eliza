@@ -98,6 +98,8 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_COT_BUDGET_SMALL` | No | — | CoT budget for small-size models |
 | `ANTHROPIC_COT_BUDGET_LARGE` | No | — | CoT budget for large-size models |
 | `ANTHROPIC_PROMPT_CACHE_TTL` | No | `5m` | Prompt cache TTL: `"5m"` or `"1h"` |
+| `ANTHROPIC_TEMPERATURE_LOCKED_MODELS` | No | — | Comma-separated model ids that only accept `temperature=1`, applied on top of the built-in `opus-4` name check |
+| `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Output-token cap override: a bare number and/or comma-separated `model-id:tokens` pairs; unlisted models keep the built-in caps |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_OAUTH_TOKEN` | No | — | OAuth bearer token for `ANTHROPIC_AUTH_MODE=oauth` |
 | `ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID` | No | `default` | Account ID for app-managed subscription credentials |
 | `CLAUDE_CONFIG_DIR` | No | `~/.claude` | Override credential store directory (macOS keychain also checked) |
@@ -118,9 +120,9 @@ Follow the pattern in `utils/config.ts`: `getRawSetting(runtime, "ANTHROPIC_X_MO
 ## Conventions / gotchas
 
 - **Three auth modes** (`utils/config.ts` `getAuthMode`): `apikey` (default), `oauth`, `cli`. CLI mode (`ANTHROPIC_AUTH_MODE=claude-cli`) spawns `claude -p` via Bun's `Bun.spawn` — fails on Node-only runtimes and does not support `messages`, `tools`, `toolChoice`, or `responseSchema`.
-- **Opus 4.x temperature:** `temperature` is forced to `1` for any model whose name contains `opus-4` — the Anthropic API returns 400 otherwise (`models/text.ts` `resolveTextParams`).
+- **Opus 4.x temperature:** `temperature` is forced to `1` for any model whose name contains `opus-4` — the Anthropic API returns 400 otherwise (`models/text.ts` `resolveTextParams`). New model ids with the same constraint can be listed in `ANTHROPIC_TEMPERATURE_LOCKED_MODELS`.
 - **topP + temperature mutual exclusion:** Anthropic's API rejects requests with both set. The plugin warns and drops `topP` when both are supplied.
-- **maxTokens cap:** Opus 4 = 32k, all others = 64k. Values above these are silently capped before the API call.
+- **maxTokens cap:** Opus 4 = 32k, all others = 64k. Values above these are silently capped before the API call. `ANTHROPIC_MAX_OUTPUT_TOKENS` overrides the cap per model id (or globally with a bare number).
 - **Prompt caching:** `cache_control: ephemeral` is emitted by default on system prompts and stable `promptSegments`. TTL is `5m` unless `ANTHROPIC_PROMPT_CACHE_TTL=1h`. Up to 4 cache breakpoints per request (configurable via `anthropic.maxBreakpoints` in `providerOptions`).
 - **Per-call model override.** Text handlers honor `params.model` before slot-level model settings. Workflow generation uses this for isolated Claude tests without changing every Anthropic text call.
 - **Browser build:** `exports.browser` omits `process.env` and `node:*` imports. Use `ANTHROPIC_BROWSER_BASE_URL` to point the browser at a proxy (never expose the API key client-side).

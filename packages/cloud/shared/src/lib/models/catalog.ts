@@ -77,7 +77,7 @@ const BITROUTER_FEATURED_TEXT_MODELS: CatalogModel[] = [
     name: "Gemma 4 31B",
     description: "Default TEXT_SMALL and TEXT_LARGE model on Cerebras for fast cloud inference",
     type: "language",
-    context_window: 131000,
+    context_window: 131072,
     max_tokens: 40000,
     tags: ["recommended", "cerebras"],
     supported_parameters: ["reasoning_effort"],
@@ -156,7 +156,7 @@ const CEREBRAS_TEXT_CATALOG_MODELS: CatalogModel[] = [
     name: "Gemma 4 31B",
     description: "Cerebras-hosted Gemma language model routed through BitRouter BYOK",
     type: "language",
-    context_window: 131000,
+    context_window: 131072,
     tags: ["byok"],
   },
   {
