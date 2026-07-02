@@ -93,11 +93,15 @@ export function HomeLauncherSurface({
       <div
         ref={pager.railRef}
         data-testid="home-launcher-rail"
-        className="absolute inset-0 flex w-[200%] motion-reduce:transition-none"
+        className="absolute inset-0 flex w-[200%]"
       >
         <div
           data-testid="home-launcher-home-page"
           aria-hidden={page !== "home"}
+          // `inert` (not just aria-hidden) so the offscreen half is also removed
+          // from the tab order — a keyboard user can't focus a control hidden
+          // behind the visible page. Matches the Launcher's inert page pattern.
+          inert={page !== "home" || undefined}
           // `touch-pan-y`: reserve vertical panning for the browser (the home
           // widget list scrolls) but claim every horizontal gesture for the
           // rail flick. Without it a touch device hands a horizontal drag to the
@@ -116,6 +120,7 @@ export function HomeLauncherSurface({
         <div
           data-testid="home-launcher-launcher-page"
           aria-hidden={page !== "launcher"}
+          inert={page !== "launcher" || undefined}
           // Same as the home half: vertical scroll (the tile grid) stays with
           // the browser, horizontal flicks (right → back home) are ours.
           className="relative h-full w-1/2 shrink-0 touch-pan-y"

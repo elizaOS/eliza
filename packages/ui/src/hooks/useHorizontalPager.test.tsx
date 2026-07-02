@@ -154,6 +154,35 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
     swipeNext(getByTestId("rail"), 500, 470, 400);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("drops the settle transition under prefers-reduced-motion (rail jumps, no ease)", () => {
+    // matchMedia is stubbed to report reduced-motion; the hook must write
+    // transition:none for every animated offset so the CSS class can't be
+    // overridden by an inline transition.
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      const onChange = vi.fn();
+      const { getByTestId } = render(<Harness onPageChange={onChange} />);
+      const rail = getByTestId("rail");
+      // Commit a swipe (crosses the 50% distance floor on the 1024px viewport).
+      swipeNext(rail, 800, 100, 40);
+      expect(onChange).toHaveBeenCalledWith(1);
+      expect(rail.style.transition).toBe("none");
+      expect(settleMsFromRail(rail)).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
 });
 
 /**

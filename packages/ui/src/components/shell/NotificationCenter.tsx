@@ -192,7 +192,11 @@ function CategoryFilterBar({
        aria-pressed buttons, matching the adjacent sort toggle. A tablist would
        promise roving-tabindex + arrow-key navigation this bar doesn't implement. */
     <div
-      className="flex items-center gap-1 overflow-x-auto px-2 py-1.5"
+      // `shrink-0`: this is a horizontal scroll container (overflow-x-auto → auto
+      // min-height 0), so inside the flex-column shell it would otherwise be
+      // crushed vertically when the notification list overflows. The list `ul` is
+      // the intended flex scroller; the chip bar keeps its intrinsic height.
+      className="flex shrink-0 items-center gap-1 overflow-x-auto px-2 py-1.5"
       role="group"
       aria-label="Filter notifications by category"
     >

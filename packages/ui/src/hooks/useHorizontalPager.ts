@@ -36,6 +36,20 @@ interface PointerSample {
  *  release-velocity estimate. */
 const RELEASE_VELOCITY_WINDOW_MS = 100;
 
+/** True when the OS/browser requests reduced motion. Read fresh per rail write
+ *  (matchMedia is a cheap synchronous query) so an OS-setting toggle takes effect
+ *  without a remount, and so it's never stale in tests. Returns false when
+ *  matchMedia is unavailable (SSR / jsdom without a stub) → animations stay on. */
+function prefersReducedMotion(): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return false;
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 interface DragState {
   pointerId: number;
   startX: number;
@@ -380,10 +394,14 @@ export function useHorizontalPager<
     (offset: number, transitionMs: number | null) => {
       const rail = railRef.current;
       if (!rail) return;
+      // One seam for every animated write (momentum settle, snap-back,
+      // abandonDrag, edge buttons, mount effect): under prefers-reduced-motion
+      // the inline transition is dropped so the rail jumps instead of easing —
+      // the CSS `motion-reduce:transition-none` class can't win against an inline
+      // `transition` style, so the gate has to live here.
+      const ms = prefersReducedMotion() ? null : transitionMs;
       rail.style.transition =
-        transitionMs == null
-          ? "none"
-          : `transform ${transitionMs}ms ${SETTLE_EASING}`;
+        ms == null ? "none" : `transform ${ms}ms ${SETTLE_EASING}`;
       rail.style.transform = `translate3d(${roundedPx(offset)},0,0)`;
     },
     [],
@@ -465,8 +483,11 @@ export function useHorizontalPager<
     dragRef.current = null;
     releaseCapture(state);
     unregisterPagerPointerTracker(state.pointerId, pointerTrackerRef.current);
-    writeOffset(pageOffset(state.page, state.width), SETTLE_MS);
-  }, [cancelScheduledOffset, releaseCapture, writeOffset]);
+    // Re-measure: a viewport resize DURING the drag makes state.width stale, so
+    // settling to pageOffset(page, staleWidth) would leave the rail permanently
+    // mis-offset.
+    writeOffset(pageOffset(state.page, measureWidth()), SETTLE_MS);
+  }, [cancelScheduledOffset, measureWidth, releaseCapture, writeOffset]);
   abandonDragRef.current = abandonDrag;
 
   React.useLayoutEffect(() => {
@@ -520,7 +541,11 @@ export function useHorizontalPager<
       releaseCapture(state);
       unregisterPagerPointerTracker(event.pointerId, pointerTrackerRef.current);
 
-      const base = pageOffset(state.page, state.width);
+      // Settle geometry uses the CURRENT width (a mid-drag resize makes
+      // state.width stale); the commit decision below keeps state.width so the
+      // threshold reflects the geometry the gesture was actually performed under.
+      const width = measureWidth();
+      const base = pageOffset(state.page, width);
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
       const endT = now();
@@ -608,7 +633,7 @@ export function useHorizontalPager<
         state.page + (dx < 0 ? 1 : -1),
         pageCountRef.current,
       );
-      const targetOffset = pageOffset(targetPage, state.width);
+      const targetOffset = pageOffset(targetPage, width);
       if (targetPage !== pageRef.current) {
         // Park the momentum duration for the layout effect that the
         // onPageChange-driven re-render triggers, so the controlled-page update
@@ -635,6 +660,7 @@ export function useHorizontalPager<
     [
       canMove,
       cancelScheduledOffset,
+      measureWidth,
       releaseCapture,
       visualDragOffset,
       writeOffset,
