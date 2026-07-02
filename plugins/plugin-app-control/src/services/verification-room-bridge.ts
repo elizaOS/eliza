@@ -63,7 +63,12 @@ const VERDICT_DEDUPE_TTL_MS = 10 * 60 * 1000;
  * dangling-timer window after `stop()` to 0.5s.
  */
 const ATTACH_RETRY_INTERVAL_MS = 500;
+// Attempt count at which a still-unbound bridge stops being "plausibly slow"
+// and starts logging loudly + backing off. Not a give-up point: the bridge
+// retries indefinitely (a heavy boot can register the coordinator well past
+// the old 30s window), it just gets coarser and louder past here.
 const ATTACH_MAX_RETRIES = 60;
+const ATTACH_MAX_RETRY_INTERVAL_MS = 5_000;
 
 /**
  * Minimal shape of the SwarmCoordinator service surface this bridge
@@ -353,21 +358,36 @@ export class VerificationRoomBridgeService extends Service {
 	}
 
 	private scheduleAttachRetry(): void {
-		if (this.attachRetryAttempts >= ATTACH_MAX_RETRIES) {
-			// Final attempt exhausted — log once at debug level so this is
-			// silent in deployments that genuinely don't have the
-			// orchestrator plugin enabled (the common case for non-create
-			// agent deployments) while still being grep-able.
-			logger.debug(
-				`[VerificationRoomBridge] SWARM_COORDINATOR service still has no subscribe() after ${ATTACH_MAX_RETRIES} retries; bridge inactive. Verification verdicts will not be posted back to chat.`,
-			);
-			return;
-		}
 		this.attachRetryAttempts += 1;
+		// The orchestrator's SWARM_COORDINATOR can take well over the old
+		// bounded window to register + bind on a heavy boot. Giving up at a
+		// fixed retry count left this bridge permanently inactive (verdicts
+		// never posted back) even though the coordinator DID eventually appear.
+		// Retry indefinitely with backoff + escalating severity instead: quiet
+		// while it's plausibly just slow, loud once it's clearly wrong. If the
+		// orchestrator plugin genuinely isn't installed this loop is harmless
+		// (coarse steady-state poll), and stop() clears the timer.
+		const interval =
+			this.attachRetryAttempts < ATTACH_MAX_RETRIES
+				? ATTACH_RETRY_INTERVAL_MS
+				: Math.min(
+						ATTACH_MAX_RETRY_INTERVAL_MS,
+						ATTACH_RETRY_INTERVAL_MS *
+							2 ** (this.attachRetryAttempts - ATTACH_MAX_RETRIES),
+					);
+		if (this.attachRetryAttempts === ATTACH_MAX_RETRIES) {
+			// First crossing of the "taking too long" threshold — warn once so a
+			// stuck bridge is grep-able without spamming a non-orchestrator boot.
+			logger.warn(
+				`[VerificationRoomBridge] SWARM_COORDINATOR service still has no subscribe() after ${ATTACH_MAX_RETRIES} attempts (~${Math.round(
+					(ATTACH_RETRY_INTERVAL_MS * ATTACH_MAX_RETRIES) / 1000,
+				)}s); still retrying. If this persists, verification verdicts will not be posted back to chat — check the orchestrator's SwarmCoordinator startup.`,
+			);
+		}
 		this.attachRetryTimer = setTimeout(() => {
 			this.attachRetryTimer = null;
 			this.attach();
-		}, ATTACH_RETRY_INTERVAL_MS);
+		}, interval);
 	}
 
 	private async handleEvent(event: SwarmEventLike): Promise<void> {
