@@ -21,10 +21,12 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "gmail-missing-scope",
-      text: "Read Sarah Lee's unread Gmail thread and prepare the reply, but if Gmail send access is missing, tell me exactly that and ask for the reconnect or scope upgrade instead of claiming it was sent.",
-      responseIncludesAny: ["gmail", "missing", "scope", "reconnect"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["gmail", "missing", "scope", "reconnect"],
+      // The prompt never names the seeded failure; the agent must discover the
+      // missing send scope from the connector itself and report it.
+      text: "Read Sarah Lee's unread Gmail thread and get the reply ready to go out. Tell me plainly if anything prevents that from completing, before you claim it happened.",
+      responseIncludesAny: ["scope", "permission", "read-only", "re-auth"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["gmail", "missing", "scope", "reconnect"],
     },
   ],
   finalChecks: [

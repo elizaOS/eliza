@@ -12,9 +12,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "whatsapp-core",
       text: "Read the WhatsApp chat, draft a reply, and deliver it or tell me if WhatsApp is degraded.",
-      responseIncludesAny: ["whatsapp", "reply", "deliver", "degraded"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["whatsapp", "reply", "deliver", "degraded"],
+      // Completion-state tokens the prompt never uses; parroting "draft a
+      // reply, deliver it" cannot satisfy any of them.
+      responseIncludesAny: ["drafted", "sent", "delivered", "went through"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["whatsapp", "reply", "deliver", "degraded"],
     },
   ],
   finalChecks: [

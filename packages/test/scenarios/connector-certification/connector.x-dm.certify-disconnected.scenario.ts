@@ -19,10 +19,17 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "x-dm-disconnected",
-      text: "Read my unread X DMs and draft the right reply, but if X is disconnected, tell me that clearly and ask for reconnect instead of pretending the DM workflow is available.",
-      responseIncludesAny: ["x", "dm", "disconnected", "reconnect"],
-      acceptedActions: ["X_READ", "INBOX"],
-      includesAny: ["x", "dm", "disconnected", "reconnect"],
+      // The prompt never names the seeded failure; the agent must discover the
+      // disconnect itself and report it in its own words.
+      text: "Read my unread X DMs and get the right reply ready. Be straight with me about whether the DM workflow actually worked end to end.",
+      responseIncludesAny: [
+        "disconnected",
+        "not connected",
+        "reconnect",
+        "credentials",
+      ],
+      expectedActions: ["X_READ", "INBOX"],
+      actionPayloadIncludesAny: ["x", "dm", "disconnected", "reconnect"],
     },
   ],
   finalChecks: [{ type: "clarificationRequested", expected: true }],

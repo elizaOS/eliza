@@ -12,9 +12,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "calendar-core",
       text: "Check my availability tomorrow, create the meeting if I'm free, and be able to move or cancel it later.",
-      responseIncludesAny: ["availability", "meeting", "move", "cancel"],
-      acceptedActions: ["CALENDAR", "CALENDAR", "CALENDAR"],
-      includesAny: ["availability", "meeting", "move", "cancel"],
+      // Completion-state tokens the prompt never uses; parroting "create the
+      // meeting" cannot satisfy any of them.
+      responseIncludesAny: ["scheduled", "booked", "created", "confirmed"],
+      expectedActions: ["CALENDAR"],
+      actionPayloadIncludesAny: ["availability", "meeting", "move", "cancel"],
     },
   ],
   finalChecks: [

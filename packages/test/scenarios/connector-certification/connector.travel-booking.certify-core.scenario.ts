@@ -12,9 +12,22 @@ export default buildConnectorCertificationScenario({
     {
       name: "travel-booking-core",
       text: "Search the travel options, hold the best one, and only book it once I approve the itinerary.",
-      responseIncludesAny: ["travel", "hold", "book", "approve", "itinerary"],
-      acceptedActions: ["CALENDAR", "MESSAGE", "VOICE_CALL"],
-      includesAny: ["travel", "hold", "book", "approve", "itinerary"],
+      // Derived-output tokens: a real hold reports concrete pricing and the
+      // pending approval; none of these appear in the prompt text.
+      responseIncludesAny: [
+        "fare",
+        "price",
+        "awaiting your approval",
+        "placed a hold",
+      ],
+      expectedActions: ["CALENDAR", "MESSAGE", "VOICE_CALL"],
+      actionPayloadIncludesAny: [
+        "travel",
+        "hold",
+        "book",
+        "approve",
+        "itinerary",
+      ],
     },
   ],
   finalChecks: [

@@ -12,16 +12,19 @@ export default buildConnectorCertificationScenario({
     {
       name: "twilio-voice-propose",
       text: "Create a Twilio voice call draft with CALL_EXTERNAL to Downtown Dental using the spoken message 'This is a connector certification call.' Keep confirmed false so it waits for approval.",
-      responseIncludesAny: ["call", "twilio", "confirm"],
-      acceptedActions: ["VOICE_CALL"],
-      includesAny: ["call", "twilio", "confirm", "downtown"],
+      // Held-draft tokens the prompt never uses; parroting "keep confirmed
+      // false" cannot satisfy any of them.
+      responseIncludesAny: ["queued", "pending", "awaiting", "ready for your"],
+      expectedActions: ["VOICE_CALL"],
+      actionPayloadIncludesAny: ["call", "twilio", "confirm", "downtown"],
     },
     {
       name: "twilio-voice-confirm",
       text: "Set confirmed true and place that CALL_EXTERNAL Twilio voice call to Downtown Dental now.",
-      responseIncludesAny: ["call", "placed", "dialing"],
-      acceptedActions: ["VOICE_CALL"],
-      includesAny: ["call", "place", "dial", "downtown"],
+      // Call-outcome tokens: a real confirm reports the placed/dialing call.
+      responseIncludesAny: ["placed", "dialing", "ringing", "underway"],
+      expectedActions: ["VOICE_CALL"],
+      actionPayloadIncludesAny: ["call", "place", "dial", "downtown"],
     },
   ],
   finalChecks: [
