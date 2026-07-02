@@ -26,6 +26,11 @@ import {
 import type { LifeOpsGoalRecord } from "@elizaos/shared";
 import { GoalsServiceError } from "../goal-normalize.ts";
 import { createOwnerGoalsService } from "../goals-runtime.ts";
+import {
+  GOAL_CHECKIN_PROGRESS_STATES,
+  type GoalCheckinProgress,
+  getGoalsCheckinService,
+} from "../services/checkin.ts";
 import { GOAL_ACTIONS, GOALS_CONTEXTS, GOALS_LOG_PREFIX } from "../types.ts";
 
 type GoalSubaction = (typeof GOAL_ACTIONS)[number];
@@ -34,6 +39,15 @@ interface GoalActionParams {
   id?: string;
   title?: string;
   description?: string;
+  note?: string;
+  progress?: string;
+}
+
+function parseCheckinProgress(
+  value: string | undefined,
+): GoalCheckinProgress | undefined {
+  if (value === undefined) return undefined;
+  return GOAL_CHECKIN_PROGRESS_STATES.find((state) => state === value);
 }
 
 const SUBACTIONS: SubactionsMap<GoalSubaction> = {
@@ -59,6 +73,13 @@ const SUBACTIONS: SubactionsMap<GoalSubaction> = {
     descriptionCompressed: "review owner goal state by id",
     required: ["id"],
   },
+  checkin: {
+    description:
+      "Record the owner's check-in response for a goal by id: optional note plus progress (on_track | at_risk | needs_attention).",
+    descriptionCompressed: "record goal check-in response by id",
+    required: ["id"],
+    optional: ["note", "progress"],
+  },
 };
 
 function describeGoal(record: LifeOpsGoalRecord): string {
@@ -68,9 +89,9 @@ function describeGoal(record: LifeOpsGoalRecord): string {
 export const ownerGoalsAction: Action = {
   name: "OWNER_GOALS",
   description:
-    "Manage the owner's long-horizon life goals. Actions: create, update, delete, review. Goals carry a horizon (e.g. quarter, year, life) and feed routine + reminder generation.",
+    "Manage the owner's long-horizon life goals. Actions: create, update, delete, review, checkin. Goals carry a horizon (e.g. quarter, year, life), feed routine + reminder generation, and cadenced goals get scheduled check-ins whose responses are recorded via checkin.",
   descriptionCompressed:
-    "owner goals: create|update|delete|review; long-horizon, drives routines",
+    "owner goals: create|update|delete|review|checkin; long-horizon, drives routines",
   contexts: [...GOALS_CONTEXTS],
   contextGate: { anyOf: [...GOALS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
@@ -106,6 +127,21 @@ export const ownerGoalsAction: Action = {
       description: "Longer goal description (create/update).",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "note",
+      description: "Owner's check-in note (checkin).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "progress",
+      description: "Reported goal progress (checkin).",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [...GOAL_CHECKIN_PROGRESS_STATES],
+      },
     },
   ],
   validate: async (_runtime: IAgentRuntime): Promise<boolean> => true,
@@ -174,6 +210,41 @@ export const ownerGoalsAction: Action = {
           const text = `Goal "${describeGoal(record)}" is ${record.goal.reviewState.replace(/_/g, " ")} (status: ${record.goal.status}).`;
           await callback?.({ text });
           return { success: true, text, data: { action: "review", record } };
+        }
+        case "checkin": {
+          const checkinService = getGoalsCheckinService(runtime);
+          if (!checkinService) {
+            const text = `${GOALS_LOG_PREFIX} the goal check-in engine is not available on this runtime.`;
+            await callback?.({ text });
+            return {
+              success: false,
+              text,
+              data: { action: "checkin", error: "checkin_service_missing" },
+            };
+          }
+          const progress = parseCheckinProgress(params.progress);
+          if (params.progress !== undefined && progress === undefined) {
+            const text = `${GOALS_LOG_PREFIX} progress must be one of: ${GOAL_CHECKIN_PROGRESS_STATES.join(", ")}.`;
+            await callback?.({ text });
+            return {
+              success: false,
+              text,
+              data: { action: "checkin", error: "invalid_progress" },
+            };
+          }
+          const { goal, completedTaskId } =
+            await checkinService.recordCheckinResponse({
+              goalId: params.id ?? "",
+              ...(params.note !== undefined ? { note: params.note } : {}),
+              ...(progress !== undefined ? { progress } : {}),
+            });
+          const text = `Logged check-in for "${goal.title}"${progress ? ` — ${progress.replace(/_/g, " ")}` : ""}.`;
+          await callback?.({ text });
+          return {
+            success: true,
+            text,
+            data: { action: "checkin", goal, completedTaskId },
+          };
         }
       }
     } catch (error) {
