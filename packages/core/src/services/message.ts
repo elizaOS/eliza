@@ -3007,6 +3007,14 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			shouldRun: ({ message, messageHandler, runtime }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
 				if (messageHandler.plan.requiresTool === true) return false;
+				// A sub-agent completion relay is owned by the sub-agent-completion
+				// evaluator — its only job is to deliver the finished result. Its text
+				// echoes the original task ("[sub-agent: Build and deploy a dice
+				// roller…]"), which the action-inference below reads as fresh coding
+				// work and promotes to requiresTool — forcing a TASKS tool the relay
+				// can't satisfy → required_tool_misses exhaustion → a SUCCESSFUL build
+				// reports a false "hit a snag". Never promote a relay turn to tooling.
+				if (isSubAgentCompletionArtifact(message)) return false;
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
