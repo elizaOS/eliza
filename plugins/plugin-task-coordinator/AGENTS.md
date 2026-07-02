@@ -22,14 +22,15 @@ The plugin's `init()` calls `registerOrchestratorCommands(runtime.agentId)`, whi
 
 ### Views registered (`src/index.ts`)
 
-Two views, each ONE adaptive declaration spanning all three modalities from a single component — no per-`viewType` duplicates.
+Three views. The first two are ONE adaptive declaration each, spanning all three modalities from a single component; the third (`cockpit`) is GUI-only.
 
 | view id | path | viewKind | modalities | componentExport | description |
 |---|---|---|---|---|---|
 | `task-coordinator` | `/task-coordinator` | `preview` | `gui`, `xr`, `tui` | `TaskCoordinatorView` | Coding-agent task threads, sessions, and controls |
 | `orchestrator` | `/orchestrator` | `developer` (`developerOnly`) | `gui`, `xr`, `tui` | `OrchestratorView` | Multi-agent task orchestration workbench |
+| `cockpit` | `/cockpit` | `developer` (`developerOnly`) | `gui` | `CockpitRoute` | Mobile-first coding cockpit — shaw's live task-room deck + per-session mode picker + tap-in interactive terminal, on one screen |
 
-`TaskCoordinatorView` (`src/TaskCoordinatorView.tsx`) and `OrchestratorView` (`src/OrchestratorView.tsx`) are the route components — each authored once and rendered inside a `SpatialSurface` that auto-detects GUI vs XR. `OrchestratorView` wraps the rich GUI/XR `OrchestratorWorkbench` in the spatial `Escape` hatch and degrades to the `OrchestratorSpatialView` summary in TUI; `TaskCoordinatorView` renders the presentational `TaskCoordinatorSpatialView` directly. The `tui` modality of both renders for real in the terminal — `register-terminal-view.tsx` registers `TaskCoordinatorSpatialView` and `OrchestratorSpatialView` into the `@elizaos/tui` terminal registry via `registerSpatialTerminalView`, each driven by a host-pushed snapshot. `CodingAgentTasksPanel` was not deleted; it still fills the `@elizaos/ui` Tasks-page slot (`register-slots.ts`) and is simply no longer a route `componentExport`.
+`TaskCoordinatorView` (`src/TaskCoordinatorView.tsx`) and `OrchestratorView` (`src/OrchestratorView.tsx`) are the tri-modal route components — each authored once and rendered inside a `SpatialSurface` that auto-detects GUI vs XR. `OrchestratorView` wraps the rich GUI/XR `OrchestratorWorkbench` in the spatial `Escape` hatch and degrades to the `OrchestratorSpatialView` summary in TUI; `TaskCoordinatorView` renders the presentational `TaskCoordinatorSpatialView` directly. `CockpitRoute` (`src/CockpitRoute.tsx`) is GUI-only (no `xr`/`tui`) — it composes the shared `CockpitView` deck with `CockpitSessionPane` (drill-in) and `CockpitInteractiveTerminal` (the tap-in `eliza-code` PTY terminal). The `tui` modality of the first two renders for real in the terminal — `register-terminal-view.tsx` registers `TaskCoordinatorSpatialView` and `OrchestratorSpatialView` into the `@elizaos/tui` terminal registry, each driven by a host-pushed snapshot. `CodingAgentTasksPanel` was not deleted; it still fills the `@elizaos/ui` Tasks-page slot (`register-slots.ts`) and is simply no longer a route `componentExport`.
 
 The `task-coordinator` view declares capabilities: `list-sessions`, `list-task-threads`, `open-thread`, `stop-session`, `refresh`.
 
@@ -44,14 +45,14 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 - `CodingAgentTasksPanel` — main task-thread list + PTY console view.
 - `PtyConsoleBase` — PTY output streamer; subscribes to `pty-output` WS events.
 
-### App shell pages (`src/register.ts`)
+### Registration side effects (`src/register.ts`)
 
-Registers two pages in the `developer` group via `registerAppShellPage` from `@elizaos/ui/app-shell-registry`:
+`register.ts` is a side-effect module (imported for its effects, not exports). It does two things:
 
-- `/orchestrator` (order 70, `fullBleed: true`) — the `OrchestratorWorkbench`.
-- `/orchestrator/tui` (order 71) — the TUI variant.
+- **`import "./register-slots.js"`** — activates the slot-registry fills below (the `@elizaos/ui` empty-slot defaults). Without this import the UI renders empty slots.
+- **Terminal-view registration (DOM-guarded)** — when there is no `window` (the Node agent / terminal host), it lazily imports `register-terminal-view` and calls `registerOrchestratorTerminalView()` + `registerTaskCoordinatorTerminalView()` so the two tri-modal views render inline in the terminal. Lazy + guarded so the terminal engine never enters browser/mobile bundles; best-effort (a failure never blocks plugin load).
 
-`fullBleed: true` opts the page into edge-to-edge mounting (no host header / tab-bar / padding) — these views own their full window. The flag is defined on `AppShellPageRegistration` in `@elizaos/ui`.
+The three GUI/XR views (`task-coordinator`, `orchestrator`, `cockpit`) reach the app shell through the standard **view manifest** in `src/index.ts` (`bundlePath` + `componentExport`), NOT via `registerAppShellPage` — this plugin registers no app-shell pages.
 
 ## Layout
 
@@ -59,13 +60,19 @@ Registers two pages in the `developer` group via `registerAppShellPage` from `@e
 src/
   index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
   orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
-  register.ts                      App-shell page registration (/orchestrator, /orchestrator/tui)
+  register.ts                      Slot import + DOM-guarded terminal-view registration
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   register-terminal-view.tsx       Registers OrchestratorSpatialView in the @elizaos/tui terminal registry
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
   CodingAgentTasksPanel.interact.ts  View-bundle `interact` capability handler (split for Fast-Refresh compat)
   task-coordinator-view-bundle.ts  Vite view-bundle entry; re-exports all view components + interact handler
-  OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI)
+  OrchestratorWorkbench.tsx        Multi-agent orchestration workbench (main UI); exports TaskInspector + useIsMobile/INSPECTOR_DRAWER_STYLE reused by the cockpit
+  CockpitRoute.tsx                 /cockpit route: deck + drill-in + tap-in terminal (GUI-only)
+  CockpitSessionPane.tsx           Drill-in single-room view (transcript/terminal + mobile inspector drawer)
+  CockpitInteractiveTerminal.tsx   Tap-in real eliza-code PTY terminal (spawn→xterm→WS I/O)
+  CockpitTerminalPanel.tsx         Read-mostly PTY-output watch panel for a session
+  use-orchestrator-data.ts         Live data hook (detail+timeline, fast-poll, SSE, loud-failure mutations)
+  orchestrator-workbench-glyphs.tsx  Shared glyphs/translate/status-filter helpers
   CodingAgentControlChip.tsx       Header chip: active session count + stop-all
   CodingAgentSettingsSection.tsx   Per-framework settings panel
   coding-agent-settings-shared.ts  Shared types/constants for settings sub-components
@@ -152,7 +159,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 ## Conventions / gotchas
 
 - **Two build steps.** The plugin has both a tsup JS build (`build:js`) and a Vite view-bundle build (`build:views`). The view bundle entry is `src/task-coordinator-view-bundle.ts` and outputs `dist/views/bundle.js`. Both must be built; `build` runs them in sequence.
-- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports the two unified route wrappers (`TaskCoordinatorView`, `OrchestratorView`) plus the shared `interact` capability handler, so the built bundle serves the `componentExport` names the view manifest declares. `OrchestratorWorkbench` ships inside the bundle transitively as the `Escape` child of `OrchestratorView`, not as a named export; `CodingAgentTasksPanel` is intentionally absent — it reaches its mount through the slot registry (`register-slots.ts` → the built-in Tasks page).
+- **View bundle re-exports.** `task-coordinator-view-bundle.ts` re-exports the three route components the manifest declares — `TaskCoordinatorView`, `OrchestratorView`, and `CockpitRoute` — plus the shared `interact` capability handler, so the built bundle serves every `componentExport` name. `OrchestratorWorkbench` ships inside the bundle transitively as the `Escape` child of `OrchestratorView`, not as a named export; `CodingAgentTasksPanel` is intentionally absent — it reaches its mount through the slot registry (`register-slots.ts` → the built-in Tasks page). The bundle is built with `codeSplitting: false` (single self-contained module) — a lazy chunk would re-import `./bundle.js` without the host-external query the loader used, so its bare `@elizaos/ui`/`react` imports would fail (this is what broke the cockpit terminal's lazy `@xterm` import; #11040/#11043).
 - **Slot registry is a side-effect import.** `register-slots.ts` must be imported by the host app to activate the slot fills. Without it, the UI renders empty slot defaults in place of the coding-agent components.
 - **Minimal server runtime.** This plugin registers no providers, services, or evaluators, and its only action is the `/orchestrator-status` slash-command handler (`src/orchestrator-command.ts`). All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.

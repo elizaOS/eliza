@@ -47,6 +47,7 @@ src/
     composites/               Higher-level pieces (sidebar, page-panel, ...)
     shell/                    ChatSurface, AssistantOverlay, HomePill, shell-state reducer
     apps/                     Overlay/game app surfaces + registries + AppWindowRenderer
+    cockpit/                  Coding-cockpit deck primitives (CockpitView, CockpitModePicker, CockpitTierToggle, CockpitNewSessionForm) — barrel-exported for plugin-task-coordinator's /cockpit route
     character/ chat/ config-ui/ pages/ settings/ steward/ voice/ voice-pill/ ...
   cloud-ui/                   Cloud-frontend component set (@elizaos/ui/cloud-ui):
                               dashboard, docs, data-list, monetization, analytics,
