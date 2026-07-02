@@ -38,6 +38,10 @@ Two corrections vs. the previously circulated recipe:
    with the pin, all `/v1/chat/completions` requests carry
    `"model":"gemma-4-31b"` (`wire-capture-views-list-gemma.jsonl`).
 
+> **2026-07-02 update:** the three failing app-control rows below are FIXED —
+> see the delta section at the bottom and the `*-fixed.report.json` runs
+> (gemma-4-31b 4/4, gpt-oss-120b 4/4).
+
 ## Run index
 
 | Report | Scenario | Family | Result | Duration | Actions observed (live gemma) |
@@ -208,3 +212,94 @@ whoever generalizes `buildStructuredOutput` to strict-grammar providers.
 
 All artifacts swept for `csk-`, `Bearer`, `authorization`: zero hits. The
 logging proxy used for wire captures never logged request headers.
+
+---
+
+# 2026-07-02 delta — the three app-control routing defects are FIXED
+
+The three cross-model app-control failures above (`app-list`, `views-show`,
+`views-voice-navigate`) are fixed on this branch. New live evidence, captured
+with the exact recipe above (Cerebras first-class mode, models pinned):
+
+| Report | Model | app-list | views-list (regression guard) | views-show | views-voice-navigate |
+| --- | --- | --- | --- | --- | --- |
+| `app-control-live-fixed.report.json` (run `56ab167b`) | gemma-4-31b | **pass** (`APP {action:"list"}`) | **pass** (`VIEWS {action:"list"}`, 24 views) | **pass** (`VIEWS {action:"show", view:"wallet"}`) | **pass** (`VIEWS {action:"show", view:"settings"}`) |
+| `app-control-oss120b-differential-fixed.report.json` (run `81aaeeda`) | gpt-oss-120b | **pass** (`APP {action:"list"}`) | **pass** (`VIEWS {action:"list"}`) | **pass** (`VIEWS {action:"show", view:"wallet"}`) | **pass** (`VIEWS {action:"show", view:"settings"}`) |
+
+Every trajectory was opened and reviewed by hand (Stage-1 tool call, toolSearch
+tier, planner tool calls, executed action + result). Deterministic suites stay
+green: `plugin-app-control` 1271/1271 before and after; `packages/core` full
+suite 294 files / 2517 passed after.
+
+## Root causes + fixes
+
+### app-list — APP never reached the planner surface
+Three stacked causes: (1) Stage-1 emits app-flavored candidate names
+(`LIST_APPS`, `GET_INSTALLED_APPS`, `LIST_APPLICATIONS`) that nothing resolved
+to the APP action — `APP` had only 2 similes and no tags, while the core
+candidate alias fallback (`looksLikeViewCandidateAction`,
+`packages/core/src/runtime/action-retrieval.ts`) mapped every `*_APPS` name to
+**VIEWS** because APP/APPS are also view-surface tokens; (2) `APP` declared
+only `automation|settings|code` contexts, so a Stage-1 `general` routing
+excluded it from the collected planner action set; (3) the deterministic
+backstop (`findViewShellActionName`,
+`packages/core/src/services/message/direct-action-heuristics.ts`) hinted only
+VIEWS for app-surface phrases. Fixes: APP gained list/launch similes + tags +
+`general` context + a `routingHint`
+(`plugins/plugin-app-control/src/actions/app.ts`); app-flavored candidates now
+alias to BOTH `VIEWS` and `APP` (`action-retrieval.ts`
+`parentAliasesForCandidateAction`); the backstop surfaces both candidates
+(`direct-action-heuristics.ts` `findAppControlActionNameForAppRequest`); the
+VIEWS routingHint explicitly defers installed/running-apps asks to APP
+(`plugins/plugin-app-control/src/actions/views.ts`).
+
+### views-show — scenario contract conflicted with the #8613 gate
+Root cause of "no VIEWS tool in the surface": the planner action-set collector
+calls `action.validate` (`packages/core/src/services/message.ts`
+`collectV5PlannerCandidateActions`), and VIEWS's own #8613 gate returns false
+for desktop-only modes (show/open) on viewless text connectors — the scenario
+room was `source: "telegram"`. That gate is deliberate, merged product
+behavior (a telegram asker cannot see a desktop view; text summary is the
+correct answer there — which is exactly what gemma's
+`OWNER_FINANCES_DASHBOARD` reply was). **The scenario contract was wrong, not
+the gate**: view navigation is a first-party-surface contract, so the room
+source is now `dashboard` (`views-show.scenario.ts`,
+`views-voice-navigate.scenario.ts`, with in-file justification). On dashboard,
+VIEWS passes validate, Stage-1's own `OPEN_WALLET_VIEW`/`SHOW_WALLET`
+candidates resolve via new VIEWS similes, and both models pick
+`VIEWS {action:"show", view:"wallet"}`. Quirk noted honestly: the harness view
+catalog has no wallet view, so `runViewsShow`'s fuzzy resolution lands on
+"Social Alpha" (tags: finance/crypto) — the routing contract under test is the
+planner's selection, which is genuinely correct; gpt-oss burns 1–3 extra
+planner iterations re-trying `show wallet` because the result names a
+different view.
+
+### views-voice-navigate — no deterministic path for a bare view name
+On dashboard the security wrap no longer applies, but Stage-1 models still
+sometimes answer a bare "settings" with a clarifying simple reply and zero
+candidates (observed live: gpt-oss run `0a6b9a19`, REPLY in 848 ms — the
+scenario is FLAKY without a deterministic backstop). Fix: 
+`findBareViewNavigationActionName` (`direct-action-heuristics.ts`) — a message
+that is nothing but a single bare noun the views action itself claims (its own
+tag, or an `OPEN_/SHOW_/GO_TO_…` navigation simile) surfaces VIEWS as a
+candidate, which forces the planning path (a VIEWS candidate is not in
+`WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS`, so `shouldPreferCompleteDirectReply`
+cannot collapse the turn to the clarifying reply). The VIEWS routingHint also
+now states the voice contract: a bare view name is `action=show`, never a
+clarifying question. Structurally anchored to a registered VIEWS /
+VIEW_CAPABILITY action — inert for agents without one. Unit fences:
+`packages/core/src/__tests__/message-routing-live-regression.test.ts`
+("APP surface request inference (#9950)", "bare view-name voice navigation
+inference (#9950)").
+
+## What is NOT fixed here
+
+Defect 3 above (the `hardenIncomingUserMessage` external-content wrap
+suppressing owner commands on connector sources) is unchanged — still the
+security-design decision it was filed as. Visible in the fixed gpt-oss
+`app-list` trajectory: Stage-1 under the telegram wrap still refuses to name
+candidates (it hallucinated a generic list of popular apps), and the turn is
+recovered by the deterministic backstop + planner arbitration
+(`APP {action:"list"}` → honest "no apps installed" reply). The `app-list`
+scenario intentionally stays on `source: "telegram"` — an app list is a text
+answer and must work from a connector.
