@@ -17,17 +17,21 @@ name: Kokoro real-weight smoke (Linux)
 # it. To run locally, see the staging steps in
 # `plugins/plugin-local-inference/README.md`.
 #
-# IMPORTANT — expected RED until the GGUF is republished. The published bundle
-# GGUF (elizaos/eliza-1 .../kokoro-82m-v1_0-Q4_K_M.gguf) is STILL the pre-#9588
-# all-F32 artifact that loads but synthesizes noise; the converter/loader fix
-# landed on develop (#9684) but the artifact regen + republish is a pending ops
-# step (#9588). So this gate fails the envelope-cv guard against the CURRENT
-# published assets. It is therefore wired to manual/tag dispatch ONLY — NOT the
-# path-based push auto-trigger the loader/converter changes would otherwise fire
-# — so it does not paint develop RED for a known pending-ops condition. Once the
-# fixed F16 GGUF is republished and a `kokoro-smoke-*` tag run goes green,
-# re-enable the path-scoped `push` auto-trigger (loader / converter / smoke /
-# this workflow / the llama.cpp submodule pointer) to gate future drift:
+# STATUS (2026-07-02) — the #9588 republish LANDED. elizaos/eliza-1
+# `bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf` (162,546,720 B F16, sha256
+# 165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c) carries the
+# 457 post-#9684 tensor names (incl. the previously-missing
+# `kokoro.bert.embd_proj.bias`) and is byte-identical to a from-scratch
+# `convert_kokoro_pth_to_gguf.py` run on hexgrad/Kokoro-82M at fork pin
+# ba598f562. The old `-Q4_K_M` filename 404s and is no longer referenced here.
+# The lane stays manual/tag dispatch ONLY for now: on a desktop-CPU runner the
+# smoke loads + synthesizes real speech (envelope-cv ≈1.25, WER 0.13 with an
+# ASR bundle + the #10726 raw-text G2P fix) but still exceeds the 700 ms mobile
+# TTFA budget by orders of magnitude, so an auto-triggered run would paint
+# develop RED on perf, not drift. Once the double-G2P fix (#11238 / #10726) is
+# merged and the TTFA budget is made per-platform (or first-chunk streaming
+# lands), re-enable the path-scoped `push` auto-trigger (loader / converter /
+# smoke / this workflow / the llama.cpp submodule pointer) to gate future drift:
 #   push:
 #     branches: ["**"]
 #     paths:
@@ -54,9 +58,12 @@ permissions:
 env:
   NODE_VERSION: "24"
   BUN_VERSION: "canary"
-  # Published Kokoro bundle (the #9588 repro file — verified present on the repo).
+  # Published Kokoro bundle — the #9588-fixed F16 republish (2026-07-02).
+  # The former `kokoro-82m-v1_0-Q4_K_M.gguf` filename 404s on the repo; the
+  # canonical F16 name below is what discovery falls through to and what the
+  # download catalog (packages/shared/src/local-inference/catalog.ts) stages.
   KOKORO_HF_REPO: "elizaos/eliza-1"
-  KOKORO_GGUF_PATH: "bundles/2b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
+  KOKORO_GGUF_PATH: "bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf"
   # Catalog FALLBACK voice (af_bella). af_same (Samantha) is not published yet —
   # discovery falls back to af_bella, which is the voice actually staged on HF.
   KOKORO_VOICE_PATH: "bundles/2b/tts/kokoro/voices/af_bella.bin"
@@ -90,7 +97,8 @@ jobs:
           for attempt in 1 2 3; do
             if sudo apt-get "${APT_ARGS[@]}" update && \
                sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
-                 cmake ninja-build build-essential ccache git python3 curl libgomp1; then
+                 cmake ninja-build build-essential ccache git python3 curl libgomp1 \
+                 libespeak-ng-dev espeak-ng-data; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then echo "apt install failed"; exit 1; fi
