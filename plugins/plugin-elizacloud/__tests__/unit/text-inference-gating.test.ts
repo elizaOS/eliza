@@ -38,12 +38,7 @@ function fakeRuntime(settings: Record<string, string | undefined>) {
   }> = [];
   const runtime = {
     getSetting: (key: string) => settings[key],
-    registerModel: (
-      modelType: string,
-      _handler: unknown,
-      provider: string,
-      priority?: number,
-    ) => {
+    registerModel: (modelType: string, _handler: unknown, provider: string, priority?: number) => {
       registered.push({ modelType, provider, priority });
     },
   } as unknown as IAgentRuntime;
@@ -68,9 +63,7 @@ describe("registerTextInferenceModels — chat-brain arbitration (#10819)", () =
       ELIZAOS_CLOUD_USE_INFERENCE: "true",
     });
     registerTextInferenceModels(runtime);
-    expect(registered.map((r) => r.modelType).sort()).toEqual(
-      [...CHAT_BRAIN_SLOTS].sort(),
-    );
+    expect(registered.map((r) => r.modelType).sort()).toEqual([...CHAT_BRAIN_SLOTS].sort());
     for (const r of registered) {
       expect(r.provider).toBe(elizaOSCloudPlugin.name);
       expect(r.priority).toBe(elizaOSCloudPlugin.priority);
