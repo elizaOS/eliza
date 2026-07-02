@@ -89,8 +89,17 @@ const MAX_USAGE = 1000;
 const MAX_DECISIONS = 300;
 const MAX_ARTIFACTS = 200;
 
+// How long a waiter keeps trying to acquire the lock before giving up.
 const FILE_LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
-const FILE_LOCK_STALE_MS = 30_000;
+// A lock is only reclaimed as "stale" once it is older than this. It MUST be
+// shorter than the acquire timeout (so a waiter can reclaim a dead lock within
+// its own wait window) yet far longer than a legitimate hold — the guarded work
+// is a single atomic temp-file write + rename, sub-second even for large task
+// histories, so a lock older than 10s means the holder died mid-write. Setting
+// this equal to the acquire timeout (the previous value) let a waiter give up at
+// the exact moment a lock became reclaimable, and risked reclaiming a lock still
+// held by a slow-but-alive writer.
+const FILE_LOCK_STALE_MS = 10_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -522,6 +531,11 @@ function defaultStateFile(runtime?: TaskStoreRuntime): string {
 export class FileTaskStore extends InMemoryTaskStore {
   private readonly lockFile: string;
   private loaded = false;
+  // Ids deleted by this process since the last persist. afterWrite() re-reads the
+  // on-disk document set under the lock and merges it with this process's
+  // in-memory docs; tombstones ensure a task this process deleted is not
+  // resurrected from a concurrent process's copy of the file.
+  private readonly tombstones = new Set<string>();
 
   constructor(
     private readonly filePath: string,
@@ -583,6 +597,9 @@ export class FileTaskStore extends InMemoryTaskStore {
   }
   override async deleteTask(id: string) {
     await this.ensureLoaded();
+    // Record the tombstone BEFORE the write so afterWrite()'s disk merge removes
+    // it even if a concurrent process's on-disk copy still carries the task.
+    this.tombstones.add(id);
     return super.deleteTask(id);
   }
   override async addSession(session: OrchestratorTaskSession) {
@@ -628,8 +645,40 @@ export class FileTaskStore extends InMemoryTaskStore {
   protected override async afterWrite(): Promise<void> {
     await this.withLock(async () => {
       await mkdir(dirname(this.filePath), { recursive: true });
+      // Read-merge-write under the lock so a concurrent process's inserts/updates
+      // to OTHER tasks survive this process's whole-document write. Merge order:
+      //   1. seed from the current on-disk set (picks up concurrent inserts),
+      //   2. drop this process's deletes (tombstones),
+      //   3. overlay this process's in-memory docs (its inserts/updates win; a
+      //      re-created id is present in this.docs so it is restored after the
+      //      tombstone delete).
+      // Residual: two processes updating DIFFERENT fields of the SAME task still
+      // resolves last-writer-wins at the document level (matching the SQL
+      // backend's single-row semantics); cross-task lost updates are eliminated.
+      const merged = new Map<string, OrchestratorTaskDocument>();
+      try {
+        const contents = await readFile(this.filePath, "utf8");
+        const parsed = JSON.parse(contents) as unknown;
+        if (Array.isArray(parsed)) {
+          for (const raw of parsed) {
+            const doc = normalizeTaskDocument(raw);
+            if (doc) merged.set(doc.task.id, doc);
+          }
+        }
+      } catch (error) {
+        const code =
+          isRecord(error) && typeof error.code === "string" ? error.code : "";
+        if (code !== "ENOENT") throw error;
+      }
+      for (const id of this.tombstones) merged.delete(id);
+      for (const [id, doc] of this.docs) merged.set(id, doc);
+      // Adopt the merged view so subsequent reads in this process observe the
+      // concurrent inserts too, then clear the applied tombstones.
+      this.docs.clear();
+      for (const [id, doc] of merged) this.docs.set(id, doc);
+      this.tombstones.clear();
       const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
-      const payload = JSON.stringify([...this.docs.values()], null, 2);
+      const payload = JSON.stringify([...merged.values()], null, 2);
       await writeFile(tempPath, `${payload}\n`, "utf8");
       await rename(tempPath, this.filePath);
     });
@@ -858,6 +907,13 @@ export class RuntimeDbTaskStore {
   async deleteTask(id: string): Promise<boolean> {
     return this.enqueue(async () => {
       await this.ensureInitialized();
+      // The SqlExecutor.run contract returns void (no affected-row count that is
+      // portable across the raw-sqlite and drizzle backends), so probe existence
+      // first and report it faithfully. Returning an unconditional `true` (the
+      // previous behavior) diverged from InMemoryTaskStore.deleteTask and made
+      // the DELETE /tasks/:id route answer 200 for tasks that never existed.
+      const existing = await this.loadOne(id);
+      if (!existing) return false;
       await this.exec().run("DELETE FROM orchestrator_tasks WHERE id = ?", [
         id,
       ]);
