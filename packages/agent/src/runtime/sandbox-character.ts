@@ -15,7 +15,7 @@
  * so it is inert for every non-provisioned runtime.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, type CharacterSettings } from "@elizaos/core";
 import type { AgentConfig } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 
@@ -34,7 +34,8 @@ interface SandboxCharacterJson {
   // or the @elizaos/core {examples:[{name,content}]} form; buildCharacterFromConfig
   // normalises both, so we pass it through untouched.
   messageExamples?: unknown;
-  settings?: Record<string, unknown>;
+  settings?: CharacterSettings;
+  knowledge?: AgentConfig["knowledge"];
   /**
    * Per-character connector config (e.g. `{ discord: { ... }, telegram: {...} }`).
    * Only applied when the container is the connector owner
@@ -148,6 +149,8 @@ export function applySandboxCharacterFromEnv(
             parsed.messageExamples as AgentConfig["messageExamples"],
         }
       : {}),
+    ...(parsed.settings ? { settings: parsed.settings } : {}),
+    ...(parsed.knowledge ? { knowledge: parsed.knowledge } : {}),
   };
 
   const agents = (config.agents ?? {}) as NonNullable<ElizaConfig["agents"]>;

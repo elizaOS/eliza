@@ -81,3 +81,47 @@ describe("Matrix connector secret/settings boundary", () => {
     expect("MATRIX_ACCESS_TOKEN" in secrets).toBe(false);
   });
 });
+
+describe("agent entry character passthrough", () => {
+  it("preserves injected Discord auto-reply settings", () => {
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [
+          {
+            id: "nyx",
+            name: "Nyx",
+            system: "You are Nyx.",
+            settings: { discord: { autoReply: true } },
+          },
+        ],
+      },
+    } as ElizaConfig);
+
+    expect(character.settings?.discord).toEqual({ autoReply: true });
+    expect(character.settings?.ADVANCED_CAPABILITIES).toBe("true");
+  });
+
+  it("preserves injected knowledge directories for document ingestion", () => {
+    const character = buildCharacterFromConfig({
+      agents: {
+        list: [
+          {
+            id: "nyx",
+            name: "Nyx",
+            system: "You are Nyx.",
+            knowledge: [{ directory: "/knowledge" }],
+          },
+        ],
+      },
+    } as ElizaConfig);
+
+    expect(character.documents).toEqual([
+      {
+        item: {
+          case: "directory",
+          value: { directory: "/knowledge" },
+        },
+      },
+    ]);
+  });
+});
