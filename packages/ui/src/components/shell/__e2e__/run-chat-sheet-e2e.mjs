@@ -704,6 +704,74 @@ try {
     await p.close();
   }
 
+  // AUDIO-UNLOCK chip with the sheet OPEN (regression): the chip renders at the
+  // overlay root ABOVE the glass panel. The open-sheet outside-tap swallower
+  // used to treat it as "outside" — eating the click (unlockAudio never fired)
+  // AND collapsing the sheet, so sound could not be enabled while chat was open.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    const logs = [];
+    p.on("console", (m) => logs.push(m.text()));
+    await p.goto(`${url}?unlock`);
+    await p.waitForSelector('[data-testid="overlay-voice-audio-unlock"]');
+    await p.getByTestId("chat-sheet-grabber").focus();
+    await p.keyboard.press("ArrowUp"); // open to half behind the chip
+    await p.waitForTimeout(450);
+    assert((await variant(p)) === "open", "UNLOCK: sheet opens behind the audio-unlock chip");
+    await snap(p, "state-audio-unlock-open");
+    await p.getByTestId("overlay-voice-audio-unlock").click();
+    await p.waitForTimeout(300);
+    assert(
+      logs.some((t) => t.includes("[fixture] unlockAudio")),
+      "UNLOCK: chip tap fires unlockAudio (not swallowed as an outside tap)",
+    );
+    assert(
+      (await p.getByTestId("overlay-voice-audio-unlock").count()) === 0,
+      "UNLOCK: chip clears once audio is unlocked",
+    );
+    assert(
+      (await variant(p)) === "open",
+      "UNLOCK: sheet STAYS OPEN — the chip tap is not an outside collapse",
+    );
+    await snap(p, "state-audio-unlock-cleared");
+    await p.close();
+  }
+
+  // TRANSCRIBING while an inline reply is in flight (regression, #9880 path):
+  // the mic reads "stop transcription" and must END the session on tap even
+  // while `responding` is true — the OFF path was gated on the reply finishing,
+  // leaving a lit, dead mic button.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    const logs = [];
+    p.on("console", (m) => logs.push(m.text()));
+    await p.goto(`${url}?transcribing&recording&speaking&phase=listening`);
+    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForTimeout(500);
+    assert(
+      (await p.getByTestId("chat-composer-mic").getAttribute("aria-label")) ===
+        "stop transcription",
+      "TRANSCRIBING+REPLY: mic reads 'stop transcription'",
+    );
+    await snap(p, "state-transcribing-inline-reply");
+    await p.getByTestId("chat-composer-mic").click();
+    await p.waitForTimeout(300);
+    assert(
+      logs.some((t) => t.includes("[fixture] stopTranscriptionAndMic")),
+      "TRANSCRIBING+REPLY: mic tap ends transcription even mid-reply (not gated on responding)",
+    );
+    // With the mic off and the (fixture-constant) reply still in flight the
+    // trailing control morphs mic → stop, exactly like the plain speaking state.
+    assert(
+      (await p.getByTestId("chat-composer-mic").count()) === 0 &&
+        (await p.getByTestId("chat-composer-stop").count()) === 1,
+      "TRANSCRIBING+REPLY: after the tap the trailing control is the stop (mic off)",
+    );
+    await p.close();
+  }
+
   // responding: typing dots inside the (opened) sheet
   {
     const p = await ctrl();

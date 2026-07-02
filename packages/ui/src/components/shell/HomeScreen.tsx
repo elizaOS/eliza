@@ -15,7 +15,7 @@ import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationCenter } from "./NotificationCenter";
-import { usePullGesture } from "./use-pull-gesture";
+import { PULL_GESTURE_TAP_SLOP, usePullGesture } from "./use-pull-gesture";
 
 // A gentle staggered fade-up as the home settles in — iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
@@ -185,6 +185,13 @@ export function HomeScreen({
   const notificationPull = usePullGesture({
     onPullDown: () => setNotificationsOpen(true),
   });
+  // Where the current press started, so the button's `onClick` can tell a
+  // genuine TAP apart from the compat click the browser synthesizes after a
+  // DRAG on the same button. Without this, an upward or sub-threshold drag —
+  // which the direction-gated gesture correctly ignores — still opened the
+  // center via that trailing click, defeating the gate in real browsers
+  // (jsdom never synthesizes it, which is why unit tests missed it).
+  const pullPressStart = useRef<{ x: number; y: number } | null>(null);
 
   return (
     <>
@@ -204,8 +211,28 @@ export function HomeScreen({
         aria-label="Open notifications"
         className="absolute inset-x-0 top-0 z-[2] flex h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default items-end justify-center rounded-none border-0 bg-transparent p-0 pb-1 outline-none"
         style={{ touchAction: "none" }}
-        onClick={() => setNotificationsOpen(true)}
+        onClick={(event) => {
+          const press = pullPressStart.current;
+          pullPressStart.current = null;
+          // A pointer-derived click only opens when the press stayed within
+          // the gesture engine's tap slop — a drag's outcome is decided by the
+          // gesture (pull-down opens, anything else does not), never by its
+          // synthesized click. Keyboard activation (Enter/Space) arrives with
+          // no preceding pointer press and always opens.
+          if (
+            press &&
+            Math.hypot(event.clientX - press.x, event.clientY - press.y) >
+              PULL_GESTURE_TAP_SLOP
+          ) {
+            return;
+          }
+          setNotificationsOpen(true);
+        }}
         {...notificationPull}
+        onPointerDown={(event) => {
+          pullPressStart.current = { x: event.clientX, y: event.clientY };
+          notificationPull.onPointerDown(event);
+        }}
       >
         <div
           className="h-1 w-9 rounded-full bg-white/25"

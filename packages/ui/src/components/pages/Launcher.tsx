@@ -18,7 +18,15 @@
 
 import { Pencil, Trash2 } from "lucide-react";
 import { Reorder } from "motion/react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  type MutableRefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
@@ -81,6 +89,11 @@ interface IconTileProps {
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLongPress: () => void;
+  /** Parent-owned "a long-press just fired" flag. Lives on the Launcher (not
+   *  the tile) because toggling edit mode switches which JSX branch renders
+   *  the tile — the remount would wipe a tile-local ref and the click the
+   *  browser synthesizes from the SAME press would ghost-launch the tile. */
+  longPressClickGuard: MutableRefObject<boolean>;
 }
 
 const LONG_PRESS_MS = 450;
@@ -117,9 +130,18 @@ const IconTile = memo(function IconTile({
   onEdit,
   onDelete,
   onLongPress,
+  longPressClickGuard,
 }: IconTileProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStart = useRef<{ x: number; y: number } | null>(null);
+  // A fired long-press must swallow the click the browser synthesizes from the
+  // SAME press on release. Without this, a long-press while ALREADY in edit
+  // mode toggled edit OFF and the trailing click then passed the `!editing`
+  // guard — the tile ghost-launched. The flag is the parent-owned
+  // `longPressClickGuard` (see IconTileProps): exiting edit mode remounts the
+  // tile into a different JSX branch, so a tile-local ref would be wiped
+  // before the synthesized click arrives.
+  const longPressFired = longPressClickGuard;
   const badge = viewKindBadge(entry);
 
   const clear = () => {
@@ -140,12 +162,20 @@ const IconTile = memo(function IconTile({
           type="button"
           aria-label={entry.label}
           onClick={() => {
+            if (longPressFired.current) {
+              longPressFired.current = false;
+              return;
+            }
             if (!editing) onLaunch(entry);
           }}
           onPointerDown={(event) => {
             clear();
+            longPressFired.current = false;
             pressStart.current = { x: event.clientX, y: event.clientY };
-            timer.current = setTimeout(onLongPress, LONG_PRESS_MS);
+            timer.current = setTimeout(() => {
+              longPressFired.current = true;
+              onLongPress();
+            }, LONG_PRESS_MS);
           }}
           // A long-press requires a near-stationary finger: once movement passes
           // LONG_PRESS_MOVE_SLOP the press is a pan/swipe, so cancel the timer.
@@ -377,6 +407,10 @@ export function Launcher({
     [layout, commit],
   );
 
+  // Parent-owned so it survives the tile remount when edit mode toggles
+  // switch render branches (see IconTileProps.longPressClickGuard).
+  const longPressClickGuard = useRef(false);
+
   const renderTile = useCallback(
     (entry: ViewEntry) => (
       <IconTile
@@ -387,6 +421,7 @@ export function Launcher({
         onEdit={onEditView}
         onDelete={onDeleteView}
         onLongPress={toggleEditMode}
+        longPressClickGuard={longPressClickGuard}
       />
     ),
     [

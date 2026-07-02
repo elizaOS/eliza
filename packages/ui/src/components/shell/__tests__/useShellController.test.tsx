@@ -1177,6 +1177,45 @@ describe("useShellController — transcription mode", () => {
     expect(sessions[0].segments.map((s) => s.text)).toEqual(["wrap up here"]);
   });
 
+  it("keeps recording through a composer draft (additive layer — no silent pause)", async () => {
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    // The user types notes alongside the recording (transcription is additive:
+    // "the composer keeps working; the mic stays on the whole time").
+    act(() => result.current.setComposerHasDraft(true));
+    act(() => fireFinalTranscript("first chunk of the meeting"));
+
+    // A one-shot backend (local-inference) ends the capture on end-of-turn
+    // silence — a CLEAN auto-stop, not a user stop.
+    act(() => lastCaptureOpts?.onStateChange?.("stopped"));
+    expect(result.current.recording).toBe(false);
+
+    // The re-listen loop must re-open the capture even though a draft exists;
+    // gating on the draft silently dropped meeting audio while the badge still
+    // said "Transcribing".
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(2);
+
+    // Later utterances keep landing in the SAME session.
+    act(() => fireFinalTranscript("second chunk after typing"));
+    await act(async () => {
+      result.current.toggleTranscriptionMode();
+    });
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].segments.map((s) => s.text)).toEqual([
+      "first chunk of the meeting",
+      "second chunk after typing",
+    ]);
+  });
+
   it("toggling it off stops the capture and disables hands-free", async () => {
     const { result } = renderHook(() => useShellController());
     await act(async () => {

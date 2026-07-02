@@ -6,8 +6,12 @@
  *   - Page 1 "Apps"      — the everyday user-facing apps (curated order first,
  *                          then any other loaded plugin app).
  *   - Page 2 "Developer" — trajectory viewer, databases, runtime, logs, skills,
- *                          and plugins (plus any other developer-only view when
- *                          Developer Mode is on).
+ *                          and plugins (plus any other developer-only view).
+ *                          The ENTIRE page — curated tiles included — renders
+ *                          only when the "Developer views" Settings toggle is
+ *                          on. It is off by default on every build, dev builds
+ *                          included, so users and developers see the same
+ *                          launcher out of the box.
  *
  * Curation is a blocklist + canonical dedup, not a fixed allow-list: known apps
  * are ordered, removed apps are hidden, duplicate registrations collapse to one
@@ -109,6 +113,10 @@ const CANONICAL_ID: ReadonlyMap<string, string> = new Map([
   ["plugins-page", "plugins"],
   ["trajectory-logger", "trajectories"],
   ["trajectory-viewer", "trajectories"],
+  // `rolodex` is the legacy builtin tab for the contact book; its route has no
+  // renderer (App.tsx directViews) so a standalone tile would open "view
+  // unavailable" next to the working Relationships tile — collapse them.
+  ["rolodex", "relationships"],
   ["log-viewer", "logs"],
   ["database-viewer", "database"],
   // Triple "Fine-Tuning" tile: the `advanced` builtin tab alias, the
@@ -192,10 +200,11 @@ function comparator(indexes: Array<Map<string, number>>) {
 
 /**
  * Curate raw launcher entries into the fixed page layout. Returns one array per
- * rendered page: `[appsPage]`, or `[appsPage, developerPage]` when a developer
- * tool is present. Entries are deduped by canonical id, hidden/removed apps are
- * dropped, native-OS tiles are AOSP-gated, and uncurated preview/developer views
- * follow the Developer-Mode toggle.
+ * rendered page: `[appsPage]`, or `[appsPage, developerPage]` when the
+ * "Developer views" toggle is on and a developer tool is present. Entries are
+ * deduped by canonical id, hidden/removed apps are dropped, native-OS tiles are
+ * AOSP-gated, and every developer view — curated or not — follows the toggle
+ * (default off on all builds), while preview views follow theirs.
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
@@ -210,12 +219,21 @@ export function curateLauncherPages(
     // unless the user is signed into Eliza Cloud.
     if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
 
+    // Developer tooling — curated (trajectories/database/runtime/logs/skills/
+    // plugins) and uncurated alike — is gated on the "Developer views" toggle,
+    // which is off by default on EVERY build (dev included). No tile may reach
+    // the Developer page around the toggle.
+    if (isDeveloperEntry(canonicalId, entry) && !enabledKinds.developer) {
+      continue;
+    }
+
     const curated =
       APPS_INDEX.has(canonicalId) ||
       DEVELOPER_INDEX.has(canonicalId) ||
       AOSP_INDEX.has(canonicalId);
-    // Curated tiles always show; uncurated extras respect the visibility toggle
-    // so preview/developer plugin views only surface when their kind is enabled.
+    // Curated apps-page tiles always show; uncurated extras respect the
+    // visibility toggles so preview plugin views only surface when their kind
+    // is enabled.
     if (!curated && !isViewVisible(entry, enabledKinds)) continue;
 
     const existing = byCanonical.get(canonicalId);
