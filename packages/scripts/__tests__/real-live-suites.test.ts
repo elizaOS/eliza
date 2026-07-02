@@ -138,7 +138,11 @@ describe("real/live accounting classification", () => {
     { file: "b.live.test.ts", optIn: "GATE_B", requires: ["KEY_B"] },
     { file: "c.live.test.ts", anyOf: [["K1"], ["K2", "K3"]] },
     { file: "d.real.test.ts", probe: "attached display" },
-    { file: "e.real.test.ts", blocked: "excluded in every lane", requires: ["KEY_E"] },
+    {
+      file: "e.real.test.ts",
+      blocked: "excluded in every lane",
+      requires: ["KEY_E"],
+    },
     { file: "f.real.test.ts" },
   ];
 

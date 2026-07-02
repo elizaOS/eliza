@@ -59,7 +59,10 @@ test("every packages/ui __e2e__ runner has a package script and a CI workflow le
   expect(runners.length).toBeGreaterThan(0);
 
   const pkg = JSON.parse(
-    fs.readFileSync(path.join(repoRoot, "packages", "ui", "package.json"), "utf8"),
+    fs.readFileSync(
+      path.join(repoRoot, "packages", "ui", "package.json"),
+      "utf8",
+    ),
   ) as { scripts?: Record<string, string> };
   const scripts = pkg.scripts ?? {};
 
