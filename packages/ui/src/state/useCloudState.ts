@@ -953,8 +953,19 @@ export function useCloudState({
   // via the same-origin cookie path; native refreshes against the cloud API
   // base (Bearer-refresh). A 401 / no-token outcome is left for the next
   // pollCloudCredits() to surface as auth-rejected.
+  //
+  // Armed on stored-token PRESENCE, not on `elizaCloudConnected`: a returning
+  // user's stored JWT can already be expired at mount, and `elizaCloudConnected`
+  // only flips true after a successful status/credits poll — which can't happen
+  // while every call 401s on the dead token. Gating on the connection flag
+  // therefore deadlocked expired-token users (nothing ever refreshed the token
+  // that blocked the connection). Presence-gating breaks that: the check runs at
+  // mount for any stored token and refreshes a near-expiry/expired JWT so the
+  // next poll can succeed. A comfortably-valid token still no-ops (see the
+  // `secs >= STEWARD_REFRESH_AHEAD_SECS` guard), so this adds no needless work.
+  //
+  // biome-ignore lint/correctness/useExhaustiveDependencies: elizaCloudConnected is an intentional re-arm trigger, not read inside — a fresh login writes a new token and flips connected, and the effect must re-run to arm the lifecycle refresh on that token. Presence of a stored token (checked at the top) is the real gate.
   useEffect(() => {
-    if (!elizaCloudConnected) return;
     if (!readStoredStewardToken()?.trim()) return;
 
     let disposed = false;
