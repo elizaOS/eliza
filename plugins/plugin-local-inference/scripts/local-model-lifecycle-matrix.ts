@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { MODEL_CATALOG } from "../src/services/catalog";
+import { collectLifecycleLoadRunChecks } from "../src/services/lifecycle-loadrun";
 import {
 	collectLifecycleBundleChecks,
 	collectLifecycleRemoteChecks,
@@ -20,6 +21,8 @@ interface CliOptions {
 	format: "json" | "markdown";
 	out: string | null;
 	checkRemote: boolean;
+	loadRun: boolean;
+	loadRunModelIds: string[];
 	requireComplete: boolean;
 	timeoutMs: number;
 }
@@ -29,6 +32,8 @@ function parseArgs(argv: string[]): CliOptions {
 		format: "markdown",
 		out: null,
 		checkRemote: false,
+		loadRun: false,
+		loadRunModelIds: [],
 		requireComplete: false,
 		timeoutMs: 15_000,
 	};
@@ -49,6 +54,17 @@ function parseArgs(argv: string[]): CliOptions {
 		}
 		if (arg === "--check-remote") {
 			options.checkRemote = true;
+			continue;
+		}
+		if (arg === "--load-run") {
+			options.loadRun = true;
+			continue;
+		}
+		if (arg === "--load-run-model") {
+			const value = argv[++i];
+			if (!value) throw new Error("--load-run-model requires a model id");
+			options.loadRun = true;
+			options.loadRunModelIds.push(value);
 			continue;
 		}
 		if (arg === "--require-complete") {
@@ -72,6 +88,8 @@ function parseArgs(argv: string[]): CliOptions {
 					"  --format json|markdown   Output format (default: markdown)",
 					"  --out <path>             Write output to a file",
 					"  --check-remote           Probe catalog download URLs with HEAD/range requests",
+					"  --load-run               Load each installed model through the real FFI engine and record tok/s",
+					"  --load-run-model <id>    Restrict --load-run to a model id (repeatable; implies --load-run)",
 					"  --timeout-ms <ms>        Per-URL remote check timeout (default: 15000)",
 					"  --require-complete       Exit non-zero when any row fails or has unknown evidence",
 				].join("\n"),
@@ -107,6 +125,16 @@ async function main() {
 		options.checkRemote ? collectLifecycleRemoteChecks(remoteOptions) : {},
 		options.checkRemote ? collectLifecycleBundleChecks(remoteOptions) : {},
 	]);
+	// Load-run is sequential and after the cheap checks on purpose: it loads
+	// real weights through the FFI engine one model at a time.
+	const loadRunChecks = options.loadRun
+		? await collectLifecycleLoadRunChecks({
+				...(options.loadRunModelIds.length > 0
+					? { modelIds: options.loadRunModelIds }
+					: {}),
+				hardware,
+			})
+		: {};
 	const matrix = buildLocalModelLifecycleMatrix({
 		catalog: MODEL_CATALOG,
 		installed,
@@ -115,6 +143,7 @@ async function main() {
 		remoteChecks,
 		bundleChecks,
 		localFileChecks,
+		loadRunChecks,
 	});
 	const content =
 		options.format === "json"

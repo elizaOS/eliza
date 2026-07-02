@@ -56,15 +56,17 @@ export function extractSelfNameClaim(
 }
 
 /**
- * Extract a "<owner> says <name> is my <label>" assertion.
+ * Extract a "<owner> says <name> is my <label>" kin assertion.
  *
- * Covers:
- *   - "Jill is my wife"            → {name:"Jill", label:"wife"}
- *   - "this is Jill, my wife"      → {name:"Jill", label:"wife"}
- *   - "Bob is my husband"          → {name:"Bob",  label:"husband"}
- *   - "Sam is my partner"
- *   - "this is my wife Jill"       → {name:"Jill", label:"wife"}
- *   - "my husband Bob just called" → {name:"Bob",  label:"husband"}
+ * Covers partner AND sibling claims (issue #10726: "my sister Joan" was not
+ * extractable on the voice path):
+ *   - "Jill is my wife"            → {name:"Jill", label:"wife",   type:"partner_of"}
+ *   - "this is Jill, my wife"      → {name:"Jill", label:"wife",   type:"partner_of"}
+ *   - "Sam is my partner"          → {name:"Sam",  label:"partner",type:"partner_of"}
+ *   - "this is my wife Jill"       → {name:"Jill", label:"wife",   type:"partner_of"}
+ *   - "my husband Bob just called" → {name:"Bob",  label:"husband",type:"partner_of"}
+ *   - "Joan is my sister"          → {name:"Joan", label:"sister", type:"sibling_of"}
+ *   - "my brother Bob just called" → {name:"Bob",  label:"brother",type:"sibling_of"}
  *
  * Returns the first match; multi-relationship sentences are rare
  * enough to warrant punting until we have a real classifier.
@@ -81,20 +83,31 @@ const PARTNER_LABELS = [
   "fiancé",
 ];
 
-interface PartnerClaim {
-  name: string;
-  label: string;
-  type: "partner_of";
+const SIBLING_LABELS = ["sister", "brother", "sibling"];
+
+/** Open-string relationship types are supported by design (shared registry). */
+export type KinClaimType = "partner_of" | "sibling_of";
+
+const KIN_LABELS = [...PARTNER_LABELS, ...SIBLING_LABELS];
+
+function kinTypeForLabel(label: string): KinClaimType {
+  return SIBLING_LABELS.includes(label) ? "sibling_of" : "partner_of";
 }
 
-const PARTNER_CLAIM_PATTERNS: ReadonlyArray<{
+export interface KinClaim {
+  name: string;
+  label: string;
+  type: KinClaimType;
+}
+
+const KIN_CLAIM_PATTERNS: ReadonlyArray<{
   pattern: RegExp;
   nameGroup: number;
   labelGroup: number;
 }> = [
   {
     pattern: new RegExp(
-      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+is\\s+my\\s+(${PARTNER_LABELS.join("|")})\\b`,
+      `\\b([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s+is\\s+my\\s+(${KIN_LABELS.join("|")})\\b`,
       "i",
     ),
     nameGroup: 1,
@@ -102,7 +115,7 @@ const PARTNER_CLAIM_PATTERNS: ReadonlyArray<{
   },
   {
     pattern: new RegExp(
-      `\\bthis\\s+is\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*my\\s+(${PARTNER_LABELS.join("|")})\\b`,
+      `\\bthis\\s+is\\s+([A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2})\\s*,\\s*my\\s+(${KIN_LABELS.join("|")})\\b`,
       "i",
     ),
     nameGroup: 1,
@@ -113,7 +126,7 @@ const PARTNER_CLAIM_PATTERNS: ReadonlyArray<{
   // following verb ("my husband Bob just called" → "Bob", not "Bob just").
   {
     pattern: new RegExp(
-      `\\b(?:this\\s+is\\s+)?my\\s+(${PARTNER_LABELS.join("|")})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
+      `\\b(?:this\\s+is\\s+)?my\\s+(${KIN_LABELS.join("|")})\\s+([A-Z][A-Za-z'.-]{1,40})\\b`,
       "i",
     ),
     nameGroup: 2,
@@ -143,25 +156,123 @@ const NAME_STOPWORDS = new Set([
   "and",
 ]);
 
-export function extractPartnerClaim(
+export function extractKinClaim(
   text: string | null | undefined,
-): PartnerClaim | null {
+): KinClaim | null {
   if (!text) return null;
-  for (const { pattern, nameGroup, labelGroup } of PARTNER_CLAIM_PATTERNS) {
+  for (const { pattern, nameGroup, labelGroup } of KIN_CLAIM_PATTERNS) {
     const m = pattern.exec(text);
     if (m?.[nameGroup] && m[labelGroup]) {
       const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
       const label = m[labelGroup].toLowerCase();
       if (name.length > 0 && !NAME_STOPWORDS.has(name.toLowerCase())) {
-        return { name, label, type: "partner_of" };
+        return { name, label, type: kinTypeForLabel(label) };
       }
     }
   }
   return null;
 }
 
+/**
+ * Extract a spoken self-affiliation claim that should bind the SPEAKING
+ * entity to an organization via `works_at` (issue #10726: "I'm John from
+ * accounting" carried no affiliation on the voice path; `works_at` existed
+ * only in the text pipeline `lifeops/relationships/extraction.ts`).
+ *
+ * Covers:
+ *   - "I'm John from the accounting team" → {name:"John", organization:"accounting team"}
+ *   - "This is Ada from Payroll"          → {name:"Ada",  organization:"Payroll"}
+ *   - "I work at Acme Corp"               → {name:null,   organization:"Acme Corp"}
+ *   - "I work for the city council"       → {name:null,   organization:"city council"}
+ *
+ * The name anchor stays uppercase-first (same heuristic as the self-name
+ * claim) so "I'm calling from the airport" never minted an affiliation.
+ */
+export interface SelfAffiliationClaim {
+  name: string | null;
+  organization: string;
+}
+
+const ORG_PHRASE = "[A-Za-z][A-Za-z0-9&'’. -]{1,60}";
+
+const AFFILIATION_WITH_NAME_PATTERN = new RegExp(
+  `\\b(?:[Ii]['’]?m|[Ii]\\s+am|[Tt]his\\s+is)\\s+(${NAME_PATTERN})\\s+(?:from|with)\\s+(?:the\\s+)?(${ORG_PHRASE})`,
+);
+
+const WORKS_AT_PATTERN = new RegExp(
+  `\\b[Ii]\\s+work\\s+(?:at|for)\\s+(?:the\\s+)?(${ORG_PHRASE})`,
+);
+
+/** Words that mark a phrase as an organization/department reference. */
+const ORG_KEYWORD_PATTERN =
+  /\b(?:team|department|dept|group|office|company|corp|corporation|inc|llc|ltd|council|division|lab|labs|university|college|hospital|clinic|agency|firm|bank|studio|store|school|bureau|institute)\b/i;
+
+/** Single lowercase tokens that read like places, not departments. */
+const ORG_TOKEN_STOPWORDS = new Set([
+  "work",
+  "home",
+  "town",
+  "here",
+  "there",
+  "abroad",
+  "overseas",
+  "upstairs",
+  "downstairs",
+  "outside",
+]);
+
+function cleanOrganization(raw: string): string | null {
+  let cleaned = raw
+    .replace(/[.,;:!?]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // The org phrase ends where the sentence moves on ("...from the accounting
+  // team and I need help with...").
+  const clauseBreak = cleaned.search(
+    /\s+(?:and|but|so|because|who|which|where|when|about)\b/i,
+  );
+  if (clauseBreak > 0) cleaned = cleaned.slice(0, clauseBreak).trim();
+  cleaned = cleaned.replace(/[.,;:!?]+$/, "").trim();
+  if (cleaned.length < 2) return null;
+  if (NAME_STOPWORDS.has(cleaned.toLowerCase())) return null;
+  // Cap runaway captures: an org phrase longer than five words is almost
+  // certainly the rest of the sentence, not an organization name.
+  if (cleaned.split(" ").length > 5) return null;
+  // Plausibility gate — keeps "I'm Jill with the long hair" from minting a
+  // "long hair" organization. Accept: proper-noun orgs ("Acme Corp",
+  // "Payroll"), phrases with an org keyword ("accounting team"), or a single
+  // lowercase department-style token ("accounting").
+  const words = cleaned.split(" ");
+  const properNoun = /^[A-Z]/.test(cleaned);
+  const hasOrgKeyword = ORG_KEYWORD_PATTERN.test(cleaned);
+  const singleDepartmentToken =
+    words.length === 1 && !ORG_TOKEN_STOPWORDS.has(cleaned.toLowerCase());
+  if (!properNoun && !hasOrgKeyword && !singleDepartmentToken) return null;
+  return cleaned;
+}
+
+export function extractSelfAffiliationClaim(
+  text: string | null | undefined,
+): SelfAffiliationClaim | null {
+  if (!text) return null;
+  const withName = AFFILIATION_WITH_NAME_PATTERN.exec(text);
+  if (withName?.[1] && withName[2]) {
+    const name = withName[1].replace(/[.,;:!?]+$/, "").trim();
+    const organization = cleanOrganization(withName[2]);
+    if (organization && !NAME_STOPWORDS.has(name.toLowerCase())) {
+      return { name, organization };
+    }
+  }
+  const worksAt = WORKS_AT_PATTERN.exec(text);
+  if (worksAt?.[1]) {
+    const organization = cleanOrganization(worksAt[1]);
+    if (organization) return { name: null, organization };
+  }
+  return null;
+}
+
 export interface PendingRelationship {
-  type: "partner_of";
+  type: KinClaimType;
   fromEntityId: typeof SELF_ENTITY_ID;
   toName: string;
   label: string;

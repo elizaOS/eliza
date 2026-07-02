@@ -30,7 +30,7 @@ jobs:
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
         with:
-          bun-version: canary
+          bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
           install-command: bun install
 
       - name: Env audit check

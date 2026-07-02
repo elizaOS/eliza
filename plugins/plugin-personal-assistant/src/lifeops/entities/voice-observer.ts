@@ -21,7 +21,8 @@ import { SELF_ENTITY_ID } from "./types.js";
 import {
   type BindVoiceTurnResult,
   bindVoiceTurnToEntity,
-  extractPartnerClaim,
+  extractKinClaim,
+  extractSelfAffiliationClaim,
   PendingRelationshipQueue,
 } from "./voice-attribution.js";
 
@@ -52,8 +53,14 @@ export interface VoiceTurnIngestResult {
   binding: BindVoiceTurnResult;
   /** Relationship rows produced for this turn (resolved or new). */
   relationshipIds: string[];
-  /** Partner claims queued for later resolution (typically when isOwner=true). */
+  /** Kin claims (partner/sibling) queued for later resolution (typically when isOwner=true). */
   queuedPartnerClaims: number;
+  /**
+   * Organization entity the speaker was bound to via `works_at` on this
+   * turn ("I'm John from the accounting team"), when the utterance carried a
+   * self-affiliation claim. Null otherwise.
+   */
+  affiliationOrgEntityId: string | null;
 }
 
 /**
@@ -108,13 +115,13 @@ export class VoiceObserver {
       relationshipIds.push(rel.relationshipId);
     }
 
-    // Step 3: if the OWNER speaks an ownership-relationship claim,
-    // queue it for later resolution. We don't resolve it on the
-    // owner's turn because we don't yet know which entity the named
-    // person is.
+    // Step 3: if the OWNER speaks a kin claim (partner OR sibling — issue
+    // #10726 added siblings), queue it for later resolution. We don't
+    // resolve it on the owner's turn because we don't yet know which entity
+    // the named person is.
     let queuedPartnerClaims = 0;
     if (turn.isOwner) {
-      const claim = extractPartnerClaim(turn.text);
+      const claim = extractKinClaim(turn.text);
       if (claim) {
         // Try eager resolution — the owner might be referring to a
         // person we've already heard speak (named via self-claim).
@@ -131,7 +138,7 @@ export class VoiceObserver {
           const rel = await this.deps.relationshipStore.observe({
             fromEntityId: SELF_ENTITY_ID,
             toEntityId: exact.entity.entityId,
-            type: "partner_of",
+            type: claim.type,
             metadataPatch: { label: claim.label },
             evidence: [turn.turnId],
             confidence: 0.7,
@@ -141,7 +148,7 @@ export class VoiceObserver {
           relationshipIds.push(rel.relationshipId);
         } else {
           this.pendingQueue.enqueue({
-            type: "partner_of",
+            type: claim.type,
             fromEntityId: SELF_ENTITY_ID,
             toName: claim.name,
             label: claim.label,
@@ -153,7 +160,44 @@ export class VoiceObserver {
       }
     }
 
-    return { binding, relationshipIds, queuedPartnerClaims };
+    // Step 4: a self-affiliation claim ("I'm John from the accounting team",
+    // "I work at Acme") binds the SPEAKING entity to an organization entity
+    // via `works_at` on the same turn (issue #10726 — the voice path
+    // previously dropped affiliations; `works_at` existed only in the text
+    // pipeline). The organization is match-or-created through the same merge
+    // engine with a deterministic voice-org handle so repeated mentions of
+    // the same org fold into one entity.
+    let affiliationOrgEntityId: string | null = null;
+    const affiliation = extractSelfAffiliationClaim(turn.text);
+    if (affiliation) {
+      const orgResult = await this.deps.entityStore.observeIdentity({
+        platform: "voice",
+        handle: `org:${affiliation.organization.toLowerCase()}`,
+        displayName: affiliation.organization,
+        evidence: [turn.turnId],
+        confidence: 0.6,
+        suggestedType: "organization",
+      });
+      affiliationOrgEntityId = orgResult.entity.entityId;
+      const rel = await this.deps.relationshipStore.observe({
+        fromEntityId: binding.entityId,
+        toEntityId: orgResult.entity.entityId,
+        type: "works_at",
+        metadataPatch: { organization: affiliation.organization },
+        evidence: [turn.turnId],
+        confidence: 0.6,
+        source: "extraction",
+        occurredAt: turn.observedAt,
+      });
+      relationshipIds.push(rel.relationshipId);
+    }
+
+    return {
+      binding,
+      relationshipIds,
+      queuedPartnerClaims,
+      affiliationOrgEntityId,
+    };
   }
 
   /** Test utility: peek at the pending queue. */
