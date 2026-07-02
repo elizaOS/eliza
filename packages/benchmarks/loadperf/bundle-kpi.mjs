@@ -82,9 +82,6 @@ function detectInitialEntries() {
  */
 function computeEagerGraph(assets, entryNames) {
   const byName = new Map(assets.map((a) => [a.name, a]));
-  // Set of every chunk filename referenced anywhere via a dynamic import call,
-  // so we can exclude those edges when walking statics.
-  const dynamicTargets = new Set();
   const staticEdges = new Map(); // name -> Set(staticallyReferenced names)
   const CHUNK_REF = /['"`]([\w./-]+\.(?:js|css))['"`]/g;
   const DYN_IMPORT = /import\(\s*['"`]([^'"`]+\.js)['"`]\s*\)/g;
@@ -93,7 +90,6 @@ function computeEagerGraph(assets, entryNames) {
     const src = readFileSync(join(APP_DIST, a.path), "utf8");
     const dyn = new Set();
     for (const m of src.matchAll(DYN_IMPORT)) dyn.add(basename(m[1]));
-    for (const d of dyn) dynamicTargets.add(d);
     const statics = new Set();
     for (const m of src.matchAll(CHUNK_REF)) {
       const ref = basename(m[1]);
@@ -113,7 +109,7 @@ function computeEagerGraph(assets, entryNames) {
       }
     }
   }
-  return { eager, dynamicTargets };
+  return { eager };
 }
 
 function main() {
@@ -201,12 +197,30 @@ function main() {
   // Initial entry: the chunk(s) index.html eagerly loads.
   const entryNames = detectInitialEntries();
   const entryAssets = assets.filter((a) => entryNames.has(a.name));
+  if (entryNames.size === 0 || entryAssets.length === 0) {
+    const error =
+      entryNames.size === 0
+        ? "no module scripts or modulepreload entries found in app dist HTML"
+        : `HTML referenced ${entryNames.size} initial asset(s), but none were present in dist`;
+    const result = {
+      skipped: true,
+      error,
+      summary: {
+        assetCount: assets.length,
+        totalRaw,
+        totalBrotli,
+      },
+    };
+    const { file } = recordResult("bundle", result, NOW);
+    console.error(`[bundle-kpi] ${error}; recorded -> ${file}`);
+    process.exit(2);
+  }
   const initialEntryBrotli = entryAssets.reduce((s, a) => s + a.brotli, 0);
   const largest = assets[0];
 
   // Eager graph: everything parsed before first paint (entry + its static deps).
   // This is the honest "JS loaded up front" number; the rest is lazy.
-  const { eager, dynamicTargets } = computeEagerGraph(assets, entryNames);
+  const { eager } = computeEagerGraph(assets, entryNames);
   const eagerAssets = assets.filter((a) => eager.has(a.name));
   const eagerBrotli = eagerAssets.reduce((s, a) => s + a.brotli, 0);
   const eagerRaw = eagerAssets.reduce((s, a) => s + a.raw, 0);
