@@ -9,8 +9,16 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
+import {
+  type BackIntentEventDetail,
+  ELIZA_BACK_INTENT_EVENT,
+  OPEN_NOTIFICATION_CENTER_EVENT,
+} from "../../events";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import {
+  Z_NOTIFICATION_BACKDROP,
+  Z_NOTIFICATION_OVERLAY,
+} from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { categoryIcon } from "../../state/notifications/category-icon";
@@ -120,7 +128,7 @@ function NotificationRow({
   return (
     <li
       className={cn(
-        "group relative flex items-start gap-3 rounded-sm pr-9 transition-colors hover:bg-surface",
+        "group relative flex items-start gap-3 rounded-sm pr-9 transition-colors hover:bg-surface pointer-coarse:pr-12",
         unread && "bg-surface/60",
       )}
     >
@@ -133,7 +141,7 @@ function NotificationRow({
           className={cn(
             "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
             notification.priority === "urgent"
-              ? "bg-status-error/15 text-status-error"
+              ? "bg-status-danger/15 text-status-danger"
               : notification.priority === "high"
                 ? "bg-accent/15 text-accent"
                 : "bg-surface text-muted-strong",
@@ -168,8 +176,11 @@ function NotificationRow({
         // invisible-but-hit-testable X silently deleted the notification on a
         // near-edge tap. Full opacity on hover; keyboard focus visibility is
         // the app-wide global treatment (per-component focus utilities are
-        // banned by no-focus-ring-gate).
-        className="absolute right-1.5 top-2.5 shrink-0 rounded-sm p-1 text-muted opacity-50 transition-opacity hover:bg-surface hover:text-txt group-hover:opacity-100"
+        // banned by no-focus-ring-gate). The glyph stays 22px on mouse, but on a
+        // coarse pointer the hit target grows to the 44px `touch` token (the
+        // house `pointer-coarse:min-*-touch` convention) so it isn't a
+        // sub-target tap zone on the phone sheet.
+        className="absolute right-1.5 top-2.5 flex shrink-0 items-center justify-center rounded-sm p-1 text-muted opacity-50 transition-opacity pointer-coarse:min-h-touch pointer-coarse:min-w-touch hover:bg-surface hover:text-txt group-hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -372,15 +383,40 @@ export function NotificationCenter({
   }, []);
 
   // Escape closes the controlled shells — sheet + panel (mirrors the popover's
-  // dismiss).
+  // dismiss). If a Radix dialog is stacked ON TOP (e.g. the Cmd+K command
+  // palette opened over the panel), let that topmost layer consume the Escape
+  // and peel one layer per press — the notification shell carries role="dialog"
+  // WITHOUT data-state="open", so this guard never blocks its own dismissal.
   useEffect(() => {
     if (!isControlled || !open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onOpenChange?.(false);
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+      onOpenChange?.(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [isControlled, open, onOpenChange]);
+
+  // Android hardware/gesture back closes whichever notification surface is open
+  // FIRST (it is the topmost layer), so back never collapses the chat beneath it
+  // or backgrounds the app while a modal notification shell is up. Registered
+  // only while a shell is open; marks the intent handled so the chat overlay's
+  // back handler + the native fall-through don't also fire.
+  useEffect(() => {
+    const shellOpen = (isControlled && open) || bellOpen;
+    if (!shellOpen) return;
+    const onBackIntent = (e: Event) => {
+      const detail = (e as CustomEvent<BackIntentEventDetail>).detail;
+      if (!detail || detail.handled) return;
+      detail.handled = true;
+      if (isControlled) onOpenChange?.(false);
+      else setBellOpen(false);
+    };
+    window.addEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+    return () =>
+      window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+  }, [isControlled, open, bellOpen, onOpenChange]);
 
   // Focus management for the controlled shells (sheet + panel). Unlike the bell
   // path (Radix Popover manages focus for us), these are hand-rolled dialogs
@@ -553,7 +589,7 @@ export function NotificationCenter({
                 aria-pressed={sortMode === mode}
                 onClick={() => setSortMode(mode)}
                 className={cn(
-                  "rounded px-2 py-0.5 text-2xs font-medium transition-colors",
+                  "rounded-sm px-2 py-0.5 text-2xs font-medium transition-colors",
                   sortMode === mode
                     ? "bg-accent/15 text-accent"
                     : "text-muted hover:text-txt",
@@ -632,8 +668,8 @@ export function NotificationCenter({
           // control, not this invisible catcher.
           tabIndex={-1}
           onClick={() => onOpenChange?.(false)}
-          // z-[9550] mirrors Z_NOTIFICATION_BACKDROP in ../../lib/floating-layers.ts
-          className="fixed inset-0 z-[9550] bg-black/40"
+          style={{ zIndex: Z_NOTIFICATION_BACKDROP }}
+          className="fixed inset-0 bg-black/40"
         />
         <div
           ref={dialogRef}
@@ -644,12 +680,12 @@ export function NotificationCenter({
           data-above-shell-overlay
           tabIndex={-1}
           onKeyDown={onDialogKeyDown}
+          style={{ zIndex: Z_NOTIFICATION_OVERLAY }}
           className={cn(
             // Floating sheet: flat (no drop shadow, app-wide direction); the
             // popover scrim + one outer edge give self-contained contrast. Short
             // landscape caps lower so it floats over the (already short) viewport.
-            // z-[9560] mirrors Z_NOTIFICATION_OVERLAY in ../../lib/floating-layers.ts
-            "fixed inset-x-0 top-0 z-[9560] mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover outline-none",
+            "fixed inset-x-0 top-0 mx-auto flex w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover outline-none",
             isShortLandscape ? "max-h-[75vh]" : "max-h-[85vh]",
             "pt-[var(--safe-area-top,0px)]",
             className,
@@ -694,8 +730,8 @@ export function NotificationCenter({
           // keyboard focus target inside the trapped dialog.
           tabIndex={-1}
           onClick={() => onOpenChange?.(false)}
-          // z-[9550] mirrors Z_NOTIFICATION_BACKDROP in ../../lib/floating-layers.ts
-          className="fixed inset-0 z-[9550]"
+          style={{ zIndex: Z_NOTIFICATION_BACKDROP }}
+          className="fixed inset-0"
         />
         <div
           ref={dialogRef}
@@ -706,11 +742,11 @@ export function NotificationCenter({
           data-above-shell-overlay
           tabIndex={-1}
           onKeyDown={onDialogKeyDown}
+          style={{ zIndex: Z_NOTIFICATION_OVERLAY }}
           className={cn(
             // Flat like the app's PopoverContent (border + bg, no shadow): the
             // 1px border defines the floating panel over content.
-            // z-[9560] mirrors Z_NOTIFICATION_OVERLAY in ../../lib/floating-layers.ts
-            "fixed right-3 top-3 z-[9560] flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover outline-none",
+            "fixed right-3 top-3 flex max-h-[min(560px,calc(100vh-1.5rem))] w-[400px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-popover outline-none",
             className,
           )}
         >

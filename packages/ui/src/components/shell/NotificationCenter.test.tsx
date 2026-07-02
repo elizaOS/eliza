@@ -2,6 +2,7 @@
 import type { AgentNotification } from "@elizaos/core";
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -465,5 +466,59 @@ describe("NotificationCenter", () => {
     expect(remindersChip.getAttribute("aria-pressed")).toBe("false");
     await user.click(remindersChip);
     expect(remindersChip.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("Android back closes the open controlled shell and marks the intent handled", async () => {
+    const { ELIZA_BACK_INTENT_EVENT } = await import("../../events");
+    seedNotifications([notification("b1", "Back me", "system")]);
+    const onOpenChange = vi.fn();
+    render(
+      <NotificationCenter variant="sheet" open onOpenChange={onOpenChange} />,
+    );
+    await screen.findByTestId("notification-sheet");
+
+    const detail = { handled: false };
+    window.dispatchEvent(new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }));
+    // The shell claimed back (so the chat/native fall-through won't also fire)…
+    expect(detail.handled).toBe(true);
+    // …and requested its own close.
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("Android back does nothing when no shell is open", async () => {
+    const { ELIZA_BACK_INTENT_EVENT } = await import("../../events");
+    seedNotifications([notification("b2", "Idle", "system")]);
+    const onOpenChange = vi.fn();
+    render(
+      <NotificationCenter
+        variant="sheet"
+        open={false}
+        onOpenChange={onOpenChange}
+      />,
+    );
+    const detail = { handled: false };
+    window.dispatchEvent(new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }));
+    // Closed shell registers no handler → back stays unhandled for other layers.
+    expect(detail.handled).toBe(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("Escape defers to a stacked open Radix dialog (peels one layer per press)", async () => {
+    seedNotifications([notification("e1", "Stacked", "system")]);
+    const onOpenChange = vi.fn();
+    // A Radix-style dialog painted on top of the panel.
+    render(
+      <>
+        <div role="dialog" data-state="open" data-testid="stacked-dialog">
+          command palette
+        </div>
+        <NotificationCenter variant="panel" open onOpenChange={onOpenChange} />
+      </>,
+    );
+    await screen.findByTestId("notification-panel");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    // The topmost Radix layer consumes this Escape; the panel stays open.
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

@@ -238,7 +238,7 @@ export function Launcher({
           >
             {loading && entries.length === 0 ? (
               <div className="flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8">
-                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5">
+                <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
                   {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
                     <div
                       key={id}
@@ -266,7 +266,7 @@ export function Launcher({
                       !active && "pointer-events-none",
                     )}
                   >
-                    <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5">
+                    <div className="grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 max-sm:portrait:gap-y-14 sm:grid-cols-5">
                       {pageIds.map((id) => {
                         const entry = byId.get(id);
                         if (!entry) return null;
