@@ -53,7 +53,7 @@
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 54,
+      "colorBuckets": 56,
       "dominantRatio": 0.5335069444444445
     },
     "qualityIssues": [],
@@ -208,13 +208,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 187,
+    "readableChars": 306,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 38,
-      "dominantRatio": 0.8539930555555556
+      "colorBuckets": 56,
+      "dominantRatio": 0.5980902777777778
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -228,13 +228,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 187,
+    "readableChars": 306,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 45,
-      "dominantRatio": 0.4831912878787879
+      "colorBuckets": 90,
+      "dominantRatio": 0.29332386363636365
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -333,8 +333,8 @@
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 34,
-      "dominantRatio": 0.8079861111111111
+      "colorBuckets": 33,
+      "dominantRatio": 0.8081597222222222
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -354,7 +354,7 @@
       "height": 96,
       "sampledPixels": 4224,
       "colorBuckets": 45,
-      "dominantRatio": 0.5613162878787878
+      "dominantRatio": 0.5610795454545454
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -368,13 +368,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 187,
+    "readableChars": 148,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 38,
-      "dominantRatio": 0.8539930555555556
+      "colorBuckets": 33,
+      "dominantRatio": 0.8645833333333334
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -388,13 +388,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 187,
+    "readableChars": 148,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 45,
-      "dominantRatio": 0.4831912878787879
+      "colorBuckets": 39,
+      "dominantRatio": 0.5229640151515151
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -434,7 +434,7 @@
       "height": 96,
       "sampledPixels": 4224,
       "colorBuckets": 34,
-      "dominantRatio": 0.4325284090909091
+      "dominantRatio": 0.4322916666666667
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -494,7 +494,7 @@
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 19,
-      "dominantRatio": 0.9576388888888889
+      "dominantRatio": 0.9574652777777778
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -688,13 +688,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 187,
+    "readableChars": 148,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
-      "colorBuckets": 38,
-      "dominantRatio": 0.8539930555555556
+      "colorBuckets": 33,
+      "dominantRatio": 0.8645833333333334
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -708,13 +708,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 187,
+    "readableChars": 148,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 45,
-      "dominantRatio": 0.4831912878787879
+      "colorBuckets": 39,
+      "dominantRatio": 0.5229640151515151
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -848,13 +848,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 63,
+    "readableChars": 72,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 17,
-      "dominantRatio": 0.9866319444444445
+      "dominantRatio": 0.9828125
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -868,13 +868,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 63,
+    "readableChars": 72,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
       "colorBuckets": 20,
-      "dominantRatio": 0.9569128787878788
+      "dominantRatio": 0.9521780303030303
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -888,13 +888,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 170,
+    "readableChars": 132,
     "quality": {
       "width": 96,
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 49,
-      "dominantRatio": 0.4822916666666667
+      "dominantRatio": 0.4578125
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -908,13 +908,13 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "readableChars": 170,
+    "readableChars": 132,
     "quality": {
       "width": 44,
       "height": 96,
       "sampledPixels": 4224,
-      "colorBuckets": 55,
-      "dominantRatio": 0.5975378787878788
+      "colorBuckets": 53,
+      "dominantRatio": 0.5916193181818182
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"
@@ -1294,7 +1294,7 @@
       "height": 60,
       "sampledPixels": 5760,
       "colorBuckets": 53,
-      "dominantRatio": 0.7630208333333334
+      "dominantRatio": 0.7626736111111111
     },
     "qualityIssues": [],
     "verdict": "needs-eyeball"

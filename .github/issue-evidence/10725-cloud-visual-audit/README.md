@@ -24,9 +24,11 @@ viewport; `contact-sheet.html` is the grid index.
 Harness notes:
 
 - The renderer is built with `VITE_PLAYWRIGHT_TEST_AUTH=true` (the
-  `audit:cloud` script sets it), so `StewardAuthProvider` renders the local
-  test-auth shell and authed pages authenticate from a seeded persisted
-  Steward token — the same pattern as `cloud-console-routes.spec.ts`.
+  `audit:cloud` script sets it), so normal Steward-gated pages authenticate
+  from a seeded persisted Steward token — the same pattern as
+  `cloud-console-routes.spec.ts`. `/app-auth/authorize` uses a local
+  Playwright test-auth adapter so the audit can render its signed-in consent
+  state without the live Steward SDK provider.
 - Cloud APIs are stubbed with shape-accurate fixtures (traced from each
   domain's data hooks; see the rule table in
   `packages/app/test/ui-smoke/cloud-surfaces-aesthetic-audit.spec.ts`) so
@@ -60,3 +62,6 @@ Fixed in this PR (verified by the run-3 machine scan + screenshots):
 - `payment/app-charge/:appId/:chargeId` crash (RangeError: Invalid time
   value) exposed by a minimal stub - stub now carries the full app-charge
   shape.
+- `app-auth/authorize` no longer crashes the Playwright test-auth audit path
+  by calling `useAuth()` without a Steward provider; the audit renders the
+  signed-in consent state with a local test-auth adapter.

@@ -1,5 +1,6 @@
 "use client";
 
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
 import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
@@ -31,6 +32,36 @@ type AppAuthorizeOAuthSignIn = (
   provider: AppAuthorizeOAuthProvider,
   config?: { redirectUri?: string; tenantId?: string },
 ) => Promise<unknown>;
+type AppAuthorizeAuthState = {
+  activeTenantId: string | null;
+  getToken: () => string | null | undefined;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  isProvidersLoading: boolean;
+  providers: StewardProviders | null;
+  signInWithOAuth: AppAuthorizeOAuthSignIn;
+  signOut: () => unknown;
+};
+
+function isPlaywrightTestAuthEnabled(): boolean {
+  return (
+    import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
+    (typeof process !== "undefined" &&
+      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
+  );
+}
+
+const TEST_AUTH_PROVIDERS: StewardProviders = {
+  passkey: true,
+  email: true,
+  siwe: false,
+  siws: false,
+  google: false,
+  discord: false,
+  github: false,
+  twitter: false,
+  oauth: [],
+};
 
 const APP_AUTHORIZE_OAUTH_PROVIDERS = [
   {
@@ -89,12 +120,82 @@ export function AuthorizeContent() {
   );
 }
 
+function readPlaywrightTestToken(): string {
+  if (typeof window === "undefined") return "playwright-test-token";
+  try {
+    return (
+      window.localStorage.getItem(STEWARD_TOKEN_KEY) ?? "playwright-test-token"
+    );
+  } catch {
+    return "playwright-test-token";
+  }
+}
+
 function AuthorizeAuthenticatedContent({
   appId,
   redirectUri,
   state,
 }: {
   appId: string;
+  redirectUri: string;
+  state: string | null;
+}) {
+  if (isPlaywrightTestAuthEnabled()) {
+    return (
+      <AuthorizeFlow
+        appId={appId}
+        auth={{
+          activeTenantId: null,
+          getToken: readPlaywrightTestToken,
+          isAuthenticated: true,
+          isLoading: false,
+          isProvidersLoading: false,
+          providers: TEST_AUTH_PROVIDERS,
+          signInWithOAuth: async () => undefined,
+          signOut: () => undefined,
+        }}
+        redirectUri={redirectUri}
+        state={state}
+      />
+    );
+  }
+
+  return (
+    <AuthorizeStewardContent
+      appId={appId}
+      redirectUri={redirectUri}
+      state={state}
+    />
+  );
+}
+
+function AuthorizeStewardContent({
+  appId,
+  redirectUri,
+  state,
+}: {
+  appId: string;
+  redirectUri: string;
+  state: string | null;
+}) {
+  return (
+    <AuthorizeFlow
+      appId={appId}
+      auth={useAuth() as AppAuthorizeAuthState}
+      redirectUri={redirectUri}
+      state={state}
+    />
+  );
+}
+
+function AuthorizeFlow({
+  appId,
+  auth,
+  redirectUri,
+  state,
+}: {
+  appId: string;
+  auth: AppAuthorizeAuthState;
   redirectUri: string;
   state: string | null;
 }) {
@@ -107,7 +208,7 @@ function AuthorizeAuthenticatedContent({
     isProvidersLoading,
     signInWithOAuth,
     activeTenantId,
-  } = useAuth();
+  } = auth;
   // Steward provider discovery (Google/Discord/etc) is fetched at app shell
   // mount, but on a cold load to /app-auth/authorize the round-trip can take a
   // few seconds. Reveal the login section atomically once providers resolve so

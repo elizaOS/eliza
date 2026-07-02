@@ -31,8 +31,10 @@ import {
  *  - The renderer dist must be built with `VITE_PLAYWRIGHT_TEST_AUTH=true`
  *    (the audit:cloud script exports it so a stale-dist rebuild inlines it;
  *    with ELIZA_UI_SMOKE_SKIP_BUILD=1 you must have built it yourself). With
- *    the flag, StewardAuthProvider renders children directly and the pages
- *    authenticate from the persisted Steward token this spec seeds.
+ *    the flag, normal Steward-gated routes authenticate from the persisted
+ *    token this spec seeds, and app-auth/authorize uses its local test-auth
+ *    adapter to render the signed-in consent state without the live Steward
+ *    SDK provider.
  *  - Cloud APIs are stubbed per domain below so pages render real zero/served
  *    states instead of eternal skeletons; anything unstubbed falls through to
  *    the deterministic 501 stub backend, and the page's rendered failure
@@ -62,15 +64,6 @@ interface CloudAuditCase {
   route: string;
   /** Seed the persisted Steward token before boot (authed dashboard pages). */
   auth: boolean;
-  /**
-   * Tolerate an uncaught page error for this route in THIS harness only.
-   * app-auth/authorize: with VITE_PLAYWRIGHT_TEST_AUTH baked,
-   * StewardAuthProvider renders children without the Steward runtime, so
-   * AuthorizeContent's `useAuth()` throws — a harness-environment artifact
-   * (production mounts the runtime for /app-auth; #9881), not a product
-   * break. The error is still recorded in the finding + manual review.
-   */
-  allowPageError?: boolean;
 }
 
 const AUTH = true;
@@ -219,7 +212,6 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     path: "/app-auth/authorize?app_id=app-smoke-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcb",
     route: "app-auth/authorize",
     auth: AUTH,
-    allowPageError: true,
   },
   // public-pages/ — legal + bsc
   {
@@ -1097,8 +1089,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           path: auditCase.path,
           route: auditCase.route,
           // Uncaught page errors are the hardest crash signal — surface them
-          // in the finding alongside console errors (app-auth's tolerated
-          // harness error included).
+          // in the finding alongside console errors.
           consoleErrors: [
             ...pageErrors.map((message) => `pageerror: ${message}`),
             ...consoleErrors,
@@ -1125,12 +1116,10 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
         );
 
         // Only a real crash fails the walk; design findings live in the report.
-        if (!auditCase.allowPageError) {
-          expect(
-            pageErrors,
-            `${auditCase.slug} ${vp.name} must not throw an uncaught page error`,
-          ).toEqual([]);
-        }
+        expect(
+          pageErrors,
+          `${auditCase.slug} ${vp.name} must not throw an uncaught page error`,
+        ).toEqual([]);
       });
     }
   }

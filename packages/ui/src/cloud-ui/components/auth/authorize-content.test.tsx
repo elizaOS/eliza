@@ -29,6 +29,7 @@ const authRef = vi.hoisted(() => ({
   },
 }));
 
+const useAuthMock = vi.hoisted(() => vi.fn(() => authRef.current));
 const pushMock = vi.hoisted(() => vi.fn());
 const searchParamsRef = vi.hoisted(() => ({
   current: new URLSearchParams(
@@ -60,7 +61,7 @@ vi.mock("@stwd/react", () => ({
       {title}
     </div>
   ),
-  useAuth: () => authRef.current,
+  useAuth: () => useAuthMock(),
 }));
 
 vi.mock("../../runtime/navigation", () => ({
@@ -112,6 +113,7 @@ describe("AuthorizeContent", () => {
       signInWithOAuth: vi.fn(),
       activeTenantId: "elizacloud",
     };
+    useAuthMock.mockClear();
     pushMock.mockReset();
     searchParamsRef.current = new URLSearchParams(
       "app_id=app-1&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback&state=state-1",
@@ -122,6 +124,7 @@ describe("AuthorizeContent", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     Object.defineProperty(window, "location", {
       configurable: true,
       value: realLocation,
@@ -146,6 +149,20 @@ describe("AuthorizeContent", () => {
       screen.getByRole("button", { name: "Authorize Demo App" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  it("uses the local Playwright test-auth adapter without calling the Steward hook", async () => {
+    vi.stubEnv("VITE_PLAYWRIGHT_TEST_AUTH", "true");
+
+    render(<AuthorizeContent />);
+
+    await waitFor(() => expect(screen.getByText("Demo App")).toBeTruthy());
+
+    expect(useAuthMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Authorize Demo App" }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("steward-login")).toBeNull();
   });
 
   it("sends signed-in users through the cancel redirect", async () => {
