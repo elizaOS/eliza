@@ -387,7 +387,11 @@ export function CockpitSessionPane({
         {detail ? (
           <TaskInspector
             detail={detail}
-            className="flex"
+            // Override the class only for the mobile drawer: an unconditional
+            // "flex" suppressed TaskInspector's `flex w-80` fallback, and in
+            // this flex ROW the shrink-0 inspector inflated to max-content on
+            // desktop, crushing the transcript.
+            className={isMobile ? "flex" : undefined}
             style={
               isMobile
                 ? inspectorOpen
