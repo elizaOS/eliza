@@ -1,0 +1,89 @@
+GGUF.version = 3
+GGUF.tensor_count = 49
+GGUF.kv_count = 42
+general.architecture = gemma4-assistant
+general.type = model
+general.sampling.top_k = 64
+general.sampling.top_p = 0.949999988079071
+general.sampling.temp = 1.0
+general.name = Model
+general.size_label = 77M
+gemma4-assistant.block_count = 4
+gemma4-assistant.context_length = 131072
+gemma4-assistant.embedding_length = 256
+gemma4-assistant.feed_forward_length = 2048
+gemma4-assistant.attention.head_count = 4
+gemma4-assistant.attention.head_count_kv = 1
+gemma4-assistant.rope.freq_base = 1000000.0
+gemma4-assistant.rope.freq_base_swa = 10000.0
+gemma4-assistant.attention.layer_norm_rms_epsilon = 9.999999974752427e-07
+gemma4-assistant.attention.key_length = 512
+gemma4-assistant.attention.value_length = 512
+general.file_type = 1
+gemma4-assistant.attention.sliding_window = 512
+gemma4-assistant.attention.shared_kv_layers = 4
+gemma4-assistant.embedding_length_per_layer_input = 0
+gemma4-assistant.attention.sliding_window_pattern = [True, True, True, False]
+gemma4-assistant.attention.key_length_swa = 256
+gemma4-assistant.attention.value_length_swa = 256
+gemma4-assistant.rope.dimension_count = 512
+gemma4-assistant.rope.dimension_count_swa = 256
+gemma4-assistant.embedding_length_out = 1536
+gemma4-assistant.nextn_predict_layers = 1
+general.quantization_version = 2
+tokenizer.ggml.model = gemma4
+tokenizer.ggml.bos_token_id = 2
+tokenizer.ggml.eos_token_id = 1
+tokenizer.ggml.unknown_token_id = 3
+tokenizer.ggml.padding_token_id = 0
+tokenizer.ggml.mask_token_id = 4
+--- tensors ---
+rope_freqs.weight [np.uint64(256)] F32
+token_embd.weight [np.uint64(256), np.uint64(262144)] F16
+blk.0.attn_norm.weight [np.uint64(256)] F32
+blk.0.layer_output_scale.weight [np.uint64(1)] F32
+blk.0.ffn_down.weight [np.uint64(2048), np.uint64(256)] F16
+blk.0.ffn_gate.weight [np.uint64(256), np.uint64(2048)] F16
+blk.0.ffn_up.weight [np.uint64(256), np.uint64(2048)] F16
+blk.0.post_attention_norm.weight [np.uint64(256)] F32
+blk.0.post_ffw_norm.weight [np.uint64(256)] F32
+blk.0.ffn_norm.weight [np.uint64(256)] F32
+blk.0.attn_output.weight [np.uint64(1024), np.uint64(256)] F16
+blk.0.attn_q_norm.weight [np.uint64(256)] F32
+blk.0.attn_q.weight [np.uint64(256), np.uint64(1024)] F16
+blk.1.attn_norm.weight [np.uint64(256)] F32
+blk.1.layer_output_scale.weight [np.uint64(1)] F32
+blk.1.ffn_down.weight [np.uint64(2048), np.uint64(256)] F16
+blk.1.ffn_gate.weight [np.uint64(256), np.uint64(2048)] F16
+blk.1.ffn_up.weight [np.uint64(256), np.uint64(2048)] F16
+blk.1.post_attention_norm.weight [np.uint64(256)] F32
+blk.1.post_ffw_norm.weight [np.uint64(256)] F32
+blk.1.ffn_norm.weight [np.uint64(256)] F32
+blk.1.attn_output.weight [np.uint64(1024), np.uint64(256)] F16
+blk.1.attn_q_norm.weight [np.uint64(256)] F32
+blk.1.attn_q.weight [np.uint64(256), np.uint64(1024)] F16
+blk.2.attn_norm.weight [np.uint64(256)] F32
+blk.2.layer_output_scale.weight [np.uint64(1)] F32
+blk.2.ffn_down.weight [np.uint64(2048), np.uint64(256)] F16
+blk.2.ffn_gate.weight [np.uint64(256), np.uint64(2048)] F16
+blk.2.ffn_up.weight [np.uint64(256), np.uint64(2048)] F16
+blk.2.post_attention_norm.weight [np.uint64(256)] F32
+blk.2.post_ffw_norm.weight [np.uint64(256)] F32
+blk.2.ffn_norm.weight [np.uint64(256)] F32
+blk.2.attn_output.weight [np.uint64(1024), np.uint64(256)] F16
+blk.2.attn_q_norm.weight [np.uint64(256)] F32
+blk.2.attn_q.weight [np.uint64(256), np.uint64(1024)] F16
+blk.3.attn_norm.weight [np.uint64(256)] F32
+blk.3.layer_output_scale.weight [np.uint64(1)] F32
+blk.3.ffn_down.weight [np.uint64(2048), np.uint64(256)] F16
+blk.3.ffn_gate.weight [np.uint64(256), np.uint64(2048)] F16
+blk.3.ffn_up.weight [np.uint64(256), np.uint64(2048)] F16
+blk.3.post_attention_norm.weight [np.uint64(256)] F32
+blk.3.post_ffw_norm.weight [np.uint64(256)] F32
+blk.3.ffn_norm.weight [np.uint64(256)] F32
+blk.3.attn_output.weight [np.uint64(2048), np.uint64(256)] F16
+blk.3.attn_q_norm.weight [np.uint64(512)] F32
+blk.3.attn_q.weight [np.uint64(256), np.uint64(2048)] F16
+output_norm.weight [np.uint64(256)] F32
+nextn.post_projection.weight [np.uint64(256), np.uint64(1536)] F16
+nextn.pre_projection.weight [np.uint64(3072), np.uint64(256)] F16

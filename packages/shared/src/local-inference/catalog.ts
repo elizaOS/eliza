@@ -63,13 +63,19 @@ export const ELIZA_1_MTP_TIER_IDS = [
  * Tiers whose Gemma MTP drafter GGUFs are present at
  * `bundles/<tier>/mtp/drafter-<tier>.gguf` in the active HF tree.
  *
- * Current HF state (2026-06-25): the active bundles only expose legacy
- * `dflash/` drafter paths, while the Gemma candidate publishes
- * `candidates/gemma-2b-base-v1/mtp/MISSING.txt`. Keep this empty so the
- * runtime and downloader do not advertise or fetch missing MTP artifacts.
+ * Current HF state (2026-07-02): `bundles/2b/mtp/drafter-2b.gguf` hosts the
+ * gemma4-assistant drafter converted from `google/gemma-4-E2B-it-assistant`
+ * (arch `gemma4-assistant`, f16, embedding_length_out=1536; sha256
+ * 0495d34e08d0…, manifest `files.mtp` + `lineage.drafter` + `evals.mtp`
+ * populated — acceptance 0.84, speedup ~1.53x greedy on M4 Max Metal at
+ * `--spec-draft-n-max 1`). The remaining tiers still only expose legacy
+ * `dflash/` paths; add a tier here only once its `mtp/drafter-<tier>.gguf`
+ * is actually hosted, so the runtime and downloader never advertise or
+ * fetch missing MTP artifacts.
  */
-export const ELIZA_1_HOSTED_MTP_TIER_IDS =
-  [] as const satisfies ReadonlyArray<Eliza1TierId>;
+export const ELIZA_1_HOSTED_MTP_TIER_IDS = [
+  "eliza-1-2b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 function hostedMtpDrafterAvailableForTier(id: Eliza1TierId): boolean {
   return ELIZA_1_HOSTED_MTP_TIER_IDS.some((mtpId) => mtpId === id);
@@ -409,10 +415,10 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  // Separate-drafter MTP remains the Gemma release target, but the active HF
-  // tree does not host `mtp/drafter-<tier>.gguf` yet. The available `dflash/`
-  // files are legacy artifacts, so only advertise this component when the
-  // hosted Gemma drafter list is explicitly populated.
+  // Separate-drafter MTP is the Gemma release shape. Advertise the component
+  // only for tiers whose gemma4-assistant drafter GGUF is actually hosted at
+  // `bundles/<tier>/mtp/drafter-<tier>.gguf` (ELIZA_1_HOSTED_MTP_TIER_IDS);
+  // the `dflash/` files still present on other tiers are legacy artifacts.
   if (hostedMtpDrafterAvailableForTier(id)) {
     components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
   }

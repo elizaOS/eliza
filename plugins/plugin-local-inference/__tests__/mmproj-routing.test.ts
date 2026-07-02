@@ -140,11 +140,35 @@ describe("WS2 mmproj routing", () => {
 		expect(resolved.modelPath).toBe(bundle.textPath);
 	});
 
-	it("ignores an on-disk MTP drafter until the catalog advertises hosted Gemma MTP", async () => {
+	it("resolves the bundled gemma4-assistant drafter for the hosted MTP tier (2b)", async () => {
 		const tier = "2b";
-		// The active HF tree does not yet host `mtp/drafter-<tier>.gguf` for
-		// Gemma, so the catalog must not enable speculative decoding just because
-		// a local file with that shape exists.
+		// bundles/2b/mtp/drafter-2b.gguf is hosted (gemma4-assistant, converted
+		// from google/gemma-4-E2B-it-assistant) and the catalog advertises
+		// runtime.mtp for eliza-1-2b, so the resolver must wire the on-disk
+		// drafter with the catalog's draft window.
+		const catalog = findCatalogModel(`eliza-1-${tier}`);
+		expect(catalog?.runtime?.mtp?.specType).toBe("draft-mtp");
+		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: true, tier });
+		const installed = installedModel({
+			id: `eliza-1-${tier}`,
+			bundleRoot: bundle.bundleRoot,
+			path: bundle.textPath,
+		});
+		const resolved = await resolveLocalInferenceLoadArgs(installed);
+		expect(resolved.modelPath).toBe(bundle.textPath);
+		expect(resolved.draftModelPath).toBe(
+			pathJoin(bundle.bundleRoot, "mtp", `drafter-${tier}.gguf`),
+		);
+		expect(resolved.draftMin).toBe(catalog?.runtime?.mtp?.draftMin);
+		expect(resolved.draftMax).toBe(catalog?.runtime?.mtp?.draftMax);
+	});
+
+	it("ignores an on-disk MTP drafter for tiers without a hosted Gemma drafter", async () => {
+		const tier = "4b";
+		// The active HF tree does not host `mtp/drafter-4b.gguf`, so the catalog
+		// must not enable speculative decoding just because a local file with
+		// that shape exists.
+		expect(findCatalogModel(`eliza-1-${tier}`)?.runtime?.mtp).toBeUndefined();
 		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: true, tier });
 		const installed = installedModel({
 			id: `eliza-1-${tier}`,
