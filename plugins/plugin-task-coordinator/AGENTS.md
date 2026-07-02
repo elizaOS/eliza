@@ -60,7 +60,7 @@ The three GUI/XR views (`task-coordinator`, `orchestrator`, `cockpit`) reach the
 src/
   index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
   orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
-  register.ts                      App-shell page registration (/orchestrator, /orchestrator/tui)
+  register.ts                      Slot import + DOM-guarded terminal-view registration
   register-slots.ts                Slot registry fills for ui empty-slot defaults
   register-terminal-view.tsx       Registers OrchestratorSpatialView in the @elizaos/tui terminal registry
   CodingAgentTasksPanel.tsx        Task thread list + PTY session panel; re-exports OrchestratorWorkbench
