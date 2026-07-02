@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { logger } from "@elizaos/logger";
 import { isStoreBuild } from "../build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
@@ -507,6 +508,7 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
+      logger.info("[ios-local-agent] importing full-Bun runtime plugin");
       // The native ElizaBunRuntime plugin is registered (isFullBunRuntimePlugin-
       // Available passed above). The JS wrapper `@elizaos/capacitor-bun-runtime`
       // is externalized in the native web bundle, so the dynamic import has two
@@ -518,10 +520,12 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       // startup with "Backend Timeout" (the reported first-run hang). A genuine
       // failure still surfaces below: runtime.start() throwing is NOT caught here.
       const runtime = wrapFullBunRuntime(await importFullBunRuntimePlugin());
+      logger.info("[ios-local-agent] full-Bun runtime plugin resolved; probing status");
       const currentStatus = await runtime.getStatus().catch(() => null);
       if (currentStatus?.ready && currentStatus.engine === "bun") {
         return runtime;
       }
+      logger.info("[ios-local-agent] starting full-Bun engine");
       const started = await runtime.start({
         engine: "bun",
         argv: IOS_FULL_BUN_ARGV,
@@ -567,12 +571,35 @@ export function primeIosFullBunRuntime(runtime: unknown): void {
   };
 }
 
+/**
+ * The dynamic wrapper import has THREE failure shapes in the WKWebView, not
+ * two: it can resolve without the export, REJECT ("Module name … does not
+ * resolve to a valid URL"), or — observed live on the iOS simulator during
+ * the restoring-session phase — NEVER SETTLE at all. The unsettled import
+ * wedged the cached `fullBunRuntime` promise, so every subsequent agent
+ * request awaited it forever: the engine never received `start`, the
+ * backend poll never failed, and boot sat on the "Booting up…" splash
+ * indefinitely. Bound the import and recover through `registerPlugin`
+ * (the native plugin is registered either way).
+ */
+const FULL_BUN_WRAPPER_IMPORT_TIMEOUT_MS = 3_000;
+
 async function importFullBunRuntimePlugin(): Promise<FullBunRuntimePlugin> {
   let mod: Partial<FullBunRuntimeModule> | null = null;
   try {
-    mod = (await import(
-      "@elizaos/capacitor-bun-runtime"
-    )) as Partial<FullBunRuntimeModule>;
+    mod = await Promise.race([
+      import("@elizaos/capacitor-bun-runtime") as Promise<
+        Partial<FullBunRuntimeModule>
+      >,
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), FULL_BUN_WRAPPER_IMPORT_TIMEOUT_MS);
+      }),
+    ]);
+    if (!mod) {
+      logger.warn(
+        `[ios-local-agent] full-Bun wrapper import did not settle within ${FULL_BUN_WRAPPER_IMPORT_TIMEOUT_MS}ms; recovering via registerPlugin`,
+      );
+    }
   } catch {
     mod = null;
   }

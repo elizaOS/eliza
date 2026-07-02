@@ -436,6 +436,9 @@ export async function runPollingBackend(
     return;
   }
 
+  logger.info(
+    `[startup-phase-poll] polling backend (base=${client.getBaseUrl() || "(none)"}, budgetMs=${policy.backendTimeoutMs})`,
+  );
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       deps.setStartupError(describeBackendFailure(lastErr, true));
