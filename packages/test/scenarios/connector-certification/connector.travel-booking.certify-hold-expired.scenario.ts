@@ -20,10 +20,12 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "travel-hold-expired",
-      text: "Hold the best flight option and get it ready for approval, but if the supplier hold expired before confirmation, re-price it and queue the updated itinerary instead of pretending the original hold is still valid.",
-      responseIncludesAny: ["travel", "hold", "expired", "approval"],
-      acceptedActions: ["CALENDAR", "MESSAGE", "VOICE_CALL"],
-      includesAny: ["travel", "hold", "expired", "approval"],
+      // The prompt never names the seeded fault; the agent must discover the
+      // lapsed supplier hold itself and report the re-priced state.
+      text: "Hold the best flight option and get it ready for my sign-off. If anything changes with the option before I confirm, walk me through exactly where things stand.",
+      responseIncludesAny: ["expired", "re-price", "new fare", "no longer"],
+      expectedActions: ["CALENDAR", "MESSAGE", "VOICE_CALL"],
+      actionPayloadIncludesAny: ["travel", "hold", "expired", "approval"],
     },
   ],
   finalChecks: [

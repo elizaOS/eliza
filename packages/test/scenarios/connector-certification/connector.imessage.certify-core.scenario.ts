@@ -12,9 +12,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "imessage-core",
       text: "Use the iMessage bridge to read the thread, draft a reply, and send it when the bridge is healthy.",
-      responseIncludesAny: ["imessage", "bridge", "reply", "send"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["imessage", "bridge", "reply", "send"],
+      // Completion-state tokens the prompt never uses; parroting "draft a
+      // reply, send it" cannot satisfy any of them.
+      responseIncludesAny: ["drafted", "sent", "delivered", "on its way"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["imessage", "bridge", "reply", "send"],
     },
   ],
   finalChecks: [

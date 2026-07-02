@@ -51,7 +51,11 @@ export default scenario({
         description: "batch low-urgency into digest",
         includesAny: ["digest", "batch", "6pm", "low-urgency"],
       }),
-      responseIncludesAny: ["digest", "batch", "6pm", "low-urgency"],
+      // De-echoed (#9310): the old keywords ("digest", "batch", "6pm",
+      // "low-urgency") all appeared in the user's own turn text. Seeded-token
+      // grounding instead: the three pending items exist only in the seed, so
+      // the reply can only name them by reading the pending-push state.
+      responseIncludesAll: ["newsletter", "archive", "stretch"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

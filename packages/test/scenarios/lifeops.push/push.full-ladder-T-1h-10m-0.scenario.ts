@@ -44,7 +44,11 @@ export default scenario({
         description: "full three-step ladder",
         includesAny: ["1h", "10m", "start", "Mac", "phone", "ack"],
       }),
-      responseIncludesAny: ["1h", "10m", "start", "Mac", "phone"],
+      // De-echoed (#9310): the old keywords ("1h", "10m", "start", "Mac",
+      // "phone") all appeared in the user's own turn text. The reply must now
+      // aggregate the ladder in words the prompt never used (three rungs,
+      // both devices).
+      responseIncludesAny: ["three", "both", "all devices"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:
@@ -56,7 +60,9 @@ export default scenario({
       name: "ack-on-phone",
       room: "phone",
       text: "Got the 1h ping on my phone. Kill the rest of the ladder for this meeting.",
-      responseIncludesAny: ["acknowledged", "stopped", "cleared", "kill"],
+      // "kill" was an echo of this turn's own text; suppression must be
+      // confirmed in derived words.
+      responseIncludesAny: ["acknowledged", "stopped", "cleared", "silenced", "cancelled"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

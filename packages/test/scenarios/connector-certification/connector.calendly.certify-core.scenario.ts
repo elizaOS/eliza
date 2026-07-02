@@ -12,9 +12,21 @@ export default buildConnectorCertificationScenario({
     {
       name: "calendly-core",
       text: "Check my Calendly availability and give me a booking link I can send out.",
-      responseIncludesAny: ["calendly", "availability", "booking link"],
-      acceptedActions: ["CALENDAR", "CALENDAR"],
-      includesAny: ["calendly", "availability", "booking"],
+      // Derived-output tokens: a real handoff surfaces an actual link or
+      // concrete open slots; none of these appear in the prompt text.
+      responseIncludesAny: [
+        "calendly.com",
+        "https://",
+        "single-use",
+        "open slots",
+      ],
+      expectedActions: ["CALENDAR"],
+      actionPayloadIncludesAny: ["calendly", "availability", "booking"],
+      responseJudge: {
+        rubric:
+          "The reply hands over a concrete, shareable Calendly booking link (an actual URL) and reflects real availability data, rather than merely promising to look one up.",
+        minimumScore: 0.6,
+      },
     },
   ],
   finalChecks: [

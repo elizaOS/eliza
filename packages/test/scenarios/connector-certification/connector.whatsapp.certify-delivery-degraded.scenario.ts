@@ -20,10 +20,17 @@ export default buildConnectorCertificationScenario({
   turns: [
     {
       name: "whatsapp-delivery-degraded",
-      text: "Read the WhatsApp chat and try to send the reply, but if delivery is degraded after dispatch, tell me that explicitly instead of saying it definitely went through.",
-      responseIncludesAny: ["whatsapp", "delivery", "degraded", "reply"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["whatsapp", "delivery", "degraded", "reply"],
+      // The prompt never names the seeded fault; the agent must discover the
+      // degraded delivery from the dispatch result itself and report it.
+      text: "Read the WhatsApp chat and get my reply out, then give me the real status of what actually happened to it.",
+      responseIncludesAny: [
+        "degraded",
+        "unconfirmed",
+        "not confirmed",
+        "undelivered",
+      ],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["whatsapp", "delivery", "degraded", "reply"],
     },
   ],
   finalChecks: [

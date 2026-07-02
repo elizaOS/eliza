@@ -52,7 +52,11 @@ export default scenario({
         description: "mom relationship + priority cascade",
         includesAny: ["mom", "Linda", "priority", "interrupt", "top"],
       }),
-      responseIncludesAny: ["mom", "Linda", "priority"],
+      // Derived cascade semantics + seeded handle: the reply must express
+      // the escalation behaviour in its own words ("highest", "override",
+      // "break through" appear in no user turn) or reference the seeded
+      // rolodex handle @lindafs, which only exists in the seeded entity.
+      responseIncludesAny: ["highest", "override", "break through", "lindafs"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

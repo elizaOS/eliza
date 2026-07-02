@@ -13,9 +13,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "telegram-core",
       text: "Read the Telegram chat, draft a reply, and send it back in the same chat.",
-      responseIncludesAny: ["telegram", "reply", "chat", "draft"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["telegram", "reply", "chat", "draft"],
+      // Completion-state tokens the prompt never uses; parroting "draft a
+      // reply, send it" cannot satisfy any of them.
+      responseIncludesAny: ["drafted", "sent", "delivered", "replied"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["telegram", "reply", "chat", "draft"],
     },
   ],
   finalChecks: [

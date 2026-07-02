@@ -22,13 +22,24 @@ export default scenario({
       kind: "message",
       name: "vitamins morning preview",
       text: "Please remind me to take my vitamins every morning.",
-      responseIncludesAny: ["vitamin", "morning"],
+      // Two-phase commit (#9310): the old keywords ("vitamin"/"morning") were
+      // echoes of this turn's own text. The preview must not claim
+      // persistence before the owner confirms; definitionCountDelta stays
+      // load-bearing.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a daily morning-window vitamins reminder and ask the owner to confirm before saving. Claiming it is already saved, or a bare acknowledgement with no concrete cadence, fails.",
+      },
     },
     {
       kind: "message",
       name: "vitamins morning confirm",
       text: "Yes, save that reminder.",
-      responseIncludesAny: ["saved", "vitamin"],
+      // Save-confirmation semantics in words the prompt never used; the real
+      // outcome is the persisted definition asserted in finalChecks.
+      responseIncludesAny: ["saved", "created", "scheduled", "added", "set up"],
     },
   ],
   finalChecks: [

@@ -12,9 +12,11 @@ export default buildConnectorCertificationScenario({
     {
       name: "signal-core",
       text: "Read the Signal thread, draft a reply, and deliver it or tell me if Signal is degraded.",
-      responseIncludesAny: ["signal", "reply", "deliver", "degraded"],
-      acceptedActions: ["MESSAGE", "MESSAGE"],
-      includesAny: ["signal", "reply", "deliver", "degraded"],
+      // Completion-state tokens the prompt never uses; parroting "draft a
+      // reply, deliver it" cannot satisfy any of them.
+      responseIncludesAny: ["drafted", "sent", "delivered", "on its way"],
+      expectedActions: ["MESSAGE"],
+      actionPayloadIncludesAny: ["signal", "reply", "deliver", "degraded"],
     },
   ],
   finalChecks: [

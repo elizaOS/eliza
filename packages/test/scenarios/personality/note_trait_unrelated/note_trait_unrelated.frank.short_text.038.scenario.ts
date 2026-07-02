@@ -48,6 +48,14 @@ export default scenario({
       traitCheckTurnIndices: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
     },
   },
+  finalChecks: [
+    {
+      type: "judgeRubric",
+      name: "persona:note_trait_unrelated_test",
+      rubric:
+        "Persona check (note_trait_unrelated, frank user): on turn 1 the user mentions the 'no_lists' preference in passing, inside an unrelated request. The assistant must respect that preference in its replies on the later unrelated turn(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 without being reminded. Forbidden in the assistant's checked replies: bullet list; numbered list. Score 1.0 only if every checked reply respects the 'no_lists' preference; score 0.0 if any checked reply violates it.",
+    },
+  ],
   turns: [
     // trait mention embedded in unrelated request
     {
