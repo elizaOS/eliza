@@ -1356,13 +1356,62 @@ function installedModelForCatalogEntry(
 	};
 }
 
+function isSubpath(target: string, root: string): boolean {
+	const relative = path.relative(root, target);
+	return (
+		relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+	);
+}
+
+function normalizeStoredRelativeModelPath(input: string): string | null {
+	const normalized = input.trim().replaceAll("\\", "/");
+	if (
+		!normalized ||
+		normalized.includes("\0") ||
+		path.isAbsolute(normalized) ||
+		/^[A-Za-z]:[\\/]/.test(normalized) ||
+		normalized.startsWith("\\\\")
+	) {
+		return null;
+	}
+	const parts = normalized.split("/").filter(Boolean);
+	if (parts.length === 0) return null;
+	if (parts.some((part) => part === "." || part === "..")) return null;
+	return parts.join("/");
+}
+
+function toStoredInstalledModelPath(modelPath: string): string | null {
+	const root = path.resolve(localInferenceRootPath());
+	const resolved = path.resolve(modelPath);
+	if (!isSubpath(resolved, root)) return null;
+	return path.relative(root, resolved).split(path.sep).join("/");
+}
+
+function serializeInstalledModelEntry(
+	model: InstalledModelEntry,
+): InstalledModelEntry | null {
+	const storedPath = toStoredInstalledModelPath(model.path);
+	return storedPath ? { ...model, path: storedPath } : null;
+}
+
 function upsertInstalledModel(model: InstalledModelEntry): void {
+	const storedModel = serializeInstalledModelEntry(model);
+	if (!storedModel) {
+		throw new Error(
+			`iOS local-inference model path must live under ${localInferenceRootPath()}: ${model.path}`,
+		);
+	}
 	const existing = readInstalledModels().filter(
-		(entry) => entry.id !== model.id && entry.path !== model.path,
+		(entry) =>
+			entry.id !== model.id &&
+			entry.path !== model.path &&
+			serializeInstalledModelEntry(entry),
 	);
 	writeJsonObjectFile(localInferenceRegistryPath(), {
 		version: 1,
-		models: [...existing, model],
+		models: [...existing, model]
+			.map(serializeInstalledModelEntry)
+			.filter((entry): entry is InstalledModelEntry => Boolean(entry)),
 		updatedAt: new Date().toISOString(),
 	});
 }
@@ -1454,20 +1503,21 @@ function normalizeInstalledModelPath(rawPath: string): string | null {
 	const trimmed = rawPath.trim();
 	if (!trimmed || trimmed.includes("\0")) return null;
 	const currentRoot = localInferenceRootPath();
-	const candidates = new Set<string>([
-		trimmed,
-		trimmed.replace(/^\/private\/var\//, "/var/"),
-	]);
+	const candidates = new Set<string>();
+	const relativePath = normalizeStoredRelativeModelPath(trimmed);
+	if (relativePath) {
+		candidates.add(path.join(currentRoot, ...relativePath.split("/")));
+	}
+	candidates.add(trimmed);
+	candidates.add(trimmed.replace(/^\/private\/var\//, "/var/"));
 	const marker = "/local-inference/";
 	const markerIndex = trimmed.indexOf(marker);
 	if (markerIndex >= 0) {
-		const relativePath = trimmed.slice(markerIndex + marker.length);
-		if (
-			relativePath &&
-			!relativePath.startsWith("/") &&
-			!relativePath.split(/[\\/]+/).includes("..")
-		) {
-			candidates.add(path.join(currentRoot, relativePath));
+		const legacyRelativePath = normalizeStoredRelativeModelPath(
+			trimmed.slice(markerIndex + marker.length),
+		);
+		if (legacyRelativePath) {
+			candidates.add(path.join(currentRoot, ...legacyRelativePath.split("/")));
 		}
 	}
 	for (const candidate of candidates) {

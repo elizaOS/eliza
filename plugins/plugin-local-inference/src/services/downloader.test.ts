@@ -8,6 +8,7 @@ import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
 import { registryPath } from "./paths";
+import { listInstalledModels } from "./registry";
 import type {
 	CatalogModel,
 	DownloadJob,
@@ -396,19 +397,28 @@ describe("local inference downloader status", () => {
 		}
 
 		expect(job.state).toBe("completed");
-		expect(path.normalize(main.path).endsWith(path.normalize(textPath))).toBe(
-			true,
-		);
-		expect(bundleRoot).toBe(
-			path.join(root, "local-inference", "models", "eliza-1-2b.bundle"),
-		);
+		expect(main.path).toBe(path.join("models", "eliza-1-2b.bundle", textPath));
+		expect(bundleRoot).toBe(path.join("models", "eliza-1-2b.bundle"));
 		expect(main.manifestPath).toBe(path.join(bundleRoot, manifestFile));
 		expect(main.bundleVersion).toBe("1.0.0");
 		expect(main.bundleSizeBytes).toBeGreaterThan(main.sizeBytes);
-		expect(fs.existsSync(path.join(bundleRoot, voicePath))).toBe(true);
-		expect(fs.existsSync(path.join(bundleRoot, asrPath))).toBe(true);
-		expect(fs.existsSync(path.join(bundleRoot, vadPath))).toBe(true);
-		expect(fs.existsSync(path.join(bundleRoot, visionPath))).toBe(true);
+		const hydratedMain = (await listInstalledModels()).find(
+			(entry) => entry.id === model.id,
+		);
+		const hydratedBundleRoot = path.join(
+			root,
+			"local-inference",
+			"models",
+			"eliza-1-2b.bundle",
+		);
+		expect(hydratedMain?.bundleRoot).toBe(hydratedBundleRoot);
+		expect(hydratedMain?.manifestPath).toBe(
+			path.join(hydratedBundleRoot, manifestFile),
+		);
+		expect(fs.existsSync(path.join(hydratedBundleRoot, voicePath))).toBe(true);
+		expect(fs.existsSync(path.join(hydratedBundleRoot, asrPath))).toBe(true);
+		expect(fs.existsSync(path.join(hydratedBundleRoot, vadPath))).toBe(true);
+		expect(fs.existsSync(path.join(hydratedBundleRoot, visionPath))).toBe(true);
 		expect(installed.some((entry) => entry.id.endsWith("-drafter"))).toBe(
 			false,
 		);
@@ -668,8 +678,12 @@ describe("local inference downloader status", () => {
 		const installed = readOwnedRegistryModels();
 		const main = installed.find((m) => m.id === model.id);
 		expect(main?.bundleVerifiedAt).toBeTruthy();
-		expect(verifyCalls[0]?.bundleRoot).toBe(main?.bundleRoot);
-		expect(verifyCalls[0]?.manifestPath).toBe(main?.manifestPath);
+		expect(main?.bundleRoot).toBe("models/eliza-1-2b.bundle");
+		const hydratedMain = (await listInstalledModels()).find(
+			(entry) => entry.id === model.id,
+		);
+		expect(verifyCalls[0]?.bundleRoot).toBe(hydratedMain?.bundleRoot);
+		expect(verifyCalls[0]?.manifestPath).toBe(hydratedMain?.manifestPath);
 	});
 
 	it("fails the download (no install) when the verify-on-device hook rejects", async () => {
