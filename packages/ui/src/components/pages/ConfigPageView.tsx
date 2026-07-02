@@ -76,7 +76,8 @@ function resolveCustomRpcSelections(
 
 function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
   return (
-    <div className="w-full max-w-sm rounded-sm border border-border bg-bg/70 p-2 text-left">
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
+    <div className="w-full max-w-sm p-2 text-left">
       <p className="mb-1 text-2xs font-semibold uppercase text-muted">
         Sign-in window did not open?
       </p>
@@ -405,7 +406,7 @@ export function ConfigPageView({
             onClick={() => handleModeChange("cloud")}
             className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
               rpcMode === "cloud"
-                ? "border-accent bg-accent/8 "
+                ? "border-accent bg-accent/8"
                 : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
             }`}
           >
@@ -454,7 +455,7 @@ export function ConfigPageView({
             onClick={() => handleModeChange("custom")}
             className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
               rpcMode === "custom"
-                ? "border-accent bg-accent/8 "
+                ? "border-accent bg-accent/8"
                 : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
             }`}
           >
@@ -523,7 +524,7 @@ export function ConfigPageView({
                   ].map((chain) => (
                     <div
                       key={chain.label}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-sm bg-bg/50"
+                      className="flex items-center gap-3 px-3 py-2.5"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-ok shrink-0" />
                       <span className="text-xs font-semibold text-txt">

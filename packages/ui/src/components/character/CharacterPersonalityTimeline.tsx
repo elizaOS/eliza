@@ -36,7 +36,7 @@ export function CharacterPersonalityTimeline({
   return (
     <div className="space-y-3">
       <h3 className="text-base font-semibold text-txt">History</h3>
-      <ol className="relative m-0 list-none space-y-3 border-l border-border/30 pl-4">
+      <ol className="relative m-0 list-none space-y-3 pl-4">
         {entries.map((entry) => (
           <TimelineEntry key={entry.id} entry={entry} />
         ))}
@@ -52,7 +52,7 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
   return (
     <li className="relative">
       <span
-        className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border border-border/50 bg-accent/80"
+        className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent/80"
         aria-hidden
       />
       <div className="flex flex-col gap-1">
@@ -70,11 +70,9 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
           </time>
         </div>
         <div className="flex flex-wrap gap-2 text-2xs text-muted">
-          <span className="rounded-sm border border-border/30 px-1.5 py-0.5">
-            {scopeLabel(entry.scope)}
-          </span>
+          <span>{scopeLabel(entry.scope)}</span>
           {entry.relatedEntityName ? (
-            <span className="text-muted/90">{entry.relatedEntityName}</span>
+            <span className="text-muted/90">· {entry.relatedEntityName}</span>
           ) : null}
         </div>
         {entry.summary ? (
@@ -97,12 +95,13 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
             {open ? (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {entry.beforeText ? (
-                  <pre className="max-h-40 overflow-auto rounded-sm border border-border/30 bg-bg/50 p-2 text-2xs text-muted">
+                  /* bg kept: verbatim-diff block affordance, not card chrome */
+                  <pre className="max-h-40 overflow-auto rounded-sm bg-bg/50 p-2 text-2xs text-muted">
                     {entry.beforeText}
                   </pre>
                 ) : null}
                 {entry.afterText ? (
-                  <pre className="max-h-40 overflow-auto rounded-sm border border-border/30 bg-bg/50 p-2 text-2xs text-muted">
+                  <pre className="max-h-40 overflow-auto rounded-sm bg-bg/50 p-2 text-2xs text-muted">
                     {entry.afterText}
                   </pre>
                 ) : null}

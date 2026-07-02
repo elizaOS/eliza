@@ -25,7 +25,7 @@ import { useAppSelector } from "../../state";
 import type { TranslationContextValue } from "../../state/TranslationContext.hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
+import { StatusDot } from "../ui/status-badge";
 
 // ── Node type colour families ─────────────────────────────────────────────────
 
@@ -264,12 +264,12 @@ function WorkflowGenerationProgress({
   t: TranslationContextValue["t"];
 }) {
   return (
+    /* Floating progress surface over the canvas — needs its own fill, no border. */
     <div
-      className="w-full max-w-md rounded-sm border px-5 py-4 text-sm "
+      className="w-full max-w-md rounded-sm px-5 py-4 text-sm"
       style={{
         background: chrome.overlayChipBg,
         color: chrome.overlayChipText,
-        borderColor: chrome.overlayChipText,
       }}
     >
       <div className="flex items-start gap-3">
@@ -315,7 +315,7 @@ function ParamValue({ value }: { value: unknown }) {
           </pre>
           <button
             type="button"
-            className="ml-1 text-xs text-blue-400 hover:underline"
+            className="ml-1 text-xs text-accent hover:underline"
             onClick={() => setExpanded(true)}
           >
             {t("workflowGraph.nodeDrawer.showMore")}
@@ -331,7 +331,7 @@ function ParamValue({ value }: { value: unknown }) {
           </pre>
           <button
             type="button"
-            className="ml-1 text-xs text-blue-400 hover:underline"
+            className="ml-1 text-xs text-accent hover:underline"
             onClick={() => setExpanded(false)}
           >
             {t("workflowGraph.nodeDrawer.showLess")}
@@ -356,7 +356,7 @@ function ParamValue({ value }: { value: unknown }) {
           </pre>
           <button
             type="button"
-            className="ml-1 text-xs text-blue-400 hover:underline"
+            className="ml-1 text-xs text-accent hover:underline"
             onClick={() => setExpanded(true)}
           >
             {t("workflowGraph.nodeDrawer.showMore")}
@@ -372,7 +372,7 @@ function ParamValue({ value }: { value: unknown }) {
           </pre>
           <button
             type="button"
-            className="ml-1 text-xs text-blue-400 hover:underline"
+            className="ml-1 text-xs text-accent hover:underline"
             onClick={() => setExpanded(false)}
           >
             {t("workflowGraph.nodeDrawer.showLess")}
@@ -421,7 +421,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
   const typeLabel = (node?.type ?? "node").split(".").pop() ?? "node";
   const hasParams = node?.parameters && Object.keys(node.parameters).length > 0;
 
-  // Map color families to StatusBadge variants (success | warning | danger | muted)
+  // Map color families to StatusDot tones (success | warning | danger | muted)
   // amber=trigger→warning, stone=flow-control→muted, rose=integration→danger, orange=action→muted
   const badgeVariant: "warning" | "muted" | "danger" =
     colors.badge === "#f59e0b"
@@ -438,13 +438,14 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
       aria-hidden={!isOpen}
       className={[
         "absolute inset-y-0 right-0 z-30 flex w-72 flex-col",
-        "border-l border-border/40 bg-bg",
+        // Opaque drawer surface over the canvas; flat — no border chrome.
+        "bg-bg",
         "transition-transform duration-200 ease-out",
         isOpen ? "translate-x-0" : "translate-x-full",
       ].join(" ")}
     >
       {/* Header */}
-      <div className="flex shrink-0 items-start gap-2 border-b border-border/30 px-4 py-3">
+      <div className="flex shrink-0 items-start gap-2 px-4 py-3">
         <div className="flex-1 min-w-0 space-y-1">
           <h2
             id={labelId}
@@ -452,9 +453,12 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
           >
             {node?.name ?? ""}
           </h2>
-          {/* Type badge */}
+          {/* Type — node family colour dot + label, no pill chrome */}
           <div className="flex items-center gap-1.5">
-            <StatusBadge label={typeLabel} variant={badgeVariant} />
+            <StatusDot tone={badgeVariant} />
+            <span className="text-2xs font-medium uppercase text-muted">
+              {typeLabel}
+            </span>
           </div>
         </div>
         <button
@@ -462,7 +466,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
           type="button"
           aria-label={t("workflowGraph.closeDrawer")}
           tabIndex={isOpen ? 0 : -1}
-          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors   "
+          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors"
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
@@ -478,7 +482,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted">
                   {t("workflowGraph.step", { defaultValue: "Step" })}
                 </div>
-                <div className="rounded-sm bg-bg/40 border border-border/20 px-2 py-2">
+                <div className="rounded-sm bg-bg/40 px-2 py-2">
                   <p className="text-xs leading-relaxed text-txt/80">
                     {node.notes.trim()}
                   </p>
@@ -498,7 +502,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
                       <div className="text-xs font-medium text-muted/80 font-mono">
                         {key}
                       </div>
-                      <div className="rounded-sm bg-bg/40 border border-border/20 px-2 py-1">
+                      <div className="rounded-sm bg-bg/40 px-2 py-1">
                         <ParamValue value={val} />
                       </div>
                     </div>
@@ -693,17 +697,17 @@ export function WorkflowGraphViewer({
 
   const hasNodes = nodes.length > 0;
 
-  const borderClass = isGenerating ? "animate-pulse  " : " ";
+  const generatingClass = isGenerating ? "animate-pulse" : "";
   const chrome = graphChrome(uiTheme);
 
   return (
     <>
-      {/* ── Embedded viewer ─────────────────────────────────────────────── */}
+      {/* ── Embedded viewer — flat canvas, no card/border chrome ─────────── */}
       <div
         ref={containerRef}
         role="img"
         aria-label={ariaLabel}
-        className={`relative h-[260px] overflow-hidden rounded-sm sm:h-[360px] lg:h-[420px] ${borderClass}`}
+        className={`relative h-[260px] overflow-hidden sm:h-[360px] lg:h-[420px] ${generatingClass}`}
         style={{ background: chrome.canvasBg }}
       >
         {/* Loading skeleton */}
@@ -728,7 +732,7 @@ export function WorkflowGraphViewer({
               <button
                 ref={emptyStateActionButton.ref}
                 type="button"
-                className="mt-1 rounded-sm border border-border/40 bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
+                className="mt-1 rounded-sm bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
                 onClick={onEmptyStateAction}
                 {...emptyStateActionButton.agentProps}
               >
@@ -799,7 +803,7 @@ export function WorkflowGraphViewer({
             })}
             className={[
               "absolute top-3 z-20 flex h-7 w-7 items-center justify-center",
-              "rounded-sm border border-border/40 bg-bg/80 text-muted hover:text-txt transition-all duration-200",
+              "rounded-sm bg-bg/80 text-muted hover:text-txt transition-all duration-200",
               selectedNode ? "right-[calc(18rem_+_0.75rem)]" : "right-3",
             ].join(" ")}
             onClick={() => setFullScreen(true)}
@@ -826,7 +830,7 @@ export function WorkflowGraphViewer({
           className="h-[90dvh] w-[90vw] !max-w-none !max-h-none flex flex-col p-0 gap-0"
           showCloseButton={false}
         >
-          <DialogHeader className="flex flex-row items-center justify-between border-b border-border/30 px-4 py-3 shrink-0">
+          <DialogHeader className="flex flex-row items-center justify-between px-4 py-3 shrink-0">
             <DialogTitle className="text-sm font-medium">
               {workflow?.name ??
                 t("workflowGraph.title", { defaultValue: "Workflow Graph" })}

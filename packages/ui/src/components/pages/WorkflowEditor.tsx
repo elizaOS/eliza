@@ -56,7 +56,7 @@ import {
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
+import { StatusDot } from "../ui/status-badge";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
 
 export interface WorkflowEditorProps {
@@ -553,17 +553,22 @@ export function WorkflowEditor({
   });
 
   return (
+    /* Flat — no card/border. The shell owns the page's horizontal padding. */
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pb-28 lg:overflow-hidden lg:pb-0">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/40 pb-3">
+      <div className="flex flex-wrap items-center gap-2 pb-3">
         <div className="mr-auto flex items-center gap-2 min-w-0">
           <h2 className="truncate text-base font-semibold tracking-[-0.01em] text-txt">
             {lastValidWorkflow?.name ?? "New workflow"}
           </h2>
-          <StatusBadge
-            tone={isValid ? "success" : "danger"}
-            label={isValid ? "Valid" : "Invalid JSON"}
-          />
+          <span
+            className={`inline-flex items-center gap-1.5 text-xs ${
+              isValid ? "text-ok" : "text-destructive"
+            }`}
+          >
+            <StatusDot tone={isValid ? "success" : "danger"} />
+            {isValid ? "Valid" : "Invalid JSON"}
+          </span>
         </div>
         <Button
           ref={editInChatButton.ref}
@@ -659,9 +664,9 @@ export function WorkflowEditor({
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
         <PagePanel
           variant="inset"
-          className="flex min-h-0 flex-col overflow-hidden rounded-sm p-0"
+          className="flex min-h-0 flex-col overflow-hidden p-0"
         >
-          <div className="flex items-center justify-between border-b border-border/40 px-3 py-2 text-xs text-muted-strong">
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-strong">
             <span className="font-medium text-txt">workflow.json</span>
             <span>{text.split("\n").length} lines</span>
           </div>
@@ -679,11 +684,9 @@ export function WorkflowEditor({
         <div className="flex min-h-0 flex-col gap-3">
           <PagePanel
             variant="inset"
-            className="flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-sm"
+            className="flex min-h-[280px] flex-1 flex-col overflow-hidden"
           >
-            <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-txt">
-              Graph
-            </div>
+            <div className="px-3 py-2 text-xs font-medium text-txt">Graph</div>
             <div className="flex-1 p-3">
               <WorkflowGraphViewer
                 workflow={lastValidWorkflow}
@@ -696,9 +699,9 @@ export function WorkflowEditor({
 
           <PagePanel
             variant="inset"
-            className="flex min-h-[260px] flex-col overflow-hidden rounded-sm"
+            className="flex min-h-[260px] flex-col overflow-hidden"
           >
-            <div className="flex flex-wrap items-center gap-2 border-b border-border/40 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2">
               <div className="mr-auto min-w-0">
                 <div className="text-xs font-medium text-txt">Runs</div>
                 <div className="truncate text-2xs text-muted-strong">
@@ -752,8 +755,8 @@ export function WorkflowEditor({
                 {executionError}
               </div>
             )}
-            <div className="grid min-h-0 flex-1 gap-0 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-              <div className="min-h-[96px] overflow-auto border-b border-border/40 md:border-r md:border-b-0">
+            <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <div className="min-h-[96px] overflow-auto">
                 {executions.length === 0 ? (
                   <div className="flex h-full min-h-[96px] items-center px-3 text-xs text-muted-strong">
                     {persistedWorkflowId
@@ -761,7 +764,7 @@ export function WorkflowEditor({
                       : "Save the workflow to run it."}
                   </div>
                 ) : (
-                  <div className="divide-y divide-border/40">
+                  <div>
                     {executions.map((execution) => {
                       const summary = summarizeWorkflowExecution(execution);
                       const selected = execution.id === selectedExecution?.id;
@@ -818,10 +821,10 @@ export function WorkflowEditor({
                 ) : (
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge
-                        tone={selectedExecutionSummary.tone}
-                        label={selectedExecutionSummary.statusLabel}
-                      />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-txt">
+                        <StatusDot tone={selectedExecutionSummary.tone} />
+                        {selectedExecutionSummary.statusLabel}
+                      </span>
                       <span className="text-2xs text-muted-strong">
                         {selectedExecutionSummary.nodeCount} node
                         {selectedExecutionSummary.nodeCount === 1 ? "" : "s"} /{" "}
@@ -879,19 +882,28 @@ export function WorkflowEditor({
                         {selectedRunRows.map((row) => (
                           <div
                             key={`${row.nodeName}-${row.startTime ?? row.preview}`}
-                            className="rounded-sm border border-border/50 bg-bg/40 p-2"
                           >
                             <div className="flex min-w-0 items-center gap-2">
-                              <StatusBadge
-                                tone={
+                              <span
+                                className={`inline-flex items-center gap-1.5 text-xs ${
                                   row.status === "error"
-                                    ? "danger"
+                                    ? "text-destructive"
                                     : row.status === "success"
-                                      ? "success"
-                                      : "muted"
-                                }
-                                label={row.status}
-                              />
+                                      ? "text-ok"
+                                      : "text-muted-strong"
+                                }`}
+                              >
+                                <StatusDot
+                                  tone={
+                                    row.status === "error"
+                                      ? "danger"
+                                      : row.status === "success"
+                                        ? "success"
+                                        : "muted"
+                                  }
+                                />
+                                {row.status}
+                              </span>
                               <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
                                 {row.nodeName}
                               </span>
@@ -915,9 +927,9 @@ export function WorkflowEditor({
 
           <PagePanel
             variant="inset"
-            className="flex min-h-[132px] flex-col overflow-hidden rounded-sm"
+            className="flex min-h-[132px] flex-col overflow-hidden"
           >
-            <div className="flex flex-wrap items-center gap-2 border-b border-border/40 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2">
               <div className="mr-auto min-w-0">
                 <div className="text-xs font-medium text-txt">History</div>
                 <div className="truncate text-2xs text-muted-strong">
@@ -984,7 +996,7 @@ function WorkflowRevisionRow({
   });
 
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-sm px-1 py-1 text-xs hover:bg-bg-accent/40">
+    <div className="flex min-w-0 items-center gap-2 px-1 py-1 text-xs hover:bg-bg-accent/40">
       <div className="min-w-0 flex-1">
         <div className="truncate text-txt">{revision.name}</div>
         <div className="truncate text-2xs text-muted-strong">

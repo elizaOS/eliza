@@ -192,7 +192,7 @@ const IconTile = memo(function IconTile({
           <span
             data-testid={`launcher-kind-${entry.id}`}
             title={badge.title}
-            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full border border-black/20 bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900 shadow-sm"
+            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900"
           >
             {badge.label}
           </span>
@@ -210,10 +210,8 @@ const IconTile = memo(function IconTile({
             }}
             className={cn(
               // Filled chips stay legible across image and dark tile backgrounds.
-              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
-              favorited
-                ? "border-black/20 bg-accent text-white"
-                : "border-black/15 bg-white text-neutral-900",
+              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold",
+              favorited ? "bg-accent text-white" : "bg-white text-neutral-900",
             )}
           >
             {favorited ? "★" : "+"}
@@ -554,7 +552,7 @@ export function Launcher({
                       key={id}
                       className="flex flex-col items-center gap-1.5 opacity-60"
                     >
-                      <div className="h-16 w-16 rounded-2xl border border-white/10 bg-white/15 shadow-sm" />
+                      <div className="h-16 w-16 rounded-2xl border border-white/10 bg-white/15" />
                       <div className="h-2.5 w-12 rounded-full bg-white/25" />
                     </div>
                   ))}

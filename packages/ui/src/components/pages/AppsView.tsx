@@ -202,7 +202,7 @@ function AppWindowPinButton({
     <button
       ref={ref}
       type="button"
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
       onClick={() => onToggle(windowRecord)}
       disabled={busy}
       aria-label={
@@ -242,7 +242,7 @@ function ActiveRunButton({
     <button
       ref={ref}
       type="button"
-      className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
+      className="rounded-full bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
       onClick={onOpen}
       {...agentProps}
     >
@@ -1195,7 +1195,7 @@ export function AppsView() {
               return (
                 <div
                   key={windowRecord.id}
-                  className="inline-flex min-w-0 items-center gap-2 rounded-full border border-border/55 bg-card/70 px-3 py-1.5 text-xs text-muted"
+                  className="inline-flex min-w-0 items-center gap-2 rounded-full bg-surface px-3 py-1.5 text-xs text-muted"
                 >
                   <span className="max-w-44 truncate font-medium text-foreground">
                     {windowRecord.displayName}

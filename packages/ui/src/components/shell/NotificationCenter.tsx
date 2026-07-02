@@ -148,8 +148,9 @@ function CategoryFilterBar({
   onSelect: (next: CategoryFilter) => void;
 }): ReactNode {
   return (
+    /* Flat — no divider line; rows separate by whitespace. */
     <div
-      className="flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-1.5"
+      className="flex items-center gap-1 overflow-x-auto px-2 py-1.5"
       role="tablist"
       aria-label="Filter notifications by category"
     >
@@ -191,7 +192,7 @@ function FilterChip({
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
         active
-          ? "bg-accent text-accent-foreground hover:bg-accent/85"
+          ? "bg-accent text-accent-foreground hover:bg-accent-hover"
           : "text-muted-strong hover:bg-surface hover:text-txt",
       )}
     >
@@ -299,7 +300,8 @@ export function NotificationCenter({
 
   const panelBody = (
     <>
-      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+      {/* Flat — no divider lines between panel rows; whitespace separates. */}
+      <div className="flex items-center justify-between px-3 py-2.5">
         <span className="text-sm font-semibold text-txt">Notifications</span>
         <div className="flex items-center gap-1">
           {hasUnread && (
@@ -346,7 +348,7 @@ export function NotificationCenter({
         />
       )}
       {notifications.length > 1 && (
-        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+        <div className="flex items-center gap-2 px-3 py-1.5">
           <span className="text-2xs font-medium uppercase tracking-wide text-muted">
             Sort
           </span>
@@ -417,7 +419,9 @@ export function NotificationCenter({
           data-testid="notification-sheet"
           data-above-shell-overlay
           className={cn(
-            "fixed inset-x-0 top-0 z-[9501] mx-auto flex max-h-[85vh] w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover shadow-xl",
+            // Floating sheet: the popover scrim + one outer edge stay (self-
+            // contained contrast); shadows are flat app-wide.
+            "fixed inset-x-0 top-0 z-[9501] mx-auto flex max-h-[85vh] w-[min(440px,calc(100vw-1rem))] flex-col overflow-hidden rounded-b-2xl border-x border-b border-border bg-popover",
             "pt-[var(--safe-area-top,0px)]",
             className,
           )}
@@ -452,9 +456,8 @@ export function NotificationCenter({
             <Bell className="h-[18px] w-[18px]" />
           )}
           {hasUnread && (
-            <span className="absolute -right-0.5 -top-0.5 flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-4 text-accent-foreground">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
+            /* Unread = one dot; the exact count lives in the aria-label. */
+            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent" />
           )}
         </button>
       </PopoverTrigger>

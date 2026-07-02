@@ -349,21 +349,13 @@ function StatusNotice({
     );
   }
   if (notice) {
-    return (
-      <div className="px-3 py-2 text-sm text-muted">
-        {notice}
-      </div>
-    );
+    return <div className="px-3 py-2 text-sm text-muted">{notice}</div>;
   }
   return null;
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-1 py-2 text-sm text-muted">
-      {children}
-    </div>
-  );
+  return <div className="px-1 py-2 text-sm text-muted">{children}</div>;
 }
 
 function PhonePanelTabButton({
@@ -391,10 +383,10 @@ function PhonePanelTabButton({
       type="button"
       onClick={() => onSelect(item.id)}
       aria-current={isActive ? "page" : undefined}
-      className={`inline-flex h-9 items-center gap-2 rounded-sm border px-3 text-sm font-medium ${
+      className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors ${
         isActive
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border bg-bg text-txt"
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-strong hover:bg-surface hover:text-txt"
       }`}
       {...agentProps}
     >
@@ -423,7 +415,7 @@ function DialpadButton({
       ref={ref}
       type="button"
       onClick={() => onPress(digit)}
-      className="aspect-[1.6] rounded-sm border border-border bg-bg text-lg font-semibold text-txt hover:border-primary"
+      className="aspect-[1.6] rounded-sm bg-surface text-lg font-semibold text-txt transition-colors hover:bg-bg-hover"
       {...agentProps}
     >
       {digit}
@@ -454,7 +446,7 @@ const RecentCallButton = memo(function RecentCallButton({
       ref={ref}
       type="button"
       onClick={handleSelect}
-      className="rounded-sm border border-border bg-bg p-3 text-left text-sm hover:border-primary"
+      className="rounded-sm p-3 text-left text-sm transition-colors hover:bg-surface"
       {...agentProps}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1799,10 +1791,7 @@ export function MessagesPageView() {
           <div className="grid max-h-[60vh] gap-2 overflow-y-auto">
             {messages.length > 0 ? (
               messages.map((message) => (
-                <div
-                  key={message.id}
-                  className="p-3 text-sm"
-                >
+                <div key={message.id} className="p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                     <span>
                       {message.address ||
@@ -2009,10 +1998,7 @@ export function ContactsPageView() {
           <div className="grid max-h-[60vh] gap-2 overflow-y-auto">
             {contacts.length > 0 ? (
               contacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="p-3 text-sm"
-                >
+                <div key={contact.id} className="p-3 text-sm">
                   <div className="font-medium text-txt">
                     {contact.displayName}
                   </div>
