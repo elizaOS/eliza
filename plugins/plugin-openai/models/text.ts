@@ -1333,13 +1333,35 @@ async function generateTextByModelType(
       generateParams
     );
     details.response = "";
-    const result = await recordLlmCall(runtime, details, () => streamText(generateParams));
+    // The AI SDK does NOT throw on a request failure during live streaming — it
+    // routes the error to `onError` and ends `textStream` empty (see the same
+    // hazard documented for the buffered path above). Without capturing it, an
+    // empty stream reads as a SUCCESSFUL empty reply upstream: the user sees a
+    // blank bubble, the runtime's multi-provider failover never engages (it only
+    // advances on a thrown error), and the only trace is the SDK's default
+    // console.error. Capture the error and re-throw it at the end of the
+    // generator so the runtime's `for await` consumer throws and failover works.
+    let streamError: unknown;
+    const result = await recordLlmCall(runtime, details, () =>
+      streamText({
+        ...generateParams,
+        onError: ({ error }: { error: unknown }) => {
+          streamError = error;
+        },
+      })
+    );
 
     return {
       textStream: (async function* textStreamWithCallback() {
         for await (const chunk of result.textStream) {
           params.onStreamChunk?.(chunk);
           yield chunk;
+        }
+        // The SDK ended the stream; if it ended because of a provider error,
+        // surface it now (a mid-stream disconnect after partial chunks also
+        // throws here instead of yielding a silently truncated reply).
+        if (streamError !== undefined) {
+          throw streamError;
         }
       })(),
       text: handledPromise(result.text),
