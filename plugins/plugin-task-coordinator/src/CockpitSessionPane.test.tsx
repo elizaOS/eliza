@@ -374,7 +374,12 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
     expect(screen.queryByTestId("cockpit-session-transcript")).toBeNull();
   });
 
-  it("Eliza Cloud: flipping the tier persists policy + RESTARTS (stops old worker, no agent accumulation)", async () => {
+  it("Eliza Cloud: tier toggle is HIDDEN while the Fast/Smart tiers map to the same model (no destructive placebo)", async () => {
+    // #11235: both ELIZA_CLOUD_TIER_MODEL tiers currently resolve to the same
+    // model (gemma-4-31b), so a rendered toggle would be a permanent "Fast"
+    // whose every tap fired a DESTRUCTIVE restart (stopActive kills live workers
+    // mid-turn) that swapped the model to an identical value. It must not render
+    // until the tiers genuinely diverge.
     calls.getCodingAgentTaskThread.mockResolvedValue({
       ...detailFixture,
       providerPolicy: {
@@ -384,26 +389,28 @@ describe("CockpitSessionPane — drill-in (client mocked at the boundary)", () =
       },
     });
     renderPane();
-    const smart = await screen.findByTestId("cockpit-tier-large");
-    fireEvent.click(smart);
-    // 1. persist the new tier's model on the task policy
+    // The pane loads (a stable non-tier element is present)…
+    await screen.findByTestId("cockpit-session-pane");
+    // …but neither tier control is offered, so no destructive restart is
+    // reachable from the cockpit while the tiers are indistinct.
+    expect(screen.queryByTestId("cockpit-tier-large")).toBeNull();
+    expect(screen.queryByTestId("cockpit-tier-small")).toBeNull();
+    expect(calls.restartOrchestratorTask).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a failed TaskInspector mutation (actionError) instead of failing silently", async () => {
+    // #11235: runMutation catches every write error, sets actionError, and never
+    // rethrows — so all 13 inspector mutations (pause/resume/archive/…) used to
+    // fail 100% silently. The pane now renders actionError in the alert banner.
+    calls.pauseOrchestratorTask.mockRejectedValue(new Error("task is gone"));
+    renderPane();
+    const pause = await screen.findByTestId("orchestrator-inspector-pause");
+    fireEvent.click(pause);
     await waitFor(() =>
-      expect(calls.updateOrchestratorTask).toHaveBeenCalledWith(
-        "task-1",
-        expect.objectContaining({
-          providerPolicy: expect.objectContaining({ model: "gemma-4-31b" }),
-        }),
+      expect(screen.getByTestId("cockpit-session-error").textContent).toMatch(
+        /task is gone/i,
       ),
     );
-    // 2. RESTART with stopActive (replaces the worker) — NOT addOrchestratorAgent
-    // (which would accumulate live agents on repeated flips — Shaw's review).
-    await waitFor(() =>
-      expect(calls.restartOrchestratorTask).toHaveBeenCalledWith(
-        "task-1",
-        expect.objectContaining({ stopActive: true }),
-      ),
-    );
-    expect(calls.addOrchestratorAgent).not.toHaveBeenCalled();
   });
 
   it("surfaces an error when a composer-driven message fails to deliver", async () => {
@@ -457,7 +464,10 @@ describe("CockpitSessionPane — inspector layout per surface (#11159 audit)", (
       const inspector = await screen.findByTestId("orchestrator-inspector");
       expect(inspector.className).not.toContain("w-80");
       // Drawer geometry comes from the inline style (closed => hidden).
-      expect(inspector.style.display === "none" || inspector.style.position === "absolute").toBe(true);
+      expect(
+        inspector.style.display === "none" ||
+          inspector.style.position === "absolute",
+      ).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }
