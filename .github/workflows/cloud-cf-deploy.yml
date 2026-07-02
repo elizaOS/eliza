@@ -105,9 +105,17 @@ jobs:
   migrate-db:
     name: Run Database Migrations
     if: github.event_name != 'pull_request'
-    # GitHub-hosted on purpose: migrations must not inherit the shared
-    # self-hosted deploy fleet's failure modes (mirrors cloud-deploy-backend).
-    runs-on: ubuntu-latest
+    # GitHub-hosted by DEFAULT so migrations don't inherit the shared
+    # self-hosted deploy fleet's heavy-checkout failure modes (mirrors
+    # cloud-deploy-backend). But the hosted ubuntu-latest pool periodically
+    # backs up for hours (org-wide zombie-freeze), and since every deploy job
+    # `needs: migrate-db`, a starved hosted queue blocks ALL prod deploys even
+    # while the self-hosted robot pool sits idle. CLOUD_CF_MIGRATE_RUNNER_JSON
+    # lets ops fail migrations over to the robot pool (e.g.
+    # ["self-hosted","Linux","X64","hetzner-robot"]) when hosted is jammed;
+    # migrate is a light `bun install` + `db:cloud:migrate`, not the heavy
+    # working-tree materialization that motivated keeping deploys off-hosted.
+    runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
     # Job-level concurrency groups are repo-wide, so this serializes against
     # cloud-deploy-backend's migrate-db too: overlapping triggers (a develop
     # push fires both workflows) can never run the migrator concurrently
