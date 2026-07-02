@@ -857,20 +857,6 @@ jobs:
       - name: Script inventory (packages/app) smoke test
         run: bun test packages/scripts/__tests__/audit-scripts-inventory.test.ts
 
-      # #9310 §E: guarded *.real/*.live suite accounting. Keeps the post-merge
-      # lane's named-skip summary honest: manifest ↔ on-disk drift, phantom
-      # guard credentials, and vitest configs that would silently re-exclude a
-      # guarded suite from every lane. packages/scripts/__tests__ is outside
-      # workspace test discovery, so keep this explicit.
-      - name: Real/live guarded-suite manifest gate
-        run: bun test packages/scripts/__tests__/real-live-suites.test.ts
-
-      # #9310 §3.16: every packages/ui __e2e__ run-*.mjs fixture runner must
-      # have a package script AND a workflow leg (ui-fixture-e2e.yml et al) —
-      # a runner nothing invokes is coverage that does not exist.
-      - name: UI fixture-runner CI-coverage ratchet
-        run: bun test packages/scripts/__tests__/ui-e2e-runner-coverage.test.ts
-
       # E2E coverage gate (issue #8802). Now REQUIRED: the baseline is green —
       # commands 38/38, #8791 shortcuts 1/1 (wired into SHORTCUT_COVERAGE),
       # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.

@@ -46,10 +46,7 @@ import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { reservationOutputTokens } from "./chat-reservation";
-import {
-  reconcileNonStreamingSettleError,
-  reconcileStreamProcessingError,
-} from "./stream-refund";
+import { reconcileStreamProcessingError } from "./stream-refund";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -662,123 +659,73 @@ async function handlePOST(
       );
     }
 
-    // Non-streaming response. The body-read + cost-calc + reconcile below run
-    // AFTER the upfront debit, and the outer catch returns 500 WITHOUT refunding
-    // — so a malformed body / calculateCost throw here stranded the reserved
-    // hold (#11169 part 1; the streaming branch was already guarded).
-    // Guard the settle path: any throw BEFORE the reconcile is invoked refunds
-    // the hold, then rethrows to the outer error handler. Once the reconcile
-    // has been invoked we never refund — reconcileCredits is not transactional,
-    // so a mid-flight throw may have already committed the org-balance movement
-    // and a blind refund would double-credit (same reason the streaming branch
-    // flips streamCompleted before ITS settle). A hold stranded by that rare
-    // window is recovered by the stranded-reservation sweep (#11169 part 3).
-    let nonStreamingSettleStarted = false;
-    try {
-      const responseData = (await providerResponse.json()) as {
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-        choices?: Array<{ message?: { content?: string } }>;
-      };
+    // Non-streaming response
+    const responseData = (await providerResponse.json()) as {
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      choices?: Array<{ message?: { content?: string } }>;
+    };
 
-      // Calculate actual cost - use fallback estimation if provider doesn't return usage
-      let actualInputTokens = responseData.usage?.prompt_tokens || 0;
-      let actualOutputTokens = responseData.usage?.completion_tokens || 0;
+    // Calculate actual cost - use fallback estimation if provider doesn't return usage
+    let actualInputTokens = responseData.usage?.prompt_tokens || 0;
+    let actualOutputTokens = responseData.usage?.completion_tokens || 0;
 
-      // Fallback: estimate tokens if usage not provided (matching streaming behavior)
-      if (actualInputTokens === 0 && actualOutputTokens === 0) {
-        const outputContent = responseData.choices?.[0]?.message?.content || "";
-        actualInputTokens = estimatedInputTokens; // Use pre-calculated estimate
-        actualOutputTokens = estimateTokens(outputContent);
+    // Fallback: estimate tokens if usage not provided (matching streaming behavior)
+    if (actualInputTokens === 0 && actualOutputTokens === 0) {
+      const outputContent = responseData.choices?.[0]?.message?.content || "";
+      actualInputTokens = estimatedInputTokens; // Use pre-calculated estimate
+      actualOutputTokens = estimateTokens(outputContent);
 
-        logger.warn("[App Chat] No usage data in response, using estimates", {
-          appId,
-          actualInputTokens,
-          actualOutputTokens,
-        });
-      }
-
-      const { totalCost: actualBaseCost } = await calculateCost(
-        normalizedModel,
-        provider,
+      logger.warn("[App Chat] No usage data in response, using estimates", {
+        appId,
         actualInputTokens,
         actualOutputTokens,
-        billingSource,
-      );
-
-      // Reconcile the difference between reserved and actual costs
-      // Pass app to avoid N+1 query (app already fetched above)
-      // Flag BEFORE the call: reconcileCredits commits its org-balance movement
-      // before its (non-co-transactional) earnings/counter writes, so a throw
-      // from inside it must NOT trigger the refund below (double-credit).
-      nonStreamingSettleStarted = true;
-      const reconciliation = await appCreditsService.reconcileCredits({
-        appId,
-        userId: user.id,
-        estimatedBaseCost: reservedBaseCost,
-        actualBaseCost,
-        description: `Chat reconciliation: ${model}`,
-        metadata: {
-          model,
-          provider,
-          billingSource,
-          inputTokens: actualInputTokens,
-          outputTokens: actualOutputTokens,
-          streaming: false,
-        },
-        app,
       });
+    }
 
-      const duration = Date.now() - startTime;
-      logger.info("[App Chat] Request completed", {
-        appId,
-        userId: user.id,
+    const { totalCost: actualBaseCost } = await calculateCost(
+      normalizedModel,
+      provider,
+      actualInputTokens,
+      actualOutputTokens,
+      billingSource,
+    );
+
+    // Reconcile the difference between reserved and actual costs
+    // Pass app to avoid N+1 query (app already fetched above)
+    const reconciliation = await appCreditsService.reconcileCredits({
+      appId,
+      userId: user.id,
+      estimatedBaseCost: reservedBaseCost,
+      actualBaseCost,
+      description: `Chat reconciliation: ${model}`,
+      metadata: {
         model,
-        duration,
+        provider,
+        billingSource,
         inputTokens: actualInputTokens,
         outputTokens: actualOutputTokens,
-        reservedBaseCost,
-        actualBaseCost,
-        reconciliation: {
-          action: reconciliation.action,
-          amount: reconciliation.adjustedAmount,
-        },
-      });
+        streaming: false,
+      },
+      app,
+    });
 
-      return withCors(Response.json(responseData));
-    } catch (nonStreamingError) {
-      // Refund the upfront hold if the settle reconcile was never invoked
-      // (#11169 part 1). Best-effort: a refund failure is logged but never
-      // masks the original error surfaced to the client.
-      await reconcileNonStreamingSettleError(
-        {
-          settleStarted: nonStreamingSettleStarted,
-          appId,
-          userId: user.id,
-          reservedBaseCost,
-          model,
-          provider,
-          billingSource,
-          errorMessage:
-            nonStreamingError instanceof Error
-              ? nonStreamingError.message
-              : String(nonStreamingError),
-        },
-        appCreditsService,
-      ).catch((refundError) => {
-        logger.error(
-          "[App Chat] refund after non-streaming settle failure ALSO failed — hold stranded",
-          {
-            appId,
-            userId: user.id,
-            error:
-              refundError instanceof Error
-                ? refundError.message
-                : String(refundError),
-          },
-        );
-      });
-      throw nonStreamingError;
-    }
+    const duration = Date.now() - startTime;
+    logger.info("[App Chat] Request completed", {
+      appId,
+      userId: user.id,
+      model,
+      duration,
+      inputTokens: actualInputTokens,
+      outputTokens: actualOutputTokens,
+      reservedBaseCost,
+      actualBaseCost,
+      reconciliation: {
+        action: reconciliation.action,
+        amount: reconciliation.adjustedAmount,
+      },
+    });
+
+    return withCors(Response.json(responseData));
   } catch (error) {
     logger.error("[App Chat] Error:", error);
 

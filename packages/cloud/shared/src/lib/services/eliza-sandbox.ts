@@ -1889,79 +1889,66 @@ export class ElizaSandboxService {
         throw error;
       }
     }
-    // #11169-class refund guard: the reserve above is settled on the degraded
-    // and billing-failure paths below, but a THROW between here and the settle —
-    // runSharedAgentTurn raising, or saveSharedRuntimeHistory hitting a DB blip
-    // (it runs OUTSIDE the inner billing try/catch) — would otherwise propagate
-    // without ever refunding, stranding the hold and over-charging the org.
-    // settleReservation is idempotent (reservationSettled), so refunding here
-    // never double-refunds a turn that already settled on a normal path.
-    try {
-      const turn = await runSharedAgentTurn({
-        character,
-        history,
-        message: text,
-      });
-      if (turn.degraded) {
-        // A failed/degraded turn isn't persisted or billed — just refund the hold.
-        await settleReservation(0);
-      } else {
-        await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
-        if (billingContext) {
-          try {
-            const billing = await billUsage(
-              billingContext,
-              this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
-            );
-            const settlement = await settleReservation(billing.totalCost);
-            const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-              type: "chat",
-              content: turn.reply,
-              prompt: text,
-            });
-            if (usageRecord) {
-              await aiBillingRecordsService
-                .record({
-                  context: billingContext,
-                  billing,
-                  usageRecord,
-                  idempotencyKey,
-                  reconciliation: settlement,
-                })
-                .catch((error) => {
-                  logger.error("[shared-runtime] AI billing audit record failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    agentId: rec.id,
-                  });
+    const turn = await runSharedAgentTurn({
+      character,
+      history,
+      message: text,
+    });
+    if (turn.degraded) {
+      // A failed/degraded turn isn't persisted or billed — just refund the hold.
+      await settleReservation(0);
+    } else {
+      await this.saveSharedRuntimeHistory(rec.id, channelId, turn.history);
+      if (billingContext) {
+        try {
+          const billing = await billUsage(
+            billingContext,
+            this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+          );
+          const settlement = await settleReservation(billing.totalCost);
+          const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+            type: "chat",
+            content: turn.reply,
+            prompt: text,
+          });
+          if (usageRecord) {
+            await aiBillingRecordsService
+              .record({
+                context: billingContext,
+                billing,
+                usageRecord,
+                idempotencyKey,
+                reconciliation: settlement,
+              })
+              .catch((error) => {
+                logger.error("[shared-runtime] AI billing audit record failed", {
+                  error: error instanceof Error ? error.message : String(error),
+                  agentId: rec.id,
                 });
-            }
-          } catch (error) {
-            await settleReservation(0);
-            logger.error("[shared-runtime] billing failed", {
-              error: error instanceof Error ? error.message : String(error),
-              agentId: rec.id,
-            });
+              });
           }
+        } catch (error) {
+          await settleReservation(0);
+          logger.error("[shared-runtime] billing failed", {
+            error: error instanceof Error ? error.message : String(error),
+            agentId: rec.id,
+          });
         }
       }
-
-      return {
-        jsonrpc: "2.0",
-        id: rpc.id,
-        result: {
-          text: turn.reply,
-          agentName: character.name,
-          channelId,
-          model: turn.model,
-          degraded: turn.degraded,
-          runtime: "shared",
-        },
-      };
-    } catch (settleError) {
-      // Refund the upfront hold on any post-reserve failure, then rethrow.
-      await settleReservation(0);
-      throw settleError;
     }
+
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      result: {
+        text: turn.reply,
+        agentName: character.name,
+        channelId,
+        model: turn.model,
+        degraded: turn.degraded,
+        runtime: "shared",
+      },
+    };
   }
 
   /**

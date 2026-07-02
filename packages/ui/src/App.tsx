@@ -12,7 +12,6 @@ import { ArrowLeft, X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
-  type CSSProperties,
   type LazyExoticComponent,
   lazy,
   type ReactNode,
@@ -1500,15 +1499,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
-    // --shell-backnav-clearance reserves top space for the fixed ShellBackButton
-    // so spatial views' first row (filter chips) clears it (#11144). 0.75rem top
-    // offset + 2.25rem button = 3rem. Consumed by SpatialSurface (spatial/dom.tsx);
-    // unset elsewhere → 0px.
-    <div
-      key={`tab-shell-${props.tab}`}
-      className={shellClass}
-      style={{ "--shell-backnav-clearance": "3rem" } as CSSProperties}
-    >
+    <div key={`tab-shell-${props.tab}`} className={shellClass}>
       <ShellBackButton onBack={props.onNavigateBack} />
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
@@ -1532,11 +1523,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div
-      key={`fullbleed-shell-${props.tab}`}
-      className={APP_SHELL_CLASS}
-      style={{ "--shell-backnav-clearance": "3rem" } as CSSProperties}
-    >
+    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
       <ShellBackButton onBack={props.onNavigateBack} />
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <ViewRouter />
@@ -2306,17 +2293,7 @@ export function App() {
               detail:
                 "The auth probe could not reach /api/auth/me. If this is local development, start the local agent API with `bun run dev` or `bun run dev:desktop`, then retry.",
             }}
-            onRetry={() => {
-              // This screen is triggered by the AUTH probe failing
-              // (useAuthStatus publishes `server_unavailable` after its 10×1s
-              // retry budget), so `retryStartup()` alone is a no-op here —
-              // the startup coordinator is already in a ready/hydrating phase
-              // whose reducer has no RETRY arm. Re-probe auth so a transient
-              // outage (agent restart, phone network blip) actually recovers,
-              // and still kick the startup retry for the mixed case.
-              refetchAuth();
-              retryStartup();
-            }}
+            onRetry={retryStartup}
           />
           <BugReportModal />
         </BugReportProvider>

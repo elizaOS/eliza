@@ -123,22 +123,6 @@ export class AdCampaignsRepository {
     await db.delete(adCampaigns).where(eq(adCampaigns.id, id));
   }
 
-  /**
-   * Atomic org-scoped delete that RETURNs the removed row (#11236). Used as a
-   * claim: of N concurrent deletes for the same campaign, exactly ONE gets the
-   * row back — the losers get `undefined` and must not refund. The returned row
-   * also carries the FINAL `credits_spent`, so impressions that landed right up
-   * to the delete are counted as spent rather than refunded. Org-scoped so it
-   * doubles as the ownership gate (no TOCTOU against a prior findById).
-   */
-  async deleteReturning(id: string, organizationId: string): Promise<AdCampaign | undefined> {
-    const [deleted] = await db
-      .delete(adCampaigns)
-      .where(and(eq(adCampaigns.id, id), eq(adCampaigns.organization_id, organizationId)))
-      .returning();
-    return deleted;
-  }
-
   async getStats(
     organizationId: string,
     options?: { adAccountId?: string; platform?: AdPlatform },

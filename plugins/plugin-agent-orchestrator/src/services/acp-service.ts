@@ -147,16 +147,6 @@ const ORPHAN_RESUME_STATUSES: ReadonlySet<string> = new Set([
 ]);
 const ORPHAN_RESUME_PROMPT =
   "[System] Your previous turn was interrupted by a runtime restart. Continue where you left off on the original task and report results as usual.";
-// Background sub-agent initial tasks are fire-and-forget from the originating
-// chat turn. When no action-level timeout is explicit, do not bind the
-// session/prompt request to the ACP service default (often configured to the
-// connector message budget, e.g. 120s). User cancel / shutdown still flow
-// through cancelSession()/stopSession(), and explicit timeouts remain honored.
-export function resolveInitialTaskPromptTimeoutMs(
-  explicitTimeoutMs: number | undefined,
-): number | undefined {
-  return explicitTimeoutMs ?? 0;
-}
 const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
 // Path segment the app-core coding-account bridge uses for per-account Codex
 // homes (`<stateDir>/auth/_codex-home/<accountId>`). buildEnv keys off this
@@ -684,7 +674,7 @@ export class AcpService extends Service {
           (opts.metadata as Record<string, unknown> | undefined)
             ?.keepAliveAfterComplete === true;
         void this.sendPrompt(id, initialTask ?? "", {
-          timeoutMs: resolveInitialTaskPromptTimeoutMs(opts.timeoutMs),
+          timeoutMs: opts.timeoutMs,
           model: opts.model,
         })
           .catch((err: unknown) => {
@@ -757,7 +747,7 @@ export class AcpService extends Service {
         (opts.metadata as Record<string, unknown> | undefined)
           ?.keepAliveAfterComplete === true;
       void this.sendPrompt(id, initialTask ?? "", {
-        timeoutMs: resolveInitialTaskPromptTimeoutMs(opts.timeoutMs),
+        timeoutMs: opts.timeoutMs,
         model: opts.model,
       })
         .catch((err: unknown) => {

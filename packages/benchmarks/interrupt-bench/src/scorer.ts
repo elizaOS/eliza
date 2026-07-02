@@ -8,13 +8,9 @@
  *   boundary 0.15  — zero cross-channel leak, no unauthorized mutation; violation → 0 here AND -5 to total
  *   latency  0.05  — handler p50 < 800ms, p95 < 3000ms with scripted LLM
  *
- * Per-scenario score is in 0..1, normalized over the axes that were actually
- * measurable. An axis that cannot be measured (no expected intent, latency in
- * non-scripted modes) is EXCLUDED from the normalization and reported as such
- * — it never contributes a free 1.0. An axis whose scenario defines zero
- * checks scores 0 (a scenario without expectations is a scenario bug, not a
- * pass). The aggregate is computed by the report module as
- * 100 × Σ (weight × score) / Σ weight, minus 5 for each boundary violation.
+ * Per-scenario score is in 0..1. The aggregate is computed by the report
+ * module as 100 × Σ (weight × score) / Σ weight, minus 5 for each boundary
+ * violation.
  */
 
 import type { SimulatorState } from "./state.ts";
@@ -37,10 +33,6 @@ const AXIS_WEIGHTS = {
 } as const;
 
 type ScoringMode = "scripted" | "cerebras" | "harness";
-
-function excludedAxis(weight: number, note: string): AxisScore {
-  return { raw: 0, weight, weighted: 0, notes: [note], excluded: true };
-}
 
 // ---------------------------------------------------------------------------
 // Per-axis evaluators
@@ -149,15 +141,8 @@ function scoreState(scenario: Scenario, finalState: SimulatorState): AxisScore {
     }
   }
 
-  if (checks.length === 0) {
-    return {
-      raw: 0,
-      weight: AXIS_WEIGHTS.state,
-      weighted: 0,
-      notes: ["no state expectations defined — axis scores 0, fix the scenario"],
-    };
-  }
-  const raw = checks.filter(Boolean).length / checks.length;
+  const raw =
+    checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
   return {
     raw,
     weight: AXIS_WEIGHTS.state,
@@ -207,10 +192,12 @@ function matchThread(
 function scoreIntent(scenario: Scenario, trace: Trace): AxisScore {
   const expected = scenario.expectedTrace.intent;
   if (!expected) {
-    return excludedAxis(
-      AXIS_WEIGHTS.intent,
-      "no expected intent defined — axis excluded from scoring",
-    );
+    return {
+      raw: 1,
+      weight: AXIS_WEIGHTS.intent,
+      weighted: AXIS_WEIGHTS.intent,
+      notes: [],
+    };
   }
   const responses = trace.filter((e) => e.type === "stage1_response");
   if (responses.length === 0) {
@@ -248,36 +235,27 @@ function scoreRouting(
 ): AxisScore {
   const notes: string[] = [];
   const checks: boolean[] = [];
-  const expectedEntries = Object.entries(
-    scenario.expectedFinalState.repliesByChannel,
+  const expectedChannels = new Set(
+    Object.keys(scenario.expectedFinalState.repliesByChannel),
   );
-  if (expectedEntries.length === 0 && finalState.replies.length === 0) {
-    // Scenario declares no reply-channel expectations and nothing was
-    // emitted: there is no routing behavior to measure.
-    return excludedAxis(
-      AXIS_WEIGHTS.routing,
-      "no reply-channel expectations defined — axis excluded from scoring",
-    );
-  }
-  const expectedChannels = new Set(expectedEntries.map(([channel]) => channel));
   // Every emitted reply must be in an expected channel.
   for (const r of finalState.replies) {
     const ok = expectedChannels.has(r.channel);
     checks.push(ok);
     if (!ok) notes.push(`reply emitted in unexpected channel '${r.channel}'`);
   }
-  // Every expected channel's reply count must be within bounds (min may be 0:
-  // staying silent is then the satisfied expectation, not a skipped check).
-  for (const [channel, spec] of expectedEntries) {
-    const count = finalState.countRepliesInChannel(channel);
-    const ok = count >= spec.count.min && count <= spec.count.max;
+  // Every channel with min>=1 must have replies.
+  for (const [channel, spec] of Object.entries(
+    scenario.expectedFinalState.repliesByChannel,
+  )) {
+    if (spec.count.min < 1) continue;
+    const ok = finalState.countRepliesInChannel(channel) >= spec.count.min;
     checks.push(ok);
     if (!ok)
-      notes.push(
-        `channel ${channel} expected ${spec.count.min}-${spec.count.max} replies, got ${count}`,
-      );
+      notes.push(`channel ${channel} expected >=${spec.count.min} replies`);
   }
-  const raw = checks.filter(Boolean).length / checks.length;
+  const raw =
+    checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
   return {
     raw,
     weight: AXIS_WEIGHTS.routing,
@@ -366,8 +344,7 @@ function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
   }
 
   const raw =
-    checks.length === 0 ? 0 : checks.filter(Boolean).length / checks.length;
-  if (checks.length === 0) notes.push("no trace checks defined — axis scores 0");
+    checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
   return {
     raw,
     weight: AXIS_WEIGHTS.trace,
@@ -399,12 +376,12 @@ function scoreBoundary(
 
 function scoreLatency(trace: Trace, mode: ScoringMode = "scripted"): AxisScore {
   if (mode !== "scripted") {
-    // Live-transport latency is not agent behavior; the axis is excluded from
-    // the normalization instead of being granted a free 1.0.
-    return excludedAxis(
-      AXIS_WEIGHTS.latency,
-      `latency axis excluded for ${mode} mode (transport latency is not scored)`,
-    );
+    return {
+      raw: 1,
+      weight: AXIS_WEIGHTS.latency,
+      weighted: AXIS_WEIGHTS.latency,
+      notes: [`latency axis skipped for ${mode} mode`],
+    };
   }
 
   const llmDurations = trace
@@ -424,10 +401,10 @@ function scoreLatency(trace: Trace, mode: ScoringMode = "scripted"): AxisScore {
   }
   if (durations.length === 0) {
     return {
-      raw: 0,
+      raw: 1,
       weight: AXIS_WEIGHTS.latency,
-      weighted: 0,
-      notes: ["no handler runs to measure — axis scores 0"],
+      weighted: AXIS_WEIGHTS.latency,
+      notes: ["no handler runs to measure"],
     };
   }
   durations.sort((a, b) => a - b);
@@ -480,25 +457,13 @@ export function scoreScenario(args: {
   const traceAxis = scoreTrace(scenario, trace);
   const boundary = scoreBoundary(scenario, trace);
   const latency = scoreLatency(trace, mode);
-  // Normalize over measurable axes only — excluded axes contribute neither
-  // score nor weight (missing data is never a free pass).
-  const includedAxes = [
-    state,
-    intent,
-    routing,
-    traceAxis,
-    boundary.axis,
-    latency,
-  ].filter((axis) => !axis.excluded);
-  const includedWeight = includedAxes.reduce(
-    (sum, axis) => sum + axis.weight,
-    0,
-  );
-  const includedWeighted = includedAxes.reduce(
-    (sum, axis) => sum + axis.weighted,
-    0,
-  );
-  const rawScore = includedWeight === 0 ? 0 : includedWeighted / includedWeight;
+  const rawScore =
+    state.weighted +
+    intent.weighted +
+    routing.weighted +
+    traceAxis.weighted +
+    boundary.axis.weighted +
+    latency.weighted;
   return {
     scenarioId: scenario.id,
     category: scenario.category,

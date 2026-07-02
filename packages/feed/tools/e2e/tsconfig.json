@@ -6,7 +6,7 @@
     "strict": true,
     "noImplicitAny": false,
     "skipLibCheck": true,
-    "types": ["node", "bun"]
+    "types": ["node"]
   },
   "include": ["tests/**/*.ts"]
 }

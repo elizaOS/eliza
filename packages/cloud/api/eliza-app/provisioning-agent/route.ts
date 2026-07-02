@@ -13,8 +13,6 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { containersEnv } from "@/lib/config/containers-env";
-import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
-import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
@@ -93,36 +91,6 @@ app.post("/", async (c) => {
 
     if (existing) {
       return c.json({ success: true, data: sandboxPayload(existing) });
-    }
-
-    // Credit gate before provisioning a NEW dedicated agent (#11224): this
-    // creates a custom-image (DEFAULT_DOCKER_IMAGE → dedicated) sandbox and
-    // eagerly enqueues its container, the same paid compute the main
-    // create/resume/wake paths gate. Without it a credit-suspended / zero-balance
-    // org gets a free dedicated container. New orgs clear this via the signup
-    // grant; only genuinely suspended orgs are blocked. (Existing sandboxes
-    // returned above are unaffected — this only fences the first provision.)
-    const creditCheck = await checkAgentCreditGate(session.organizationId);
-    if (!creditCheck.allowed) {
-      logger.warn(
-        "[eliza-app provisioning-agent] provision blocked: insufficient credits",
-        {
-          orgId: session.organizationId,
-          balance: creditCheck.balance,
-          required: AGENT_PRICING.MINIMUM_DEPOSIT,
-        },
-      );
-      return c.json(
-        {
-          success: false,
-          code: "insufficient_credits",
-          error:
-            creditCheck.error ?? "Insufficient credits to provision an agent",
-          requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-          currentBalance: creditCheck.balance,
-        },
-        402,
-      );
     }
 
     // No sandbox yet — create one and enqueue provisioning.

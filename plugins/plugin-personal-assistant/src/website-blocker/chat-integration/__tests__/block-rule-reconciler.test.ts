@@ -6,11 +6,6 @@ vi.mock("../block-activator.js", () => ({
     success: true,
     endsAt: null,
   })),
-  syncOsBlockToRules: vi.fn(async () => ({
-    ok: true,
-    changed: false,
-    error: null,
-  })),
 }));
 
 import { reconcileBlockRulesOnce } from "../block-rule-reconciler.js";
@@ -85,10 +80,9 @@ describe("BlockRuleReconciler", () => {
     expect(active).toHaveLength(1);
     expect(active[0].gateType).toBe("until_iso");
     expect(active[0].websites).toEqual(["x.com"]);
-    // NaN fails both range checks, so a NULL gate cannot slip through.
-    const gateUntilMs = active[0].gateUntilMs ?? Number.NaN;
-    expect(gateUntilMs).toBeGreaterThanOrEqual(before + unlockMs);
-    expect(gateUntilMs).toBeLessThanOrEqual(after + unlockMs + 50);
+    expect(active[0].gateUntilMs).not.toBeNull();
+    expect(active[0].gateUntilMs!).toBeGreaterThanOrEqual(before + unlockMs);
+    expect(active[0].gateUntilMs!).toBeLessThanOrEqual(after + unlockMs + 50);
   });
 
   it("harsh_no_bypass release only fires when the gate todo completes", async () => {

@@ -27,10 +27,9 @@ python -m benchmarks.orchestrator_lifecycle.cli \
   --output /tmp/olc-smoke
 ```
 
-`--mode simulate` uses a deterministic simulator that emits typed lifecycle
-events. It does not call any LLM or start the elizaOS bench server. Simulate
-reports are smoke-marked (`scored: false`, `metrics.overall_score: null`) so
-the suite registry refuses to publish them as benchmark results.
+`--mode simulate` uses a deterministic keyword-based reply function. It does
+not call any LLM or start the elizaOS bench server. Scores from simulate mode
+are not meaningful for real evaluation.
 
 ## Test the harness
 
@@ -45,8 +44,7 @@ pytest packages/benchmarks/orchestrator_lifecycle/tests/ -v
 | --- | --- |
 | `cli.py` | Argument parser + `main()` entrypoint |
 | `runner.py` | `LifecycleRunner` — bridge and simulate execution modes |
-| `evaluator.py` | Structural per-turn scoring of typed lifecycle events |
-| `events.py` | Planner actions/params → typed lifecycle events |
+| `evaluator.py` | Keyword-based behavior scoring per turn |
 | `dataset.py` | Loads scenario JSON files |
 | `reporting.py` | Writes result JSON to output dir |
 | `types.py` | `LifecycleConfig`, `ScenarioResult`, `LifecycleMetrics` |

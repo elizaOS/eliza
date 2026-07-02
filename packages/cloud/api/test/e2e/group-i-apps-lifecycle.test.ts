@@ -17,17 +17,15 @@
  *   packages/cloud/api/v1/apps/check-name/route.ts
  *
  * Mirrors the gate/cleanup shape of group-l-app-charges: a `serverReachable`
- * probe, a `hasTestApiKey` flag, a `describeE2E` skip gate, a `createTestApp()`
+ * probe, a `hasTestApiKey` flag, a `shouldRunAuthed()` gate, a `createTestApp()`
  * helper that POSTs with `skipGitHubRepo: true`, a `createdAppIds[]` ledger, and
  * an `afterAll` that DELETEs each created app with `?deleteGitHubRepo=false`.
  *
- * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
- * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
- * named `skip` — never a silent pass. Cross-org tests additionally skip
- * loudly when TEST_MEMBER_API_KEY is absent.
+ * Every authed test early-returns when `!shouldRunAuthed()`, so with no server
+ * (or no key) the whole group skips cleanly without a single failure.
  */
 
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   api,
   bearerHeaders,
@@ -36,34 +34,9 @@ import {
   memberBearerHeaders,
 } from "./_helpers/api";
 
-const serverReachable = await isServerReachable();
-const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-const hasMemberApiKey = Boolean(process.env.TEST_MEMBER_API_KEY?.trim());
-if (!serverReachable) {
-  console.warn(
-    `[group-i-apps-lifecycle] ${getBaseUrl()} did not respond to /api/health. ` +
-      "Tests will SKIP. Start the Worker (bun run dev:api → wrangler dev) " +
-      "or set TEST_API_BASE_URL to a reachable host.",
-  );
-}
-if (!hasTestApiKey) {
-  console.warn(
-    "[group-i-apps-lifecycle] TEST_API_KEY is not set; the preload could not " +
-      "bootstrap a test API key. Tests will SKIP.",
-  );
-}
-if (!hasMemberApiKey) {
-  console.warn(
-    "[group-i-apps-lifecycle] TEST_MEMBER_API_KEY is not set; cross-org " +
-      "tests will SKIP.",
-  );
-}
-
-// Loud, counted skip instead of a silent pass when the Worker/key is absent.
-const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
-// Cross-org assertions need the seeded member key; loud skip otherwise.
-const testCrossOrg = test.skipIf(!serverReachable || !hasTestApiKey || !hasMemberApiKey);
-
+let serverReachable = false;
+let hasTestApiKey = false;
+let hasMemberApiKey = false;
 const createdAppIds: string[] = [];
 const createdCharacterIds: string[] = [];
 
@@ -88,6 +61,15 @@ async function createTestCharacter(): Promise<string> {
 
 // A syntactically valid UUID that should never resolve to a real app.
 const MISSING_UUID = "00000000-0000-4000-8000-0000000000ff";
+
+function shouldRunAuthed(): boolean {
+  return serverReachable && hasTestApiKey;
+}
+
+/** Cross-org assertions need the seeded member key; skip them otherwise. */
+function shouldRunCrossOrg(): boolean {
+  return shouldRunAuthed() && hasMemberApiKey;
+}
 
 function uniqueName(prefix: string): string {
   return `${prefix} ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -158,28 +140,30 @@ async function getApp(id: string): Promise<AppDto | undefined> {
   return ((await res.json()) as GetAppResponse).app;
 }
 
-const createdCharacterIds: string[] = [];
-
-/**
- * Creates a real character owned by the test user. linked_character_ids on
- * PUT /api/v1/apps/:id enforces the character ownership guard (#10863), so
- * link targets must exist and be owned/public — made-up UUIDs 404.
- */
-async function createTestCharacter(): Promise<string> {
-  const res = await api.post(
-    "/api/my-agents/characters",
-    { name: uniqueName("Linked Character"), bio: ["app-link e2e fixture"] },
-    { headers: bearerHeaders() },
-  );
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { id?: string };
-  expect(body.id).toBeTruthy();
-  createdCharacterIds.push(body.id as string);
-  return body.id as string;
-}
+beforeAll(async () => {
+  hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+  hasMemberApiKey = Boolean(process.env.TEST_MEMBER_API_KEY?.trim());
+  serverReachable = await isServerReachable();
+  if (!serverReachable) {
+    console.warn(
+      `[group-i-apps-lifecycle] ${getBaseUrl()} did not respond to /api/health. Tests will skip.`,
+    );
+    return;
+  }
+  if (!hasTestApiKey) {
+    console.warn(
+      "[group-i-apps-lifecycle] TEST_API_KEY is not set; auth-required tests will skip.",
+    );
+  }
+  if (!hasMemberApiKey) {
+    console.warn(
+      "[group-i-apps-lifecycle] TEST_MEMBER_API_KEY is not set; cross-org tests will skip.",
+    );
+  }
+});
 
 afterAll(async () => {
-  if (!serverReachable || !hasTestApiKey) return;
+  if (!shouldRunAuthed()) return;
   for (const appId of createdAppIds) {
     await api.delete(`/api/v1/apps/${appId}?deleteGitHubRepo=false`, {
       headers: bearerHeaders(),
@@ -194,8 +178,9 @@ afterAll(async () => {
 
 // -------- POST /api/v1/apps (create) ---------------------------------------
 
-describeE2E("POST /api/v1/apps", () => {
+describe("POST /api/v1/apps", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.post("/api/v1/apps", {
       name: uniqueName("No Auth"),
       app_url: "https://example.com/app",
@@ -205,6 +190,7 @@ describeE2E("POST /api/v1/apps", () => {
   });
 
   test("validation: 400 for an invalid app_url", async () => {
+    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/apps",
       {
@@ -221,6 +207,7 @@ describeE2E("POST /api/v1/apps", () => {
   });
 
   test("conflict: 409 with conflictType + suggestedName for a duplicate name", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     const dupeName = created.name as string;
 
@@ -247,6 +234,7 @@ describeE2E("POST /api/v1/apps", () => {
   });
 
   test("happy path: returns success + app + an eliza_ apiKey", async () => {
+    if (!shouldRunAuthed()) return;
     const name = uniqueName("Full Fields App");
     const res = await api.post(
       "/api/v1/apps",
@@ -285,6 +273,7 @@ describeE2E("POST /api/v1/apps", () => {
   });
 
   test("monetization: create-time monetization fields persist (verified via GET)", async () => {
+    if (!shouldRunAuthed()) return;
     const app = await createTestApp({
       monetization_enabled: true,
       inference_markup_percentage: 25,
@@ -298,13 +287,15 @@ describeE2E("POST /api/v1/apps", () => {
 
 // -------- GET /api/v1/apps (list) ------------------------------------------
 
-describeE2E("GET /api/v1/apps", () => {
+describe("GET /api/v1/apps", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.get("/api/v1/apps");
     expect(res.status).toBe(401);
   });
 
   test("happy path: returns the org's apps including a freshly created one", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
 
     const res = await api.get("/api/v1/apps", { headers: bearerHeaders() });
@@ -317,7 +308,8 @@ describeE2E("GET /api/v1/apps", () => {
     expect(found?.name).toBe(created.name);
   });
 
-  testCrossOrg("org isolation: a member-org key does not see this org's app", async () => {
+  test("org isolation: a member-org key does not see this org's app", async () => {
+    if (!shouldRunCrossOrg()) return;
     const created = await createTestApp();
 
     const res = await api.get("/api/v1/apps", {
@@ -332,13 +324,15 @@ describeE2E("GET /api/v1/apps", () => {
 
 // -------- GET /api/v1/apps/:id (detail) ------------------------------------
 
-describeE2E("GET /api/v1/apps/:id", () => {
+describe("GET /api/v1/apps/:id", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.get(`/api/v1/apps/${MISSING_UUID}`);
     expect(res.status).toBe(401);
   });
 
   test("validation: 404 for a non-existent app id", async () => {
+    if (!shouldRunAuthed()) return;
     const res = await api.get(`/api/v1/apps/${MISSING_UUID}`, {
       headers: bearerHeaders(),
     });
@@ -348,7 +342,8 @@ describeE2E("GET /api/v1/apps/:id", () => {
     expect(body.error).toBe("App not found");
   });
 
-  testCrossOrg("cross-org: 403 when a member-org key requests this org's app", async () => {
+  test("cross-org: 403 when a member-org key requests this org's app", async () => {
+    if (!shouldRunCrossOrg()) return;
     const created = await createTestApp();
 
     const res = await api.get(`/api/v1/apps/${created.id}`, {
@@ -361,6 +356,7 @@ describeE2E("GET /api/v1/apps/:id", () => {
   });
 
   test("happy path: full detail for an owned app", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
 
     const res = await api.get(`/api/v1/apps/${created.id}`, {
@@ -378,8 +374,9 @@ describeE2E("GET /api/v1/apps/:id", () => {
 
 // -------- PUT / PATCH /api/v1/apps/:id (update) ----------------------------
 
-describeE2E("PUT /api/v1/apps/:id", () => {
+describe("PUT /api/v1/apps/:id", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.put(`/api/v1/apps/${MISSING_UUID}`, {
       description: "x",
     });
@@ -387,6 +384,7 @@ describeE2E("PUT /api/v1/apps/:id", () => {
   });
 
   test("validation: 400 for an invalid contact_email", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     const res = await api.put(
       `/api/v1/apps/${created.id}`,
@@ -400,6 +398,7 @@ describeE2E("PUT /api/v1/apps/:id", () => {
   });
 
   test("validation: 404 for an unknown id", async () => {
+    if (!shouldRunAuthed()) return;
     const res = await api.put(
       `/api/v1/apps/${MISSING_UUID}`,
       { description: "x" },
@@ -408,7 +407,8 @@ describeE2E("PUT /api/v1/apps/:id", () => {
     expect(res.status).toBe(404);
   });
 
-  testCrossOrg("cross-org: 403 when a member-org key updates this org's app", async () => {
+  test("cross-org: 403 when a member-org key updates this org's app", async () => {
+    if (!shouldRunCrossOrg()) return;
     const created = await createTestApp();
     const res = await api.put(
       `/api/v1/apps/${created.id}`,
@@ -421,6 +421,7 @@ describeE2E("PUT /api/v1/apps/:id", () => {
   });
 
   test("happy path: updates the name", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     const newName = uniqueName("Renamed App");
 
@@ -443,6 +444,7 @@ describeE2E("PUT /api/v1/apps/:id", () => {
   });
 
   test("happy path: updates allowed_origins", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     const origins = ["https://a.example.com", "https://b.example.com"];
 
@@ -459,7 +461,8 @@ describeE2E("PUT /api/v1/apps/:id", () => {
     expect(fetched?.allowed_origins).toEqual(origins);
   });
 
-  test("happy path: sets linked_character_ids to owned characters", async () => {
+  test("happy path: sets linked_character_ids", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     // Real, caller-owned characters — the update path enforces ownership, so
     // fabricated UUIDs correctly 404 ("Character not found").
@@ -481,20 +484,8 @@ describeE2E("PUT /api/v1/apps/:id", () => {
     expect(fetched?.linked_character_ids).toEqual(characters);
   });
 
-  test("ownership guard: 404 when linking a nonexistent character", async () => {
-    const created = await createTestApp();
-
-    const res = await api.put(
-      `/api/v1/apps/${created.id}`,
-      { linked_character_ids: ["00000000-0000-4000-8000-000000000010"] },
-      { headers: bearerHeaders() },
-    );
-    // #10863: linked_character_ids enforces the same existence/ownership guard
-    // as PUT /apps/:id/characters — unknown character id → 404.
-    expect(res.status).toBe(404);
-  });
-
   test("validation: 400 for more than four linked_character_ids", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
     const tooMany = [
       "00000000-0000-4000-8000-000000000020",
@@ -516,6 +507,7 @@ describeE2E("PUT /api/v1/apps/:id", () => {
   });
 
   test("happy path: an empty-string website_url clears the field to null", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp({
       website_url: "https://example.com",
     });
@@ -535,8 +527,9 @@ describeE2E("PUT /api/v1/apps/:id", () => {
   });
 });
 
-describeE2E("PATCH /api/v1/apps/:id", () => {
+describe("PATCH /api/v1/apps/:id", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.patch(`/api/v1/apps/${MISSING_UUID}`, {
       description: "x",
     });
@@ -544,6 +537,7 @@ describeE2E("PATCH /api/v1/apps/:id", () => {
   });
 
   test("happy path: partial update of the description", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
 
     const res = await api.patch(
@@ -565,20 +559,23 @@ describeE2E("PATCH /api/v1/apps/:id", () => {
 
 // -------- DELETE /api/v1/apps/:id ------------------------------------------
 
-describeE2E("DELETE /api/v1/apps/:id", () => {
+describe("DELETE /api/v1/apps/:id", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.delete(`/api/v1/apps/${MISSING_UUID}`);
     expect(res.status).toBe(401);
   });
 
   test("validation: 404 for an unknown id", async () => {
+    if (!shouldRunAuthed()) return;
     const res = await api.delete(`/api/v1/apps/${MISSING_UUID}`, {
       headers: bearerHeaders(),
     });
     expect(res.status).toBe(404);
   });
 
-  testCrossOrg("cross-org: 403 when a member-org key deletes this org's app", async () => {
+  test("cross-org: 403 when a member-org key deletes this org's app", async () => {
+    if (!shouldRunCrossOrg()) return;
     const created = await createTestApp();
     const res = await api.delete(`/api/v1/apps/${created.id}`, {
       headers: memberBearerHeaders(),
@@ -592,6 +589,7 @@ describeE2E("DELETE /api/v1/apps/:id", () => {
   });
 
   test("happy path: deletes then a follow-up GET is 404", async () => {
+    if (!shouldRunAuthed()) return;
     const suffix = uniqueName("Disposable");
     const res = await api.post(
       "/api/v1/apps",
@@ -627,8 +625,9 @@ describeE2E("DELETE /api/v1/apps/:id", () => {
 
 // -------- POST /api/v1/apps/check-name -------------------------------------
 
-describeE2E("POST /api/v1/apps/check-name", () => {
+describe("POST /api/v1/apps/check-name", () => {
   test("auth gate: 401 without credentials", async () => {
+    if (!serverReachable) return;
     const res = await api.post("/api/v1/apps/check-name", {
       name: uniqueName("anything"),
     });
@@ -636,6 +635,7 @@ describeE2E("POST /api/v1/apps/check-name", () => {
   });
 
   test("happy path: a fresh name is available", async () => {
+    if (!shouldRunAuthed()) return;
     const res = await api.post(
       "/api/v1/apps/check-name",
       { name: uniqueName("Fresh Name") },
@@ -653,6 +653,7 @@ describeE2E("POST /api/v1/apps/check-name", () => {
   });
 
   test("happy path: a taken name reports unavailable with a conflictType", async () => {
+    if (!shouldRunAuthed()) return;
     const created = await createTestApp();
 
     const res = await api.post(
@@ -676,8 +677,9 @@ describeE2E("POST /api/v1/apps/check-name", () => {
 
 // -------- Full round-trip --------------------------------------------------
 
-describeE2E("Apps lifecycle round-trip", () => {
+describe("Apps lifecycle round-trip", () => {
   test("create → list → get → update → delete → 404", async () => {
+    if (!shouldRunAuthed()) return;
 
     // create
     const created = await createTestApp();

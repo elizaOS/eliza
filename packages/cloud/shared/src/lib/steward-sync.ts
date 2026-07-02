@@ -684,15 +684,11 @@ export async function syncUserFromSteward(
       logger.error("[StewardSync] Discord signup log failed:", { error });
     });
 
-  // Await default provisioning: on Cloudflare Workers an un-awaited promise is
-  // cancelled once the response returns unless registered via
-  // executionCtx.waitUntil, which this shared-lib function cannot reach — and a
-  // cancelled create leaves the new user permanently without a default
-  // character/API key (this one-time new-user path is the only caller; later
-  // logins return at the existing-user branch). Both helpers are idempotent and
-  // swallow their own errors, so awaiting cannot fail the signup.
-  await ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
-  await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
+  // Auto-generate default API key (fire-and-forget)
+  void ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
+
+  // Auto-create default Eliza character (fire-and-forget)
+  void ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
 
   return userWithOrg;
 }
