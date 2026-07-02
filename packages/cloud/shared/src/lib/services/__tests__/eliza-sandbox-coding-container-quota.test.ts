@@ -282,9 +282,9 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
 });
 
 /**
- * F3 residual of #11023: `stopped` (suspend keeps the container + node slot +
- * per-tenant managed Postgres) and `sleeping` (cold storage keeps the managed
- * Postgres) retain the org's durable per-agent resources, yet the original
+ * F3 residual of #11023: `stopped` (suspend drops the container/node slot but
+ * retains the per-tenant managed Postgres) and `sleeping` (cold storage keeps
+ * the managed Postgres) retain the org's durable per-agent resources, yet the original
  * quota counted only `pending`/`provisioning`/`running` — so a
  * create→suspend→create loop minted unbounded agents, each a real managed DB.
  * Prong 2: the NORMAL (reuse) create path had no cap at all, and after a
@@ -312,8 +312,7 @@ describe("suspend/sleep quota residual (#11023 F3)", () => {
         ids.push(res.agent.id);
       }
       // Suspend one, sleep another. Both keep the org's per-tenant managed
-      // Postgres (suspend also keeps the container + node slot), so they must
-      // keep counting toward the ceiling.
+      // Postgres, so they must keep counting toward the ceiling.
       await setAgentStatus(ids[0], "stopped");
       await setAgentStatus(ids[1], "sleeping");
 
