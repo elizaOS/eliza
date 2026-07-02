@@ -150,6 +150,13 @@ jobs:
 
       - name: Run monetized full loop + example-apps showcase (real Hetzner)
         if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
+        # Cap the run step below the 40m job budget. The real-staging deploy
+        # specs (example-edad / example-clone-ur-crush) drive a live Hetzner
+        # deploy that can stall; without a step cap the whole job hits the
+        # job-level 40m limit and reports an opaque "operation was canceled"
+        # with no report uploaded. A step timeout fails loudly ("step timed
+        # out") and leaves headroom for the always() artifact-upload steps.
+        timeout-minutes: 25
         run: bun run cloud:e2e -- monetized-full-loop.spec.ts example-apps-showcase.spec.ts example-edad-real-deploy.spec.ts example-clone-ur-crush-real-deploy.spec.ts
         env:
           CI: "true"
