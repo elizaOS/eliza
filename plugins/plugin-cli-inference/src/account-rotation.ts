@@ -147,6 +147,15 @@ export function isSubscriptionLimitError(err: unknown): boolean {
     /rate[\s-]?limit(?:ed|ing)?/.test(t) ||
     t.includes("usage limit reached") ||
     /quota (?:exceeded|exhausted)/.test(t) ||
+    // OpenAI's CLASSIC quota envelope inverts the word order ("You exceeded
+    // your current quota, please check your plan and billing details") and
+    // carries the machine code `insufficient_quota` — none of which contain
+    // "quota exceeded" or a literal 429. Anchor on the provider's exact
+    // envelope phrases / error code, NOT generic quota/billing prose, so a
+    // model merely talking about quotas still does not rotate.
+    t.includes("exceeded your current quota") ||
+    t.includes("check your plan and billing details") ||
+    t.includes("insufficient_quota") ||
     t.includes("too many requests")
   );
 }
