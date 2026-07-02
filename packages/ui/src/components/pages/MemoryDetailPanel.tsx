@@ -20,7 +20,8 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
   if (!memory) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <div className="rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center ">
+        {/* Flat — no card/border (#10710). */}
+        <div className="px-8 py-10 text-center">
           <div className="text-base font-semibold text-txt">
             {t("vectorbrowserview.MemoryDetail")}
           </div>
@@ -48,7 +49,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
               : t("vectorbrowserview.MemoryDetail")}
           </h2>
           {memory.unique ? (
-            <span className="rounded-full border border-accent/30 bg-accent/12 px-3 py-1 text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent-fg">
+            <span className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent">
               {t("vectorbrowserview.Unique", { defaultValue: "Unique" })}
             </span>
           ) : null}
@@ -72,7 +73,8 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
           </div>
         </PagePanel>
 
-        <section className="rounded-sm border border-border/40 bg-card/45 p-5">
+        {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
+        <section className="p-5">
           <div className="text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60">
             {t("vectorbrowserview.Metadata")}
           </div>
@@ -111,7 +113,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
         </section>
 
         {memory.embedding ? (
-          <section className="rounded-sm border border-border/40 bg-card/45 p-5">
+          <section className="p-5">
             <div className="text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60">
               {t("vectorbrowserview.Embedding")}
               {" · "}
@@ -126,7 +128,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
           </section>
         ) : null}
 
-        <details className="rounded-sm border border-border/40 bg-card/45 p-5">
+        <details className="p-5">
           <summary className="cursor-pointer text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60 hover:text-txt">
             {t("vectorbrowserview.RawRecord")}
           </summary>

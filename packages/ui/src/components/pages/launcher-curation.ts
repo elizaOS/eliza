@@ -105,6 +105,11 @@ const CANONICAL_ID: ReadonlyMap<string, string> = new Map([
   ["trajectory-viewer", "trajectories"],
   ["log-viewer", "logs"],
   ["database-viewer", "database"],
+  // Triple "Fine-Tuning" tile: the `advanced` builtin tab alias, the
+  // `fine-tuning` builtin tab, and the plugin-training app registration all
+  // route to /apps/fine-tuning — collapse to one tile (#10710).
+  ["advanced", "fine-tuning"],
+  ["@elizaos/plugin-training", "fine-tuning"],
 ]);
 
 export function canonicalLauncherId(id: string): string {
