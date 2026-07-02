@@ -125,6 +125,16 @@ export interface TalkModePlaybackStartEvent {
   channels?: number;
 }
 
+export interface TalkModePlaybackFrameEvent {
+  provider: "elevenlabs" | "local-inference" | "system";
+  pcm16: string;
+  sampleRate: number;
+  channels: number;
+  samples: number;
+  timestamp: number;
+  frameIndex: number;
+}
+
 export interface MobileSignalsSnapshot {
   source: "mobile_device";
   platform: "ios" | "android" | "web";
@@ -743,6 +753,10 @@ export interface TalkModePluginLike extends NativePlugin {
   addListener(
     eventName: "playbackStart",
     listenerFunc: (event: TalkModePlaybackStartEvent) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "playbackFrame",
+    listenerFunc: (event: TalkModePlaybackFrameEvent) => void,
   ): Promise<PluginListenerHandle>;
   addListener(
     eventName: "audioFrame",
