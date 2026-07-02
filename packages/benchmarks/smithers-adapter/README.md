@@ -12,7 +12,7 @@ the `smithers` harness (`--agent smithers`).
 Each turn spawns a one-shot `bun` process running `smithers_adapter/smithers_turn.mjs`
 inside the Smithers install directory. That script drives Smithers' own
 `OpenAIAgent` (a `ToolLoopAgent` built on the Vercel `ai` SDK) for a single turn
-against an OpenAI-compatible endpoint (Cerebras `gpt-oss-120b` by default), and
+against an OpenAI-compatible endpoint (Cerebras `gemma-4-31b` by default), and
 emits one JSON line: `{"text", "thought", "actions", "params": {"tool_calls", "usage"}}`.
 
 Tools are declared **without** an `execute` handler, so the agent returns the
@@ -45,7 +45,7 @@ bun add smithers-orchestrator@0.22.0 @ai-sdk/openai ai zod
 ```bash
 cd packages/benchmarks
 CEREBRAS_API_KEY=... python -m orchestrator.cli run \
-  --model-profile cerebras-gpt-oss-120b \
+  --model-profile cerebras-gemma-4-31b \
   --benchmarks bfcl \
   --agent smithers
 ```

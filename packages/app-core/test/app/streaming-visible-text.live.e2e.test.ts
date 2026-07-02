@@ -568,8 +568,8 @@ describeLive("streaming-visible-text live e2e", () => {
     // status precedes the first token frame. The producing status is
     // `streaming` when raw LLM tokens claim the stream (onStreamChunk), or
     // `running_action` when an action handler (e.g. REPLY) produces the
-    // visible reply through callbacks — the path observed live with
-    // Cerebras gpt-oss-120b through the bootstrap message handler.
+    // visible reply through callbacks — the path observed live with the
+    // Cerebras default (gemma-4-31b) through the bootstrap message handler.
     const thinkingIndex = payloads.findIndex(
       (payload) => payload.type === "status" && payload.kind === "thinking",
     );

@@ -6,7 +6,7 @@ Drop-in equivalent of ``hermes_adapter.client.HermesClient`` and
 Each turn spawns a one-shot ``bun`` process that runs ``smithers_turn.mjs``
 inside the Smithers install directory. That script drives Smithers' own
 ``OpenAIAgent`` (a ToolLoopAgent on the Vercel ``ai`` SDK) for a single turn
-against an OpenAI-compatible endpoint (Cerebras ``gpt-oss-120b`` by default)
+against an OpenAI-compatible endpoint (Cerebras ``gemma-4-31b`` by default)
 and emits one JSON line: ``{"text", "thought", "actions", "params"}``.
 
 The orchestrator process never imports any Smithers / Bun dependency — it only
@@ -273,7 +273,7 @@ class SmithersClient:
         install_dir: Path | None = None,
         bun_bin: str | None = None,
         provider: str = "cerebras",
-        model: str = "gpt-oss-120b",
+        model: str = "gemma-4-31b",
         api_key: str | None = None,
         base_url: str | None = None,
         timeout_s: float = 1200.0,

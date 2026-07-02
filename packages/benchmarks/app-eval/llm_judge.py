@@ -162,7 +162,7 @@ def default_judge_call() -> JudgeCall | None:
         or os.environ.get("OPENAI_BASE_URL")
         or "https://api.openai.com/v1"
     ).rstrip("/")
-    model = os.environ.get("APP_EVAL_JUDGE_MODEL", "gpt-oss-120b")
+    model = os.environ.get("APP_EVAL_JUDGE_MODEL", "gemma-4-31b")
 
     def _call(prompt: str) -> str:
         body = json.dumps(

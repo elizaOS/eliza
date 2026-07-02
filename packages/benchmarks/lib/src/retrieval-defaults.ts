@@ -54,7 +54,7 @@ export interface RetrievalTierDefaults {
  *   action block under ~1.5KB.
  * - `mid` — eliza-1 4B: tolerates more candidates but still benefits
  *   from precision-heavy weighting. topK=8.
- * - `large` — Cerebras gpt-oss-120b: long context, embedding ranking
+ * - `large` — Cerebras gemma-4-31b: long context, embedding ranking
  *   pays off here. Balanced weights, topK=12.
  * - `frontier` — Opus 4.7: context-rich planner — let it see a wider
  *   slate. topK=20, embedding/keyword weighted up to surface long-tail

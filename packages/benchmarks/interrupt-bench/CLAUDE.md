@@ -55,7 +55,7 @@ bun run typecheck     # tsgo --noEmit
 | `src/scorer.ts` | 6-axis scoring (state, intent, routing, trace, boundary, latency) |
 | `src/judge.ts` | LLM-as-judge bonus tier |
 | `src/llm-scripted.ts` | Deterministic provider (no LLM calls) |
-| `src/llm-cerebras.ts` | Live Cerebras client (gpt-oss-120b) |
+| `src/llm-cerebras.ts` | Live Cerebras client (gemma-4-31b) |
 | `src/registry.ts` | `ResponseHandlerFieldRegistry` seeded for the bench |
 | `scenarios/` | 10 JSON scenario files across categories A/B/C/D/F/G/H/K |
 | `tests/scenarios.test.ts` | vitest suite: parse + run + score assertions |

@@ -451,7 +451,7 @@ class HermesClient:
         repo_path: Path | None = None,
         venv_python: Path | None = None,
         provider: str = "cerebras",
-        model: str = "gpt-oss-120b",
+        model: str = "gemma-4-31b",
         api_key: str | None = None,
         base_url: str | None = None,
         mode: str = "subprocess",

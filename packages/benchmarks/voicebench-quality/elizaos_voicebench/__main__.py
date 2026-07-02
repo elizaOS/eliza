@@ -83,7 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Cerebras model used as the open-ended judge "
-            "(default: $CEREBRAS_MODEL or gpt-oss-120b)."
+            "(default: $CEREBRAS_MODEL or gemma-4-31b)."
         ),
     )
     parser.add_argument(

@@ -57,7 +57,7 @@ describe("benchmark_vs_cerebras runner", () => {
       "--variants",
       "both",
       "--cerebras-model",
-      "gpt-oss-120b",
+      "gemma-4-31b",
       "--max-samples",
       "12",
       "--output-dir",

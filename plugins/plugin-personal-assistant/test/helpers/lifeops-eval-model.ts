@@ -76,7 +76,7 @@ function resolveEvalModel(): string {
   return (
     readEnv("EVAL_MODEL", "EVAL_MODEL_NAME") ??
     readEnv("CEREBRAS_MODEL") ??
-    "gpt-oss-120b"
+    "gemma-4-31b"
   );
 }
 
@@ -84,7 +84,7 @@ function resolveTrainingModel(): string {
   return (
     readEnv("TRAIN_MODEL", "TRAINING_MODEL", "TRAIN_MODEL_NAME") ??
     readEnv("CEREBRAS_MODEL") ??
-    "gpt-oss-120b"
+    "gemma-4-31b"
   );
 }
 
@@ -163,17 +163,22 @@ async function callCerebras(
   }
   messages.push({ role: "user", content: req.prompt });
 
-  // gpt-oss-120b is a reasoning model. Without an effort hint it spends
+  // gpt-oss models reason by default. Without an effort hint they spend
   // tokens on hidden reasoning before producing the answer, which can blow
-  // through max_tokens. Default to "low" for fast eval/judge calls.
+  // through max_tokens — default those to "low" for fast eval/judge calls.
+  // Other Cerebras models (gemma-4-31b) keep reasoning off unless the caller
+  // asks for it explicitly.
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
     temperature: req.temperature ?? 0,
     max_tokens: req.maxTokens ?? 1024,
   };
-  if (config.model.startsWith("gpt-oss")) {
-    body.reasoning_effort = req.reasoningEffort ?? "low";
+  const reasoningEffort =
+    req.reasoningEffort ??
+    (config.model.startsWith("gpt-oss") ? "low" : undefined);
+  if (reasoningEffort) {
+    body.reasoning_effort = reasoningEffort;
   }
 
   const response = await fetch(`${config.baseUrl}/chat/completions`, {

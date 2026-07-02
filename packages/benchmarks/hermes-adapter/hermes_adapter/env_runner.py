@@ -115,7 +115,7 @@ def run_hermes_env(
     *,
     output_dir: Path,
     provider: str = "cerebras",
-    model: str = "gpt-oss-120b",
+    model: str = "gemma-4-31b",
     api_key: str | None = None,
     base_url: str | None = None,
     repo_path: Path | None = None,

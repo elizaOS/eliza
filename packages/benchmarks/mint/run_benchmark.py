@@ -450,7 +450,7 @@ async def run_benchmark(
                 "openai": "openai/gpt-oss-120b",
                 "groq": "openai/gpt-oss-120b",
                 "openrouter": "openai/gpt-oss-120b",
-                "cerebras": "gpt-oss-120b",
+                "cerebras": "gemma-4-31b",
             }[runtime_provider]
             direct_runtime = OpenAICompatibleRuntime(
                 provider=runtime_provider,
@@ -487,7 +487,7 @@ async def run_benchmark(
                     provider_name = "openai"
             model_name = (model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
             if not model_name:
-                model_name = "gpt-oss-120b" if provider_name == "cerebras" else "openai/gpt-oss-120b"
+                model_name = "gemma-4-31b" if provider_name == "cerebras" else "openai/gpt-oss-120b"
             if provider_name:
                 os.environ["BENCHMARK_MODEL_PROVIDER"] = provider_name
             os.environ["BENCHMARK_MODEL_NAME"] = model_name

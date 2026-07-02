@@ -145,8 +145,8 @@ PROVIDER_CONFIGS: dict[ModelProvider, ProviderConfig] = {
         api_key_env="CEREBRAS_API_KEY",
         base_url_env="CEREBRAS_BASE_URL",
         default_base_url="https://api.cerebras.ai/v1",
-        small_model="gpt-oss-120b",
-        large_model="gpt-oss-120b",
+        small_model="gemma-4-31b",
+        large_model="gemma-4-31b",
         priority=72,
     ),
 }
