@@ -61,3 +61,41 @@ export async function getSolanaBalance(
     sol: lamports / 1_000_000_000,
   };
 }
+
+export async function getSolanaRecentSignatures(
+  address: string,
+  limit = 20
+): Promise<any[]> {
+
+  const response = await fetch(getHeliusRpcUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "skunkscan-signatures",
+      method: "getSignaturesForAddress",
+      params: [
+        address.trim(),
+        {
+          limit,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Helius request failed with status ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+
+  if (data.error) {
+    throw new Error(data.error.message ?? "Helius error");
+  }
+
+  return data.result ?? [];
+}
