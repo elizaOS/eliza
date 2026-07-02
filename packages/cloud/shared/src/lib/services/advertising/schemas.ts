@@ -14,6 +14,10 @@ export const CampaignObjectiveSchema = z.enum([
 
 export const BudgetTypeSchema = z.enum(["daily", "lifetime"]);
 
+export const CampaignBidStrategySchema = z.enum(["cpm", "cpc", "cpa"]);
+
+export const CampaignOptimizationGoalSchema = z.enum(["reach", "clicks", "conversions"]);
+
 export const CreativeTypeSchema = z.enum(["image", "video", "carousel"]);
 
 export const CallToActionSchema = z.enum([
@@ -138,6 +142,8 @@ export const CreateCampaignSchema = z.object({
   budgetType: BudgetTypeSchema,
   budgetAmount: z.number().positive(),
   budgetCurrency: z.string().length(3).optional(),
+  bidStrategy: CampaignBidStrategySchema.optional(),
+  optimizationGoal: CampaignOptimizationGoalSchema.optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   targeting: TargetingSchema.optional(),
@@ -148,6 +154,8 @@ export const CreateCampaignSchema = z.object({
 export const UpdateCampaignSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   budgetAmount: z.number().positive().optional(),
+  bidStrategy: CampaignBidStrategySchema.optional(),
+  optimizationGoal: CampaignOptimizationGoalSchema.optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   targeting: TargetingSchema.optional(),

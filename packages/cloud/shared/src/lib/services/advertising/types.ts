@@ -7,7 +7,9 @@
 import type { AdAccountStatus, AdPlatform } from "../../../db/schemas/ad-accounts";
 import type {
   BudgetType,
+  CampaignBidStrategy,
   CampaignObjective,
+  CampaignOptimizationGoal,
   CampaignStatus,
 } from "../../../db/schemas/ad-campaigns";
 import type { CallToAction, CreativeStatus, CreativeType } from "../../../db/schemas/ad-creatives";
@@ -17,7 +19,9 @@ export type {
   AdPlatform,
   BudgetType,
   CallToAction,
+  CampaignBidStrategy,
   CampaignObjective,
+  CampaignOptimizationGoal,
   CampaignStatus,
   CreativeStatus,
   CreativeType,
@@ -88,6 +92,8 @@ export interface CreateCampaignInput {
   budgetType: BudgetType;
   budgetAmount: number;
   budgetCurrency?: string;
+  bidStrategy?: CampaignBidStrategy;
+  optimizationGoal?: CampaignOptimizationGoal;
   startDate?: Date;
   endDate?: Date;
   targeting?: CampaignTargeting;
@@ -98,6 +104,8 @@ export interface CreateCampaignInput {
 export interface UpdateCampaignInput {
   name?: string;
   budgetAmount?: number;
+  bidStrategy?: CampaignBidStrategy;
+  optimizationGoal?: CampaignOptimizationGoal;
   startDate?: Date;
   endDate?: Date;
   targeting?: CampaignTargeting;

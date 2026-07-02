@@ -36,6 +36,8 @@ app.get("/", async (c) => {
       budgetType: campaign.budget_type,
       budgetAmount: campaign.budget_amount,
       budgetCurrency: campaign.budget_currency,
+      bidStrategy: campaign.metadata.bid_strategy,
+      optimizationGoal: campaign.metadata.optimization_goal,
       creditsAllocated: campaign.credits_allocated,
       creditsSpent: campaign.credits_spent,
       startDate: campaign.start_date?.toISOString(),
@@ -77,6 +79,8 @@ app.patch("/", async (c) => {
       {
         name: parsed.data.name,
         budgetAmount: parsed.data.budgetAmount,
+        bidStrategy: parsed.data.bidStrategy,
+        optimizationGoal: parsed.data.optimizationGoal,
         startDate: parsed.data.startDate
           ? new Date(parsed.data.startDate)
           : undefined,

@@ -45,6 +45,8 @@ app.get("/", async (c) => {
         budgetType: c.budget_type,
         budgetAmount: c.budget_amount,
         budgetCurrency: c.budget_currency,
+        bidStrategy: c.metadata.bid_strategy,
+        optimizationGoal: c.metadata.optimization_goal,
         creditsAllocated: c.credits_allocated,
         creditsSpent: c.credits_spent,
         startDate: c.start_date?.toISOString(),
@@ -85,6 +87,8 @@ app.post("/", async (c) => {
       budgetType: parsed.data.budgetType,
       budgetAmount: parsed.data.budgetAmount,
       budgetCurrency: parsed.data.budgetCurrency,
+      bidStrategy: parsed.data.bidStrategy,
+      optimizationGoal: parsed.data.optimizationGoal,
       startDate: parsed.data.startDate
         ? new Date(parsed.data.startDate)
         : undefined,
@@ -108,6 +112,8 @@ app.post("/", async (c) => {
         status: campaign.status,
         budgetType: campaign.budget_type,
         budgetAmount: campaign.budget_amount,
+        bidStrategy: campaign.metadata.bid_strategy,
+        optimizationGoal: campaign.metadata.optimization_goal,
         creditsAllocated: campaign.credits_allocated,
         dayparting: campaign.metadata.dayparting ?? null,
         createdAt: campaign.created_at.toISOString(),

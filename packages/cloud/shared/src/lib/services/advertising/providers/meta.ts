@@ -65,6 +65,38 @@ interface MetaAdImagesResponse {
   >;
 }
 
+export function mapBidControlsToMetaAdSet(input: CreateCampaignInput): {
+  billing_event: string;
+  optimization_goal: string;
+} {
+  const effectiveGoal =
+    input.optimizationGoal ??
+    (input.bidStrategy === "cpa"
+      ? "conversions"
+      : input.bidStrategy === "cpc"
+        ? "clicks"
+        : "reach");
+
+  if (effectiveGoal === "conversions") {
+    return {
+      billing_event: "IMPRESSIONS",
+      optimization_goal: "OFFSITE_CONVERSIONS",
+    };
+  }
+
+  if (effectiveGoal === "clicks") {
+    return {
+      billing_event: "LINK_CLICKS",
+      optimization_goal: "LINK_CLICKS",
+    };
+  }
+
+  return {
+    billing_event: "IMPRESSIONS",
+    optimization_goal: "REACH",
+  };
+}
+
 function isRetryableError(code: number): boolean {
   // Rate limit errors (code 4, 17, 32, 613) and temporary errors (code 1, 2)
   return [1, 2, 4, 17, 32, 613].includes(code);
@@ -299,8 +331,7 @@ export const metaAdsProvider: AdProvider = {
         name: `${input.name} - Ad Set`,
         campaign_id: campaign.id,
         status: "PAUSED",
-        billing_event: "IMPRESSIONS",
-        optimization_goal: "REACH",
+        ...mapBidControlsToMetaAdSet(input),
       };
 
       if (input.budgetType === "daily") {

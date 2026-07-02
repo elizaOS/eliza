@@ -89,6 +89,28 @@ function mapObjectiveToGoogleAds(objective: string): {
   return mapping[objective] || { advertisingChannelType: "SEARCH" };
 }
 
+export function mapBidControlsToGoogleCampaign(
+  input: Pick<CreateCampaignInput, "bidStrategy" | "optimizationGoal">,
+): Record<string, unknown> {
+  const effectiveGoal =
+    input.optimizationGoal ??
+    (input.bidStrategy === "cpa"
+      ? "conversions"
+      : input.bidStrategy === "cpc"
+        ? "clicks"
+        : "reach");
+
+  if (effectiveGoal === "conversions") {
+    return { maximizeConversions: {} };
+  }
+
+  if (effectiveGoal === "clicks") {
+    return { manualCpc: {} };
+  }
+
+  return { manualCpm: {} };
+}
+
 function splitGoogleCampaignId(
   accountId: string,
   externalCampaignId: string,
@@ -361,6 +383,7 @@ export const googleAdsProvider: AdProvider = {
               advertisingChannelSubType: channelConfig.advertisingChannelSubType,
               status: "PAUSED",
               campaignBudget: budgetResourceName,
+              ...mapBidControlsToGoogleCampaign(input),
               startDate: input.startDate
                 ? input.startDate.toISOString().split("T")[0].replace(/-/g, "")
                 : undefined,

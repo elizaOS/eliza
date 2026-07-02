@@ -77,6 +77,20 @@ function mapObjectiveToTikTok(objective: string): string {
   return mapping[objective] || "TRAFFIC";
 }
 
+export function validateTikTokCampaignBidControls(
+  input: Pick<CreateCampaignInput, "bidStrategy" | "optimizationGoal">,
+): AdProviderCampaignResult | undefined {
+  if (!input.bidStrategy && !input.optimizationGoal) {
+    return undefined;
+  }
+
+  return {
+    success: false,
+    error:
+      "TikTok campaign creation does not support campaign-level bid strategy controls through this adapter",
+  };
+}
+
 function mapCtaToTikTok(cta?: string): string {
   const mapping: Record<string, string> = {
     learn_more: "LEARN_MORE",
@@ -216,6 +230,11 @@ export const tiktokAdsProvider: AdProvider = {
       name: input.name,
       objective: input.objective,
     });
+
+    const bidControlError = validateTikTokCampaignBidControls(input);
+    if (bidControlError) {
+      return bidControlError;
+    }
 
     const objective = mapObjectiveToTikTok(input.objective);
 

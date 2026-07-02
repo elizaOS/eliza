@@ -59,6 +59,8 @@ interface PromoteAppDialogProps {
 }
 
 type PromotionChannel = "social" | "seo" | "advertising";
+type CampaignBidStrategy = "cpm" | "cpc" | "cpa";
+type CampaignOptimizationGoal = "reach" | "clicks" | "conversions";
 
 interface PromotionConfig {
   channels: PromotionChannel[];
@@ -77,6 +79,8 @@ interface PromotionConfig {
     budget: number;
     budgetType: "daily" | "lifetime";
     objective: string;
+    bidStrategy?: CampaignBidStrategy;
+    optimizationGoal?: CampaignOptimizationGoal;
     duration?: number;
   };
 }
@@ -113,6 +117,21 @@ const AD_OBJECTIVES = [
   },
 ];
 
+const BID_STRATEGIES: Array<{ id: CampaignBidStrategy; name: string }> = [
+  { id: "cpm", name: "CPM" },
+  { id: "cpc", name: "CPC" },
+  { id: "cpa", name: "CPA" },
+];
+
+const OPTIMIZATION_GOALS: Array<{
+  id: CampaignOptimizationGoal;
+  name: string;
+}> = [
+  { id: "reach", name: "Reach" },
+  { id: "clicks", name: "Clicks" },
+  { id: "conversions", name: "Conversions" },
+];
+
 export function PromoteAppDialog({
   open,
   onOpenChange,
@@ -138,6 +157,8 @@ export function PromoteAppDialog({
         budget: 10,
         budgetType: "daily" as const,
         objective: "traffic",
+        bidStrategy: "cpm" as const,
+        optimizationGoal: "reach" as const,
       },
     [adAccounts],
   );
@@ -639,6 +660,10 @@ export function PromoteAppDialog({
                                 prev.advertising?.budgetType || "daily",
                               objective:
                                 prev.advertising?.objective || "traffic",
+                              bidStrategy:
+                                prev.advertising?.bidStrategy || "cpm",
+                              optimizationGoal:
+                                prev.advertising?.optimizationGoal || "reach",
                             },
                           }));
                         }}
@@ -685,6 +710,70 @@ export function PromoteAppDialog({
                               className="text-white"
                             >
                               {obj.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-white text-sm">Bid Strategy</Label>
+                      <Select
+                        value={config.advertising?.bidStrategy || "cpm"}
+                        onValueChange={(value: CampaignBidStrategy) =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            advertising: {
+                              ...getAdvertisingConfig(prev),
+                              bidStrategy: value,
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-neutral-800 border-white/10">
+                          {BID_STRATEGIES.map((strategy) => (
+                            <SelectItem
+                              key={strategy.id}
+                              value={strategy.id}
+                              className="text-white"
+                            >
+                              {strategy.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-white text-sm">
+                        Optimization Goal
+                      </Label>
+                      <Select
+                        value={config.advertising?.optimizationGoal || "reach"}
+                        onValueChange={(value: CampaignOptimizationGoal) =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            advertising: {
+                              ...getAdvertisingConfig(prev),
+                              optimizationGoal: value,
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-neutral-800 border-white/10">
+                          {OPTIMIZATION_GOALS.map((goal) => (
+                            <SelectItem
+                              key={goal.id}
+                              value={goal.id}
+                              className="text-white"
+                            >
+                              {goal.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -804,7 +893,11 @@ export function PromoteAppDialog({
                       <CheckCircle className="h-4 w-4 text-green-400" />
                       <span className="text-white">
                         Ad Campaign: ${config.advertising?.budget}{" "}
-                        {config.advertising?.budgetType}
+                        {config.advertising?.budgetType},{" "}
+                        {(
+                          config.advertising?.bidStrategy || "cpm"
+                        ).toUpperCase()}{" "}
+                        for {config.advertising?.optimizationGoal || "reach"}
                       </span>
                     </div>
                   )}

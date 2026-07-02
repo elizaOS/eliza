@@ -55,6 +55,8 @@ class AdvertisingService {
     const text = [
       "name" in input ? `Campaign name: ${input.name}` : undefined,
       "objective" in input && input.objective ? `Objective: ${input.objective}` : undefined,
+      input.bidStrategy ? `Bid strategy: ${input.bidStrategy}` : undefined,
+      input.optimizationGoal ? `Optimization goal: ${input.optimizationGoal}` : undefined,
     ];
     if (input.targeting) {
       text.push(`Targeting: ${JSON.stringify(input.targeting)}`);
@@ -661,12 +663,16 @@ class AdvertisingService {
         end_date: input.endDate,
         targeting: input.targeting || {},
         app_id: input.appId,
-        metadata: dayparting
-          ? {
-              dayparting,
-              dayparting_provider_synced_at: new Date().toISOString(),
-            }
-          : {},
+        metadata: {
+          ...(input.bidStrategy ? { bid_strategy: input.bidStrategy } : {}),
+          ...(input.optimizationGoal ? { optimization_goal: input.optimizationGoal } : {}),
+          ...(dayparting
+            ? {
+                dayparting,
+                dayparting_provider_synced_at: new Date().toISOString(),
+              }
+            : {}),
+        },
       });
 
       // Record budget allocation transaction
@@ -836,6 +842,19 @@ class AdvertisingService {
       throw new Error(result.error || "Failed to update campaign");
     }
 
+    const metadataUpdate =
+      input.bidStrategy !== undefined || input.optimizationGoal !== undefined
+        ? {
+            metadata: {
+              ...campaign.metadata,
+              ...(input.bidStrategy !== undefined ? { bid_strategy: input.bidStrategy } : {}),
+              ...(input.optimizationGoal !== undefined
+                ? { optimization_goal: input.optimizationGoal }
+                : {}),
+            },
+          }
+        : {};
+
     const updateData = {
       name: input.name,
       budget_amount: input.budgetAmount ? String(input.budgetAmount) : undefined,
@@ -845,6 +864,7 @@ class AdvertisingService {
       start_date: input.startDate,
       end_date: input.endDate,
       targeting: input.targeting,
+      ...metadataUpdate,
     };
 
     let updated: AdCampaign | undefined;
