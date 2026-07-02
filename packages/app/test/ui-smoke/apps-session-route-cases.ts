@@ -36,6 +36,10 @@ function viewCardTestId(viewId: string): string {
   return `view-card-${viewId}`;
 }
 
+function launcherTileTestId(viewId: string): string {
+  return `launcher-tile-${viewId}`;
+}
+
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "plugins app window",
@@ -167,25 +171,21 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   },
   {
     // Facewear GUI config now lives in Settings -> Wearables, not a launcher
-    // app window; only the agent TUI surface is reached by path here.
+    // app window. In the browser app-shell matrix the TUI-only path resolves to
+    // the view catalog fallback; terminal command coverage lives in the TUI
+    // view tests, not this GUI click-safe route pass.
     name: "facewear tui app shell page",
     path: "/apps/facewear/tui",
-    readyChecks: [
-      { text: "elizaos://facewear --type=tui" },
-      { text: "connect-device" },
-    ],
-    timeoutMs: 90_000,
+    readyChecks: [{ text: "views" }, { text: "tui ready" }],
+    timeoutMs: 30_000,
   },
   {
-    // Smartglasses GUI config now lives in Settings -> Wearables; only the
-    // agent TUI surface is reached by path here.
+    // Smartglasses GUI config now lives in Settings -> Wearables; the browser
+    // app-shell matrix sees the same view catalog fallback as Facewear.
     name: "smartglasses tui app shell page",
     path: "/apps/smartglasses/tui",
-    readyChecks: [
-      { text: "elizaos://smartglasses --type=tui" },
-      { text: "connect-headset" },
-    ],
-    timeoutMs: 90_000,
+    readyChecks: [{ text: "views" }, { text: "tui ready" }],
+    timeoutMs: 30_000,
   },
   {
     name: "orchestrator app shell page",
@@ -196,11 +196,8 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "orchestrator tui app shell page",
     path: "/orchestrator/tui",
-    readyChecks: [
-      { text: "elizaos://orchestrator --type=tui" },
-      { text: "orchestrator-status" },
-    ],
-    timeoutMs: 90_000,
+    readyChecks: [{ text: "views" }, { text: "tui ready" }],
+    timeoutMs: 30_000,
   },
   {
     // Pinned home tile → Settings.
@@ -270,10 +267,10 @@ export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
  * without turning all-pages click safety into a long game/app bootstrap loop.
  */
 export const SAFE_VIEW_TILE_CASES: readonly SafeViewTileCase[] = [
-  { viewId: "model-tester", path: "/model-tester" },
+  { viewId: "fine-tuning", path: "/apps/fine-tuning" },
 ].map(({ viewId, path }) => ({
   viewId,
-  testId: viewCardTestId(viewId),
-  name: `view tile ${viewId}`,
+  testId: launcherTileTestId(viewId),
+  name: `launcher tile ${viewId}`,
   expectedPath: path,
 }));
