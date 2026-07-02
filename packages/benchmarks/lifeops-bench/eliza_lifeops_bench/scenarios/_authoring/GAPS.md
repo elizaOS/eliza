@@ -225,7 +225,7 @@ If a future wave decides to add any of the proposed actions:
    `plugins/plugin-personal-assistant/src/actions/<name>.ts` (or in the right new
    plugin).
 2. Re-export the manifest:
-   `bun run scripts/lifeops-bench/export-action-manifest.ts`.
+   `bun run lifeops-bench:manifest`.
 3. Author the scenario(s) the gap blocked above and remove the entry
    from this file.
 4. If the new action mutates a LifeWorld entity that doesn't exist

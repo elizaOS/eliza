@@ -171,8 +171,8 @@ packages/benchmarks/lifeops-bench/
       trajectories.py        Disk loader; mandatory privacy filter; strict-mode raise
   tests/                     574 passing tests (3 live-gated skips)
   manifests/
-    actions.manifest.json    JSON-Schema dump of every Eliza action
-    actions.summary.md       Human-readable index
+    actions.manifest.json    Committed JSON-Schema dump of every Eliza action
+    actions.summary.md       Human-readable index regenerated with the manifest
   data/
     snapshots/               Deterministic seeded LifeWorld snapshots
   PLAN.md                    Wave-by-wave roadmap and open questions
@@ -186,6 +186,16 @@ packages/benchmarks/lifeops-bench/
 ```bash
 python3 -m pytest tests/ -v
 ```
+
+Regenerate `manifests/actions.manifest.json` and `manifests/actions.summary.md`
+after changing LifeOps or todo action metadata:
+
+```bash
+bun run lifeops-bench:manifest
+```
+
+The command exports the live elizaOS plugin action registry, then applies the
+bench-only umbrella augment from `eliza_lifeops_bench.manifest_export`.
 
 The hermetic test suite uses fake providers for normal CI coverage.
 Live network tests remain env-gated because they require
