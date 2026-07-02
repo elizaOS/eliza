@@ -81,7 +81,8 @@ function finalCheckTypes(sourceFile: ts.SourceFile): string[] {
         for (const prop of el.properties) {
           if (!ts.isPropertyAssignment(prop)) continue;
           if (propName(prop.name) !== "type") continue;
-          if (ts.isStringLiteral(prop.initializer)) types.push(prop.initializer.text);
+          if (ts.isStringLiteral(prop.initializer))
+            types.push(prop.initializer.text);
         }
       }
       return;
@@ -133,7 +134,7 @@ const flagged = SCENARIO_ROOTS.flatMap(walkScenarioFiles)
 // Current debt (theme 3 of #9310 — down from the 104 the issue reported as the
 // corpus has been de-larped). Lower this as actionCalled-only scenarios are given
 // a real effect finalCheck (custom predicate / memory / connector). Never raise.
-const BASELINE = 42;
+const BASELINE = 36;
 
 describe("action-effect ratchet (#9310)", () => {
   it("finds the scenario corpus (guard is actually scanning)", () => {

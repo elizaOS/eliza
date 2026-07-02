@@ -1,7 +1,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { describeCalls, successfulCalls, toRecord } from "../_helpers/effect-assertions.ts";
+import {
+  describeCalls,
+  successfulCalls,
+  toRecord,
+} from "../_helpers/effect-assertions.ts";
 
 const PROXY_STATUS = "PROXY_STATUS";
 type R = AgentRuntime & {
@@ -111,7 +115,10 @@ export default scenario({
         if (values.available !== true) {
           return `expected values.available true (service loaded), saw ${JSON.stringify(values).slice(0, 200)}`;
         }
-        if (typeof values.mode !== "string" || typeof values.listening !== "boolean") {
+        if (
+          typeof values.mode !== "string" ||
+          typeof values.listening !== "boolean"
+        ) {
           return `expected live status fields {mode:string, listening:boolean}, saw ${JSON.stringify(values).slice(0, 200)}`;
         }
       },

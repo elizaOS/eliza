@@ -11,7 +11,10 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { initForRuntime, useRuntime } from "@elizaos/plugin-commands";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { describeCalls, successfulCalls } from "../_helpers/effect-assertions.ts";
+import {
+  describeCalls,
+  successfulCalls,
+} from "../_helpers/effect-assertions.ts";
 
 const HELP_COMMAND = "HELP_COMMAND";
 
