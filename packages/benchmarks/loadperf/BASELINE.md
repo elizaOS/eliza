@@ -84,6 +84,27 @@ all artifacts of measuring a 3-generation layered watch dist; disregard.
 - The original "70 ms PASS" was a false positive from the permissive readiness
   check. Budgets: cold `readyMs` ≤ 25 000, peak RSS ≤ 1600 MB.
 
+### Steady-state RSS (idle resident cost — new)
+
+`peakRssMb` is the boot-time high-water mark; a booted agent that never releases
+boot scratch (or slowly grows at idle) is a **separate** regression class the
+peak number hides. After `ready`, the KPI now holds the idle process for a
+settle window (`LOADPERF_STEADY_SETTLE_MS`, default 12 s), samples `/proc` VmRSS,
+and reports **`steadyRssMb`** = the median of the window's tail (last 60 %), the
+resident cost the headless keyless agent actually carries once boot churn
+subsides.
+
+- **Measured** (prod `entry.js start`, keyless/headless, `--runs=2`, 12 s settle,
+  on a heavily CPU-contended host — RSS is contention-insensitive): peak RSS
+  **1057.6 MB**, **steady RSS 1069 MB**. Steady sits slightly *above* boot-peak
+  because RSS keeps climbing during post-ready warmup (lazy provider/embedding
+  load, GC not yet run) — the exact resident tail the boot-peak sample misses.
+- **Budget: `steadyRssMb` ≤ 1500 MB** — ~40 % headroom over the measured 1069 MB
+  and above the historical ~1272 MB peak reading, so it catches a real resident
+  regression (a ~430 MB idle leak) without flaking on host variance. Ratchet it
+  down as idle-footprint optimizations land. A `null` budget records the number
+  without gating; `--attach` mode reports `null` (no child pid to sample).
+
 ### Boot profile (quiesced, `ELIZA_BOOT_PROFILE=1`)
 
 Boot `bun run dist/entry.js start` with `ELIZA_BOOT_PROFILE=1` to print `[boot-profile]`

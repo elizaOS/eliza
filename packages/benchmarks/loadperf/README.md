@@ -19,7 +19,7 @@ serves). Budget keys live in `budgets.json`.
 | KPI | Script | What it measures | Needs |
 | --- | --- | --- | --- |
 | bundle | `bundle-kpi.mjs` | on-disk bundle size: initial entry, total assets, largest chunk, duplicate-lib waste | `packages/app/dist` |
-| boot | `boot-kpi.mjs` | cold-start `readyMs` + peak RSS of the headless agent | spawns dev-server (or `--attach`) |
+| boot | `boot-kpi.mjs` | cold-start `readyMs` + peak RSS + steady-state idle RSS of the headless keyless agent | spawns dev-server (or `--attach`) |
 | frontend | `frontend-kpi.mjs` | FCP / LCP / CLS, JS transferred, request count, long-task time | `playwright` + a browser |
 | statesync | `statesync-kpi.mjs` | broadcast skew p50/p95, desync events, reconnect time | a running WS server |
 

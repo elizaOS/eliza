@@ -1,0 +1,115 @@
+{
+  "kpi": "boot",
+  "recordedAt": "2026-07-02T22:02:59.414Z",
+  "git": {
+    "branch": "perf/steady-rss-gate",
+    "commit": "bc0dd00640",
+    "dirty": true
+  },
+  "summary": {
+    "mode": "spawn",
+    "baseUrl": "http://127.0.0.1:31356",
+    "runs": 2,
+    "requestedRuns": 2,
+    "readyMs": 14655,
+    "readyMsRuns": [
+      14393,
+      14917
+    ],
+    "readyMsP95": 14917,
+    "readyMsMin": 14393,
+    "readyMsMax": 14917,
+    "peakRssBytes": 1109000192,
+    "peakRssMb": 1057.6,
+    "steadyRssBytes": 1120927744,
+    "steadyRssMb": 1069,
+    "steadySettleMs": 12000,
+    "healthReady": true,
+    "readySanityFloorMs": 3000,
+    "contention": {
+      "cpuCount": 24,
+      "loadAvg1": 51.68,
+      "siblingProcs": 19,
+      "heavy": true
+    },
+    "bootPhases": {
+      "totalMs": 6814,
+      "laps": [
+        {
+          "name": "pre-resolve-setup",
+          "ms": 3685
+        },
+        {
+          "name": "register-sql",
+          "ms": 1053
+        },
+        {
+          "name": "static-plugins-blocking-import",
+          "ms": 808
+        },
+        {
+          "name": "svc:runtime.initialize",
+          "ms": 618
+        },
+        {
+          "name": "resolve-plugins-blocking-import",
+          "ms": 543
+        },
+        {
+          "name": "svc:roles-register",
+          "ms": 93
+        },
+        {
+          "name": "svc:connector-setup",
+          "ms": 12
+        },
+        {
+          "name": "svc:pre-init",
+          "ms": 1
+        },
+        {
+          "name": "svc:boot-prep",
+          "ms": 0
+        }
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "coldReadyMs",
+      "value": 14655,
+      "budget": 25000,
+      "unit": "ms",
+      "pass": true
+    },
+    {
+      "name": "peakRssMb",
+      "value": 1057.625,
+      "budget": 1600,
+      "unit": "MB",
+      "pass": true
+    },
+    {
+      "name": "steadyRssMb",
+      "value": 1069,
+      "budget": 1500,
+      "unit": "MB",
+      "pass": true
+    },
+    {
+      "name": "healthReady",
+      "value": 1,
+      "budget": 1,
+      "unit": "bool",
+      "pass": true
+    },
+    {
+      "name": "readyMsSanityFloor",
+      "value": 14655,
+      "budget": 3000,
+      "unit": "ms",
+      "pass": true
+    }
+  ],
+  "pass": true
+}

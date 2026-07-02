@@ -11,7 +11,8 @@
   "boot": {
     "coldReadyMs": 25000,
     "warmReadyMs": 12000,
-    "peakRssMb": 1600
+    "peakRssMb": 1600,
+    "steadyRssMb": 1500
   },
   "frontend": {
     "fcpMs": 2500,

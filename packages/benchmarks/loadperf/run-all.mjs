@@ -170,6 +170,9 @@ function renderMarkdown(ran, results) {
       lines.push(
         `- peak RSS: ${s.peakRssMb == null ? "—" : `${s.peakRssMb} MB`}`,
       );
+      lines.push(
+        `- steady RSS: ${s.steadyRssMb == null ? "—" : `${s.steadyRssMb} MB`}`,
+      );
     } else if (r.kpi === "frontend") {
       lines.push(
         `- FCP: ${ms(s.fcpMs)}  LCP: ${ms(s.lcpMs)}  CLS: ${(s.cls ?? 0).toFixed?.(3) ?? s.cls}`,

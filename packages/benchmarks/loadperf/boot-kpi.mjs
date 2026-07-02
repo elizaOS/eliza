@@ -2,8 +2,10 @@
  * Boot KPI.
  *
  * Measures cold-start of the agent + dashboard API: spawn the dev-server
- * headless, poll GET /api/health until ready, and record wall-clock readyMs
- * plus peak RSS (sampled from /proc/<pid>/status VmRSS while booting).
+ * headless, poll GET /api/health until ready, and record wall-clock readyMs,
+ * peak RSS (sampled from /proc/<pid>/status VmRSS while booting), and
+ * steady-state RSS (median of a post-ready idle settle window — the resident
+ * cost the headless agent carries once boot churn subsides).
  *
  * Default: spawn a fresh child and measure cold boot.
  *   node packages/benchmarks/loadperf/boot-kpi.mjs
@@ -65,6 +67,21 @@ const RUNS = ATTACH ? 1 : Math.max(1, Math.trunc(RUNS_REQUESTED));
 // is physically impossible for a genuine boot and signals a stale server / an
 // early-liveness 200 that slipped past the readiness check — fail loudly.
 const READY_SANITY_FLOOR_MS = 3000;
+
+// Steady-state RSS: peak RSS captures the boot-time high-water mark, but a
+// booted agent that never releases boot scratch (or slowly grows at idle) is a
+// separate regression class the peak number hides. After `ready`, we hold the
+// idle process for a settle window, sample RSS, and report the MEDIAN of the
+// window's tail (post-GC-settle) as steadyRssMb — the resident cost a headless
+// agent actually carries once boot churn subsides. Off during --attach (no pid).
+const STEADY_SETTLE_MS = Math.max(
+  0,
+  Math.trunc(Number(process.env.LOADPERF_STEADY_SETTLE_MS ?? 12_000)),
+);
+const STEADY_SAMPLE_MS = Math.max(
+  100,
+  Math.trunc(Number(process.env.LOADPERF_STEADY_SAMPLE_MS ?? 500)),
+);
 
 const API_PORT = Number(process.env.ELIZA_API_PORT ?? 31337);
 const BASE_URL = (
@@ -134,9 +151,11 @@ function detectContention() {
   return { cpuCount, loadAvg1, siblingProcs, heavy };
 }
 
-function checkBudgets(readyMs, peakRssBytes) {
+function checkBudgets(readyMs, peakRssBytes, steadyRssBytes) {
   const b = loadBudgets().boot;
   const peakRssMb = peakRssBytes == null ? null : peakRssBytes / (1024 * 1024);
+  const steadyRssMb =
+    steadyRssBytes == null ? null : steadyRssBytes / (1024 * 1024);
   const checks = [
     { name: "coldReadyMs", value: readyMs, budget: b.coldReadyMs, unit: "ms" },
   ];
@@ -148,6 +167,16 @@ function checkBudgets(readyMs, peakRssBytes) {
       unit: "MB",
     });
   }
+  // steadyRssMb is only checked when the budget is set AND we measured a value.
+  // A null budget (no baseline yet) records the number without gating.
+  if (steadyRssMb != null && b.steadyRssMb != null) {
+    checks.push({
+      name: "steadyRssMb",
+      value: steadyRssMb,
+      budget: b.steadyRssMb,
+      unit: "MB",
+    });
+  }
   return checks.map((c) => ({ ...c, pass: c.value <= c.budget }));
 }
 
@@ -155,7 +184,13 @@ async function measureAttached() {
   const { readyMs, health } = await waitForReady(BASE_URL, {
     timeoutMs: BOOT_TIMEOUT_MS,
   });
-  return { readyMs, peakRssBytes: null, health, mode: "attach" };
+  return {
+    readyMs,
+    peakRssBytes: null,
+    steadyRssBytes: null,
+    health,
+    mode: "attach",
+  };
 }
 
 // Resolve the agent's state dir the same way @elizaos/core does, so we can read
@@ -238,6 +273,10 @@ async function measureSpawned() {
     }
   })();
 
+  let childExited = false;
+  child.once("exit", () => {
+    childExited = true;
+  });
   const exited = new Promise((_, reject) => {
     child.once("exit", (code, signal) => {
       reject(
@@ -258,9 +297,28 @@ async function measureSpawned() {
     const rssAtReady = readRssBytes(child.pid);
     if (rssAtReady != null && rssAtReady > peakRssBytes)
       peakRssBytes = rssAtReady;
+    // Stop counting boot peak at `ready`; steady-state is measured separately so
+    // a post-ready settle sample can never inflate the boot high-water mark.
+    sampling = false;
+    await sampler;
+    // Hold the idle process for the settle window, sampling RSS. steadyRss is
+    // the median of the window's tail (last 60%), after boot-time GC/scratch
+    // churn subsides — the resident cost the headless agent actually carries.
+    const steadySamples = [];
+    if (STEADY_SETTLE_MS > 0) {
+      const settleDeadline = Date.now() + STEADY_SETTLE_MS;
+      while (Date.now() < settleDeadline && !childExited) {
+        const rss = readRssBytes(child.pid);
+        if (rss != null) steadySamples.push(rss);
+        await sleep(STEADY_SAMPLE_MS);
+      }
+    }
+    const tail = steadySamples.slice(Math.floor(steadySamples.length * 0.4));
+    const steadyRssBytes = tail.length > 0 ? median(tail) : null;
     return {
       readyMs: ready.readyMs,
       peakRssBytes: peakRssBytes || null,
+      steadyRssBytes,
       health: ready.health,
       mode: "spawn",
     };
@@ -333,14 +391,23 @@ async function main() {
   const mode = runs[0].mode;
   const readyMsRuns = runs.map((r) => r.readyMs);
   const rssRuns = runs.map((r) => r.peakRssBytes).filter((v) => v != null);
-  // The median is the canonical readyMs; peak RSS is the worst observed.
+  const steadyRssRuns = runs
+    .map((r) => r.steadyRssBytes)
+    .filter((v) => v != null);
+  // The median is the canonical readyMs; peak + steady RSS are the worst observed.
   const medianReadyMs = median(readyMsRuns);
   const peakRssBytes = rssRuns.length > 0 ? Math.max(...rssRuns) : null;
-  const checks = checkBudgets(medianReadyMs, peakRssBytes);
+  const steadyRssBytes =
+    steadyRssRuns.length > 0 ? Math.max(...steadyRssRuns) : null;
+  const checks = checkBudgets(medianReadyMs, peakRssBytes, steadyRssBytes);
   const peakRssMb =
     peakRssBytes == null
       ? null
       : Number((peakRssBytes / (1024 * 1024)).toFixed(1));
+  const steadyRssMb =
+    steadyRssBytes == null
+      ? null
+      : Number((steadyRssBytes / (1024 * 1024)).toFixed(1));
 
   // Honesty gates — these are PASS/FAIL conditions, not budget tunables. They
   // make a stale-server / early-liveness false positive fail the run loudly.
@@ -374,6 +441,9 @@ async function main() {
       readyMsMax: Math.max(...readyMsRuns),
       peakRssBytes,
       peakRssMb,
+      steadyRssBytes,
+      steadyRssMb,
+      steadySettleMs: STEADY_SETTLE_MS,
       healthReady,
       readySanityFloorMs: READY_SANITY_FLOOR_MS,
       contention,
@@ -408,6 +478,9 @@ async function main() {
       console.log(`ready:       ${ms(medianReadyMs)}`);
     }
     console.log(`peak RSS:    ${peakRssMb == null ? "—" : `${peakRssMb} MB`}`);
+    console.log(
+      `steady RSS:  ${steadyRssMb == null ? "—" : `${steadyRssMb} MB`}${STEADY_SETTLE_MS > 0 ? ` (${Math.round(STEADY_SETTLE_MS / 1000)}s settle)` : " (settle off)"}`,
+    );
     console.log(
       `health.ready:${healthReady === true ? " true" : ` ${healthReady}`}`,
     );
