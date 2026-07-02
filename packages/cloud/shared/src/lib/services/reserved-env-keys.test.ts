@@ -17,6 +17,32 @@ describe("reserved-env-keys", () => {
     expect(findReservedEnvKeys(["FOO", "BAR"])).toEqual([]);
   });
 
+  test("Steward keyless config is platform-owned but OpenAI shim keys remain mode-specific", () => {
+    expect(
+      findReservedEnvKeys([
+        "STEWARD_API_URL",
+        "STEWARD_INVOKE_URL",
+        "STEWARD_CAPABILITIES",
+        "STEWARD_CAP_OPENAI_CHAT",
+        "STEWARD_KEYLESS_MODE",
+        "STEWARD_KEYLESS_SERVICES",
+        "STEWARD_JWT",
+        "STEWARD_REFRESH_URL",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+      ]),
+    ).toEqual([
+      "STEWARD_API_URL",
+      "STEWARD_INVOKE_URL",
+      "STEWARD_CAPABILITIES",
+      "STEWARD_CAP_OPENAI_CHAT",
+      "STEWARD_KEYLESS_MODE",
+      "STEWARD_KEYLESS_SERVICES",
+      "STEWARD_JWT",
+      "STEWARD_REFRESH_URL",
+    ]);
+  });
+
   test("POSTGRES_URL is not in the default platform list but can be added per-caller", () => {
     expect(findReservedEnvKeys(["postgres_url"])).toEqual([]);
     expect(
