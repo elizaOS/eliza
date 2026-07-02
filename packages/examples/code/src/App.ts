@@ -408,6 +408,7 @@ export class App {
   private startupResumeTaskIds: string[] | null = null;
   private didCheckInterruptedTasks = false;
   private exitResolver: (() => void) | null = null;
+  private activeTurnAbortController: AbortController | null = null;
 
   constructor(runtime: AgentRuntime) {
     this.runtime = runtime;
@@ -563,6 +564,10 @@ export class App {
    * @returns true when the keystroke was consumed.
    */
   private consumeGlobalInput(data: string): boolean {
+    if ((data === "\x1b" || data === "\x03") && this.abortCurrentTurn()) {
+      return true;
+    }
+
     if (this.showingHelp) {
       // Ctrl+C / Ctrl+Q must still quit even with help open (they were trapped
       // before). Otherwise close on ?, Esc, Backspace (\x08 Ctrl+H and \x7f DEL,
@@ -639,6 +644,16 @@ export class App {
     }
 
     return false;
+  }
+
+  private abortCurrentTurn(): boolean {
+    const controller = this.activeTurnAbortController;
+    if (!controller) return false;
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+    this.tui.requestRender();
+    return true;
   }
 
   private openHelp(): void {
@@ -1041,6 +1056,18 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       if (handled) return;
     }
 
+    if (this.activeTurnAbortController) {
+      state.addMessage(
+        state.currentRoomId,
+        "system",
+        "A turn is already running. Press Esc or Ctrl+C to abort it.",
+      );
+      this.tui.requestRender();
+      return;
+    }
+
+    const turnAbortController = new AbortController();
+    this.activeTurnAbortController = turnAbortController;
     state.setLoading(true);
     state.setAgentTyping(true);
     this.tui.requestRender();
@@ -1063,11 +1090,22 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
         room,
         text,
         identity: state.identity,
+        abortSignal: turnAbortController.signal,
         onDelta: (delta) => {
+          if (turnAbortController.signal.aborted) return;
           state.appendToMessage(roomId, placeholder.id, delta);
           this.tui.requestRender();
         },
       });
+
+      if (turnAbortController.signal.aborted) {
+        if (placeholderId) {
+          state.removeMessage(roomId, placeholderId);
+          placeholderId = null;
+        }
+        state.addMessage(roomId, "system", "Turn aborted.");
+        return;
+      }
 
       const service = getCodeTaskService(this.runtime);
       const currentTask = service ? await service.getCurrentTask() : null;
@@ -1094,15 +1132,35 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
       // terminal in raw mode (raw-mode/bracketed-paste/cursor restore only runs
       // via app.stop()). Surface it as a system message and drop the empty
       // assistant placeholder so no blank bubble lingers.
-      const messageText = err instanceof Error ? err.message : String(err);
-      if (placeholderId) {
-        state.removeMessage(roomId, placeholderId);
+      if (turnAbortController.signal.aborted || isAbortError(err)) {
+        if (placeholderId) {
+          state.removeMessage(roomId, placeholderId);
+        }
+        state.addMessage(roomId, "system", "Turn aborted.");
+      } else {
+        const messageText = err instanceof Error ? err.message : String(err);
+        if (placeholderId) {
+          state.removeMessage(roomId, placeholderId);
+        }
+        state.addMessage(roomId, "system", `Error: ${messageText}`);
       }
-      state.addMessage(roomId, "system", `Error: ${messageText}`);
     } finally {
+      if (this.activeTurnAbortController === turnAbortController) {
+        this.activeTurnAbortController = null;
+      }
       state.setLoading(false);
       state.setAgentTyping(false);
       this.tui.requestRender();
     }
   }
+}
+
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === "AbortError";
+  }
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  return err.name === "AbortError" || /\babort(?:ed)?\b/i.test(err.message);
 }

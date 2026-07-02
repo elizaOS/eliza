@@ -310,8 +310,14 @@ export class ChatPane implements Focusable {
     output.push(topBorder);
 
     if (state.isLoading) {
+      const loadingText = "Processing... Esc/Ctrl+C abort";
+      const available = Math.max(1, innerWidth - 1);
+      const visibleText =
+        loadingText.length > available
+          ? loadingText.slice(0, available)
+          : loadingText;
       output.push(
-        `${borderColor("│")} ${chalk.dim("Processing...")}${" ".repeat(Math.max(0, innerWidth - 14))}${borderColor("│")}`,
+        `${borderColor("│")} ${chalk.dim(visibleText)}${" ".repeat(Math.max(0, innerWidth - visibleText.length - 1))}${borderColor("│")}`,
       );
     } else {
       // The composer row wraps the editor in "│ > " + "│" — 5 columns of
