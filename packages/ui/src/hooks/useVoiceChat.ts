@@ -267,6 +267,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     "browser" | "local-inference" | "talkmode" | null
   >(null);
   const talkModeHandlesRef = useRef<PluginListenerHandle[]>([]);
+  // In-flight talk-mode listener registration. talkModeHandlesRef is only
+  // assigned after all three addListener awaits resolve, so two overlapping
+  // ensureTalkModeListeners calls would otherwise both pass the length guard
+  // and register six listeners (the first three leaked, transcripts doubled).
+  const talkModeListenersRegistrationRef = useRef<Promise<void> | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const playbackFrameTapRef = useRef<PlaybackFrameTap | null>(null);
@@ -691,60 +696,79 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const ensureTalkModeListeners = useCallback(async () => {
     if (talkModeHandlesRef.current.length > 0) return;
+    // A registration pass is already in flight — await it instead of starting
+    // a second one (which would double-register every listener).
+    const pending = talkModeListenersRegistrationRef.current;
+    if (pending) return pending;
 
-    const talkMode = getTalkModePlugin();
+    const registration = (async () => {
+      const talkMode = getTalkModePlugin();
 
-    const transcriptHandle = await talkMode.addListener(
-      "transcript",
-      (event: TalkModeTranscriptEvent) => {
-        const typedEvent = event as TalkModeTranscriptEvent & {
-          mode?: unknown;
-          speaker?: VoiceSpeakerMetadata;
-          turn?: Partial<VoiceTurn>;
-          source?: string;
-          confidence?: number;
-          metadata?: Record<string, unknown>;
-        };
-        applyTranscriptUpdate(event.transcript ?? "", event.isFinal === true, {
-          mode: normalizeActiveVoiceSessionMode(typedEvent.mode) ?? undefined,
-          speaker: typedEvent.speaker,
-          source: typedEvent.source,
-          confidence: typedEvent.confidence,
-          turn: typedEvent.turn,
-          metadata: typedEvent.metadata,
-        });
-      },
-    );
-    const errorHandle = await talkMode.addListener(
-      "error",
-      (event: TalkModeErrorEvent) => {
-        if (
-          sttBackendRef.current === "talkmode" ||
-          event.code === "not-allowed" ||
-          event.code === "service-not-allowed"
-        ) {
-          resetListeningState();
+      const transcriptHandle = await talkMode.addListener(
+        "transcript",
+        (event: TalkModeTranscriptEvent) => {
+          const typedEvent = event as TalkModeTranscriptEvent & {
+            mode?: unknown;
+            speaker?: VoiceSpeakerMetadata;
+            turn?: Partial<VoiceTurn>;
+            source?: string;
+            confidence?: number;
+            metadata?: Record<string, unknown>;
+          };
+          applyTranscriptUpdate(
+            event.transcript ?? "",
+            event.isFinal === true,
+            {
+              mode:
+                normalizeActiveVoiceSessionMode(typedEvent.mode) ?? undefined,
+              speaker: typedEvent.speaker,
+              source: typedEvent.source,
+              confidence: typedEvent.confidence,
+              turn: typedEvent.turn,
+              metadata: typedEvent.metadata,
+            },
+          );
+        },
+      );
+      const errorHandle = await talkMode.addListener(
+        "error",
+        (event: TalkModeErrorEvent) => {
           if (
+            sttBackendRef.current === "talkmode" ||
             event.code === "not-allowed" ||
             event.code === "service-not-allowed"
           ) {
-            setSupported(false);
+            resetListeningState();
+            if (
+              event.code === "not-allowed" ||
+              event.code === "service-not-allowed"
+            ) {
+              setSupported(false);
+            }
           }
-        }
-      },
-    );
-    const stateHandle = await talkMode.addListener(
-      "stateChange",
-      (event: TalkModeStateEvent) => {
-        if (
-          (event.state === "error" || event.state === "idle") &&
-          sttBackendRef.current === "talkmode"
-        ) {
-          resetListeningState();
-        }
-      },
-    );
-    talkModeHandlesRef.current = [transcriptHandle, errorHandle, stateHandle];
+        },
+      );
+      const stateHandle = await talkMode.addListener(
+        "stateChange",
+        (event: TalkModeStateEvent) => {
+          if (
+            (event.state === "error" || event.state === "idle") &&
+            sttBackendRef.current === "talkmode"
+          ) {
+            resetListeningState();
+          }
+        },
+      );
+      talkModeHandlesRef.current = [transcriptHandle, errorHandle, stateHandle];
+    })();
+    // Stored synchronously (before the first await inside the registration
+    // yields) so a concurrent caller reuses this pass instead of re-adding.
+    talkModeListenersRegistrationRef.current = registration;
+    try {
+      await registration;
+    } finally {
+      talkModeListenersRegistrationRef.current = null;
+    }
   }, [applyTranscriptUpdate, resetListeningState]);
 
   const transcribeLocalInferenceAudio = useCallback(
