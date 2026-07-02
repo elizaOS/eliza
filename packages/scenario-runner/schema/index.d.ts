@@ -95,6 +95,8 @@ export type CapturedArtifact = {
 export type ScenarioContext = {
   runtime?: unknown;
   apiBaseUrl?: string;
+  scenarioId?: string;
+  runId?: string;
   now?: string;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
@@ -291,6 +293,13 @@ export type ScenarioFinalCheck =
       actionName: StringMatcher;
       includesAny?: Array<string | RegExp>;
       includesAll?: Array<string | RegExp>;
+    })
+  | (CheckBase<"modelCallOccurred"> & {
+      purpose?: StringMatcher;
+      includesAny?: Array<string | RegExp>;
+      includesAll?: Array<string | RegExp>;
+      minCount?: number;
+      scenarioId?: string;
     })
   | (CheckBase<"clarificationRequested"> & {
       expected?: boolean;
