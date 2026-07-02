@@ -42,6 +42,7 @@ import {
   appAnalytics,
   appDeploymentStatusEnum,
   appRequests,
+  appReviewStatusEnum,
   apps,
   appUsers,
   userDatabaseStatusEnum,
@@ -116,6 +117,7 @@ beforeAll(async () => {
       appDomains,
       appConfig,
       appDeploymentStatusEnum,
+      appReviewStatusEnum,
       userDatabaseStatusEnum,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
@@ -376,7 +378,7 @@ describe("App-auth attribution grants", () => {
     expect(after?.user_agent).toBe("test-agent");
   });
 
-  test("X-App-Id attribution requires same org or an OAuth app-auth grant", async () => {
+  test("monetized X-App-Id inference attribution is public to authenticated callers", async () => {
     if (!pgliteReady) return;
     const appOrg = await seedOrg();
     const callerOrg = await seedOrg();
@@ -389,6 +391,12 @@ describe("App-auth attribution grants", () => {
       created_by_user_id: appOwner,
       monetization_enabled: true,
     });
+    const nonMonetizedApp = await createApp({
+      name: "Internal App",
+      organization_id: appOrg,
+      created_by_user_id: appOwner,
+      monetization_enabled: false,
+    });
 
     const sameOrg = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
       id: sameOrgUser,
@@ -396,11 +404,11 @@ describe("App-auth attribution grants", () => {
     });
     expect(sameOrg?.id).toBe(app.id);
 
-    const crossOrgBefore = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
+    const crossOrg = await appsService.getAuthorizedMonetizedAppForUser(app.id, {
       id: caller,
       organization_id: callerOrg,
     });
-    expect(crossOrgBefore).toBeUndefined();
+    expect(crossOrg?.id).toBe(app.id);
 
     await appsRepository.trackAppUserActivity(app.id, caller, "0.01", {
       route: "messages",
@@ -409,7 +417,7 @@ describe("App-auth attribution grants", () => {
       id: caller,
       organization_id: callerOrg,
     });
-    expect(analyticsOnly).toBeUndefined();
+    expect(analyticsOnly?.id).toBe(app.id);
 
     await appsRepository.connectUser({
       appId: app.id,
@@ -421,6 +429,12 @@ describe("App-auth attribution grants", () => {
       organization_id: callerOrg,
     });
     expect(oauthGranted?.id).toBe(app.id);
+
+    const nonMonetized = await appsService.getAuthorizedMonetizedAppForUser(nonMonetizedApp.id, {
+      id: caller,
+      organization_id: callerOrg,
+    });
+    expect(nonMonetized).toBeUndefined();
   });
 });
 

@@ -100,17 +100,20 @@ mock.module("@/lib/services/credits", () => ({
   },
 }));
 
+const reserveInferenceCredits = mock();
 mock.module("@/lib/services/app-credits", () => ({
   appCreditsService: {
     calculateCostWithMarkup: async () => ({ totalCost: 0.002 }),
     checkBalance: async () => ({ sufficient: true }),
+    reserveInferenceCredits,
     recordUsage: async () => undefined,
   },
 }));
 
+const getAuthorizedMonetizedAppForUser = mock();
 mock.module("@/lib/services/apps", () => ({
   appsService: {
-    getAuthorizedMonetizedAppForUser: async () => null,
+    getAuthorizedMonetizedAppForUser,
     getById: async () => null,
   },
 }));
@@ -154,6 +157,8 @@ beforeEach(() => {
   billUsage.mockReset();
   estimateInputTokens.mockReset();
   recordUsageAnalytics.mockReset();
+  reserveInferenceCredits.mockReset();
+  getAuthorizedMonetizedAppForUser.mockReset();
   createCreditReservationSettler.mockReset();
   generateText.mockReset();
 
@@ -169,8 +174,13 @@ beforeEach(() => {
   validateApiKey.mockResolvedValue({ id: API_KEY_ID });
   shouldBlockUser.mockResolvedValue(false);
   estimateInputTokens.mockReturnValue(8);
+  getAuthorizedMonetizedAppForUser.mockResolvedValue(null);
   reserveCredits.mockResolvedValue({
     reservedAmount: 0.01,
+    reconcile: async () => null,
+  });
+  reserveInferenceCredits.mockResolvedValue({
+    reservedAmount: 0.02,
     reconcile: async () => null,
   });
   createCreditReservationSettler.mockReturnValue(async () => null);
@@ -179,12 +189,13 @@ beforeEach(() => {
   });
 });
 
-function postMessages() {
+function postMessages(extraHeaders: Record<string, string> = {}) {
   return messagesRoute.request("/", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-api-key": "eliza_test_key",
+      ...extraHeaders,
     },
     body: JSON.stringify({
       model: "claude-3-5-sonnet-20241022",
@@ -233,5 +244,63 @@ describe("/v1/messages IAC fast path", () => {
     expect(shouldBlockUser).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
+  });
+
+  test("monetized X-App-Id messages use app-credit reservation with creator markup", async () => {
+    const appReservation = {
+      reservedAmount: 0.02,
+      reconcile: async () => null,
+    };
+    const settleAppReservation = mock(async () => null);
+    getAuthorizedMonetizedAppForUser.mockResolvedValueOnce({
+      id: "00000000-0000-4000-8000-0000000000dd",
+      monetization_enabled: true,
+      inference_markup_percentage: "100",
+    });
+    reserveInferenceCredits.mockResolvedValueOnce(appReservation);
+    createCreditReservationSettler.mockReturnValueOnce(settleAppReservation);
+    generateText.mockResolvedValueOnce({
+      text: "hello",
+      usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
+      finishReason: "stop",
+    });
+    billUsage.mockResolvedValueOnce({
+      inputCost: 0.001,
+      outputCost: 0.001,
+      totalCost: 0.002,
+      baseInputCost: 0.0008,
+      baseOutputCost: 0.0008,
+      baseTotalCost: 0.0016,
+      platformMarkup: 0.0004,
+      inputTokens: 5,
+      outputTokens: 2,
+      totalTokens: 7,
+      markupApplied: true,
+    });
+
+    const response = await postMessages({
+      "X-App-Id": "00000000-0000-4000-8000-0000000000dd",
+    });
+
+    expect(response.status).toBe(200);
+    expect(getAuthorizedMonetizedAppForUser).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-0000000000dd",
+      { id: USER, organization_id: ORG },
+    );
+    expect(reserveInferenceCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "00000000-0000-4000-8000-0000000000dd",
+        userId: USER,
+        estimatedBaseCost: 0.002,
+        description: "Messages API: anthropic/claude-3-5-sonnet-20241022",
+        app: expect.objectContaining({
+          id: "00000000-0000-4000-8000-0000000000dd",
+        }),
+      }),
+    );
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(createCreditReservationSettler).toHaveBeenCalledWith(appReservation);
+    expect(settleAppReservation).toHaveBeenCalledWith(0.002);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
   });
 });
