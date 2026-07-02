@@ -351,6 +351,29 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     expect((error as Error).message).toBe("ACP request timed out: initialize");
   });
 
+  it("includes captured stderr in startup close errors", async () => {
+    const p = queueProc();
+    const client = new NativeAcpClient({
+      command: "codex-acp",
+      cwd: "/tmp/native-acp",
+      approvalPreset: "autonomous",
+    });
+
+    const started = client.start();
+    await waitForWrites(p, 1);
+    p.stderr.emit(
+      "data",
+      Buffer.from(
+        "permission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock\n",
+      ),
+    );
+    closeProc(p, 101);
+
+    await expect(started).rejects.toThrow(
+      /ACP agent exited with code 101: .*--use-legacy-landlock/,
+    );
+  });
+
   it("returns method-not-found for unsupported client request methods", async () => {
     const { p } = await startClient();
 
