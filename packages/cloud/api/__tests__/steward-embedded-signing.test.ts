@@ -237,4 +237,23 @@ describe("embeddedStewardHandler signing", () => {
     expect(json.ok).toBe(true);
     expect(captured!.calls).toHaveLength(0);
   });
+
+  it("maps upstream transport failures to steward_upstream_unavailable", async () => {
+    captured?.restore();
+    globalThis.fetch = (async () => {
+      throw new Error("upstream timed out");
+    }) as unknown as typeof globalThis.fetch;
+
+    const app = makeApp();
+    const res = await app.request("/steward/auth/email/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(502);
+    const json = (await res.json()) as { code?: string; error?: string };
+    expect(json.code).toBe("steward_upstream_unavailable");
+    expect(json.error).toBe("steward_upstream_unavailable");
+  });
 });

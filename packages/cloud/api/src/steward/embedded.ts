@@ -1,4 +1,6 @@
 import type { MiddlewareHandler } from "hono";
+import { STEWARD_AUTH_UPSTREAM_TIMEOUT_MS } from "@/lib/auth/steward-client";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -263,6 +265,11 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     body: bodyBytes,
     // Don't forward cf-specific properties that confuse fetch on cross-zone calls.
     redirect: "manual",
+    // This proxy carries the magic-link send/verify legs, which Steward has
+    // been observed serving in up to 15s — bound it above that instead of
+    // leaving it unbounded (the one upstream fetch the DoS-timeout sweep
+    // missed).
+    signal: AbortSignal.timeout(STEWARD_AUTH_UPSTREAM_TIMEOUT_MS),
   };
   const headers = init.headers as Headers;
   headers.set("x-forwarded-host", url.host);
@@ -306,7 +313,24 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     headers.set("x-steward-signature", `v1=${signature}`);
   }
 
-  const response = await fetch(upstreamUrl.toString(), init);
+  let response: Response;
+  try {
+    response = await fetch(upstreamUrl.toString(), init);
+  } catch (error) {
+    logger.error("[embedded-steward] upstream transport failure", {
+      message: error instanceof Error ? error.message : String(error),
+      path: url.pathname,
+    });
+    return c.json(
+      {
+        success: false,
+        error: "steward_upstream_unavailable",
+        code: "steward_upstream_unavailable",
+        message: "Steward upstream unavailable",
+      },
+      502,
+    );
+  }
   if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
     return patchProvidersResponse(response, c.env);
   }

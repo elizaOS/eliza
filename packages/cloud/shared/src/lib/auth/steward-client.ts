@@ -24,6 +24,18 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 
 /**
+ * Timeout for LOGIN-PATH calls to the Steward upstream: the OAuth code
+ * exchange (nonce-exchange), the refresh rotation, and the `/steward/*`
+ * proxy the magic-link send/verify ride. Steward's Railway service has been
+ * observed taking 10-15s server-side on these endpoints; a 10s abort turned
+ * slow-but-SUCCESSFUL logins into 502 steward_upstream_unavailable. 25s sits
+ * above the observed worst case while still bounding the Worker invocation.
+ * Read-side helpers (services/steward-client.ts) keep their short timeouts on
+ * purpose — they degrade to null instead of failing the user's request.
+ */
+export const STEWARD_AUTH_UPSTREAM_TIMEOUT_MS = 25_000;
+
+/**
  * Claims extracted from a verified Steward JWT.
  * Maps to the fields Steward encodes in its session tokens.
  */
