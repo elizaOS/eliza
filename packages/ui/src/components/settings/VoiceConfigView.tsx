@@ -488,7 +488,9 @@ function ModelSizeButton({
   );
 }
 
-function WakeWordSection({
+// Exported for tests (VoiceConfigView.audio-level-listener.test.tsx); only
+// VoiceConfigView renders it in production.
+export function WakeWordSection({
   serverConfig,
 }: {
   serverConfig?: Partial<SwabbleConfig> | null;
@@ -543,9 +545,10 @@ function WakeWordSection({
 
   useEffect(() => {
     let handle: { remove: () => Promise<void> } | null = null;
+    let cancelled = false;
     void (async () => {
       try {
-        handle = await getSwabblePlugin().addListener(
+        const h = await getSwabblePlugin().addListener(
           "audioLevel",
           (evt: { level: number }) => {
             // Write the meter directly to the DOM to avoid a React re-render of
@@ -557,11 +560,20 @@ function WakeWordSection({
             }
           },
         );
+        // The effect may have been cleaned up while addListener was still in
+        // flight — the cleanup saw `handle === null`, so remove the native
+        // listener here or it leaks (same pattern as useWakeController).
+        if (cancelled) {
+          void h.remove();
+          return;
+        }
+        handle = h;
       } catch {
         // Not available
       }
     })();
     return () => {
+      cancelled = true;
       if (handle) void handle.remove();
     };
   }, []);

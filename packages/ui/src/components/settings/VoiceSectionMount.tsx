@@ -100,7 +100,15 @@ export function VoiceSectionMount(): React.ReactElement {
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const config = await client.getConfig();
+      let config: Record<string, unknown> = {};
+      try {
+        config = await client.getConfig();
+      } catch {
+        // Config fetch failed (offline / server error) — fall back to the
+        // defaults readStoredVoicePrefs derives from an empty config so the
+        // localStorage mirrors below are still seeded (an unhandled rejection
+        // here would leave the capture hot path with no value at all).
+      }
       if (cancelled) return;
       const loaded = readStoredVoicePrefs(config);
       setPrefs(loaded);
@@ -120,10 +128,15 @@ export function VoiceSectionMount(): React.ReactElement {
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const result = await client.getLocalInferenceDeviceTier();
-      if (cancelled) return;
-      setTier(result.tier);
-      setTierSummary(result.reason);
+      try {
+        const result = await client.getLocalInferenceDeviceTier();
+        if (cancelled) return;
+        setTier(result.tier);
+        setTierSummary(result.reason);
+      } catch {
+        // Tier probe failed — keep the null-tier default (VoiceSection renders
+        // without the tier banner) instead of surfacing an unhandled rejection.
+      }
     })();
     return () => {
       cancelled = true;
