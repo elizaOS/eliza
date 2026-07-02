@@ -29,9 +29,10 @@ export interface LauncherProps {
   /**
    * Curated pages as ordered id lists (already deduped + visibility-filtered by
    * `curateLauncherPages`). Normally a single page; each group renders as its
-   * own page and never merges into the next.
+   * own page and never merges into the next. Omitted → one page of every entry
+   * (the standalone/story default).
    */
-  pageGroups: string[][];
+  pageGroups?: string[][];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   /** Right-swipe back to the home dashboard. */
@@ -153,13 +154,19 @@ export function Launcher({
   );
 
   // Each curated group is one page; drop ids with no live entry, drop empty
-  // pages. Never chunk — the launcher is a single scrolling page of views.
+  // pages. Never chunk — the launcher is a single scrolling page of views. When
+  // no groups are supplied (standalone / stories), default to one page of every
+  // entry in catalog order.
+  const groups = useMemo(
+    () => pageGroups ?? [entries.map((e) => e.id)],
+    [pageGroups, entries],
+  );
   const pages = useMemo(() => {
-    const filtered = pageGroups
+    const filtered = groups
       .map((group) => group.filter((id) => byId.has(id)))
       .filter((group) => group.length > 0);
     return filtered.length > 0 ? filtered : [[]];
-  }, [pageGroups, byId]);
+  }, [groups, byId]);
 
   // Keep the LOCAL active page index in range when the page count shrinks.
   useEffect(() => {
