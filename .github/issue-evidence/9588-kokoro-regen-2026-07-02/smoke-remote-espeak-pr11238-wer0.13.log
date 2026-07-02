@@ -41,7 +41,7 @@ llama_model_loader: - type  f32:  113 tensors
 llama_model_loader: - type q8_0:  198 tensors
 print_info: file format = GGUF V3 (latest)
 print_info: file type   = Q8_0
-print_info: file size   = 761.80 MiB (8.50 BPW) 
+print_info: file size   = 761.80 MiB (8.50 BPW)
 init_tokenizer: initializing tokenizer for type 2
 load: 0 unused tokens
 load: control token: 151697 '<blank21>' is not marked as EOG
@@ -576,8 +576,8 @@ sched_reserve:        CPU compute buffer size =   302.75 MiB
 sched_reserve: graph nodes  = 987
 sched_reserve: graph splits = 1
 sched_reserve: reserve took 55.96 ms, sched copies = 1
-clip_model_loader: model name:   
-clip_model_loader: description:  
+clip_model_loader: model name:
+clip_model_loader: description:
 clip_model_loader: GGUF version: 3
 clip_model_loader: alignment:    32
 clip_model_loader: n_tensors:    302
