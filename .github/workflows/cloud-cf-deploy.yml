@@ -124,7 +124,11 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          # Pinned off `canary` like every other job in this workflow (#10839):
+          # the deploy-critical path does not gamble on canary regressions even
+          # on GitHub-hosted runners (the link-phase hang stranded two prod
+          # deploys this week).
+          bun-version: "latest"
 
       - name: Install dependencies
         run: |
