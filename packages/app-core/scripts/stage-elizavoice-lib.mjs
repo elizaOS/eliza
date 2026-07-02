@@ -344,6 +344,17 @@ if (variant === "cpu") {
   }
 }
 
+// Gate the BUILT artifacts before anything touches the shipping jniLibs dir:
+// running the Mali check only after staging (as before) left the rejected
+// libggml-vulkan.so already copied over a previously-good set on a red run,
+// where a later gradle build that skips this script would package it.
+if (variant === "vulkan") {
+  assertVulkanMaliMitigation({
+    lib: path.join(binDir, "libelizainference.so"),
+    target: `android-${abi}-vulkan`,
+  });
+}
+
 const staged = [];
 for (const name of toStage) {
   const src = path.join(binDir, name);
