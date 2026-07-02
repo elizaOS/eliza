@@ -430,7 +430,15 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     expect(result?.adjustmentType).toBe("overage");
     expect(addEarnings).toHaveBeenCalledTimes(2);
     expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-3:inference_markup:deduct");
-    expect(addEarnings.mock.calls[1][0].sourceId).toBe("req-3:inference_markup:reconcile_charge");
+    // #11683: the reconcile legs key on the SERVER-generated reservation
+    // deduct-transaction id, not the request key — the route's late settle and
+    // the stale-reservation sweep run in different request contexts, and only
+    // a reservation-derived key lets their earnings movements cross-dedupe.
+    // Still distinct from the deduct leg's key, so the estimate credit and the
+    // overage top-up never collide (#10847).
+    expect(addEarnings.mock.calls[1][0].sourceId).toBe(
+      "reconcile:tx-2:inference_markup:reconcile_charge",
+    );
   });
 });
 

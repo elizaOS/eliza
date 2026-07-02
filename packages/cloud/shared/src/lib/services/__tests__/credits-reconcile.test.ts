@@ -921,7 +921,17 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
-    "sweep covers marker-aware app-chat holds and refunds only the stale buffer",
+    // #11683: app-chat holds must settle through appCreditsService.reconcileCredits
+    // (the lane the route's late settle uses, keyed `reconcile-refund:<holdId>`),
+    // NEVER the generic lane below (keyed `recon:<holdId>:refund`) — the disjoint
+    // keys let a swept-but-still-in-flight hold be refunded twice, and the
+    // generic base-only math over-refunded the markup. This minimal fixture has
+    // no users/apps rows for the app-credits lane to resolve, so the sweep must
+    // leave the hold untouched (skipped, retried next sweep) rather than settle
+    // it generically. The full app-credits-lane sweep proof (markup math,
+    // cross-writer dedup with the real settle lane) lives in
+    // app-chat-sweep-double-refund.test.ts.
+    "sweep never settles app-chat holds through the generic lane",
     async () => {
       if (!pgliteReady) return;
       await seedOrg("8.5");
@@ -933,45 +943,31 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       });
 
       expect(stats.scanned).toBe(1);
-      expect(stats.settled).toBe(1);
-      expect(stats.refunds).toBe(1);
-      expect(await getBalance()).toBeCloseTo(9, 6);
-      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
-      expect(await settlementRowsForReservation(reservationId)).toEqual([
-        {
-          amount: "0.500000",
-          type: "refund",
-          stripe_payment_intent_id: `recon:${reservationId}:refund`,
-        },
-      ]);
-
-      const late = await creditsService.reconcile({
-        organizationId: ORG_ID,
-        reservedAmount: 1.5,
-        actualCost: 0,
-        description: "late app-chat refund after sweep",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
-      });
-
-      expect(late.adjustmentType).toBe("none");
-      expect(await getBalance()).toBeCloseTo(9, 6);
-      expect(await countByType("refund")).toBe(1);
+      expect(stats.settled).toBe(0);
+      expect(stats.refunds).toBe(0);
+      expect(stats.skipped).toBe(1);
+      // No generically-keyed money row, no settle claim, balance untouched.
+      expect(await getBalance()).toBeCloseTo(8.5, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeNull();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+      expect(await countByType("refund")).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "sweep settles monetized app-chat holds markup-inclusively — exactly one refund, org nets the marked-up estimate",
+    "sweep does not settle monetized app-chat holds through the generic lane",
     async () => {
       if (!pgliteReady) return;
       // Production monetized shape (#11592): base estimate $1.00, 1.5x buffer
       // -> reserved base $1.50, 20% creator markup -> $1.80 org hold
-      // (`computeInferenceCharge`), creator earnings recorded at deduct time.
-      // The sweep must settle the org to $1.20 (estimate + markup, what a
-      // normal settle at the estimate charges), i.e. refund $0.60 — NOT to
-      // the bare $1.00 base estimate: refunding $0.80 would hand the markup
-      // on the estimate back to the org while the creator keeps the earnings,
-      // so the platform would eat the whole markup.
+      // (`computeInferenceCharge`), creator earnings recorded at deduct time;
+      // #11683 requires the sweep to use the app-credits settle lane, not the
+      // generic `recon:<holdId>:refund` lane. This synthetic fixture does not
+      // create the users/apps tables that appCreditsService needs, so the safe
+      // behavior is to skip and retry later, leaving the hold open. The real
+      // app-credits-lane proof for markup math and late-settle dedup lives in
+      // app-chat-sweep-double-refund.test.ts.
       await seedOrg("8.2"); // org had 10, paid the 1.8 hold
       const reservationId = await insertAppChatReservation(1.8, 25 * 60 * 1000, {
         estimated_cost: 1.0,
@@ -988,44 +984,19 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       });
 
       expect(stats.scanned).toBe(1);
-      expect(stats.settled).toBe(1);
-      expect(stats.refunds).toBe(1);
-      expect(await getBalance()).toBeCloseTo(8.8, 6);
-      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
-      expect(await settlementRowsForReservation(reservationId)).toEqual([
-        {
-          amount: "0.600000",
-          type: "refund",
-          stripe_payment_intent_id: `recon:${reservationId}:refund`,
-        },
-      ]);
-
-      // Idempotent: a re-sweep skips the settled hold entirely, and a late
-      // full-refund settle after the sweep is a no-op — exactly one refund.
-      const again = await creditsService.sweepStaleReservations({
-        graceMs: 20 * 60 * 1000,
-        batchSize: 10,
-      });
-      expect(again.scanned).toBe(0);
-      expect(again.settled).toBe(0);
-
-      const late = await creditsService.reconcile({
-        organizationId: ORG_ID,
-        reservedAmount: 1.8,
-        actualCost: 0,
-        description: "late app-chat refund after sweep",
-        metadata: { user_id: USER_ID, reservation_transaction_id: reservationId },
-      });
-
-      expect(late.adjustmentType).toBe("none");
-      expect(await getBalance()).toBeCloseTo(8.8, 6);
-      expect(await countByType("refund")).toBe(1);
+      expect(stats.settled).toBe(0);
+      expect(stats.skipped).toBe(1);
+      expect(stats.refunds).toBe(0);
+      expect(await getBalance()).toBeCloseTo(8.2, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeNull();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+      expect(await countByType("refund")).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "sweep settles an app-chat hold without a usable base pair exact-cost instead of guessing",
+    "sweep skips an app-chat hold without a usable base pair instead of guessing",
     async () => {
       if (!pgliteReady) return;
       await seedOrg("8.2");
@@ -1040,11 +1011,12 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
       });
 
       expect(stats.scanned).toBe(1);
-      expect(stats.settled).toBe(1);
-      expect(stats.noops).toBe(1);
+      expect(stats.settled).toBe(0);
+      expect(stats.skipped).toBe(1);
+      expect(stats.noops).toBe(0);
       expect(stats.refunds).toBe(0);
       expect(await getBalance()).toBeCloseTo(8.2, 6);
-      expect(await getReservationSettledAt(reservationId)).toBeTruthy();
+      expect(await getReservationSettledAt(reservationId)).toBeNull();
       expect(await settlementRowsForReservation(reservationId)).toEqual([]);
     },
     PGLITE_TIMEOUT,

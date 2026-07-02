@@ -746,6 +746,23 @@ export class AppCreditsService {
     // NEVER fall back to a client-supplied value.
     const chargeKey = reservationTransactionId || null;
 
+    // #11683: the creator-earnings legs below must dedupe across ALL writers
+    // that can settle the SAME reservation — the route's late settle and the
+    // stale-reservation sweep run in different request contexts, so the ALS
+    // request key (and any client-echoed metadata.idempotencyKey) differs
+    // between them and the reversal/top-up would double-apply even though the
+    // org-credit leg deduped on `reconcile-refund:<id>`/`reconcile-charge:<id>`.
+    // Key the earnings legs on the same server-generated reservation deduct
+    // transaction id (threaded as metadata.idempotencyKey, which
+    // recordCreatorEarnings/reverseCreatorEarnings prefer over the ALS key);
+    // the movement leg still disambiguates reconcile_refund vs
+    // reconcile_charge. Unkeyed callers keep the prior request-scoped dedup.
+    const earningsLegMetadata = (extra: Record<string, unknown>): Record<string, unknown> => ({
+      ...extra,
+      ...settlementMetadata,
+      ...(chargeKey && { idempotencyKey: `reconcile:${chargeKey}` }),
+    });
+
     const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
     // Resolve the user's organization once — every branch below charges or
@@ -855,14 +872,13 @@ export class AppCreditsService {
             userId,
             creatorEarningsReduction,
             "reconcile_refund",
-            {
+            earningsLegMetadata({
               type: "reconciliation_refund",
               baseCostDifference,
               estimatedBaseCost,
               actualBaseCost,
               description,
-              ...settlementMetadata,
-            },
+            }),
           );
         } catch (reversalError) {
           logger.error(
@@ -1000,12 +1016,11 @@ export class AppCreditsService {
           "inference_markup",
           creatorMarkupDifference,
           "reconcile_charge",
-          {
+          earningsLegMetadata({
             type: "reconciliation_adjustment",
             baseCostDifference,
             description,
-            ...settlementMetadata,
-          },
+          }),
           app,
         );
 

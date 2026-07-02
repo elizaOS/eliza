@@ -48,9 +48,14 @@ interface UpstreamErrorBody {
  */
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 
-const DEFAULT_MAX_RETRIES = 3;
+/**
+ * Exported (with {@link PROVIDER_MAX_BACKOFF_DELAY_MS}) so the stale-reservation
+ * sweep can derive its grace window from the real worst-case in-flight time of
+ * this retry ladder instead of hardcoding a number that drifts (#11683).
+ */
+export const PROVIDER_DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 400;
-const MAX_BACKOFF_DELAY_MS = 8_000;
+export const PROVIDER_MAX_BACKOFF_DELAY_MS = 8_000;
 
 export interface ProviderRetryOptions {
   /** Max RETRY attempts after the first try (so total tries = maxRetries + 1). */
@@ -82,14 +87,14 @@ function computeBackoffMs(attempt: number, baseDelayMs: number, retryAfter: stri
   if (retryAfter) {
     const asNumber = Number(retryAfter);
     if (Number.isFinite(asNumber) && asNumber >= 0) {
-      return Math.min(asNumber * 1000, MAX_BACKOFF_DELAY_MS);
+      return Math.min(asNumber * 1000, PROVIDER_MAX_BACKOFF_DELAY_MS);
     }
     const asDate = Date.parse(retryAfter);
     if (!Number.isNaN(asDate)) {
-      return Math.min(Math.max(asDate - Date.now(), 0), MAX_BACKOFF_DELAY_MS);
+      return Math.min(Math.max(asDate - Date.now(), 0), PROVIDER_MAX_BACKOFF_DELAY_MS);
     }
   }
-  const exp = Math.min(baseDelayMs * 2 ** attempt, MAX_BACKOFF_DELAY_MS);
+  const exp = Math.min(baseDelayMs * 2 ** attempt, PROVIDER_MAX_BACKOFF_DELAY_MS);
   // Full jitter so concurrent callers don't synchronize their retries.
   return Math.floor(Math.random() * exp);
 }
@@ -112,7 +117,9 @@ export async function providerFetchWithTimeout(
   label: ProviderLabel,
   retry?: ProviderRetryOptions,
 ): Promise<Response> {
-  const maxRetries = isReplayable(options) ? (retry?.maxRetries ?? DEFAULT_MAX_RETRIES) : 0;
+  const maxRetries = isReplayable(options)
+    ? (retry?.maxRetries ?? PROVIDER_DEFAULT_MAX_RETRIES)
+    : 0;
   const baseDelayMs = retry?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
   const callerSignal = options.signal ?? null;
 

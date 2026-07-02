@@ -17,7 +17,9 @@ import { CacheInvalidation } from "../cache/invalidation";
 import { invalidateOrganizationCache } from "../cache/organizations-cache";
 import { canSendLowCreditsEmail, markLowCreditsEmailSent } from "../email/utils/rate-limiter";
 import { calculateCost, getProviderFromModel } from "../pricing";
+import { PROVIDER_DEFAULT_MAX_RETRIES, PROVIDER_MAX_BACKOFF_DELAY_MS } from "../providers/_http";
 import { logger } from "../utils/logger";
+import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { emailService } from "./email";
 import { organizationsService } from "./organizations";
@@ -42,6 +44,29 @@ export const RESERVATION_SETTLEMENT_MARKER = "credit_reservation_v1";
 export const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
 /** Default estimated output tokens when not specified */
 export const DEFAULT_OUTPUT_TOKENS = 500;
+
+/**
+ * Grace window for the stale-reservation sweep, derived from the WORST-CASE
+ * legitimately-in-flight metered request (#11683). The provider HTTP layer
+ * retries each call up to PROVIDER_DEFAULT_MAX_RETRIES times (tries = retries
+ * + 1), each try holding a fresh per-attempt timeout of up to
+ * getRouteTimeoutMs(800) — 800s being the largest metered route budget
+ * (`v1/apps/[id]/chat` ROUTE_MAX_DURATION) — with capped backoff between
+ * tries, and `withProviderFallback` can run that whole ladder once per
+ * provider (primary + fallback). The prior fixed 20-minute grace sat INSIDE
+ * that window, so the sweep refunded holds whose settle was still coming and
+ * the settle lane then refunded again under its own idempotency key. A truly
+ * stranded hold now waits ~2h for its backstop refund — the safe trade
+ * (correctness > refund latency).
+ */
+const SWEEP_MAX_ROUTE_DURATION_SECONDS = 800;
+const SWEEP_PROVIDERS_PER_REQUEST = 2;
+const SWEEP_SETTLE_MARGIN_MS = 20 * 60 * 1000;
+export const RESERVATION_SWEEP_GRACE_MS =
+  SWEEP_PROVIDERS_PER_REQUEST *
+    ((PROVIDER_DEFAULT_MAX_RETRIES + 1) * getRouteTimeoutMs(SWEEP_MAX_ROUTE_DURATION_SECONDS) +
+      PROVIDER_DEFAULT_MAX_RETRIES * PROVIDER_MAX_BACKOFF_DELAY_MS) +
+  SWEEP_SETTLE_MARGIN_MS;
 
 // ============================================================================
 // Types
@@ -202,38 +227,18 @@ function metadataNumber(value: unknown): number | null {
 }
 
 /**
- * Org-charge a stale hold settles to during the stranded-reservation sweep
- * (#11592).
- *
- * Generic reservation rows (`credit_reservation_v1`) store `estimated_cost`
- * in ORG-CHARGE units — the same unit as the row amount — so the sweep
- * settles to it directly (missing estimate ⇒ exact-cost, no refund).
- *
- * App-chat holds (`app_chat_reservation_v1`) store BASE-cost numbers
- * (`estimated_cost` = unbuffered base, `reserved_amount` = buffered base —
- * see apps/[id]/chat/route.ts), while the row amount is the ORG charge:
- * buffered base PLUS the creator markup (`computeInferenceCharge` via
- * `appCreditsService.deductCredits`). Settling the org to the bare base
- * estimate would hand the markup back to the org while the creator's
- * earnings — recorded at deduct time — stay put, so the platform would eat
- * the full creator markup on every swept monetized hold. Instead scale the
- * org charge by estimated/reserved: the org nets exactly what a normal
- * settle at the estimated cost would charge (base × (1 + markup)). Holds
- * without a usable base pair settle exact-cost, and the result is clamped
- * to the held amount so corrupt metadata can never turn the sweep into a
- * surprise overage charge.
+ * Org-charge a generic stale hold settles to during the stranded-reservation
+ * sweep. Generic reservation rows (`credit_reservation_v1`) store
+ * `estimated_cost` in ORG-CHARGE units — the same unit as the row amount — so
+ * the sweep settles to it directly (missing estimate means exact-cost, no
+ * refund). App-chat rows are routed through `sweepAppChatReservation` before
+ * this helper because their estimates are in base-cost units and must use the
+ * app-credits settle lane for markup and creator-earnings reconciliation.
  */
 function staleHoldSettleCost(reservedAmount: number, metadata: Record<string, unknown>): number {
   const estimate =
     metadataNumber(metadata.estimated_cost) ?? metadataNumber(metadata.estimatedCost);
-  if (metadata.type !== "app_chat_reservation") {
-    return estimate ?? reservedAmount;
-  }
-  const reservedBase = metadataNumber(metadata.reserved_amount);
-  if (estimate === null || reservedBase === null || reservedBase <= 0) {
-    return reservedAmount;
-  }
-  return Math.min(reservedAmount, Math.max(0, reservedAmount * (estimate / reservedBase)));
+  return estimate ?? reservedAmount;
 }
 
 function toCreditTransaction(row: CreditMutationRow): CreditTransaction {
@@ -1699,7 +1704,7 @@ export class CreditsService {
     batchSize?: number;
     maxBatches?: number;
   }): Promise<ReservationSweepStats> {
-    const graceMs = opts?.graceMs ?? 20 * 60 * 1000;
+    const graceMs = opts?.graceMs ?? RESERVATION_SWEEP_GRACE_MS;
     const batchSize = opts?.batchSize ?? 200;
     const maxBatches = opts?.maxBatches ?? 50;
     const stats: ReservationSweepStats = {
@@ -1750,12 +1755,33 @@ export class CreditsService {
       for (const row of rows) {
         const reservedAmount = Math.abs(parseNumeric(row.amount, "reservation_amount"));
         const reservationMetadata = parseMetadata(row.metadata);
-        const actualCost = staleHoldSettleCost(reservedAmount, reservationMetadata);
         const description = (row.description ?? "Credit reservation").replace(
           /\s+\(reserved\)$/,
           "",
         );
         try {
+          // App-chat holds must settle through the app-credits lane — the SAME
+          // lane the route's late settle uses — never the generic reconcile
+          // below (#11683): the generic lane keys its refund on
+          // `recon:<holdId>:refund` while the route settles under
+          // `reconcile-refund:<holdId>` (#11512), so the two writers never
+          // cross-deduped and a swept-but-still-in-flight hold was refunded
+          // TWICE (minted, cashable credit). The hold amount is also the
+          // markup-INCLUSIVE totalCost with the creator's earnings committed
+          // at deduct time — settling it against the base-only estimated_cost
+          // over-refunded the markup and left unbacked redeemable earnings.
+          if (
+            reservationMetadata.type === "app_chat_reservation" &&
+            reservationMetadata.settlement_marker === APP_CHAT_RESERVATION_SETTLEMENT_MARKER
+          ) {
+            await this.sweepAppChatReservation(
+              { id: row.id, description },
+              reservationMetadata,
+              stats,
+            );
+            continue;
+          }
+          const actualCost = staleHoldSettleCost(reservedAmount, reservationMetadata);
           const settlement = await this.reconcileReservationTransaction({
             organizationId: row.organization_id,
             reservationTransactionId: row.id,
@@ -1810,6 +1836,93 @@ export class CreditsService {
       logger.warn("[Credits] Swept stale credit reservations", stats);
     }
     return stats;
+  }
+
+  /**
+   * Settle one stale APP-CHAT hold (`app_chat_reservation_v1`) through
+   * `appCreditsService.reconcileCredits` (#11683). Assumes actual == the
+   * base-cost estimate the route recorded (same semantic as the generic lane),
+   * but reconciles in base-cost space so the markup math and the creator
+   * earnings reversal are correct, and keys the refund on
+   * `reconcile-refund:<holdId>` — the same key the route's late settle uses —
+   * so whichever writer runs second is a no-op.
+   */
+  private async sweepAppChatReservation(
+    row: { id: string; description: string },
+    reservationMetadata: Record<string, unknown>,
+    stats: ReservationSweepStats,
+  ): Promise<void> {
+    const appId = typeof reservationMetadata.appId === "string" ? reservationMetadata.appId : null;
+    const userId =
+      typeof reservationMetadata.userId === "string" ? reservationMetadata.userId : null;
+    // What was actually debited, in BASE-cost space (the route's buffered base
+    // estimate). `reserved_amount`/`baseCost` are both written by the app-chat
+    // deduct; the hold row's `amount` is markup-inclusive and must NOT be used
+    // as a base cost.
+    const reservedBaseCost =
+      metadataNumber(reservationMetadata.reserved_amount) ??
+      metadataNumber(reservationMetadata.baseCost);
+    if (!appId || !userId || reservedBaseCost === null) {
+      stats.skipped++;
+      logger.error("[Credits] Stale app-chat reservation is missing reconcile inputs — skipping", {
+        reservationTransactionId: row.id,
+        hasAppId: appId !== null,
+        hasUserId: userId !== null,
+        hasReservedBaseCost: reservedBaseCost !== null,
+      });
+      return;
+    }
+    const assumedActualBaseCost =
+      metadataNumber(reservationMetadata.estimated_cost) ??
+      metadataNumber(reservationMetadata.estimatedCost) ??
+      reservedBaseCost;
+
+    // Lazy import: app-credits statically imports this module, so a static
+    // import here would create a module cycle.
+    const { appCreditsService } = await import("./app-credits");
+    const result = await appCreditsService.reconcileCredits({
+      appId,
+      userId,
+      estimatedBaseCost: reservedBaseCost,
+      actualBaseCost: assumedActualBaseCost,
+      description: row.description,
+      metadata: { settlement_source: "stale_reservation_sweep" },
+      reservationTransactionId: row.id,
+    });
+
+    if (result.action === "refund" && result.reconciled) {
+      stats.settled++;
+      stats.refunds++;
+      return;
+    }
+    if (result.action === "charge") {
+      stats.settled++;
+      if (result.reconciled) {
+        stats.overages++;
+      } else {
+        stats.uncollectedOverages++;
+      }
+      return;
+    }
+    // action === "none": either a below-threshold settle (row marked settled —
+    // a noop) or reconcileCredits could not resolve the user/app and left the
+    // hold open (skipped; retried next sweep and already error-logged).
+    const settledRows = await sqlRows<{ id: string }>(
+      dbWrite,
+      sql`
+        SELECT id
+        FROM credit_transactions
+        WHERE id = ${row.id}
+          AND settled_at IS NOT NULL
+        LIMIT 1
+      `,
+    );
+    if (settledRows.length > 0) {
+      stats.settled++;
+      stats.noops++;
+    } else {
+      stats.skipped++;
+    }
   }
 
   // ============================================================================
