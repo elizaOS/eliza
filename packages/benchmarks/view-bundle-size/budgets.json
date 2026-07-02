@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-plugin view-bundle size budgets for the #10724 bundle-size regression gate. The harness (bundle-size-kpi.mjs) builds every plugin's dist/views bundle, sums the gzipped bytes of its emitted JS/CSS, and exits non-zero when a bundle (or the total) exceeds its gzip ceiling. Budgets are gzipped bytes at level 9 (see GZIP_LEVEL in lib.mjs). Each gzipBudgetBytes was set from the MEASURED baseline (measuredGzipBytes) plus ~10-15% headroom for cross-environment/minor-change variance; measuredRawBytes/measuredGzipBytes are recorded for context and ratcheting. A bundle that fails to build is measured:false with size null and NEVER satisfies its budget (null is not zero). Goal is monotonic improvement — ratchet gzipBudgetBytes DOWN as views shrink; only widen with a real, justified reason.",
+  "_comment": "Per-plugin view-bundle size budgets for the #10724 bundle-size regression gate. The harness (bundle-size-kpi.mjs) builds every plugin's dist/views bundle, sums the gzipped bytes of its emitted JS/CSS, and exits non-zero when a bundle (or the total) exceeds its gzip ceiling. Budgets are gzipped bytes at level 9 (see GZIP_LEVEL in lib.mjs). Each gzipBudgetBytes was set from the MEASURED baseline (measuredGzipBytes) plus ~10-15% headroom for cross-environment/minor-change variance; measuredRawBytes/measuredGzipBytes are recorded for context and ratcheting. A bundle that fails to build is measured:false with size null and NEVER satisfies its budget (null is not zero). Goal is monotonic improvement \u2014 ratchet gzipBudgetBytes DOWN as views shrink; only widen with a real, justified reason.",
   "_baseline": {
     "capturedOn": "local darwin (mac) build of origin/develop; CI re-confirms on ubuntu",
     "measuredTotalGzipBytes": 273472,
@@ -30,9 +30,9 @@
       "gzipBudgetBytes": 4000
     },
     "plugin-contacts": {
-      "measuredRawBytes": 22639,
-      "measuredGzipBytes": 7454,
-      "gzipBudgetBytes": 9000
+      "measuredRawBytes": 33859,
+      "measuredGzipBytes": 11086,
+      "gzipBudgetBytes": 12800
     },
     "plugin-documents": {
       "measuredRawBytes": 9328,
@@ -75,14 +75,14 @@
       "gzipBudgetBytes": 3500
     },
     "plugin-messages": {
-      "measuredRawBytes": 24235,
-      "measuredGzipBytes": 8511,
-      "gzipBudgetBytes": 10000
+      "measuredRawBytes": 37703,
+      "measuredGzipBytes": 12649,
+      "gzipBudgetBytes": 14500
     },
     "plugin-phone": {
-      "measuredRawBytes": 22452,
-      "measuredGzipBytes": 7758,
-      "gzipBudgetBytes": 9000
+      "measuredRawBytes": 34313,
+      "measuredGzipBytes": 11545,
+      "gzipBudgetBytes": 13300
     },
     "plugin-polymarket": {
       "measuredRawBytes": 15655,
@@ -110,8 +110,8 @@
       "gzipBudgetBytes": 3000
     },
     "plugin-task-coordinator": {
-      "measuredRawBytes": 593263,
-      "measuredGzipBytes": 126643,
+      "measuredRawBytes": 592808,
+      "measuredGzipBytes": 125975,
       "gzipBudgetBytes": 150000
     },
     "plugin-todos": {

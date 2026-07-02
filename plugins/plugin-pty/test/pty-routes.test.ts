@@ -202,6 +202,38 @@ describe("POST /api/pty/sessions", () => {
     expect(h.calls).toHaveLength(0);
   });
 
+  it("403s for explicit non-truthy interactive settings", async () => {
+    for (const value of [" FALSE ", "off", "no", "disable-please"]) {
+      const h = makeHarness({
+        settings: {
+          PTY_ELIZA_CLOUD_API_KEY: "sk",
+          PTY_INTERACTIVE_ENABLED: value,
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, value).toBe(403);
+      expect(h.calls, value).toHaveLength(0);
+    }
+  });
+
+  it("accepts explicit truthy interactive settings", async () => {
+    for (const value of ["true", "1", "on", "YES"]) {
+      const h = makeHarness({
+        settings: {
+          PTY_ELIZA_CLOUD_API_KEY: "sk",
+          PTY_INTERACTIVE_ENABLED: value,
+        },
+      });
+      const res = await routeByName("pty-spawn-session")(
+        ctx(h.runtime, { cwd: process.cwd() }),
+      );
+      expect(res.status, value).toBe(200);
+      expect(h.calls, value).toHaveLength(1);
+    }
+  });
+
   it("403 on store builds", async () => {
     const h = makeHarness({
       settings: {
@@ -256,6 +288,44 @@ describe("POST /api/pty/sessions", () => {
     );
     expect(res.status).toBe(200);
     expect(h.calls[0].opts.env?.OPENAI_API_KEY).toBe("sk-body");
+  });
+
+  it("uses operator-pinned tier model fallbacks", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_FAST_MODEL: "fast-pin",
+        PTY_ELIZA_CLOUD_SMART_MODEL: "smart-pin",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, { cwd: process.cwd() }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("fast-pin");
+    expect(h.calls[0].opts.env?.OPENAI_MEDIUM_MODEL).toBe("fast-pin");
+    expect(h.calls[0].opts.env?.OPENAI_LARGE_MODEL).toBe("smart-pin");
+  });
+
+  it("lets request body tier models override operator fallbacks", async () => {
+    const h = makeHarness({
+      settings: {
+        PTY_ELIZA_CLOUD_API_KEY: "sk",
+        PTY_ELIZA_CLOUD_FAST_MODEL: "fast-pin",
+        PTY_ELIZA_CLOUD_SMART_MODEL: "smart-pin",
+      },
+    });
+    const res = await routeByName("pty-spawn-session")(
+      ctx(h.runtime, {
+        cwd: process.cwd(),
+        fastModel: "fast-body",
+        smartModel: "smart-body",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(h.calls[0].opts.env?.OPENAI_SMALL_MODEL).toBe("fast-body");
+    expect(h.calls[0].opts.env?.OPENAI_MEDIUM_MODEL).toBe("fast-body");
+    expect(h.calls[0].opts.env?.OPENAI_LARGE_MODEL).toBe("smart-body");
   });
 
   it("rejects unallowlisted base URLs and accepts explicit operator allowlist", async () => {
