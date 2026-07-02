@@ -7,7 +7,10 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin, requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requireAdmin,
+  requireUserOrApiKeyWithOrg,
+} from "@/lib/auth/workers-hono-auth";
 import { advertisingService } from "@/lib/services/advertising";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -85,7 +88,9 @@ app.post("/reject", async (c) => {
 
     const account = await advertisingService.rejectAccount(id);
 
-    logger.info("[Advertising API] Account rejected/suspended", { accountId: id });
+    logger.info("[Advertising API] Account rejected/suspended", {
+      accountId: id,
+    });
 
     return c.json({ id: account.id, status: account.status });
   } catch (error) {
