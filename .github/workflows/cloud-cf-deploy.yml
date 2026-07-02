@@ -204,7 +204,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          # Pinned off `canary`: canary's link phase hangs on the self-hosted
+          # runners (bun install resolves+extracts in ~2min then stalls past the
+          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
+          # 28552075615 and 28569068598 (the money-integrity wave). A released
+          # bun does not exhibit the hang. See elizaOS/eliza#10839.
+          bun-version: "latest"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -507,7 +512,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          # Pinned off `canary`: canary's link phase hangs on the self-hosted
+          # runners (bun install resolves+extracts in ~2min then stalls past the
+          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
+          # 28552075615 and 28569068598 (the money-integrity wave). A released
+          # bun does not exhibit the hang. See elizaOS/eliza#10839.
+          bun-version: "latest"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -841,7 +851,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          # Pinned off `canary`: canary's link phase hangs on the self-hosted
+          # runners (bun install resolves+extracts in ~2min then stalls past the
+          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
+          # 28552075615 and 28569068598 (the money-integrity wave). A released
+          # bun does not exhibit the hang. See elizaOS/eliza#10839.
+          bun-version: "latest"
 
       - name: Install dependencies
         working-directory: ${{ env.CHECKOUT_DIR }}
