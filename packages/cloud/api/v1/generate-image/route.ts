@@ -15,6 +15,7 @@ import { getAiProviderConfigurationError } from "@/lib/providers/language-model"
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
+  DEFAULT_IMAGE_MODEL_ID,
   getSupportedImageModelDefinition,
   SUPPORTED_IMAGE_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
@@ -28,13 +29,12 @@ import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const DEFAULT_IMAGE_MODEL = "google/gemini-2.5-flash-image";
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_IMAGES = 4;
 
 const imageRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
-  model: z.string().trim().default(DEFAULT_IMAGE_MODEL),
+  model: z.string().trim().default(DEFAULT_IMAGE_MODEL_ID),
   numImages: z.coerce.number().int().min(1).max(MAX_IMAGES).default(1),
   aspectRatio: z.string().trim().max(16).optional(),
   stylePreset: z.string().trim().max(64).optional(),
@@ -137,8 +137,6 @@ async function generateOneImage(request: ImageRequest): Promise<{
           ? `${request.width}x${request.height}`
           : undefined,
       apiKeys: {
-        OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
-        OPENROUTER_BASE_URL: env.OPENROUTER_BASE_URL,
         ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
         ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
         FAL_KEY: env.FAL_KEY,
@@ -195,14 +193,6 @@ app.post("/", async (c) => {
       );
     }
     const env = getCloudAwareEnv();
-    if (definition.billingSource === "bitrouter" && !env.OPENROUTER_API_KEY) {
-      return jsonError(
-        c,
-        503,
-        getAiProviderConfigurationError(),
-        "internal_error",
-      );
-    }
     if (definition.billingSource === "atlascloud" && !env.ATLASCLOUD_API_KEY) {
       return jsonError(
         c,

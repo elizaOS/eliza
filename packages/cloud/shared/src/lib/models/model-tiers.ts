@@ -145,7 +145,12 @@ export interface AdditionalModel {
 
 /**
  * Image generation models
- * Note: Gemini Pro is expensive ($120/M output tokens)
+ *
+ * Every modelId here MUST be a SUPPORTED_IMAGE_MODELS entry with an
+ * `image:generation` pricing row (atlascloud/fal catalog builders) — an
+ * unpriced model 500s at cost estimation before dispatch (#11005). The former
+ * BitRouter-billed Gemini/GPT image models were removed for exactly that
+ * reason.
  */
 export interface ImageModel {
   id: string;
@@ -160,27 +165,27 @@ export interface ImageModel {
 
 export const IMAGE_MODELS: ImageModel[] = [
   {
-    id: "gemini-flash-image",
-    name: "Gemini Flash",
+    id: "nano-banana-2",
+    name: "Nano Banana 2",
     description: "Fastest for quick images",
-    modelId: "google/gemini-2.5-flash-image",
+    modelId: "google/nano-banana-2/text-to-image",
     provider: "google",
     tier: "fast",
   },
   {
-    id: "gemini-pro-image",
-    name: "Gemini Pro",
+    id: "seedream-5-lite",
+    name: "Seedream 5.0 Lite",
     description: "Best for everyday images",
-    modelId: "google/gemini-3-pro-image-preview",
-    provider: "google",
+    modelId: "bytedance/seedream-v5.0-lite",
+    provider: "bytedance",
     tier: "pro",
   },
   {
-    id: "gemini-flash-image-preview",
-    name: "Gemini 3.1 Flash Image Preview",
+    id: "gpt-image-2",
+    name: "GPT Image 2",
     description: "Most capable for complex images",
-    modelId: "google/gemini-3.1-flash-image-preview",
-    provider: "google",
+    modelId: "openai/gpt-image-2/text-to-image",
+    provider: "openai",
     tier: "ultra",
   },
 ];
@@ -215,28 +220,28 @@ export const IMAGE_TIERS: {
 /** Additional image models shown in "More models" submenu */
 export const ADDITIONAL_IMAGE_MODELS: ImageModel[] = [
   {
-    id: "gpt-5.4-image-2",
-    name: "GPT-5.4 Image 2",
-    description: "OpenAI's latest image generation model",
-    modelId: "openai/gpt-5.4-image-2",
-    provider: "openai",
-    tier: "pro",
-  },
-  {
-    id: "gpt-5-image-mini",
-    name: "GPT-5 Image Mini",
-    description: "OpenAI's fast image model",
-    modelId: "openai/gpt-5-image-mini",
-    provider: "openai",
+    id: "flux-schnell",
+    name: "FLUX.1 Schnell",
+    description: "Ultra-cheap, ultra-fast drafts",
+    modelId: "fal-ai/flux/schnell",
+    provider: "fal",
     tier: "fast",
   },
   {
-    id: "gpt-5-image",
-    name: "GPT-5 Image",
-    description: "Premium OpenAI image generation",
-    modelId: "openai/gpt-5-image",
-    provider: "openai",
+    id: "flux-dev",
+    name: "FLUX.1 Dev",
+    description: "High-fidelity FLUX generation",
+    modelId: "fal-ai/flux/dev",
+    provider: "fal",
     tier: "pro",
+  },
+  {
+    id: "qwen-image-2",
+    name: "Qwen Image 2.0",
+    description: "Budget-friendly all-rounder",
+    modelId: "qwen/qwen-image-2.0/text-to-image",
+    provider: "qwen",
+    tier: "fast",
   },
 ];
 

@@ -27,7 +27,7 @@ curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "A serene mountain landscape at sunset",
-    "model": "google/gemini-2.5-flash-image",
+    "model": "google/nano-banana-2/text-to-image",
     "aspectRatio": "1:1",
     "numImages": 1
   }'
@@ -44,7 +44,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-image', {
   },
   body: JSON.stringify({
     prompt: 'A serene mountain landscape at sunset',
-    model: 'google/gemini-2.5-flash-image',
+    model: 'google/nano-banana-2/text-to-image',
     aspectRatio: '1:1',
     numImages: 1,
   }),
@@ -68,7 +68,7 @@ response = requests.post(
     },
     json={
         'prompt': 'A serene mountain landscape at sunset',
-        'model': 'google/gemini-2.5-flash-image',
+        'model': 'google/nano-banana-2/text-to-image',
         'aspectRatio': '1:1',
         'numImages': 1,
     }
@@ -85,7 +85,7 @@ print(data['images'][0]['url'])
 | Parameter     | Type    | Required | Description                                            |
 | ------------- | ------- | -------- | ------------------------------------------------------ |
 | `prompt`      | string  | ✓        | Description of the image to generate                   |
-| `model`       | string  |          | Model to use. Default: `google/gemini-2.5-flash-image` |
+| `model`       | string  |          | Model to use. Default: `google/nano-banana-2/text-to-image` |
 | `aspectRatio` | string  |          | Output aspect ratio. Default: `1:1`                    |
 | `numImages`   | integer |          | Number of images (1-4). Default: 1                     |
 | `stylePreset` | string  |          | Style preset to apply (see below)                      |
@@ -166,7 +166,7 @@ const response = await fetch("https://elizacloud.ai/api/v1/generate-image", {
   body: JSON.stringify({
     prompt: "Transform this into a watercolor painting",
     sourceImage: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
-    model: "google/gemini-2.5-flash-image",
+    model: "google/nano-banana-2/text-to-image",
   }),
 });
 ```
@@ -243,7 +243,7 @@ curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Cyberpunk cityscape at night",
-    "model": "google/gemini-2.5-flash-image",
+    "model": "google/nano-banana-2/text-to-image",
     "numImages": 4,
     "aspectRatio": "16:9"
   }'
