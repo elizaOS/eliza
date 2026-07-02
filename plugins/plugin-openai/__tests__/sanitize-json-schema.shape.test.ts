@@ -104,6 +104,25 @@ describe("sanitizeJsonSchema strict-constraint stripping", () => {
     }
   });
 
+  it("strips rejected keywords inside $defs / patternProperties / contains", () => {
+    const out = sanitize({
+      type: "object",
+      properties: { ref: { $ref: "#/$defs/code" } },
+      required: ["ref"],
+      additionalProperties: false,
+      // zod's toJSONSchema hoists reused/nullable sub-schemas here.
+      $defs: { code: { type: "string", pattern: "^[A-Z]+$", maxLength: 4 } },
+      patternProperties: {
+        "^x": { type: "array", items: { type: "string" }, maxItems: 2 },
+      },
+      contains: { type: "string", minLength: 1 },
+    });
+    const keys = collectKeys(out);
+    for (const [keyword] of REJECTED) {
+      expect(keys.has(keyword)).toBe(false);
+    }
+  });
+
   it("preserves an existing description when folding a hint", () => {
     const out = sanitize({
       type: "object",

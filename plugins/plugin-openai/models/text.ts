@@ -801,6 +801,30 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
     }
   }
 
+  // Every other schema-bearing keyword must be walked too, or a stripped
+  // keyword nested inside one survives to the wire. `$defs`/`definitions`
+  // matter most in practice: zod's `toJSONSchema` hoists reused/nullable
+  // sub-schemas into `$defs`, so a `.max()`/`.regex()` on a shared field would
+  // otherwise slip through the strip. `contains`/`propertyNames`/`not`/`if`/
+  // `then`/`else` take a single sub-schema; `patternProperties`/`$defs`/
+  // `definitions` are maps of them.
+  for (const singleKey of ["contains", "propertyNames", "not", "if", "then", "else"] as const) {
+    const value = sanitized[singleKey];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      sanitized[singleKey] = sanitizeJsonSchema(value);
+    }
+  }
+  for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
+    const value = sanitized[mapKey];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const walked: Record<string, unknown> = {};
+      for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
+        walked[key] = sanitizeJsonSchema(sub);
+      }
+      sanitized[mapKey] = walked;
+    }
+  }
+
   return sanitized as JSONSchema7;
 }
 
