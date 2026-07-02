@@ -1,8 +1,8 @@
 import {
 	existsSync,
 	mkdirSync,
-	statSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import path from "node:path";

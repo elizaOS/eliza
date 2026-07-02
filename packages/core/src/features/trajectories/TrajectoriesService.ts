@@ -1423,7 +1423,8 @@ export class TrajectoriesService extends Service {
 		if (!row) return null;
 		const trajectoryId = asString(pickCell(row, "trajectory_id"));
 		if (!trajectoryId) return null;
-		const stepNumber = asNumber(pickCell(row, "step_number")) ?? 0;
+		const stepNumberValue = asNumber(pickCell(row, "step_number"));
+		const stepNumber = stepNumberValue === null ? 0 : stepNumberValue;
 		const isActiveText = asString(pickCell(row, "is_active"));
 		const isActive =
 			isActiveText === "true" ||
