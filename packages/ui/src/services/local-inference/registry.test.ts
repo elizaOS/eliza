@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { registryPath } from "./paths";
 import {
   listInstalledModels,
   removeElizaModel,
@@ -11,6 +12,15 @@ import type { InstalledModel } from "./types";
 
 const originalEnv = { ...process.env };
 const tempDirs: string[] = [];
+
+type RawRegistryModel = Omit<
+  InstalledModel,
+  "path" | "bundleRoot" | "manifestPath"
+> & {
+  path: string;
+  bundleRoot?: string;
+  manifestPath?: string;
+};
 
 afterEach(() => {
   process.env = { ...originalEnv };
@@ -43,7 +53,110 @@ function installedModel(
   };
 }
 
+function readRegistryJson(): { models: RawRegistryModel[] } {
+  return JSON.parse(fs.readFileSync(registryPath(), "utf8")) as {
+    models: RawRegistryModel[];
+  };
+}
+
 describe("local inference registry removal", () => {
+  it("persists Eliza-owned artifact paths relative to the current local-inference root", async () => {
+    const stateDir = useTempStateDir();
+    const bundleRoot = path.join(
+      stateDir,
+      "local-inference",
+      "models",
+      "eliza-1-2b",
+    );
+    const modelPath = path.join(bundleRoot, "text", "model.gguf");
+    const manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+    fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+    fs.writeFileSync(modelPath, "fake-model");
+    fs.writeFileSync(manifestPath, "{}");
+
+    await upsertElizaModel(
+      installedModel("eliza-1-2b", modelPath, {
+        bundleRoot,
+        manifestPath,
+      }),
+    );
+
+    const raw = readRegistryJson().models[0];
+    expect(raw.path).toBe("models/eliza-1-2b/text/model.gguf");
+    expect(raw.bundleRoot).toBe("models/eliza-1-2b");
+    expect(raw.manifestPath).toBe("models/eliza-1-2b/eliza-1.manifest.json");
+    expect(path.isAbsolute(raw.path)).toBe(false);
+
+    await expect(listInstalledModels()).resolves.toMatchObject([
+      {
+        id: "eliza-1-2b",
+        path: modelPath,
+        bundleRoot,
+        manifestPath,
+      },
+    ]);
+  });
+
+  it("re-anchors legacy absolute paths from a previous iOS app container to the current state root", async () => {
+    const currentStateDir = useTempStateDir();
+    const oldStateDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-ui-registry-old-ios-container-"),
+    );
+    tempDirs.push(oldStateDir);
+
+    const currentBundleRoot = path.join(
+      currentStateDir,
+      "local-inference",
+      "models",
+      "eliza-1-2b",
+    );
+    const currentModelPath = path.join(currentBundleRoot, "text", "model.gguf");
+    const currentManifestPath = path.join(
+      currentBundleRoot,
+      "eliza-1.manifest.json",
+    );
+    fs.mkdirSync(path.dirname(currentModelPath), { recursive: true });
+    fs.writeFileSync(currentModelPath, "fake-model");
+    fs.writeFileSync(currentManifestPath, "{}");
+
+    const oldBundleRoot = path.join(
+      oldStateDir,
+      "local-inference",
+      "models",
+      "eliza-1-2b",
+    );
+    const oldModelPath = path.join(oldBundleRoot, "text", "model.gguf");
+    const oldManifestPath = path.join(oldBundleRoot, "eliza-1.manifest.json");
+
+    fs.mkdirSync(path.dirname(registryPath()), { recursive: true });
+    fs.writeFileSync(
+      registryPath(),
+      JSON.stringify(
+        {
+          version: 1,
+          models: [
+            installedModel("eliza-1-2b", oldModelPath, {
+              bundleRoot: oldBundleRoot,
+              manifestPath: oldManifestPath,
+            }),
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    await expect(listInstalledModels()).resolves.toMatchObject([
+      {
+        id: "eliza-1-2b",
+        path: currentModelPath,
+        bundleRoot: currentBundleRoot,
+        manifestPath: currentManifestPath,
+      },
+    ]);
+  });
+
   it("removes an Eliza-owned bundle directory and clears the registry entry", async () => {
     const stateDir = useTempStateDir();
     const bundleRoot = path.join(
