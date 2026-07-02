@@ -334,35 +334,6 @@ export class AppEarningsRepository {
   }
 
   /**
-   * Moves pending balance to withdrawable balance.
-   *
-   * @throws Error if earnings record not found.
-   */
-  async releasePendingToWithdrawable(appId: string): Promise<AppEarnings> {
-    const earnings = await this.findByAppId(appId);
-    if (!earnings) {
-      throw new Error(`Earnings not found for app ${appId}`);
-    }
-
-    const pendingAmount = Number(earnings.pending_balance);
-    if (pendingAmount <= 0) {
-      return earnings;
-    }
-
-    const [updated] = await dbWrite
-      .update(appEarnings)
-      .set({
-        pending_balance: "0.00",
-        withdrawable_balance: sql`${appEarnings.withdrawable_balance} + ${pendingAmount}`,
-        updated_at: new Date(),
-      })
-      .where(eq(appEarnings.app_id, appId))
-      .returning();
-
-    return updated;
-  }
-
-  /**
    * Processes a withdrawal request with an atomic conditional update.
    *
    * Neon HTTP does not support Drizzle transactions. The balance mutation

@@ -176,12 +176,6 @@ export class AppEarningsService {
     logger.info("[AppEarnings] Updated payout threshold", { appId, threshold });
   }
 
-  async releasePendingEarnings(appId: string): Promise<void> {
-    await appEarningsRepository.releasePendingToWithdrawable(appId);
-
-    logger.info("[AppEarnings] Released pending earnings", { appId });
-  }
-
   /**
    * Request a withdrawal of app earnings.
    *

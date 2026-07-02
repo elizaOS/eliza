@@ -58,7 +58,7 @@ crons = [
   "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
   "0 * * * *",      # agent-billing
   "0 */6 * * *",    # cleanup-anonymous-sessions + agent-backups
-  "0 0 * * *",      # container-billing + release-pending-earnings
+  "0 0 * * *",      # container-billing
   "0 1 * * *",      # compute-metrics
   "0 2 * * *",      # cleanup-webhook-events
   "0 3 * * *",      # domain-renewals + reclaim-stale-domains

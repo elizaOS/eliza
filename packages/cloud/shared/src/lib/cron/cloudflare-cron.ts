@@ -23,7 +23,7 @@ export const CRON_ROUTES: Record<string, string> = {
  * Each schedule may map to multiple paths; `scheduled()` fans out to all of them.
  */
 export const CRON_FANOUT: Record<string, string[]> = {
-  "0 0 * * *": ["/api/cron/container-billing", "/api/cron/release-pending-earnings"],
+  "0 0 * * *": ["/api/cron/container-billing"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
   "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
   "0 3 * * *": [

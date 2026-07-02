@@ -63,7 +63,7 @@ app.get("/", (c) => {
       configured: Boolean(env.CRON_SECRET),
       message: env.CRON_SECRET
         ? "CRON_SECRET present"
-        : "CRON_SECRET not set — scheduled jobs (container-billing, release-pending-earnings, process-redemptions) cannot authenticate",
+        : "CRON_SECRET not set — scheduled jobs (container-billing, process-redemptions) cannot authenticate",
     };
 
     const allOk =

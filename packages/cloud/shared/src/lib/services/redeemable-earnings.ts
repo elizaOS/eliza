@@ -10,7 +10,6 @@
  * 2. Version-based optimistic locking
  * 3. Immutable ledger with audit trail
  * 4. Database CHECK constraints on balance
- * 5. Unique constraints on redeemed earnings
  *
  * ONLY earnings from these sources are redeemable:
  * - Miniapp creator earnings
@@ -21,11 +20,7 @@
 import Decimal from "decimal.js";
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
-import {
-  redeemableEarnings,
-  redeemableEarningsLedger,
-  redeemedEarningsTracking,
-} from "../../db/schemas/redeemable-earnings";
+import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { normalizeLedgerSourceId } from "../utils/ledger-source-id";
 import { logger } from "../utils/logger";
 
@@ -75,12 +70,6 @@ interface LockEarningsResult {
   lockedAmount: number;
   ledgerEntryId?: string;
   error?: string;
-}
-
-interface CompleteRedemptionParams {
-  userId: string;
-  redemptionId: string;
-  amount: number;
 }
 
 interface RefundEarningsParams {
@@ -758,59 +747,6 @@ class RedeemableEarningsService {
   }
 
   /**
-   * Complete a redemption (move from pending to redeemed)
-   *
-   * Called after tokens have been successfully sent on-chain.
-   */
-  async completeRedemption(
-    params: CompleteRedemptionParams,
-  ): Promise<{ success: boolean; error?: string }> {
-    const { userId, redemptionId, amount } = params;
-
-    const amountDecimal = new Decimal(amount).toFixed(4);
-
-    await dbWrite.transaction(async (tx) => {
-      // Update balances
-      const [updated] = await tx
-        .update(redeemableEarnings)
-        .set({
-          total_pending: sql`GREATEST(0, ${redeemableEarnings.total_pending} - ${amountDecimal})`,
-          total_redeemed: sql`${redeemableEarnings.total_redeemed} + ${amountDecimal}`,
-          last_redemption_at: new Date(),
-          version: sql`${redeemableEarnings.version} + 1`,
-          updated_at: new Date(),
-        })
-        .where(eq(redeemableEarnings.user_id, userId))
-        .returning();
-
-      if (!updated) {
-        throw new Error("Earnings record not found");
-      }
-
-      // Add completion ledger entry
-      await tx.insert(redeemableEarningsLedger).values({
-        user_id: userId,
-        entry_type: "redemption",
-        amount: "0", // No balance change (already locked)
-        balance_after: updated.available_balance,
-        redemption_id: redemptionId,
-        description: `Redemption completed: $${amount.toFixed(2)} sent as elizaOS`,
-        metadata: normalizeLedgerMetadata({
-          completed_at: new Date().toISOString(),
-        }),
-      });
-    });
-
-    logger.info("[RedeemableEarnings] Redemption completed", {
-      userId: userId.slice(0, 8) + "...",
-      redemptionId: redemptionId.slice(0, 8) + "...",
-      amount,
-    });
-
-    return { success: true };
-  }
-
-  /**
    * Refund earnings from a failed/rejected redemption
    *
    * Moves funds from pending back to available.
@@ -1030,56 +966,6 @@ class RedeemableEarningsService {
     };
   }
 
-  /**
-   * Get ledger history for a user
-   */
-  async getLedgerHistory(
-    userId: string,
-    limit: number = 50,
-  ): Promise<
-    Array<{
-      id: string;
-      type: string;
-      amount: number;
-      balanceAfter: number;
-      description: string;
-      source?: string;
-      sourceId?: string;
-      redemptionId?: string;
-      createdAt: Date;
-    }>
-  > {
-    const entries = await dbRead.query.redeemableEarningsLedger.findMany({
-      where: eq(redeemableEarningsLedger.user_id, userId),
-      orderBy: (ledger, { desc }) => [desc(ledger.created_at)],
-      limit,
-    });
-
-    return entries.map((e) => ({
-      id: e.id,
-      type: e.entry_type,
-      amount: Number(e.amount),
-      balanceAfter: Number(e.balance_after),
-      description: e.description,
-      source: e.earnings_source ?? undefined,
-      sourceId: e.source_id ?? undefined,
-      redemptionId: e.redemption_id ?? undefined,
-      createdAt: e.created_at,
-    }));
-  }
-
-  /**
-   * Verify a user has never redeemed a specific earning before
-   *
-   * SECURITY: Additional layer of double-redemption protection
-   */
-  async hasBeenRedeemed(ledgerEntryId: string): Promise<boolean> {
-    const tracking = await dbRead.query.redeemedEarningsTracking.findFirst({
-      where: eq(redeemedEarningsTracking.ledger_entry_id, ledgerEntryId),
-    });
-
-    return !!tracking;
-  }
 }
 
 // Export singleton
