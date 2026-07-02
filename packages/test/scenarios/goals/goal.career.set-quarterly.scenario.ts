@@ -27,13 +27,24 @@ export default scenario({
       kind: "message",
       name: "career-goal preview",
       text: "My Q2 career goal is to ship Eliza v2 by the end of June. Success means a public release, at least 500 active users, and a shipped iOS companion app.",
-      responseIncludesAny: ["Eliza", "Q2", "ship", "June"],
+      // Derived structure: the preview must restate the goal as a tracked
+      // quarterly goal with explicit success criteria — neither "quarterly"
+      // nor "criteria" appears in any user turn, so echo cannot pass.
+      responseIncludesAny: ["quarterly", "criteria"],
+      // Two-phase commit: no persistence claim before the owner confirms.
+      responseExcludes: ["saved", "all set", "i've set", "i have set"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "The reply must propose a quarterly career goal (ship Eliza v2 by end of June) with the three success criteria enumerated (public release, 500 active users, iOS companion app) and ask the owner to confirm before saving. Claiming it is already saved fails.",
+      },
     },
     {
       kind: "message",
       name: "career-goal confirm",
       text: "Yes, save that career goal.",
-      responseIncludesAny: ["saved", "goal"],
+      // Save-confirmation semantics in words the prompt never used.
+      responseIncludesAny: ["saved", "created", "added", "recorded", "set up"],
     },
   ],
   finalChecks: [
