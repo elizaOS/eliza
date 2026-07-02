@@ -13,11 +13,13 @@ import { randomUUID } from "node:crypto";
 import {
 	createWriteStream,
 	existsSync,
+	linkSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	renameSync,
 	statSync,
+	symlinkSync,
 	unlinkSync,
 } from "node:fs";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
@@ -1223,11 +1225,55 @@ function bionicSocketName(): string | null {
 	return sock ? sock : null;
 }
 
+// A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
+// layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
+// *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
+// stage a hardlinked text/ view under `.bionic-bundles/<name>/` — matching the
+// BionicHostLoader path (bionic-host-loader.ts, #11335) so both delegated
+// entrypoints resolve the same bundle. This path (mobile-device-bridge) is the
+// one the WebView chat "(via bionic-host)" delegation actually uses.
+const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
+const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
+
 /** Bundle root the host's eliza_inference_create expects (…/text/<model>.gguf → …). */
-function deriveBionicBundleDir(modelPath: string): string {
+export function deriveBionicBundleDir(modelPath: string): string {
 	if (!modelPath) return "";
 	const dir = path.dirname(modelPath);
 	if (path.basename(dir) === "text") return path.dirname(dir);
+	if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
+	if (!existsSync(modelPath)) return "";
+
+	const modelName = path.basename(modelPath);
+	const bundleRoot = path.join(
+		dir,
+		BIONIC_FLAT_BUNDLE_DIR,
+		path.basename(modelName, path.extname(modelName)),
+	);
+	const textDir = path.join(bundleRoot, "text");
+	const stagedPath = path.join(textDir, modelName);
+	try {
+		mkdirSync(textDir, { recursive: true });
+		if (existsSync(stagedPath)) {
+			try {
+				if (statSync(modelPath).size === statSync(stagedPath).size) {
+					return bundleRoot;
+				}
+			} catch {
+				// Recreate a stale or broken alias below.
+			}
+			unlinkSync(stagedPath);
+		}
+		try {
+			linkSync(modelPath, stagedPath);
+		} catch {
+			symlinkSync(modelPath, stagedPath);
+		}
+		return bundleRoot;
+	} catch (err) {
+		logger.warn(
+			`[mobile-device-bridge] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 	return "";
 }
 
