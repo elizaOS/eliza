@@ -315,13 +315,32 @@ export function inferBackgroundPlan(
 	// Explicit options win over text parsing.
 	if (explicitImage)
 		return { op: "set", mode: "image", imageUrl: explicitImage };
-	if (explicitPreset)
+	if (explicitPreset) {
+		// An explicit preset only outranks a resolvable color when the text
+		// itself asks for a shader (shader noun / preset vocabulary). Observed
+		// live in the #10694 trajectories: the planner stuffed `preset:"aurora"`
+		// alongside `color:"teal"` on "change the app background to teal",
+		// turning a plain color request into the aurora shader.
+		const textAsksForShader =
+			SHADER_NOUN_RE.test(trimmed) ||
+			SHADER_PRESET_TRIGGERS.some(([re]) => re.test(trimmed));
+		const presetColor = textAsksForShader
+			? null
+			: resolveColor(trimmed, explicitColor);
+		if (presetColor)
+			return {
+				op: "set",
+				mode: "shader",
+				color: presetColor.color,
+				colorLabel: presetColor.label,
+			};
 		return {
 			op: "set",
 			mode: "glsl",
 			presetId: explicitPreset,
 			presetLabel: explicitPreset,
 		};
+	}
 
 	// A named GLSL preset ("give me a lava background") is shader-specific
 	// vocabulary, so it resolves BEFORE a bare color — "molten" beats no color.

@@ -13,6 +13,7 @@ import type {
 import { EventType } from "../../types";
 import {
 	_resetActionRolePolicyCacheForTests,
+	dropEmptyOptionalArgs,
 	executePlannedToolCall,
 } from "../execute-planned-tool-call";
 
@@ -893,5 +894,105 @@ describe("executePlannedToolCall", () => {
 			expect(result.success).toBe(true);
 			expect(handler).toHaveBeenCalledOnce();
 		});
+	});
+});
+
+describe("dropEmptyOptionalArgs", () => {
+	function backgroundLikeAction(
+		handler: Action["handler"] = async () => ({ success: true }),
+	): Action {
+		// Mirrors the #10694 live-trajectory shape: an all-optional action where
+		// strict tool schemas force the model to emit every key, so `""` is its
+		// only way to leave `preset` unset on a color-only turn.
+		return makeAction({
+			name: "BACKGROUND",
+			parameters: [
+				{
+					name: "op",
+					description: "Operation",
+					required: false,
+					schema: { type: "string", enum: ["set", "undo", "redo", "reset"] },
+				},
+				{
+					name: "color",
+					description: "Color",
+					required: false,
+					schema: { type: "string" },
+				},
+				{
+					name: "preset",
+					description: "Shader preset",
+					required: false,
+					schema: { type: "string", enum: ["aurora", "lava"] },
+				},
+			],
+			handler,
+		});
+	}
+
+	it("treats an empty string on an optional enum parameter as omitted (#10694)", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = backgroundLikeAction(handler);
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "BACKGROUND", params: { op: "set", color: "teal", preset: "" } },
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { op: "set", color: "teal" },
+			}),
+			undefined,
+			undefined,
+		);
+	});
+
+	it("keeps an empty string on a REQUIRED enum parameter failing loudly", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "TASKS",
+			parameters: [
+				{
+					name: "op",
+					description: "Task operation",
+					required: true,
+					schema: { type: "string", enum: ["create", "provision_workspace"] },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "TASKS", params: { op: "" } },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("is not one of");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("drops only empty-string optional keys and returns the same object when nothing matches", () => {
+		const action = backgroundLikeAction();
+
+		const untouched = { op: "set", color: "teal" };
+		expect(dropEmptyOptionalArgs(action, untouched)).toBe(untouched);
+
+		expect(
+			dropEmptyOptionalArgs(action, { op: "set", color: "", preset: "" }),
+		).toEqual({ op: "set" });
+
+		// Undeclared keys and non-string empties pass through untouched — strict
+		// validation still owns rejecting them.
+		expect(
+			dropEmptyOptionalArgs(action, { op: "set", stray: "", count: 0 }),
+		).toEqual({ op: "set", stray: "", count: 0 });
 	});
 });
