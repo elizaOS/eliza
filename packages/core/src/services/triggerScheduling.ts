@@ -8,6 +8,15 @@ export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 const CRON_FIELDS = 5;
 const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
+const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
+const CRON_FALLBACK_LOOKBACKS_MS = [
+	30 * CRON_MINUTE_MS,
+	CRON_HOUR_MS,
+	2 * CRON_HOUR_MS,
+	3 * CRON_HOUR_MS,
+] as const;
+/** Max timestamp a JS Date can represent (±8.64e15 ms); beyond this a Date is Invalid. */
+const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
 
 interface CronRange {
 	min: number;
@@ -135,54 +144,41 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 	);
 }
 
-/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
-const MAX_DATE_MS = 8_640_000_000_000_000;
-
 /**
- * Timezone validity cache: `Intl.DateTimeFormat` construction is the only
- * reliable IANA check, and cron scans call the offset helper once per
- * candidate minute — validate each zone string once, warn once on failure,
- * and fall back to UTC explicitly instead of swallowing the RangeError.
+ * Warn-once registry for invalid IANA zones: the cron path falls back to UTC
+ * explicitly instead of swallowing the RangeError, but one warning per zone
+ * is enough. Sentinel zones (e.g. "owner_local") must be resolved to an IANA
+ * zone before scheduling.
  */
-const timezoneValidity = new Map<string, boolean>();
+const invalidTimezonesWarned = new Set<string>();
 
-function isValidTimezone(timezone: string): boolean {
-	const cached = timezoneValidity.get(timezone);
-	if (cached !== undefined) return cached;
-	let valid = true;
+function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 	try {
-		new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+		return new Intl.DateTimeFormat("en-US", {
+			timeZone: timezone,
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			hour12: false,
+		});
 	} catch {
-		valid = false;
+		if (!invalidTimezonesWarned.has(timezone)) {
+			invalidTimezonesWarned.add(timezone);
+			logger.warn(
+				`[TriggerScheduling] Invalid timezone "${timezone}" — evaluating cron schedule in UTC. Sentinel zones (e.g. "owner_local") must be resolved to an IANA zone before scheduling.`,
+			);
+		}
+		return null;
 	}
-	timezoneValidity.set(timezone, valid);
-	if (!valid) {
-		logger.warn(
-			`[TriggerScheduling] Invalid timezone "${timezone}" — evaluating cron schedule in UTC. Sentinel zones (e.g. "owner_local") must be resolved to an IANA zone before scheduling.`,
-		);
-	}
-	return valid;
 }
 
-function getTimezoneOffsetMs(
-	timezone: string | undefined,
+function offsetMsFromFormatter(
+	formatter: Intl.DateTimeFormat,
 	atMs: number,
 ): number {
-	if (!timezone || timezone === "UTC") return 0;
-	if (!isValidTimezone(timezone)) return 0;
-	// Invalid-Date instants cannot be formatted; mirror the UTC path (which
-	// simply never matches an Invalid Date) by treating them as offset 0.
-	if (!Number.isFinite(atMs) || Math.abs(atMs) > MAX_DATE_MS) return 0;
-	const formatter = new Intl.DateTimeFormat("en-US", {
-		timeZone: timezone,
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-		hour12: false,
-	});
 	const parts = formatter.formatToParts(new Date(atMs));
 	const get = (type: string): number => {
 		const part = parts.find((p) => p.type === type);
@@ -202,13 +198,33 @@ function getTimezoneOffsetMs(
 function cronMatches(
 	schedule: CronSchedule,
 	candidateMs: number,
-	timezone?: string,
+	timezone: string | undefined,
+	formatter: Intl.DateTimeFormat | null,
 ): boolean {
-	if (!timezone || timezone === "UTC") {
+	if (!timezone || timezone === "UTC" || !formatter) {
 		return cronMatchesUTC(schedule, candidateMs);
 	}
-	const offsetMs = getTimezoneOffsetMs(timezone, candidateMs);
-	return cronMatchesUTC(schedule, candidateMs + offsetMs);
+	const wallMs = candidateMs + offsetMsFromFormatter(formatter, candidateMs);
+	if (!cronMatchesUTC(schedule, wallMs)) return false;
+	// DST fall-back: an ambiguous local time repeats. Fire only the FIRST
+	// instant, matching common cron implementations. The repeated span is not
+	// always one hour (Australia/Lord_Howe falls back by 30 minutes), so derive
+	// the actual offset delta and reject candidates whose wall-clock already
+	// existed at candidate-delta.
+	const candidateOffset = offsetMsFromFormatter(formatter, candidateMs);
+	for (const lookbackMs of CRON_FALLBACK_LOOKBACKS_MS) {
+		const priorOffset = offsetMsFromFormatter(
+			formatter,
+			candidateMs - lookbackMs,
+		);
+		if (priorOffset <= candidateOffset) continue;
+		const offsetDelta = priorOffset - candidateOffset;
+		const priorSameWallMs = candidateMs - offsetDelta;
+		const priorWallMs =
+			priorSameWallMs + offsetMsFromFormatter(formatter, priorSameWallMs);
+		if (wallMs === priorWallMs) return false;
+	}
+	return true;
 }
 
 export function computeNextCronRunAtMs(
@@ -218,16 +234,30 @@ export function computeNextCronRunAtMs(
 ): number | null {
 	const schedule = parseCronExpression(expression);
 	if (!schedule) return null;
+	// Bail on a non-representable base: scanning forward from a timestamp at/over
+	// the max Date value would build ~366 days of Invalid Dates before returning
+	// null (a ~26s pathological scan). Symmetric on the negative side, where an
+	// Invalid-Date candidate would make the tz formatter throw instead.
+	if (!Number.isFinite(fromMs) || Math.abs(fromMs) >= MAX_REPRESENTABLE_MS) {
+		return null;
+	}
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
-	const cutoff = start + CRON_SCAN_WINDOW_MS;
+	// Cap the window at the max representable Date so a base near the ceiling
+	// scans only the representable remainder, not ~527k Invalid-Date candidates.
+	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
+	// Hoist ONE formatter for the entire scan. Previously the offset helper
+	// allocated a fresh Intl.DateTimeFormat per candidate minute — up to ~527k
+	// allocations across the 366-day window.
+	const formatter =
+		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
 
 	for (
 		let candidate = start + CRON_MINUTE_MS;
 		candidate <= cutoff;
 		candidate += CRON_MINUTE_MS
 	) {
-		if (cronMatches(schedule, candidate, timezone)) {
+		if (cronMatches(schedule, candidate, timezone, formatter)) {
 			return candidate;
 		}
 	}

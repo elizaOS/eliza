@@ -216,4 +216,15 @@ describe("computeNextCronRunAtMs - DST fall-back regression coverage (#11046)", 
 		expect(next).toBeNull();
 		expect(elapsedMs).toBeLessThan(3000);
 	});
+
+	it("returns null fast (never throws) for a base below the negative representable range", () => {
+		// Every candidate from such a base is an Invalid Date; without the
+		// symmetric bail the tz formatter would throw a RangeError on the first
+		// candidate instead of reporting "no next run".
+		const startedAt = performance.now();
+		expect(
+			computeNextCronRunAtMs("* * * * *", -Number.MAX_SAFE_INTEGER, NY),
+		).toBeNull();
+		expect(performance.now() - startedAt).toBeLessThan(2000);
+	});
 });
