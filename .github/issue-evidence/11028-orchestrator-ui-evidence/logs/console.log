@@ -1,0 +1,42 @@
+[mobile] [debug] [vite] connecting...
+[mobile] [debug] [vite] connected.
+[mobile] [info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[mobile] [info] [shell] window shell mode: main (search="")
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[mobile] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[mobile] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=28 p95Commit=87.2ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=28 p95Commit=87.2ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [debug] [vite] connecting...
+[mobile] [debug] [vite] connected.
+[mobile] [info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[mobile] [info] [shell] window shell mode: main (search="")
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=17 p95Commit=33.7ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=17 p95Commit=33.7ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [debug] [vite] connecting...
+[mobile] [debug] [vite] connected.
+[mobile] [info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[mobile] [info] [shell] window shell mode: main (search="")
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[settle] networkidle timeout
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=35 p95Commit=57.1ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=35 p95Commit=57.1ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [debug] [vite] connecting...
+[mobile] [debug] [vite] connected.
+[mobile] [info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[mobile] [info] [shell] window shell mode: main (search="")
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" mounted → active (show)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewLifecycle] "views" active → paused (visibility-hidden)
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" hide renders=16 p95Commit=45.5ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [info] %c Info font-size: 12px; color: #0099ff; [ViewTelemetry] view "views" pause renders=16 p95Commit=45.5ms heap=214.6MiB subs=0 timers=0 heavy=0
+[mobile] [debug] [vite] connecting...
+[mobile] [debug] [vite] connected.
+[mobile] [info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[mobile] [info] [shell] window shell mode: main (search="")
+[mobile] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[mobile] [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+[settle] networkidle timeout
