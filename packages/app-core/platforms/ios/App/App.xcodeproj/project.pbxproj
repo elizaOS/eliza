@@ -29,6 +29,7 @@
 		WBCB00010000000000000001 /* ActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000102 /* ActionRequestHandler.swift */; };
 		WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000002 /* BootCaptureUITests.swift */; };
+		AUIT00010000000000000003 /* GestureSemanticsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000004 /* GestureSemanticsUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -112,6 +113,7 @@
 		WBCB00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		WBCB00010000000000000104 /* WebsiteBlockerContentExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WebsiteBlockerContentExtension.entitlements; sourceTree = "<group>"; };
 		AUIT00010000000000000002 /* BootCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootCaptureUITests.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000004 /* GestureSemanticsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureSemanticsUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -255,6 +257,7 @@
 			isa = PBXGroup;
 			children = (
 				AUIT00010000000000000002 /* BootCaptureUITests.swift */,
+				AUIT00010000000000000004 /* GestureSemanticsUITests.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -552,6 +555,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */,
+				AUIT00010000000000000003 /* GestureSemanticsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

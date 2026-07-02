@@ -281,7 +281,10 @@ async function main() {
   // 5. Run the harness. TEST_RUNNER_-prefixed env vars are forwarded by
   //    xcodebuild into the test-runner process (how the Swift side reads
   //    ELIZA_BOOT_TIMEOUT_SECONDS / ELIZA_BOOT_SCREENSHOT_INTERVAL_SECONDS).
-  const onlyTesting = args["only-testing"] || "AppUITests/BootCaptureUITests";
+  //    Default = the whole AppUITests target, so the lane exercises both the
+  //    boot-capture suite AND the WKWebView gesture-semantics suite (#11353);
+  //    narrow with --only-testing AppUITests/<Class>[/<test>].
+  const onlyTesting = args["only-testing"] || "AppUITests";
   const testResult = spawnSync(
     "xcodebuild",
     [

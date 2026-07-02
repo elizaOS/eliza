@@ -893,6 +893,7 @@ function ThreadLineEditor({
     <div className="flex flex-col gap-2">
       <textarea
         ref={ref}
+        aria-label="Edit message"
         data-testid="thread-line-edit-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -3853,6 +3854,25 @@ export function ContinuousChatOverlay({
   // handled by the document-level tap detector above so drag gestures can still
   // pass through the visual backdrop to the launcher/home surface underneath.
 
+  // The sheet's EFFECTIVE detent, shared by `data-detent` (DOM/e2e channel) and
+  // the sr-only probe below (accessibility-tree channel — data attributes are
+  // invisible to the native iOS/Android AX tree, so the on-device XCUITest
+  // gesture suite reads this as a static text instead; see
+  // packages/app-core/platforms/ios/App/AppUITests/GestureSemanticsUITests.swift).
+  // A free-rest at/near the top reads "full", a mid free-rest folds into
+  // "half" — the label never disagrees with the rendered height.
+  const detentLabel = pilled
+    ? "pill"
+    : !sheetOpen
+      ? "collapsed"
+      : freeH != null
+        ? Math.min(freeH, panelMaxH) >= openH - 1
+          ? "full"
+          : "half"
+        : expanded
+          ? "full"
+          : "half";
+
   return (
     <div
       ref={overlayRef}
@@ -4045,22 +4065,7 @@ export function ContinuousChatOverlay({
           aria-label="Chat composer"
           data-testid="chat-sheet"
           data-variant={sheetOpen ? "open" : "closed"}
-          // The label reflects the EFFECTIVE height: a free-rest at/near the top
-          // reads "full", a mid free-rest folds into "half" — so the label never
-          // disagrees with the rendered height.
-          data-detent={
-            pilled
-              ? "pill"
-              : !sheetOpen
-                ? "collapsed"
-                : freeH != null
-                  ? Math.min(freeH, panelMaxH) >= openH - 1
-                    ? "full"
-                    : "half"
-                  : expanded
-                    ? "full"
-                    : "half"
-          }
+          data-detent={detentLabel}
           data-maximized={fullBleed ? "true" : undefined}
           data-revealed={threadPresented ? "true" : "false"}
           data-chat-state={chatState}
@@ -4095,6 +4100,13 @@ export function ContinuousChatOverlay({
             "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
           )}
         >
+          {/* AX-tree mirror of data-detent: the native gesture e2e suites
+              (XCUITest) can only observe web state through the accessibility
+              tree, and data attributes never surface there. sr-only text does.
+              Not aria-live — it never announces on its own. */}
+          <span className="sr-only" data-testid="chat-detent-probe">
+            {`chat-detent:${detentLabel}`}
+          </span>
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
               corner radius. Crossfades in by openProgress (compositor opacity). */}
           <motion.div

@@ -85,6 +85,13 @@ export function HomeLauncherSurface({
         className,
       )}
     >
+      {/* AX-tree mirror of data-page: the native gesture e2e suites (XCUITest)
+          observe web state only through the accessibility tree, where data
+          attributes never surface. Lives OUTSIDE the two aria-hidden/inert
+          halves so it is always exposed. Not aria-live — never self-announces. */}
+      <span className="sr-only" data-testid="home-launcher-page-probe">
+        {`home-launcher-page:${page}`}
+      </span>
       <div
         ref={pager.railRef}
         data-testid="home-launcher-rail"
