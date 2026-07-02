@@ -185,26 +185,13 @@ export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
 
-export type VoiceBackendId = "kokoro" | "omnivoice";
+export type VoiceBackendId = "kokoro";
 
 /**
- * Per-tier voice backend policy. The FIRST entry is the default backend
- * for that tier — `runtime-selection.ts` picks it when both backends are
- * available and no override applies (voice cloning, TTFA target, RTF).
- * Entries beyond the first are also bundled; tiers that ship only one
- * backend have a single-element array.
- *
- * Policy:
- *   - Mobile-class tiers (2b / 4b) → Kokoro only. Kokoro is ~82M
- *     params (a single ~60-80 MB GGUF) and hits ~97ms CPU TTFB, so it is
- *     both smaller and faster than OmniVoice (~400-625 MB) — the right
- *     trade for phones. OmniVoice is not shipped in these bundles. On
- *     mobile, `selectVoiceBackend({ mobile: true })` also forces Kokoro
- *     regardless of any env override, so the path is Kokoro-exclusive.
- *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
- *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
- *     and compute budget is large enough that the OmniVoice quality win
- *     dominates; Kokoro is not shipped in these bundles.
+ * Per-tier voice backend policy. Kokoro is the sole on-device TTS backend
+ * for every Eliza-1 tier. At ~82M params (a single ~60-80 MB GGUF) hitting
+ * ~97ms CPU TTFB it is small and fast enough to ship on phones and large
+ * hosts alike, so every tier bundles exactly Kokoro.
  */
 export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
@@ -212,9 +199,9 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
 > = {
   "eliza-1-2b": ["kokoro"],
   "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["omnivoice", "kokoro"],
-  "eliza-1-27b": ["omnivoice"],
-  "eliza-1-27b-256k": ["omnivoice"],
+  "eliza-1-9b": ["kokoro"],
+  "eliza-1-27b": ["kokoro"],
+  "eliza-1-27b-256k": ["kokoro"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = ["turbo3", "turbo4"];
@@ -377,81 +364,7 @@ function bundleComponent(
   return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id, file) };
 }
 
-/**
- * K-quant ladder for the OmniVoice TTS GGUFs. The omnivoice.cpp
- * `tools/quantize.cpp` binary already supports the full set Q2_K..Q8_0;
- * we publish a curated subset that matches the device-class memory budgets
- * the downloader is expected to choose from. The runtime selects ONE level
- * via {@link voiceQuantForTier}; the publish path emits ALL levels from
- * {@link voiceQuantLadderForTier} so the bundle can support a downloader
- * that picks the level matching the host's RAM/SOC class at install time
- * (R8 §3 / §7.2). No silent fallback — AGENTS.md §3 forbids "try the
- * next smaller one" at runtime.
- *
- * R8 §2 + omnivoice.cpp/AGENTS.md PolarQuant note: the K-quant family
- * (Q3..Q6) is the only weight-quant currently wired for OmniVoice's
- * MaskGIT LM weight bank — PolarQuant / TurboQuant for that LM bank
- * is *plausible* (same arch) but no recipe wires it yet; QJL is N/A
- * (OmniVoice has no KV cache between MaskGIT steps); V-cache PolarQuant
- * is N/A for the same reason. See `docs/inference/voice-quant-matrix.md`.
- */
-export type OmniVoiceQuantLevel =
-  | "Q3_K_M"
-  | "Q4_K_M"
-  | "Q5_K_M"
-  | "Q6_K"
-  | "Q8_0";
-
-/**
- * Default OmniVoice K-quant the runtime picks per tier when no
- * device-class override applies. Mobile-class tiers (2b/4b) default
- * to Q4_K_M (~4.5 bits/weight, the common sweet spot for llama.cpp /
- * Ollama / LM Studio). Desktop / workstation tiers default to Q8_0 (≈8
- * bits/weight, near-bf16 quality) because RAM headroom permits it.
- */
-function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
-  return id === "eliza-1-2b" || id === "eliza-1-4b" ? "Q4_K_M" : "Q8_0";
-}
-
-/**
- * Full K-quant ladder published per tier. The downloader inspects the
- * device's RAM/SoC class at install time and picks the appropriate level
- * from this list. The ladder is monotonically decreasing in bits-per-weight
- * (smallest first): {@link OmniVoiceQuantLevel}.
- *
- * Every active tier publishes an OmniVoice ladder. Small tiers keep the
- * ladder narrow so the installer can stay inside mobile RAM budgets while
- * still defaulting to the fused OmniVoice path. 9B and 27B-class tiers ship
- * the full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
- * Q3_K_M and a `--memory-budget good` host can take Q6_K.
- */
-const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
-  Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
-> = {
-  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-  "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-  "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-};
-
-export function voiceQuantLadderForTier(
-  id: Eliza1TierId,
-): ReadonlyArray<OmniVoiceQuantLevel> {
-  return OMNIVOICE_QUANT_LADDER_BY_TIER[id];
-}
-
-export function defaultVoiceQuantForTier(
-  id: Eliza1TierId,
-): OmniVoiceQuantLevel {
-  return voiceQuantForTier(id);
-}
-
-function primaryVoiceFileForTier(id: Eliza1TierId): string {
-  const defaultBackend = ELIZA_1_VOICE_BACKENDS[id][0];
-  if (defaultBackend === "omnivoice") {
-    return `tts/omnivoice-base-${voiceQuantForTier(id)}.gguf`;
-  }
+function primaryVoiceFileForTier(_id: Eliza1TierId): string {
   return "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf";
 }
 

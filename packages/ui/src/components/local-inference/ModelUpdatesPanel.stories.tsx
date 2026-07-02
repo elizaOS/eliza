@@ -8,7 +8,7 @@ import {
 } from "./ModelUpdatesPanel";
 
 const installations: VoiceModelInstallationView[] = [
-  { id: "omnivoice", installedVersion: "1.0.0", pinned: false },
+  { id: "kokoro", installedVersion: "1.0.0", pinned: false },
   { id: "diarizer", installedVersion: null, pinned: false },
   {
     id: "speaker-encoder",

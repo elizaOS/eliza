@@ -14,7 +14,7 @@
 #   - zig 0.14+        (Zig toolchain; provides riscv64-linux-musl — every
 #                       cross-build here is zig/musl, so no Android NDK is needed)
 #   - cmake 3.21+      (drives every package's cross-build)
-#   - node 20+         (drives compile-libllama.mjs / build-omnivoice.mjs)
+#   - node 20+         (drives compile-libllama.mjs)
 #
 # Usage:
 #   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
@@ -222,29 +222,9 @@ else
     fi
 fi
 
-# ── libomnivoice ─────────────────────────────────────────────────────
-echo
-echo "── Step 3: libomnivoice ──"
-BUILD_OMNI="$repo_root/plugins/plugin-local-inference/native/build-omnivoice.mjs"
-if [ ! -f "$BUILD_OMNI" ]; then
-    echo "  ✗ build-omnivoice.mjs missing at $BUILD_OMNI"
-    FAIL_N=$((FAIL_N+1))
-else
-    omni_sentinel="$repo_root/plugins/plugin-local-inference/native/build-omnivoice-linux-riscv64-cpu/libomnivoice.so"
-    if should_build "$omni_sentinel"; then
-        echo "→ Building libomnivoice (linux-riscv64-cpu) …"
-        if OMNIVOICE_TARGET=linux-riscv64-cpu "$NODE_BIN" "$BUILD_OMNI" >"$repo_root/build/libomnivoice-linux-riscv64.log" 2>&1; then
-            echo "  ✓ libomnivoice linux-riscv64-cpu"
-        else
-            echo "  ✗ libomnivoice linux-riscv64-cpu (see build/libomnivoice-linux-riscv64.log)"
-            FAIL_N=$((FAIL_N+1))
-        fi
-    fi
-fi
-
 # ── sigsys-handler-riscv64 ───────────────────────────────────────────
 echo
-echo "── Step 4: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
+echo "── Step 3: libsigsys-handler-riscv64 (Bun seccomp shim) ──"
 COMPILE_SHIM="$repo_root/packages/app-core/scripts/aosp/compile-shim.mjs"
 if [ ! -f "$COMPILE_SHIM" ]; then
     echo "  ✗ compile-shim.mjs missing at $COMPILE_SHIM"

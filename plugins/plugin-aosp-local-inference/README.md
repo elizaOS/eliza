@@ -10,7 +10,7 @@ This package enables on-device inference for Eliza agents running on Android (AO
 |---|---|
 | `TEXT_SMALL` / `TEXT_LARGE` | llama.cpp FFI (`libllama.so` via `libeliza-llama-shim.so`) |
 | `TEXT_EMBEDDING` | llama.cpp FFI (separate embedding context, disabled by default) |
-| `TEXT_TO_SPEECH` | Fused OmniVoice (`libelizainference.so`) — WAV output at 24 kHz |
+| `TEXT_TO_SPEECH` | Fused Kokoro (`libelizainference.so`) — WAV output at 24 kHz |
 | `TRANSCRIPTION` | ASR via `libelizainference.so` |
 
 All handlers self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on non-AOSP platforms. The package is safe to import unconditionally from the mobile agent bundle.
@@ -20,7 +20,7 @@ All handlers self-gate on `ELIZA_LOCAL_LLAMA=1` and are no-ops on non-AOSP platf
 - **Local LLM inference** — in-process llama.cpp via `bun:ffi`; no HTTP server subprocess.
 - **Speculative decoding (MTP)** — optional in-process MTP drafter via `libeliza-llama-speculative-shim.so`; auto-paired when a `mtp/` drafter GGUF is found in the active model bundle.
 - **Custom KV-cache quantization** — supports `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar` quant types from the elizaOS/llama.cpp fork (default: K=`qjl1_256`, V=`q4_polar` for chat).
-- **Text-to-speech** — OmniVoice synthesis via `libelizainference.so`; pre-warm support to amortize first-request latency.
+- **Text-to-speech** — Kokoro synthesis via `libelizainference.so` (`eliza_inference_kokoro_*`); pre-warm support to amortize first-request latency.
 - **Transcription** — ASR via `libelizainference.so` from PCM WAV input or `{ pcm, sampleRateHz }` params.
 - **Model auto-download** — if no bundled GGUF is found, downloads `elizaos/eliza-1` from HuggingFace (opt-out: `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1`).
 - **Cloud fallback** — for `TEXT_SMALL` / `TEXT_LARGE`, a secondary handler at priority -1 forwards to Eliza Cloud when the local FFI path fails with a recoverable error.
@@ -44,7 +44,7 @@ The following shared libraries must be present in `cwd/{abi}/` (where `{abi}` is
 - `libllama.so` — elizaOS/llama.cpp fork (`v0.1.0-eliza`, based on `apothic/llama.cpp-1bit-turboquant` @ `main-b8198-b2b5273`)
 - `libeliza-llama-shim.so` — struct-by-value wrapper (NEEDED-links `libllama.so`)
 - `libeliza-llama-speculative-shim.so` — MTP speculative decoding (optional)
-- `libelizainference.so` — fused OmniVoice TTS + ASR (optional, required for voice)
+- `libelizainference.so` — fused Kokoro TTS + ASR (optional, required for voice)
 
 `ElizaAgentService.java` sets `LD_LIBRARY_PATH` to the ABI dir before spawning bun.
 
