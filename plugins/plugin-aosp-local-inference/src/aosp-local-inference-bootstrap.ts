@@ -1654,7 +1654,7 @@ function makeEmbeddingHandler(
   };
 }
 
-function extractSpeechText(params: TextToSpeechParams | string): string {
+export function extractSpeechText(params: TextToSpeechParams | string): string {
   if (typeof params === "string") return params;
   if (params && typeof params === "object" && typeof params.text === "string") {
     return params.text;
@@ -1664,7 +1664,7 @@ function extractSpeechText(params: TextToSpeechParams | string): string {
   );
 }
 
-function extractSpeechSignal(
+export function extractSpeechSignal(
   params: TextToSpeechParams | string,
 ): AbortSignal | undefined {
   return typeof params === "object" && params !== null

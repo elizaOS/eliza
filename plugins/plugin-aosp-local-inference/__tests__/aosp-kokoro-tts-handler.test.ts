@@ -8,6 +8,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  extractSpeechSignal,
+  extractSpeechText,
   makeAospTextToSpeechHandler,
   prewarmAospKokoroTextToSpeechHandler,
 } from "../src/aosp-local-inference-bootstrap";
@@ -133,5 +135,68 @@ describe("AOSP TEXT_TO_SPEECH handler", () => {
     );
 
     expect(calls).toBe(0);
+  });
+});
+
+// Fuzz / robustness — the TEXT_TO_SPEECH input-parsing contract
+// (extractSpeechText / extractSpeechSignal) is what every request passes through
+// before the native Kokoro FFI. It must round-trip valid inputs, reject
+// malformed shapes with the typed error, and never crash on adversarial text.
+describe("AOSP TEXT_TO_SPEECH input contract — fuzz / robustness", () => {
+  function randText(): string {
+    const pools = [
+      "abcdefghijklmnopqrstuvwxyz ",
+      "  \t\n\r  ", // whitespace-only
+      "日本語のテスト。café — naïve — 😀🎙️", // unicode + emoji
+      "<script>alert(1)</script> & \0 \x07 control", // markup + control chars
+      "word ".repeat(2000), // very long
+    ];
+    const pool = pools[Math.floor(Math.random() * pools.length)] ?? "a";
+    const len = 1 + Math.floor(Math.random() * 64);
+    let s = "";
+    for (let i = 0; i < len; i++)
+      s += pool[Math.floor(Math.random() * pool.length)] ?? "";
+    return s;
+  }
+
+  it("extractSpeechText round-trips 200 random string / { text } inputs verbatim", () => {
+    for (let i = 0; i < 200; i++) {
+      const text = randText();
+      // Passed as a bare string and as { text } — both must return the exact
+      // bytes (no trimming/mutation at the extractor layer; the handler trims).
+      expect(extractSpeechText(text)).toBe(text);
+      expect(extractSpeechText({ text })).toBe(text);
+    }
+  });
+
+  it("extractSpeechText rejects every malformed shape with the typed input error", () => {
+    const bad: unknown[] = [
+      123,
+      null,
+      undefined,
+      {},
+      { text: 123 },
+      { text: null },
+      [],
+      true,
+      { notText: "x" },
+      Symbol("s"),
+    ];
+    for (const params of bad) {
+      expect(() => extractSpeechText(params as never)).toThrow(
+        /requires a string or \{ text \}/,
+      );
+    }
+  });
+
+  it("extractSpeechSignal recovers the signal only from object params, never crashes", () => {
+    const ac = new AbortController();
+    expect(extractSpeechSignal({ text: "hi", signal: ac.signal })).toBe(
+      ac.signal,
+    );
+    // Bare string / signal-less object / adversarial shapes → undefined, no throw.
+    for (const p of ["hello", { text: "x" }, {}, [] as never]) {
+      expect(extractSpeechSignal(p as never)).toBeUndefined();
+    }
   });
 });
