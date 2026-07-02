@@ -73,6 +73,15 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+const mockCheckAgentCreditGate = mock(async () => ({
+  allowed: true as boolean,
+  balance: 10,
+  error: undefined as string | undefined,
+}));
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate: mockCheckAgentCreditGate,
+}));
+
 // Import after all mocks are in place.
 const { default: app } = await import("../eliza-app/provisioning-agent/route");
 
@@ -166,5 +175,28 @@ describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
     const call = firstCreateAgentCall();
     expect(call).toBeDefined();
     expect(call!.dockerImage).toMatch(/^ghcr\.io\//);
+  });
+
+  test("#11224: a credit-suspended org is blocked 402 — no dedicated agent created or provisioned", async () => {
+    mockListByOrganization.mockResolvedValue([]); // no existing sandbox → provision path
+    mockCreateAgent.mockClear();
+    mockEnqueueAgentProvision.mockClear();
+    mockCheckAgentCreditGate.mockResolvedValueOnce({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits",
+    });
+
+    const req = new Request("http://localhost/", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-session-token" },
+    });
+    const res = await app.fetch(req);
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ code: "insufficient_credits" });
+    // The gate fires BEFORE any dedicated agent is minted/provisioned.
+    expect(mockCreateAgent).not.toHaveBeenCalled();
+    expect(mockEnqueueAgentProvision).not.toHaveBeenCalled();
   });
 });
