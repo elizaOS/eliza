@@ -1,0 +1,543 @@
+{
+  "generatedAt": "2026-07-02T19:07:46.020Z",
+  "host": {
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "libPath": "/home/shaw/.local/state/eliza/local-inference/lib/libelizainference.so",
+  "asrBundle": {
+    "dir": "/home/shaw/.local/state/milady/asr-bundle",
+    "model": 804749248,
+    "mmproj": 214392480
+  },
+  "aggregate": {
+    "utterances": 42,
+    "meanWer": 0.019,
+    "meanNameHitRate": 0.9
+  },
+  "items": [
+    {
+      "id": "household-01",
+      "voice": "af_nicole",
+      "reference": "Hi, my name is Jill.",
+      "hypothesis": "Hi, my name is Jill.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Jill"
+      ],
+      "asrMs": 783,
+      "wavSha256": "2e2bf4d3f4d04aa369a12bf0ce44d138916b4ecb1d1d2f2c68c76fc2be8dca8a"
+    },
+    {
+      "id": "household-02",
+      "voice": "bm_lewis",
+      "reference": "This is my wife Jill.",
+      "hypothesis": "This is my wife, Jill.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Jill"
+      ],
+      "asrMs": 813,
+      "wavSha256": "352b76b7a9f325a0c51374320c8d37c63b727122c953939a0b786f4ca424f5f5"
+    },
+    {
+      "id": "household-03",
+      "voice": "bm_george",
+      "reference": "Hey there, I'm Bob.",
+      "hypothesis": "Hey there! I'm Bob.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Bob"
+      ],
+      "asrMs": 859,
+      "wavSha256": "ec5fb7db10bf51b371e6ae7659e98f6ec7992734c2720a0a841ff9eb07d6e9a8"
+    },
+    {
+      "id": "household-04",
+      "voice": "af_nicole",
+      "reference": "Can you set a reminder for dinner at seven?",
+      "hypothesis": "Can you set a reminder for dinner at seven?",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 1061,
+      "wavSha256": "09268f74c397213a6fa9f1feeb5a84499cab4eb3cbeacb6453f72afb4dd8aac2"
+    },
+    {
+      "id": "household-05",
+      "voice": "bm_george",
+      "reference": "What is the weather looking like tomorrow?",
+      "hypothesis": "What is the weather looking like tomorrow?",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 849,
+      "wavSha256": "3f32786a5f44a833de16e19bae3d726918c4cdb47b62f1901c30c1f46d5677d0"
+    },
+    {
+      "id": "household-06",
+      "voice": "bm_lewis",
+      "reference": "Jill's birthday is on June twelfth.",
+      "hypothesis": "Jill's birthday is on June twelfth.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Jill"
+      ],
+      "asrMs": 863,
+      "wavSha256": "ba81e8dcf694b19fdd22988b0818a6abd43ec9992c73333b936d65035c8a6b9f"
+    },
+    {
+      "id": "household-07",
+      "voice": "bm_lewis",
+      "reference": "Bob works at Riverside Hospital.",
+      "hypothesis": "Bob works at Riverside Hospital.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Bob"
+      ],
+      "asrMs": 781,
+      "wavSha256": "ce701000691226361ae429f81a93e5a6c207cce0d909da4734ebe52538e6b4dc"
+    },
+    {
+      "id": "household-08",
+      "voice": "af_nicole",
+      "reference": "Hi, it's Jill again.",
+      "hypothesis": "Hi, it's Jill again.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Jill"
+      ],
+      "asrMs": 750,
+      "wavSha256": "e13c5b31e379c821e0cd86adfdddc96b6af10ce1671b6b06f0c6fb443e145eaf"
+    },
+    {
+      "id": "household-09",
+      "voice": "bm_george",
+      "reference": "My birthday is in October, by the way.",
+      "hypothesis": "My birthday is in October. By the way.",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 1024,
+      "wavSha256": "b2f80fb7714775b01aff49d55c124b12e37e9bb4db06a742a3ad732d566a0581"
+    },
+    {
+      "id": "household-10",
+      "voice": "bm_lewis",
+      "reference": "My anniversary with Jill is in September.",
+      "hypothesis": "My anniversary with Jill is in September.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Jill"
+      ],
+      "asrMs": 884,
+      "wavSha256": "99ebb8a1ea3f123dda4049adf3af5c416388769f45fc61e8f7e526e811a59c4b"
+    },
+    {
+      "id": "household-11",
+      "voice": "af_nicole",
+      "reference": "Bob is staying for dinner tonight.",
+      "hypothesis": "Bob is staying for dinner tonight.",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 858,
+      "wavSha256": "a27d64d1c52fc9b91207d57d12b89badfd1ebef5d9551bb40d54e60ce15c5af1"
+    },
+    {
+      "id": "household-12",
+      "voice": "bm_george",
+      "reference": "Please turn off the porch light.",
+      "hypothesis": "Please turn off the porch light.",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 869,
+      "wavSha256": "0fdfdf912f6ebaa447a6b6a0c21fc1c7834c41dc7e6ab1d527289c9f7650b979"
+    },
+    {
+      "id": "work-01",
+      "voice": "bm_lewis",
+      "reference": "This is my colleague Maria Chen. She works at Acme Corporation.",
+      "hypothesis": "This is my colleague Maria Chen. She works at Acme Corporation.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria Chen",
+        "Maria"
+      ],
+      "asrMs": 1317,
+      "wavSha256": "7ae7c06f5e59c7e590ace8ad0f8abc2f01b74dd9abb612700578afc6db9c3093"
+    },
+    {
+      "id": "work-02",
+      "voice": "af_bella",
+      "reference": "Hi, I'm Maria Chen. Nice to meet you.",
+      "hypothesis": "Hi, I'm Maria Chen. Nice to meet you.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria Chen"
+      ],
+      "asrMs": 960,
+      "wavSha256": "a82b8b497ae545c8d52d5c56b5f0ff120d281eff00ab7620c858ae7d980bbf46"
+    },
+    {
+      "id": "work-03",
+      "voice": "bm_lewis",
+      "reference": "Maria's birthday is on March third.",
+      "hypothesis": "Maria's birthday is on March third.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria"
+      ],
+      "asrMs": 876,
+      "wavSha256": "9601187d85f503ddf081f9f827a17cb44c1c5665e5a1d15cfc6b0cee518e62e2"
+    },
+    {
+      "id": "work-04",
+      "voice": "af_bella",
+      "reference": "Could you schedule a design review for Thursday morning?",
+      "hypothesis": "Could you schedule a design review for Thursday morning?",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 990,
+      "wavSha256": "d1f0e3bc48640906c69802349a3c1441d2d0a93801a36694ed1daa06df32cd57"
+    },
+    {
+      "id": "work-05",
+      "voice": "bm_lewis",
+      "reference": "Maria manages the platform team at Acme.",
+      "hypothesis": "Maria manages the platform team at Agme.",
+      "wer": 0.143,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria"
+      ],
+      "asrMs": 867,
+      "wavSha256": "6b8603501cc36eb889820bab4306e07f4d213d251ba3ec05af70416361150280"
+    },
+    {
+      "id": "work-06",
+      "voice": "af_bella",
+      "reference": "My extension at the office is four two seven.",
+      "hypothesis": "My extension at the office is four two seven.",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 887,
+      "wavSha256": "6dcd8baa571dc2f0d3f958e05f94f8d17db9b259de2ea53c37a3d9108cb42079"
+    },
+    {
+      "id": "work-07",
+      "voice": "bm_lewis",
+      "reference": "Maria Chen is my colleague.",
+      "hypothesis": "Maria Chen is my colleague.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria Chen"
+      ],
+      "asrMs": 805,
+      "wavSha256": "870d40f858cc1095e6d2e523189dc05fcefda2782bff517ea2b0f82227b4ef86"
+    },
+    {
+      "id": "work-08",
+      "voice": "af_bella",
+      "reference": "Hello, it's Maria Chen again.",
+      "hypothesis": "Hello, it's Maria Chen again.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria Chen"
+      ],
+      "asrMs": 790,
+      "wavSha256": "b16e28cc92c2e13d47f21ffd593412ecaf36b2bae610eea270f461a4b4553146"
+    },
+    {
+      "id": "work-09",
+      "voice": "bm_lewis",
+      "reference": "Doctor Patel is my dentist.",
+      "hypothesis": "Doctor Patel is my dentist.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Patel"
+      ],
+      "asrMs": 850,
+      "wavSha256": "a74c1881c042d476e375035bb80efc6e60d921b9ffb5ecfbbba413217c80b297"
+    },
+    {
+      "id": "work-10",
+      "voice": "bm_lewis",
+      "reference": "Doctor Patel's office is on Fifth Avenue.",
+      "hypothesis": "Doctor Patel's office is on Fifth Avenue.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Patel"
+      ],
+      "asrMs": 1008,
+      "wavSha256": "439477c4f551e3054cd989f4043e74b18530c0ed6557529a6a53d7e235d5b5f8"
+    },
+    {
+      "id": "confusables-01",
+      "voice": "af_bella",
+      "reference": "Hi, my name is Maria.",
+      "hypothesis": "Hi, my name is Maria.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria"
+      ],
+      "asrMs": 854,
+      "wavSha256": "fac79f31eb961f64a1fe57e1b9b0869a0147a3dd977119ab198494ce741e4bbf"
+    },
+    {
+      "id": "confusables-02",
+      "voice": "am_michael",
+      "reference": "Hello, I'm Mario.",
+      "hypothesis": "Hello, I'm Mario.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Mario"
+      ],
+      "asrMs": 763,
+      "wavSha256": "66e95d18751a173940ea1f3c14712242ab472b9d6ea7748d8108a6c6eb123f26"
+    },
+    {
+      "id": "confusables-03",
+      "voice": "af_sarah",
+      "reference": "Hey, this is Marie.",
+      "hypothesis": "Hey, this is Marie.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Marie"
+      ],
+      "asrMs": 831,
+      "wavSha256": "7dc8d17933fd2dc4c324c20be6e18bbabb5065f9ab54faae51ebfcc82f5badba"
+    },
+    {
+      "id": "confusables-04",
+      "voice": "bm_lewis",
+      "reference": "Maria is my partner.",
+      "hypothesis": "Maria is my partner.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Maria"
+      ],
+      "asrMs": 768,
+      "wavSha256": "b399f205e954d025cef77884789d80283815b4a7819141a5a1c1cbdb51bf999b"
+    },
+    {
+      "id": "confusables-05",
+      "voice": "am_michael",
+      "reference": "Can you turn on the living room lights?",
+      "hypothesis": "Can you turn on the living room lights?",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 980,
+      "wavSha256": "daf7d419b330625a8c8e82ea75cb2cb81ca2a8fbb6b9955d9dfba90b9a9c4a22"
+    },
+    {
+      "id": "confusables-06",
+      "voice": "bm_lewis",
+      "reference": "Mario's birthday is in March.",
+      "hypothesis": "Mario's birthday is in March.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Mario"
+      ],
+      "asrMs": 844,
+      "wavSha256": "d9f706d7a6d5123a93462529f651d22450910002a8a29d3a1a4d6528a8df8c70"
+    },
+    {
+      "id": "confusables-07",
+      "voice": "af_sarah",
+      "reference": "Please add milk to the shopping list.",
+      "hypothesis": "Please add milk to the shopping list.",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 862,
+      "wavSha256": "a8f5f3e8135c7fbba24fda3a8d7fa52b96d427eb3f592304d0758a3b58909df4"
+    },
+    {
+      "id": "confusables-08",
+      "voice": "bm_lewis",
+      "reference": "Marie works at the public library.",
+      "hypothesis": "Marie works at the public library.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Marie"
+      ],
+      "asrMs": 840,
+      "wavSha256": "1a6488cc545d452fa65c877ec15bc12e82d4c7b546642eaded448cdeef1c5459"
+    },
+    {
+      "id": "confusables-09",
+      "voice": "af_bella",
+      "reference": "What time is my appointment tomorrow?",
+      "hypothesis": "What time is my appointment tomorrow?",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 834,
+      "wavSha256": "c6469d39e28248248004a853af7be7d3e16fe269a490afc2471285a047e834da"
+    },
+    {
+      "id": "confusables-10",
+      "voice": "bm_lewis",
+      "reference": "Mario is my brother.",
+      "hypothesis": "Mario is my brother.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Mario"
+      ],
+      "asrMs": 693,
+      "wavSha256": "63be6fc8705c87b5e35cfc6a7bbe2f08bd8907c6e1fca20fd63496c76593f374"
+    },
+    {
+      "id": "confusables-11",
+      "voice": "am_michael",
+      "reference": "It's Mario again.",
+      "hypothesis": "It's Mario again.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Mario"
+      ],
+      "asrMs": 672,
+      "wavSha256": "9084436a12c15bde9c20c22349042cadf2b403c1053b3e80cb9d529d985ce51c"
+    },
+    {
+      "id": "confusables-12",
+      "voice": "bm_lewis",
+      "reference": "Marie is hosting book club on Wednesday.",
+      "hypothesis": "Marie is hosting book club on Wednesday.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Marie"
+      ],
+      "asrMs": 961,
+      "wavSha256": "684de6af1de4af046c2fe24cf055412683f0eddd54cc1a3173641d65dcf066d6"
+    },
+    {
+      "id": "homophones-01",
+      "voice": "bf_emma",
+      "reference": "Hi, I'm Erin.",
+      "hypothesis": "Hi, I'm Errand.",
+      "wer": 0.25,
+      "nameHitRate": 0,
+      "expectedNames": [
+        "Erin"
+      ],
+      "asrMs": 687,
+      "wavSha256": "e394e60fa32c75aceb7f798c791dca0c22614c35de91247e95e0972f912e18e3"
+    },
+    {
+      "id": "homophones-02",
+      "voice": "am_adam",
+      "reference": "Hey there, I'm Aaron.",
+      "hypothesis": "Hey there! I'm Aaron.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Aaron"
+      ],
+      "asrMs": 662,
+      "wavSha256": "146934ab2cc8b0cee6e7c2010efbe0434dea427895669928b23ef03b6e47f735"
+    },
+    {
+      "id": "homophones-03",
+      "voice": "bm_lewis",
+      "reference": "Erin is my girlfriend.",
+      "hypothesis": "Aren is my girlfriend.",
+      "wer": 0.25,
+      "nameHitRate": 0,
+      "expectedNames": [
+        "Erin"
+      ],
+      "asrMs": 811,
+      "wavSha256": "cd892f55ee886b46ed170752cf609e50bfd735cff2d48730d910f8447ab4b64c"
+    },
+    {
+      "id": "homophones-04",
+      "voice": "bf_emma",
+      "reference": "Could you play some jazz music?",
+      "hypothesis": "Could you play some jazz music?",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 770,
+      "wavSha256": "3a3aa0c5d4703923fefa5d3df8b99cd3f68d8c030b66dcc11bbcdd2ed255a587"
+    },
+    {
+      "id": "homophones-05",
+      "voice": "bm_lewis",
+      "reference": "Aaron works at Basecamp Brewing.",
+      "hypothesis": "Aaron works at Basecamp Brewing.",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Aaron"
+      ],
+      "asrMs": 787,
+      "wavSha256": "b061daf2f57bb07dbb6d5e56dad5c4b09cb1923ceb138096c136536bdc75c6e4"
+    },
+    {
+      "id": "homophones-06",
+      "voice": "am_adam",
+      "reference": "Set an alarm for six in the morning, please.",
+      "hypothesis": "Set an alarm for six in the morning, please.",
+      "wer": 0,
+      "nameHitRate": null,
+      "expectedNames": [],
+      "asrMs": 1102,
+      "wavSha256": "c92bf1b1e196241ee63169e0eb76e5f1563e99671daae1eb4a9648b0ae5c3f25"
+    },
+    {
+      "id": "homophones-07",
+      "voice": "bm_lewis",
+      "reference": "Erin's sister is named Dana.",
+      "hypothesis": "Aaron's sister is named Dana.",
+      "wer": 0.167,
+      "nameHitRate": 0,
+      "expectedNames": [
+        "Erin"
+      ],
+      "asrMs": 893,
+      "wavSha256": "d4f2e9e62f06c96ed78e8edbe25b9a21228f31c21ed6f9b7c1104c6236f12e3c"
+    },
+    {
+      "id": "homophones-08",
+      "voice": "bf_emma",
+      "reference": "It's Erin. Can you unlock the door?",
+      "hypothesis": "It's Erin. Can you unlock the door?",
+      "wer": 0,
+      "nameHitRate": 1,
+      "expectedNames": [
+        "Erin"
+      ],
+      "asrMs": 990,
+      "wavSha256": "2b447f2a0397c61af477eddb7169e3fb0b9f81195d5b6ebde47596bd6f804c6e"
+    }
+  ]
+}

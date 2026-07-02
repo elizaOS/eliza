@@ -1,0 +1,655 @@
+{
+  "lane": "kg",
+  "input": "audio",
+  "generatedAt": "2026-07-02T19:09:42.860Z",
+  "sessions": [
+    {
+      "observation": {
+        "sessionId": "household",
+        "turns": [
+          {
+            "utteranceId": "household-01",
+            "transcript": "Hi, my name is Jill.",
+            "boundEntityId": "ent_020fa076-cecc-4470-ab68-a5c6a0b85db5",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "household-02",
+            "transcript": "This is my wife, Jill.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-03",
+            "transcript": "Hey there! I'm Bob.",
+            "boundEntityId": "ent_a167291f-ddb8-4c23-8c09-12461bc58270",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "household-04",
+            "transcript": "Can you set a reminder for dinner at seven?",
+            "boundEntityId": "ent_020fa076-cecc-4470-ab68-a5c6a0b85db5",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-05",
+            "transcript": "What is the weather looking like tomorrow?",
+            "boundEntityId": "ent_a167291f-ddb8-4c23-8c09-12461bc58270",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-06",
+            "transcript": "Jill's birthday is on June twelfth.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-07",
+            "transcript": "Bob works at Riverside Hospital.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-08",
+            "transcript": "Hi, it's Jill again.",
+            "boundEntityId": "ent_e2c0ad9f-0eb7-494a-8dfc-34cb715468da",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "household-09",
+            "transcript": "My birthday is in October. By the way.",
+            "boundEntityId": "ent_a167291f-ddb8-4c23-8c09-12461bc58270",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-10",
+            "transcript": "My anniversary with Jill is in September.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-11",
+            "transcript": "Bob is staying for dinner tonight.",
+            "boundEntityId": "ent_020fa076-cecc-4470-ab68-a5c6a0b85db5",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "household-12",
+            "transcript": "Please turn off the porch light.",
+            "boundEntityId": "ent_a167291f-ddb8-4c23-8c09-12461bc58270",
+            "wasCreated": false
+          }
+        ],
+        "entities": [
+          {
+            "entityId": "ent_a167291f-ddb8-4c23-8c09-12461bc58270",
+            "name": "Bob",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_020fa076-cecc-4470-ab68-a5c6a0b85db5",
+            "name": "Jill",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_e2c0ad9f-0eb7-494a-8dfc-34cb715468da",
+            "name": "Jill",
+            "attributes": []
+          }
+        ],
+        "relationships": [],
+        "facts": [],
+        "speakerEntities": {
+          "jill": "ent_020fa076-cecc-4470-ab68-a5c6a0b85db5",
+          "bob": "ent_a167291f-ddb8-4c23-8c09-12461bc58270"
+        }
+      },
+      "score": {
+        "sessionId": "household",
+        "creation": {
+          "tp": 2,
+          "fp": 1,
+          "fn": 0,
+          "precision": 0.6666666666666666,
+          "recall": 1,
+          "f1": 0.8
+        },
+        "recognition": {
+          "tp": 4,
+          "fp": 1,
+          "fn": 1,
+          "precision": 0.8,
+          "recall": 0.8,
+          "f1": 0.8000000000000002
+        },
+        "attribute": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 4,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "groundedFacts": 0,
+          "personFacts": 0
+        },
+        "disambiguation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "falseMerges": 0
+        },
+        "relationships": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "precision": null,
+          "recall": 0,
+          "f1": null
+        },
+        "details": [
+          "creation SPURIOUS: entity \"Jill\" (ent_e2c0ad9f-0eb7-494a-8dfc-34cb715468da) not expected",
+          "recognition MISS: household-08 did not bind to an existing entity (created a duplicate)",
+          "attribute MISS: no stored fact for subject \"Jill\" with keywords [birthday, june]",
+          "attribute MISS: no stored fact for subject \"Bob\" with keywords [riverside, hospital]",
+          "attribute MISS: no stored fact for subject \"Bob\" with keywords [birthday, october]",
+          "attribute MISS: no stored fact for subject \"Jill\" with keywords [anniversary, september]",
+          "relationship MISS (disambiguation): self -[wife]-> \"Jill\"",
+          "relationship MISS (all): self -[wife]-> \"Jill\""
+        ]
+      }
+    },
+    {
+      "observation": {
+        "sessionId": "work",
+        "turns": [
+          {
+            "utteranceId": "work-01",
+            "transcript": "This is my colleague Maria Chen. She works at Acme Corporation.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-02",
+            "transcript": "Hi, I'm Maria Chen. Nice to meet you.",
+            "boundEntityId": "ent_a5d98a81-d84f-4911-abd8-492195ceed10",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "work-03",
+            "transcript": "Maria's birthday is on March third.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-04",
+            "transcript": "Could you schedule a design review for Thursday morning?",
+            "boundEntityId": "ent_a5d98a81-d84f-4911-abd8-492195ceed10",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-05",
+            "transcript": "Maria manages the platform team at Agme.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-06",
+            "transcript": "My extension at the office is four two seven.",
+            "boundEntityId": "ent_a5d98a81-d84f-4911-abd8-492195ceed10",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-07",
+            "transcript": "Maria Chen is my colleague.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-08",
+            "transcript": "Hello, it's Maria Chen again.",
+            "boundEntityId": "ent_ed1d587f-8fc7-4040-9e70-4743d054accf",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "work-09",
+            "transcript": "Doctor Patel is my dentist.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "work-10",
+            "transcript": "Doctor Patel's office is on Fifth Avenue.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          }
+        ],
+        "entities": [
+          {
+            "entityId": "ent_ed1d587f-8fc7-4040-9e70-4743d054accf",
+            "name": "Maria Chen",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_a5d98a81-d84f-4911-abd8-492195ceed10",
+            "name": "Maria Chen. Nice",
+            "attributes": []
+          }
+        ],
+        "relationships": [],
+        "facts": [],
+        "speakerEntities": {
+          "maria_chen": "ent_a5d98a81-d84f-4911-abd8-492195ceed10"
+        }
+      },
+      "score": {
+        "sessionId": "work",
+        "creation": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 1,
+          "precision": 0.5,
+          "recall": 0.5,
+          "f1": 0.5
+        },
+        "recognition": {
+          "tp": 1,
+          "fp": 1,
+          "fn": 1,
+          "precision": 0.5,
+          "recall": 0.5,
+          "f1": 0.5
+        },
+        "attribute": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 5,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "groundedFacts": 0,
+          "personFacts": 0
+        },
+        "disambiguation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "falseMerges": 0
+        },
+        "relationships": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 2,
+          "precision": null,
+          "recall": 0,
+          "f1": null
+        },
+        "details": [
+          "creation MISS: expected entity \"Patel\" not found",
+          "creation SPURIOUS: entity \"Maria Chen. Nice\" (ent_a5d98a81-d84f-4911-abd8-492195ceed10) not expected",
+          "recognition MISS: work-08 did not bind to an existing entity (created a duplicate)",
+          "attribute MISS: no stored fact for subject \"Maria\" with keywords [acme]",
+          "attribute MISS: no stored fact for subject \"Maria\" with keywords [birthday, march]",
+          "attribute MISS: no stored fact for subject \"Maria\" with keywords [platform, team]",
+          "attribute MISS: no stored fact for subject \"Maria\" with keywords [extension]",
+          "attribute MISS: no stored fact for subject \"Patel\" with keywords [fifth avenue]",
+          "relationship MISS (disambiguation): self -[colleague]-> \"Maria Chen\"",
+          "relationship MISS (all): self -[colleague]-> \"Maria Chen\"",
+          "relationship MISS (all): self -[dentist]-> \"Patel\""
+        ]
+      }
+    },
+    {
+      "observation": {
+        "sessionId": "confusables",
+        "turns": [
+          {
+            "utteranceId": "confusables-01",
+            "transcript": "Hi, my name is Maria.",
+            "boundEntityId": "ent_48c16b67-e925-4d14-a093-bc4ed393a600",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "confusables-02",
+            "transcript": "Hello, I'm Mario.",
+            "boundEntityId": "ent_ea403f58-8de4-4483-a328-043458921d6d",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "confusables-03",
+            "transcript": "Hey, this is Marie.",
+            "boundEntityId": "ent_3505e1c3-056c-4bdb-a5df-06034a481f39",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "confusables-04",
+            "transcript": "Maria is my partner.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-05",
+            "transcript": "Can you turn on the living room lights?",
+            "boundEntityId": "ent_ea403f58-8de4-4483-a328-043458921d6d",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-06",
+            "transcript": "Mario's birthday is in March.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-07",
+            "transcript": "Please add milk to the shopping list.",
+            "boundEntityId": "ent_3505e1c3-056c-4bdb-a5df-06034a481f39",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-08",
+            "transcript": "Marie works at the public library.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-09",
+            "transcript": "What time is my appointment tomorrow?",
+            "boundEntityId": "ent_48c16b67-e925-4d14-a093-bc4ed393a600",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-10",
+            "transcript": "Mario is my brother.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "confusables-11",
+            "transcript": "It's Mario again.",
+            "boundEntityId": "ent_cd8cacf5-5e5a-4952-b0ae-981453c6b4d1",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "confusables-12",
+            "transcript": "Marie is hosting book club on Wednesday.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          }
+        ],
+        "entities": [
+          {
+            "entityId": "ent_48c16b67-e925-4d14-a093-bc4ed393a600",
+            "name": "Maria",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_3505e1c3-056c-4bdb-a5df-06034a481f39",
+            "name": "Marie",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_ea403f58-8de4-4483-a328-043458921d6d",
+            "name": "Mario",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_cd8cacf5-5e5a-4952-b0ae-981453c6b4d1",
+            "name": "Mario",
+            "attributes": []
+          }
+        ],
+        "relationships": [
+          {
+            "toEntityId": "ent_ea403f58-8de4-4483-a328-043458921d6d",
+            "toName": "Mario",
+            "label": "sibling_of brother"
+          },
+          {
+            "toEntityId": "ent_48c16b67-e925-4d14-a093-bc4ed393a600",
+            "toName": "Maria",
+            "label": "partner_of partner"
+          }
+        ],
+        "facts": [],
+        "speakerEntities": {
+          "maria": "ent_48c16b67-e925-4d14-a093-bc4ed393a600",
+          "mario": "ent_ea403f58-8de4-4483-a328-043458921d6d",
+          "marie": "ent_3505e1c3-056c-4bdb-a5df-06034a481f39"
+        }
+      },
+      "score": {
+        "sessionId": "confusables",
+        "creation": {
+          "tp": 3,
+          "fp": 1,
+          "fn": 0,
+          "precision": 0.75,
+          "recall": 1,
+          "f1": 0.8571428571428571
+        },
+        "recognition": {
+          "tp": 3,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        },
+        "attribute": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 3,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "groundedFacts": 0,
+          "personFacts": 0
+        },
+        "disambiguation": {
+          "tp": 2,
+          "fp": 1,
+          "fn": 1,
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666,
+          "f1": 0.6666666666666666,
+          "falseMerges": 0
+        },
+        "relationships": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        },
+        "details": [
+          "creation SPURIOUS: entity \"Mario\" (ent_cd8cacf5-5e5a-4952-b0ae-981453c6b4d1) not expected",
+          "attribute MISS: no stored fact for subject \"Mario\" with keywords [birthday, march]",
+          "attribute MISS: no stored fact for subject \"Marie\" with keywords [library]",
+          "attribute MISS: no stored fact for subject \"Marie\" with keywords [book club]",
+          "disambiguation MISS: confusables-11 did not bind to an existing entity (created a duplicate)"
+        ]
+      }
+    },
+    {
+      "observation": {
+        "sessionId": "homophones",
+        "turns": [
+          {
+            "utteranceId": "homophones-01",
+            "transcript": "Hi, I'm Errand.",
+            "boundEntityId": "ent_bad3ea6f-3db5-462f-8fc4-280f92be4789",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "homophones-02",
+            "transcript": "Hey there! I'm Aaron.",
+            "boundEntityId": "ent_997dfd1b-c2f5-4592-aa60-81ed2cea13ad",
+            "wasCreated": true
+          },
+          {
+            "utteranceId": "homophones-03",
+            "transcript": "Aren is my girlfriend.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "homophones-04",
+            "transcript": "Could you play some jazz music?",
+            "boundEntityId": "ent_bad3ea6f-3db5-462f-8fc4-280f92be4789",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "homophones-05",
+            "transcript": "Aaron works at Basecamp Brewing.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "homophones-06",
+            "transcript": "Set an alarm for six in the morning, please.",
+            "boundEntityId": "ent_997dfd1b-c2f5-4592-aa60-81ed2cea13ad",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "homophones-07",
+            "transcript": "Aaron's sister is named Dana.",
+            "boundEntityId": "self",
+            "wasCreated": false
+          },
+          {
+            "utteranceId": "homophones-08",
+            "transcript": "It's Erin. Can you unlock the door?",
+            "boundEntityId": "ent_6cf51d71-7b21-43cb-9043-e2048efc1f80",
+            "wasCreated": true
+          }
+        ],
+        "entities": [
+          {
+            "entityId": "ent_997dfd1b-c2f5-4592-aa60-81ed2cea13ad",
+            "name": "Aaron",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_6cf51d71-7b21-43cb-9043-e2048efc1f80",
+            "name": "Erin. Can",
+            "attributes": []
+          },
+          {
+            "entityId": "ent_bad3ea6f-3db5-462f-8fc4-280f92be4789",
+            "name": "Errand",
+            "attributes": []
+          }
+        ],
+        "relationships": [],
+        "facts": [],
+        "speakerEntities": {
+          "erin": "ent_bad3ea6f-3db5-462f-8fc4-280f92be4789",
+          "aaron": "ent_997dfd1b-c2f5-4592-aa60-81ed2cea13ad"
+        }
+      },
+      "score": {
+        "sessionId": "homophones",
+        "creation": {
+          "tp": 2,
+          "fp": 1,
+          "fn": 0,
+          "precision": 0.6666666666666666,
+          "recall": 1,
+          "f1": 0.8
+        },
+        "recognition": {
+          "tp": 2,
+          "fp": 1,
+          "fn": 1,
+          "precision": 0.6666666666666666,
+          "recall": 0.6666666666666666,
+          "f1": 0.6666666666666666
+        },
+        "attribute": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 2,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "groundedFacts": 0,
+          "personFacts": 0
+        },
+        "disambiguation": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "precision": null,
+          "recall": 0,
+          "f1": null,
+          "falseMerges": 0
+        },
+        "relationships": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 1,
+          "precision": null,
+          "recall": 0,
+          "f1": null
+        },
+        "details": [
+          "creation SPURIOUS: entity \"Errand\" (ent_bad3ea6f-3db5-462f-8fc4-280f92be4789) not expected",
+          "recognition MISS: homophones-08 did not bind to an existing entity (created a duplicate)",
+          "attribute MISS: no stored fact for subject \"Aaron\" with keywords [brewing]",
+          "attribute MISS: no stored fact for subject \"Erin\" with keywords [sister, dana]",
+          "relationship MISS (disambiguation): self -[girlfriend]-> \"Erin\"",
+          "relationship MISS (all): self -[girlfriend]-> \"Erin\""
+        ]
+      }
+    }
+  ],
+  "aggregate": {
+    "creation": {
+      "tp": 8,
+      "fp": 4,
+      "fn": 1,
+      "precision": 0.6666666666666666,
+      "recall": 0.8888888888888888,
+      "f1": 0.761904761904762
+    },
+    "recognition": {
+      "tp": 10,
+      "fp": 3,
+      "fn": 3,
+      "precision": 0.7692307692307693,
+      "recall": 0.7692307692307693,
+      "f1": 0.7692307692307693
+    },
+    "attribute": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 14,
+      "precision": null,
+      "recall": 0,
+      "f1": null
+    },
+    "disambiguation": {
+      "tp": 2,
+      "fp": 1,
+      "fn": 4,
+      "precision": 0.6666666666666666,
+      "recall": 0.3333333333333333,
+      "f1": 0.4444444444444444,
+      "falseMerges": 0
+    },
+    "relationships": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 4,
+      "precision": 1,
+      "recall": 0.3333333333333333,
+      "f1": 0.5
+    }
+  }
+}
