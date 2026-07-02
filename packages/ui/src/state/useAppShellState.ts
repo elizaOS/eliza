@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { AGENT_READY_EVENT } from "../events";
 import {
   fetchServerFavoriteApps,
   loadFavoriteApps,
@@ -82,8 +83,10 @@ export function useAppShellState({
     if (!syncServerFavorites) return;
     if (!supportsFullAppShellRoutes(client.getBaseUrl())) return;
     let cancelled = false;
-    void fetchServerFavoriteApps().then((serverApps) => {
+    let hydrated = false;
+    const applyServerApps = (serverApps: string[] | null): void => {
       if (cancelled || serverApps == null) return;
+      hydrated = true;
       setFavoriteAppsRaw((current) => {
         if (
           current.length === serverApps.length &&
@@ -93,9 +96,26 @@ export function useAppShellState({
         }
         return serverApps;
       });
+    };
+    // Single retry-after-ready: on iOS the first fetch can fail while the
+    // native transport is still mode-gated during boot (persistence logs that
+    // at debug level). Once the native agent reports ready the transport is
+    // settled, so re-fetch exactly once if the first attempt did not hydrate.
+    const onAgentReady = (): void => {
+      document.removeEventListener(AGENT_READY_EVENT, onAgentReady);
+      if (cancelled || hydrated) return;
+      void fetchServerFavoriteApps().then(applyServerApps);
+    };
+    document.addEventListener(AGENT_READY_EVENT, onAgentReady);
+    void fetchServerFavoriteApps().then((serverApps) => {
+      applyServerApps(serverApps);
+      if (hydrated) {
+        document.removeEventListener(AGENT_READY_EVENT, onAgentReady);
+      }
     });
     return () => {
       cancelled = true;
+      document.removeEventListener(AGENT_READY_EVENT, onAgentReady);
     };
   }, [syncServerFavorites]);
 

@@ -153,8 +153,57 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     /// This method is intentionally fire-and-forget — a failure to enable
     /// background delivery is not user-actionable; the foreground monitoring
     /// path already works. We log and move on.
+    ///
+    /// Entitlement probe: iOS exposes no public API to read the running
+    /// binary's code-signing entitlements, so the first sample type doubles as
+    /// the capability probe. When the binary is not signed with
+    /// `com.apple.developer.healthkit` (simulator lanes built with code
+    /// signing disabled, sideload/dev builds signed without the capability)
+    /// EVERY call fails identically with "Missing
+    /// com.apple.developer.healthkit entitlement" — so the probe failing that
+    /// way means the remaining registrations are skipped behind a single info
+    /// line instead of one warning per type.
     private func enableHealthBackgroundDelivery() {
         guard HKHealthStore.isHealthDataAvailable() else { return }
+        let sampleTypes = backgroundDeliverySampleTypes()
+        guard let probeType = sampleTypes.first else { return }
+
+        healthStore.enableBackgroundDelivery(
+            for: probeType,
+            frequency: .immediate
+        ) { [weak self] success, error in
+            guard let self = self else { return }
+            let outcome = HealthBackgroundDeliveryGate.probeOutcome(
+                success: success,
+                errorMessage: error?.localizedDescription
+            )
+            switch outcome {
+            case .entitlementMissing:
+                NSLog(
+                    "[MobileSignalsPlugin] HealthKit background delivery skipped: binary lacks the com.apple.developer.healthkit entitlement (expected for simulator and non-store dev builds); foreground health monitoring is unaffected"
+                )
+                return
+            case .probeFailed:
+                Self.logBackgroundDeliveryFailure(probeType, error)
+            case .succeeded:
+                break
+            }
+            for sampleType in sampleTypes.dropFirst() {
+                self.healthStore.enableBackgroundDelivery(
+                    for: sampleType,
+                    frequency: .immediate
+                ) { ok, err in
+                    if !ok {
+                        Self.logBackgroundDeliveryFailure(sampleType, err)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sleep + biometric sample types eligible for background delivery, in
+    /// probe order (the first entry is the entitlement probe).
+    private func backgroundDeliverySampleTypes() -> [HKSampleType] {
         var sampleTypes: [HKSampleType] = []
         if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
             sampleTypes.append(sleepType)
@@ -170,20 +219,18 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 sampleTypes.append(qt)
             }
         }
-        for sampleType in sampleTypes {
-            healthStore.enableBackgroundDelivery(
-                for: sampleType,
-                frequency: .immediate
-            ) { success, error in
-                if !success {
-                    NSLog(
-                        "[MobileSignalsPlugin] enableBackgroundDelivery(%@) failed: %@",
-                        sampleType.identifier,
-                        error?.localizedDescription ?? "unknown"
-                    )
-                }
-            }
-        }
+        return sampleTypes
+    }
+
+    private static func logBackgroundDeliveryFailure(
+        _ sampleType: HKSampleType,
+        _ error: Error?
+    ) {
+        NSLog(
+            "[MobileSignalsPlugin] enableBackgroundDelivery(%@) failed: %@",
+            sampleType.identifier,
+            error?.localizedDescription ?? "unknown"
+        )
     }
 
     private func requestNotificationPermissions(_ call: CAPPluginCall) {

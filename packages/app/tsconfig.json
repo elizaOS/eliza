@@ -11,6 +11,9 @@
         "../../plugins/plugin-personal-assistant/src/index.ts"
       ],
       "@elizaos/plugin-blocker": ["./src/types/app-plugin-modules.d.ts"],
+      "@elizaos/plugin-blocker/native": [
+        "../../plugins/plugin-blocker/src/native.ts"
+      ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
       "@elizaos/plugin-vector-browser/register": [

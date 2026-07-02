@@ -1472,8 +1472,12 @@ async function initializePlatform(): Promise<void> {
  */
 async function registerMobileBlockerBackends(): Promise<void> {
   try {
+    // MUST be the /native subpath: renderer builds alias the bare
+    // `@elizaos/plugin-blocker` specifier to src/register.ts (side-effect
+    // only, zero exports), so importing the root here would make both
+    // register calls throw and leave mobile BLOCK enforcement dead.
     const [blocker, websiteNative, appNative] = await Promise.all([
-      import("@elizaos/plugin-blocker"),
+      import("@elizaos/plugin-blocker/native"),
       import("@elizaos/capacitor-websiteblocker"),
       import("@elizaos/capacitor-appblocker"),
     ]);

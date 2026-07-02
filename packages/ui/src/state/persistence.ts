@@ -1,6 +1,7 @@
 import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
+import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
 import {
   isPlausibleFragmentSource,
   normalizeUniforms,
@@ -639,6 +640,12 @@ export function saveFavoriteApps(apps: string[]): void {
  * Hydrate the favorites list from the server-side persisted store
  * (config.ui.favoriteApps), falling back to the local cache on failure.
  * Mirrors the result back into localStorage so the next boot is fast.
+ *
+ * During iOS boot the native transport can be legitimately mode-gated (cloud
+ * builds reject local-agent IPC until runtime-mode reconciliation finishes) —
+ * that is an expected startup phase, not a broken pipeline, so it logs at
+ * debug level; `useAppShellState` re-fetches once after the agent-ready
+ * event. Every other failure still warns.
  */
 export async function fetchServerFavoriteApps(): Promise<string[] | null> {
   try {
@@ -652,8 +659,15 @@ export async function fetchServerFavoriteApps(): Promise<string[] | null> {
     saveFavoriteApps(sanitized);
     return sanitized;
   } catch (err) {
+    const message = describePersistenceError(err);
+    if (isTerminalIosNativeAgentBootErrorMessage(message)) {
+      logger.debug(
+        `[persistence] server favorite apps unavailable while the native transport is mode-gated (will retry after agent-ready): ${message}`,
+      );
+      return null;
+    }
     logger.warn(
-      `[persistence] failed to fetch server favorite apps: ${describePersistenceError(err)}`,
+      `[persistence] failed to fetch server favorite apps: ${message}`,
     );
     return null;
   }
