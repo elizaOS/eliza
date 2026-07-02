@@ -13,10 +13,10 @@ describe("app-deploy-guidance", () => {
   // when the build-verb gate (isAppBuildTask) would otherwise drop the task.
   describe("monetized signal (structural, not keyword)", () => {
     const cloud = { target: "eliza-cloud" as const };
-    const home = {
-      target: "agent-home" as const,
-      agentHomeAppsDir: "/data/apps",
-      agentHomeBaseUrl: "https://example.test",
+    const custom = {
+      target: "custom" as const,
+      customAppsDir: "/data/apps",
+      customBaseUrl: "https://example.test",
     };
     // The two flagship normie phrasings the regex does NOT catch.
     const NORMIE = [
@@ -49,12 +49,12 @@ describe("app-deploy-guidance", () => {
       expect(out).toContain("packages/examples/cloud/edad");
     });
 
-    it("agent-home: signal turns the weak conditional into a firm directive", () => {
-      const plain = augmentTaskWithDeployGuidance(NORMIE[0], home);
+    it("custom host: signal turns the weak conditional into a firm directive", () => {
+      const plain = augmentTaskWithDeployGuidance(NORMIE[0], custom);
       expect(plain).toContain("If the app must earn money");
       expect(plain).not.toContain("THIS APP IS MONETIZED");
 
-      const monetized = augmentTaskWithDeployGuidance(NORMIE[0], home, {
+      const monetized = augmentTaskWithDeployGuidance(NORMIE[0], custom, {
         monetized: true,
       });
       expect(monetized).toContain("THIS APP IS MONETIZED");
@@ -116,18 +116,18 @@ describe("app-deploy-guidance", () => {
     });
   });
 
-  describe("agent-home publish note (structural, always attached)", () => {
+  describe("custom-host publish note (structural, always attached)", () => {
     const cfg = {
-      target: "agent-home" as const,
-      agentHomeAppsDir: "/data/apps",
-      agentHomeBaseUrl: "https://example.test",
+      target: "custom" as const,
+      customAppsDir: "/data/apps",
+      customBaseUrl: "https://example.test",
     };
     it("attaches the self-gating publish note with both CREATE and EDIT paths", () => {
       const out = augmentTaskWithDeployGuidance(
         "build a magic 8-ball web app",
         cfg,
       );
-      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("Publishing web apps (custom host)");
       expect(out).toContain("To CREATE a new app");
       // The whole point of this PR: an existing deployed app can be edited in
       // place instead of being re-created under a fresh slug.
@@ -143,7 +143,7 @@ describe("app-deploy-guidance", () => {
         "build a monetized web app that charges $3 per use",
         cfg,
       );
-      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("Publishing web apps (custom host)");
       expect(out).toContain("also register it with Eliza Cloud");
       expect(out).toContain("build-monetized-app");
       // The old monetized-vs-static branching (edad template, cloud.json,
@@ -162,9 +162,24 @@ describe("app-deploy-guidance", () => {
         "add a dark mode toggle to the coinflip app and redeploy it",
         cfg,
       );
-      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("Publishing web apps (custom host)");
       expect(out).toContain("Otherwise do not involve Eliza Cloud");
       expect(out).not.toContain("App Deployment (Eliza Cloud)");
+    });
+    it("appends operator-supplied publish notes verbatim, and omits them when unset", () => {
+      // Host-specific caveats (e.g. "do not run the host's build script") live
+      // only in the operator's private config — never hardcoded here.
+      const note = "- Do NOT run the host build script for static apps.";
+      const withNotes = augmentTaskWithDeployGuidance("build a web app", {
+        ...cfg,
+        customPublishNotes: note,
+      });
+      expect(withNotes).toContain(note);
+      const withoutNotes = augmentTaskWithDeployGuidance(
+        "build a web app",
+        cfg,
+      );
+      expect(withoutNotes).not.toContain(note);
     });
   });
 
@@ -195,16 +210,16 @@ describe("app-deploy-guidance", () => {
       expect(twice).toBe(once);
     });
 
-    it("uses the gated agent-home host when that target is configured", () => {
+    it("uses the gated custom host when that target is configured", () => {
       const out = augmentTaskWithDeployGuidance("build a website", {
-        target: "agent-home",
-        agentHomeAppsDir: "/data/apps",
-        agentHomeBaseUrl: "https://example.test",
+        target: "custom",
+        customAppsDir: "/data/apps",
+        customBaseUrl: "https://example.test",
       });
-      expect(out).toContain("Publishing web apps (agent-home)");
+      expect(out).toContain("Publishing web apps (custom host)");
       expect(out).toContain("/data/apps/<slug>/");
       expect(out).toContain("https://example.test/apps/<slug>/");
-      // The Cloud contract header must not appear — the agent-home note only
+      // The Cloud contract header must not appear — the custom-host note only
       // references Cloud conditionally for the monetized case.
       expect(out).not.toContain("App Deployment (Eliza Cloud)");
     });

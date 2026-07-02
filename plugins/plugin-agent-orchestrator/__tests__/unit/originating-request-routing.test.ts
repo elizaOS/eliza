@@ -10,7 +10,7 @@ import { resolveSpawnWorkdir } from "../../src/services/task-agent-routing.js";
 // planner dispatches TASKS_SPAWN_AGENT with a terse `task` and an
 // envelope-wrapped / empty `content.text`, route matching used to run against
 // the planner's wording and miss the configured route — silently falling
-// builds back to the default ACP workspace instead of the agent-home apps dir.
+// builds back to the default ACP workspace instead of the configured apps dir.
 //
 // The fix makes route matching planner-independent by recovering the genuine
 // originating user request from sources that are GUARANTEED populated
@@ -227,12 +227,12 @@ describe("route matching uses the originating request, not the planner task", ()
 
   beforeEach(() => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "originating-route-"));
-    appsDir = path.join(tmpRoot, "agent-home");
+    appsDir = path.join(tmpRoot, "custom-apps");
     fs.mkdirSync(appsDir, { recursive: true });
     originalRoutes = process.env[ENV_KEY];
     process.env[ENV_KEY] = JSON.stringify([
       {
-        id: "agent-home-local-apps",
+        id: "custom-apps-local-apps",
         workdir: appsDir,
         matchAny: ["web page", "webpage", "static site", "landing page"],
         excludeAny: ["production", "database", "auth"],
@@ -280,7 +280,7 @@ describe("route matching uses the originating request, not the planner task", ()
       routingRequest,
       undefined,
     );
-    expect(newResult.route?.id).toBe("agent-home-local-apps");
+    expect(newResult.route?.id).toBe("custom-apps-local-apps");
     expect(newResult.workdir).toBe(appsDir);
   });
 
@@ -306,7 +306,7 @@ describe("route matching uses the originating request, not the planner task", ()
       routingRequest,
       undefined,
     );
-    expect(result.route?.id).toBe("agent-home-local-apps");
+    expect(result.route?.id).toBe("custom-apps-local-apps");
     expect(result.workdir).toBe(appsDir);
   });
 
@@ -324,7 +324,7 @@ describe("route matching uses the originating request, not the planner task", ()
       routingRequest,
       undefined,
     );
-    expect(result.route?.id).toBe("agent-home-local-apps");
+    expect(result.route?.id).toBe("custom-apps-local-apps");
   });
 
   it("does not invent a route when neither task nor request carries a keyword", async () => {
