@@ -57,6 +57,7 @@ function resetChatStore(): void {
     inputValue: "",
     isLoading: false,
     isAgentTyping: false,
+    pendingSubmissions: [],
   });
 }
 
@@ -239,6 +240,42 @@ describe("eliza-code TUI at cockpit phone width", () => {
     const wideLoading = wideLines.find((line) => line.includes("Processing"));
     expect(wideLoading).toContain("Esc/Ctrl+C abort");
     expect(visibleWidth(wideLoading ?? "")).toBeLessThanOrEqual(80);
+  });
+
+  test("ChatPane keeps the type-ahead composer visible while a turn is running", () => {
+    const { chatPane } = makeScreen(PHONE_COLS);
+    chatPane.syncFocus(true);
+    useStore.getState().setLoading(true);
+
+    // Typing during the turn (queue-and-send) must be visible, not swallowed
+    // behind the "Processing" row.
+    typeIntoChat(chatPane, "queued follow-up");
+
+    const lines = chatPane.renderContent(PHONE_COLS, 24);
+    const rendered = plainText(lines);
+    expect(plainText(inputFrameLines(lines))).toContain("queued follow-up");
+    expect(rendered).not.toContain("Processing...");
+    expect(rendered).toContain("Enter: queue");
+    for (const line of lines) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(PHONE_COLS);
+    }
+  });
+
+  test("ChatPane loading row shows the queued-submission count", () => {
+    const { chatPane } = makeScreen(80);
+    chatPane.syncFocus(true);
+    useStore.getState().setLoading(true);
+    useStore.setState({ pendingSubmissions: ["next thing", "and another"] });
+
+    const wideLines = chatPane.renderContent(80, 24);
+    const wideLoading = wideLines.find((line) => line.includes("Processing"));
+    expect(wideLoading).toContain("2 queued");
+
+    // Narrow terminals clip the suffix instead of overflowing (#11043 guard).
+    const phoneLines = chatPane.renderContent(PHONE_COLS, 24);
+    for (const line of phoneLines) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(PHONE_COLS);
+    }
   });
 
   test("ChatPane uses the TUI loader while the assistant is typing", () => {
