@@ -83,6 +83,26 @@ function getLifeOpsScheduledTaskSubjectStore(
 }
 
 /**
+ * Default `SubjectStoreView` for runner deps: prefer a store registered via
+ * `registerLifeOpsScheduledTaskSubjectStore` — resolved on every call, since
+ * registration may happen after the deps are built — and otherwise fall back
+ * to the production LifeOps-backed view (entities / relationships / work
+ * threads).
+ */
+function makeRuntimeSubjectStoreView(
+  runtime: IAgentRuntime,
+  agentId: string,
+): SubjectStoreView {
+  const lifeOpsView = createLifeOpsSubjectStoreView(runtime, agentId);
+  return {
+    wasUpdatedSince(args) {
+      const registered = getLifeOpsScheduledTaskSubjectStore(runtime);
+      return (registered ?? lifeOpsView).wasUpdatedSince(args);
+    },
+  };
+}
+
+/**
  * Bind the in-memory facade to the LifeOpsRepository SQL methods. Each
  * call routes through the repository so the runner is DB-backed but
  * agnostic about the storage shape.
@@ -541,11 +561,12 @@ function buildLifeOpsRunnerDeps(
     makeMissingActivityBusView(opts.runtime);
   // Production default: the real LifeOps-backed subject store (entities /
   // relationships / work threads). Kinds without a durable per-id store yet
-  // (document / calendar_event / self) warn once inside the view.
+  // (document / calendar_event / self) warn once inside the view. The
+  // runtime-registered store is consulted per call, not snapshotted here:
+  // runner deps are built during plugin init, before callers get a chance to
+  // register (e.g. registerLifeOpsScheduledTaskSubjectStore in tests).
   const subjectStore: SubjectStoreView =
-    opts.subjectStore ??
-    getLifeOpsScheduledTaskSubjectStore(opts.runtime) ??
-    createLifeOpsSubjectStoreView(opts.runtime, opts.agentId);
+    opts.subjectStore ?? makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
   return {
     store: stores.store,
