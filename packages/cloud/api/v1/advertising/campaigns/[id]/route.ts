@@ -14,6 +14,25 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+type CampaignRecord = NonNullable<
+  Awaited<ReturnType<typeof advertisingService.getCampaign>>
+>;
+
+function serializeTargeting(targeting: CampaignRecord["targeting"]) {
+  return {
+    locations: targeting.locations,
+    ageMin: targeting.age_min,
+    ageMax: targeting.age_max,
+    genders: targeting.genders,
+    interests: targeting.interests,
+    behaviors: targeting.behaviors,
+    customAudiences: targeting.custom_audiences,
+    excludedAudiences: targeting.excluded_audiences,
+    placements: targeting.placements,
+    languages: targeting.languages,
+  };
+}
+
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -42,8 +61,8 @@ app.get("/", async (c) => {
       creditsSpent: campaign.credits_spent,
       startDate: campaign.start_date?.toISOString(),
       endDate: campaign.end_date?.toISOString(),
-      targeting: campaign.targeting,
       dayparting: campaign.metadata.dayparting ?? null,
+      targeting: serializeTargeting(campaign.targeting),
       totalSpend: campaign.total_spend,
       totalImpressions: campaign.total_impressions,
       totalClicks: campaign.total_clicks,
@@ -89,6 +108,7 @@ app.patch("/", async (c) => {
           : undefined,
         targeting: parsed.data.targeting,
         dayparting: parsed.data.dayparting,
+        audienceSegmentId: parsed.data.audienceSegmentId,
       },
     );
 
@@ -99,6 +119,7 @@ app.patch("/", async (c) => {
       name: campaign.name,
       status: campaign.status,
       dayparting: campaign.metadata.dayparting ?? null,
+      targeting: serializeTargeting(campaign.targeting),
       updatedAt: campaign.updated_at.toISOString(),
     });
   } catch (error) {

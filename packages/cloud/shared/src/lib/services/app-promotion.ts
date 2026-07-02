@@ -61,6 +61,7 @@ export interface PromotionConfig {
     optimizationGoal?: CampaignOptimizationGoal;
     duration?: number;
     targetLocations?: string[];
+    audienceSegmentId?: string;
   };
   twitterAutomation?: {
     enabled: boolean;
@@ -592,7 +593,11 @@ Return ONLY valid JSON, no markdown.`;
       startDate,
       endDate,
       appId: app.id,
-      targeting: config.targetLocations?.length ? { locations: config.targetLocations } : undefined,
+      audienceSegmentId: config.audienceSegmentId,
+      targeting:
+        !config.audienceSegmentId && config.targetLocations?.length
+          ? { locations: config.targetLocations }
+          : undefined,
     });
 
     if (content) {

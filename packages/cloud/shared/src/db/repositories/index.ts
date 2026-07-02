@@ -27,6 +27,7 @@
 // Advertising Domain
 // ============================================
 export * from "./ad-accounts";
+export * from "./ad-audience-segments";
 export * from "./ad-campaigns";
 export * from "./ad-creatives";
 export * from "./ad-transactions";

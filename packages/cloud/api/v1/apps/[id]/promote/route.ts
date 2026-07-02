@@ -65,6 +65,7 @@ const PromotionConfigSchema = z.object({
       ]),
       duration: z.number().int().positive().max(365).optional(),
       targetLocations: z.array(z.string().length(2)).max(50).optional(),
+      audienceSegmentId: z.string().uuid().optional(),
     })
     .optional(),
   twitterAutomation: z

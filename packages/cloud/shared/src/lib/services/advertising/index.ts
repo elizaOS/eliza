@@ -1,8 +1,10 @@
 import {
   type AdAccount,
+  type AdAudienceSegment,
   type AdCampaign,
   type AdCreative,
   adAccountsRepository,
+  adAudienceSegmentsRepository,
   adCampaignsRepository,
   adCreativesRepository,
   adTransactionsRepository,
@@ -24,11 +26,14 @@ import type {
   AdProviderMediaUploadResult,
   CampaignDaypartingSchedule,
   CampaignMetrics,
+  CampaignTargeting,
   ConnectAccountInput,
+  CreateAudienceSegmentInput,
   CreateCampaignInput,
   CreateCreativeInput,
   CreativeMedia,
   DuplicateCampaignInput,
+  UpdateAudienceSegmentInput,
   UpdateCampaignInput,
   UpdateCreativeInput,
   UploadMediaInput,
@@ -163,6 +168,124 @@ class AdvertisingService {
         "TikTok campaign creation does not support campaign-level bid strategy controls through this adapter",
       );
     }
+  }
+
+  private toDbTargeting(targeting: CampaignTargeting = {}) {
+    return {
+      locations: targeting.locations,
+      age_min: targeting.ageMin,
+      age_max: targeting.ageMax,
+      genders: targeting.genders,
+      interests: targeting.interests,
+      behaviors: targeting.behaviors,
+      custom_audiences: targeting.customAudiences,
+      excluded_audiences: targeting.excludedAudiences,
+      placements: targeting.placements,
+      languages: targeting.languages,
+    };
+  }
+
+  private fromDbTargeting(targeting: NonNullable<AdCampaign["targeting"]>): CampaignTargeting {
+    return {
+      locations: targeting.locations,
+      ageMin: targeting.age_min,
+      ageMax: targeting.age_max,
+      genders: targeting.genders,
+      interests: targeting.interests,
+      behaviors: targeting.behaviors,
+      customAudiences: targeting.custom_audiences,
+      excludedAudiences: targeting.excluded_audiences,
+      placements: targeting.placements,
+      languages: targeting.languages,
+    };
+  }
+
+  private serializeAudienceSegment(segment: AdAudienceSegment) {
+    return {
+      id: segment.id,
+      organizationId: segment.organization_id,
+      name: segment.name,
+      description: segment.description,
+      targeting: this.fromDbTargeting(segment.targeting),
+      createdAt: segment.created_at,
+      updatedAt: segment.updated_at,
+    };
+  }
+
+  private async resolveAudienceTargeting(
+    organizationId: string,
+    input: Pick<CreateCampaignInput | UpdateCampaignInput, "audienceSegmentId" | "targeting">,
+  ): Promise<CampaignTargeting | undefined> {
+    if (!input.audienceSegmentId) {
+      return input.targeting;
+    }
+    const segment = await adAudienceSegmentsRepository.findById(input.audienceSegmentId);
+    if (!segment || segment.organization_id !== organizationId) {
+      throw new Error("Audience segment not found");
+    }
+    return this.fromDbTargeting(segment.targeting);
+  }
+
+  async listAudienceSegments(organizationId: string) {
+    const segments = await adAudienceSegmentsRepository.listByOrganization(organizationId);
+    return segments.map((segment) => this.serializeAudienceSegment(segment));
+  }
+
+  async getAudienceSegment(segmentId: string, organizationId: string) {
+    const segment = await adAudienceSegmentsRepository.findById(segmentId);
+    if (!segment || segment.organization_id !== organizationId) {
+      return undefined;
+    }
+    return this.serializeAudienceSegment(segment);
+  }
+
+  async createAudienceSegment(input: CreateAudienceSegmentInput) {
+    const segment = await adAudienceSegmentsRepository.create({
+      organization_id: input.organizationId,
+      created_by_user_id: input.userId,
+      name: input.name,
+      description: input.description,
+      targeting: this.toDbTargeting(input.targeting),
+    });
+    logger.info("[Advertising] Audience segment created", {
+      segmentId: segment.id,
+      organizationId: input.organizationId,
+    });
+    return this.serializeAudienceSegment(segment);
+  }
+
+  async updateAudienceSegment(
+    segmentId: string,
+    organizationId: string,
+    input: UpdateAudienceSegmentInput,
+  ) {
+    const updated = await adAudienceSegmentsRepository.update(segmentId, organizationId, {
+      name: input.name,
+      description: input.description,
+      targeting: input.targeting ? this.toDbTargeting(input.targeting) : undefined,
+    });
+    if (!updated) {
+      throw new Error("Audience segment not found");
+    }
+    logger.info("[Advertising] Audience segment updated", { segmentId, organizationId });
+    return this.serializeAudienceSegment(updated);
+  }
+
+  async deleteAudienceSegment(segmentId: string, organizationId: string): Promise<void> {
+    const segment = await adAudienceSegmentsRepository.findById(segmentId);
+    if (!segment || segment.organization_id !== organizationId) {
+      throw new Error("Audience segment not found");
+    }
+    await adAudienceSegmentsRepository.delete(segmentId, organizationId);
+    logger.info("[Advertising] Audience segment deleted", { segmentId, organizationId });
+  }
+
+  async applyAudienceSegmentToCampaign(
+    segmentId: string,
+    campaignId: string,
+    organizationId: string,
+  ): Promise<AdCampaign> {
+    return await this.updateCampaign(campaignId, organizationId, { audienceSegmentId: segmentId });
   }
 
   // ============================================
@@ -575,11 +698,19 @@ class AdvertisingService {
     }
     this.assertBidControlsSupported(account.platform, input);
 
+    const targeting = await this.resolveAudienceTargeting(input.organizationId, input);
+    const campaignInput: CreateCampaignInput = {
+      ...input,
+      targeting,
+      audienceSegmentId: undefined,
+      dayparting,
+    };
+
     await contentSafetyService.assertSafeForPublicUse({
       surface: "advertising_campaign",
       organizationId: input.organizationId,
       appId: input.appId,
-      text: this.campaignSafetyText(input),
+      text: this.campaignSafetyText(campaignInput),
       metadata: { platform: account.platform, adAccountId: input.adAccountId },
     });
 
@@ -641,10 +772,11 @@ class AdvertisingService {
     const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
 
-    const result = await provider.createCampaign(credentials, account.external_account_id, {
-      ...input,
-      dayparting,
-    });
+    const result = await provider.createCampaign(
+      credentials,
+      account.external_account_id,
+      campaignInput,
+    );
 
     if (!result.success) {
       // Refund all credits
@@ -674,7 +806,7 @@ class AdvertisingService {
         credits_allocated: String(budgetCredits),
         start_date: input.startDate,
         end_date: input.endDate,
-        targeting: input.targeting || {},
+        targeting: targeting ? this.toDbTargeting(targeting) : {},
         app_id: input.appId,
         metadata: {
           ...(input.bidStrategy ? { bid_strategy: input.bidStrategy } : {}),
@@ -809,6 +941,13 @@ class AdvertisingService {
       return updated;
     }
 
+    const targeting = await this.resolveAudienceTargeting(organizationId, input);
+    const campaignInput: UpdateCampaignInput = {
+      ...input,
+      targeting,
+      audienceSegmentId: undefined,
+    };
+
     const account = await adAccountsRepository.findById(campaign.ad_account_id);
     if (!account) {
       throw new Error("Ad account not found");
@@ -850,7 +989,11 @@ class AdvertisingService {
 
     // Post-sync dayparting changes are rejected above, so `input` never carries
     // a schedule here — providers cannot update adset schedules in place.
-    const result = await provider.updateCampaign(credentials, campaign.external_campaign_id, input);
+    const result = await provider.updateCampaign(
+      credentials,
+      campaign.external_campaign_id,
+      campaignInput,
+    );
 
     if (!result.success) {
       // Platform rejected the change — undo any increase charge we just made.
@@ -873,7 +1016,7 @@ class AdvertisingService {
         : {}),
       start_date: input.startDate,
       end_date: input.endDate,
-      targeting: input.targeting,
+      targeting: targeting ? this.toDbTargeting(targeting) : undefined,
     };
 
     let updated: AdCampaign | undefined;

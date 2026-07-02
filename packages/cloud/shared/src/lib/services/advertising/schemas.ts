@@ -37,15 +37,62 @@ export const MediaSourceSchema = z.enum(["generation", "upload"]);
 
 export const MediaTypeSchema = z.enum(["image", "video"]);
 
-export const TargetingSchema = z.object({
-  locations: z.array(z.string()).optional(),
-  ageMin: z.number().min(13).max(65).optional(),
-  ageMax: z.number().min(13).max(65).optional(),
-  genders: z.array(z.enum(["male", "female", "all"])).optional(),
-  interests: z.array(z.string()).optional(),
-  behaviors: z.array(z.string()).optional(),
-  languages: z.array(z.string()).optional(),
-});
+const TargetingTextArraySchema = z
+  .array(z.string().trim().min(1).max(120))
+  .max(200)
+  .transform((values) => Array.from(new Set(values)));
+
+export const TargetingSchema = z
+  .object({
+    locations: TargetingTextArraySchema.optional(),
+    ageMin: z.number().int().min(13).max(65).optional(),
+    ageMax: z.number().int().min(13).max(65).optional(),
+    genders: z
+      .array(z.enum(["male", "female", "all"]))
+      .max(3)
+      .optional(),
+    interests: TargetingTextArraySchema.optional(),
+    behaviors: TargetingTextArraySchema.optional(),
+    customAudiences: TargetingTextArraySchema.optional(),
+    excludedAudiences: TargetingTextArraySchema.optional(),
+    placements: TargetingTextArraySchema.optional(),
+    languages: TargetingTextArraySchema.optional(),
+  })
+  .superRefine((targeting, ctx) => {
+    if (
+      targeting.ageMin !== undefined &&
+      targeting.ageMax !== undefined &&
+      targeting.ageMin > targeting.ageMax
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ageMin"],
+        message: "ageMin must be less than or equal to ageMax",
+      });
+    }
+    if (targeting.genders?.includes("all") && targeting.genders.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["genders"],
+        message: "genders cannot combine all with specific genders",
+      });
+    }
+  });
+
+const TargetingOrSegmentSchema = z
+  .object({
+    targeting: TargetingSchema.optional(),
+    audienceSegmentId: z.string().uuid().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.targeting && value.audienceSegmentId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["audienceSegmentId"],
+        message: "Provide targeting or audienceSegmentId, not both",
+      });
+    }
+  });
 
 const LocalTimeSchema = z
   .string()
@@ -135,36 +182,54 @@ export const DiscoverAdAccountsSchema = z.object({
   accessToken: z.string().min(1),
 });
 
-export const CreateCampaignSchema = z.object({
-  adAccountId: z.string().uuid(),
-  name: z.string().min(1).max(200),
-  objective: CampaignObjectiveSchema,
-  budgetType: BudgetTypeSchema,
-  budgetAmount: z.number().positive(),
-  budgetCurrency: z.string().length(3).optional(),
-  bidStrategy: CampaignBidStrategySchema.optional(),
-  optimizationGoal: CampaignOptimizationGoalSchema.optional(),
-  startDate: z.string().datetime().optional(),
-  endDate: z.string().datetime().optional(),
-  targeting: TargetingSchema.optional(),
-  dayparting: DaypartingScheduleSchema.optional(),
-  appId: z.string().uuid().optional(),
+export const CreateAudienceSegmentSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
+  targeting: TargetingSchema,
 });
 
-export const UpdateCampaignSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  budgetAmount: z.number().positive().optional(),
-  bidStrategy: CampaignBidStrategySchema.optional(),
-  optimizationGoal: CampaignOptimizationGoalSchema.optional(),
-  startDate: z.string().datetime().optional(),
-  endDate: z.string().datetime().optional(),
+export const UpdateAudienceSegmentSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
   targeting: TargetingSchema.optional(),
-  dayparting: DaypartingScheduleSchema.nullable().optional(),
 });
 
 export const DuplicateCampaignSchema = z.object({
   name: z.string().min(1).max(200).optional(),
 });
+
+export const ApplyAudienceSegmentSchema = z.object({
+  campaignId: z.string().uuid(),
+});
+
+export const CreateCampaignSchema = z
+  .object({
+    adAccountId: z.string().uuid(),
+    name: z.string().min(1).max(200),
+    objective: CampaignObjectiveSchema,
+    budgetType: BudgetTypeSchema,
+    budgetAmount: z.number().positive(),
+    budgetCurrency: z.string().length(3).optional(),
+    bidStrategy: CampaignBidStrategySchema.optional(),
+    optimizationGoal: CampaignOptimizationGoalSchema.optional(),
+    startDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().optional(),
+    dayparting: DaypartingScheduleSchema.optional(),
+    appId: z.string().uuid().optional(),
+  })
+  .and(TargetingOrSegmentSchema);
+
+export const UpdateCampaignSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    budgetAmount: z.number().positive().optional(),
+    bidStrategy: CampaignBidStrategySchema.optional(),
+    optimizationGoal: CampaignOptimizationGoalSchema.optional(),
+    startDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().optional(),
+    dayparting: DaypartingScheduleSchema.nullable().optional(),
+  })
+  .and(TargetingOrSegmentSchema);
 
 export const CreateCreativeSchema = z.object({
   name: z.string().min(1).max(200),

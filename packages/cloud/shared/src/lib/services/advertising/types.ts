@@ -84,6 +84,30 @@ export interface CampaignDaypartingSchedule {
   windows: CampaignDaypartingWindow[];
 }
 
+export interface AudienceSegment {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string | null;
+  targeting: CampaignTargeting;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateAudienceSegmentInput {
+  organizationId: string;
+  userId?: string;
+  name: string;
+  description?: string;
+  targeting: CampaignTargeting;
+}
+
+export interface UpdateAudienceSegmentInput {
+  name?: string;
+  description?: string | null;
+  targeting?: CampaignTargeting;
+}
+
 export interface CreateCampaignInput {
   organizationId: string;
   adAccountId: string;
@@ -98,6 +122,7 @@ export interface CreateCampaignInput {
   endDate?: Date;
   targeting?: CampaignTargeting;
   dayparting?: CampaignDaypartingSchedule;
+  audienceSegmentId?: string;
   appId?: string;
 }
 
@@ -110,6 +135,7 @@ export interface UpdateCampaignInput {
   endDate?: Date;
   targeting?: CampaignTargeting;
   dayparting?: CampaignDaypartingSchedule | null;
+  audienceSegmentId?: string;
 }
 
 export interface DuplicateCampaignInput {

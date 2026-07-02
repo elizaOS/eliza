@@ -381,11 +381,41 @@ export const metaAdsProvider: AdProvider = {
       }
 
       if (input.targeting?.interests?.length) {
+        const flexibleSpec: Record<string, unknown> = {
+          interests: input.targeting.interests.map((i) => ({ name: i })),
+        };
+        if (input.targeting.behaviors?.length) {
+          flexibleSpec.behaviors = input.targeting.behaviors.map((behavior) => ({
+            name: behavior,
+          }));
+        }
+        targeting.flexible_spec = [flexibleSpec];
+      } else if (input.targeting?.behaviors?.length) {
         targeting.flexible_spec = [
           {
-            interests: input.targeting.interests.map((i) => ({ name: i })),
+            behaviors: input.targeting.behaviors.map((behavior) => ({
+              name: behavior,
+            })),
           },
         ];
+      }
+
+      if (input.targeting?.customAudiences?.length) {
+        targeting.custom_audiences = input.targeting.customAudiences.map((id) => ({ id }));
+      }
+
+      if (input.targeting?.excludedAudiences?.length) {
+        targeting.excluded_custom_audiences = input.targeting.excludedAudiences.map((id) => ({
+          id,
+        }));
+      }
+
+      if (input.targeting?.placements?.length) {
+        targeting.publisher_platforms = input.targeting.placements;
+      }
+
+      if (input.targeting?.languages?.length) {
+        targeting.locales = input.targeting.languages;
       }
 
       adSetParams.targeting = JSON.stringify(targeting);
