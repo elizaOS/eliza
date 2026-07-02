@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-	imageGenGpuVendorFromProbeBackend,
 	type ImageGenRuntimeProfile,
+	imageGenGpuVendorFromProbeBackend,
 	resolveDefaultImageGenModel,
 	selectImageGenBackends,
 } from "./backend-selector";

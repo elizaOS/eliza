@@ -29,9 +29,9 @@ import { probeHardware } from "./hardware";
 import {
 	createImageGenCapabilityRegistration,
 	type ImageGenBackend,
-	imageGenGpuVendorFromProbeBackend,
 	type ImageGenLoadArgs,
 	type ImageGenRuntimeProfile,
+	imageGenGpuVendorFromProbeBackend,
 	loadAospImageGenBackend,
 	loadCoreMlImageGenBackend,
 	loadMfluxImageGenBackend,
