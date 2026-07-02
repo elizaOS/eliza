@@ -11,11 +11,11 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { ApiError, apiFetch } from "../../../lib/api-client";
+import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { clearStaleStewardSession } from "../../../shell/StewardProvider";
 import { getErrorMessage } from "../../lib/error-message";
 import { usePageTitle } from "../../lib/use-page-title";
-import { useSessionAuth } from "../../../lib/use-session-auth";
 
 type TFn = ReturnType<typeof useCloudT>;
 

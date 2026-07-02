@@ -186,7 +186,7 @@ describe("BuyDomainCard (#10246)", () => {
     });
     await user.click(addCredits);
     expect(openExternalUrlMock).toHaveBeenCalledWith(
-      expect.stringContaining("/dashboard/billing"),
+      expect.stringContaining("/settings#cloud-billing"),
     );
   });
 });

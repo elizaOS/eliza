@@ -9,6 +9,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../../lib/api-client";
+import { useSessionAuth } from "../../lib/use-session-auth";
 import type {
   BillingUser,
   CreditBalanceResponse,
@@ -17,7 +18,6 @@ import type {
   InvoiceDto,
   VerifyCheckoutResult,
 } from "../types";
-import { useSessionAuth } from "../../lib/use-session-auth";
 
 interface AuthGate {
   enabled: boolean;

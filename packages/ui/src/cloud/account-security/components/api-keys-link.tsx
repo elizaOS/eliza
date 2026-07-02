@@ -1,12 +1,9 @@
 /**
- * Link card to the API keys surface. Ported from
- * `@elizaos/cloud-frontend/src/dashboard/security/_components/api-keys-link.tsx`.
- * `/dashboard/api-keys` is carried by the shell's compat-redirect map to the
- * canonical API-keys home (`/settings#api-keys`).
+ * Link card from the Security section to the API-keys settings section
+ * (`/settings#cloud-api-keys`).
  */
 
 import { KeyRound } from "lucide-react";
-import { Link } from "react-router-dom";
 import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -32,11 +29,13 @@ export function ApiKeysLink() {
             </p>
           </div>
         </div>
-        <Link to="/dashboard/api-keys">
+        {/* Plain anchor: an in-settings hash change fires `hashchange`,
+            which is what SettingsView listens to for section switches. */}
+        <a href="#cloud-api-keys">
           <BrandButton variant="outline" size="sm">
             {t("cloud.apiKeysLink.manageKeys", { defaultValue: "Manage keys" })}
           </BrandButton>
-        </Link>
+        </a>
       </div>
     </BrandCard>
   );

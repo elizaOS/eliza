@@ -1,17 +1,12 @@
 /**
  * Merged Monetization surface: Earnings (redemptions) + Affiliates (referrals)
- * as two tabs.
- *
- * PLAN §3 maps both `dashboard/earnings` and `dashboard/affiliates` to a single
- * **Monetization** settings section ("Real on-chain payout + referral. Merge
- * affiliates into earnings."). This component is the merged home; each tab reuses
- * the exact bare surface the standalone routes render, so the section and the
- * standalone deep links stay identical.
+ * as two tabs. This is the single monetization home, registered as the
+ * `cloud-monetization` settings section.
  *
  * The settings-section registry renders a zero-prop `Component`; the settings
- * view itself is mounted inside the cloud shell, which supplies the React-Query
- * client, {@link CloudI18nProvider}, and the Steward auth context the surfaces
- * read.
+ * view is mounted inside the cloud settings shell, which supplies the
+ * React-Query client, {@link CloudI18nProvider}, and the Steward auth context
+ * the surfaces read.
  */
 
 import { useState } from "react";
@@ -22,8 +17,8 @@ import {
   TabsTrigger,
 } from "../../cloud-ui/components/primitives";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { AffiliatesSurface } from "./affiliates/AffiliatesRoute";
-import { EarningsSurface } from "./earnings/EarningsRoute";
+import { AffiliatesSurface } from "./affiliates/AffiliatesSurface";
+import { EarningsSurface } from "./earnings/EarningsSurface";
 
 export function MonetizationView() {
   const t = useCloudT();

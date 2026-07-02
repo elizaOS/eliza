@@ -429,11 +429,23 @@ export function settingsSectionTitle(
   return t(section.titleKey, { defaultValue: section.defaultTitle });
 }
 
+/**
+ * Legacy hash aliases → section ids. `#billing` / `#api-keys` are the hashes
+ * older in-app links and bookmarks carry; the registered cloud sections use
+ * `cloud-*` ids so they never collide with the built-in local sections.
+ */
+const SETTINGS_HASH_ALIASES: Readonly<Record<string, string>> = {
+  cloud: "ai-model",
+  providers: "ai-model",
+  billing: "cloud-billing",
+  "api-keys": "cloud-api-keys",
+};
+
 export function readSettingsHashSection(): string | null {
   if (typeof window === "undefined") return null;
-  const hash = window.location.hash.replace(/^#/, "");
-  if (!hash) return null;
-  if (hash === "cloud" || hash === "providers") return "ai-model";
+  const rawHash = window.location.hash.replace(/^#/, "");
+  if (!rawHash) return null;
+  const hash = SETTINGS_HASH_ALIASES[rawHash] ?? rawHash;
   return getAllSettingsSections().some((section) => section.id === hash)
     ? hash
     : null;

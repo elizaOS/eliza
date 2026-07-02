@@ -9,8 +9,8 @@
 import { CheckCircle, Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { useSessionAuth } from "../../../lib/use-session-auth";
+import { useCloudT } from "../../../shell/CloudI18nProvider";
 
 export default function PaymentSuccessPage() {
   const t = useCloudT();

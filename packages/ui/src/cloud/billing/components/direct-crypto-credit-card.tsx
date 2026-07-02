@@ -558,7 +558,7 @@ export function DirectCryptoCreditCard({
               Credits go to your Eliza Cloud account. To link this wallet for
               future,{" "}
               <Link
-                to="/settings#billing"
+                to="/settings#cloud-billing"
                 className="font-medium underline underline-offset-2"
               >
                 Link wallet

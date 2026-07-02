@@ -10,7 +10,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api-client";
-import { authenticatedQueryKey, useAuthenticatedQueryGate } from "../lib/auth-query";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../lib/auth-query";
 
 /** Server shape of a single API key as returned by `GET /api/v1/api-keys`. */
 export interface ApiKeyRecord {

@@ -36,13 +36,13 @@ export default function InvoiceDetailPage() {
       invoice.error instanceof ApiError &&
       (invoice.error.status === 404 || invoice.error.status === 403)
     ) {
-      return <Navigate to="/settings#billing" replace />;
+      return <Navigate to="/settings#cloud-billing" replace />;
     }
     return <DashboardErrorState message={invoice.error.message} />;
   }
 
   if (!invoice.data) {
-    return <Navigate to="/settings#billing" replace />;
+    return <Navigate to="/settings#cloud-billing" replace />;
   }
 
   return <InvoiceDetailClient invoice={invoice.data} />;

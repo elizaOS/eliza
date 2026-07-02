@@ -47,11 +47,12 @@ import { type CloudRouteDef, listCloudRoutes } from "./cloud-route-registry";
 import { StewardAuthProvider } from "./StewardProvider";
 
 /**
- * `/dashboard/*` compatibility redirect map, carried verbatim from
- * `@elizaos/cloud-frontend/src/App.tsx`. The old cloud dashboard lived under
- * `/dashboard/*`; in the app the canonical homes are the standalone views and
- * the settings sections, so these resolve every legacy deep link the backend or
- * old bookmarks may still point at. `:param` segments are substituted from the
+ * `/dashboard/*` compatibility redirect map. The old cloud dashboard lived
+ * under `/dashboard/*`; in the app the canonical homes are the standalone
+ * views (apps, agents, analytics, api-explorer, admin) and the in-app
+ * settings sections (account, security, billing, api-keys, monetization,
+ * connections), so these resolve every legacy deep link the backend or old
+ * bookmarks may still point at. `:param` segments are substituted from the
  * matched route params, and the original query string is preserved.
  */
 export const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> =
@@ -72,21 +73,66 @@ export const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> =
     { from: "dashboard/agents/:id/chat", to: "/dashboard/agents/:id" },
     // App-create modal is opened from the apps list, not its own route.
     { from: "dashboard/apps/create", to: "/dashboard/apps" },
-    // New app-IA targets: billing / api-keys move into settings sections. The
-    // API-keys surface has no standalone route — this redirect is its sole entry
-    // for every in-repo `/dashboard/api-keys` link and old deep link.
-    { from: "dashboard/billing", to: "/settings#billing" },
-    { from: "dashboard/api-keys", to: "/settings#api-keys" },
+    // Account-management surfaces live in the in-app Settings sections; none of
+    // these have a standalone route — the redirects are the sole entry for
+    // every in-repo link and old deep link (including the backend-issued
+    // /dashboard/billing top-up URLs).
+    { from: "dashboard/billing", to: "/settings#cloud-billing" },
+    { from: "dashboard/api-keys", to: "/settings#cloud-api-keys" },
+    { from: "dashboard/monetization", to: "/settings#cloud-monetization" },
+    { from: "dashboard/earnings", to: "/settings#cloud-monetization" },
+    { from: "dashboard/affiliates", to: "/settings#cloud-monetization" },
+    { from: "dashboard/account", to: "/settings#cloud-account" },
+    { from: "dashboard/security", to: "/settings#cloud-security" },
+    {
+      from: "dashboard/security/permissions",
+      to: "/settings#cloud-plugin-grants",
+    },
     // Knowledge/Documents now lives in the app; old deep links land on the agents list.
     { from: "dashboard/documents", to: "/dashboard/agents" },
   ];
 
-/** Substitute `:param` segments from the matched route params. */
+/**
+ * Substitute `:param` segments from the matched route params, preserve the
+ * query string, and keep any `#hash` on the target after the query (a naive
+ * `to + search` concatenation would swallow the query into the hash).
+ */
 function ParamRedirect({ to }: { to: string }): React.JSX.Element {
   const location = useLocation();
   const params = useParams();
   const resolved = to.replace(/:([a-zA-Z]+)/g, (_, key) => params[key] ?? "");
-  return <Navigate to={`${resolved}${location.search}`} replace />;
+  const [path, hash] = resolved.split("#");
+  return (
+    <Navigate
+      to={`${path}${location.search}${hash ? `#${hash}` : ""}`}
+      replace
+    />
+  );
+}
+
+/**
+ * The legacy `/dashboard/settings?tab=<x>` URLs the backend still issues
+ * (OAuth-connect callbacks, Stripe cancel URLs, agent GitHub-connect returns)
+ * map onto the canonical in-app settings sections. Unknown/absent tabs land on
+ * the settings hub.
+ */
+const LEGACY_SETTINGS_TAB_SECTIONS: Readonly<Record<string, string>> = {
+  connections: "cloud-connectors",
+  billing: "cloud-billing",
+  organization: "cloud-organization",
+  agents: "cloud-agents",
+};
+
+function LegacySettingsTabRedirect(): React.JSX.Element {
+  const location = useLocation();
+  const tab = new URLSearchParams(location.search).get("tab") ?? "";
+  const section = LEGACY_SETTINGS_TAB_SECTIONS[tab];
+  return (
+    <Navigate
+      to={`/settings${location.search}${section ? `#${section}` : ""}`}
+      replace
+    />
+  );
 }
 
 function renderRouteElement(
@@ -188,14 +234,14 @@ function isApexControlPlaneHost(): boolean {
  * Where an authenticated visitor landing on the apex ROOT is sent. The apex
  * (elizacloud.ai) is the cloud CONSOLE — its job is "add credits / manage your
  * account", not chat (chat is the agent app's home, served from
- * app.elizacloud.ai). `/settings#billing` is the canonical credits/billing
- * surface (every in-app billing link resolves here, e.g. the
- * `dashboard/billing → /settings#billing` compat redirect above) and its tabbed
- * shell (Billing · Developer/API keys · Connections · Organization) is the
- * account-management hub. Both domains serve the SAME packages/app bundle, so
+ * app.elizacloud.ai). `/settings#cloud-billing` is the canonical
+ * credits/billing surface (every in-app billing link resolves here, e.g. the
+ * `dashboard/billing` compat redirect above) and the settings hub around it
+ * (Billing · Developer/API keys · Connections · Organization) is the
+ * account-management home. Both domains serve the SAME packages/app bundle, so
  * without this the apex and the app subdomain look identical when signed in.
  */
-const APEX_AUTHENTICATED_HOME = "/settings#billing";
+const APEX_AUTHENTICATED_HOME = "/settings#cloud-billing";
 
 /**
  * Catch-all element. Renders the agent app exactly as before, EXCEPT on an apex
@@ -232,7 +278,7 @@ export function AppCatchAllRoute({
     // path (and no tab hash) so we redirect ONLY the landing, never a deep link
     // the user navigated to on purpose. The target is `/settings`, which is not
     // an apex-console route, so it re-enters this catch-all at a non-root path
-    // and renders the app (which reads `#billing`) — no redirect loop.
+    // and renders the app (which reads `#cloud-billing`) — no redirect loop.
     if (location.pathname === "/" && !location.hash) {
       return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
     }
@@ -272,6 +318,14 @@ export function CloudRouterShell({
           {DASHBOARD_REDIRECTS.map(({ from, to }) => (
             <Route key={from} path={from} element={<ParamRedirect to={to} />} />
           ))}
+
+          {/* Backend OAuth/Stripe return URLs still target the legacy
+              /dashboard/settings?tab=<x> shape; map them onto the settings
+              sections instead of the dashboard/* 404 below. */}
+          <Route
+            path="dashboard/settings"
+            element={<LegacySettingsTabRedirect />}
+          />
 
           {/*
            * Any /dashboard/* path not registered and not redirected is a cloud

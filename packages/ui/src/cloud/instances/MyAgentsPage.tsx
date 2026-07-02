@@ -9,9 +9,9 @@ import {
   PageHeaderProvider,
 } from "@elizaos/ui/cloud-ui";
 import { useDocumentTitle } from "../lib/use-document-title";
+import { useRequireAuth } from "../lib/use-session-auth";
 import { MyAgentsClient } from "./components/my-agents";
 import { useT } from "./lib/i18n";
-import { useRequireAuth } from "../lib/use-session-auth";
 
 export default function MyAgentsPage() {
   const t = useT();

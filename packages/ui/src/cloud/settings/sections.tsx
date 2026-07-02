@@ -20,10 +20,10 @@
  */
 
 import { ExternalLink, Grid3x3 } from "lucide-react";
-import { AccountSurface } from "../account-security/AccountRoute";
-import { PermissionsSurface } from "../account-security/PermissionsRoute";
-import { SecuritySurface } from "../account-security/SecurityRoute";
-import { ApiKeysSurface } from "../api-keys/ApiKeysRoute";
+import { AccountSurface } from "../account-security/AccountSurface";
+import { PermissionsSurface } from "../account-security/PermissionsSurface";
+import { SecuritySurface } from "../account-security/SecuritySurface";
+import { ApiKeysSurface } from "../api-keys/ApiKeysSurface";
 import { BillingSectionBody } from "../billing/BillingSection";
 import { MonetizationView } from "../monetization/MonetizationSection";
 import { OrganizationSection } from "../organization/OrganizationSection";

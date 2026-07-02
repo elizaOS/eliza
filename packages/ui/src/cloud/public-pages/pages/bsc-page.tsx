@@ -25,9 +25,9 @@ import {
   CardTitle,
   Input,
 } from "../../../components/primitives";
+import { useSessionAuth } from "../../lib/use-session-auth";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { usePageTitle } from "../lib/use-page-title";
-import { useSessionAuth } from "../../lib/use-session-auth";
 
 export default function BscPromoPage() {
   const t = useCloudT();
@@ -195,7 +195,7 @@ export default function BscPromoPage() {
                     })}
                   </p>
                   <Button asChild className="w-full rounded-xs">
-                    <Link to="/settings#billing">
+                    <Link to="/settings#cloud-billing">
                       {t("cloud.bsc.openBilling", {
                         defaultValue: "Open billing",
                       })}

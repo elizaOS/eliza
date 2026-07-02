@@ -23,10 +23,10 @@ import {
 import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { CreditBalanceDisplay } from "./components/success-client";
 import { useVerifyCheckout } from "./data/billing-data";
-import { useSessionAuth } from "../lib/use-session-auth";
 
 export default function BillingSuccessPage() {
   const t = useCloudT();
@@ -108,9 +108,7 @@ export default function BillingSuccessPage() {
 
           <CardFooter className="flex flex-col gap-2">
             <Button asChild variant="outline" className="w-full">
-              <Link
-                to={fromSettings ? "/settings#billing" : "/settings#billing"}
-              >
+              <Link to="/settings#cloud-billing">
                 {t("cloud.billingSuccess.backToBilling", {
                   defaultValue: "Back to Billing",
                 })}
@@ -153,7 +151,7 @@ export default function BillingSuccessPage() {
 
         <CardFooter className="flex flex-col gap-2">
           <Button asChild variant="outline" className="w-full">
-            <Link to="/settings#billing">
+            <Link to="/settings#cloud-billing">
               {t("cloud.billingSuccess.backToBillingSettings", {
                 defaultValue: "Back to Billing Settings",
               })}

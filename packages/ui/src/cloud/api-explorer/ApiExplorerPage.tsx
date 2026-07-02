@@ -51,11 +51,11 @@ import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboa
 import { cn } from "../../cloud-ui/lib/utils";
 import { api } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
+import { useRequireAuth } from "../lib/use-session-auth";
 import { ApiTester } from "./api-tester";
 import { AuthManager } from "./auth-manager";
 import { toast } from "./toast";
 import { useExplorerApiKey } from "./use-explorer-api-key";
-import { useRequireAuth } from "../lib/use-session-auth";
 
 const categoryDescriptions: Record<string, string> = {
   All: "Explore the complete set of API endpoints available in the Eliza platform.",

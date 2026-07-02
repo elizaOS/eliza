@@ -30,7 +30,10 @@ import type {
 } from "@elizaos/cloud-shared/types";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
-import { authenticatedQueryKey, useAuthenticatedQueryGate } from "../../lib/auth-query";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../../lib/auth-query";
 
 export type { AnalyticsTimeRange };
 

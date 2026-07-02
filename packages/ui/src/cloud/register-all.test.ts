@@ -14,15 +14,14 @@ describe("registerAllCloudSurfaces", () => {
     for (const p of [
       "join",
       "dashboard/agents",
-      // Analytics registers as an import side effect — this entry is the guard
-      // that the register-all import stays wired (it shipped forgotten once:
-      // page fully built, route 404ing on the dashboard/* catch-all).
+      "dashboard/my-agents",
+      // Analytics registers as an import side effect — this entry guards that
+      // the register-all import stays wired.
       "dashboard/analytics",
-      "dashboard/billing",
-      "dashboard/account",
-      "dashboard/security",
+      // Stripe return URL + invoice detail (flow pages, not a billing home).
+      "dashboard/billing/success",
+      "dashboard/invoices/:id",
       "dashboard/organization",
-      "dashboard/monetization",
       "dashboard/api-explorer",
       "dashboard/apps",
       "dashboard/admin",
@@ -39,14 +38,26 @@ describe("registerAllCloudSurfaces", () => {
     }
   });
 
-  it("mounts the API-keys surface only once — no standalone dashboard/api-keys route", () => {
+  it("mounts each account-management surface exactly once — in Settings, with no standalone dashboard route", () => {
     registerAllCloudSurfaces();
-    const apiKeysRoutes = listCloudRoutes().filter(
-      (r) => r.path === "dashboard/api-keys",
-    );
-    // The single API-keys mount is the Settings → Developer section; legacy
-    // `/dashboard/api-keys` deep links resolve to it via the CloudRouterShell
-    // compat redirect, NOT a registered route.
-    expect(apiKeysRoutes).toHaveLength(0);
+    const paths = new Set(listCloudRoutes().map((r) => r.path));
+    // The single mount for each of these is its Settings section; legacy
+    // /dashboard/* deep links resolve to it via the CloudRouterShell compat
+    // redirects (which only fire when no identically-pathed route shadows
+    // them), NOT a registered route.
+    for (const p of [
+      "dashboard/api-keys",
+      "dashboard/billing",
+      "dashboard/monetization",
+      "dashboard/earnings",
+      "dashboard/affiliates",
+      "dashboard/account",
+      "dashboard/security",
+      "dashboard/security/permissions",
+      "dashboard/settings",
+      "dashboard/settings/connections",
+    ]) {
+      expect(paths, `unexpected standalone route ${p}`).not.toContain(p);
+    }
   });
 });

@@ -50,7 +50,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
       <div className="border-b border-white/10 pb-4">
         <button
           type="button"
-          onClick={() => navigate("/settings#billing")}
+          onClick={() => navigate("/settings#cloud-billing")}
           className="group flex items-center gap-2 text-sm text-white/70 hover:text-white transition-all duration-200"
           style={{ fontFamily: "var(--font-roboto-mono)" }}
         >

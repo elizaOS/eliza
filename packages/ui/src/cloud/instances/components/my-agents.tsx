@@ -59,7 +59,7 @@ const ADMIN_SECTIONS = [
     defaultTitle: "Billing",
     descriptionKey: "cloud.myAgents.sectionBillingDesc",
     defaultDescription: "Review credits, payment methods, and usage controls.",
-    to: "/dashboard/billing",
+    to: "/settings#cloud-billing",
     icon: CreditCard,
   },
   {

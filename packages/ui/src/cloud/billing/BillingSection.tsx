@@ -1,29 +1,33 @@
 /**
- * Canonical billing entry — the body that both the in-app settings billing
- * section (Wave-3) and the standalone billing route mount.
+ * Canonical billing surface — the body the `cloud-billing` Settings section
+ * mounts (`/settings#cloud-billing`).
  *
  * Fetches the current user/org (the `BillingTab` needs `organization_id`,
- * `wallet_address`, and the seed `credit_balance`), then renders the lifted
- * `BillingTab`. Wraps the subtree in {@link ConditionalWalletProviders} so the
- * crypto direct-payment wallet stack (wagmi/RainbowKit/Solana) is available on
- * the billing route but never enters the entry bundle elsewhere.
+ * `wallet_address`, and the seed `credit_balance`), then renders `BillingTab`.
+ * Wraps the subtree in {@link ConditionalWalletProviders} so the crypto
+ * direct-payment wallet stack (wagmi/RainbowKit/Solana) never enters the entry
+ * bundle elsewhere.
  *
- * Replaces the cloud-frontend `BillingPage` + `BillingPageWrapper` pair; the
- * `DashboardRoutePage` chrome and `from=canceled` banner are preserved.
+ * The Stripe Checkout cancel URL points back here with `?canceled=true` (via
+ * the `dashboard/billing` compat redirect, which preserves the query), so the
+ * canceled banner renders at the top of the body.
  */
 
 import {
   DashboardErrorState,
   DashboardLoadingState,
-  DashboardRoutePage,
 } from "@elizaos/ui/cloud-ui";
-import { useSearchParams } from "react-router-dom";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { BillingTab } from "./components/billing-tab";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
 
-/** Billing body without route chrome — for embedding in a settings section. */
+function wasCheckoutCanceled(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("canceled") !== null;
+}
+
+/** The billing surface, rendered by the Settings → Cloud billing section. */
 export function BillingSectionBody() {
   const t = useCloudT();
   const { user, isLoading, isAuthenticated, isError, error } = useBillingUser();
@@ -62,31 +66,14 @@ export function BillingSectionBody() {
 
   return (
     <ConditionalWalletProviders>
+      {wasCheckoutCanceled() ? (
+        <div className="mb-4 border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {t("cloud.billing.paymentCanceled", {
+            defaultValue: "Payment canceled. No charges were made.",
+          })}
+        </div>
+      ) : null}
       <BillingTab user={user} />
     </ConditionalWalletProviders>
-  );
-}
-
-/** Full billing route page (chrome + canceled banner + body). */
-export default function BillingSection() {
-  const t = useCloudT();
-  const [params] = useSearchParams();
-  const canceled = params.get("canceled") ?? undefined;
-
-  return (
-    <DashboardRoutePage
-      title={t("cloud.billing.pageTitle", { defaultValue: "Billing" })}
-      container={{ className: "max-w-7xl" }}
-      banner={
-        canceled
-          ? t("cloud.billing.paymentCanceled", {
-              defaultValue: "Payment canceled. No charges were made.",
-            })
-          : undefined
-      }
-      bannerTone="error"
-    >
-      <BillingSectionBody />
-    </DashboardRoutePage>
   );
 }

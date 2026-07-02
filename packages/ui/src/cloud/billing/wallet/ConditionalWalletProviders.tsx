@@ -16,12 +16,8 @@ import { Component, lazy, type ReactNode, Suspense, useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
-const WALLET_ROUTE_PATTERNS = [
-  "/dashboard/billing",
-  "/dashboard/billing/*",
-  "/settings",
-  "/settings/*",
-];
+// The billing surface (the only wallet consumer) mounts at /settings.
+const WALLET_ROUTE_PATTERNS = ["/settings", "/settings/*"];
 
 const LazyStewardWalletProviders = lazy(async () => {
   const mod = await import("./steward-wallet-providers");

@@ -129,6 +129,6 @@ describe("CloudRouterShell dashboard compat redirects", () => {
     // Settings → Developer section, so /dashboard/api-keys resolves to it and
     // never to a (now-removed) standalone route.
     expect(apiKeysRedirects).toHaveLength(1);
-    expect(apiKeysRedirects[0]?.to).toBe("/settings#api-keys");
+    expect(apiKeysRedirects[0]?.to).toBe("/settings#cloud-api-keys");
   });
 });

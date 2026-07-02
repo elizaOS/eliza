@@ -1,13 +1,9 @@
 /**
- * API-keys surface.
- *
- * Lifted from `@elizaos/cloud-frontend/src/dashboard/api-keys/Page.tsx`. Gates
- * on the Steward session, fetches the keys with {@link useApiKeys}, maps the
- * server records to the cloud-ui display shape, derives the summary metrics, and
- * renders {@link ApiKeysView}. Loading / error states use the cloud-ui dashboard
- * placeholders; the page title is set via {@link useDocumentTitle} (no Helmet).
- *
- * Mounted only through the Settings → Developer section ({@link ApiKeysSection}).
+ * API-keys surface. Gates on the Steward session, fetches the keys with
+ * {@link useApiKeys}, maps the server records to the cloud-ui display shape,
+ * and renders {@link ApiKeysView}. Mounted by the `cloud-api-keys` Settings
+ * section (`/settings#cloud-api-keys`); legacy `/dashboard/api-keys` deep
+ * links resolve there via the CloudRouterShell compat redirect.
  */
 
 import { useContext } from "react";
