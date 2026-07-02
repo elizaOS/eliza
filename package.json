@@ -69,6 +69,7 @@
     "test:launch-qa:release:dry": "node packages/scripts/launch-qa/run.mjs --suite release --dry-run",
     "test:ui:playwright": "bun run --cwd packages/app test:e2e",
     "generate:action-search-keywords": "node packages/scripts/generate-action-search-keywords.mjs && node packages/shared/scripts/generate-keywords.mjs --target ts",
+    "lifeops-bench:manifest": "node --conditions=eliza-source --conditions=development --import tsx scripts/lifeops-bench/export-action-manifest.ts",
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/src/entry.ts start",
     "dev:prepare": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app... --filter=!@elizaos/app",

@@ -15,10 +15,9 @@ name against the manifest fails until we register them.
 
 This module exposes the bench-only umbrella verbs as standalone manifest
 entries derived from ``runner._DISCRIMINATORS`` and ``runner._TOOL_DESCRIPTIONS``
-so the gate accepts them. Running this module as a script patches the
-on-disk manifest in place; re-running the TS exporter without re-applying
-this patch is a known limitation that ``scripts/lifeops-bench/export-action-manifest.ts``
-should eventually fold in.
+so the gate accepts them. The in-tree TypeScript generator invokes this module
+after exporting the live plugin registry so a single command rebuilds the final
+manifest from scratch.
 """
 
 from __future__ import annotations
