@@ -539,6 +539,54 @@ describe("prompt templates (src/index.ts)", () => {
       "credential protection should remain non-optable even when prompt sharing is allowed",
     );
   });
+
+  it("messageHandlerTemplate grounds capability denials in the action surface and requires fresh tool retries", () => {
+    // Two agent-generic rules previously hand-copied into individual
+    // characters, promoted to the framework layer (same as the #11149
+    // injection/credential baseline):
+    //   1. Capability denial must be grounded in the action catalog — the
+    //      model reflexively recites "I don't have memory" / "I can't
+    //      schedule things" even when the corresponding action is exposed
+    //      this turn.
+    //   2. A tool that errored on an earlier turn is not permanently
+    //      unavailable — gates/config change between turns, so a fresh ask
+    //      (especially after "it's fixed now") gets a fresh attempt, not a
+    //      replay of the stale failure.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /Never tell the user you lack a capability — tasks, memory, scheduling, reminders, persistence, workflows — when a corresponding action or context is actually available this turn/,
+      "capability-denial rule should forbid denying capabilities the action surface exposes this turn",
+    );
+    assert.match(
+      body,
+      /available_contexts and the action surface are the ground truth, so check them before denying/,
+      "capability-denial rule should ground the check in available_contexts and the action surface",
+    );
+    assert.match(
+      body,
+      /If the action exists, route to it; deny a capability only when nothing on the surface can attempt it/,
+      "capability-denial rule should redirect to the action instead of denying",
+    );
+    assert.match(
+      body,
+      /A tool that errored on an earlier turn is not permanently unavailable — gates, credentials, and config change between turns/,
+      "tool-retry rule should state that earlier errors do not make a tool permanently unavailable",
+    );
+    assert.match(
+      body,
+      /try it fresh instead of replaying the old failure from memory/,
+      "tool-retry rule should require a fresh attempt on a repeated ask",
+    );
+    assert.match(
+      body,
+      /Report what the runtime says THIS turn, not what it said last time/,
+      "tool-retry rule should bind the report to this turn's runtime result",
+    );
+  });
 });
 
 describe("build scripts", () => {
