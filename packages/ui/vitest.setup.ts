@@ -40,6 +40,51 @@ if (typeof Element !== "undefined") {
   }
 }
 
+// Node ≥25 ships a Web Storage `localStorage`/`sessionStorage` global that is
+// non-functional without `--localstorage-file` (its methods are missing) and
+// SHADOWS jsdom's Storage — even `window.localStorage` resolves to it here, so
+// every jsdom test touching storage throws `localStorage.getItem is not a
+// function` on hosts running Node ≥25 (CI's Node 24 gates the global behind a
+// flag and is unaffected). Install a real in-memory Storage on both access
+// paths, only when the present one is broken — never overwrite a working one.
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (key: string) => store.get(key) ?? null,
+    key: (index: number) => [...store.keys()][index] ?? null,
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      store.set(key, String(value));
+    },
+  };
+}
+
+if (typeof window !== "undefined") {
+  for (const name of ["localStorage", "sessionStorage"] as const) {
+    const existing = (globalThis as Record<string, unknown>)[name] as
+      | Storage
+      | undefined;
+    if (existing && typeof existing.getItem === "function") continue;
+    const memory = createMemoryStorage();
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: memory,
+    });
+    Object.defineProperty(window, name, {
+      configurable: true,
+      writable: true,
+      value: memory,
+    });
+  }
+}
+
 // @testing-library/react's act() checks this flag to decide whether to use
 // synchronous flushing. It must be set before any test code runs so that
 // React renders triggered inside act() complete synchronously in jsdom.

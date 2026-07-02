@@ -3863,9 +3863,13 @@ export function ContinuousChatOverlay({
               }
             }}
             onDrop={(event) => {
-              const files = event.dataTransfer?.files;
-              if (files && files.length > 0) {
-                event.preventDefault();
+              // preventDefault for ANY claimed file drag (dragover advertised
+              // droppability): bailing on an empty file list would hand the
+              // drop to the browser default — navigating to the local file.
+              if (!event.dataTransfer?.types?.includes("Files")) return;
+              event.preventDefault();
+              const files = event.dataTransfer.files;
+              if (files.length > 0) {
                 addImageFiles(files);
               }
             }}
