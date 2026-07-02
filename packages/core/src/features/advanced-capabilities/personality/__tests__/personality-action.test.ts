@@ -9,6 +9,10 @@ import {
 	makeMessage,
 } from "./test-helpers.ts";
 
+// Fixed sender entity for the `run` helper. Pass it as `owner` to makeFakeRuntime
+// when a test needs the sender treated as admin/owner (admin-only ops).
+const TEST_SENDER = "00000000-0000-4000-8000-0000000000ff" as never;
+
 async function run(
 	fake: ReturnType<typeof makeFakeRuntime>,
 	userText: string,
@@ -21,8 +25,7 @@ async function run(
 		text: userText,
 	});
 	// Use a distinct entity for the message so it's not "from self"
-	const userEntity = "00000000-0000-4000-8000-0000000000ff" as never;
-	message.entityId = userEntity;
+	message.entityId = TEST_SENDER;
 	const { cb, calls } = captureCallback();
 	const opts: HandlerOptions = {
 		parameters: { op, ...extraParams } as never,
@@ -186,7 +189,10 @@ describe("personalityAction — subactions write structured state", () => {
 describe("personalityAction — profiles", () => {
 	let fake: ReturnType<typeof makeFakeRuntime>;
 	beforeEach(async () => {
-		fake = makeFakeRuntime();
+		// load_profile / save_profile are admin-only; make the test sender the
+		// canonical owner so hasRoleAccess grants admin (it now fails CLOSED on an
+		// unresolved role — the old "no world → admin" leniency is gone).
+		fake = makeFakeRuntime({ owner: TEST_SENDER });
 		await initStore(fake);
 	});
 
