@@ -10,7 +10,9 @@
  *   - reachable-from-test
  *   - reachable-from-build
  *   - reachable-from-ci-workflow
+ *   - reachable-from-operator-script
  *   - reachable-from-package-script
+ *   - reachable-from-docs
  *   - reachable-from-app-internal   (packages/app scripts only)
  *   - orphan
  *
@@ -23,13 +25,16 @@
  *   1. Root scripts form a call graph: a script body that runs `bun run X` /
  *      `npm run X` makes root script X reachable transitively.
  *   2. The seed entrypoints are `verify` (+ its `check` alias), `test`, `build`,
- *      and every root script name referenced from a `.github/` workflow.
+ *      every root script name referenced from a `.github/` workflow, and every
+ *      named root script as a lower-priority human/operator entrypoint.
  *   3. A reachable script body that runs `node packages/scripts/X.mjs` (or
  *      otherwise names a packages/scripts file) makes that file reachable.
  *   4. `.github/` workflows that directly name a packages/scripts file make it
  *      reachable-from-ci-workflow.
  *   5. A reachable `.mjs` file that spawnSync/exec/imports/names another
  *      packages/scripts `.mjs` propagates reachability to it.
+ *   6. A packages/scripts file named from docs/source/test text is documented
+ *      as an intentional standalone/support entrypoint, not a true orphan.
  *
  * Output:
  *   - machine-readable JSON to reports/scripts-inventory.json (gitignored).
@@ -60,7 +65,9 @@ const CATEGORIES = [
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
+  "reachable-from-operator-script",
   "reachable-from-package-script",
+  "reachable-from-docs",
   "orphan",
 ];
 
@@ -87,6 +94,21 @@ const PACKAGE_JSON_PRUNE_DIRS = new Set([
   "dist",
   "node_modules",
   "reports",
+]);
+
+const DOCUMENTATION_REFERENCE_EXTENSIONS = new Set([
+  ".cjs",
+  ".js",
+  ".json",
+  ".md",
+  ".mdx",
+  ".mjs",
+  ".py",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml",
 ]);
 
 function readJson(file) {
@@ -222,6 +244,32 @@ function filesFromRootScripts(reachedRoots, rootScripts, fileUniverse) {
   return seeds;
 }
 
+/** Root `package.json` script callers for packages/scripts/*.mjs files. */
+function filesFromOperatorScripts(reachedRoots, rootScripts, fileUniverse) {
+  const callersByFile = new Map();
+  for (const name of reachedRoots) {
+    for (const scriptFile of referencedScriptFiles(
+      rootScripts[name] ?? "",
+      fileUniverse,
+    )) {
+      if (!callersByFile.has(scriptFile)) callersByFile.set(scriptFile, []);
+      callersByFile.get(scriptFile).push({
+        packageJson: "package.json",
+        script: name,
+      });
+    }
+  }
+
+  for (const callers of callersByFile.values()) {
+    callers.sort((a, b) =>
+      `${a.packageJson}:${a.script}`.localeCompare(
+        `${b.packageJson}:${b.script}`,
+      ),
+    );
+  }
+  return callersByFile;
+}
+
 /**
  * packages/scripts files invoked from package-local `package.json` scripts.
  *
@@ -256,6 +304,37 @@ function filesFromPackageScripts(fileUniverse) {
     );
   }
   return callersByFile;
+}
+
+/**
+ * packages/scripts files referenced from docs/source/test text outside their own
+ * script file. This is intentionally low priority: package.json / CI /
+ * operator-script reachability wins, but a documented standalone support script
+ * is not a true zero-reference orphan.
+ */
+function filesFromDocumentation(fileUniverse) {
+  const referencesByFile = new Map();
+  walkPruned(ROOT, (file) => {
+    const rel = path.relative(ROOT, file);
+    if (rel === "package.json" || path.basename(file) === "package.json") {
+      return;
+    }
+    if (!DOCUMENTATION_REFERENCE_EXTENSIONS.has(path.extname(file))) return;
+    const body = readTextIfReadable(file);
+    if (!body) return;
+    for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
+      const ownScriptPath = path.join("packages", "scripts", scriptFile);
+      if (rel === ownScriptPath) continue;
+      if (!referencesByFile.has(scriptFile))
+        referencesByFile.set(scriptFile, []);
+      referencesByFile.get(scriptFile).push(rel);
+    }
+  });
+
+  for (const references of referencesByFile.values()) {
+    references.sort((a, b) => a.localeCompare(b));
+  }
+  return referencesByFile;
 }
 
 /**
@@ -369,6 +448,7 @@ function buildInventory() {
   const fileUniverse = collectScriptFiles();
   const fileGraph = buildFileGraph(fileUniverse);
   const packageScriptCallersByFile = filesFromPackageScripts(fileUniverse);
+  const documentationReferencesByFile = filesFromDocumentation(fileUniverse);
 
   // CI workflow corpus + the root-script names + script files it references.
   const workflowChunks = [];
@@ -384,8 +464,18 @@ function buildInventory() {
   const testRoots = reachableRootScripts(["test"], rootScripts);
   const buildRoots = reachableRootScripts(["build"], rootScripts);
   const ciRoots = reachableRootScripts(ciRootSeeds, rootScripts);
+  const operatorRoots = reachableRootScripts(
+    Object.keys(rootScripts),
+    rootScripts,
+  );
+  const operatorScriptCallersByFile = filesFromOperatorScripts(
+    operatorRoots,
+    rootScripts,
+    fileUniverse,
+  );
 
-  // Reachable file sets, colored by entrypoint (priority verify>test>build>ci).
+  // Reachable file sets, colored by entrypoint
+  // (priority verify > test > build > ci > operator > package-local script).
   const verifyFiles = reachableFiles(
     filesFromRootScripts(verifyRoots, rootScripts, fileUniverse),
     fileGraph,
@@ -405,8 +495,16 @@ function buildInventory() {
     ]),
     fileGraph,
   );
+  const operatorFiles = reachableFiles(
+    new Set(operatorScriptCallersByFile.keys()),
+    fileGraph,
+  );
   const packageScriptFiles = reachableFiles(
     new Set(packageScriptCallersByFile.keys()),
+    fileGraph,
+  );
+  const documentedFiles = reachableFiles(
+    new Set(documentationReferencesByFile.keys()),
     fileGraph,
   );
 
@@ -415,6 +513,7 @@ function buildInventory() {
     if (testRoots.has(name)) return "reachable-from-test";
     if (buildRoots.has(name)) return "reachable-from-build";
     if (ciRoots.has(name)) return "reachable-from-ci-workflow";
+    if (operatorRoots.has(name)) return "reachable-from-operator-script";
     return "orphan";
   };
   const classifyFile = (file) => {
@@ -422,7 +521,9 @@ function buildInventory() {
     if (testFiles.has(file)) return "reachable-from-test";
     if (buildFiles.has(file)) return "reachable-from-build";
     if (ciFiles.has(file)) return "reachable-from-ci-workflow";
+    if (operatorFiles.has(file)) return "reachable-from-operator-script";
     if (packageScriptFiles.has(file)) return "reachable-from-package-script";
+    if (documentedFiles.has(file)) return "reachable-from-docs";
     return "orphan";
   };
 
@@ -430,7 +531,9 @@ function buildInventory() {
     file,
     loc: loc(path.join(SCRIPTS_DIR, file)),
     category: classifyFile(file),
+    operatorScriptCallers: operatorScriptCallersByFile.get(file) ?? [],
     packageScriptCallers: packageScriptCallersByFile.get(file) ?? [],
+    documentationReferences: documentationReferencesByFile.get(file) ?? [],
   }));
   const roots = Object.keys(rootScripts).map((name) => ({
     name,
@@ -463,7 +566,7 @@ function buildInventory() {
   };
   for (const name of Object.keys(rootScripts)) {
     const color = classifyRoot(name);
-    if (color === "orphan") continue;
+    if (!(color in appSeedsByColor)) continue;
     for (const app of appScriptsViaCwd(rootScripts[name], appUniverse)) {
       appSeedsByColor[color].add(app);
     }
@@ -543,6 +646,12 @@ function buildInventory() {
       packageScriptFileReferences: [
         ...packageScriptCallersByFile.values(),
       ].reduce((sum, callers) => sum + callers.length, 0),
+      operatorScriptFileReferences: [
+        ...operatorScriptCallersByFile.values(),
+      ].reduce((sum, callers) => sum + callers.length, 0),
+      documentationFileReferences: [
+        ...documentationReferencesByFile.values(),
+      ].reduce((sum, references) => sum + references.length, 0),
       totalAppScripts: appScriptList.length,
       orphanAppScripts: appTotals.orphan,
       appScriptsByCategory: appTotals,
@@ -584,7 +693,7 @@ function printSummary(inv) {
     for (const f of orphans) w(`    - ${f.file} (${f.loc} LOC)\n`);
     w(
       "\n  note: orphan here means no root/CI/package-script caller found, " +
-        'not "safe to delete".\n\n',
+        'not "safe to delete". Root operator commands are tracked separately.\n\n',
     );
   }
 
