@@ -8,7 +8,11 @@ export {
 	fetchWithSsrfGuard,
 	type GuardedFetchOptions,
 	type GuardedFetchResult,
+	type PinnedLookupFetchLike,
+	type PinnedLookupFetchParams,
 } from "./fetch-guard.js";
+
+export { nodeLookupFn, nodePinnedFetch } from "./node-pinned-fetch.js";
 
 export {
 	assertPublicHostname,
@@ -17,6 +21,7 @@ export {
 	isPrivateIpAddress,
 	type LookupFn,
 	type PinnedHostname,
+	type PinnedLookup,
 	resolvePinnedHostname,
 	resolvePinnedHostnameWithPolicy,
 	SsrfBlockedError,

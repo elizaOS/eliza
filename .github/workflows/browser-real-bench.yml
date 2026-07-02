@@ -55,13 +55,21 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # setup-bun-workspace instead of a hand-rolled `bun install
+      # --frozen-lockfile`: this repo tracks bun canary, and canary rebuilds
+      # reserialize bun.lock between builds, so a bare frozen install reds with
+      # "lockfile had changes, but lockfile is frozen" on schedule runs (e.g.
+      # run 28513244717). The composite handles the drift fallback and restores
+      # the committed lockfile; same invocation as scenario-pr.yml's
+      # app-browser-core lane this workflow mirrors.
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       # Real Chromium for the engine lane — the same pattern scenario-pr.yml's
       # app-browser-core uses. resolveChromiumExecutablePath() picks it up via

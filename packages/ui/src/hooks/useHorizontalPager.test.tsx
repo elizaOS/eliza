@@ -112,16 +112,17 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
     const { getByTestId, unmount } = render(
       <Harness onPageChange={fastChange} />,
     );
-    // dx = -300 (crosses the distance threshold → advances), released in 40ms.
-    swipeNext(getByTestId("rail"), 500, 200, 40);
+    // dx = -700 (crosses the 50% distance threshold on the 1024px jsdom
+    // viewport → advances even without flick velocity), released in 40ms.
+    swipeNext(getByTestId("rail"), 800, 100, 40);
     expect(fastChange).toHaveBeenCalledWith(1);
     const fastMs = settleMsFromRail(getByTestId("rail"));
     unmount();
 
     const slowChange = vi.fn();
     const { getByTestId: get2 } = render(<Harness onPageChange={slowChange} />);
-    // Same dx = -300, but released slowly over 700ms.
-    swipeNext(get2("rail"), 500, 200, 700);
+    // Same dx = -700 (past the 50% threshold), but released slowly over 700ms.
+    swipeNext(get2("rail"), 800, 100, 700);
     expect(slowChange).toHaveBeenCalledWith(1);
     const slowMs = settleMsFromRail(get2("rail"));
 

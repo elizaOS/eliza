@@ -26,7 +26,7 @@ class Agent:
     def __init__(self, client: OpenClawClient | None = None) -> None:
         self._client = client or OpenClawClient(
             provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
-            model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+            model=os.environ.get("BENCHMARK_MODEL_NAME", "gemma-4-31b"),
             timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "600") or "600"),
             direct_openai_compatible=os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "1") != "0",
         )

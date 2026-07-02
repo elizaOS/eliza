@@ -26,7 +26,12 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "0 0 * * *": ["/api/cron/container-billing", "/api/cron/release-pending-earnings"],
   "0 1 * * *": ["/api/cron/compute-metrics"],
   "0 2 * * *": ["/api/cron/cleanup-webhook-events"],
-  "0 3 * * *": ["/api/cron/domain-renewals"],
+  "0 3 * * *": [
+    "/api/cron/domain-renewals",
+    // #11058: release external domain rows still unverified after the reclaim
+    // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
+    "/api/cron/reclaim-stale-domains",
+  ],
   "0 * * * *": ["/api/cron/agent-billing"],
   "*/5 * * * *": [
     "/api/cron/social-automation",

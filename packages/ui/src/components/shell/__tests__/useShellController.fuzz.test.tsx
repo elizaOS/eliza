@@ -4,17 +4,25 @@
 // shared shell state through overlapping ref-guarded, timer-backed paths (a
 // serialized send, a single-ref capture handle, a seq-guarded new-chat loader +
 // watchdog). This drives randomized interleavings against the REAL
-// `useShellController` (only the state store + the voice-capture I/O leaf are
-// mocked) and asserts the message-lifecycle invariants: no lost / duplicate /
-// misordered messages, a clean reset on new-chat, and no stuck recording.
-// Seeded RNG => a failing interleaving is reproducible from its seed.
+// `useShellController` and asserts the message-lifecycle invariants: no lost /
+// duplicate / misordered messages, a clean reset on new-chat, and no stuck
+// recording. Seeded RNG => a failing interleaving is reproducible from its seed.
 //
-// Coverage note: the voice dimension drives dictation capture (start → interim/
-// final → stop), which exercises the single-ref capture guard, the transcript
-// reset, and the "no stuck recording after new-chat" invariant interleaved with
-// text sends. Dictation hands its final to the composer draft (not a send); the
-// converse-mode TurnAggregator commit→send path (VAD / semantic end-of-turn) is
-// its own deterministic-timer harness and is a follow-up dimension.
+// What is mocked (and why that is honest here): the app-state store + the
+// voice-capture I/O leaf, and `sendChatText` (the send-queue leaf). This file's
+// job is the SHELL-CONTROLLER lifecycle — that the controller routes each turn
+// to `sendChatText` exactly once, in order, from every interleaving of
+// text/voice/new-chat. The internal send-QUEUE race (enqueue-time conversation
+// pin) is pinned separately against the real hook in
+// `../../state/__tests__/useChatSend.send-voice-newchat.race.test.tsx`; this
+// suite does not re-prove that leaf and does not claim to.
+//
+// Voice dimensions: dictation (start → interim/final → stop) hands its final to
+// the composer draft (not a send); converse (always-on) routes finals through
+// the real `TurnAggregator` (a complete final — sentence-final punctuation —
+// commits synchronously) and the commit sends a VOICE_DM through the same send
+// path, exercising the single-ref capture guard + the `lastTurnVoice` flag
+// interleaved with text sends and new-chats.
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -51,6 +59,7 @@ const appMock = vi.hoisted(() => ({
     conversations: [] as Array<{ id: string }>,
     setTab: vi.fn(),
     handleChatStop: vi.fn(),
+    setActionNotice: vi.fn(),
     uiLanguage: "en",
     elizaCloudVoiceProxyAvailable: false,
   },
@@ -130,9 +139,16 @@ const voiceOutputMock = vi.hoisted(() => ({
   toggleAgentVoiceMute: vi.fn(),
   needsAudioUnlock: false,
   unlockAudio: vi.fn(),
+  // Captures the `lastTurnVoice` the controller feeds its voice-output consumer
+  // each render — lastTurnVoice is internal (not on the public controller
+  // return), so this real consumer boundary is where the flag is observable.
+  lastTurnVoiceSeen: undefined as boolean | undefined,
 }));
 vi.mock("../useShellVoiceOutput", () => ({
-  useShellVoiceOutput: () => voiceOutputMock,
+  useShellVoiceOutput: (opts?: { lastTurnVoice?: boolean }) => {
+    voiceOutputMock.lastTurnVoiceSeen = opts?.lastTurnVoice;
+    return voiceOutputMock;
+  },
 }));
 
 // jsdom localStorage in this env throws; back it with an in-memory Storage.
@@ -165,6 +181,7 @@ afterEach(() => {
   appMock.value.conversations = [];
   voiceCapture.onTranscript = null;
   voiceCapture.handleCount = 0;
+  voiceOutputMock.lastTurnVoiceSeen = undefined;
 });
 
 // Deterministic PRNG so a failing interleaving is reproducible from its seed.
@@ -205,16 +222,27 @@ describe("useShellController — interleaved send/voice/new-chat fuzz (#10700)",
           act(() => result.current.send(text));
         } else if (roll < 0.7) {
           // voice capture: open the mic (if idle), emit a final transcript, then
-          // close. Exercises the single-ref capture guard + transcript reset
-          // interleaved with sends/new-chats. The guard below counts the turn as
-          // a dispatched message ONLY if the controller actually sent it, so this
-          // stays correct whether the mode drafts (dictation) or sends.
+          // close. Half the time in converse mode (final → TurnAggregator →
+          // synchronous commit → VOICE_DM send), half in dictation (final →
+          // composer draft, no send). Exercises the single-ref capture guard +
+          // transcript reset + the lastTurnVoice flag interleaved with
+          // sends/new-chats. The guard below counts the turn as a dispatched
+          // message ONLY if the controller actually sent it, so this stays
+          // correct whether the mode drafts (dictation) or sends (converse).
+          const converse = rand() < 0.5;
           if (!result.current.recording) {
-            act(() => result.current.startRecording("dictate"));
+            act(() =>
+              result.current.startRecording(converse ? "converse" : "dictate"),
+            );
           }
           const sink = voiceCapture.onTranscript;
           if (sink && result.current.recording) {
-            const text = `v${counter++}`;
+            // Converse needs a COMPLETE final (sentence-final punctuation scores
+            // >= the commit threshold) so it commits synchronously; a real phrase
+            // (not pure disfluency) so the respond-gate doesn't drop it.
+            const text = converse
+              ? `converse ${counter++} what is it?`
+              : `v${counter++}`;
             act(() => sink({ text, final: true }));
             if (sentTexts().includes(text)) expected.push(text);
           }
@@ -226,6 +254,9 @@ describe("useShellController — interleaved send/voice/new-chat fuzz (#10700)",
           // must leave no stuck recording/transcript.
           newChats++;
           act(() => result.current.clearConversation());
+          // Invariant (d) (#10700): a fresh conversation's bootstrap greeting is
+          // not a reply to a voice turn — the flag is cleared so it isn't spoken.
+          expect(voiceOutputMock.lastTurnVoiceSeen).toBe(false);
         } else {
           // bare recording toggle — exercises the single-ref capture guard.
           act(() => result.current.toggleRecording());
@@ -271,6 +302,49 @@ describe("useShellController — interleaved send/voice/new-chat fuzz (#10700)",
 
     expect(result.current.recording).toBe(false);
     expect(result.current.transcript).toBe("");
+  });
+
+  it("converse: a complete final commits → VOICE_DM send, sets lastTurnVoice, and a new-chat clears it without orphaning the capture", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    act(() => result.current.startRecording("converse"));
+    expect(result.current.recording).toBe(true);
+    const sink = voiceCapture.onTranscript;
+    expect(sink).not.toBeNull();
+
+    // A complete final (sentence-final "?") commits synchronously through the
+    // real TurnAggregator; onCommit sends a VOICE_DM through the real send path.
+    act(() => sink?.({ text: "what time is it in tokyo?", final: true }));
+
+    const call = appMock.value.sendChatText.mock.calls.at(-1);
+    expect(call?.[0]).toBe("what time is it in tokyo?");
+    // Sent as a spoken voice turn, not a plain DM.
+    expect(
+      (call?.[1] as { channelType?: string } | undefined)?.channelType,
+    ).toBe("VOICE_DM");
+    // The reply to a voice turn is spoken back.
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(true);
+
+    // A new-chat mid-converse clears the voice flag (the greeting isn't spoken)
+    // and must not strand the mic on.
+    act(() => result.current.clearConversation());
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(false);
+    await act(async () => {
+      result.current.stopRecording();
+    });
+    expect(result.current.recording).toBe(false);
+    expect(result.current.transcript).toBe("");
+  });
+
+  it("converse: pure disfluency does NOT send (respond-gate drops it)", () => {
+    const { result } = renderHook(() => useShellController());
+    act(() => result.current.startRecording("converse"));
+    const sink = voiceCapture.onTranscript;
+    // "um uh" is pure disfluency AND a short complete-ish final — it commits but
+    // the respond-gate drops it, so nothing reaches the send path.
+    act(() => sink?.({ text: "um uh.", final: true }));
+    expect(appMock.value.sendChatText).not.toHaveBeenCalled();
+    expect(voiceOutputMock.lastTurnVoiceSeen).toBe(false);
   });
 
   it("rapid send-text bursts are neither dropped nor duplicated", () => {

@@ -17,7 +17,7 @@ Each rubric runs up to three layers:
    signals (substantive token after a silence directive, hedging after a
    no-hedging directive, leakage of a forbidden phrase across rooms) short
    the rest of the pipeline.
-2. **LLM judge cross-check** — Cerebras `gpt-oss-120b` (OpenAI-compatible).
+2. **LLM judge cross-check** — Cerebras `gemma-4-31b` (OpenAI-compatible).
    Runs with `temperature=0` and two perturbed system prompts (`passes=2`).
    Disagreement across passes routes to `NEEDS_REVIEW`.
 3. **Embedding similarity fallback** — only invoked when explicitly enabled
@@ -56,7 +56,7 @@ bun run personality:bench --agent eliza
 | --- | --- | --- |
 | `CEREBRAS_API_KEY` | _none_ | Required for the LLM-judge layer. |
 | `CEREBRAS_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible base. |
-| `PERSONALITY_JUDGE_MODEL` | `gpt-oss-120b` | LLM-judge model. |
+| `PERSONALITY_JUDGE_MODEL` | `gemma-4-31b` | LLM-judge model. |
 | `PERSONALITY_JUDGE_PASSES` | `2` | Independent passes per call. |
 | `PERSONALITY_JUDGE_TIMEOUT_MS` | `20000` | Per-pass timeout. |
 | `PERSONALITY_JUDGE_ENABLE_LLM` | auto | `0` disables the LLM layer. |

@@ -33,10 +33,20 @@ import {
   type ElizaCloudTier,
   useRegisterViewChatBinding,
 } from "@elizaos/ui";
-import { ArrowLeft, ScrollText, SquareTerminal } from "lucide-react";
+import {
+  ArrowLeft,
+  PanelRight,
+  ScrollText,
+  SquareTerminal,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CockpitTerminalPanel } from "./CockpitTerminalPanel";
-import { TaskInspector } from "./OrchestratorWorkbench";
+import {
+  HIDDEN_STYLE,
+  INSPECTOR_DRAWER_STYLE,
+  TaskInspector,
+  useIsMobile,
+} from "./OrchestratorWorkbench";
 import { ConversationBlockView } from "./orchestrator-stream";
 import { buildConversation } from "./orchestrator-stream.helpers";
 import {
@@ -82,6 +92,14 @@ export function CockpitSessionPane({
   // view — ACP sessions run --no-terminal, so it's not an interactive shell
   // until a PTY_SERVICE-backed build exists; see CockpitTerminalPanel).
   const [view, setView] = useState<"transcript" | "terminal">("transcript");
+
+  // On a phone the TaskInspector's default 320px side rail would crush the
+  // transcript/terminal to a few unreadable pixels with no way to dismiss it.
+  // Mirror the OrchestratorWorkbench treatment of the same component: a
+  // JS-driven (matchMedia, not `md:` — the view bundle ships no CSS) dismissible
+  // slide-over toggled by a Details button. Desktop keeps the side rail.
+  const isMobile = useIsMobile();
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   // The PTY session feed (CodingAgentSession[]) is a separate source from the
   // task detail; poll it and narrow to THIS task's sessions by matching
@@ -304,6 +322,22 @@ export function CockpitSessionPane({
             <SquareTerminal className="h-4 w-4" aria-hidden />
           </button>
         </fieldset>
+        {isMobile && detail ? (
+          <button
+            type="button"
+            onClick={() => setInspectorOpen((prev) => !prev)}
+            aria-pressed={inspectorOpen}
+            data-testid="cockpit-session-details-toggle"
+            title={t("cockpit.session.details", { defaultValue: "Details" })}
+            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+              inspectorOpen
+                ? "bg-accent/15 text-accent"
+                : "text-muted hover:bg-bg-hover/40 hover:text-txt"
+            }`}
+          >
+            <PanelRight className="h-4 w-4" aria-hidden />
+          </button>
+        ) : null}
       </header>
 
       {composerError ? (
@@ -316,7 +350,7 @@ export function CockpitSessionPane({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {view === "terminal" ? (
           <div
             className="min-w-0 flex-1 overflow-hidden p-2"
@@ -353,6 +387,19 @@ export function CockpitSessionPane({
         {detail ? (
           <TaskInspector
             detail={detail}
+            // Override the class only for the mobile drawer: an unconditional
+            // "flex" suppressed TaskInspector's `flex w-80` fallback, and in
+            // this flex ROW the shrink-0 inspector inflated to max-content on
+            // desktop, crushing the transcript.
+            className={isMobile ? "flex" : undefined}
+            style={
+              isMobile
+                ? inspectorOpen
+                  ? INSPECTOR_DRAWER_STYLE
+                  : HIDDEN_STYLE
+                : undefined
+            }
+            onClose={isMobile ? () => setInspectorOpen(false) : undefined}
             busy={mutating}
             addAgentOpen={addAgentOpen}
             onPause={() =>

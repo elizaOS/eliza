@@ -160,6 +160,20 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
     ).toEqual(["u1", "a1"]);
   });
 
+  it("keeps a content-less FAILED assistant turn (its retry / gate UI must render)", () => {
+    const failed: ShellMessage = {
+      ...msg("a1", "assistant", ""),
+      failureKind: "rate_limited",
+    };
+    // Kept in every phase — a rate-limit/provider stall fails before any token
+    // streams, so a content check alone would hide the failure + its retry.
+    expect(
+      selectVisibleShellMessages([msg("u1", "user", "hi"), failed], "idle").map(
+        (m) => m.id,
+      ),
+    ).toEqual(["u1", "a1"]);
+  });
+
   it("still drops turns with an EMPTY attachments array", () => {
     const emptyAtt: ShellMessage = {
       ...msg("a1", "assistant", ""),

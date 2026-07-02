@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { assert, waitForTestId } from "../../storybook/home-widget-decorator";
+import { assert } from "../../storybook/home-widget-decorator";
 import { Launcher } from "./Launcher";
 
 /**
@@ -142,17 +142,19 @@ function tilePulsing(root: HTMLElement, testId: string): boolean {
   return Boolean(button?.classList.contains("animate-pulse"));
 }
 
-async function waitForMissingTestId(
+/** Poll until the tile is pulsing (edit mode on) or not (edit mode off). */
+async function waitForPulse(
   root: HTMLElement,
   testId: string,
+  want: boolean,
   tries = 30,
 ): Promise<void> {
   for (let i = 0; i < tries; i += 1) {
-    if (!root.querySelector(`[data-testid="${testId}"]`)) return;
+    if (tilePulsing(root, testId) === want) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(
-    `[story] timed out waiting for [data-testid="${testId}"] to disappear`,
+    `[story] timed out waiting for [data-testid="${testId}"] pulse=${want}`,
   );
 }
 
@@ -164,13 +166,13 @@ export const EditModeToggle: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
     await longPressTile(canvasElement, "launcher-tile-wallet");
-    await waitForTestId(canvasElement, "launcher-fav-wallet");
+    await waitForPulse(canvasElement, "launcher-tile-wallet", true);
     assert(
       tilePulsing(canvasElement, "launcher-tile-wallet"),
       "first long-press enters edit mode (tile pulses)",
     );
     await longPressTile(canvasElement, "launcher-tile-wallet");
-    await waitForMissingTestId(canvasElement, "launcher-fav-wallet");
+    await waitForPulse(canvasElement, "launcher-tile-wallet", false);
     assert(
       !tilePulsing(canvasElement, "launcher-tile-wallet"),
       "a second long-press exits edit mode (pulse gone)",
@@ -180,16 +182,16 @@ export const EditModeToggle: Story = {
 
 /**
  * Hold-to-edit: a 450ms press on a tile (not a tap) enters edit mode — the iOS
- * gesture and the sole entry point now that the Edit button is gone. The
- * story-gate keeps real timers, so the press is driven for real (pointerdown →
- * 520ms → pointerup) rather than faked. (The full pointer/touch gesture incl.
- * swipe-paging is covered end-to-end by `test:launcher-e2e`.)
+ * gesture and the sole entry point. The story-gate keeps real timers, so the
+ * press is driven for real (pointerdown → 520ms → pointerup) rather than faked.
+ * (The full pointer/touch gesture incl. swipe-paging is covered end-to-end by
+ * `test:launcher-e2e`.)
  */
 export const LongPressToEdit: Story = {
   args: { entries: VIEWS },
   play: async ({ canvasElement }) => {
     await longPressTile(canvasElement, "launcher-tile-wallet");
-    await waitForTestId(canvasElement, "launcher-fav-wallet");
+    await waitForPulse(canvasElement, "launcher-tile-wallet", true);
     assert(
       tilePulsing(canvasElement, "launcher-tile-wallet"),
       "a 520ms long-press entered edit mode (tile pulses)",

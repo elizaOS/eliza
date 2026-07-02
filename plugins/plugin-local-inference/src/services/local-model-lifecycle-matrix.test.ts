@@ -75,7 +75,7 @@ function catalogModel(overrides: Partial<CatalogModel> = {}): CatalogModel {
 				},
 				voice: {
 					repo: "elizaos/eliza-1",
-					file: "bundles/4b/tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+					file: "bundles/4b/tts/kokoro/kokoro-82m-v1_0.gguf",
 				},
 				vad: {
 					repo: "elizaos/eliza-1",

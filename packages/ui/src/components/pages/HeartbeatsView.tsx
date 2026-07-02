@@ -27,7 +27,7 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { NewActionButton } from "../ui/new-action-button";
-import { StatusBadge } from "../ui/status-badge";
+import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
@@ -716,28 +716,30 @@ function HeartbeatsLayout() {
                       <span className="truncate text-sm font-semibold text-txt">
                         {trigger.displayName}
                       </span>
-                      <StatusBadge
-                        label={
-                          trigger.enabled
-                            ? t("common.active")
-                            : t("common.paused")
-                        }
-                        variant={trigger.enabled ? "success" : "muted"}
-                        withDot
-                      />
+                      <span
+                        className={`inline-flex shrink-0 items-center gap-1.5 text-xs ${
+                          trigger.enabled ? "text-ok" : "text-muted-strong"
+                        }`}
+                      >
+                        <StatusDot
+                          tone={trigger.enabled ? "success" : "muted"}
+                        />
+                        {trigger.enabled
+                          ? t("common.active")
+                          : t("common.paused")}
+                      </span>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2 text-xs-tight text-muted">
                       <span className="truncate">
                         {scheduleLabel(trigger, t, uiLanguage)}
                       </span>
                       {trigger.lastStatus && (
-                        <StatusBadge
-                          label={localizedExecutionStatus(
-                            trigger.lastStatus,
-                            t,
-                          )}
-                          variant={toneForLastStatus(trigger.lastStatus)}
-                        />
+                        <span className="inline-flex shrink-0 items-center gap-1.5">
+                          <StatusDot
+                            tone={toneForLastStatus(trigger.lastStatus)}
+                          />
+                          {localizedExecutionStatus(trigger.lastStatus, t)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -827,7 +829,7 @@ function HeartbeatsLayout() {
           {showDetailPane ? (
             <button
               type="button"
-              className="mb-3 flex items-center gap-2 rounded-sm border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
+              className="mb-3 flex items-center gap-2 py-2 text-base font-medium text-muted hover:text-txt md:hidden"
               onClick={() => {
                 setSelectedTriggerId(null);
                 setEditorOpen(false);
@@ -880,15 +882,20 @@ function HeartbeatsLayout() {
                     <FieldLabel variant="kicker">
                       {t("common.heartbeat")}
                     </FieldLabel>
-                    <StatusBadge
-                      label={
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-xs ${
                         selectedTrigger.enabled
-                          ? t("common.active")
-                          : t("common.paused")
-                      }
-                      variant={selectedTrigger.enabled ? "success" : "muted"}
-                      withDot
-                    />
+                          ? "text-ok"
+                          : "text-muted-strong"
+                      }`}
+                    >
+                      <StatusDot
+                        tone={selectedTrigger.enabled ? "success" : "muted"}
+                      />
+                      {selectedTrigger.enabled
+                        ? t("common.active")
+                        : t("common.paused")}
+                    </span>
                   </div>
                   <h2 className="text-2xl font-semibold text-txt sm:text-[2rem]">
                     {selectedTrigger.displayName}
@@ -1046,15 +1053,12 @@ function HeartbeatsLayout() {
                 ) : (
                   <div className="space-y-2">
                     {selectedRuns.map((run) => (
-                      <div
-                        key={run.triggerRunId}
-                        className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3"
-                      >
+                      <div key={run.triggerRunId} className="py-1">
                         <div className="mb-1 flex items-center justify-between gap-2">
-                          <StatusBadge
-                            label={localizedExecutionStatus(run.status, t)}
-                            variant={toneForLastStatus(run.status)}
-                          />
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-txt">
+                            <StatusDot tone={toneForLastStatus(run.status)} />
+                            {localizedExecutionStatus(run.status, t)}
+                          </span>
                           <span className="font-mono text-xs-tight text-muted/70">
                             {formatDateTime(run.startedAt, {
                               locale: uiLanguage,
@@ -1063,7 +1067,7 @@ function HeartbeatsLayout() {
                         </div>
                         <div className="text-xs-tight text-muted/80">
                           {formatDurationMs(run.latencyMs, { t })} &middot;{" "}
-                          <span className="rounded-sm bg-bg/40 px-1 py-0.5 font-mono text-muted/60">
+                          <span className="font-mono text-muted/60">
                             {run.source}
                           </span>
                         </div>

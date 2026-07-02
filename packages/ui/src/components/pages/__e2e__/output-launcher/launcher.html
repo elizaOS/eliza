@@ -13401,16 +13401,11 @@
   var LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
   var LEGACY_LAUNCHER_STORAGE_KEY = "elizaos.views.springboard";
   var LAUNCHER_PAGE_SIZE = 24;
-  var LAUNCHER_DOCK_LIMIT = 4;
-  var DEFAULT_LAUNCHER_FAVORITES = [
-    "chat",
-    "settings"
-  ];
   function emptyLayout() {
-    return { favorites: [], pages: [] };
+    return { pages: [] };
   }
   function defaultLayout() {
-    return { favorites: [...DEFAULT_LAUNCHER_FAVORITES], pages: [] };
+    return { pages: [] };
   }
   function isStringArray(value) {
     return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -13419,26 +13414,18 @@
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return emptyLayout();
     const record2 = parsed;
-    const favorites = isStringArray(record2.favorites) ? record2.favorites : [];
     const pages = Array.isArray(record2.pages) && record2.pages.every(isStringArray) ? record2.pages : [];
     const manual = record2.manual === true ? true : void 0;
-    const dockCleared = record2.dockCleared === true ? true : void 0;
-    return { favorites, pages, manual, dockCleared };
-  }
-  function withSeededDock(layout2) {
-    if (layout2.favorites.length > 0 || layout2.dockCleared === true) {
-      return layout2;
-    }
-    return { ...layout2, favorites: [...DEFAULT_LAUNCHER_FAVORITES] };
+    return { pages, manual };
   }
   function readLauncherLayout() {
     if (typeof window === "undefined") return emptyLayout();
     try {
       const raw = window.localStorage.getItem(LAUNCHER_STORAGE_KEY);
-      if (raw) return withSeededDock(parseLayout(raw));
+      if (raw) return parseLayout(raw);
       const legacyRaw = window.localStorage.getItem(LEGACY_LAUNCHER_STORAGE_KEY);
       if (!legacyRaw) return defaultLayout();
-      const migrated = withSeededDock(parseLayout(legacyRaw));
+      const migrated = parseLayout(legacyRaw);
       writeLauncherLayout(migrated);
       window.localStorage.removeItem(LEGACY_LAUNCHER_STORAGE_KEY);
       return migrated;
@@ -13449,8 +13436,7 @@
   function writeLauncherLayout(layout2) {
     if (typeof window === "undefined") return;
     try {
-      const toStore = layout2.favorites.length === 0 ? { ...layout2, dockCleared: true } : layout2;
-      window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(toStore));
+      window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(layout2));
     } catch {
     }
   }
@@ -13464,14 +13450,12 @@
   }
   function reconcileLayout(layout2, availableIds, pageSize = LAUNCHER_PAGE_SIZE) {
     const available = new Set(availableIds);
-    const favorites = [...new Set(layout2.favorites)].filter((id3) => available.has(id3)).slice(0, LAUNCHER_DOCK_LIMIT);
-    const favoriteSet = new Set(favorites);
-    const seen = new Set(favorites);
+    const seen = /* @__PURE__ */ new Set();
     const ordered = [];
     if (layout2.manual) {
       for (const page of layout2.pages) {
         for (const id3 of page) {
-          if (available.has(id3) && !favoriteSet.has(id3) && !seen.has(id3)) {
+          if (available.has(id3) && !seen.has(id3)) {
             seen.add(id3);
             ordered.push(id3);
           }
@@ -13484,24 +13468,16 @@
         ordered.push(id3);
       }
     }
-    return { favorites, pages: chunk(ordered, pageSize), manual: layout2.manual };
-  }
-  function toggleFavorite(layout2, id3) {
-    if (layout2.favorites.includes(id3)) {
-      return { ...layout2, favorites: layout2.favorites.filter((f) => f !== id3) };
-    }
-    const favorites = [...layout2.favorites, id3].slice(-LAUNCHER_DOCK_LIMIT);
-    return { ...layout2, favorites };
+    return { pages: chunk(ordered, pageSize), manual: layout2.manual };
   }
   function moveIcon(layout2, id3, targetPage, targetIndex, pageSize = LAUNCHER_PAGE_SIZE) {
-    const favorites = layout2.favorites.filter((f) => f !== id3);
     const pages = layout2.pages.map((page2) => page2.filter((p) => p !== id3));
     while (pages.length <= targetPage) pages.push([]);
     const page = pages[targetPage];
     const index = Math.max(0, Math.min(targetIndex, page.length));
     page.splice(index, 0, id3);
     const flat = pages.flat();
-    return { favorites, pages: chunk(flat, pageSize), manual: true };
+    return { pages: chunk(flat, pageSize), manual: true };
   }
 
   // node_modules/.bun/lucide-react@1.18.0+3f10a4be4e334a9b/node_modules/lucide-react/dist/esm/createLucideIcon.mjs
@@ -22937,7 +22913,7 @@
   var AXIS_COMMIT_SLOP = 6;
   var AXIS_DOMINANCE_RATIO = 1.15;
   var MIN_DISTANCE_THRESHOLD = 64;
-  var DISTANCE_THRESHOLD_RATIO = 0.24;
+  var DISTANCE_THRESHOLD_RATIO = 0.5;
   var MIN_FLICK_DISTANCE = 48;
   var FLICK_VELOCITY = 0.45;
   var SETTLE_MS = 360;
@@ -41335,9 +41311,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   var ELIZA_1_VOICE_BACKENDS = {
     "eliza-1-2b": ["kokoro"],
     "eliza-1-4b": ["kokoro"],
-    "eliza-1-9b": ["omnivoice", "kokoro"],
-    "eliza-1-27b": ["omnivoice"],
-    "eliza-1-27b-256k": ["omnivoice"]
+    "eliza-1-9b": ["kokoro"],
+    "eliza-1-27b": ["kokoro"],
+    "eliza-1-27b-256k": ["kokoro"]
   };
   var BASE_REQUIRED_KERNELS = ["turbo3", "turbo4"];
   var TIER_SPECS = {
@@ -41460,15 +41436,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   function bundleComponent(id3, file2) {
     return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id3, file2) };
   }
-  function voiceQuantForTier(id3) {
-    return id3 === "eliza-1-2b" || id3 === "eliza-1-4b" ? "Q4_K_M" : "Q8_0";
-  }
-  function primaryVoiceFileForTier(id3) {
-    const defaultBackend = ELIZA_1_VOICE_BACKENDS[id3][0];
-    if (defaultBackend === "omnivoice") {
-      return `tts/omnivoice-base-${voiceQuantForTier(id3)}.gguf`;
-    }
-    return "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf";
+  function primaryVoiceFileForTier(_id) {
+    return "tts/kokoro/kokoro-82m-v1_0.gguf";
   }
   function asrFileForTier(id3) {
     return `asr/mmproj-audio-${tierSlug(id3)}-bf16.gguf`;
@@ -45622,6 +45591,7 @@ Assistant:`;
   var originalFetch = null;
   var fullBunRuntime = null;
   var IOS_LOCAL_AGENT_IPC_BASE2 = "eliza-local-agent://ipc";
+  var IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE = "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
   function isPrimedFullBunRuntime(value) {
     return !!value && typeof value === "object" && value.kind === "primed";
   }
@@ -45973,9 +45943,7 @@ Assistant:`;
       throw new Error("Unsupported HTTP method");
     }
     if (isNativeIosCloudRuntime() && !iosRuntimeHasOnDeviceAgent() && !isCloudRuntimeAllowedLocalAgentPath(path)) {
-      throw new TypeError(
-        "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active"
-      );
+      throw new TypeError(IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE);
     }
     const fullBunResult = await tryFullBunNativeRequest({
       ...options,
@@ -46028,9 +45996,7 @@ Assistant:`;
     }
     if (isIosLocalAgentIpcUrl(url2) && !canUseIosLocalAgentIpc()) {
       if (isCloudRuntimeAllowedIpcPath(url2)) return true;
-      throw new TypeError(
-        "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active"
-      );
+      throw new TypeError(IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE);
     }
     if (usesStrictIosNetworkPolicy() && isCleartextNetworkUrl(url2) && (isNativeIosStoreBuild() || isPrivateOrLoopbackHost(url2.hostname))) {
       throw new TypeError(
@@ -47269,11 +47235,28 @@ Assistant:`;
       };
       const SSE_IDLE_TIMEOUT_MS = 6e4;
       while (true) {
+        if (signal?.aborted) {
+          void reader.cancel("elizaos-sse-client-abort").catch(() => {
+          });
+          break;
+        }
         let done = false;
         let value;
         let idleTimedOut = false;
         try {
           const readPromise = reader.read();
+          const abortPromise = new Promise((_, reject) => {
+            if (!signal) return;
+            const onAbort = () => {
+              const abortErr = new Error("SSE read aborted by client");
+              abortErr.name = "AbortError";
+              reject(abortErr);
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+            void readPromise.finally(
+              () => signal.removeEventListener("abort", onAbort)
+            );
+          });
           const timeoutPromise = new Promise((_, reject) => {
             const id3 = setTimeout(() => {
               idleTimedOut = true;
@@ -47281,8 +47264,17 @@ Assistant:`;
             }, SSE_IDLE_TIMEOUT_MS);
             void readPromise.finally(() => clearTimeout(id3));
           });
-          ({ done, value } = await Promise.race([readPromise, timeoutPromise]));
+          ({ done, value } = await Promise.race([
+            readPromise,
+            abortPromise,
+            timeoutPromise
+          ]));
         } catch {
+          if (signal?.aborted) {
+            void reader.cancel("elizaos-sse-client-abort").catch(() => {
+            });
+            break;
+          }
           if (idleTimedOut) {
             streamState.doneFailureKind = streamState.doneFailureKind ?? "provider_issue";
           }
@@ -54498,10 +54490,8 @@ Assistant:`;
   var IconTile = (0, import_react31.memo)(function IconTile2({
     entry,
     editing,
-    favorited,
     manageable,
     onLaunch,
-    onToggleFavorite,
     onEdit,
     onDelete,
     onLongPress
@@ -54550,7 +54540,9 @@ Assistant:`;
                   // ViewTileImage renders this surface as an app icon, not as a
                   // cropped catalog preview. The button stays one constant hit target
                   // and owns hover/focus chrome; the inner visual owns color/glyph.
-                  "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
+                  // Flat — no border; a subtle glass wash is the icon plate
+                  // (neutral resting → neutral-with-opacity hover).
+                  "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20",
                   editing && "animate-pulse"
                 ),
                 children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
@@ -54570,26 +54562,8 @@ Assistant:`;
               {
                 "data-testid": `launcher-kind-${entry.id}`,
                 title: badge.title,
-                className: "pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full border border-black/20 bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900 shadow-sm",
+                className: "pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900",
                 children: badge.label
-              }
-            ) : null,
-            editing ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-              "button",
-              {
-                type: "button",
-                "aria-label": favorited ? `Unpin ${entry.label}` : `Pin ${entry.label}`,
-                "data-testid": `launcher-fav-${entry.id}`,
-                onClick: (e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(entry.id);
-                },
-                className: cn(
-                  // Filled chips stay legible across image and dark tile backgrounds.
-                  "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
-                  favorited ? "border-black/20 bg-accent text-white" : "border-black/15 bg-white text-neutral-900"
-                ),
-                children: favorited ? "\u2605" : "+"
               }
             ) : null,
             editing && manageable ? /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "absolute -left-1.5 -top-1.5 flex gap-1", children: [
@@ -54634,8 +54608,6 @@ Assistant:`;
     loading = false,
     onLaunch,
     onEdgeSwipeRight,
-    favoriteIds,
-    onToggleFavorite,
     canManageView,
     onEditView,
     onDeleteView,
@@ -54650,21 +54622,9 @@ Assistant:`;
     const grouped = pageGroups != null;
     const availableIds = (0, import_react31.useMemo)(() => entries.map((e) => e.id), [entries]);
     const byId = (0, import_react31.useMemo)(() => new Map(entries.map((e) => [e.id, e])), [entries]);
-    const controlled = onToggleFavorite != null;
-    const favorites = (0, import_react31.useMemo)(
-      () => controlled ? favoriteIds ?? [] : null,
-      [controlled, favoriteIds]
-    );
     const [layout2, setLayout] = (0, import_react31.useState)(() => {
       const stored = readLauncherLayout();
-      return reconcileLayout(
-        {
-          favorites: favorites ?? stored.favorites,
-          pages: stored.pages,
-          manual: stored.manual
-        },
-        entries.map((e) => e.id)
-      );
+      return reconcileLayout(stored, availableIds);
     });
     const pageControlled = pageProp !== void 0;
     const [localPage, setLocalPage] = (0, import_react31.useState)(0);
@@ -54687,17 +54647,8 @@ Assistant:`;
       [editingControlled, onEditingChange]
     );
     (0, import_react31.useEffect)(() => {
-      setLayout(
-        (prev) => reconcileLayout(
-          {
-            favorites: favorites ?? prev.favorites,
-            pages: prev.pages,
-            manual: prev.manual
-          },
-          availableIds
-        )
-      );
-    }, [availableIds, favorites]);
+      setLayout((prev) => reconcileLayout(prev, availableIds));
+    }, [availableIds]);
     (0, import_react31.useEffect)(() => {
       if (pageControlled) return;
       const pageCount = layout2.pages.length > 0 ? layout2.pages.length : 1;
@@ -54707,22 +54658,6 @@ Assistant:`;
       setLayout(next);
       writeLauncherLayout(next);
     }, []);
-    const toggleFav = (0, import_react31.useCallback)(
-      (id3) => {
-        const wasFavorited = (favorites ?? layout2.favorites).includes(id3);
-        emitViewInteraction({
-          source: "launcher",
-          action: wasFavorited ? "unfavorite" : "favorite",
-          viewId: id3
-        });
-        if (controlled) {
-          onToggleFavorite?.(id3);
-          return;
-        }
-        commit(reconcileLayout(toggleFavorite(layout2, id3), availableIds));
-      },
-      [controlled, onToggleFavorite, commit, layout2, availableIds, favorites]
-    );
     const handleLaunch = (0, import_react31.useCallback)(
       (entry) => {
         emitViewInteraction({
@@ -54742,37 +54677,26 @@ Assistant:`;
       });
       setEditingState(!editing);
     }, [grouped, editing, setEditingState]);
-    const favoriteIdList = (0, import_react31.useMemo)(
-      () => (favorites ?? layout2.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
-      [favorites, layout2.favorites]
-    );
-    const favoriteSet = (0, import_react31.useMemo)(() => new Set(favoriteIdList), [favoriteIdList]);
     const curatedPages = (0, import_react31.useMemo)(() => {
       if (!pageGroups) return null;
       const result = [];
       for (const group of pageGroups) {
-        const present = group.filter(
-          (id3) => byId.has(id3) && !favoriteSet.has(id3)
-        );
+        const present = group.filter((id3) => byId.has(id3));
         for (let i = 0; i < present.length; i += LAUNCHER_PAGE_SIZE) {
           result.push(present.slice(i, i + LAUNCHER_PAGE_SIZE));
         }
       }
       return result.length > 0 ? result : [[]];
-    }, [pageGroups, byId, favoriteSet]);
+    }, [pageGroups, byId]);
     const pages = (0, import_react31.useMemo)(() => {
       const sourcePages = curatedPages ?? (layout2.pages.length > 0 ? layout2.pages : [[]]);
-      const filtered = sourcePages.map((page) => page.filter((id3) => !favoriteSet.has(id3))).filter((page) => page.length > 0);
+      const filtered = sourcePages.filter((page) => page.length > 0);
       return filtered.length > 0 ? filtered : [[]];
-    }, [curatedPages, layout2.pages, favoriteSet]);
+    }, [curatedPages, layout2.pages]);
     (0, import_react31.useEffect)(() => {
       onPageCountChange?.(pages.length);
     }, [pages.length, onPageCountChange]);
     const clampedPage = Math.min(activePage, pages.length - 1);
-    const favoriteEntries = (0, import_react31.useMemo)(
-      () => favoriteIdList.map((id3) => byId.get(id3)).filter((e) => e != null),
-      [byId, favoriteIdList]
-    );
     const handleReorder = (0, import_react31.useCallback)(
       (pageIndex, nextIds) => {
         let next = layout2;
@@ -54789,15 +54713,13 @@ Assistant:`;
       [layout2, commit]
     );
     const renderTile = (0, import_react31.useCallback)(
-      (entry, favorited) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+      (entry) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
         IconTile,
         {
           entry,
           editing,
-          favorited,
           manageable: canManageView?.(entry.id) ?? false,
           onLaunch: handleLaunch,
-          onToggleFavorite: toggleFav,
           onEdit: onEditView,
           onDelete: onDeleteView,
           onLongPress: toggleEditMode
@@ -54807,17 +54729,17 @@ Assistant:`;
         editing,
         canManageView,
         handleLaunch,
-        toggleFav,
         onEditView,
         onDeleteView,
         toggleEditMode
       ]
     );
+    const edgeSwipeRightEnabled = onEdgeSwipeRight != null;
     const pager = useHorizontalPager({
       page: clampedPage,
       pageCount: pages.length,
-      enabled: !editing && pages.length > 1,
-      edgeSwipeRightEnabled: showPageDots && onEdgeSwipeRight != null,
+      enabled: !editing && (pages.length > 1 || edgeSwipeRightEnabled),
+      edgeSwipeRightEnabled,
       onEdgeSwipeRight,
       onPageChange: (nextPage) => {
         setActivePage(nextPage);
@@ -54828,126 +54750,116 @@ Assistant:`;
         });
       }
     });
-    return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       "div",
       {
         className: cn("flex min-h-0 flex-1 flex-col", className),
         "data-testid": "launcher",
-        children: [
-          favoriteEntries.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+        children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
             "div",
             {
-              "data-testid": "launcher-dock",
-              className: "mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6",
-              children: favoriteEntries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { children: renderTile(entry, true) }, `dock-${entry.id}`))
-            }
-          ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-              "div",
-              {
-                ref: pager.viewportRef,
-                "data-testid": "launcher-page-window",
-                className: "relative flex min-h-0 flex-1 overflow-hidden touch-pan-y",
-                style: { touchAction: "pan-y" },
-                onPointerDown: pager.handlers.onPointerDown,
-                onPointerMove: pager.handlers.onPointerMove,
-                onPointerUp: pager.handlers.onPointerUp,
-                onPointerCancel: pager.handlers.onPointerCancel,
-                onLostPointerCapture: pager.handlers.onLostPointerCapture,
-                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                  "div",
-                  {
-                    ref: pager.railRef,
-                    "data-testid": "launcher-page-rail",
-                    className: "flex h-full min-h-0 w-full motion-reduce:transition-none",
-                    children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+              ref: pager.viewportRef,
+              "data-testid": "launcher-page-window",
+              className: "relative flex min-h-0 flex-1 overflow-hidden touch-pan-y",
+              style: { touchAction: "pan-y" },
+              onPointerDown: pager.handlers.onPointerDown,
+              onPointerMove: pager.handlers.onPointerMove,
+              onPointerUp: pager.handlers.onPointerUp,
+              onPointerCancel: pager.handlers.onPointerCancel,
+              onLostPointerCapture: pager.handlers.onLostPointerCapture,
+              children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                "div",
+                {
+                  ref: pager.railRef,
+                  "data-testid": "launcher-page-rail",
+                  className: "flex h-full min-h-0 w-full motion-reduce:transition-none",
+                  children: loading && entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8", children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id3) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                    "div",
+                    {
+                      className: "flex flex-col items-center gap-1.5 opacity-60",
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "h-16 w-16 rounded-2xl bg-white/15" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-white/25" })
+                      ]
+                    },
+                    id3
+                  )) }) }) : pages.map((pageIds, pageIndex) => {
+                    const active = pageIndex === clampedPage;
+                    return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
                       "div",
                       {
-                        className: "flex flex-col items-center gap-1.5 opacity-60",
-                        children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "h-16 w-16 rounded-2xl border border-white/10 bg-white/15 shadow-sm" }),
-                          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "h-2.5 w-12 rounded-full bg-white/25" })
-                        ]
+                        "data-testid": `launcher-page-${pageIndex}`,
+                        "aria-hidden": !active,
+                        inert: !active || void 0,
+                        style: { touchAction: "pan-y" },
+                        className: cn(
+                          "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
+                          !active && "pointer-events-none"
+                        ),
+                        children: editing && active ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                          namespace_exports.Group,
+                          {
+                            axis: "y",
+                            values: pageIds,
+                            onReorder: (next) => handleReorder(pageIndex, next),
+                            className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5",
+                            children: pageIds.map((id3) => {
+                              const entry = byId.get(id3);
+                              if (!entry) return null;
+                              return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                                namespace_exports.Item,
+                                {
+                                  value: id3,
+                                  drag: editing,
+                                  dragListener: editing,
+                                  className: "flex justify-center",
+                                  children: renderTile(entry)
+                                },
+                                id3
+                              );
+                            })
+                          }
+                        ) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: pageIds.map((id3) => {
+                          const entry = byId.get(id3);
+                          if (!entry) return null;
+                          return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex justify-center", children: renderTile(entry) }, id3);
+                        }) })
                       },
-                      id3
-                    )) }) }) : pages.map((pageIds, pageIndex) => {
-                      const active = pageIndex === clampedPage;
-                      return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                        "div",
-                        {
-                          "data-testid": `launcher-page-${pageIndex}`,
-                          "aria-hidden": !active,
-                          inert: !active || void 0,
-                          style: { touchAction: "pan-y" },
-                          className: cn(
-                            "flex h-full min-h-0 min-w-full items-start justify-center overflow-y-auto px-6 pt-2 pb-8",
-                            !active && "pointer-events-none"
-                          ),
-                          children: editing && active ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                            namespace_exports.Group,
-                            {
-                              axis: "y",
-                              values: pageIds,
-                              onReorder: (next) => handleReorder(pageIndex, next),
-                              className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5",
-                              children: pageIds.map((id3) => {
-                                const entry = byId.get(id3);
-                                if (!entry) return null;
-                                return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-                                  namespace_exports.Item,
-                                  {
-                                    value: id3,
-                                    drag: editing,
-                                    dragListener: editing,
-                                    className: "flex justify-center",
-                                    children: renderTile(entry, favoriteSet.has(id3))
-                                  },
-                                  id3
-                                );
-                              })
-                            }
-                          ) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "grid w-full max-w-2xl grid-cols-4 gap-x-4 gap-y-5 portrait:gap-y-14 sm:grid-cols-5 sm:gap-y-5", children: pageIds.map((id3) => {
-                            const entry = byId.get(id3);
-                            if (!entry) return null;
-                            return /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex justify-center", children: renderTile(entry, favoriteSet.has(id3)) }, id3);
-                          }) })
-                        },
-                        `launcher-page-${pageIndex}`
-                      );
-                    })
-                  }
-                )
-              }
-            ),
-            !editing ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-              PagerEdgeButtons,
-              {
-                idPrefix: "launcher",
-                canPrev: pager.canPrev,
-                canNext: pager.canNext,
-                goPrev: pager.goPrev,
-                goNext: pager.goNext,
-                prevLabel: "Previous page",
-                nextLabel: "Next page"
-              }
-            ) : null,
-            showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
-              "button",
-              {
-                type: "button",
-                "aria-label": `Page ${index + 1}`,
-                "aria-current": index === clampedPage,
-                onClick: () => setActivePage(index),
-                className: cn(
-                  "h-2 w-2 rounded-full transition-colors",
-                  index === clampedPage ? "bg-accent" : "bg-border"
-                )
-              },
-              `dot-${index}-${pageIds[0] ?? "empty"}`
-            )) }) : null
-          ] })
-        ]
+                      `launcher-page-${pageIndex}`
+                    );
+                  })
+                }
+              )
+            }
+          ),
+          !editing ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            PagerEdgeButtons,
+            {
+              idPrefix: "launcher",
+              canPrev: pager.canPrev,
+              canNext: pager.canNext,
+              goPrev: pager.goPrev,
+              goNext: pager.goNext,
+              prevLabel: "Previous page",
+              nextLabel: "Next page"
+            }
+          ) : null,
+          showPageDots && pages.length > 1 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "flex items-center justify-center gap-2 pb-3", children: pages.map((pageIds, index) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            "button",
+            {
+              type: "button",
+              "aria-label": `Page ${index + 1}`,
+              "aria-current": index === clampedPage,
+              onClick: () => setActivePage(index),
+              className: cn(
+                "h-2 w-2 rounded-full transition-colors",
+                index === clampedPage ? "bg-accent" : "bg-border"
+              )
+            },
+            `dot-${index}-${pageIds[0] ?? "empty"}`
+          )) }) : null
+        ] })
       }
     );
   }
@@ -54993,9 +54905,9 @@ Assistant:`;
     { id: "notes", label: "Notes", icon: "NotebookPen" },
     { id: "camera", label: "Camera", icon: "Camera" }
   ];
-  if (SPECS.length - DEFAULT_LAUNCHER_FAVORITES.length <= LAUNCHER_PAGE_SIZE) {
+  if (SPECS.length <= LAUNCHER_PAGE_SIZE) {
     throw new Error(
-      `launcher-fixture: ${SPECS.length} specs minus ${DEFAULT_LAUNCHER_FAVORITES.length} seeded dock ids must exceed LAUNCHER_PAGE_SIZE=${LAUNCHER_PAGE_SIZE} for the multi-page assertions`
+      `launcher-fixture: ${SPECS.length} specs must exceed LAUNCHER_PAGE_SIZE=${LAUNCHER_PAGE_SIZE} for the multi-page assertions`
     );
   }
   function makeEntry(spec) {

@@ -56,5 +56,14 @@
 /patches/                               @elizaos/backend-leads @elizaos/security-team
 /plugins/**/patches/                    @elizaos/backend-leads @elizaos/security-team
 
+# Test-gating baselines and deny-lists (#10104 Tier-3) — these files are the
+# knobs that loosen CI: raising a ratchet baseline budgets more debt, and
+# adding a spec to the deny-list silently removes it from PR coverage. A
+# feature PR must not adjust them without an explicit owner review.
+/packages/scripts/type-safety-ratchet-baseline.json    @elizaos/security-team @elizaos/platform-team
+/packages/scripts/type-duplication-audit.baseline.json @elizaos/security-team @elizaos/platform-team
+/packages/scripts/ui-determinism-baseline.json         @elizaos/security-team @elizaos/platform-team
+/packages/app/test/ui-smoke/.pr-deny-list.json         @elizaos/security-team @elizaos/platform-team
+
 # Documentation only — lighter review.
 /docs/security/                         @elizaos/security-team

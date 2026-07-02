@@ -1,4 +1,13 @@
 // @vitest-environment jsdom
+//
+// SCOPE (honest labelling, #10722): this is a LOGIC-ONLY unit suite, not
+// gesture-pipeline coverage. `resolvePull`/`resolveSwipe` are pure decision
+// functions (distance/velocity → direction), tested as pure math. The
+// `usePullGesture` block drives the hook with SYNTHETIC pointer events to verify
+// one internal contract — rAF coalescing of move deltas (#9141) — NOT the real
+// browser pointer/capture/hit-test pipeline. That real pipeline (touch-action,
+// implicit capture, pointercancel, hit-testing) is covered end-to-end by the
+// REAL CDP-touch runners: run-chatux-gesture-e2e.mjs and run-home-screen-e2e.mjs.
 import { renderHook } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -426,5 +435,177 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     b.onPointerMove(pointer(100, 180, 1));
     b.onPointerUp(pointer(100, 180, 1));
     expect(onPullUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits a FULL constant-slope diagonal swipe (65px across, 75px down) — #10715", () => {
+    // The issue closure's exact exemplar: a deliberate diagonal whose vertical
+    // drift EXCEEDS its horizontal travel (65x across, 75y down; slope ~49°
+    // from horizontal). Every point of a constant-slope drag has ax/ay ≈ 0.87,
+    // so the old strict `ax > ay` mid-gesture commit locked axis "y" at 8px of
+    // travel and the widened release-time cone was never consulted. The
+    // widened commit (ax ≥ 0.8·ay when the binding can swipe) must land this
+    // as a horizontal swipe end to end.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onSwipeLeft = vi.fn();
+    const onPullUp = vi.fn();
+    const onPullDown = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onSwipeLeft, onPullUp, onPullDown }),
+    );
+    const b = result.current;
+
+    // Finger moves LEFT (x decreasing) and DOWN (y increasing) on a straight
+    // line from (300, 300) to (235, 375) in 10 constant-slope steps.
+    b.onPointerDown(pointer(300, 300));
+    for (let step = 1; step <= 10; step++) {
+      b.onPointerMove(pointer(300 - step * 6.5, 300 + step * 7.5));
+    }
+    b.onPointerUp(pointer(235, 375));
+
+    expect(onSwipeLeft).toHaveBeenCalledTimes(1);
+    expect(onPullUp).not.toHaveBeenCalled();
+    expect(onPullDown).not.toHaveBeenCalled();
+  });
+
+  it("keeps a horizontal swipe alive when a child hands over its implicit touch capture at axis-commit", () => {
+    // A swipe that STARTS on an interactive/selectable child (e.g. a message
+    // bubble) gives that child implicit touch pointer capture on pointerdown.
+    // When the deferred-capture path takes the pointer at axis-commit
+    // (setPointerCapture on the swipe surface), the child fires
+    // `lostpointercapture`, which BUBBLES up to the surface's handler with
+    // `target` === the child (not the surface). That must NOT cancel the
+    // gesture — otherwise a genuine finger swipe that began on a bubble
+    // self-cancels the instant it commits. Only a capture loss on the surface
+    // ITSELF (rotation / OS takeover) settles the gesture.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const setPointerCapture = vi.fn();
+    const surface = { setPointerCapture, releasePointerCapture() {} };
+    // A DESCENDANT element (the bubble) — distinct from the swipe surface.
+    const child = {};
+
+    const onSwipeLeft = vi.fn();
+    const onCancel = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDragX: vi.fn(),
+        onDragReset: vi.fn(),
+        onSwipeLeft,
+        onSwipeRight: vi.fn(),
+        onCancel,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(300, 300, 1, surface)); // deferred capture (swipe-only)
+    // A slow 12px move: crosses AXIS_COMMIT_SLOP (commits X + captures) but is
+    // under BOTH the swipe distance (64) and velocity (0.4) thresholds, so the
+    // legacy `onLostPointerCapture: cancel` path could not even mis-fire it as a
+    // commit-on-cancel swipe — it just aborted the gesture.
+    t = 500;
+    b.onPointerMove(pointer(288, 300, 1, surface)); // dx=12 → commits X, captures
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+
+    // The child loses its implicit touch capture to the surface and fires
+    // `lostpointercapture`, bubbling here with target=child.
+    b.onLostPointerCapture({
+      target: child,
+      currentTarget: surface,
+      pointerId: 1,
+    } as unknown as React.PointerEvent);
+
+    // The finger keeps dragging left, then releases well past the threshold.
+    t = 600;
+    b.onPointerMove(pointer(150, 300, 1, surface));
+    t = 650;
+    b.onPointerUp(pointer(150, 300, 1, surface));
+
+    expect(onSwipeLeft).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("still settles the gesture when the surface ITSELF loses capture (rotation)", () => {
+    // The case `onLostPointerCapture` exists for: the OS revokes OUR capture
+    // (device rotation) with the loss reported on the bound element itself
+    // (target === currentTarget). That must still cancel/settle the gesture.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const surface = { setPointerCapture() {}, releasePointerCapture() {} };
+    const onDragReset = vi.fn();
+    const onCancel = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onDragReset,
+        onPullUp: vi.fn(),
+        onCancel,
+      }),
+    );
+    const b = result.current;
+
+    b.onPointerDown(pointer(100, 300, 1, surface));
+    b.onPointerMove(pointer(100, 280, 1, surface)); // small vertical drag
+    b.onLostPointerCapture({
+      target: surface,
+      currentTarget: surface,
+      pointerId: 1,
+    } as unknown as React.PointerEvent);
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onDragReset).toHaveBeenCalled();
+  });
+
+  it("still commits a steep drag (vertical well past the cone) as a vertical pull", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onSwipeLeft = vi.fn();
+    const onPullUp = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onSwipeLeft, onPullUp }),
+    );
+    const b = result.current;
+
+    // ~63° from horizontal (ax/ay = 0.5, well under the 0.8 cone): a scroll-ish
+    // upward drag must stay a vertical pull even on a swipe-capable binding.
+    b.onPointerDown(pointer(300, 300));
+    for (let step = 1; step <= 10; step++) {
+      b.onPointerMove(pointer(300 - step * 4, 300 - step * 8));
+    }
+    b.onPointerUp(pointer(260, 220));
+
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onSwipeLeft).not.toHaveBeenCalled();
   });
 });

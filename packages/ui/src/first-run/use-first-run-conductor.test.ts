@@ -61,6 +61,12 @@ import {
 import type { AppContextValue } from "../state/internal";
 import { tryHandleFirstRunAction } from "./first-run-action-channel";
 import {
+  type FirstRunFinishDraft,
+  type FirstRunFinishPorts,
+  resetFirstRunPersistGuard,
+  runFirstRunFinish,
+} from "./first-run-finish";
+import {
   surfaceCloudLoginRetryTurn,
   useFirstRunConductor,
 } from "./use-first-run-conductor";
@@ -230,14 +236,18 @@ describe("useFirstRunConductor", () => {
     // The real store flip is DEFERRED to the tutorial pick.
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
 
-    // A re-tapped provider pick re-runs the finish but the persist guard keeps
-    // POST /api/first-run at exactly once.
+    // After provisioning, re-taps on leftover widgets are consumed as no-ops:
+    // nothing re-runs and POST /api/first-run stays at exactly once.
+    const authCallsAfterFinish = mocks.client.getAuthStatus.mock.calls.length;
     expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
       true,
     );
-    await waitFor(() => {
-      expect(mocks.client.getAuthStatus.mock.calls.length).toBeGreaterThan(1);
-    });
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(mocks.client.getAuthStatus.mock.calls.length).toBe(
+      authCallsAfterFinish,
+    );
+    expect(turn("first-run:cloud-oauth")).toBeUndefined();
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
 
     // Tutorial skip: the SINGLE real completion; no tour is launched.
@@ -373,6 +383,196 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
+  it("consumes every pick while a provisioning flow is in flight — no concurrent flows", async () => {
+    let releaseAgents: (value: { success: true; data: never[] }) => void =
+      () => {};
+    mocks.client.getCloudCompatAgents.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseAgents = resolve as typeof releaseAgents;
+        }),
+    );
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    // A confused user spams other options while the agent listing is still in
+    // flight: a duplicate cloud tap, a local tap, and a provider tap. All are
+    // consumed as no-ops — no provider turn, no second flow, no POST.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(mocks.client.getCloudCompatAgents).toHaveBeenCalledTimes(1);
+    expect(turn("first-run:provider")).toBeUndefined();
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+
+    // The in-flight flow settles normally: 0 agents → auto-provision → tutorial.
+    releaseAgents({ success: true, data: [] });
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("consumes malformed values under the reserved prefix without acting on them", async () => {
+    const spies = seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    const turnsBefore = transcript.current.length;
+
+    for (const value of [
+      "__first_run__:",
+      "__first_run__:runtime",
+      "__first_run__:runtime:",
+      "__first_run__:runtime:bogus",
+      "__first_run__:provider:on-device; DROP TABLE users",
+      "__first_run__:tutorial:yes",
+      "__first_run__:cloud-agent:",
+      "__first_run__:backup-restore:oops",
+      "__first_run__:☃:❄",
+      "__first_run__:unknown-group:value",
+    ]) {
+      expect(tryHandleFirstRunAction(value)).toBe(true);
+    }
+    // A non-first-run value is NOT consumed by the channel.
+    expect(tryHandleFirstRunAction("hello")).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(transcript.current.length).toBe(turnsBefore);
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+    expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("latches the tutorial pick: a double-tap completes exactly once and never launches a second tour", async () => {
+    const spies = seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    // The late "start" tap after the skip must not launch the tour.
+    expect(readTutorialState().active).toBe(false);
+    unmount();
+  });
+
+  it("re-offers an UNLOCKED runtime choice when cloud login does not land, and the LOCAL escape completes", async () => {
+    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
+        "failed",
+      );
+    });
+    // No dead end: the retry turn carries a fresh (unlocked) runtime CHOICE.
+    expect(turn("first-run:cloud-oauth")?.text).toContain(
+      "__first_run__:runtime:local=",
+    );
+
+    // The user bails to LOCAL and still completes onboarding.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("auto-resumes the interrupted cloud flow when the cloud connection lands", async () => {
+    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
+        "failed",
+      );
+    });
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+
+    // The user connects from the OAuth block instead of re-picking: the token
+    // lands and the store learns the connection — the flow resumes by itself.
+    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+      "cloud-token";
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+    seedAppStore({ elizaCloudConnected: true });
+
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe("saved");
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("re-offers a FRESH provider turn on a runtime re-pick after a failed finish (locked-widget dead end)", async () => {
+    // First POST /api/first-run fails, second succeeds.
+    mocks.client.submitFirstRun.mockRejectedValueOnce(
+      new Error("first-run write failed"),
+    );
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.id.startsWith("first-run:error:"),
+        ),
+      ).toBe(true);
+    });
+
+    // The user re-picks LOCAL from the error turn. The original provider turn
+    // still exists (its widget locked itself on the first pick), so the
+    // conductor must seed a FRESH provider turn — otherwise the retry is a
+    // dead end in the real UI.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.id.startsWith("first-run:provider:retry:"),
+        ),
+      ).toBe(true);
+    });
+
+    // The retried provider pick completes: second POST succeeds → tutorial.
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
   it("unregisters the action handler on unmount so identical values no longer short-circuit", async () => {
     seedAppStore();
     const { turn, unmount } = renderConductor();
@@ -380,6 +580,23 @@ describe("useFirstRunConductor", () => {
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
     unmount();
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(false);
+  });
+
+  it("is a complete no-op once firstRunComplete is true (the chat-overlay shell mounts it unconditionally)", async () => {
+    // The chat-overlay branch (desktop bottom bar AND any plain web
+    // ?shellMode=chat-overlay load) mounts the conductor UNGATED — this pins
+    // the hook's own gate so that mount adds no onboarding turns, no backup
+    // probe, and no first-run action interception after onboarding.
+    seedAppStore({ firstRunComplete: true });
+    const { transcript, unmount } = renderConductor();
+
+    // Flush effects + any stray microtasks: nothing may be seeded.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(transcript.current).toEqual([]);
+    expect(mocks.client.listLocalAgentBackups).not.toHaveBeenCalled();
+    // No handler registered → the chat send funnel is NOT intercepted.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(false);
+    unmount();
   });
 });
 
@@ -451,6 +668,81 @@ describe("surfaceCloudLoginRetryTurn", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0]?.id).toBe("first-run:cloud-oauth");
     expect(messages[0]?.secretRequest?.status).toBe("failed");
-    expect(messages[0]?.text).toContain("then pick Eliza Cloud again");
+    // The retry turn re-offers an UNLOCKED runtime CHOICE — without it, every
+    // earlier runtime widget is locked and "pick again" is a dead end.
+    expect(messages[0]?.text).toContain("pick how to run your agent again");
+    expect(messages[0]?.text).toContain("__first_run__:runtime:local=");
+    expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
+  });
+});
+
+// ── persistFirstRun exactly-once under concurrency (via the real finish) ────
+
+function makeFinishPorts(): FirstRunFinishPorts {
+  return {
+    uiLanguage: "en",
+    elizaCloudConnected: true,
+    handleCloudLogin: async () => undefined,
+    setRuntimeState: () => {},
+    showActionBanner: () => {},
+    setTab: () => {},
+    completeFirstRun: () => {},
+  };
+}
+
+describe("persistFirstRun (driven through runFirstRunFinish)", () => {
+  it("shares one in-flight POST between concurrently double-fired finishes", async () => {
+    resetFirstRunPersistGuard();
+    let resolveSubmit: () => void = () => {};
+    mocks.client.submitFirstRun.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          resolveSubmit = () => resolve(undefined);
+        }),
+    );
+    try {
+      const draft: FirstRunFinishDraft = {
+        agentName: "Eliza",
+        runtime: "local",
+        localInference: "all-local",
+        remoteApiBase: "",
+        remoteToken: "",
+      };
+      const ports = makeFinishPorts();
+      // Two finishes race (the pre-guard conductor could double-fire this);
+      // both must share ONE POST /api/first-run.
+      const first = runFirstRunFinish(draft, ports);
+      const second = runFirstRunFinish(draft, ports);
+      await waitFor(() => {
+        expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+      });
+      resolveSubmit();
+      const outcomes = await Promise.all([first, second]);
+      expect(outcomes.map((outcome) => outcome.kind)).toEqual(["done", "done"]);
+      expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    } finally {
+      mocks.client.submitFirstRun.mockImplementation(async () => undefined);
+    }
+  });
+
+  it("releases the in-flight guard on failure so a retry can POST again", async () => {
+    resetFirstRunPersistGuard();
+    mocks.client.submitFirstRun.mockRejectedValueOnce(
+      new Error("network down"),
+    );
+    const draft: FirstRunFinishDraft = {
+      agentName: "Eliza",
+      runtime: "local",
+      localInference: "all-local",
+      remoteApiBase: "",
+      remoteToken: "",
+    };
+    const ports = makeFinishPorts();
+    const failed = await runFirstRunFinish(draft, ports);
+    expect(failed.kind).toBe("error");
+
+    const retried = await runFirstRunFinish(draft, ports);
+    expect(retried.kind).toBe("done");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(2);
   });
 });

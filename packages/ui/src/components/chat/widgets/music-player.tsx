@@ -2,6 +2,7 @@ import { Music, Pause, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithCsrf } from "../../../api/csrf-client";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
@@ -39,8 +40,12 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
   const [audioError, setAudioError] = useState<string | null>(null);
   const [audioPaused, setAudioPaused] = useState(true);
   const isPlaying = player.kind === "playing";
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 5s status poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
 
   const pollOnce = useCallback(async () => {
+    if (!authenticated) return;
     setPlayer((prev) => (prev.kind === "idle" ? { kind: "loading" } : prev));
     try {
       const res = await fetchWithCsrf(resolveApiUrl("/music-player/status"));
@@ -74,7 +79,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
       });
       setAudioPaused(true);
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void pollOnce();

@@ -41,6 +41,31 @@ function discoverCoordinator(runtime: AgentRuntime): unknown | null {
 }
 
 /**
+ * Read the coordinator's self-reported ACP bind state, if it exposes one.
+ * `bound` means the ACP session-event stream is live and supervision works;
+ * `unbound` / `pending` carry an actionable reason. The service object can
+ * exist while the stream is dead (bind race on a heavy boot), so "the service
+ * is present" is NOT sufficient to conclude coding-agent features work — we
+ * probe this to report WHY when they don't.
+ */
+function readBindState(
+  coordinator: unknown,
+): { status: string; reason: string | null } | null {
+  if (!coordinator || typeof coordinator !== "object") return null;
+  const bindState = (coordinator as { acpBindState?: unknown }).acpBindState;
+  if (!bindState || typeof bindState !== "object") return null;
+  const { status, reason } = bindState as {
+    status?: unknown;
+    reason?: unknown;
+  };
+  if (typeof status !== "string") return null;
+  return {
+    status,
+    reason: typeof reason === "string" ? reason : null,
+  };
+}
+
+/**
  * Wire coordinator bridges using polling-based service discovery.
  *
  * 1. Attempts immediate wiring (coordinator may already be available).
@@ -111,12 +136,43 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
     }
 
     if (!serviceFound) {
-      // Service never appeared — log at debug level only. This is normal
-      // if the orchestrator plugin is disabled or not configured.
-      logger.debug?.(
-        `[eliza-api] coordinator not available after ${POLL_TIMEOUT_MS / 1000}s (${context}) — coding agent features disabled`,
-      );
+      // Service never appeared. Distinguish the two very different causes so
+      // this isn't a generic "disabled" that hides a real degradation:
+      //   (a) The orchestrator plugin isn't installed/enabled at all — normal
+      //       for non-coding deployments → debug.
+      //   (b) The plugin IS installed but the coordinator never registered or
+      //       never bound its ACP stream (the bind race) → warn, with the
+      //       coordinator's own actionable reason if it exposes one.
+      const pluginPresent = runtime.hasService?.("SWARM_COORDINATOR") ?? false;
+      if (pluginPresent) {
+        logger.warn(
+          `[eliza-api] coordinator service registered but never became ` +
+            `discoverable after ${POLL_TIMEOUT_MS / 1000}s (${context}) — ` +
+            `coding-agent supervision DEGRADED. This usually means the ` +
+            `orchestrator's SWARM_COORDINATOR service failed to start; ` +
+            `check the service-start logs above.`,
+        );
+      } else {
+        logger.debug?.(
+          `[eliza-api] coordinator not available after ${POLL_TIMEOUT_MS / 1000}s (${context}) — coding agent features disabled`,
+        );
+      }
       return result;
+    }
+
+    // Service appeared. But existence alone doesn't mean supervision works: if
+    // its ACP session-event stream never bound, callbacks wire but no events
+    // ever fire. Surface that explicitly rather than reporting silent success.
+    const bindState = readBindState(discoverCoordinator(runtime));
+    if (bindState && bindState.status !== "bound") {
+      logger.warn(
+        `[eliza-api] coordinator present but ACP stream not bound ` +
+          `(status=${bindState.status}${
+            bindState.reason ? `, reason=${bindState.reason}` : ""
+          }) (${context}) — coding-agent supervision DEGRADED. ` +
+          `Bridges will wire but events will not flow until the bind ` +
+          `completes; the coordinator retries indefinitely.`,
+      );
     }
 
     // 3. Service loaded — retry failed bridges

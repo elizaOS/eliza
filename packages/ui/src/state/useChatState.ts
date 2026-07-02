@@ -115,8 +115,23 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, chatAvatarSpeaking: action.value };
     case "SET_CONVERSATIONS":
       return { ...state, conversations: action.value };
-    case "SET_ACTIVE_CONVERSATION_ID":
-      return { ...state, activeConversationId: action.value };
+    case "SET_ACTIVE_CONVERSATION_ID": {
+      const activeConversationId = action.value;
+      // Opening a conversation marks it read: clear its unread badge here, at
+      // the point it actually becomes active. The functional
+      // `setUnreadConversations` updater path can't reach REMOVE_UNREAD (the
+      // provider's wrapper only re-adds ids, never removes), so clear-on-open
+      // has to happen on the active-id transition or unread badges never clear.
+      if (
+        !activeConversationId ||
+        !state.unreadConversations.has(activeConversationId)
+      ) {
+        return { ...state, activeConversationId };
+      }
+      const unreadConversations = new Set(state.unreadConversations);
+      unreadConversations.delete(activeConversationId);
+      return { ...state, activeConversationId, unreadConversations };
+    }
     case "SET_COMPANION_CUTOFF":
       return { ...state, companionMessageCutoffTs: action.value };
     case "SET_MESSAGES":

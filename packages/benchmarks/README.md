@@ -69,7 +69,7 @@ python -m benchmarks.orchestrator run --benchmarks <id> --provider <p> --model <
 Run the whole suite:
 
 ```bash
-python -m benchmarks.orchestrator run --all --provider groq --model openai/gpt-oss-120b
+python -m benchmarks.orchestrator run --all --provider cerebras --model gemma-4-31b
 ```
 
 Each benchmark can also be run directly from its own directory — see that

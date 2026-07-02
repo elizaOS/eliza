@@ -34,6 +34,17 @@ export interface PlatformPolicy {
   probeForExistingInstall: boolean;
   /** Default runtime target when nothing is persisted */
   defaultTarget: RuntimeTarget | null;
+  /**
+   * Capacitor-native only: how long (ms) the backend poll may fail
+   * CONSECUTIVELY — without a single successful probe — before startup
+   * surfaces the error phase with the last failure (issue #11030). Distinct
+   * from `backendTimeoutMs` (the overall budget, generous enough for a
+   * cold-booting agent): on a phone with a terminally broken transport there
+   * is no reason to sit on the "Booting up…" splash for the full budget.
+   * Optional because it only applies under Capacitor native; when absent the
+   * poll uses its 90s default.
+   */
+  nativeConsecutiveFailureBudgetMs?: number;
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -200,6 +211,17 @@ export function startupReducer(
           };
         case "BACKEND_POLL_RETRY":
           return { ...state, attempts: state.attempts + 1 };
+        case "AGENT_ERROR":
+          // Native transports can fail TERMINALLY while the backend poll runs
+          // (e.g. the iOS Agent plugin's missing-endpoint error, or the
+          // cloud-mode local-agent IPC policy rejection — issue #11030).
+          // Surface the real message instead of polling to the deadline.
+          return {
+            phase: "error",
+            reason: "agent-error",
+            message: event.message,
+            timedOut: false,
+          };
         default:
           return state;
       }
@@ -358,6 +380,7 @@ export function createMobilePolicy(): PlatformPolicy {
     agentReadyTimeoutMs: 300_000,
     probeForExistingInstall: true,
     defaultTarget: "cloud-managed",
+    nativeConsecutiveFailureBudgetMs: 90_000,
   };
 }
 
@@ -374,6 +397,7 @@ export function createIosPolicy(): PlatformPolicy {
     agentReadyTimeoutMs: 300_000,
     probeForExistingInstall: false,
     defaultTarget: "cloud-managed",
+    nativeConsecutiveFailureBudgetMs: 90_000,
   };
 }
 
@@ -389,6 +413,7 @@ export function createAndroidPolicy(): PlatformPolicy {
     agentReadyTimeoutMs: 300_000,
     probeForExistingInstall: false,
     defaultTarget: "cloud-managed",
+    nativeConsecutiveFailureBudgetMs: 90_000,
   };
 }
 
@@ -413,6 +438,7 @@ export function createElizaOSPolicy(): PlatformPolicy {
     agentReadyTimeoutMs: 300_000,
     probeForExistingInstall: true,
     defaultTarget: "embedded-local",
+    nativeConsecutiveFailureBudgetMs: 90_000,
   };
 }
 

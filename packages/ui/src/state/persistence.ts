@@ -5,6 +5,12 @@ import {
   isPlausibleFragmentSource,
   normalizeUniforms,
 } from "../backgrounds/shader-schema";
+import { MAX_BACKGROUND_HISTORY } from "./background-history";
+
+// Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
+// sites keep working; the single source is the pure reducer module.
+export { MAX_BACKGROUND_HISTORY } from "./background-history";
+
 import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
@@ -238,7 +244,6 @@ export function saveBackgroundConfig(config: BackgroundConfig): void {
  * configs carry a data/media URL so the cap is deliberately small.
  */
 const UI_BACKGROUND_HISTORY_STORAGE_KEY = "eliza:ui-background-history";
-export const MAX_BACKGROUND_HISTORY = 10;
 /**
  * Data-URL image entries are the quota hazard: one downscaled photo is 1–4 MB
  * against localStorage's ~5 MB total, and `tryLocalStorage` swallows
@@ -281,6 +286,27 @@ export function saveBackgroundHistory(history: BackgroundConfig[]): void {
     localStorage.setItem(
       UI_BACKGROUND_HISTORY_STORAGE_KEY,
       JSON.stringify(normalizeBackgroundHistory(history)),
+    );
+  }, undefined);
+}
+
+// Redo stack (#10694) — persisted symmetrically with the undo history (the issue
+// deliverable is "undo + redo, bounded, persisted") so "step forward" survives a
+// reload just like "step back" does. Same bound + data-URL quota cap.
+const UI_BACKGROUND_REDO_STORAGE_KEY = "eliza:ui-background-redo";
+
+export function loadBackgroundRedo(): BackgroundConfig[] {
+  return tryLocalStorage(() => {
+    const raw = localStorage.getItem(UI_BACKGROUND_REDO_STORAGE_KEY);
+    return raw ? normalizeBackgroundHistory(JSON.parse(raw)) : [];
+  }, []);
+}
+
+export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      UI_BACKGROUND_REDO_STORAGE_KEY,
+      JSON.stringify(normalizeBackgroundHistory(redo)),
     );
   }, undefined);
 }
@@ -758,6 +784,28 @@ export function loadContinuousChatMode(): ContinuousChatModeValue {
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   tryLocalStorage(() => {
     localStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
+  }, undefined);
+}
+
+/* ── Wake-word listening persistence ────────────────────────────────────── */
+// Device-local master switch for the "hey <name>" wake-word listening window
+// (see useWakeListenWindow). Stored here — not under `messages.voice` — because
+// it gates a device-local capture loop the shell reads synchronously on render,
+// the same dual-store pattern continuous-chat-mode and vad-auto-stop use. It
+// defaults ON so existing installs keep the always-available wake entry ramp;
+// the Settings → Voice toggle is what lets a user turn it off.
+const WAKE_WORD_ENABLED_KEY = "eliza:voice:wake-word-enabled";
+
+export function loadWakeWordEnabled(): boolean {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(WAKE_WORD_ENABLED_KEY);
+    return stored === null ? true : stored === "true";
+  }, true);
+}
+
+export function saveWakeWordEnabled(value: boolean): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(WAKE_WORD_ENABLED_KEY, String(value));
   }, undefined);
 }
 

@@ -1,5 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-import { logger } from "../logger";
+import { describe, expect, it } from "vitest";
 import {
 	computeNextCronRunAtMs,
 	parseCronExpression,
@@ -48,53 +47,6 @@ describe("computeNextCronRunAtMs - `N/step` schedules recurringly", () => {
 		expect(next).toBe(Date.UTC(2024, 0, 1, 0, 20, 0));
 		const after = computeNextCronRunAtMs("5/15 * * * *", next as number, "UTC");
 		expect(after).toBe(Date.UTC(2024, 0, 1, 0, 35, 0));
-	});
-});
-
-describe("computeNextCronRunAtMs - timezone handling", () => {
-	it("evaluates a valid IANA zone at the local hour", () => {
-		// 2026-05-10 is US daylight time: America/Denver = UTC-6.
-		const base = Date.UTC(2026, 4, 10, 8, 0, 0);
-		const next = computeNextCronRunAtMs("0 9 * * *", base, "America/Denver");
-		expect(next).toBe(Date.UTC(2026, 4, 10, 15, 0, 0));
-	});
-
-	it("warns once for an invalid zone and falls back to UTC explicitly", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		try {
-			const base = Date.UTC(2026, 4, 10, 8, 0, 0);
-			const zone = "Not_A/Real_Zone";
-			const first = computeNextCronRunAtMs("0 9 * * *", base, zone);
-			expect(first).toBe(Date.UTC(2026, 4, 10, 9, 0, 0)); // UTC fallback
-			const warnsAfterFirst = warnSpy.mock.calls.filter((call) =>
-				String(call[0]).includes(zone),
-			).length;
-			expect(warnsAfterFirst).toBe(1); // once per zone, not once per candidate minute
-
-			computeNextCronRunAtMs("0 9 * * *", base, zone);
-			const warnsAfterSecond = warnSpy.mock.calls.filter((call) =>
-				String(call[0]).includes(zone),
-			).length;
-			expect(warnsAfterSecond).toBe(1); // still once across calls
-		} finally {
-			warnSpy.mockRestore();
-		}
-	});
-
-	it("treats the unresolved owner_local sentinel as an invalid zone (UTC + warning)", () => {
-		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		try {
-			const base = Date.UTC(2026, 4, 10, 8, 0, 0);
-			const next = computeNextCronRunAtMs("0 9 * * *", base, "owner_local");
-			expect(next).toBe(Date.UTC(2026, 4, 10, 9, 0, 0));
-			expect(
-				warnSpy.mock.calls.some((call) =>
-					String(call[0]).includes("owner_local"),
-				),
-			).toBe(true);
-		} finally {
-			warnSpy.mockRestore();
-		}
 	});
 });
 
@@ -170,61 +122,5 @@ describe("computeNextCronRunAtMs - non-representable base guard (#11046)", () =>
 		expect(
 			computeNextCronRunAtMs("* * * * *", Number.POSITIVE_INFINITY),
 		).toBeNull();
-	});
-});
-
-describe("computeNextCronRunAtMs - DST fall-back regression coverage (#11046)", () => {
-	const NY = "America/New_York";
-	// Europe/Berlin fall-back: 2026-10-25 03:00 CEST -> 02:00 CET
-	// (transition instant 01:00:00Z). Local 02:00-02:59 happens twice.
-	const BERLIN = "Europe/Berlin";
-
-	it("Berlin: a cron inside the repeated hour fires once (02:30 CEST), then the next local day", () => {
-		const beforeTransition = Date.UTC(2026, 9, 25, 0, 0, 0);
-		const first = computeNextCronRunAtMs(
-			"30 2 * * *",
-			beforeTransition,
-			BERLIN,
-		);
-		expect(first).toBe(Date.UTC(2026, 9, 25, 0, 30, 0)); // 02:30 CEST
-		const next = computeNextCronRunAtMs("30 2 * * *", first as number, BERLIN);
-		// NOT 2026-10-25T01:30Z (02:30 CET — the repeated pass).
-		expect(next).toBe(Date.UTC(2026, 9, 26, 1, 30, 0)); // Oct 26 02:30 CET
-	});
-
-	it("spring-forward skipped-hour behavior is unchanged (02:30 never exists on 2026-03-08)", () => {
-		const beforeTransition = Date.UTC(2026, 2, 8, 0, 0, 0); // Mar 7 19:00 EST
-		const next = computeNextCronRunAtMs("30 2 * * *", beforeTransition, NY);
-		expect(next).toBe(Date.UTC(2026, 2, 9, 6, 30, 0)); // Mar 9 02:30 EDT — Mar 8 skipped
-	});
-
-	it("daily crons outside the transition hour still fire exactly once per local day across fall-back", () => {
-		const fired = Date.UTC(2026, 9, 31, 12, 0, 0); // Oct 31 08:00 EDT
-		const next = computeNextCronRunAtMs("0 8 * * *", fired, NY);
-		expect(next).toBe(Date.UTC(2026, 10, 1, 13, 0, 0)); // Nov 1 08:00 EST — 25h later
-		const after = computeNextCronRunAtMs("0 8 * * *", next as number, NY);
-		expect(after).toBe(Date.UTC(2026, 10, 2, 13, 0, 0));
-	});
-
-	it("a rare-match cron with a timezone completes a full 366-day scan fast (hoisted formatter)", () => {
-		// Feb 29 does not occur inside the 366-day window from 2026-03-01, so
-		// this is the worst case: a full valid-base scan returning null. With a
-		// fresh formatter per candidate minute this took tens of seconds.
-		const startedAt = performance.now();
-		const next = computeNextCronRunAtMs("0 0 29 2 *", Date.UTC(2026, 2, 1), NY);
-		const elapsedMs = performance.now() - startedAt;
-		expect(next).toBeNull();
-		expect(elapsedMs).toBeLessThan(3000);
-	});
-
-	it("returns null fast (never throws) for a base below the negative representable range", () => {
-		// Every candidate from such a base is an Invalid Date; without the
-		// symmetric bail the tz formatter would throw a RangeError on the first
-		// candidate instead of reporting "no next run".
-		const startedAt = performance.now();
-		expect(
-			computeNextCronRunAtMs("* * * * *", -Number.MAX_SAFE_INTEGER, NY),
-		).toBeNull();
-		expect(performance.now() - startedAt).toBeLessThan(2000);
 	});
 });

@@ -87,6 +87,19 @@ type LoadState =
     };
 
 /**
+ * Copy-button feedback. `copied` only shows after a clipboard write actually
+ * resolved; `failed` surfaces when the write rejected or the clipboard was
+ * unavailable — so the button never claims success when nothing was copied.
+ */
+type CopyStatus = "idle" | "copied" | "failed";
+
+function copyButtonLabel(status: CopyStatus): string {
+  if (status === "copied") return "Copied";
+  if (status === "failed") return "Copy failed";
+  return "Copy";
+}
+
+/**
  * Pull the readable transcript text out of a not-yet-loaded attachment, with
  * the durable id marker (if present) split off. Prefers the server-extracted
  * `text`; falls back to decoding the `data:`/served URL.
@@ -182,7 +195,7 @@ export function TranscriptViewerOverlay({
   const [value, setValue] = React.useState("");
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
+  const [copyStatus, setCopyStatus] = React.useState<CopyStatus>("idle");
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
 
@@ -245,13 +258,24 @@ export function TranscriptViewerOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const handleCopy = React.useCallback(async () => {
+  const handleCopy = React.useCallback(async (): Promise<boolean> => {
     try {
-      await navigator.clipboard?.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      // Optional chaining alone is a trap: `navigator.clipboard?.writeText(v)`
+      // is `undefined` (not a rejection) when the clipboard API is missing, so
+      // `await` resolves and we'd falsely report "Copied". Require the method.
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(value);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 1500);
+      return true;
     } catch {
-      // clipboard blocked (insecure context) — no-op; share/save remain.
+      // Clipboard blocked/missing (e.g. insecure context) — surface the failure
+      // (share/download remain as alternatives) instead of a phantom success.
+      setCopyStatus("failed");
+      window.setTimeout(() => setCopyStatus("idle"), 2500);
+      return false;
     }
   }, [value]);
 
@@ -527,16 +551,21 @@ export function TranscriptViewerOverlay({
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleCopy}
+            onClick={() => void handleCopy()}
             data-testid="transcript-copy"
-            className="text-white/85 hover:bg-white/10"
+            className={cn(
+              "hover:bg-white/10",
+              copyStatus === "failed"
+                ? "text-[color:var(--danger,#f87171)]"
+                : "text-white/85",
+            )}
           >
-            {copied ? (
+            {copyStatus === "copied" ? (
               <Check className="mr-1.5 h-4 w-4 text-[color:var(--ok)]" />
             ) : (
               <Copy className="mr-1.5 h-4 w-4" />
             )}
-            {copied ? "Copied" : "Copy"}
+            {copyButtonLabel(copyStatus)}
           </Button>
           <Button
             variant="ghost"

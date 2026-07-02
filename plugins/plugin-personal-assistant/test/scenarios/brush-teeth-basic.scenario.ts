@@ -22,7 +22,16 @@ export default scenario({
       kind: "message",
       name: "brush-teeth preview",
       text: "Help me brush my teeth at 8 am and 9 pm every day.",
-      responseIncludesAny: ["brush teeth", "brushing habit", "set that up"],
+      // "brush your teeth" is the phrasing live models actually produce for
+      // the preview reply ("I've set up a draft for a daily habit to brush
+      // your teeth at 8 am and 9 pm…"); the check asserts engagement with
+      // the brushing request, not one canned wording.
+      responseIncludesAny: [
+        "brush teeth",
+        "brush your teeth",
+        "brushing habit",
+        "set that up",
+      ],
     },
     {
       kind: "message",

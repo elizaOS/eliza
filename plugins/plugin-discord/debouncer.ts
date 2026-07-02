@@ -69,7 +69,7 @@ export function createChannelDebouncer(
 	// question never has unrelated chatter prepended.
 	const bufferUnaddressed =
 		options.shouldRespondOnlyToMentions === true && !coalesceEnabled;
-	const bufferTtlMs = Math.max(options.bufferTtlMs ?? 10_000, debounceMs);
+	const bufferTtlMs = Math.max(options.bufferTtlMs ?? 90_000, debounceMs);
 	// The rolling buffer only feeds recent context to a following pointer, so a
 	// handful of lines is plenty. Cap it so a channel flooded with unaddressed
 	// messages inside the TTL window cannot grow the per-channel array without

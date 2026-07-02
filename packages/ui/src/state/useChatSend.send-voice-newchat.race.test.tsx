@@ -334,6 +334,70 @@ describe("#10700 shell send() → new-chat routing race", () => {
       "conv-A",
     );
   });
+
+  it("restores a queued-undelivered send to the composer when new-chat interrupts (no lost message)", async () => {
+    // The REAL new-chat path (handleNewConversation) calls
+    // interruptActiveChatPipeline() BEFORE switching conversations, which
+    // drains the send queue. A turn enqueued behind an in-flight one (the
+    // composer explicitly offers "send another") was resolved WITHOUT
+    // delivery: composer already cleared at enqueue, optimistic bubble only
+    // painted at drain → the words vanished with no trace. The interrupt must
+    // restore the undelivered text to the composer (and return it, so the
+    // new-chat draft wipe can re-apply it).
+    const h = makeHarness({
+      activeConversationId: "conv-A",
+      conversations: [conversation("conv-A", "room-A")],
+    });
+    const { result } = renderHook(() => useChatSend(h.deps));
+    const send = result.current.sendChatText as unknown as Send;
+
+    const p1 = send("hold", { conversationId: "conv-A" });
+    await settle();
+    // Queued BEHIND the in-flight turn — never drained before the interrupt.
+    const p2 = send("my queued words", { conversationId: "conv-A" });
+    await settle();
+
+    let restored = "";
+    await act(async () => {
+      restored = result.current.interruptActiveChatPipeline();
+    });
+    // The mock stream only settles via resolveInFlight — the abort does not
+    // reject it. Release it so p1 can settle; p2 settled at interrupt time.
+    await act(async () => {
+      h.resolveInFlight();
+    });
+    await act(async () => {
+      await Promise.allSettled([p1, p2]);
+    });
+
+    // Not delivered anywhere…
+    expect(
+      h.streamCalls.find((c) => c.text === "my queued words"),
+    ).toBeUndefined();
+    // …but restored to the composer, returned to the caller, and announced.
+    expect(restored).toBe("my queued words");
+    expect(h.deps.setChatInput).toHaveBeenCalledWith("my queued words");
+    expect(h.deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("restored"),
+      "info",
+      expect.any(Number),
+    );
+  });
+
+  it("interrupt with an empty queue restores nothing", async () => {
+    const h = makeHarness({
+      activeConversationId: "conv-A",
+      conversations: [conversation("conv-A", "room-A")],
+    });
+    const { result } = renderHook(() => useChatSend(h.deps));
+
+    let restored = "not-empty";
+    await act(async () => {
+      restored = result.current.interruptActiveChatPipeline();
+    });
+    expect(restored).toBe("");
+    expect(h.deps.setChatInput).not.toHaveBeenCalled();
+  });
 });
 
 // ── Seeded fuzz: random interleavings of send-text / send-voice / new-chat ─────

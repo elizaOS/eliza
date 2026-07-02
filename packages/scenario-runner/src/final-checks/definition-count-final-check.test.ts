@@ -130,6 +130,39 @@ describe("definitionCountDelta final check", () => {
     expect(result.detail).toContain("1260");
   });
 
+  it("lists the stored definition titles when no title matches (misroute diagnostic)", async () => {
+    // The live gemma-4-31b brush-teeth misroute saved the habit under the
+    // goals store / a different title; the "saw none" branch must name what
+    // WAS stored so the misroute is diagnosable from the report alone.
+    mockState.definitions = [
+      definitionRecord({ title: "Evening wind-down" }),
+      definitionRecord({ title: "Morning stretch" }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "Brush teeth",
+      delta: 1,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.detail).toContain("saw none among 2 definition(s)");
+    expect(result.detail).toContain(
+      "Stored definition titles: Evening wind-down, Morning stretch",
+    );
+  });
+
+  it("reports '(none)' stored titles when the definition store is empty", async () => {
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "Brush teeth",
+      delta: 1,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.detail).toContain("Stored definition titles: (none)");
+  });
+
   it("fails when website access fields do not match", async () => {
     mockState.definitions = [
       definitionRecord({

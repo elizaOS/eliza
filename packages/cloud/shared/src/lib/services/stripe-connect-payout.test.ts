@@ -165,13 +165,28 @@ describe("mapConnectWebhookEvent (#8922)", () => {
     });
   });
 
-  it("refreshes account status on account.updated", () => {
+  it("refreshes account status AND surfaces the capability booleans on account.updated (#11172)", () => {
     const out = mapConnectWebhookEvent({
       type: "account.updated",
       account: "acct_1",
       data: { object: { charges_enabled: true, payouts_enabled: true } },
     });
     expect(out.status).toBe("active");
+    // #11172: the booleans MUST be returned so the route persists them — the
+    // payout gate reads payouts_enabled directly (defaults false). Deriving
+    // status alone left every account non-payout-ready forever.
+    expect(out.chargesEnabled).toBe(true);
+    expect(out.payoutsEnabled).toBe(true);
+  });
+
+  it("surfaces false capabilities too (payouts not yet enabled → column stays false, truthfully) (#11172)", () => {
+    const out = mapConnectWebhookEvent({
+      type: "account.updated",
+      account: "acct_1",
+      data: { object: { charges_enabled: true, payouts_enabled: false } },
+    });
+    expect(out.chargesEnabled).toBe(true);
+    expect(out.payoutsEnabled).toBe(false);
   });
 
   it("ignores unrelated event types", () => {

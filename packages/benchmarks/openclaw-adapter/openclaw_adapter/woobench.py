@@ -275,7 +275,7 @@ def build_openclaw_woobench_agent_fn(
     model_name: str | None = None,
 ) -> Callable[[list[dict[str, str]]], Awaitable[dict[str, Any]]]:
     bridge = client or OpenClawClient(
-        model=model_name or "gpt-oss-120b",
+        model=model_name or "gemma-4-31b",
         direct_openai_compatible=True,
     )
     task_ids_by_conversation: dict[int, str] = {}

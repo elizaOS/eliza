@@ -78,6 +78,8 @@ interface FakeTx {
   throwNotFound?: boolean;
   // Throw a generic terminal error
   throwTerminal?: string;
+  // Throw a real viem HttpRequestError (RPC 503) — transient infra failure
+  throwRpc?: boolean;
 }
 
 const chainTxs = new Map<string, FakeTx>();
@@ -99,6 +101,15 @@ if (SUPPORTS_VITEST_MOCK_API) {
             const err = new Error("could not be found");
             err.name = "TransactionReceiptNotFoundError";
             throw err;
+          }
+          if (tx.throwRpc) {
+            // Real viem error class + message shape for an RPC-side 503 —
+            // exactly what a flaky/overloaded RPC provider produces.
+            throw new actual.HttpRequestError({
+              url: "http://mocked-bsc",
+              status: 503,
+              details: "503 Service Unavailable",
+            });
           }
           if (tx.throwTerminal) {
             throw new Error(tx.throwTerminal);
@@ -903,6 +914,233 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const row = await dbWrite.query.cryptoPayments.findFirst();
       expect(row?.status).toBe("broadcast");
     });
+
+    // Regression for #11154: a transient RPC failure (viem HttpRequestError
+    // from a 503/timeout/rate-limited provider) is NOT evidence about the tx.
+    // Before the fix, any error outside a narrow not-found allowlist hit the
+    // unconditional failed_chain write on attempt 1 — terminally eating a
+    // genuinely-paid deposit because the RPC hiccuped once.
+    test("processBroadcastBatch does NOT fail_chain a payment on a transient RPC error (#11154)", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const meta = payment.metadata as Record<string, unknown>;
+      const tokenAddress = meta.token_address as string;
+      const hash = `0x${"9".repeat(64)}`;
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      // The tx is real and paid — but the RPC answers 503 on this pass.
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: tokenAddress,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        throwRpc: true,
+      });
+
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(0);
+      expect(stats.stillPending).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("broadcast");
+      const rowMeta = row?.metadata as Record<string, unknown>;
+      expect(Number(rowMeta.verify_attempts)).toBe(1);
+      expect(String(rowMeta.last_verify_error)).toMatch(/HTTP request failed/i);
+
+      // RPC recovers → the very next cron pass confirms and credits the org.
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: tokenAddress,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        erc20: {
+          tokenAddress,
+          from: PAYER_EVM,
+          to: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+          value: BigInt(meta.expected_token_units as string),
+        },
+      });
+      const stats2 = await service.processBroadcastBatch(env);
+      expect(stats2.confirmed).toBe(1);
+      expect(creditsLedger).toHaveLength(1);
+    });
+
+    test("processBroadcastBatch keeps a payment in broadcast when RPC errors exhaust MAX_VERIFY_ATTEMPTS (#11154)", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 10,
+        network: "bsc",
+        tokenSymbol: "USDT",
+      });
+      const meta = payment.metadata as Record<string, unknown>;
+      const tokenAddress = meta.token_address as string;
+      const hash = `0x${"a1".repeat(32)}`;
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      chainTxs.set(hash, {
+        from: PAYER_EVM,
+        to: tokenAddress,
+        value: 0n,
+        status: "success",
+        receiveAddress: env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS,
+        throwRpc: true,
+      });
+      // Simulate a prolonged RPC outage: the retry budget is already spent.
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata || '{"verify_attempts":60}'::jsonb WHERE id = '${payment.id}'`,
+      );
+
+      const stats = await service.processBroadcastBatch(env);
+      // Unlike a not-found tx (dropped from the mempool → failed_chain at the
+      // cap), RPC-infra errors must NEVER terminally fail a possibly-paid
+      // deposit — the row stays broadcast and keeps retrying.
+      expect(stats.failed).toBe(0);
+      expect(stats.stillPending).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("broadcast");
+      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts)).toBe(61);
+    });
+
+    test("processBroadcastBatch marks failed_chain immediately on sender-mismatch (terminal)", async () => {
+      await resetTable();
+      // Native BNB payment — the sender binding is tx.from, so a tx carried
+      // by any other wallet is a deterministic, terminal verify failure.
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 60,
+        network: "bsc",
+        tokenSymbol: "BNB",
+      });
+      const meta = payment.metadata as Record<string, unknown>;
+      const expectedUnits = BigInt(meta.expected_token_units as string);
+      const receive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const hash = `0x${"b2".repeat(32)}`;
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+      chainTxs.set(hash, {
+        from: "0x2222222222222222222222222222222222222222", // NOT the proven payer
+        to: receive,
+        value: expectedUnits,
+        status: "success",
+        receiveAddress: receive,
+      });
+
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("failed_chain");
+      expect(String((row?.metadata as Record<string, unknown>).failure_reason)).toMatch(
+        /sender does not match the proven payer/i,
+      );
+      expect(creditsLedger).toHaveLength(0);
+    });
+
+    test("processBroadcastBatch marks failed_chain when a Solana tx failed on chain (meta.err)", async () => {
+      await resetTable();
+      solanaTestState.parsedTxOverride = {
+        slot: 7,
+        meta: {
+          err: { InstructionError: [0, "Custom"] },
+          preTokenBalances: [],
+          postTokenBalances: [],
+          fee: 0,
+          preBalances: [],
+          postBalances: [],
+        },
+        transaction: { message: { accountKeys: [], instructions: [] }, signatures: [] },
+      };
+      try {
+        const { payment } = await service.createPayment(env, {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          accountWalletAddress: null,
+          payerAddress: PAYER_SOL,
+          amountUsd: 10,
+          network: "solana",
+          tokenSymbol: "USDC",
+        });
+        const hash = "F".repeat(64);
+        await trustPayerProof(payment);
+        await service.attachTransaction(env, {
+          paymentId: payment.id,
+          txHash: hash,
+          userId: USER_ID,
+        });
+
+        const stats = await service.processBroadcastBatch(env);
+        expect(stats.failed).toBe(1);
+        const row = await dbWrite.query.cryptoPayments.findFirst();
+        expect(row?.status).toBe("failed_chain");
+        expect(String((row?.metadata as Record<string, unknown>).failure_reason)).toMatch(
+          /was not confirmed successfully/i,
+        );
+        expect(creditsLedger).toHaveLength(0);
+      } finally {
+        solanaTestState.parsedTxOverride = null;
+      }
+    });
+
+    test("processBroadcastBatch treats a Solana tx the RPC can't see yet as transient, not failed", async () => {
+      await resetTable();
+      // getParsedTransaction returns null on every poll — the tx hasn't
+      // propagated to this RPC (or was dropped; only exhaustion decides).
+      solanaTestState.parsedTxOverride = null;
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_SOL,
+        amountUsd: 10,
+        network: "solana",
+        tokenSymbol: "USDC",
+      });
+      const hash = "G".repeat(64);
+      await trustPayerProof(payment);
+      await service.attachTransaction(env, {
+        paymentId: payment.id,
+        txHash: hash,
+        userId: USER_ID,
+      });
+
+      // NOTE: slow by design — verifySolanaTokenPayment polls a null tx
+      // 12 times with a real 1.5s backoff before giving up (~18s).
+      const stats = await service.processBroadcastBatch(env);
+      expect(stats.failed).toBe(0);
+      expect(stats.stillPending).toBe(1);
+      const row = await dbWrite.query.cryptoPayments.findFirst();
+      expect(row?.status).toBe("broadcast");
+      const rowMeta = row?.metadata as Record<string, unknown>;
+      expect(Number(rowMeta.verify_attempts)).toBe(1);
+      expect(String(rowMeta.last_verify_error)).toMatch(/not found on Solana/i);
+    }, 60_000);
 
     test("BSC promo can only be redeemed once per organization", async () => {
       await resetTable();

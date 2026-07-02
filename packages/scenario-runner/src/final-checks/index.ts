@@ -1023,11 +1023,15 @@ registerFinalCheckHandler(
         return `${title}: ${reasons.join("; ") || "matched"}`;
       })
       .join(" | ");
+    const storedTitles =
+      records
+        .map((record) => String(record.definition.title ?? "(untitled)"))
+        .join(", ") || "(none)";
     return {
       status: "failed",
       detail:
         titleMatches.length === 0
-          ? `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw none among ${records.length} definition(s)`
+          ? `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw none among ${records.length} definition(s). Stored definition titles: ${storedTitles}`
           : `expected ${delta} matching definition(s) for "${definitionCheck.title}", saw ${matched.length}. Candidate mismatches: ${mismatchDetails}`,
     };
   },

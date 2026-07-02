@@ -72,6 +72,13 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Run all-views aesthetic audit
+        # Strict gate (#10710): a `broken` verdict fails the run, and with the
+        # needs-work extension a blue / orange→black-hover / off-token-radius
+        # regression fails too. AESTHETIC_VERDICT_DEBT in the spec is the
+        # (currently empty) allowlist for tolerated debt.
+        env:
+          ELIZA_AUDIT_APP_STRICT: "1"
+          ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "1"
         run: bun run --cwd packages/app audit:app
 
       - name: Upload aesthetic-audit artifacts

@@ -778,16 +778,23 @@ class AdvertisingService {
       }
     }
 
-    // Refund the genuinely-UNUSED budget. The old `creditsAllocated -
-    // credits_spent` refunded 100% of the allocation on every delete, because
-    // `credits_spent` is never written (its only writer, incrementSpend, has no
-    // callers) — so deleting a campaign that had spent its budget on real ads
-    // refunded the whole prepaid budget + markup ("free advertising"). Base the
-    // spent portion on the REAL recorded ad spend (`total_spend`, kept in sync by
-    // getCampaignMetrics) scaled by the same effective markup applied at
-    // allocation (credits_allocated / budget_amount), so the refund is exactly
-    // the unused fraction. Best-effort refresh spend first so a never-synced
-    // campaign can't over-refund.
+    // Refund the genuinely-UNUSED budget. Spend accrues on TWO different columns
+    // depending on the campaign type, and the refund must honor BOTH (#11151):
+    //   - internal miniapp SSP spend → `credits_spent` (allocated-credit units,
+    //     written by adSlotsRepository.recordServe on every served impression,
+    //     #10942/#11029). NOTE: the earlier "credits_spent is never written"
+    //     reasoning is STALE — it only checked incrementSpend's callers and
+    //     missed recordServe's direct UPDATE.
+    //   - external-provider spend → `total_spend` (USD, synced by getCampaignMetrics).
+    // Refunding off `total_spend` ALONE let a purely-internal campaign
+    // (external_campaign_id = null, so total_spend stays "0") refund its ENTIRE
+    // prepaid budget + markup after spending it on real impressions ("free
+    // advertising", platform eats the publisher payouts). Convert the external
+    // USD spend into allocated-credit units at the same markup applied at
+    // allocation, take the MAX of the two spent measures, and refund only the
+    // remainder — so a campaign of either kind (or both) can never be refunded
+    // past its genuinely-unused allocation. Best-effort refresh external spend
+    // first so a never-synced provider campaign can't over-refund.
     let totalSpendUsd = parseFloat(campaign.total_spend);
     if (campaign.external_campaign_id) {
       try {
@@ -807,9 +814,15 @@ class AdvertisingService {
     }
     const creditsAllocated = parseFloat(campaign.credits_allocated);
     const budgetAmountUsd = parseFloat(campaign.budget_amount);
-    const fractionSpent =
-      budgetAmountUsd > 0 ? Math.min(1, Math.max(0, totalSpendUsd / budgetAmountUsd)) : 0;
-    const creditsRemaining = Math.max(0, creditsAllocated * (1 - fractionSpent));
+    const markup = budgetAmountUsd > 0 ? creditsAllocated / budgetAmountUsd : 1;
+    // credits_spent is already in allocated-credit units; total_spend is USD → scale by markup.
+    const internalSpentCredits = Math.max(0, parseFloat(campaign.credits_spent));
+    const externalSpentCredits = Math.max(0, totalSpendUsd) * markup;
+    const creditsSpent = Math.min(
+      creditsAllocated,
+      Math.max(internalSpentCredits, externalSpentCredits),
+    );
+    const creditsRemaining = Math.max(0, creditsAllocated - creditsSpent);
 
     if (creditsRemaining > 0) {
       await creditsService.refundCredits({

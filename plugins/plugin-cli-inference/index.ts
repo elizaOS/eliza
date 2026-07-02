@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+import { rotationEnabled, withAccountRotation } from "./src/account-rotation";
 import { ClaudeCli } from "./src/claude-cli";
 import { ClaudeSdkSession } from "./src/claude-sdk-session";
 import {
@@ -137,13 +138,30 @@ function shortHash(value: string): string {
  * `router=true` builds a native `route_action` MCP-tool session (the planner);
  * `router=false` builds a plain text-generation session (reply/large tiers).
  */
+function claudeSessionKey(model: string, systemPrompt: string, router: boolean): string {
+  return `${model}\u001f${router ? "route" : "text"}\u001f${shortHash(systemPrompt)}`;
+}
+
+/**
+ * Evict + dispose a warm Claude SDK session by its cache key so the NEXT
+ * `getSdkSession` for that key spins up a fresh process — which re-reads the
+ * (rotated) `CLAUDE_CODE_OAUTH_TOKEN` / `~/.claude` credential. Used by account
+ * rotation after a subscription limit. Best-effort: dispose is fire-and-forget.
+ */
+function evictSdkSession(key: string): void {
+  const existing = sdkSessions.get(key);
+  if (!existing) return;
+  sdkSessions.delete(key);
+  void existing.dispose();
+}
+
 function getSdkSession(
   runtime: IAgentRuntime,
   model: string,
   systemPrompt: string,
   router: boolean
 ): ClaudeSdkSession {
-  const key = `${model}\u001f${router ? "route" : "text"}\u001f${shortHash(systemPrompt)}`;
+  const key = claudeSessionKey(model, systemPrompt, router);
   const existing = sdkSessions.get(key);
   if (existing) {
     // Mark most-recently-used: delete + re-insert moves it to the Map's tail.
@@ -157,6 +175,9 @@ function getSdkSession(
     router,
     claudeExecutablePath: getSetting(runtime, "ELIZA_CLI_CLAUDE_BIN"),
     restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
+    turnTimeoutMs:
+      parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
+      parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
   });
   sdkSessions.set(key, session);
   // Evict least-recently-used past the cap (each session is a live process).
@@ -195,13 +216,29 @@ function resolveCodexModel(runtime: IAgentRuntime, modelType: string): string {
   return ((isSmallTier ? small : large) || large || "gpt-5.5").trim();
 }
 
+function codexSessionKey(model: string, router: boolean): string {
+  return `${model}\u001f${router ? "route" : "text"}`;
+}
+
+/**
+ * Evict + dispose a warm Codex SDK thread by its cache key so the next
+ * `getCodexSdkSession` re-starts it — re-reading the (rotated) per-account
+ * `CODEX_HOME`. Used by account rotation after a subscription limit.
+ */
+function evictCodexSdkSession(key: string): void {
+  const existing = codexSdkSessions.get(key);
+  if (!existing) return;
+  codexSdkSessions.delete(key);
+  existing.dispose();
+}
+
 /** Lazily create + cache a warm Codex SDK thread for a (model, mode). */
 function getCodexSdkSession(
   runtime: IAgentRuntime,
   model: string,
   router: boolean
 ): CodexSdkSession {
-  const key = `${model}\u001f${router ? "route" : "text"}`;
+  const key = codexSessionKey(model, router);
   let session = codexSdkSessions.get(key);
   if (!session) {
     session = new CodexSdkSession({
@@ -271,7 +308,19 @@ async function generateViaCli(
     // 2/4). Keying by the framed system keeps one warm process per tier.
     const framedSystem = frameTextSystemPrompt(system);
     const framedBody = appendTextDirective(body);
-    return getSdkSession(runtime, model, framedSystem, false).generate(framedBody);
+    const key = claudeSessionKey(model, framedSystem, false);
+    // On a subscription limit, rotate to the next healthy pooled Claude account
+    // (evicting the warm session so it re-auths as the new account), then retry;
+    // fall through to provider failover only when the pool is exhausted.
+    return withAccountRotation(
+      () => getSdkSession(runtime, model, framedSystem, false).generate(framedBody),
+      {
+        backend,
+        getValue: (k) => getSetting(runtime, k),
+        sessionKey: `cli-inference:${key}`,
+        onRotate: () => evictSdkSession(key),
+      }
+    );
   }
   if (backend === "codex-sdk") {
     // Warm Codex SDK thread. codex-sdk folds the system into the body, so frame
@@ -279,7 +328,16 @@ async function generateViaCli(
     const model = resolveCodexModel(runtime, modelType);
     const { system, body } = flattenPrompt(generateParams);
     const framedBody = appendTextDirective(`${frameTextSystemPrompt(system)}\n\n${body}`);
-    return getCodexSdkSession(runtime, model, false).generate(framedBody);
+    const key = codexSessionKey(model, false);
+    return withAccountRotation(
+      () => getCodexSdkSession(runtime, model, false).generate(framedBody),
+      {
+        backend,
+        getValue: (k) => getSetting(runtime, k),
+        sessionKey: `cli-inference:${key}`,
+        onRotate: () => evictCodexSdkSession(key),
+      }
+    );
   }
   const cli = backend === "claude" ? buildClaude(runtime) : buildCodex(runtime);
   return cli.generate(generateParams);
@@ -312,8 +370,17 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
   });
   if (backend === "claude-sdk") {
     const model = resolveSdkModel(runtime, ModelType.ACTION_PLANNER);
-    const session = getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, true);
-    return session.route(buildRouterBody(params));
+    const routerBody = buildRouterBody(params);
+    const key = claudeSessionKey(model, ROUTER_SYSTEM_PROMPT, true);
+    return withAccountRotation(
+      () => getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, true).route(routerBody),
+      {
+        backend,
+        getValue: (k) => getSetting(runtime, k),
+        sessionKey: `cli-inference:${key}`,
+        onRotate: () => evictSdkSession(key),
+      }
+    );
   }
   if (backend === "codex-sdk") {
     // codex routes via NATIVE structured output (outputSchema) for a reliable
@@ -321,9 +388,15 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
     // persona) is folded into the body (codex-sdk has no thread-level system
     // prompt); the session applies the schema + parses the result.
     const model = resolveCodexModel(runtime, ModelType.ACTION_PLANNER);
-    const session = getCodexSdkSession(runtime, model, true);
     const clean = buildCleanRoutingParams(params);
-    return session.route(`${clean.system ?? ""}\n\n${clean.prompt ?? ""}`);
+    const routeBody = `${clean.system ?? ""}\n\n${clean.prompt ?? ""}`;
+    const key = codexSessionKey(model, true);
+    return withAccountRotation(() => getCodexSdkSession(runtime, model, true).route(routeBody), {
+      backend,
+      getValue: (k) => getSetting(runtime, k),
+      sessionKey: `cli-inference:${key}`,
+      onRotate: () => evictCodexSdkSession(key),
+    });
   }
   return generateViaCli(runtime, buildCleanRoutingParams(params), ModelType.ACTION_PLANNER);
 }
@@ -367,8 +440,10 @@ export const cliInferencePlugin: Plugin = {
     ELIZA_CLI_CLAUDE_PLANNER_MODEL: readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL") ?? null,
     ELIZA_CLI_CLAUDE_BIN: readEnv("ELIZA_CLI_CLAUDE_BIN") ?? null,
     ELIZA_CLI_SDK_RESTART_AFTER_TURNS: readEnv("ELIZA_CLI_SDK_RESTART_AFTER_TURNS") ?? null,
+    ELIZA_CLI_SDK_TURN_TIMEOUT_MS: readEnv("ELIZA_CLI_SDK_TURN_TIMEOUT_MS") ?? null,
     ELIZA_CLI_CODEX_MODEL: readEnv("ELIZA_CLI_CODEX_MODEL") ?? null,
     ELIZA_CLI_TIMEOUT_MS: readEnv("ELIZA_CLI_TIMEOUT_MS") ?? null,
+    ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION: readEnv("ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION") ?? null,
   },
   async init(): Promise<void> {
     const backend = resolveCliBackend({ ELIZA_CHAT_VIA_CLI: readEnv("ELIZA_CHAT_VIA_CLI") });
@@ -398,6 +473,11 @@ export const cliInferencePlugin: Plugin = {
         "[cli-inference] text-planner mode (ELIZA_PLANNER_NATIVE_TOOLS=0) — ACTION_PLANNER also served via this route (standalone SAFE stack)"
       );
     }
+    if ((backend === "claude-sdk" || backend === "codex-sdk") && rotationEnabled(readEnv)) {
+      logger.info(
+        "[cli-inference] multi-account rotation ON — a subscription limit rotates to the next healthy pooled account before provider failover (opt out: ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION=0)"
+      );
+    }
   },
   async dispose(): Promise<void> {
     await disposeSdkSessions();
@@ -405,6 +485,12 @@ export const cliInferencePlugin: Plugin = {
   models: buildModels(),
 };
 
+export {
+  isSubscriptionLimitError,
+  rotationAgentTypeForBackend,
+  rotationEnabled,
+  withAccountRotation,
+} from "./src/account-rotation";
 export { ClaudeCli } from "./src/claude-cli";
 export { ClaudeSdkSession } from "./src/claude-sdk-session";
 export {

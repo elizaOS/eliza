@@ -685,6 +685,47 @@ function hasIllegalStrictRoot(node: Record<string, unknown>): boolean {
   return false;
 }
 
+// Constraint keywords that strict-grammar providers reject with a hard 400
+// that fails the ENTIRE request. The exact set was bisected live against
+// api.elizacloud.ai / gpt-oss-120b (Cerebras): maxItems/minItems/maxLength/
+// minLength/pattern/format/min-maxProperties are rejected; numeric bounds
+// (minimum/maximum/multipleOf) and uniqueItems are accepted, so they are NOT
+// stripped. Each maps to a human phrase folded into `description` so the model
+// still sees the intent after the machine-readable keyword is removed.
+const STRICT_UNSUPPORTED_CONSTRAINTS: Record<string, (value: unknown) => string> = {
+  maxItems: (v) => `at most ${v} items`,
+  minItems: (v) => `at least ${v} items`,
+  maxLength: (v) => `at most ${v} characters`,
+  minLength: (v) => `at least ${v} characters`,
+  pattern: (v) => `matching the pattern ${v}`,
+  format: (v) => `in ${v} format`,
+  minProperties: (v) => `at least ${v} properties`,
+  maxProperties: (v) => `at most ${v} properties`,
+};
+
+/**
+ * Removes constraint keywords that strict-grammar providers reject, folding
+ * each into the node's `description` so the model keeps the guidance. Mutates
+ * the passed (already-shallow-copied) node in place.
+ *
+ * Removing them from the wire is lossless for correctness: `parseAndValidate`
+ * (runtime/validated-model-call.ts) re-checks the caller's ORIGINAL schema
+ * app-side, so any real bound is still enforced on the returned value.
+ */
+function stripStrictUnsupportedConstraints(node: Record<string, unknown>): void {
+  const hints: string[] = [];
+  for (const [keyword, phrase] of Object.entries(STRICT_UNSUPPORTED_CONSTRAINTS)) {
+    if (keyword in node) {
+      hints.push(phrase(node[keyword]));
+      delete node[keyword];
+    }
+  }
+  if (hints.length === 0) return;
+  const existing = typeof node.description === "string" ? node.description.trim() : "";
+  const suffix = `(${hints.join(", ")})`;
+  node.description = existing ? `${existing} ${suffix}` : suffix;
+}
+
 function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     // Permissive fallback: no `properties: {}`/`additionalProperties: false`
@@ -695,6 +736,16 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
 
   const record = schema as Record<string, unknown>;
   let sanitized: Record<string, unknown> = { ...record };
+
+  // This is the single wire choke point — every response_format schema
+  // (buildStructuredOutput) and every tool schema (normalizeNativeTools)
+  // funnels through here, so strip the strict-unsupported constraint keywords
+  // centrally instead of relying on each schema author to remember the rule.
+  // UNCONDITIONAL, not Cerebras-gated: isCerebrasMode is proxy-blind — an agent
+  // pointed at api.elizacloud.ai with OPENAI_API_KEY looks like plain OpenAI,
+  // which is exactly the deployment where the 400 fired (#11123/#11141). The
+  // recursion below reaches nested nodes via properties/items/unions.
+  stripStrictUnsupportedConstraints(sanitized);
 
   if (typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
@@ -747,6 +798,30 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
     const value = sanitized[unionKey];
     if (Array.isArray(value)) {
       sanitized[unionKey] = value.map((item) => sanitizeJsonSchema(item));
+    }
+  }
+
+  // Every other schema-bearing keyword must be walked too, or a stripped
+  // keyword nested inside one survives to the wire. `$defs`/`definitions`
+  // matter most in practice: zod's `toJSONSchema` hoists reused/nullable
+  // sub-schemas into `$defs`, so a `.max()`/`.regex()` on a shared field would
+  // otherwise slip through the strip. `contains`/`propertyNames`/`not`/`if`/
+  // `then`/`else` take a single sub-schema; `patternProperties`/`$defs`/
+  // `definitions` are maps of them.
+  for (const singleKey of ["contains", "propertyNames", "not", "if", "then", "else"] as const) {
+    const value = sanitized[singleKey];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      sanitized[singleKey] = sanitizeJsonSchema(value);
+    }
+  }
+  for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
+    const value = sanitized[mapKey];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const walked: Record<string, unknown> = {};
+      for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
+        walked[key] = sanitizeJsonSchema(sub);
+      }
+      sanitized[mapKey] = walked;
     }
   }
 
@@ -1391,3 +1466,5 @@ export const __INTERNAL_resolveProviderOptions = resolveProviderOptions;
 export const __INTERNAL_normalizeNativeMessages = normalizeNativeMessages;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_stripReasoningParts = stripReasoningParts;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_sanitizeJsonSchema = sanitizeJsonSchema;

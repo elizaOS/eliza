@@ -9,7 +9,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
   - **generic single-file GGUF** (`runtimeClass: "generic-gguf"`) — a model you downloaded/scanned (Hugging Face / ModelScope / LM Studio / Ollama) loaded from an explicit `modelPath` with stock f16 KV and *reduced optimizations* (no MTP, no fork kernels, no fused voice/vision). The explicit-`modelPath` binding ships on mobile (`llama-cpp-capacitor`); on desktop it is not yet built into the shipping `libelizainference`, so an assigned generic model is rejected at the assignment boundary with a typed reason rather than failing silently at load.
 - `node-llama-cpp` has been retired; there is no node-llama-cpp fallback.
 - **Text embeddings** (`TEXT_EMBEDDING`) via a dedicated embedding GGUF loaded separately from the chat model.
-- **Text-to-speech** (`TEXT_TO_SPEECH`) via the local Kokoro/OmniVoice runtime selected by tier and policy.
+- **Text-to-speech** (`TEXT_TO_SPEECH`) via the local Kokoro runtime (the only on-device TTS backend).
 - **Automatic speech recognition** (`TRANSCRIPTION`) via the eligible bundled local ASR head in fused `libelizainference`; there is no whisper.cpp fallback.
 - **Image generation** (`IMAGE`) via sd.cpp, CoreML (Apple Silicon), mflux, TensorRT, or AOSP backends; selected by hardware and catalog entry.
 - **Image description / vision** (`IMAGE_DESCRIPTION`) via the tier-matched Eliza-1 multimodal projector attached to the active text model.
@@ -31,7 +31,7 @@ Eliza-1 local inference provider for elizaOS. Serves text generation, embeddings
 ## Requirements
 
 - Node.js 20+ or Bun runtime.
-- The fused `libelizainference` native library for the desktop text/voice/vision path (built from `tools/omnivoice`; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
+- The fused `libelizainference` native library for the desktop text/voice/vision path (built from the llama.cpp fork's fused-inference FFI tool at `tools/omnivoice` — the Kokoro TTS engine is folded into this library; resolved via `ELIZA_INFERENCE_LIBRARY` / `ELIZA_INFERENCE_LIB_DIR` or the bundle's `lib/` dir). Generic single-file GGUF additionally needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile).
 - Native binaries for optional capabilities: `sd.cpp` for image-gen on Linux/Windows and `mflux` for Apple Silicon image-gen.
 - An Eliza-1 GGUF bundle downloaded via the model catalog (dashboard → Models, or `POST /api/local-inference/downloads`).
 

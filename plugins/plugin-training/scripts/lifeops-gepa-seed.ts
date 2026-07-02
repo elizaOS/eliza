@@ -574,7 +574,7 @@ function resolveTrainingModelLabel(): string {
     process.env.TRAINING_MODEL?.trim() ??
     process.env.TRAIN_MODEL_NAME?.trim() ??
     process.env.CEREBRAS_MODEL?.trim() ??
-    "gpt-oss-120b"
+    "gemma-4-31b"
   );
 }
 

@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--judge-model",
-        default="gpt-oss-120b",
+        default="gemma-4-31b",
         help="Cerebras coherence-judge model id.",
     )
     parser.add_argument(

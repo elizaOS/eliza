@@ -89,8 +89,17 @@ const MAX_USAGE = 1000;
 const MAX_DECISIONS = 300;
 const MAX_ARTIFACTS = 200;
 
+// How long a waiter keeps trying to acquire the lock before giving up.
 const FILE_LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
-const FILE_LOCK_STALE_MS = 30_000;
+// A lock is only reclaimed as "stale" once it is older than this. It MUST be
+// shorter than the acquire timeout (so a waiter can reclaim a dead lock within
+// its own wait window) yet far longer than a legitimate hold — the guarded work
+// is a single atomic temp-file write + rename, sub-second even for large task
+// histories, so a lock older than 10s means the holder died mid-write. Setting
+// this equal to the acquire timeout (the previous value) let a waiter give up at
+// the exact moment a lock became reclaimable, and risked reclaiming a lock still
+// held by a slow-but-alive writer.
+const FILE_LOCK_STALE_MS = 10_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -341,6 +350,7 @@ export class InMemoryTaskStore {
     return this.enqueue(async () => {
       const doc = newTaskDocument(input);
       this.docs.set(doc.task.id, doc);
+      this.noteMutated(doc.task.id);
       await this.afterWrite();
       return cloneDocument(doc);
     });
@@ -381,6 +391,7 @@ export class InMemoryTaskStore {
         updatedAt: nowIso(),
         lastActivityAt: nextPatch.lastActivityAt ?? Date.now(),
       };
+      this.noteMutated(id);
       await this.afterWrite();
       return structuredClone(doc.task);
     });
@@ -389,8 +400,17 @@ export class InMemoryTaskStore {
   async deleteTask(id: string): Promise<boolean> {
     return this.enqueue(async () => {
       const existed = this.docs.delete(id);
-      if (existed) await this.afterWrite();
-      return existed;
+      if (!existed) return false;
+      // Record the delete inside the queued op, immediately before its own
+      // afterWrite(). Recording it earlier (outside the queue) let an
+      // already-queued write's afterWrite consume and clear the tombstone while
+      // the doc was still present, after which the delete's own persist
+      // re-seeded the doc from disk — resurrecting a task whose deleteTask had
+      // returned true. It also left a lingering tombstone when the delete
+      // turned out to be a no-op.
+      this.noteDeleted(id);
+      await this.afterWrite();
+      return true;
     });
   }
 
@@ -405,6 +425,7 @@ export class InMemoryTaskStore {
       else doc.sessions.push(session);
       doc.task.lastActivityAt = Date.now();
       doc.task.updatedAt = nowIso();
+      this.noteMutated(session.taskId);
       await this.afterWrite();
     });
   }
@@ -424,6 +445,7 @@ export class InMemoryTaskStore {
         });
         doc.task.lastActivityAt = Date.now();
         doc.task.updatedAt = nowIso();
+        this.noteMutated(doc.task.id);
         await this.afterWrite();
         return;
       }
@@ -495,6 +517,7 @@ export class InMemoryTaskStore {
       mutate(doc);
       doc.task.lastActivityAt = Date.now();
       doc.task.updatedAt = nowIso();
+      this.noteMutated(taskId);
       await this.afterWrite();
     });
   }
@@ -502,6 +525,17 @@ export class InMemoryTaskStore {
   protected async afterWrite(): Promise<void> {
     // Durable subclasses persist here.
   }
+
+  /** Called inside the queued op for every doc this store mutated, right
+   * before afterWrite(). The file backend tracks these ids so its persist
+   * only overlays docs this process actually changed. No-op here. */
+  protected noteMutated(_id: string): void {}
+
+  /** Called inside the queued op when a doc was actually removed, right
+   * before afterWrite(). The file backend records a tombstone so its persist
+   * does not resurrect the doc from a concurrent process's on-disk copy.
+   * No-op here. */
+  protected noteDeleted(_id: string): void {}
 
   /** Replace the in-memory doc set from a durable source. Public so the SQL
    * backend can seed this store as a single-document mutation engine. */
@@ -522,6 +556,17 @@ function defaultStateFile(runtime?: TaskStoreRuntime): string {
 export class FileTaskStore extends InMemoryTaskStore {
   private readonly lockFile: string;
   private loaded = false;
+  // Ids this process deleted but has not yet durably persisted. afterWrite()
+  // re-reads the on-disk document set under the lock; tombstones ensure a task
+  // this process deleted is not resurrected from a concurrent process's copy
+  // of the file. Populated via the noteDeleted() hook inside the queued delete
+  // op so an earlier-queued write can never consume a tombstone prematurely.
+  private readonly tombstones = new Set<string>();
+  // Ids this process mutated but has not yet durably persisted. afterWrite()
+  // overlays ONLY these docs onto the on-disk set, so tasks this process never
+  // touched keep a concurrent process's (possibly newer) on-disk version
+  // instead of being reverted to this process's stale in-memory copy.
+  private readonly dirty = new Set<string>();
 
   constructor(
     private readonly filePath: string,
@@ -533,27 +578,33 @@ export class FileTaskStore extends InMemoryTaskStore {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const contents = await readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(contents) as unknown;
-      if (Array.isArray(parsed)) {
-        this.hydrate(
-          parsed
-            .map(normalizeTaskDocument)
-            .filter((doc): doc is OrchestratorTaskDocument => doc !== null),
-        );
+    await this.enqueue(async () => {
+      if (this.loaded) return;
+      try {
+        const contents = await readFile(this.filePath, "utf8");
+        const parsed = JSON.parse(contents) as unknown;
+        if (Array.isArray(parsed)) {
+          this.hydrate(
+            parsed
+              .map(normalizeTaskDocument)
+              .filter((doc): doc is OrchestratorTaskDocument => doc !== null),
+          );
+        } else {
+          this.hydrate([]);
+        }
+      } catch (error) {
+        const code =
+          isRecord(error) && typeof error.code === "string" ? error.code : "";
+        if (code !== "ENOENT") {
+          this.logger?.warn?.(
+            "[OrchestratorTaskStore] task file unreadable; starting empty",
+            error,
+          );
+        }
+        this.hydrate([]);
       }
-    } catch (error) {
-      const code =
-        isRecord(error) && typeof error.code === "string" ? error.code : "";
-      if (code !== "ENOENT") {
-        this.logger?.warn?.(
-          "[OrchestratorTaskStore] task file unreadable; starting empty",
-          error,
-        );
-      }
-    }
-    this.loaded = true;
+      this.loaded = true;
+    });
   }
 
   override async createTask(input: CreateTaskInput) {
@@ -619,13 +670,58 @@ export class FileTaskStore extends InMemoryTaskStore {
     return super.addPlanRevision(revision);
   }
 
+  protected override noteMutated(id: string): void {
+    this.dirty.add(id);
+  }
+
+  protected override noteDeleted(id: string): void {
+    this.tombstones.add(id);
+  }
+
   protected override async afterWrite(): Promise<void> {
     await this.withLock(async () => {
       await mkdir(dirname(this.filePath), { recursive: true });
+      // Read-merge-write under the lock so a concurrent process's writes to
+      // OTHER tasks survive this process's write. Merge order:
+      //   1. seed from the current on-disk set (concurrent inserts/updates),
+      //   2. drop the ids this process deleted (tombstones),
+      //   3. overlay only the docs this process actually mutated (dirty ids) —
+      //      untouched tasks keep their on-disk versions.
+      // Residual: two processes mutating the SAME task still resolve
+      // last-writer-wins at the document level, matching the SQL backend's
+      // single-row upsert semantics.
+      const merged = new Map<string, OrchestratorTaskDocument>();
+      try {
+        const contents = await readFile(this.filePath, "utf8");
+        const parsed = JSON.parse(contents) as unknown;
+        if (Array.isArray(parsed)) {
+          for (const raw of parsed) {
+            const doc = normalizeTaskDocument(raw);
+            if (doc) merged.set(doc.task.id, doc);
+          }
+        }
+      } catch (error) {
+        const code =
+          isRecord(error) && typeof error.code === "string" ? error.code : "";
+        if (code !== "ENOENT") throw error;
+      }
+      for (const id of this.tombstones) merged.delete(id);
+      for (const id of this.dirty) {
+        const doc = this.docs.get(id);
+        if (doc) merged.set(id, doc);
+      }
+      // Adopt the merged view so subsequent reads in this process observe
+      // concurrent inserts/updates/deletes too.
+      this.docs.clear();
+      for (const [id, doc] of merged) this.docs.set(id, doc);
       const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
-      const payload = JSON.stringify([...this.docs.values()], null, 2);
+      const payload = JSON.stringify([...merged.values()], null, 2);
       await writeFile(tempPath, `${payload}\n`, "utf8");
       await rename(tempPath, this.filePath);
+      // Forget applied tombstones/dirty ids only after the rename lands; a
+      // failed write leaves them pending so the next persist applies them.
+      this.tombstones.clear();
+      this.dirty.clear();
     });
   }
 
@@ -852,6 +948,13 @@ export class RuntimeDbTaskStore {
   async deleteTask(id: string): Promise<boolean> {
     return this.enqueue(async () => {
       await this.ensureInitialized();
+      // The SqlExecutor.run contract returns void (no affected-row count that is
+      // portable across the raw-sqlite and drizzle backends), so probe existence
+      // first and report it faithfully. Returning an unconditional `true` (the
+      // previous behavior) diverged from InMemoryTaskStore.deleteTask and made
+      // the DELETE /tasks/:id route answer 200 for tasks that never existed.
+      const existing = await this.loadOne(id);
+      if (!existing) return false;
       await this.exec().run("DELETE FROM orchestrator_tasks WHERE id = ?", [
         id,
       ]);

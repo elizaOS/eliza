@@ -107,10 +107,42 @@ function asStringList(value: unknown): string[] {
 }
 
 /**
+ * 4xx statuses whose response body carries a user-actionable validation reason
+ * (bad/oversized/unsupported payload) rather than an infrastructure condition.
+ * Auth (401/403), rate limit (429), and not-found (404) have their own
+ * handling and are deliberately excluded.
+ */
+const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
+  400, 413, 415, 422,
+]);
+
+/**
+ * Extract the server's validation reason from a send failure, or `null` when
+ * the failure isn't a payload-validation 4xx. The client's ApiError carries
+ * the server's JSON `error` body as its message (e.g. "Attachment too large
+ * (max 5 MB)"), which tells the user exactly what to fix — the generic "didn't
+ * go through, please resend" copy would send them into a retry loop that fails
+ * identically every time. Exported for the send path and unit tests.
+ */
+export function getSendValidationFailureMessage(err: unknown): string | null {
+  const status = (err as { status?: number }).status;
+  if (typeof status !== "number" || !VALIDATION_FAILURE_STATUSES.has(status)) {
+    return null;
+  }
+  const message = err instanceof Error ? err.message.trim() : "";
+  // A body-less rejection falls back to "HTTP <status>" upstream — that is not
+  // a validation reason worth surfacing over the generic copy.
+  if (!message || /^HTTP \d+$/i.test(message)) return null;
+  return message;
+}
+
+/**
  * Map a send/stream failure (HTTP status + error `kind`) to a user-facing notice
  * so a stalled turn is never silent dead air. Shared by the main-chat send path
  * and the action/inbox/connector send path — both must surface the same
- * status-specific message. (#10231)
+ * status-specific message. (#10231) 4xx validation rejections surface the
+ * server's specific reason; 5xx/network/timeout keep the generic copy (their
+ * bodies are internal noise, and resending genuinely can succeed).
  */
 export function buildSendFailureNotice(err: unknown): string {
   const status = (err as { status?: number }).status;
@@ -123,6 +155,10 @@ export function buildSendFailureNotice(err: unknown): string {
   }
   if (status === 503 || status === 502) {
     return "The agent is still waking up — give it a moment and resend.";
+  }
+  const validationMessage = getSendValidationFailureMessage(err);
+  if (validationMessage !== null) {
+    return `The agent couldn't accept that message: ${validationMessage}.`;
   }
   if (kind === "timeout") {
     return "The agent took too long to respond — give it a moment and resend.";
@@ -497,12 +533,33 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
   }, []);
 
-  const resolveQueuedChatSends = useCallback(() => {
+  const resolveQueuedChatSends = useCallback((): string => {
     const queued = chatSendQueueRef.current.splice(0);
+    if (queued.length === 0) return "";
     for (const turn of queued) {
       turn.resolve();
     }
-  }, []);
+    // These turns were accepted ("send another" while a reply streamed), the
+    // composer was cleared at enqueue, and their optimistic bubble only paints
+    // at drain — so an interrupt here (new chat / conversation switch) would
+    // otherwise vanish the user's words with no trace (#10700's "no message is
+    // lost" guarantee). Mirror the cold-open create-failure path: restore the
+    // text to the composer and say why. Returned so a caller that wipes the
+    // draft AFTER interrupting (new chat) can re-apply the restore.
+    const restored = queued
+      .map((turn) => turn.rawInput.trim())
+      .filter((text) => text.length > 0)
+      .join("\n");
+    if (restored) {
+      setChatInput(restored);
+      setActionNotice(
+        "Your unsent message was restored to the input.",
+        "info",
+        6_000,
+      );
+    }
+    return restored;
+  }, [setActionNotice, setChatInput]);
 
   const resolveConversationRoomId = useCallback(
     async (
@@ -526,8 +583,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     [conversationsRef, loadConversations],
   );
 
-  const interruptActiveChatPipeline = useCallback(() => {
-    resolveQueuedChatSends();
+  const interruptActiveChatPipeline = useCallback((): string => {
+    const restoredQueuedText = resolveQueuedChatSends();
     const activeTurn = activeChatTurnRef.current;
     if (activeTurn?.roomId) {
       abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
@@ -548,6 +605,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     setChatSending(false);
     setChatFirstTokenReceived(false);
     setServerTurnStatus(null);
+    return restoredQueuedText;
   }, [
     chatAbortRef,
     flushStreamingText,
@@ -812,6 +870,38 @@ export function useChatSend(deps: UseChatSendDeps) {
     [setConversationMessages],
   );
 
+  // Re-attach a stopped/interrupted turn's partial reply after the post-turn
+  // history reload full-replaced it away. The server frequently does NOT persist
+  // a reply that was cut off mid-stream, so the reload returns a thread without
+  // it and the bubble the user was watching stream in silently vanishes. Append
+  // the partial as an interrupted assistant turn — but ONLY when the reloaded
+  // thread's last message is not already an assistant turn (i.e. the server has
+  // no reply for this turn). When the server DID persist a reply the reload
+  // already carries it, so it is kept as-is and never duplicated.
+  const reattachInterruptedPartial = useCallback(
+    (partialText: string) => {
+      const text = partialText.trim();
+      if (!text) return;
+      setConversationMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") return prev;
+        return [
+          ...prev,
+          {
+            id: `local-interrupted-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+            role: "assistant",
+            text,
+            timestamp: Date.now(),
+            interrupted: true,
+          },
+        ];
+      });
+    },
+    [setConversationMessages],
+  );
+
   const runQueuedChatSend = useCallback(
     async (turn: Omit<QueuedChatSend, "resolve" | "reject">) => {
       const hasAttachedImages = Boolean(turn.images?.length);
@@ -1059,7 +1149,15 @@ export function useChatSend(deps: UseChatSendDeps) {
           });
         }
 
-        if (!data.completed && streamedAssistantText.trim()) {
+        // A stopped / dropped turn keeps a partial reply the user was watching.
+        // Snapshot it BEFORE the reload below (which full-replaces local state
+        // with the server's copy) so it can be re-attached if the server never
+        // persisted it.
+        const interruptedPartial =
+          !data.completed && streamedAssistantText.trim()
+            ? data.text.trim() || streamedAssistantText
+            : null;
+        if (interruptedPartial) {
           applyStreamingTextModification(setConversationMessages, {
             messageId: assistantMsgId,
             mode: "interrupt",
@@ -1070,6 +1168,12 @@ export function useChatSend(deps: UseChatSendDeps) {
         // mirrored by the optimistic streaming draft in local state.
         if (activeConversationIdRef.current === convId) {
           await loadConversationMessages(convId);
+          // The reload above full-replaces the thread; a stopped reply is often
+          // NOT persisted server-side, so re-attach the partial the user watched
+          // stream in (no-op / no duplicate when the server kept it).
+          if (interruptedPartial) {
+            reattachInterruptedPartial(interruptedPartial);
+          }
         }
 
         const userMessageCount = conversationMessagesRef.current.filter(
@@ -1255,7 +1359,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             dropEmptyAssistantPlaceholder(assistantMsgId);
           }
         } else {
-          // Non-abort, non-404 send failure (network/timeout/5xx/auth/429).
+          // Non-abort, non-404 send failure (network/timeout/5xx/auth/429/4xx).
           // Drop the empty assistant placeholder but KEEP the user's message,
           // and surface a status-specific notice so a stalled turn is never
           // silent dead air (the typing indicator stalls at ~30s while the SSE
@@ -1263,7 +1367,34 @@ export function useChatSend(deps: UseChatSendDeps) {
           // vanish and nothing replace them, reading as "my message was lost").
           dropEmptyAssistantPlaceholder(assistantMsgId);
           const isAuth = status === 401 || status === 403;
-          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
+          if (getSendValidationFailureMessage(err) !== null) {
+            // A 4xx validation rejection (oversized/unsupported attachment,
+            // malformed payload) means the server REFUSED the message before it
+            // persisted: the composer was already cleared at enqueue and the
+            // reconcile reload below wipes the optimistic bubble, so without a
+            // restore the user's text + attachments would be irrecoverably
+            // destroyed on a primary flow (e.g. a phone-photo upload). Mirror
+            // the cold-open create-failure path: put the draft — text AND
+            // pending attachments (the pending-images state holds the same
+            // ImageAttachment shape that was sent) — back in the composer, and
+            // say exactly why the server rejected it, because resending the
+            // same payload unchanged would fail identically.
+            if (rawText) setChatInput(rawText);
+            if (imagesToSend?.length) setChatPendingImages([...imagesToSend]);
+            const restored =
+              rawText && imagesToSend?.length
+                ? "Your text and attachments were restored to the input."
+                : imagesToSend?.length
+                  ? "Your attachments were restored to the input."
+                  : "Your message was restored to the input.";
+            setActionNotice(
+              `${buildSendFailureNotice(err)} ${restored}`,
+              "error",
+              10_000,
+            );
+          } else {
+            setActionNotice(buildSendFailureNotice(err), "error", 8_000);
+          }
           // Reconcile from the server for non-auth errors — loadConversationMessages
           // no longer wipes the thread on transient failures (404-only clear), so
           // this is safe; skip on auth where the reload would just fail again.
@@ -1307,9 +1438,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       setCompanionMessageCutoffTs,
       setConversationMessages,
       dropEmptyAssistantPlaceholder,
+      reattachInterruptedPartial,
       setConversations,
       setActionNotice,
       setChatInput,
+      setChatPendingImages,
       uiLanguage,
       elizaCloudEnabled,
       elizaCloudConnected,
@@ -1641,7 +1774,13 @@ export function useChatSend(deps: UseChatSendDeps) {
             });
           }
 
-          if (!data.completed && streamedAssistantText.trim()) {
+          // Snapshot a stopped/dropped partial before the reload below so it can
+          // survive a full-replace the server's copy lacks (see runQueuedChatSend).
+          const interruptedPartial =
+            !data.completed && streamedAssistantText.trim()
+              ? data.text.trim() || streamedAssistantText
+              : null;
+          if (interruptedPartial) {
             applyStreamingTextModification(setConversationMessages, {
               messageId: assistantMsgId,
               mode: "interrupt",
@@ -1652,6 +1791,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           // additional action-generated messages during a successful send.
           if (activeConversationIdRef.current === convId) {
             await loadConversationMessages(convId);
+            if (interruptedPartial) {
+              reattachInterruptedPartial(interruptedPartial);
+            }
           }
 
           void loadConversations();

@@ -5,11 +5,7 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-import type {
-  AppContext,
-  AppEnv,
-  Bindings,
-} from "../../types/cloud-worker-env";
+import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
 import { logger } from "../utils/logger";
 
@@ -93,7 +89,15 @@ function getDefaultKey(c: AppContext): string {
     null;
   if (anon) return `anon:${anon}`;
 
-  return "public";
+  // Unauthenticated public traffic buckets PER-IP, not a global constant.
+  // Returning the literal "public" put ALL anonymous traffic worldwide into one
+  // window, so a single flooder (600/min) 429-locked every anonymous client on
+  // every route using the default key generator (#11087). Per-IP confines the
+  // limit to the abuser. "public" survives only as the last resort when the IP
+  // is unresolvable (e.g. a proxy stripped forwarding headers) — still bounded,
+  // but no longer the common path.
+  const ip = getRequestIp(c);
+  return ip ? `ip:${ip}` : "public";
 }
 
 interface CheckResult {
@@ -103,11 +107,7 @@ interface CheckResult {
   retryAfter?: number;
 }
 
-function rateLimitHeaders(
-  config: RateLimitConfig,
-  result: CheckResult,
-  policy: string,
-) {
+function rateLimitHeaders(config: RateLimitConfig, result: CheckResult, policy: string) {
   return {
     "X-RateLimit-Limit": String(config.maxRequests),
     "X-RateLimit-Remaining": String(result.remaining),
@@ -124,10 +124,7 @@ function fallOpenResult(config: RateLimitConfig): CheckResult {
   };
 }
 
-function applyRateLimitHeaders(
-  c: Context,
-  headers: Record<string, string>,
-): void {
+function applyRateLimitHeaders(c: Context, headers: Record<string, string>): void {
   for (const [k, v] of Object.entries(headers)) {
     c.res.headers.set(k, v);
   }
@@ -175,25 +172,18 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     }
 
     if (
-      (env.RATE_LIMIT_DISABLED === "true" ||
-        env.PLAYWRIGHT_TEST_AUTH === "true") &&
+      (env.RATE_LIMIT_DISABLED === "true" || env.PLAYWRIGHT_TEST_AUTH === "true") &&
       env.NODE_ENV !== "production"
     ) {
       await next();
-      applyRateLimitHeaders(
-        c,
-        rateLimitHeaders(config, fallOpenResult(config), "disabled"),
-      );
+      applyRateLimitHeaders(c, rateLimitHeaders(config, fallOpenResult(config), "disabled"));
       return;
     }
 
     const redis = getRedis(env);
     if (!redis) {
       await next();
-      applyRateLimitHeaders(
-        c,
-        rateLimitHeaders(config, fallOpenResult(config), "fall-open"),
-      );
+      applyRateLimitHeaders(c, rateLimitHeaders(config, fallOpenResult(config), "fall-open"));
       return;
     }
 
@@ -202,12 +192,7 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     let policy = "redis";
 
     try {
-      result = await checkUpstash(
-        redis,
-        key,
-        config.windowMs,
-        config.maxRequests,
-      );
+      result = await checkUpstash(redis, key, config.windowMs, config.maxRequests);
     } catch (error) {
       // Rate limiting is protective middleware. If its backing store is down
       // or unreachable in local Worker dev, requests should fall open instead

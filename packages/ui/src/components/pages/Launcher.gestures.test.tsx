@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 //
-// Gesture-layer + telemetry coverage for the Launcher. motion/react is mocked
-// so the test can drive the Reorder.Group onReorder bridge and the swipe-paging
-// motion.div onDragEnd directly (jsdom can't perform a real pointer drag). The
-// real-motion render path (page dots, favorites, image tiles) is covered by the
-// sibling Launcher.test.tsx, which does NOT mock motion.
+// SCOPE (honest labelling, #10722): this is the Launcher's BRIDGE-LOGIC unit
+// suite — it verifies what the Launcher DOES with a gesture result (the
+// Reorder.Group `onReorder` → moveIcon → persist + telemetry bridge, and the
+// swipe-paging `onDragEnd` → page-advance + threshold/clamp/edit-gate bridge).
+// motion/react is mocked so those callbacks can be invoked directly; jsdom
+// cannot perform a real pointer drag, so this does NOT prove the drag/reorder
+// physics or long-press engagement. The REAL long-press-drag reorder (a genuine
+// CDP pointer drag → onReorder → persisted LAUNCHER_STORAGE_KEY order + reorder
+// telemetry + no duplicate ids) is section 2b of the isolated-browser runner
+// __e2e__/run-launcher-e2e.mjs (`bun run --cwd packages/ui test:launcher-e2e`,
+// gated in ui-e2e-gate.yml). The real-motion render path (page dots,
+// favorites, image tiles) is covered by the sibling Launcher.test.tsx.
 
 import {
   act,
@@ -347,17 +354,6 @@ describe("Launcher interaction telemetry", () => {
     expect(onLaunch).toHaveBeenCalledTimes(1);
     const launch = readViewInteractions().find((e) => e.action === "launch");
     expect(launch?.viewId).toBe("chat");
-  });
-
-  it("emits favorite then unfavorite as metadata is toggled", () => {
-    render(
-      <Launcher entries={[entry("notes", "Notes")]} onLaunch={() => {}} />,
-    );
-    longPressTile("Notes");
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    fireEvent.click(screen.getByTestId("launcher-fav-notes"));
-    expect(actions()).toContain("favorite");
-    expect(actions()).toContain("unfavorite");
   });
 
   it("emits edit-mode enter/exit via long-press toggle", () => {

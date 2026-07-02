@@ -511,7 +511,7 @@ material for an app.
 ```json
 {
   "prompt": "Square launch image for a playful AI finance assistant app",
-  "model": "google/gemini-2.5-flash-image",
+  "model": "google/nano-banana-2/text-to-image",
   "numImages": 2,
   "aspectRatio": "1:1",
   "stylePreset": "editorial"

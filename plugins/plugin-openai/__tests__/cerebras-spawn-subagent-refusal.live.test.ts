@@ -289,7 +289,11 @@ Sample leaked refusal: ${bucket.samples.leak ? `"${bucket.samples.leak}"` : "(no
 
 const TRIALS = Number.parseInt(process.env.CEREBRAS_REFUSAL_TRIALS ?? "20", 10);
 const TIMEOUT_MS = TRIALS * 20_000 + 30_000;
-const CEREBRAS_REFUSAL_MODELS = ["gpt-oss-120b", "zai-glm-4.7"] as const;
+const CEREBRAS_REFUSAL_MODELS = [
+  "gemma-4-31b",
+  "gpt-oss-120b",
+  "zai-glm-4.7",
+] as const;
 
 liveDescribe("Cerebras `spawn sub-agent` Stage-1 refusal suppression — elizaOS/eliza#7620", () => {
   for (const model of CEREBRAS_REFUSAL_MODELS) {

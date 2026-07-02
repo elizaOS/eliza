@@ -271,6 +271,10 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
       { label: `Maximize ${appName}`, action: "maximize-main-window" },
       { label: `Restore ${appName} Size`, action: "restore-main-window" },
       { type: "separator" },
+      // The visible native way into the notification center on desktop, where
+      // the floating bell is hidden and the home pull-down is the only other
+      // entry point (#10706). Routed to the renderer as `open-notifications`.
+      { label: "Notifications", action: "open-notifications" },
       { label: "Send Test Notification", action: "desktop-notify" },
       { label: "Restart Agent", action: "restart-agent" },
       { label: `Relaunch ${appName}`, action: "relaunch" },

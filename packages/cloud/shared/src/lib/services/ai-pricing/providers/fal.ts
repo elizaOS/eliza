@@ -74,7 +74,7 @@ function buildFalImageEntry(
   };
 }
 
-function buildFalImageSnapshotEntries(): PreparedPricingEntry[] {
+export function buildFalImageSnapshotEntries(): PreparedPricingEntry[] {
   const priceByModel: Record<string, number> = {
     "fal-ai/flux/schnell": 0.003,
     "fal-ai/flux/dev": 0.025,

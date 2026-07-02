@@ -9,7 +9,7 @@
  * fused VAD/encoder/diarizer) is covered by the host smoke harness.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AudioFrameEvent } from "./audio-frame-consumer.js";
 import { platformPlaybackDelaySamples } from "./echo-delay.js";
 import {
@@ -122,6 +122,94 @@ describe("LiveDiarizationSession echo reference", () => {
 		expect(session.echoReferenceFrame(100, 320).some((v) => v !== 0)).toBe(
 			true,
 		);
+	});
+
+	it("reports echoReferenceWired=false while the consumer is built but no playback ever arrived (#9583)", async () => {
+		const session = new LiveDiarizationSession(fakeRuntime());
+		// Simulate the on-device state where the fused consumer built fine but no
+		// far-end playback was ever delivered. The old status computed
+		// `wired = consumer != null || options.echoReference != null` — a
+		// tautology that read true here even though the canceller had only a
+		// zero-filled reference (i.e. AEC was NOT doing anything).
+		(session as unknown as { consumer: { droppedFrames: number } }).consumer = {
+			droppedFrames: 0,
+		};
+
+		const before = await session.status();
+		expect(before.ready).toBe(true);
+		expect(before.aec.echoReferenceWired).toBe(false);
+		expect(before.aec.playbackFramesReceived).toBe(0);
+		expect(before.aec.playbackSamplesReceived).toBe(0);
+		expect(before.aec.lastPlaybackFrameAt).toBeNull();
+
+		session.pushPlayback([playbackFrame(ramp(320), 0)]);
+
+		const after = await session.status();
+		expect(after.aec.echoReferenceWired).toBe(true);
+		expect(after.aec.playbackFramesReceived).toBe(1);
+		expect(after.aec.playbackSamplesReceived).toBe(320);
+		expect(typeof after.aec.lastPlaybackFrameAt).toBe("number");
+	});
+
+	describe("status() AEC truthfulness with a deterministic build failure", () => {
+		// Force the fused-lib resolution to fail so the (heavy, host-dependent)
+		// consumer build never runs: the wired signal must track far-end DELIVERY
+		// and provider registration, not the consumer build.
+		let prevLib: string | undefined;
+		let prevDir: string | undefined;
+		beforeEach(() => {
+			prevLib = process.env.ELIZA_INFERENCE_LIBRARY;
+			prevDir = process.env.ELIZA_INFERENCE_LIB_DIR;
+			process.env.ELIZA_INFERENCE_LIBRARY = "/nonexistent/libelizainference.so";
+			delete process.env.ELIZA_INFERENCE_LIB_DIR;
+		});
+		afterEach(() => {
+			if (prevLib === undefined) delete process.env.ELIZA_INFERENCE_LIBRARY;
+			else process.env.ELIZA_INFERENCE_LIBRARY = prevLib;
+			if (prevDir !== undefined) process.env.ELIZA_INFERENCE_LIB_DIR = prevDir;
+		});
+
+		it("flips echoReferenceWired on real far-end delivery even when the consumer never built", async () => {
+			const session = new LiveDiarizationSession(fakeRuntime());
+			const before = await session.status();
+			expect(before.ready).toBe(false);
+			expect(before.aec.echoReferenceWired).toBe(false);
+
+			session.pushPlayback([
+				playbackFrame(ramp(320), 0),
+				playbackFrame(ramp(320), 1),
+			]);
+
+			const after = await session.status();
+			expect(after.aec.echoReferenceWired).toBe(true);
+			expect(after.aec.playbackFramesReceived).toBe(2);
+			expect(after.aec.playbackSamplesReceived).toBe(640);
+		});
+
+		it("reports echoReferenceWired=true for a host-registered provider with zero playback frames", async () => {
+			const session = new LiveDiarizationSession(fakeRuntime(), {
+				echoReference: () => new Float32Array(320),
+			});
+			const status = await session.status();
+			expect(status.aec.echoReferenceWired).toBe(true);
+			expect(status.aec.playbackFramesReceived).toBe(0);
+			expect(status.aec.lastPlaybackFrameAt).toBeNull();
+		});
+
+		it("keeps cumulative delivery counters (and wired) across resetPlayback", async () => {
+			const session = new LiveDiarizationSession(fakeRuntime());
+			session.pushPlayback([playbackFrame(ramp(320), 0)]);
+			session.resetPlayback();
+			// The buffer is dropped (barge-in), but the transport already proved it
+			// delivers — the wiring evidence is cumulative, not a live-buffer gauge.
+			expect(session.echoReferenceFrame(0, 320).every((v) => v === 0)).toBe(
+				true,
+			);
+			const status = await session.status();
+			expect(status.aec.echoReferenceWired).toBe(true);
+			expect(status.aec.playbackFramesReceived).toBe(1);
+			expect(status.aec.playbackSamplesReceived).toBe(320);
+		});
 	});
 
 	it("self-calibrates playback-to-mic delay from correlated echo", () => {

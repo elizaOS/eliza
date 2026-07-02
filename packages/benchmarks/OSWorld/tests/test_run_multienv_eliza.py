@@ -17,7 +17,7 @@ def _dry_args(tmp_path) -> argparse.Namespace:
         region=None,
         headless=True,
         snapshot_name="init_state",
-        model="openai/gpt-oss-120b",
+        model="gemma-4-31b",
         observation_type="screenshot_a11y_tree",
         action_space="pyautogui",
         max_steps=1,
@@ -133,10 +133,10 @@ def test_model_env_is_forwarded(monkeypatch) -> None:
     monkeypatch.delenv("BENCHMARK_MODEL_NAME", raising=False)
     monkeypatch.delenv("OPENAI_LARGE_MODEL", raising=False)
 
-    run_multienv_eliza._configure_bridge_model_env("openai/gpt-oss-120b")
+    run_multienv_eliza._configure_bridge_model_env("gemma-4-31b")
 
-    assert os.environ["BENCHMARK_MODEL_NAME"] == "openai/gpt-oss-120b"
-    assert os.environ["OPENAI_LARGE_MODEL"] == "openai/gpt-oss-120b"
+    assert os.environ["BENCHMARK_MODEL_NAME"] == "gemma-4-31b"
+    assert os.environ["OPENAI_LARGE_MODEL"] == "gemma-4-31b"
 
 
 def test_osworld_adapter_does_not_inline_screenshot_by_default(monkeypatch) -> None:

@@ -1,6 +1,13 @@
 # Code
 
-A first-party elizaOS runnable example. See [README.md](README.md) for what it does and how to run it.
+A first-party elizaOS runnable example — an interactive coding-agent TUI. See [README.md](README.md) for what it does and how to run it.
+
+## Dual role (why this package matters beyond "an example")
+
+`dist/index.js` is not only the standalone `eliza-code` TUI — it is the binary the **coding cockpit's PTY terminal spawns** (`@elizaos/plugin-pty` resolves it via `ELIZA_CODE_BIN`; see `plugins/plugin-pty/CLAUDE.md`). So two non-obvious build contracts are load-bearing for the cockpit and must not be "simplified" away:
+
+- **`scripts/write-dist-tsconfig.mjs` runs as the last `build` step** and emits a paths-free `dist/tsconfig.json`. Bun applies the nearest tsconfig's `compilerOptions.paths` **at runtime**; this package's tsconfig maps externalized `@elizaos/plugin-*` to types-only `.d.ts`, so without the shadow tsconfig `bun dist/index.js` loads a `.d.ts` and throws `ReferenceError: <plugin> is not defined` on first import. Removing the step silently re-breaks every cockpit terminal spawn (#11043).
+- **The TUI must survive narrow terminals.** `components/ChatPane.ts` renders the editor at `innerWidth - 3` and `components/MainScreen.ts` clips every assembled line via `truncateToWidth`, because the cockpit xterm can be ~40 columns on a phone and the TUI's overflow guard aborts the whole render otherwise (#11043). A regression here is covered by `components/narrow-terminal.test.ts`.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

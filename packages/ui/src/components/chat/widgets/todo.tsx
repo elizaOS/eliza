@@ -4,6 +4,7 @@ import { client } from "../../../api";
 import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
@@ -148,6 +149,9 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
     t: s.t,
   }));
   const t = appT ?? fallbackTranslate;
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 15s todo poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
   const [todos, setTodos] = useState<WorkbenchTodo[]>(() =>
     dedupeTodos(workbench?.todos ?? []),
   );
@@ -170,7 +174,7 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
 
   const loadTodos = useCallback(
     async (silent = false) => {
-      if (!supportsFullAppShellRoutes(client.getBaseUrl())) {
+      if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
         if (mountedRef.current) {
           setTodos(dedupeTodos(workbench?.todos ?? []));
           setTodosLoading(false);
@@ -197,7 +201,7 @@ function TodoSidebarWidget({ slot }: ChatSidebarWidgetProps) {
         }
       }
     },
-    [workbench?.todos],
+    [authenticated, workbench?.todos],
   );
 
   useEffect(() => {

@@ -1,10 +1,14 @@
 // Interaction coverage for the decomposed personal-assistant domain views
-// (calendar, documents, finances, focus, goals, health, inbox, todos). These are
-// dynamic plugin views; the ui-smoke stub now registers their bundles so they
-// render (not the launcher fallback). calendar/documents/inbox have real client
-// controls (tabs, channel filters) which we drive; the rest are display
-// scaffolds whose render we assert. This is the interaction owner that closes
-// INTERACTION_DEBT in view-interaction-coverage.test.ts.
+// (calendar, finances, focus, goals, health, inbox, todos, relationships).
+// These are dynamic plugin views; the ui-smoke stub registers their bundles so
+// they render (not the launcher fallback). Each `<Domain>View` is the unified
+// spatial wrapper (the author-once GUI/XR/TUI component) — it renders the SAME
+// DOM on the desktop `chromium` and Pixel-7 `mobile-chromium` lanes, so every
+// assertion below is a viewport-independent semantic outcome: populated content
+// from the mocked lifeops endpoints plus a real state-changing interaction
+// (channel/kind/status filters, the calendar mode control). This is the
+// interaction owner that closes INTERACTION_DEBT in
+// view-interaction-coverage.test.ts.
 
 import { expect, test } from "@playwright/test";
 import {
@@ -21,29 +25,36 @@ test.beforeEach(async ({ page }) => {
 test("calendar decomposed view: day/week/month view-mode control switches", async ({
   page,
 }) => {
-  // /calendar now mounts the rich CalendarSection (nav + SegmentedControl
-  // view-mode control + grid), not the old day/week/month placeholder switcher.
+  // /calendar mounts the unified CalendarView (period nav + Day/Week/Month mode
+  // control + agenda). The feed mock anchors "Design sync" at the window start,
+  // so the agenda renders populated.
   await openAppPath(page, "/calendar");
-  await expect(
-    page.getByTestId("lifeops-calendar-section").first(),
-  ).toBeVisible({ timeout: 60_000 });
-
-  // The view-mode control is a SegmentedControl whose buttons expose accessible
-  // names ("Day" / "Week" / "Month") with aria-pressed — drive it by role+name
-  // (Playwright-preferred) rather than a testId. Week is the default selection.
-  // exact:true so "Day" does not substring-match the "Today" nav button.
-  const week = page.getByRole("button", { name: "Week", exact: true }).first();
   const day = page.getByRole("button", { name: "Day", exact: true }).first();
-  await expect(week).toBeVisible({ timeout: 15_000 });
-  await expect(week).toHaveAttribute("aria-pressed", "true", {
-    timeout: 10_000,
-  });
-  await day.click();
-  await expect(day).toHaveAttribute("aria-pressed", "true", {
-    timeout: 10_000,
+  const week = page.getByRole("button", { name: "Week", exact: true }).first();
+  await expect(week).toBeVisible({ timeout: 60_000 });
+  await expect(day).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Design sync").first()).toBeVisible({
+    timeout: 15_000,
   });
 
-  // The feed mock seeds events inside the window, so the grid renders populated.
+  // Switching Week → Day is a real state change: useCalendarWeek refetches the
+  // feed with a single-day window (week fetches 7 days, month a whole grid).
+  // Assert the narrowed window request, then that the agenda re-renders
+  // populated (the mock re-anchors its events to the new window start).
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+  const dayWindowFeed = page.waitForRequest(
+    (request) => {
+      if (!request.url().includes("/api/lifeops/calendar/feed")) return false;
+      const url = new URL(request.url());
+      const timeMin = Date.parse(url.searchParams.get("timeMin") ?? "");
+      const timeMax = Date.parse(url.searchParams.get("timeMax") ?? "");
+      if (!Number.isFinite(timeMin) || !Number.isFinite(timeMax)) return false;
+      return timeMax - timeMin <= 2 * ONE_DAY_MS;
+    },
+    { timeout: 15_000 },
+  );
+  await day.click();
+  await dayWindowFeed;
   await expect(page.getByText("Design sync").first()).toBeVisible({
     timeout: 15_000,
   });
@@ -55,83 +66,191 @@ test("calendar decomposed view: day/week/month view-mode control switches", asyn
 // view-interaction-coverage.test.ts.
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
+  // /inbox renders the populated triage list from the inbox mock: an Email
+  // (gmail) thread and a Discord thread.
   await openAppPath(page, "/inbox");
+  await expect(page.getByText("Invoice #42 overdue").first()).toBeVisible({
+    timeout: 60_000,
+  });
   await expect(
-    page.getByRole("heading", { name: /^Inbox$/ }).first(),
-  ).toBeVisible({ timeout: 60_000 });
+    page.getByText("gm everyone — standup in 10").first(),
+  ).toBeVisible({ timeout: 15_000 });
 
-  const email = page.getByRole("button", { name: /^Email$/ });
-  await expect(email).toBeVisible({ timeout: 15_000 });
-  const before = await email.getAttribute("aria-pressed");
-  await email.click();
-  await expect.poll(() => email.getAttribute("aria-pressed")).not.toBe(before);
+  // Activating a channel chip narrows the server query (?channels=<channel>)
+  // and the rendered list: the active chip is renamed "* <Channel>", its
+  // thread stays, and the other channel's thread disappears.
+  //
+  // KNOWN BUG (documented, not accepted): the first chip in the row ("Email")
+  // sits under the shell's floating "Go back" button (fixed, z-60, top-left),
+  // which intercepts pointer events on BOTH the desktop and Pixel-7 lanes, so
+  // the Email chip is untappable. Drive the same filter semantics through the
+  // "Discord" chip (clear of the overlay) until the shell occlusion is fixed.
+  await page.getByRole("button", { name: "Discord", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "* Discord", exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByText("gm everyone — standup in 10").first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Invoice #42 overdue")).toHaveCount(0, {
+    timeout: 15_000,
+  });
 });
 
 test("finances decomposed view: renders the financial summary", async ({
   page,
 }) => {
+  // The money mocks seed a source + dashboard + transactions + recurring, so
+  // FinancesView lands on its populated branch: the net balance, the "Latte"
+  // transaction, and the Netflix recurring charge.
   await openAppPath(page, "/finances");
-  await expect(
-    page.getByRole("heading", { name: /Balance/i }).first(),
-  ).toBeVisible({ timeout: 60_000 });
-  // The feed mock seeds payment sources + transactions, so FinancesView lands on
-  // its populated branch (Recent transactions list), not the empty state.
-  await expect(
-    page.getByRole("heading", { name: /Recent transactions/i }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("$2,765.50").first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText("Transactions (1)").first()).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByText("Latte").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Recurring (1)").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Netflix").first()).toBeVisible({
     timeout: 15_000,
   });
 });
 
 test("focus decomposed view: renders the focus scaffold", async ({ page }) => {
+  // The website-blocker mock reports enabled:false, so FocusView resolves to
+  // its idle branch (not loading, not error, not "Focus unavailable").
   await openAppPath(page, "/focus");
-  await expect(
-    page.getByRole("heading", { name: /^Focus$/ }).first(),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(
-    page.getByText(/No active focus session\./i).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Idle", { exact: true }).first()).toBeVisible({
+    timeout: 60_000,
+  });
 });
 
 test("goals decomposed view: renders the goals scaffold", async ({ page }) => {
+  // The goals mock seeds one active goal + one paused goal (flagged
+  // needs_attention → the "1 goal needs a review." proactive line).
   await openAppPath(page, "/goals");
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible({
+    timeout: 60_000,
+  });
   await expect(
-    page.getByRole("heading", { name: /^Goals$/ }).first(),
-  ).toBeVisible({ timeout: 60_000 });
+    page.getByText("Learn conversational Spanish").first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("1 goal needs a review.").first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Toggling the "Active" status chip narrows the groups: the paused goal
+  // disappears, the active goal stays.
+  await page.getByRole("button", { name: "Active", exact: true }).click();
+  await expect(page.getByText("Learn conversational Spanish")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Run a half marathon").first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 test("health decomposed view: renders the health regions", async ({ page }) => {
+  // The sleep mocks populate the three health regions: last night, regularity,
+  // and the personal baseline. 465 min → the "7h 45m" duration readout.
   await openAppPath(page, "/health");
   await expect(
-    page.getByRole("heading", { name: /^Health$/ }).first(),
+    page.getByRole("heading", { name: "Last sleep" }).first(),
   ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByRole("heading", { name: "Regularity" }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { name: "Baseline" }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("7h 45m").first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 test("todos decomposed view: renders the todo lanes", async ({ page }) => {
+  // The todos mock seeds one item per lane, so all three lanes render with
+  // their counts and titles.
   await openAppPath(page, "/todos");
+  await expect(page.getByText("Today (1)").first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText("Upcoming (1)").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Someday (1)").first()).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(
-    page.getByRole("heading", { name: /^Todos$/ }).first(),
-  ).toBeVisible({ timeout: 60_000 });
+    page.getByText("Submit the quarterly report").first(),
+  ).toBeVisible({ timeout: 15_000 });
 });
 
 test("relationships decomposed view: renders the graph and toggles a kind filter", async ({
   page,
 }) => {
-  // /relationships mounts the RelationshipsView knowledge-graph viewer. The
-  // helper mocks GET /api/lifeops/entities + /api/lifeops/relationships with a
-  // populated graph, so the view lands on its populated branch with entity
-  // cards. Toggling the "Organizations" kind filter narrows the visible cards.
+  // /relationships mounts the unified RelationshipsView. The helper mocks
+  // GET /api/lifeops/entities + /api/lifeops/relationships with a populated
+  // graph (Owner, Pat Doe, Acme Corp), so the view lands on its populated
+  // branch. Toggling the "Organizations" kind filter narrows the node list to
+  // the organization node only; "All" restores it.
   await openAppPath(page, "/relationships");
-  await expect(
-    page.getByRole("heading", { name: /^Relationships$/ }).first(),
-  ).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByText("Pat Doe").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Acme Corp").first()).toBeVisible({
+    timeout: 15_000,
+  });
 
-  const orgs = page.getByRole("button", { name: "Organizations" });
-  await expect(orgs).toBeVisible({ timeout: 15_000 });
-  const before = await orgs.getAttribute("aria-pressed");
-  await orgs.click();
-  await expect.poll(() => orgs.getAttribute("aria-pressed")).not.toBe(before);
+  // #11145 (fixed): the graph container is clamped to the viewport
+  // (`w-full max-w-full` + internal `overflow-auto`), so the zoomed SVG pans
+  // INSIDE it instead of stretching the layout box to the SVG width (was
+  // measured at 1188px on a 412px Pixel-7 viewport → horizontal page scroll).
+  // Assert the container's rendered box never exceeds the viewport width.
+  const viewport = page.viewportSize();
+  if (viewport) {
+    const box = await page
+      .locator("[data-graph-container]")
+      .first()
+      .boundingBox();
+    expect(box, "graph container should be laid out").not.toBeNull();
+    if (box) {
+      // +1px slack for sub-pixel rounding.
+      expect(box.width).toBeLessThanOrEqual(viewport.width + 1);
+    }
+  }
+
+  await page
+    .getByRole("button", { name: "Organizations", exact: true })
+    .click();
+  await expect(page.getByText("Graph (1)").first()).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Pat Doe")).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByText("Acme Corp").first()).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Clicking the active kind chip again deselects it (back to every kind).
+  // KNOWN BUG (documented, not accepted): the dedicated "All" chip is the
+  // first chip in the row and sits under the shell's floating "Go back"
+  // button (fixed, z-60, top-left) on both lanes, so it is untappable — same
+  // occlusion as the inbox "Email" chip. The toggle-off path exercises the
+  // same restore semantics.
+  await page
+    .getByRole("button", { name: "Organizations", exact: true })
+    .click();
+  await expect(page.getByText("Graph (3)").first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 /**
@@ -148,9 +267,23 @@ async function touchPinch(
 ) {
   const box = await page.locator(selector).first().boundingBox();
   if (!box) throw new Error(`no bounding box for ${selector}`);
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  const startGap = Math.min(60, box.width / 4);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("no viewport size");
+  // Defensive (post-#11145): the graph container is now viewport-clamped, so
+  // its box should already fit on-screen — but a partially-scrolled or
+  // off-origin target is still possible, so pinch at the centre of the
+  // container ∩ viewport intersection to guarantee fingers land on VISIBLE
+  // pixels regardless.
+  const left = Math.max(box.x, 0);
+  const right = Math.min(box.x + box.width, viewport.width);
+  const top = Math.max(box.y, 0);
+  const bottom = Math.min(box.y + box.height, viewport.height);
+  if (right - left < 80 || bottom - top < 40) {
+    throw new Error(`${selector} is not sufficiently on-screen for a pinch`);
+  }
+  const cx = (left + right) / 2;
+  const cy = (top + bottom) / 2;
+  const startGap = Math.min(60, (right - left) / 4);
   const points = (gap: number) => [
     { x: cx - gap, y: cy, id: 0 },
     { x: cx + gap, y: cy, id: 1 },
@@ -181,12 +314,73 @@ async function touchPinch(
   }
 }
 
+/**
+ * A populated RelationshipsGraphSnapshot for the BUILT-IN relationships
+ * workspace at /apps/relationships (a shell-reserved path), whose
+ * RelationshipsGraphPanel is the app's zoomable `[data-graph-container]` pinch
+ * surface. (The decomposed /relationships plugin view above is the spatial node
+ * LIST — it has no zoom surface.) Shape mirrors
+ * packages/ui/src/api/client-types-relationships.ts, wrapped in the `{ data }`
+ * envelope `getRelationshipsGraph` unwraps.
+ */
+function graphPerson(groupId: string, displayName: string, isOwner: boolean) {
+  return {
+    groupId,
+    primaryEntityId: `${groupId}-entity`,
+    memberEntityIds: [`${groupId}-entity`],
+    displayName,
+    aliases: [],
+    platforms: ["discord"],
+    identities: [],
+    emails: [],
+    phones: [],
+    websites: [],
+    preferredCommunicationChannel: null,
+    categories: [],
+    tags: [],
+    factCount: 1,
+    relationshipCount: 1,
+    isOwner,
+    profiles: [],
+  };
+}
+
+const PINCH_GRAPH_SNAPSHOT = {
+  data: {
+    people: [
+      graphPerson("grp-owner", "Owner", true),
+      graphPerson("grp-pat", "Pat Doe", false),
+    ],
+    relationships: [
+      {
+        id: "edge-owner-pat",
+        sourcePersonId: "grp-owner",
+        targetPersonId: "grp-pat",
+        sourcePersonName: "Owner",
+        targetPersonName: "Pat Doe",
+        relationshipTypes: ["colleague_of"],
+        sentiment: "positive",
+        strength: 3,
+        interactionCount: 12,
+        rawRelationshipIds: ["rel-1"],
+      },
+    ],
+    stats: { totalPeople: 2, totalRelationships: 1, totalIdentities: 2 },
+    candidateMerges: [],
+  },
+};
+
 test("relationships graph: two-finger pinch-out zooms in under REAL touch (not mouse)", async ({
   page,
 }) => {
-  // Same mocked graph data as the test above (beforeEach). Go straight for the
-  // pinch surface ([data-graph-container]) — the RelationshipsGraphPanel viewer.
-  await openAppPath(page, "/relationships");
+  await page.route("**/api/relationships/graph**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(PINCH_GRAPH_SNAPSHOT),
+    });
+  });
+  await openAppPath(page, "/apps/relationships");
   const container = page.locator("[data-graph-container]");
   await expect(container).toBeVisible({ timeout: 60_000 });
 

@@ -34,7 +34,7 @@ export function resolveOptions(
     process.env.PERSONALITY_JUDGE_MODEL?.trim() ||
     process.env.EVAL_MODEL?.trim() ||
     process.env.CEREBRAS_MODEL?.trim() ||
-    "gpt-oss-120b";
+    "gemma-4-31b";
   const passesRaw = Number(process.env.PERSONALITY_JUDGE_PASSES);
   const passes = Number.isFinite(passesRaw) && passesRaw > 0 ? passesRaw : 2;
   const timeoutRaw = Number(process.env.PERSONALITY_JUDGE_TIMEOUT_MS);

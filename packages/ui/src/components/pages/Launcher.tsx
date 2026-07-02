@@ -1,15 +1,12 @@
 /**
  * Launcher — iOS-like app/view launcher.
  *
- * Renders every available view as a names-only icon on swipeable pages plus a
- * pinned favorites dock. Tap launches; long-press enters edit mode where icons
- * can be reordered (drag), favorited into the dock, and — for manageable
- * (dynamic developer) views — edited or deleted. Page order is persisted via
- * the pure `launcher-layout` model. Favorites are
- * controlled-optional: when `onToggleFavorite` is supplied the dock reflects the
- * caller's `favoriteIds`; otherwise favorites are kept locally. Fully
- * token-themed (light/dark + overrides) and renders no background of its own —
- * the shared root `AppBackground` shows through, matching the home screen.
+ * Renders every available view as a names-only icon on swipeable pages. Tap
+ * launches; long-press enters edit mode where icons can be reordered (drag)
+ * and — for manageable (dynamic developer) views — edited or deleted. Page
+ * order is persisted via the pure `launcher-layout` model. Fully token-themed
+ * (light/dark + overrides) and renders no background of its own — the shared
+ * root `AppBackground` shows through, matching the home screen.
  */
 
 import { Pencil, Trash2 } from "lucide-react";
@@ -19,13 +16,11 @@ import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import {
-  LAUNCHER_DOCK_LIMIT,
   LAUNCHER_PAGE_SIZE,
   type LauncherLayout,
   moveIcon,
   readLauncherLayout,
   reconcileLayout,
-  toggleFavorite,
   writeLauncherLayout,
 } from "../../state/launcher-layout";
 import { emitViewInteraction } from "../../view-telemetry";
@@ -37,17 +32,14 @@ export interface LauncherProps {
   /**
    * Explicit, curated pages as ordered id lists (page 1 = apps, page 2 =
    * developer). When supplied the launcher renders these fixed pages read-only
-   * (no reorder / favorites / edit mode) instead of the persisted free-form
-   * layout; a group longer than one page paginates but never merges into the
-   * next group. Omit for the standalone/free-form launcher (stories, tests).
+   * (no reorder / edit mode) instead of the persisted free-form layout; a group
+   * longer than one page paginates but never merges into the next group. Omit
+   * for the standalone/free-form launcher (stories, tests).
    */
   pageGroups?: string[][];
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   onEdgeSwipeRight?: () => void;
-  /** When set, favorites are controlled by the caller (e.g. desktop tabs). */
-  favoriteIds?: string[];
-  onToggleFavorite?: (id: string) => void;
   /** Per-tile management for dynamic views, shown in edit mode when allowed. */
   canManageView?: (id: string) => boolean;
   onEditView?: (id: string) => void;
@@ -77,10 +69,8 @@ export interface LauncherProps {
 interface IconTileProps {
   entry: ViewEntry;
   editing: boolean;
-  favorited: boolean;
   manageable: boolean;
   onLaunch: (entry: ViewEntry) => void;
-  onToggleFavorite: (id: string) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onLongPress: () => void;
@@ -115,10 +105,8 @@ function viewKindBadge(entry: ViewEntry): {
 const IconTile = memo(function IconTile({
   entry,
   editing,
-  favorited,
   manageable,
   onLaunch,
-  onToggleFavorite,
   onEdit,
   onDelete,
   onLongPress,
@@ -176,7 +164,9 @@ const IconTile = memo(function IconTile({
             // ViewTileImage renders this surface as an app icon, not as a
             // cropped catalog preview. The button stays one constant hit target
             // and owns hover/focus chrome; the inner visual owns color/glyph.
-            "h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-black/35 text-white transition-colors hover:bg-black/45",
+            // Flat — no border; a subtle glass wash is the icon plate
+            // (neutral resting → neutral-with-opacity hover).
+            "h-16 w-16 overflow-hidden rounded-2xl bg-white/10 text-white transition-colors hover:bg-white/20",
             editing && "animate-pulse",
           )}
         >
@@ -192,32 +182,10 @@ const IconTile = memo(function IconTile({
           <span
             data-testid={`launcher-kind-${entry.id}`}
             title={badge.title}
-            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full border border-black/20 bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900 shadow-sm"
+            className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900"
           >
             {badge.label}
           </span>
-        ) : null}
-        {editing ? (
-          <button
-            type="button"
-            aria-label={
-              favorited ? `Unpin ${entry.label}` : `Pin ${entry.label}`
-            }
-            data-testid={`launcher-fav-${entry.id}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(entry.id);
-            }}
-            className={cn(
-              // Filled chips stay legible across image and dark tile backgrounds.
-              "absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border text-[11px] font-bold shadow-md",
-              favorited
-                ? "border-black/20 bg-accent text-white"
-                : "border-black/15 bg-white text-neutral-900",
-            )}
-          >
-            {favorited ? "★" : "+"}
-          </button>
         ) : null}
         {editing && manageable ? (
           <div className="absolute -left-1.5 -top-1.5 flex gap-1">
@@ -265,8 +233,6 @@ export function Launcher({
   loading = false,
   onLaunch,
   onEdgeSwipeRight,
-  favoriteIds,
-  onToggleFavorite,
   canManageView,
   onEditView,
   onDeleteView,
@@ -284,22 +250,9 @@ export function Launcher({
   const availableIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 
-  const controlled = onToggleFavorite != null;
-  const favorites = useMemo(
-    () => (controlled ? (favoriteIds ?? []) : null),
-    [controlled, favoriteIds],
-  );
-
   const [layout, setLayout] = useState<LauncherLayout>(() => {
     const stored = readLauncherLayout();
-    return reconcileLayout(
-      {
-        favorites: favorites ?? stored.favorites,
-        pages: stored.pages,
-        manual: stored.manual,
-      },
-      entries.map((e) => e.id),
-    );
+    return reconcileLayout(stored, availableIds);
   });
 
   // Active page index + edit mode are CONTROLLED when the caller (the
@@ -320,7 +273,7 @@ export function Launcher({
 
   const editingControlled = editingProp !== undefined;
   const [localEditing, setLocalEditing] = useState(false);
-  // Curated pages are read-only: never enter reorder/favorite edit mode.
+  // Curated pages are read-only: never enter reorder edit mode.
   const editing = grouped ? false : (editingProp ?? localEditing);
   const setEditingState = useCallback(
     (next: boolean) => {
@@ -330,19 +283,10 @@ export function Launcher({
     [editingControlled, onEditingChange],
   );
 
-  // Re-reconcile when the available views or controlled favorites change.
+  // Re-reconcile when the available views change (install/uninstall/sort).
   useEffect(() => {
-    setLayout((prev) =>
-      reconcileLayout(
-        {
-          favorites: favorites ?? prev.favorites,
-          pages: prev.pages,
-          manual: prev.manual,
-        },
-        availableIds,
-      ),
-    );
-  }, [availableIds, favorites]);
+    setLayout((prev) => reconcileLayout(prev, availableIds));
+  }, [availableIds]);
 
   // Keep the LOCAL active page index in range when pages shrink (views removed).
   // When controlled, the store clamps the page, so this only guards the
@@ -357,23 +301,6 @@ export function Launcher({
     setLayout(next);
     writeLauncherLayout(next);
   }, []);
-
-  const toggleFav = useCallback(
-    (id: string) => {
-      const wasFavorited = (favorites ?? layout.favorites).includes(id);
-      emitViewInteraction({
-        source: "launcher",
-        action: wasFavorited ? "unfavorite" : "favorite",
-        viewId: id,
-      });
-      if (controlled) {
-        onToggleFavorite?.(id);
-        return;
-      }
-      commit(reconcileLayout(toggleFavorite(layout, id), availableIds));
-    },
-    [controlled, onToggleFavorite, commit, layout, availableIds, favorites],
-  );
 
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
@@ -396,43 +323,27 @@ export function Launcher({
     setEditingState(!editing);
   }, [grouped, editing, setEditingState]);
 
-  // Cap the rendered dock at LAUNCHER_DOCK_LIMIT in BOTH modes. The
-  // uncontrolled path already enforces it via toggleFavorite; controlled
-  // (desktop-tab) favorites are capped at the pinning source too, but clamp
-  // here as defense so the dock can never overflow regardless of caller.
-  const favoriteIdList = useMemo(
-    () => (favorites ?? layout.favorites).slice(0, LAUNCHER_DOCK_LIMIT),
-    [favorites, layout.favorites],
-  );
-  // O(1) dock-membership check inside curation and tile rendering.
-  const favoriteSet = useMemo(() => new Set(favoriteIdList), [favoriteIdList]);
-
   // Curated mode chunks each supplied group onto its own page(s) so a group
   // boundary always starts a fresh page (page 1 = apps, page 2 = developer),
-  // never merging two groups even when the first is short. The default dock is
-  // still rendered above grouped pages, so docked apps stay out of the grid.
+  // never merging two groups even when the first is short.
   const curatedPages = useMemo(() => {
     if (!pageGroups) return null;
     const result: string[][] = [];
     for (const group of pageGroups) {
-      const present = group.filter(
-        (id) => byId.has(id) && !favoriteSet.has(id),
-      );
+      const present = group.filter((id) => byId.has(id));
       for (let i = 0; i < present.length; i += LAUNCHER_PAGE_SIZE) {
         result.push(present.slice(i, i + LAUNCHER_PAGE_SIZE));
       }
     }
     return result.length > 0 ? result : [[]];
-  }, [pageGroups, byId, favoriteSet]);
+  }, [pageGroups, byId]);
 
   const pages = useMemo(() => {
     const sourcePages =
       curatedPages ?? (layout.pages.length > 0 ? layout.pages : [[]]);
-    const filtered = sourcePages
-      .map((page) => page.filter((id) => !favoriteSet.has(id)))
-      .filter((page) => page.length > 0);
+    const filtered = sourcePages.filter((page) => page.length > 0);
     return filtered.length > 0 ? filtered : [[]];
-  }, [curatedPages, layout.pages, favoriteSet]);
+  }, [curatedPages, layout.pages]);
 
   // Report the page count up so an outer surface (the rail) can size the single
   // unified page indicator. Fires only on an actual count change.
@@ -440,13 +351,6 @@ export function Launcher({
     onPageCountChange?.(pages.length);
   }, [pages.length, onPageCountChange]);
   const clampedPage = Math.min(activePage, pages.length - 1);
-  const favoriteEntries = useMemo(
-    () =>
-      favoriteIdList
-        .map((id) => byId.get(id))
-        .filter((e): e is ViewEntry => e != null),
-    [byId, favoriteIdList],
-  );
 
   const handleReorder = useCallback(
     (pageIndex: number, nextIds: string[]) => {
@@ -466,14 +370,12 @@ export function Launcher({
   );
 
   const renderTile = useCallback(
-    (entry: ViewEntry, favorited: boolean) => (
+    (entry: ViewEntry) => (
       <IconTile
         entry={entry}
         editing={editing}
-        favorited={favorited}
         manageable={canManageView?.(entry.id) ?? false}
         onLaunch={handleLaunch}
-        onToggleFavorite={toggleFav}
         onEdit={onEditView}
         onDelete={onDeleteView}
         onLongPress={toggleEditMode}
@@ -483,18 +385,25 @@ export function Launcher({
       editing,
       canManageView,
       handleLaunch,
-      toggleFav,
       onEditView,
       onDeleteView,
       toggleEditMode,
     ],
   );
 
+  // The launcher owns EVERY horizontal gesture on its surface — inter-page
+  // paging AND the swipe-right-back-to-home (via onEdgeSwipeRight). Decoupling
+  // the edge-swipe from `showPageDots` is what lets the outer home↔launcher rail
+  // stand down entirely while the launcher is showing, so a swipe is tracked by
+  // exactly one pager instead of two stacked ones. The pager stays enabled for a
+  // single-page launcher too when the edge-swipe-home is available (otherwise a
+  // one-page launcher would have no way back).
+  const edgeSwipeRightEnabled = onEdgeSwipeRight != null;
   const pager = useHorizontalPager({
     page: clampedPage,
     pageCount: pages.length,
-    enabled: !editing && pages.length > 1,
-    edgeSwipeRightEnabled: showPageDots && onEdgeSwipeRight != null,
+    enabled: !editing && (pages.length > 1 || edgeSwipeRightEnabled),
+    edgeSwipeRightEnabled,
     onEdgeSwipeRight,
     onPageChange: (nextPage) => {
       setActivePage(nextPage);
@@ -511,20 +420,6 @@ export function Launcher({
       className={cn("flex min-h-0 flex-1 flex-col", className)}
       data-testid="launcher"
     >
-      {/* Favorites bar — pinned to the TOP of the launcher (not an iOS-style
-          bottom dock). There is no Edit button: long-press any icon toggles
-          edit mode (reorder / pin / unpin), and a right-flick leaves it. */}
-      {favoriteEntries.length > 0 ? (
-        <div
-          data-testid="launcher-dock"
-          className="mx-3 mt-2 mb-3 flex items-center justify-center gap-3 rounded-3xl border border-white/10 bg-black/45 px-3 py-3 sm:mx-4 sm:gap-4 sm:px-6"
-        >
-          {favoriteEntries.map((entry) => (
-            <div key={`dock-${entry.id}`}>{renderTile(entry, true)}</div>
-          ))}
-        </div>
-      ) : null}
-
       {/* Swipeable pages. Swipe paging is active only outside edit mode, so it
           never fights the in-tile drag-to-reorder gesture. A real rail is
           rendered so adjacent pages move with the finger, instead of swapping
@@ -554,7 +449,7 @@ export function Launcher({
                       key={id}
                       className="flex flex-col items-center gap-1.5 opacity-60"
                     >
-                      <div className="h-16 w-16 rounded-2xl border border-white/10 bg-white/15 shadow-sm" />
+                      <div className="h-16 w-16 rounded-2xl bg-white/15" />
                       <div className="h-2.5 w-12 rounded-full bg-white/25" />
                     </div>
                   ))}
@@ -596,7 +491,7 @@ export function Launcher({
                               dragListener={editing}
                               className="flex justify-center"
                             >
-                              {renderTile(entry, favoriteSet.has(id))}
+                              {renderTile(entry)}
                             </Reorder.Item>
                           );
                         })}
@@ -608,7 +503,7 @@ export function Launcher({
                           if (!entry) return null;
                           return (
                             <div key={id} className="flex justify-center">
-                              {renderTile(entry, favoriteSet.has(id))}
+                              {renderTile(entry)}
                             </div>
                           );
                         })}

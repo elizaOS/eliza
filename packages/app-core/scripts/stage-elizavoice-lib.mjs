@@ -40,6 +40,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.mjs";
+import { assertVulkanMaliMitigation } from "./build-helpers/verify-fused-symbols.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // scripts/ -> app-core -> packages -> eliza repo root
@@ -343,6 +344,17 @@ if (variant === "cpu") {
   }
 }
 
+// Gate the BUILT artifacts before anything touches the shipping jniLibs dir:
+// running the Mali check only after staging (as before) left the rejected
+// libggml-vulkan.so already copied over a previously-good set on a red run,
+// where a later gradle build that skips this script would package it.
+if (variant === "vulkan") {
+  assertVulkanMaliMitigation({
+    lib: path.join(binDir, "libelizainference.so"),
+    target: `android-${abi}-vulkan`,
+  });
+}
+
 const staged = [];
 for (const name of toStage) {
   const src = path.join(binDir, name);
@@ -376,6 +388,17 @@ if (muslNeeded.length > 0)
 if (variant === "vulkan") {
   const vulkanSo = path.join(jniDir, "libggml-vulkan.so");
   if (!existsSync(vulkanSo)) die("vulkan variant missing libggml-vulkan.so");
+  // Fail-closed Mali flash-attn gate (#9508) on what actually ships: a
+  // libggml-vulkan.so staged into jniLibs without the VK_VENDOR_ID_ARM
+  // disable_subgroups mitigation SIGABRTs mid-decode on Mali. The CI build
+  // path (compile-libllama.mjs) already gates via verify-fused-symbols; this
+  // closes the bypass where stage-elizavoice-lib populated the APK from a
+  // stale submodule working tree (observed 2026-06-24: mitigated gitlink,
+  // zero-marker staged lib).
+  assertVulkanMaliMitigation({
+    lib: engineSo,
+    target: `android-${abi}-vulkan`,
+  });
   log(`staged ${staged.length} libs (dynamic-Vulkan):`);
   for (const s of staged) log(`  ${path.basename(s)}`);
 } else {

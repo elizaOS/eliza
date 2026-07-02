@@ -42,8 +42,10 @@ import {
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
+  type BackIntentEventDetail,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
+  ELIZA_BACK_INTENT_EVENT,
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
@@ -54,6 +56,11 @@ import {
 } from "../../hooks/useLayoutShiftMonitor";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import {
+  clearChatDraft,
+  useChatComposerDraftPersistence,
+} from "../../state/ChatComposerContext.hooks";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -334,9 +341,9 @@ function SoftButton({
   );
 }
 
-/** A compact glass control for the full-state header (maximize / clear /
- *  settings). Smaller than SoftButton; same neutral resting → neutral-hover
- *  language (no blue), `active` gets the white fill. Renders a lucide icon. */
+/** A compact icon-only control for the full-state header (maximize / clear /
+ *  settings). Smaller than SoftButton; same borderless neutral resting →
+ *  neutral-hover language (no blue), `active` renders as the accent color. */
 function HeaderButton({
   icon: Icon,
   label,
@@ -362,14 +369,16 @@ function HeaderButton({
       aria-disabled={disabled || undefined}
       onClick={onClick}
       className={cn(
-        "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors",
-        "  ",
+        // Icon-only, same borderless language as SoftButton: no capsule, no
+        // background — the glyph alone carries the control. Neutral resting →
+        // neutral hover; active expresses as the accent color, never a fill.
+        "grid h-9 w-9 shrink-0 place-items-center bg-transparent transition-colors",
         disabled
           ? // On the view it targets: shown but inert + dimmed (we disable, not hide).
-            "cursor-default border-white/10 bg-white/[0.05] text-white/35"
+            "cursor-default text-white/35"
           : active
-            ? "border-white/40 bg-white/85 text-black"
-            : "border-white/15 bg-white/10 text-white/75 hover:bg-white/20 hover:text-white",
+            ? "text-accent"
+            : "text-white/75 hover:text-white",
       )}
     >
       <Icon className="h-[18px] w-[18px]" aria-hidden />
@@ -800,6 +809,21 @@ function isNestedInteractiveTarget(
 }
 
 /**
+ * True while there's a live (non-collapsed) text selection. The
+ * conversation-swipe binding lives on the transcript surface, which contains
+ * the selectable message bubbles — so a MOUSE drag to highlight bubble text
+ * travels horizontally and otherwise reads as a swipe, navigating away and
+ * destroying the selection on release. The swipe handlers consult this to skip
+ * navigation when the gesture was really a highlight, mirroring the ThreadLine
+ * tap-reveal guard (`window.getSelection()` non-collapsed). Touch drags don't
+ * create a selection, so a genuine finger swipe is unaffected.
+ */
+function hasLiveTextSelection(): boolean {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  return !!sel && sel.toString().trim().length > 0;
+}
+
+/**
  * One icon-only control in a message's click-to-reveal action row (#10713).
  * Overlay glass styling: no card fill, neutral resting → neutral-opacity hover;
  * an active (e.g. playing) control tints with the orange accent. `stopPropagation`
@@ -876,11 +900,15 @@ function ThreadLineEditor({
             onSave();
           } else if (e.key === "Escape") {
             e.preventDefault();
+            // Escape closes THIS editor only — stop it from bubbling to the
+            // overlay's document-level Escape handler, which would otherwise
+            // also collapse the whole chat sheet and discard the edit (#9148).
+            e.stopPropagation();
             onCancel();
           }
         }}
         rows={Math.min(6, Math.max(1, value.split("\n").length))}
-        className="w-full resize-none rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
+        className="w-full resize-none rounded-lg bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
       />
       <div className="flex items-center justify-end gap-1.5">
         <button
@@ -911,6 +939,7 @@ const ThreadLine = React.memo(function ThreadLine({
   onCopy,
   onSpeak,
   onEdit,
+  onRetry,
   speaking,
   onOpenSettings,
   turnStatus,
@@ -922,10 +951,15 @@ const ThreadLine = React.memo(function ThreadLine({
   /** Copy this message's text. Used by both the press-and-hold shortcut
    *  (assistant) and the reveal-row Copy control (both roles). Stable identity. */
   onCopy?: (text: string) => void;
-  /** Speak an assistant message aloud (reveal-row Play). Stable identity. */
-  onSpeak?: (text: string) => void;
+  /** Speak an assistant message aloud (reveal-row Play). Receives the message
+   *  id so the parent can track which bubble is playing. Stable identity. */
+  onSpeak?: (id: string, text: string) => void;
   /** Save an edited user message and resend it (reveal-row Edit). Stable id. */
   onEdit?: (text: string) => void;
+  /** Retry a failed/interrupted assistant turn — re-sends the preceding user
+   *  turn. Receives the assistant turn's id so the parent can walk back to the
+   *  user turn that produced it. Stable identity. */
+  onRetry?: (assistantId: string) => void;
   /** True while assistant voice output is playing — drives Play↔Stop. */
   speaking?: boolean;
   /** Jump to Settings from the no_provider gate. Stable identity. */
@@ -1022,6 +1056,17 @@ const ThreadLine = React.memo(function ThreadLine({
     isUser && !!onEdit && trimmed.length > 0 && !message.id.startsWith("temp-");
   const hasActions = canRowCopy || canSpeak || canEdit;
 
+  // A recoverable assistant failure (the agent was rate-limited or the provider
+  // stalled / the stream was interrupted) gets a one-tap Retry that re-sends the
+  // preceding user turn — mirroring ChatView's MessageContent gate. `no_provider`
+  // (its own Settings gate above) and `insufficient_credits` are excluded: a
+  // retry can't fix those.
+  const canRetry =
+    isAssistant &&
+    !!onRetry &&
+    (message.failureKind === "rate_limited" ||
+      message.failureKind === "provider_issue");
+
   const toggleRevealed = React.useCallback(() => {
     if (!hasActions || editing) return;
     // Never hijack a text-selection drag: a click that finishes a highlight must
@@ -1070,8 +1115,8 @@ const ThreadLine = React.memo(function ThreadLine({
   }, [onCopy, message.content]);
 
   const handleSpeak = React.useCallback(() => {
-    onSpeak?.(message.content);
-  }, [onSpeak, message.content]);
+    onSpeak?.(message.id, message.content);
+  }, [onSpeak, message.id, message.content]);
 
   const openEditor = React.useCallback(() => {
     setEditDraft(message.content);
@@ -1326,6 +1371,24 @@ const ThreadLine = React.memo(function ThreadLine({
             ) : null}
           </div>
         ) : null}
+        {/* Retry a recoverable failure by re-sending the preceding user turn.
+            Always visible on the failed turn (not gated behind the reveal row)
+            so a stalled turn isn't a dead end the user has to retype. */}
+        {canRetry ? (
+          <button
+            type="button"
+            data-testid="thread-line-retry"
+            aria-label="Retry"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRetry?.(message.id);
+            }}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            Retry
+          </button>
+        ) : null}
       </div>
     </motion.div>
   );
@@ -1432,6 +1495,13 @@ export function ContinuousChatOverlay({
     },
     onSwipeLeft: () => {
       setSwipeDx(0);
+      // A mouse highlight drag inside a bubble finishes here too; never switch
+      // the conversation out from under a live text selection (destroying it).
+      // Mirrors the ThreadLine tap-reveal selection guard.
+      if (hasLiveTextSelection()) {
+        swipeJank.end();
+        return;
+      }
       // Tag the flushed window with the committed direction so the ring shows
       // which way a janky swipe went (left → "next", the older conversation).
       swipeJank.end("next");
@@ -1439,6 +1509,10 @@ export function ContinuousChatOverlay({
     },
     onSwipeRight: () => {
       setSwipeDx(0);
+      if (hasLiveTextSelection()) {
+        swipeJank.end();
+        return;
+      }
       swipeJank.end("prev");
       conversationNav.goPrev();
     },
@@ -1450,17 +1524,34 @@ export function ContinuousChatOverlay({
     void copyTextToClipboard(text);
   }, []);
 
+  // Which message initiated the current voice playback, so ONLY that bubble
+  // shows Stop. The global `speaking` flag alone lit EVERY assistant bubble to
+  // "Stop" at once; scope the playing state to the actual source message.
+  // Cleared when playback ends (speaking true→false) so a stale id never
+  // re-lights an old bubble during the next, unrelated playback.
+  const [playingMessageId, setPlayingMessageId] = React.useState<string | null>(
+    null,
+  );
+  const wasSpeakingRef = React.useRef(false);
+  React.useEffect(() => {
+    if (wasSpeakingRef.current && !speaking) setPlayingMessageId(null);
+    wasSpeakingRef.current = speaking;
+  }, [speaking]);
+
   // Play an assistant message aloud from its reveal row (#10713). Toggling: a tap
-  // while already speaking stops playback; otherwise it speaks this message.
+  // on the message currently playing stops it; any other tap speaks that message
+  // (and marks it as the one playing, so only its bubble shows Stop).
   const handleSpeakMessage = React.useCallback(
-    (text: string) => {
-      if (speaking) {
+    (id: string, text: string) => {
+      if (speaking && playingMessageId === id) {
         stopSpeaking?.();
+        setPlayingMessageId(null);
         return;
       }
       speak?.(text);
+      setPlayingMessageId(id);
     },
-    [speaking, speak, stopSpeaking],
+    [speaking, playingMessageId, speak, stopSpeaking],
   );
 
   // Save an edited user message and resend it as a new turn (#10713) — the same
@@ -1472,6 +1563,32 @@ export function ContinuousChatOverlay({
     [send],
   );
 
+  // Retry a failed/interrupted assistant turn by re-sending its preceding user
+  // turn — the SAME send() path the edit-resend action uses. (The ShellController
+  // exposes no handleChatRetry, so the overlay owns the walk-back locally; a
+  // truncating in-place retry would require a controller method we don't have.)
+  // Reads the live message list through a ref so the callback keeps a stable
+  // identity and the memoized ThreadLine isn't re-rendered on every tick.
+  const messagesRef = React.useRef(messages);
+  messagesRef.current = messages;
+  const handleRetry = React.useCallback(
+    (assistantId: string) => {
+      const list = messagesRef.current;
+      const assistantIdx = list.findIndex(
+        (m) => m.id === assistantId && m.role === "assistant",
+      );
+      if (assistantIdx < 0) return;
+      for (let i = assistantIdx - 1; i >= 0; i -= 1) {
+        if (list[i].role === "user") {
+          const retryText = list[i].content.trim();
+          if (retryText) send(retryText);
+          return;
+        }
+      }
+    },
+    [send],
+  );
+
   const slash = slashProp ?? EMPTY_SLASH_CONTROLLER;
 
   // Honor the OS "reduce motion" setting: every overlay animation collapses to
@@ -1479,6 +1596,27 @@ export function ContinuousChatOverlay({
   const reduce = useReducedMotion() ?? false;
 
   const [draft, setDraft] = React.useState("");
+  // Per-conversation composer draft persistence — the SAME localStorage-backed
+  // store the desktop ChatView surface uses (readChatDraft/writeChatDraft via
+  // useChatComposerDraftPersistence), keyed by the active conversation id. This
+  // closes the platform gap where only ChatView restored a draft: on the ambient
+  // overlay (mobile/web/default-desktop) a draft typed here now survives a reload
+  // / navigation and follows the conversation across surfaces. Restore fires on
+  // mount and on a conversation-id change; the persist is debounced. It coexists
+  // with the prefill (CHAT_PREFILL / assistant-launch) and dictation paths: those
+  // setDraft() edits are persisted like any keystroke, and restore only fires on a
+  // conversation-id change — so a just-prefilled composer is never clobbered. The
+  // successful-send path clears it (below).
+  const activeConversationId = conversationNav.activeId;
+  useChatComposerDraftPersistence({
+    activeConversationId,
+    chatInput: draft,
+    setChatInput: setDraft,
+  });
+  // Live handle to the active conversation id for the send path's draft clear,
+  // so submitText / pickSuggestion keep their stable identities.
+  const activeConversationIdRef = React.useRef(activeConversationId);
+  activeConversationIdRef.current = activeConversationId;
   // The active view can take over the composer: override the placeholder and
   // receive the live draft (e.g. Help uses the chat as its search box).
   const viewChatBinding = useViewChatBinding();
@@ -1673,6 +1811,14 @@ export function ContinuousChatOverlay({
   // that the normal "tap the visible composer" path relies on (which would
   // fling a history thread open to half instead of resting on the input bar).
   const suppressExpandOnFocusRef = React.useRef(false);
+  // A focus→expand that found nothing revealable yet (the boot race: composer
+  // focused while the restored conversation's messages are still in flight)
+  // parks its intent here. The reveal-edge effect below honors it — but only
+  // while the composer is STILL focused — so focusing the composer opens the
+  // chat even when the focus wins the race against the thread load. Consumed
+  // on every reveal edge so a stale intent can never fling the sheet open long
+  // after the user has moved on.
+  const pendingExpandOnRevealRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
   // Recomputed only when the thread or phase changes — NOT on every drag/draft
   // re-render. Pure windowing (empty-turn filter + most-recent cap, with the
@@ -1764,7 +1910,8 @@ export function ContinuousChatOverlay({
           onCopy={handleCopyMessage}
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
-          speaking={speaking}
+          onRetry={handleRetry}
+          speaking={speaking && playingMessageId === m.id}
           onOpenSettings={openSettings}
           turnStatus={isInFlight ? turnStatus : undefined}
           suppressReasoning={responding && isLastAssistant}
@@ -1777,7 +1924,9 @@ export function ContinuousChatOverlay({
       handleCopyMessage,
       handleSpeakMessage,
       handleEditResend,
+      handleRetry,
       speaking,
+      playingMessageId,
       openSettings,
       responding,
       turnStatus,
@@ -1912,6 +2061,10 @@ export function ContinuousChatOverlay({
       // reaches the server. The composer controls are disabled too — this
       // guards the event-driven entry points (prefill, dictation, slash).
       if (firstRunOpen) return;
+      // Successful submit: drop the persisted draft for this conversation NOW
+      // (not just via the debounced persist of the now-empty draft) so a reload
+      // in the debounce window can't restore an already-sent draft.
+      clearChatDraft(activeConversationIdRef.current);
       // A bound view (e.g. the coding cockpit when a session is focused) can
       // claim the send to drive its OWN target instead of the host agent. If it
       // consumes the text, clear the composer and stop — do not fall through to
@@ -1963,6 +2116,7 @@ export function ContinuousChatOverlay({
     (text: string) => {
       if (!canSend) return;
       setDraft("");
+      clearChatDraft(activeConversationIdRef.current);
       send(text);
       // Open to HALF (conversation above the keyboard), not a full-screen jump.
       setFreeH(null);
@@ -2718,12 +2872,40 @@ export function ContinuousChatOverlay({
   // handle) can return to that prior resting state. Clears any free-rest so the
   // height matches the detent (no stale freeH pinning it below half).
   const expand = React.useCallback(() => {
-    if (!hasRevealableThread) return;
+    if (!hasRevealableThread) {
+      // Nothing to reveal YET — don't open an empty sheet, but remember the
+      // intent: on boot the composer can gain focus while the restored
+      // conversation's messages are still in flight, and dropping the expand
+      // here made focus-to-open silently do nothing (#11112). The reveal-edge
+      // effect below completes the open once the thread arrives, if the
+      // composer is still focused.
+      pendingExpandOnRevealRef.current = true;
+      return;
+    }
+    pendingExpandOnRevealRef.current = false;
     preFocusCollapsedRef.current = !sheetOpen;
     setFreeH(null);
     // Open to at least HALF; if already at half/full, keep the taller mode.
     setMode((m) => (m === "half" || m === "full" ? m : "half"));
   }, [hasRevealableThread, sheetOpen]);
+
+  // Reveal edge: the thread just became showable. If a focus→expand was parked
+  // while there was nothing to reveal (see expand above), honor it now — but
+  // only while the composer is STILL focused, so a long-abandoned focus can't
+  // pop the sheet open. The intent is consumed either way (one-shot). A
+  // pill-open keyboard-raise never parks an intent (its focus is suppressed
+  // before expand runs), so the suppressExpandOnFocusRef contract holds.
+  React.useEffect(() => {
+    if (!hasRevealableThread || !pendingExpandOnRevealRef.current) return;
+    pendingExpandOnRevealRef.current = false;
+    if (
+      typeof document === "undefined" ||
+      document.activeElement !== inputRef.current
+    ) {
+      return;
+    }
+    expand();
+  }, [hasRevealableThread, expand]);
 
   // Interactive tour control: the tutorial drives the chat into a clean, known
   // state at the start of each frame (so the spotlight always lands on the right
@@ -2802,6 +2984,60 @@ export function ContinuousChatOverlay({
     window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
     return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
   }, [clearPrefillFocusSchedule]);
+
+  // OS assistant / deep-link entry (Siri, Shortcuts, App Actions, the assistant
+  // entry point) routes into `#chat?text=…&source=…&voice=1`. On desktop the
+  // detached window's ChatView claims it, but the ambient overlay (mobile, web,
+  // default desktop bottom-bar) is the ONLY chat surface there — so it must
+  // claim the launch payload itself. We PREFILL (never auto-send) the composer:
+  // the `text` is attacker-authorable, so the user reviews it and presses send.
+  // `claimAssistantLaunchPayloadFromHash` dedupes by launchId and clears the
+  // hash, so a re-render / second mount never re-consumes the same launch.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const consumeFromHash = () => {
+      const hash = window.location.hash;
+      // Read the voice flag off the ORIGINAL hash first — claiming clears the
+      // launch params (text/source/action/launchId) but leaves `voice`, and we
+      // want the intent regardless of ordering.
+      const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+      const wantsVoice = new URLSearchParams(query).get("voice") === "1";
+      const payload = claimAssistantLaunchPayloadFromHash(hash, {
+        allowedRoutes: ["chat"],
+      });
+      if (!payload) return;
+      setMode((m) => (m === "pill" ? "input" : m));
+      setDraft(payload.text);
+      // Open the history sheet (no-op when there's no thread yet) and focus the
+      // composer so the prefilled text is ready to review + send.
+      expand();
+      const focusComposer = () => {
+        prefillFocusFrameRef.current = null;
+        prefillFocusTimerRef.current = null;
+        inputRef.current?.focus();
+      };
+      clearPrefillFocusSchedule();
+      if (typeof window.requestAnimationFrame === "function") {
+        prefillFocusFrameRef.current =
+          window.requestAnimationFrame(focusComposer);
+      } else {
+        prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
+      }
+      // A `voice=1` launch also starts hands-free voice capture (the same intent
+      // a mic tap carries). Only when not already live, so it never toggles an
+      // in-progress session off.
+      if (wantsVoice && !handsFree && !recording) toggleHandsFree();
+    };
+    consumeFromHash();
+    window.addEventListener("hashchange", consumeFromHash);
+    return () => window.removeEventListener("hashchange", consumeFromHash);
+  }, [
+    clearPrefillFocusSchedule,
+    expand,
+    handsFree,
+    recording,
+    toggleHandsFree,
+  ]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
@@ -3146,15 +3382,22 @@ export function ContinuousChatOverlay({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // An open Radix dialog (data-state="open" — e.g. the command palette)
-        // or the notification pull-down sheet (mounts only while open) sits
+        // or a notification surface (the mobile pull-down sheet or the desktop
+        // anchored panel — both mount only while open; the panel carries
+        // role="dialog" with NO data-state="open") sits
         // above the chat: let ITS Escape handling win — collapsing here too
         // closed both at once (e.g. an invisible palette + the chat). Scoped
         // to exactly these; broad role="dialog" would match always-mounted
         // shell surfaces (AssistantOverlay, tutorial card) and permanently
         // disable Escape-collapse.
+        //
+        // Also defer while the transcript viewer is open or a per-message edit
+        // is in progress: neither carries `[data-state="open"]`, so Escape must
+        // close THAT first (the viewer's own handler / the editor's Cancel) and
+        // NOT also collapse the whole sheet + discard the in-progress edit.
         if (
           document.querySelector(
-            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"]',
+            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="notification-panel"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
           )
         ) {
           return;
@@ -3166,6 +3409,30 @@ export function ContinuousChatOverlay({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [sheetOpen, collapse]);
+
+  // Android hardware/gesture back closes the open chat sheet FIRST — the same
+  // "dismiss the open surface" behavior desktop/web get from Escape (#9148).
+  // `main.tsx` dispatches ELIZA_BACK_INTENT on the Capacitor `backButton` press;
+  // while the sheet is open (and not pinned by onboarding) we collapse it via
+  // the shared `collapse` path and flip `detail.handled` so native does NOT ALSO
+  // run history.back()/minimizeApp() and navigate the app out from under it. At
+  // rest (input/pill) — or while first-run pins the sheet open + undismissable —
+  // we leave the intent unhandled so native falls through to its default back
+  // (backgrounding the app instead of freezing). Web/desktop never dispatch the
+  // event, so this is inert there.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onBackIntent = (event: Event) => {
+      const detail = (event as CustomEvent<BackIntentEventDetail>).detail;
+      if (!detail || detail.handled) return;
+      if (!sheetOpen || firstRunOpen) return;
+      detail.handled = true;
+      collapse();
+    };
+    window.addEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+    return () =>
+      window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
+  }, [sheetOpen, firstRunOpen, collapse]);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
@@ -3765,6 +4032,31 @@ export function ContinuousChatOverlay({
               pointerEvents: pilled ? "none" : "auto",
               borderRadius: fullBleed ? 0 : panelRadius,
             }}
+            // Drag-and-drop attachment intake (#10722). The old ChatView chat
+            // surface accepted file drops; the overlay replaced it with only
+            // paste + the attach button. Dropped files run the SAME intake
+            // pipeline as both of those (addImageFiles → intakeAttachmentFiles),
+            // so size caps, type support, and the pending-attachment strip all
+            // behave identically. dragover must preventDefault for the browser
+            // to allow the drop at all; only file drags are claimed so
+            // text-selection drags keep their native behavior.
+            onDragOver={(event) => {
+              if (event.dataTransfer?.types?.includes("Files")) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }
+            }}
+            onDrop={(event) => {
+              // preventDefault for ANY claimed file drag (dragover advertised
+              // droppability): bailing on an empty file list would hand the
+              // drop to the browser default — navigating to the local file.
+              if (!event.dataTransfer?.types?.includes("Files")) return;
+              event.preventDefault();
+              const files = event.dataTransfer.files;
+              if (files.length > 0) {
+                addImageFiles(files);
+              }
+            }}
           >
             {/* Conversation-swipe edge hints (#8929): glow the edge the next /
                 previous conversation will slide in from as the user drags. */}
@@ -4100,8 +4392,9 @@ export function ContinuousChatOverlay({
                 // Equal inset on all sides (px == py): a round button nested in
                 // the pill's round end-cap reads as concentric, with the same
                 // gap on the sides as top/bottom.
+                // No divider above the composer — spacing separates it from the
+                // thread; the sheet is one continuous glass surface (#10710).
                 "relative z-10 flex min-w-0 shrink-0 items-center gap-1.5 px-2 py-2 sm:gap-2",
-                sheetOpen ? "border-t border-white/10" : "",
               )}
               // Full-bleed has no overlay bottom padding (the panel is
               // edge-to-edge), so the composer carries the home-gesture
@@ -4175,6 +4468,19 @@ export function ContinuousChatOverlay({
                   }
                 }}
                 onKeyDown={(e) => {
+                  // Never treat the Enter that COMMITS an IME composition as a
+                  // command/send key: while a CJK/other IME is composing, the
+                  // browser fires this keydown with `isComposing` true (legacy
+                  // engines report keyCode 229) and the Enter only accepts the
+                  // candidate. Guard BOTH the slash-resolve and the submit below
+                  // so committing a candidate never fires either (#9148). Let it
+                  // fall through to the textarea/IME as its default.
+                  if (
+                    e.key === "Enter" &&
+                    (e.nativeEvent.isComposing || e.keyCode === 229)
+                  ) {
+                    return;
+                  }
                   // The slash menu intercepts navigation/commit keys when open.
                   if (slashOpen) {
                     if (e.key === "ArrowDown") {
@@ -4211,6 +4517,7 @@ export function ContinuousChatOverlay({
                     }
                   }
                   // Enter sends; Shift+Enter inserts a newline (multi-line compose).
+                  // (An IME-composition Enter was already filtered out above.)
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     submit();
@@ -4312,7 +4619,11 @@ export function ContinuousChatOverlay({
                       icon={Mic}
                       label={
                         pttHolding
-                          ? "release to send"
+                          ? // Press-and-hold dictates into the composer draft; a
+                            // release drops the transcript into the text box and
+                            // does NOT send (see beginPushToTalkPress /
+                            // setDictationSink). Label the real behavior.
+                            "release to insert"
                           : transcriptionMode
                             ? "stop transcription"
                             : handsFree

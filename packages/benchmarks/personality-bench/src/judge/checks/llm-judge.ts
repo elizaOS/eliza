@@ -1,7 +1,8 @@
 /**
  * @fileoverview LLM-judge cross-check layer.
  *
- * Wraps Cerebras gpt-oss-120b (OpenAI-compatible). The judge runs `passes`
+ * Wraps a Cerebras judge model (OpenAI-compatible; default gemma-4-31b). The
+ * judge runs `passes`
  * independent calls with temperature=0 and slightly perturbed system prompts;
  * agreement across passes drives confidence. Disagreement always routes to
  * NEEDS_REVIEW — never a silent flip.

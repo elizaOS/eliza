@@ -1042,8 +1042,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async createEntities(entities: Entity[]): Promise<UUID[]> {
     return this.withDatabase(async () => {
-      // Pre-assign IDs so we can recover existing rows on a duplicate-key
-      // collision (treat duplicates as already-created → success).
+      // Pre-assign IDs so duplicates (by id) can be reported as
+      // already-created → success (idempotent create; see ON CONFLICT below).
       const normalizedEntities = entities.map((entity) => {
         const { names, metadata, ...normalizedEntity } = entity as Entity & {
           names?: unknown;
@@ -1060,20 +1060,30 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       });
 
       try {
-        return await this.db.transaction(async (tx) => {
-          await tx.insert(entityTable).values(normalizedEntities);
-          return normalizedEntities.map((entity) => entity.id as UUID);
-        });
-      } catch (error) {
-        if (isDuplicateKeyError(error)) {
-          // Entities with these IDs already exist — return them so callers
-          // see this as a successful (idempotent) create.
+        // ON CONFLICT DO NOTHING keeps the create idempotent per row: rows
+        // whose id already exists are skipped (never clobbered — that's
+        // upsertEntities' job) while the rest of the batch still lands. The
+        // previous catch-on-duplicate approach rolled back the whole batch and
+        // then claimed success for entities that were never written. Both of
+        // entityTable's unique constraints (PK id, unique(id, agentId)) are
+        // id-based, so any conflict here is a duplicate id.
+        const inserted = await this.db
+          .insert(entityTable)
+          .values(normalizedEntities)
+          .onConflictDoNothing()
+          .returning();
+        if (inserted.length < normalizedEntities.length) {
           logger.warn(
-            { src: "plugin:sql", entityId: entities[0]?.id },
-            "Entities already exist; returning existing IDs"
+            {
+              src: "plugin:sql",
+              requested: normalizedEntities.length,
+              inserted: inserted.length,
+            },
+            "Some entities already existed; treating them as created"
           );
-          return normalizedEntities.map((entity) => entity.id as UUID);
         }
+        return normalizedEntities.map((entity) => entity.id as UUID);
+      } catch (error) {
         logger.error(
           {
             src: "plugin:sql",
@@ -1430,6 +1440,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
     const includeEmbedding = params.includeEmbedding !== false;
     const tableName = params.tableName;
+    // tableName is required by the IDatabaseAdapter contract (there is no
+    // default table for reads). Untyped callers that omit it must get a loud
+    // error, not a silent empty result from `type = undefined`.
+    if (!tableName) {
+      throw new Error("getMemories requires tableName");
+    }
     const textContains = params.textContains?.trim();
     // Honor either `limit` (canonical) or `count` (legacy) so callers that pass
     // only `limit` still get a LIMIT clause applied (see IDatabaseAdapter.getMemories).

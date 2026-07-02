@@ -53,6 +53,7 @@ import type {
   OrchestratorRoomRosterOverview,
 } from "../../../api/client-types-cloud";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
+import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../../state";
 import type { TranslateFn } from "../../../types";
@@ -360,6 +361,13 @@ function AppRunCard({
   );
 }
 
+// Stable fallbacks for mounts without a full AppContext (widget hosts in
+// fixtures/tests). Inline `?? (() => undefined)` fallbacks mint a NEW function
+// identity every render; setState sits in the poll effect's dep array, so an
+// unstable identity re-runs the effect on every render (the #11107 crash loop).
+const noopSetTab = () => undefined;
+const noopSetState = () => undefined;
+
 function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   const {
     appRuns,
@@ -372,10 +380,13 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
     setState: s.setState,
     t: s.t,
   }));
-  const setTab = appSetTab ?? (() => undefined);
-  const setState = appSetState ?? (() => undefined);
+  const setTab = appSetTab ?? noopSetTab;
+  const setState = appSetState ?? noopSetState;
   const t = appT ?? fallbackTranslate;
   const currentBaseUrl = useAppSelectorShallow(() => client.getBaseUrl());
+  // Auth gate (#11084): the widget mounts before the auth probe resolves, so
+  // the 5s run poll must stay dormant until the session is authenticated.
+  const authenticated = useIsAuthenticated();
   const [catalogApps, setCatalogApps] = useState<RegistryAppInfo[]>([]);
   const [runs, setRuns] = useState<AppRunSummary[]>(() =>
     Array.isArray(appRuns) ? appRuns : [],
@@ -431,9 +442,14 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
   }, []);
 
   useEffect(() => {
-    if (!supportsFullAppShellRoutes(currentBaseUrl)) {
+    if (!supportsFullAppShellRoutes(currentBaseUrl) || !authenticated) {
+      // Idempotent reset: keep the previous reference when already empty. A
+      // fresh `[]` here re-renders unconditionally, and because the update
+      // rides a transition lane it dodges React's synchronous nested-update
+      // guard — with any unstable dep this loops render→effect→render until
+      // the worker OOMs (the #11107 WidgetHost test crash).
       startTransition(() => {
-        setRuns([]);
+        setRuns((prev) => (prev.length === 0 ? prev : []));
         setState("appRuns", []);
       });
       setError(null);
@@ -486,7 +502,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [currentBaseUrl, setState, t]);
+  }, [authenticated, currentBaseUrl, setState, t]);
 
   if (shouldHideWidget) {
     return null;
@@ -725,6 +741,9 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
     setTab: s.setTab,
   }));
   const t = appT ?? fallbackTranslate;
+  // Auth gate (#11084): dormant until the session is authenticated so the
+  // 15s poll never fires 401s from an unauthenticated shell.
+  const authenticated = useIsAuthenticated();
   const [accounts, setAccounts] = useState<AccountsListResponse | null>(null);
   const [overview, setOverview] = useState<OrchestratorAccountOverview | null>(
     null,
@@ -735,6 +754,7 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    if (!authenticated) return;
     const [acctRes, ovRes, roomsRes] = await Promise.allSettled([
       client.listAccounts(),
       client.getOrchestratorAccounts(),
@@ -744,7 +764,7 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
     if (ovRes.status === "fulfilled") setOverview(ovRes.value);
     if (roomsRes.status === "fulfilled") setRooms(roomsRes.value);
     setLoading(false);
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void refresh();
@@ -776,12 +796,15 @@ function OrchestratorAccountsWidget(_props: ChatSidebarWidgetProps) {
 function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
   const { t: appT } = useAppSelectorShallow((s) => ({ t: s.t }));
   const t = appT ?? fallbackTranslate;
+  // Auth gate (#11084): same as the accounts widget — no polling before auth.
+  const authenticated = useIsAuthenticated();
   const [rooms, setRooms] = useState<OrchestratorRoomRosterOverview | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    if (!authenticated) return;
     try {
       const next = await client.getOrchestratorRooms();
       setRooms(next);
@@ -790,7 +813,7 @@ function OrchestratorRoomWidget(_props: ChatSidebarWidgetProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
     void refresh();

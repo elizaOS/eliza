@@ -9,6 +9,7 @@ import {
   captureBaselineSha,
   captureChangeSet,
   summarizeChangeSet,
+  verifyChangedFilesOnDisk,
 } from "../../src/services/workspace-diff.ts";
 
 function git(cwd: string, args: string[]): void {
@@ -214,5 +215,34 @@ describe("workspace-diff — real git capture", () => {
       capturedAt: 0,
     });
     expect(text).toBe("Changed 2 files: index.html, style.css");
+  });
+
+  it("verifies changed files against the real workdir on disk", () => {
+    writeFileSync(join(dir, "verified.txt"), "present\n");
+    const verification = verifyChangedFilesOnDisk(dir, [
+      "verified.txt",
+      "missing.txt",
+    ]);
+    expect(verification.workdir).toBe(dir);
+    expect(verification.verified).toBe(false);
+    expect(verification.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "verified.txt", exists: true }),
+        expect.objectContaining({ path: "missing.txt", exists: false }),
+      ]),
+    );
+    expect(verification.missingFiles).toEqual(["missing.txt"]);
+    expect(
+      summarizeChangeSet(
+        {
+          changedFiles: ["verified.txt", "missing.txt"],
+          diffStat: "2 file(s) changed",
+          diff: "",
+          truncated: false,
+          capturedAt: 0,
+        },
+        verification,
+      ),
+    ).toContain("UNVERIFIED: missing missing.txt");
   });
 });

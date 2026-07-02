@@ -1389,6 +1389,11 @@ export interface InfluencerBookingDto {
     | "offered"
     | "accepted"
     | "delivered"
+    // Claim states: the atomic delivered→approving/refunding CAS fences the
+    // money fork (#11116); list/get can surface a booking mid-claim or
+    // crash-stuck in one of these.
+    | "approving"
+    | "refunding"
     | "approved"
     | "rejected"
     | "cancelled";

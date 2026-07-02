@@ -1486,7 +1486,7 @@ const cerebras = envelope({
         id: "chatcmpl-mock-2026-05-09-001",
         object: "chat.completion",
         created: 1746810600,
-        model: "gpt-oss-120b",
+        model: "gemma-4-31b",
         choices: [
           {
             index: 0,

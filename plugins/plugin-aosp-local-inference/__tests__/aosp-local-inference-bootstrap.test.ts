@@ -608,11 +608,11 @@ describe("AOSP embedding gate", () => {
 });
 
 describe("AOSP TEXT_TO_SPEECH backend selection", () => {
-  it("routes every request through the OmniVoice FFI handler", async () => {
+  it("routes every request through the Kokoro FFI handler", async () => {
     const calls: string[] = [];
     const handler = makeAospTextToSpeechHandler({
-      omnivoice: async () => {
-        calls.push("omnivoice");
+      kokoro: async () => {
+        calls.push("kokoro");
         return new Uint8Array([1, 2, 3]);
       },
     });
@@ -620,12 +620,12 @@ describe("AOSP TEXT_TO_SPEECH backend selection", () => {
     await expect(handler({} as never, "hello")).resolves.toEqual(
       new Uint8Array([1, 2, 3]),
     );
-    expect(calls).toEqual(["omnivoice"]);
+    expect(calls).toEqual(["kokoro"]);
   });
 
-  it("propagates OmniVoice failures verbatim (no Kokoro fallback)", async () => {
+  it("propagates Kokoro failures verbatim (no silent fallback)", async () => {
     const handler = makeAospTextToSpeechHandler({
-      omnivoice: async () => {
+      kokoro: async () => {
         throw new Error("missing lib");
       },
     });
@@ -636,7 +636,7 @@ describe("AOSP TEXT_TO_SPEECH backend selection", () => {
   it("invokes the foreground-use hook on every request", async () => {
     let foreground = 0;
     const handler = makeAospTextToSpeechHandler({
-      omnivoice: async () => new Uint8Array([0]),
+      kokoro: async () => new Uint8Array([0]),
       onForegroundUse: () => {
         foreground++;
       },

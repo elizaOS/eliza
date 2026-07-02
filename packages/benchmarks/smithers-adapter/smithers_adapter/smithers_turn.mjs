@@ -226,7 +226,7 @@ async function main() {
   }
 
   const provider = String(payload.provider || "cerebras").toLowerCase();
-  const modelName = String(payload.model || "gpt-oss-120b");
+  const modelName = String(payload.model || "gemma-4-31b");
   const baseURL =
     (typeof payload.base_url === "string" && payload.base_url) ||
     DEFAULT_BASE_URLS[provider] ||

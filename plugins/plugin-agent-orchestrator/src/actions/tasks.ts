@@ -39,6 +39,10 @@ import type {
 } from "@elizaos/core";
 import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import {
+  type OrchestratorTaskType,
+  detectTaskType,
+} from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
@@ -515,10 +519,27 @@ function taskWithResolvedRoute(
   return sections.join("\n");
 }
 
+// Specialized (non-default) task types detectTaskType only returns for
+// unambiguous build/deploy/view signals — a bare personal to-do never trips them.
+const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> = new Set(
+  ["view-create", "app-build", "deploy"],
+);
+
 function looksLikePersonalLifeOpsTask(text: string): boolean {
-  return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
-    text,
-  );
+  if (
+    !/\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  // A conversational "add a task to build/deploy a landing page/app/site/view" is
+  // a coding request phrased as a to-do, not a personal-lifeops item. Reuse the
+  // structural task classifier: it flags those unambiguous build/deploy/view
+  // signals, so don't suppress the coding orchestrator for them. A generic
+  // "add a task to buy milk" carries no such signal (detectTaskType → "coding"
+  // default) and stays a suppressed lifeops item.
+  return !SPECIALIZED_CODING_TASK_TYPES.has(detectTaskType(text));
 }
 
 // Durable variant of runPromptAndClose: drives the spawned session through the

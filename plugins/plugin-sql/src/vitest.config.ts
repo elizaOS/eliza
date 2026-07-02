@@ -1,5 +1,14 @@
 import { defineConfig } from "vitest/config";
 
+// The runner (packages/scripts/run-all-tests.mjs) drives lanes via env:
+// TEST_LANE=pr sets VITEST_EXCLUDE_REAL=1, TEST_LANE=post-merge clears it so
+// "real keys flow through". This config used to hard-exclude *.real.test.ts
+// regardless, so the self-contained real-PGlite suites
+// (runtime-migrator.real.test.ts, pglite-adapter.real.test.ts, …) ran in NO
+// lane at all — the post-merge lane silently skipped them (#10104 audit).
+const excludeReal =
+  process.env.VITEST_EXCLUDE_REAL === "1" || process.env.VITEST_LANE !== "post-merge";
+
 export default defineConfig({
   test: {
     include: ["**/*.test.ts", "**/*.spec.ts"],
@@ -8,13 +17,7 @@ export default defineConfig({
       "**/dist/**",
       "**/__tests__/e2e/**",
       "**/*.live.test.ts",
-      // #9310 §E: the Postgres RLS *.real.test.ts suites (describe.skipIf
-      // without POSTGRES_URL, which run-all-tests.mjs auto-provisions when a
-      // local psql is available) run in the post-merge lane, where the runner
-      // prints a named skip accounting. They were excluded unconditionally
-      // before, so they ran in NO lane at all.
-      ...(process.env.VITEST_LANE === "post-merge" ? [] : ["**/*.real.test.ts"]),
-      "**/*.real.e2e.test.ts",
+      ...(excludeReal ? ["**/*.real.test.ts", "**/*.real.e2e.test.ts"] : []),
       "**/*.e2e.test.ts",
     ],
     // Increase timeout for hooks that need to close database connections

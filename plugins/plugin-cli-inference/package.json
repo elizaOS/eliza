@@ -105,6 +105,13 @@
         "default": 20,
         "sensitive": false
       },
+      "ELIZA_CLI_SDK_TURN_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Per-turn Claude SDK timeout in milliseconds. Defaults to 90000 and falls back to ELIZA_CLI_TIMEOUT_MS when set.",
+        "required": false,
+        "default": 90000,
+        "sensitive": false
+      },
       "ELIZA_CLI_CODEX_MODEL": {
         "type": "string",
         "description": "Model id passed to `codex exec -m`. Defaults to gpt-5.5.",

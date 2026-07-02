@@ -119,8 +119,9 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
       const baselinePrompt = await loadBaselinePrompt(parsed);
       // Real-model adapter: scoring + variant generation run through the
-      // Cerebras gpt-oss-120b client (lifeops-eval-model.ts). This is the path
-      // `bun run lifeops:optimize` exercises against captured trajectories.
+      // Cerebras client (lifeops-eval-model.ts; default gemma-4-31b). This is
+      // the path `bun run lifeops:optimize` exercises against captured
+      // trajectories.
       const trainProvider =
         process.env.TRAIN_MODEL_PROVIDER?.trim() ??
         process.env.TRAINING_PROVIDER?.trim();
@@ -165,7 +166,7 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         },
       };
       console.log(
-        "[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)",
+        "[train] adapter: cerebras (TRAIN_MODEL_PROVIDER=cerebras, default gemma-4-31b)",
       );
       const result = await runNativeBackend({
         datasetPath: parsed.dataset,

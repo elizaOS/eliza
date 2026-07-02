@@ -85,15 +85,20 @@ export function verdictFromEnvelope(
   const failedCommands = env.testResults
     .filter((t) => t.exitCode !== 0)
     .map((t) => t.command);
+  const missingArtifacts =
+    env.artifactsVerified === false ? (env.missingArtifacts ?? []) : [];
   // No criteria reported is itself inconclusive — a real verifier confirms each.
-  const inconclusive = env.acceptanceCriteriaStatus.length === 0;
+  const inconclusive =
+    env.acceptanceCriteriaStatus.length === 0 || missingArtifacts.length > 0;
   const passed =
     !inconclusive && unmet.length === 0 && failedCommands.length === 0;
   const summary = passed
     ? `Independent verification passed: ${env.acceptanceCriteriaStatus.length} criteria met, ${env.testResults.length} command(s) green.`
-    : inconclusive
-      ? "Independent verifier reported no per-criterion status — unverified."
-      : `Independent verification failed: ${unmet.length} unmet criteria, ${failedCommands.length} failing command(s).`;
+    : missingArtifacts.length > 0
+      ? `Independent verifier found missing artifacts: ${missingArtifacts.join(", ")}.`
+      : inconclusive
+        ? "Independent verifier reported no per-criterion status — unverified."
+        : `Independent verification failed: ${unmet.length} unmet criteria, ${failedCommands.length} failing command(s).`;
   return { passed, unmet, failedCommands, summary, inconclusive };
 }
 

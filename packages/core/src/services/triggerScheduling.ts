@@ -1,4 +1,3 @@
-import { logger } from "../logger";
 import type { TriggerConfig, TriggerType } from "../types/trigger";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
@@ -144,14 +143,6 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 	);
 }
 
-/**
- * Warn-once registry for invalid IANA zones: the cron path falls back to UTC
- * explicitly instead of swallowing the RangeError, but one warning per zone
- * is enough. Sentinel zones (e.g. "owner_local") must be resolved to an IANA
- * zone before scheduling.
- */
-const invalidTimezonesWarned = new Set<string>();
-
 function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 	try {
 		return new Intl.DateTimeFormat("en-US", {
@@ -165,12 +156,6 @@ function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 			hour12: false,
 		});
 	} catch {
-		if (!invalidTimezonesWarned.has(timezone)) {
-			invalidTimezonesWarned.add(timezone);
-			logger.warn(
-				`[TriggerScheduling] Invalid timezone "${timezone}" — evaluating cron schedule in UTC. Sentinel zones (e.g. "owner_local") must be resolved to an IANA zone before scheduling.`,
-			);
-		}
 		return null;
 	}
 }
@@ -236,17 +221,14 @@ export function computeNextCronRunAtMs(
 	if (!schedule) return null;
 	// Bail on a non-representable base: scanning forward from a timestamp at/over
 	// the max Date value would build ~366 days of Invalid Dates before returning
-	// null (a ~26s pathological scan). Symmetric on the negative side, where an
-	// Invalid-Date candidate would make the tz formatter throw instead.
-	if (!Number.isFinite(fromMs) || Math.abs(fromMs) >= MAX_REPRESENTABLE_MS) {
-		return null;
-	}
+	// null (a ~26s pathological scan).
+	if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null;
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
 	// Cap the window at the max representable Date so a base near the ceiling
 	// scans only the representable remainder, not ~527k Invalid-Date candidates.
 	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
-	// Hoist ONE formatter for the entire scan. Previously the offset helper
+	// Hoist ONE formatter for the entire scan. Previously getTimezoneOffsetMs
 	// allocated a fresh Intl.DateTimeFormat per candidate minute — up to ~527k
 	// allocations across the 366-day window.
 	const formatter =

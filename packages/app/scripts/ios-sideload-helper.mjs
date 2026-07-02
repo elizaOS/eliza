@@ -63,10 +63,24 @@ function requireDeviceId() {
   return deviceId;
 }
 
+const willBuild =
+  args.has("--build-device") ||
+  args.has("--build-cloud-device") ||
+  args.has("--build-sim") ||
+  args.has("--build-cloud-sim");
+
 if (!args.has("--skip-preflight")) {
+  // When a build step follows, the currently staged bundle is about to be
+  // replaced — skip the staged-bundle check here and re-run it post-build
+  // (below) against what will actually be installed (#11030).
   const preflight = run(
     "node",
-    ["scripts/mobile-release-preflight.mjs", "--platform=ios", "--sideload"],
+    [
+      "scripts/mobile-release-preflight.mjs",
+      "--platform=ios",
+      "--sideload",
+      ...(willBuild ? ["--skip-staged"] : []),
+    ],
     { stdio: "inherit" },
   );
   if (preflight.status !== 0) {
@@ -108,6 +122,25 @@ if (args.has("--build-cloud-sim")) {
     stdio: "inherit",
   });
   if (build.status !== 0) fail("simulator build failed");
+}
+
+if (willBuild && !args.has("--skip-preflight")) {
+  // Re-validate the FRESHLY staged bundle before any install/launch: a
+  // cloud-mode bundle with no Agent.apiBase hangs a sideloaded device at
+  // "Booting up…" (#11030).
+  const staged = run(
+    "node",
+    [
+      "scripts/mobile-release-preflight.mjs",
+      "--platform=ios",
+      "--sideload",
+      "--staged-only",
+    ],
+    { stdio: "inherit" },
+  );
+  if (staged.status !== 0) {
+    fail("staged-bundle preflight failed after build");
+  }
 }
 
 const shouldInstall = args.has("--install") || args.has("--install-device");

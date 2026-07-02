@@ -6,14 +6,23 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
+import {
+  cloudTokenSecsRemaining,
+  refreshCloudStewardSession,
+} from "../api/client-cloud";
 import {
   getBackendStartupTimeoutMs,
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
   scanProviderCredentials,
 } from "../bridge";
+import { getBootConfig } from "../config/boot-config";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -30,6 +39,7 @@ import {
   isAndroid,
   isForceFreshFirstRunEnabled,
   isIOS,
+  isNative,
 } from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
 import {
@@ -55,6 +65,26 @@ import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 // in api/client-cloud.ts; kept inline because that constant is module-private.
 const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
+
+/**
+ * A stored Steward JWT with at least this many seconds of life left restores
+ * as-is (no refresh). Below it — or already expired — the restore boundary
+ * refreshes first so we never hand the client a dead token. Mirrors
+ * `STEWARD_REFRESH_AHEAD_SECS` in `state/useCloudState.ts` and
+ * `PRE_RENDER_REFRESH_AHEAD_SECS` in the native apps studio.
+ */
+const STEWARD_RESTORE_REFRESH_AHEAD_SECS = 120;
+/**
+ * Hard cap on how long the restore-boundary Steward refresh may block startup.
+ * The refresh is a network POST that can hang; if it doesn't settle in time we
+ * fall back to the stored/provision token (the useCloudState lifecycle refresh
+ * and the api-client 401 self-heal remain the backstops).
+ */
+const STEWARD_RESTORE_REFRESH_TIMEOUT_MS = 4_000;
+/** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
+const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
+/** Default direct Cloud site base used to derive the native refresh endpoint. */
+const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
 
 function isDevUiPort(): boolean {
   return typeof window !== "undefined" && window.location.port === "2138";
@@ -331,6 +361,102 @@ async function requestDesktopAgentStartForStartup(): Promise<void> {
   });
 }
 
+/**
+ * Resolve the Steward refresh endpoint for the current target. Hosted web uses
+ * the same-origin cookie path (the HttpOnly `steward-refresh-token` cookie
+ * travels automatically), so we return `undefined` to let
+ * {@link refreshCloudStewardSession} fall back to its same-origin default.
+ * Native (`capacitor://localhost`) has no same-origin cookie, so refresh against
+ * the configured Cloud API base (Bearer-refresh). Mirrors
+ * `resolveStewardRefreshEndpoint` in `state/useCloudState.ts`.
+ */
+function resolveRestoreStewardRefreshEndpoint(): string | undefined {
+  if (!isNative) return undefined;
+  const cloudBase =
+    getBootConfig().cloudApiBase?.trim() ||
+    RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
+  try {
+    const url = new URL(cloudBase);
+    const host = url.hostname.toLowerCase();
+    const apiHost =
+      host === "elizacloud.ai" ||
+      host === "www.elizacloud.ai" ||
+      host === "dev.elizacloud.ai"
+        ? "api.elizacloud.ai"
+        : host;
+    return `${url.protocol}//${apiHost}${STEWARD_REFRESH_PATH}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Pick the Steward token to hand the client when restoring a cloud session.
+ *
+ * A returning user's stored JWT can EXPIRE while the app is closed. Blindly
+ * setting an expired token boots into a permanently-401ing session: the
+ * proactive lifecycle refresh (useCloudState) is the only other refresh path,
+ * and a stale token means the very first authed call 401s — so the connection
+ * never establishes and the refresh that would have healed it is starved. To
+ * break that deadlock at the restore boundary, before handing the token to the
+ * client we:
+ *   - use a comfortably-valid JWT as-is (instant restore, no needless refresh);
+ *   - leave an opaque / device-code token (no decodable `exp`) untouched;
+ *   - refresh an expired / near-expiry JWT (cookie path on web, Bearer on
+ *     native), bounded by a timeout so a hung network can't stall startup;
+ *   - on a failed refresh, drain a truly-expired token and return `null`
+ *     (unauthenticated) rather than dial with a known-dead credential — a
+ *     merely near-expiry-but-still-live token is kept so the useCloudState
+ *     lifecycle refresh can retry ahead of the real `exp`.
+ *
+ * The refresh runs at most once per restore, so there is no refresh loop.
+ */
+async function resolveRestoredStewardToken(): Promise<string | null> {
+  const stored = readStoredStewardToken()?.trim();
+  if (!stored) return null;
+  const secs = cloudTokenSecsRemaining(stored);
+  // Opaque/device-code token (no decodable `exp`) → nothing to refresh.
+  if (secs === null) return stored;
+  // Comfortably valid → restore instantly.
+  if (secs >= STEWARD_RESTORE_REFRESH_AHEAD_SECS) return stored;
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const refreshed = await Promise.race([
+    refreshCloudStewardSession({
+      endpoint: resolveRestoreStewardRefreshEndpoint(),
+    }).catch(() => null),
+    new Promise<null>((resolve) => {
+      timeout = setTimeout(
+        () => resolve(null),
+        STEWARD_RESTORE_REFRESH_TIMEOUT_MS,
+      );
+    }),
+  ]);
+  if (timeout) clearTimeout(timeout);
+
+  if (refreshed?.token) {
+    writeStoredStewardToken(refreshed.token);
+    // Let the native Steward auth context + any storage listeners pick up the
+    // fresh JWT without waiting for the next read.
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("steward-token-sync"));
+      }
+    } catch {
+      // best-effort — listeners re-read on their next tick regardless
+    }
+    return refreshed.token;
+  }
+
+  // Refresh failed / timed out. A truly-expired token is a dead credential —
+  // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
+  if (secs <= 0) {
+    clearStoredStewardToken();
+    return null;
+  }
+  return stored;
+}
+
 export async function applyRestoredConnection(args: {
   restoredActiveServer: PersistedActiveServer;
   clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
@@ -352,9 +478,11 @@ export async function applyRestoredConnection(args: {
     const resolved = await backfillCloudApiBase(restoredActiveServer);
     clientRef.setBaseUrl(resolved.apiBase ?? null);
     // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
-    // session token (it auto-refreshes ahead of expiry) over the token captured
-    // at provision time, which may have rotated since.
-    const stewardToken = readStoredStewardToken()?.trim();
+    // session token over the token captured at provision time (which may have
+    // rotated since). If that stored JWT expired while the app was closed,
+    // refresh it BEFORE handing it to the client so a returning user never
+    // boots into a permanently-401ing session (see resolveRestoredStewardToken).
+    const stewardToken = await resolveRestoredStewardToken();
     clientRef.setToken(stewardToken || resolved.accessToken || null);
     return;
   }

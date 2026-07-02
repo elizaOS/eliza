@@ -593,6 +593,147 @@ describe("CreditsService.clawbackCredits (#10920)", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "getClawedBackUsdForPaymentIntent nets won-dispute reinstatements (#11155)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+
+      // Dispute opens: Stripe withdraws the funds → dispute clawback tagged
+      // with the payment intent (mirrors handleChargeDisputeFundsWithdrawn).
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "dispute clawback",
+        stripePaymentIntentId: "stripe:dispute:dp_r1",
+        metadata: { payment_intent_id: "pi_r1" },
+      });
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(10, 6);
+
+      // Platform wins the dispute: funds_reinstated writes a `refund` row
+      // (mirrors handleChargeDisputeFundsReinstated in stripe-event.ts).
+      await creditsService.refundCredits({
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r1",
+        stripePaymentIntentId: "stripe:dispute:dp_r1:reinstated",
+        metadata: {
+          payment_intent_id: "pi_r1",
+          source: "charge.dispute.funds_reinstated",
+        },
+      });
+
+      // The tally nets to 0 so a later charge.refunded claws the FULL refund
+      // delta instead of under-clawing by the reinstated amount.
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(0, 6);
+
+      // An ordinary (non-reinstatement) refund tagged with the same payment
+      // intent must NOT reduce the tally.
+      await creditsService.refundCredits({
+        organizationId: ORG_ID,
+        amount: 5,
+        description: "unrelated refund",
+        metadata: { payment_intent_id: "pi_r1" },
+      });
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r1")).toBeCloseTo(0, 6);
+
+      // Balance: 100 - 10 (clawback) + 10 (reinstatement) + 5 (refund) = 105.
+      expect(await getBalance()).toBeCloseTo(105, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "re-delivered funds_reinstated cannot drive the netted tally negative (#11155)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "dispute clawback",
+        stripePaymentIntentId: "stripe:dispute:dp_r2",
+        metadata: { payment_intent_id: "pi_r2" },
+      });
+
+      const reinstatement = {
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r2",
+        stripePaymentIntentId: "stripe:dispute:dp_r2:reinstated",
+        metadata: {
+          payment_intent_id: "pi_r2",
+          source: "charge.dispute.funds_reinstated",
+        },
+      };
+      const first = await creditsService.refundCredits(reinstatement);
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r2")).toBeCloseTo(0, 6);
+      expect(first.newBalance).toBeCloseTo(100, 6);
+
+      // Stripe re-delivers the webhook: the same `:reinstated` idempotency key
+      // must dedupe at BOTH the ledger and the balance (applyCreditIncrease
+      // gates the balance UPDATE on a fresh insert). A second reinstatement
+      // row would make the netted tally NEGATIVE (-10), and a later
+      // charge.refunded would then claw MORE than the refund (over-claw).
+      const second = await creditsService.refundCredits(reinstatement);
+      expect(second.transaction.id).toBe(first.transaction.id);
+      expect(second.newBalance).toBeCloseTo(100, 6);
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r2")).toBeCloseTo(0, 6);
+      expect(await getBalance()).toBeCloseTo(100, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "partial-dispute reinstatement nets only the reinstated portion (#11155)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+
+      // Dispute withdraws the full $10.
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 10,
+        description: "dispute clawback",
+        stripePaymentIntentId: "stripe:dispute:dp_r3",
+        metadata: { payment_intent_id: "pi_r3" },
+      });
+
+      // Platform wins PARTIALLY: Stripe reinstates only $4
+      // (handleChargeDisputeFundsReinstated caps at min(dispute.amount,
+      // applied clawback), so a partial reinstatement writes a $4 row).
+      await creditsService.refundCredits({
+        organizationId: ORG_ID,
+        amount: 4,
+        description: "Stripe charge.dispute.funds_reinstated reinstatement — dispute dp_r3",
+        stripePaymentIntentId: "stripe:dispute:dp_r3:reinstated",
+        metadata: {
+          payment_intent_id: "pi_r3",
+          source: "charge.dispute.funds_reinstated",
+        },
+      });
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r3")).toBeCloseTo(6, 6);
+
+      // Later charge.refunded for the full $10: clawbackForReversal computes
+      // toClaw = min(10, grant) - 6 = 4 — exactly the reinstated portion.
+      // Apply that delta and the tally converges back to the full $10.
+      await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 4,
+        description: "refund clawback (delta)",
+        stripePaymentIntentId: "stripe:refund:ch_r3:1000",
+        metadata: { payment_intent_id: "pi_r3" },
+      });
+      expect(await creditsService.getClawedBackUsdForPaymentIntent("pi_r3")).toBeCloseTo(10, 6);
+
+      // Balance: 100 - 10 + 4 - 4 = 90 — the org holds exactly what the fiat
+      // flows imply (grant refunded in full, only $4 was ever reinstated).
+      expect(await getBalance()).toBeCloseTo(90, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
 });
 
 // Loud guard: PGlite is in-process (no network), so `pgliteReady` must be true.

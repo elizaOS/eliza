@@ -281,6 +281,22 @@ jobs:
           path: packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
           if-no-files-found: ignore
 
+      # Immersive WebGL e2e (#10722): the REAL enterImmersiveScene() production
+      # export against an IWER emulated Quest 3 in headless-chromium WebGL2 —
+      # per-eye gl.readPixels framebuffer probes at math-predicted pixels,
+      # SecurityError→solidColorTexel fallback, teardown. Previously the doc
+      # claimed this was validated but no committed test ran it anywhere.
+      - name: Immersive WebGL framebuffer e2e (#10722)
+        run: bun run --cwd packages/ui test:immersive-e2e
+
+      - name: Upload immersive e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: immersive-e2e-artifacts
+          path: packages/ui/src/spatial/__e2e__/output-immersive/
+          if-no-files-found: ignore
+
       # Perf gate (#9954): drive REAL overlay-scroll + conversation-swipe in
       # headless chromium, feed REAL rAF/longtask/layout-shift entries through the
       # shared frame-budget + layout-stability detectors, HARD-FAIL on dropped
@@ -649,8 +665,8 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Install Playwright Chromium + WebKit
+        run: bunx playwright install --with-deps chromium webkit
 
       - name: Actual app assistant pill browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
@@ -666,6 +682,14 @@ jobs:
 
       - name: Actual app plugin view browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/terminal-plugin-view-command-contract.spec.ts --project=chromium
+
+      # WebKit cross-engine pointer/focus lane (#10722): the playwright config's
+      # opt-in `webkit` project (Desktop Safari) over the keyless chat
+      # pointer/focus/composer specs. Without this step the lane never runs
+      # anywhere — Chromium-only coverage ships WebKit-specific regressions to
+      # iOS/iPadOS Safari unseen.
+      - name: Actual app WebKit pointer/focus coverage
+        run: PLAYWRIGHT_WEBKIT=1 bun run --cwd packages/app test:e2e --project=webkit
 
       - name: Upload zero-key browser artifacts
         if: always()

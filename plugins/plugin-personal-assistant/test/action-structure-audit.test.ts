@@ -110,3 +110,84 @@ describe("LifeOps canonical action structure", () => {
     ).not.toContain("lifeops.work_thread_router");
   });
 });
+
+// Live gemma-4-31b brush-teeth trajectory fences (#9950/#10722): the habit
+// save flow only routes correctly when (1) each owner-life umbrella pins its
+// backing kind (a planner-supplied kind:"goal" silently rerouted a habit into
+// the goals store), (2) the umbrellas expose the `confirmed` preview->confirm
+// handshake, and (3) SCHEDULED_TASKS de-claims new-habit creation so a
+// habit-shaped ask reaches OWNER_ROUTINES/OWNER_REMINDERS instead of the raw
+// scheduler surface. Evidence: .github/issue-evidence/
+// 9950-gemma4-31b-live-trajectories/brush-teeth-basic-after-fix*.report.json.
+describe("brush-teeth habit-save routing contract (#9950/#10722)", () => {
+  const findAction = (name: string) =>
+    (personalAssistantPlugin.actions ?? []).find(
+      (action) => action.name === name,
+    );
+
+  const PINNED_KINDS: Record<string, string> = {
+    OWNER_REMINDERS: "definition",
+    OWNER_ALARMS: "definition",
+    OWNER_TODOS: "definition",
+    OWNER_ROUTINES: "definition",
+    OWNER_GOALS: "goal",
+  };
+
+  it("pins each owner-life umbrella's kind parameter to its backing store", () => {
+    for (const [name, kind] of Object.entries(PINNED_KINDS)) {
+      const action = findAction(name);
+      expect(action, name).toBeDefined();
+      const kindParameter = (action?.parameters ?? []).find(
+        (parameter) => parameter.name === "kind",
+      );
+      expect(kindParameter, `${name} kind parameter`).toBeDefined();
+      const schema = kindParameter?.schema as {
+        enum?: string[];
+        default?: string;
+      };
+      expect(schema?.enum, `${name} kind enum`).toEqual([kind]);
+      expect(schema?.default, `${name} kind default`).toBe(kind);
+    }
+  });
+
+  it("exposes the create-only confirmed handshake on every owner-life umbrella", () => {
+    for (const name of Object.keys(PINNED_KINDS)) {
+      const action = findAction(name);
+      const confirmedParameter = (action?.parameters ?? []).find(
+        (parameter) => parameter.name === "confirmed",
+      );
+      expect(confirmedParameter, `${name} confirmed parameter`).toBeDefined();
+      expect(
+        (confirmedParameter?.schema as { type?: string })?.type,
+        `${name} confirmed type`,
+      ).toBe("boolean");
+    }
+  });
+
+  it("claims habit phrasing on OWNER_ROUTINES and de-claims it on SCHEDULED_TASKS(+_CREATE)", () => {
+    const routines = findAction("OWNER_ROUTINES");
+    expect(routines?.description).toContain("habit");
+    expect(routines?.similes).toContain("CREATE_HABIT");
+    expect(routines?.similes).toContain("RECURRING_TASK");
+
+    const scheduledTasks = findAction("SCHEDULED_TASKS");
+    expect(scheduledTasks?.description).toContain("OWNER_ROUTINES");
+    expect(scheduledTasks?.routingHint).toContain("OWNER_ROUTINES");
+
+    const scheduledTasksCreate = findAction("SCHEDULED_TASKS_CREATE");
+    expect(
+      scheduledTasksCreate,
+      "SCHEDULED_TASKS_CREATE virtual",
+    ).toBeDefined();
+    expect(scheduledTasksCreate?.description).toContain(
+      "OWNER_ROUTINES_CREATE",
+    );
+  });
+
+  it("declares the productivity context on owner-life umbrellas (Stage-1 boost parity with SCHEDULED_TASKS)", () => {
+    for (const name of Object.keys(PINNED_KINDS)) {
+      const action = findAction(name);
+      expect(action?.contexts, `${name} contexts`).toContain("productivity");
+    }
+  });
+});

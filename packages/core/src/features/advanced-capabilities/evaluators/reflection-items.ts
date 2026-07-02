@@ -80,14 +80,24 @@ const factOpsSchema: JSONSchema = {
 					category: { type: "string" },
 					// Strict-mode JSON schema validators (Groq, Cerebras, OpenAI strict
 					// tools) require every nested object to carry
-					// `additionalProperties: false`. We accept this means no extra keys
-					// land in `structured_fields` — the field stays for API contract,
-					// the model can always omit it (not in `required`).
-					structured_fields: { type: "object", additionalProperties: false },
+					// `additionalProperties: false` AND an explicit `properties` map —
+					// an object node without `properties` is rejected outright
+					// ("Bad Request"), which kills the whole extraction call. We accept
+					// this means no extra keys land in `structured_fields` — the field
+					// stays for API contract, the model can always omit it (not in
+					// `required`).
+					structured_fields: {
+						type: "object",
+						properties: {},
+						additionalProperties: false,
+					},
+					// No maxItems: strict structured-output validators (Cerebras, OpenAI
+					// strict) reject array length constraints outright — the whole
+					// extraction request 400s. The 16-keyword cap is enforced in code
+					// (zod trim + MAX_KEYWORDS at storage) instead of on the wire.
 					keywords: {
 						type: "array",
 						items: { type: "string" },
-						maxItems: 16,
 					},
 					verification_status: { type: "string" },
 					valid_at: { type: "string" },
@@ -118,8 +128,13 @@ const relationshipSchema: JSONSchema = {
 					targetEntityId: { type: "string" },
 					tags: { type: "array", items: { type: "string" } },
 					// Strict mode: every object must carry additionalProperties:false
-					// even when the property is logically open-ended.
-					metadata: { type: "object", additionalProperties: false },
+					// AND an explicit properties map even when the property is
+					// logically open-ended — omitting `properties` is a hard reject.
+					metadata: {
+						type: "object",
+						properties: {},
+						additionalProperties: false,
+					},
 				},
 				required: ["sourceEntityId", "targetEntityId"],
 				additionalProperties: false,

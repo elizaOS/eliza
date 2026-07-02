@@ -8,7 +8,20 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+import {
+  clearChatDraft,
+  writeChatDraft,
+} from "../../state/ChatComposerContext.hooks";
 
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
@@ -33,11 +46,12 @@ import type {
   Conversation,
   ConversationMessage,
 } from "../../api/client-types-chat";
-import { CHAT_PREFILL_EVENT } from "../../events";
+import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
+import { __resetAssistantLaunchPayloadClaimsForTests } from "../../platform/assistant-launch-payload";
 import {
   getShellSurface,
   resetShellSurfaceForTests,
@@ -154,6 +168,27 @@ describe("ContinuousChatOverlay", () => {
     expect(input.value).toBe("");
   });
 
+  it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const input = screen.getByLabelText("message") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "にほんご" } });
+
+    // Enter while an IME candidate is being committed: `isComposing` is set
+    // (legacy engines report keyCode 229). This Enter accepts the candidate and
+    // MUST NOT submit the half-composed line.
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(controller.send).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(controller.send).not.toHaveBeenCalled();
+    // The draft survives — the premature send never cleared it.
+    expect(input.value).toBe("にほんご");
+
+    // A normal Enter (composition finished) sends as usual.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("にほんご");
+  });
+
   it("prefills and focuses the composer from the shared chat prefill event", async () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message") as HTMLInputElement;
@@ -214,6 +249,51 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
+
+  it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    expect(overlay.getAttribute("data-open")).toBeNull();
+    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+    expect(overlay.getAttribute("data-open")).toBe("true");
+  });
+
+  it("opens the sheet when the thread lands AFTER the composer was focused (focus wins the boot race, #11112)", () => {
+    // Boot: the overlay renders (and can be focused) before the restored
+    // conversation's messages arrive. The focus→expand used to be a one-shot
+    // no-op with nothing revealable, so data-open never flipped.
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const composer = screen.getByTestId("chat-composer-textarea");
+    act(() => {
+      composer.focus();
+    });
+    // Nothing to reveal yet — focusing the bare input must not open an empty sheet.
+    expect(overlay.getAttribute("data-open")).toBeNull();
+
+    // The restored conversation's messages land while the composer is still
+    // focused: the parked focus-open intent completes the open.
+    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBe("true");
+  });
+
+  it("drops the parked focus-open intent if the composer blurred before the thread arrived", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+    );
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    const composer = screen.getByTestId("chat-composer-textarea");
+    act(() => {
+      composer.focus();
+      composer.blur();
+    });
+
+    // The thread arriving later must NOT pop the sheet open — the user left.
+    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBeNull();
   });
 
   it("does not move the overlay bottom padding just because the composer is focused", () => {
@@ -702,6 +782,45 @@ describe("ContinuousChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message");
+    const sheet = screen.getByTestId("chat-sheet");
+    // Open the sheet (type-to-open → half detent).
+    fireEvent.focus(input);
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // main.tsx dispatches this synchronously and reads back `detail.handled`.
+    const detail = { handled: false };
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }),
+      );
+    });
+
+    expect(detail.handled).toBe(true);
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("leaves the Android back-intent unhandled while the sheet is at rest (native falls through)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    // At rest: the sheet is closed (collapsed input bar), not opened.
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+
+    const detail = { handled: false };
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(ELIZA_BACK_INTENT_EVENT, { detail }),
+      );
+    });
+
+    // Nothing consumed it, so main.tsx would fall through to history.back() /
+    // minimizeApp(); the sheet stays closed.
+    expect(detail.handled).toBe(false);
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
   it("collapsing blurs the composer so the mobile keyboard drops", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
@@ -815,6 +934,85 @@ describe("ContinuousChatOverlay", () => {
     // Dialog gone: Escape collapses the chat as before.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("lets the transcript viewer own Escape — the chat only collapses once the viewer is gone (#9148)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // The maximized transcript viewer (portal to body) carries role="dialog"
+    // but NO data-state="open", so it wouldn't match the old guard — Escape
+    // would close it AND collapse the chat underneath. It must close alone.
+    const viewer = document.createElement("div");
+    viewer.setAttribute("role", "dialog");
+    viewer.setAttribute("data-testid", "transcript-viewer");
+    document.body.appendChild(viewer);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      viewer.remove();
+    }
+    // Viewer gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("lets the desktop notification panel own Escape — the chat only collapses once the panel is gone", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // The desktop anchored notification panel carries role="dialog" but NO
+    // data-state="open" (it is not a Radix dialog), so it wouldn't match the
+    // dialog guard — Escape must close IT alone, not also collapse the chat.
+    const panel = document.createElement("div");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("data-testid", "notification-panel");
+    document.body.appendChild(panel);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+    } finally {
+      panel.remove();
+    }
+    // Panel gone: Escape collapses the chat as before.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("Escape closes an in-progress message edit without collapsing the whole sheet (#9148)", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "u", role: "user", content: "fix my typo", createdAt: 1 },
+          ],
+          send: vi.fn(),
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // Open the inline editor for the user turn.
+    const bubble = screen
+      .getByText("fix my typo")
+      .closest('[data-testid="thread-line"]')
+      ?.querySelector("div.select-text") as HTMLElement;
+    fireEvent.click(bubble);
+    fireEvent.click(screen.getByTestId("thread-line-edit"));
+    const editInput = screen.getByTestId("thread-line-edit-input");
+
+    // Escape closes THE EDITOR, and the sheet stays open (the edit-in-progress
+    // must not be collapsed away with the whole chat).
+    fireEvent.keyDown(editInput, { key: "Escape" });
+    expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
   it("renders the full thread as one scroll log when the sheet is open", () => {
@@ -1529,6 +1727,60 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
+    vi.useFakeTimers();
+    try {
+      const sinkRef: { fn: ((text: string) => void) | null } = { fn: null };
+      const send = vi.fn();
+      const startRecording = vi.fn();
+      const stopRecording = vi.fn();
+      const setDictationSink = vi.fn(
+        (sink: ((text: string) => void) | null) => {
+          sinkRef.fn = sink;
+        },
+      );
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({
+            send,
+            startRecording,
+            stopRecording,
+            setDictationSink,
+          } as unknown as Partial<ShellController>)}
+        />,
+      );
+
+      const mic = screen.getByTestId("chat-composer-mic");
+      // Hold past the 200ms arm → dictation capture begins (intent "dictate").
+      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(220);
+      });
+      expect(startRecording).toHaveBeenCalledWith("dictate");
+
+      // The label must match the behavior: release inserts the dictation into
+      // the composer, it does NOT send. (Regression: it read "release to send",
+      // but the handler only fills the draft — see setDictationSink below.)
+      const label = mic.getAttribute("aria-label") ?? "";
+      expect(label).not.toContain("send");
+      expect(label).toBe("release to insert");
+
+      // Release ends the capture; the final transcript arrives via the
+      // dictation sink and lands in the composer draft — nothing is sent.
+      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
+      expect(stopRecording).toHaveBeenCalledTimes(1);
+      act(() => {
+        sinkRef.fn?.("hello from voice");
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+      ).toBe("hello from voice");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {
     let sink:
       | ((
@@ -1928,6 +2180,33 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("does NOT switch conversations when a mouse drag was highlighting bubble text", () => {
+    // The swipe binding lives on the transcript, which contains the selectable
+    // message bubbles. A horizontal MOUSE drag to highlight text would commit as
+    // a swipe and navigate away — destroying the selection. A live (non-
+    // collapsed) selection at release means the gesture was a highlight, so the
+    // swipe is skipped (mirrors the ThreadLine tap-reveal guard).
+    const { controller, onSelect } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    const getSelection = vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "selected bubble text",
+    } as unknown as Selection);
+    try {
+      const el = thread();
+      // The exact gesture that DOES navigate in the passing test above — only
+      // the live selection differs.
+      fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 6 });
+      fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 6 });
+      fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 6 });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    } finally {
+      getSelection.mockRestore();
+    }
+  });
+
   it("does not bind the swipe gesture while the sheet is collapsed", () => {
     const { controller, onSelect } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
@@ -2257,7 +2536,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(speak).toHaveBeenCalledWith("read me aloud");
   });
 
-  it("Play toggles to Stop while speaking", () => {
+  it("Play toggles to Stop once THIS message is the one playing", () => {
     const speak = vi.fn();
     const stopSpeaking = vi.fn();
     openThreadWith({
@@ -2270,11 +2549,48 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     });
     fireEvent.click(bubbleFor("now playing"));
     const play = screen.getByTestId("thread-line-speak");
-    expect(play.getAttribute("aria-label")).toBe("Stop");
+    // The agent is globally speaking, but nothing has been Played from THIS
+    // bubble, so it still offers Play (not a spurious Stop — the old bug).
+    expect(play.getAttribute("aria-label")).toBe("Play audio");
+    // Tapping Play speaks this message and marks it as the one playing.
     fireEvent.click(play);
-    // While speaking, the control stops playback instead of re-speaking.
+    expect(speak).toHaveBeenCalledWith("now playing");
+    const stop = screen.getByTestId("thread-line-speak");
+    expect(stop.getAttribute("aria-label")).toBe("Stop");
+    // Tapping again stops playback instead of re-speaking.
+    fireEvent.click(stop);
     expect(stopSpeaking).toHaveBeenCalledTimes(1);
-    expect(speak).not.toHaveBeenCalled();
+    expect(speak).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Stop only on the actually-playing bubble, not every assistant bubble while anything speaks (#9148)", () => {
+    const speak = vi.fn();
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "first answer", createdAt: 1 },
+        { id: "b", role: "assistant", content: "second answer", createdAt: 2 },
+      ],
+      speak,
+      speaking: true,
+    });
+    // Reveal both action rows. With the global `speaking` flag set but nothing
+    // Played yet, NEITHER bubble claims Stop (the old bug lit every bubble).
+    fireEvent.click(bubbleFor("first answer"));
+    fireEvent.click(bubbleFor("second answer"));
+    expect(
+      screen
+        .getAllByTestId("thread-line-speak")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Play audio", "Play audio"]);
+    // Play the FIRST message → only its bubble flips to Stop; the second stays
+    // on Play even though the agent is still globally speaking.
+    fireEvent.click(screen.getAllByTestId("thread-line-speak")[0]);
+    expect(speak).toHaveBeenCalledWith("first answer");
+    expect(
+      screen
+        .getAllByTestId("thread-line-speak")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Stop", "Play audio"]);
   });
 
   it("row Copy writes the message text to the clipboard", () => {
@@ -2350,5 +2666,155 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", () => {
+  beforeEach(() => {
+    __resetAssistantLaunchPayloadClaimsForTests();
+    window.history.replaceState(null, "", "/");
+  });
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("prefills the composer from an assistant-launch chat deep link on the hash", () => {
+    // Siri / Shortcuts / App Actions route into #chat?text=…&source=…; the
+    // ambient overlay is the only chat surface on mobile/web/default desktop, so
+    // it must claim the payload and PREFILL (never auto-send) the composer.
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=Remind%20me%20at%205&source=siri&assistant.launchId=launch-9148",
+    );
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("Remind me at 5");
+  });
+
+  it("consumes a launch only once — a second mount with the same launch id does not re-prefill", () => {
+    const hash =
+      "/#chat?text=Water%20plants&source=macos-shortcuts&assistant.launchId=launch-once";
+    window.history.replaceState(null, "", hash);
+    const first = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("Water plants");
+    first.unmount();
+
+    // The same launch id arrives again (re-open / re-render); claiming dedupes
+    // by launchId so it is NOT consumed a second time.
+    window.history.replaceState(null, "", hash);
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("");
+  });
+
+  it("starts hands-free voice capture on a voice=1 launch (while prefilling text)", () => {
+    const toggleHandsFree = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=start%20talking&source=assistant-entry&voice=1&assistant.launchId=launch-voice",
+    );
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ toggleHandsFree })}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("start talking");
+    expect(toggleHandsFree).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores an untrusted-source hash (no prefill, no voice)", () => {
+    const toggleHandsFree = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?text=malicious&source=unknown-shortcut&voice=1",
+    );
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ toggleHandsFree })}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("");
+    expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("shows Retry on a recoverable failed assistant turn and re-sends the preceding user turn", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          content: "what's the weather?",
+          createdAt: 1,
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "",
+          createdAt: 2,
+          failureKind: "rate_limited",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    const retry = screen.getByTestId("thread-line-retry");
+    expect(retry).toBeTruthy();
+    fireEvent.click(retry);
+    expect(controller.send).toHaveBeenCalledWith("what's the weather?");
+  });
+
+  it("does NOT show Retry on an unrecoverable failure (no_provider / insufficient_credits)", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "hi", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "",
+          createdAt: 2,
+          failureKind: "insufficient_credits",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+  });
+
+  it("restores the persisted composer draft for the active conversation (overlay draft parity)", () => {
+    // The overlay wires useChatComposerDraftPersistence keyed by the
+    // controller's conversationNav.activeId — closing the platform gap where
+    // only the desktop ChatView restored drafts. A draft stored for the active
+    // conversation must repopulate the composer on mount.
+    clearChatDraft("conv-draft-x");
+    writeChatDraft("conv-draft-x", "half-written thought");
+    const controller = makeController({
+      conversationNav: {
+        hasPrev: false,
+        hasNext: false,
+        goPrev: () => {},
+        goNext: () => {},
+        activeId: "conv-draft-x",
+        index: 0,
+      },
+    } as unknown as Partial<ShellController>);
+    render(<ContinuousChatOverlay controller={controller} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("half-written thought");
+    clearChatDraft("conv-draft-x");
   });
 });

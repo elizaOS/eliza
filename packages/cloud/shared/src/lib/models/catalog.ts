@@ -224,7 +224,6 @@ const ANTHROPIC_TEXT_MODEL_IDS = [
 const GOOGLE_TEXT_MODEL_IDS = [
   "google/gemini-3.1-pro-preview",
   "google/gemini-3.1-flash-lite-preview",
-  "google/gemini-3.1-flash-image-preview",
   "google/gemini-3-pro-preview",
   "google/gemini-3-flash",
 ] as const;

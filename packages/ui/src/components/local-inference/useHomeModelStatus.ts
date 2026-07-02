@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { isDesktopExternalApiBaseUrl } from "../../api/desktop-external-api-base";
+import { useIsAuthenticated } from "../../hooks/useAuthStatus";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import {
   deriveHomeModelStatus,
@@ -44,9 +45,15 @@ export function useHomeModelStatus(): HomeModelStatus {
   const [status, setStatus] = useState<HomeModelStatus>(NOT_REQUIRED);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runtimeMode = useRuntimeMode();
+  // Auth gate (#11084): the shell mounts this hook before the auth probe
+  // resolves, so the download SSE stream + hub fetches must stay dormant until
+  // the session is authenticated (an unauthenticated tab otherwise streams
+  // 401s into the rate limiter).
+  const authenticated = useIsAuthenticated();
 
   useEffect(() => {
     if (
+      !authenticated ||
       runtimeMode.state.phase === "loading" ||
       runtimeMode.isCloudMode ||
       runtimeMode.isRemoteMode ||
@@ -102,6 +109,7 @@ export function useHomeModelStatus(): HomeModelStatus {
       es?.close();
     };
   }, [
+    authenticated,
     runtimeMode.isCloudMode,
     runtimeMode.isRemoteMode,
     runtimeMode.state.phase,

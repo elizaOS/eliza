@@ -7,14 +7,10 @@
  * rendering/gesture layer consumes these helpers; all reconciliation logic lives
  * here so it is unit testable without a DOM.
  *
- * The `favorites` field is the launcher dock. Fresh installs seed a tiny,
- * stable dock with Chat + Settings. An explicitly cleared dock is respected
- * only when the payload carries the `dockCleared` marker (stamped by
- * {@link writeLauncherLayout} whenever a layout is committed with no
- * favorites). A stored `favorites: []` WITHOUT the marker is legacy residue
- * from the no-dock era (#10789–#10800) — the product had no way to clear a
- * dock then, so it re-seeds the default instead of suppressing the dock
- * forever.
+ * The launcher has no dock / favorites surface — every available view lives on
+ * the swipeable pages. (The removed dock was the "featured views" header;
+ * `LAUNCHER_DOCK_LIMIT` is retained only because the desktop-tab pinning model
+ * reuses it — it no longer governs a mobile dock.)
  *
  * Mirrors the persistence style of `view-recents.ts`.
  */
@@ -24,34 +20,23 @@ export const LAUNCHER_STORAGE_KEY = "elizaos.views.launcher";
 /**
  * Pre-rename persisted key (#9951, "springboard" → "launcher"). Read once and
  * migrated forward into {@link LAUNCHER_STORAGE_KEY} so an existing user's saved
- * page order / favorites / manual flag survive the rename.
+ * page order / manual flag survive the rename.
  */
 const LEGACY_LAUNCHER_STORAGE_KEY = "elizaos.views.springboard";
 
 /**
- * Icons per launcher page (4 columns × 6 rows, iOS-like). Now that the top
- * double safe-area gap is gone and the page indicator clears the chat composer,
- * a full 6-row page fits a normal phone; smaller phones scroll the grid. The
- * grid is `overflow-y-auto`, so overflow scrolls rather than clipping. The
- * Launcher renders a fixed 4-column grid, so this is `4 × 6 = 24`.
+ * Icons per launcher page (4 columns × 6 rows, iOS-like). The grid is
+ * `overflow-y-auto`, so overflow scrolls rather than clipping. The Launcher
+ * renders a fixed 4-column grid, so this is `4 × 6 = 24`.
  */
 export const LAUNCHER_PAGE_SIZE = 24;
 /**
- * Pin cap reused by the desktop-tab pinning model (`useDesktopTabs`). The
- * mobile launcher dock and desktop tab rail both cap pinned items at this
- * iOS-style count.
+ * Pin cap for the desktop-tab pinning model (`useDesktopTabs`). Retained here as
+ * the shared iOS-style cap; the mobile launcher no longer has a dock.
  */
 export const LAUNCHER_DOCK_LIMIT = 4;
-export const DEFAULT_LAUNCHER_FAVORITES: readonly string[] = [
-  "chat",
-  "settings",
-];
 
 export interface LauncherLayout {
-  /**
-   * Ordered view ids kept out of the page grid and rendered in the dock.
-   */
-  favorites: string[];
   /** Ordered pages; each page is an ordered list of view ids. */
   pages: string[][];
   /**
@@ -61,24 +46,18 @@ export interface LauncherLayout {
    * arrangement is preserved.
    */
   manual?: boolean;
-  /**
-   * True when an empty dock was explicitly committed (user intent) rather
-   * than inherited from the pre-dock era. Distinguishes "cleared" from
-   * "never had a dock" so the default dock can be re-seeded for the latter.
-   */
-  dockCleared?: boolean;
 }
 
 export function emptyLayout(): LauncherLayout {
-  return { favorites: [], pages: [] };
+  return { pages: [] };
 }
 
 /**
- * First-run layout. Reconciliation intersects this seed with the live view ids,
- * so builds without one of these surfaces simply drop it.
+ * First-run layout. Reconciliation fills the pages from the live view ids, so a
+ * fresh install simply lays every available view out in catalog order.
  */
 export function defaultLayout(): LauncherLayout {
-  return { favorites: [...DEFAULT_LAUNCHER_FAVORITES], pages: [] };
+  return { pages: [] };
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -91,46 +70,29 @@ function parseLayout(raw: string): LauncherLayout {
   const parsed = JSON.parse(raw) as unknown;
   if (!parsed || typeof parsed !== "object") return emptyLayout();
   const record = parsed as Record<string, unknown>;
-  const favorites = isStringArray(record.favorites) ? record.favorites : [];
   const pages =
     Array.isArray(record.pages) && record.pages.every(isStringArray)
       ? (record.pages as string[][])
       : [];
   const manual = record.manual === true ? true : undefined;
-  const dockCleared = record.dockCleared === true ? true : undefined;
-  return { favorites, pages, manual, dockCleared };
-}
-
-/**
- * Upgrade path (#10800 QA): a stored empty dock WITHOUT the explicit
- * `dockCleared` marker predates the dock feature (or is corrupt residue) —
- * the product had no clear-dock affordance then, so it cannot be user intent.
- * Re-seed the default dock for those payloads; marked payloads stay empty.
- */
-function withSeededDock(layout: LauncherLayout): LauncherLayout {
-  if (layout.favorites.length > 0 || layout.dockCleared === true) {
-    return layout;
-  }
-  return { ...layout, favorites: [...DEFAULT_LAUNCHER_FAVORITES] };
+  return { pages, manual };
 }
 
 export function readLauncherLayout(): LauncherLayout {
   if (typeof window === "undefined") return emptyLayout();
   try {
     const raw = window.localStorage.getItem(LAUNCHER_STORAGE_KEY);
-    if (raw) return withSeededDock(parseLayout(raw));
+    if (raw) return parseLayout(raw);
     // One-time migration from the pre-rename "springboard" key (#9951): read the
     // legacy layout, persist it under the new key, and drop the old entry so the
-    // user keeps their page order / favorites / manual flag across the rename.
+    // user keeps their page order / manual flag across the rename.
     const legacyRaw = window.localStorage.getItem(LEGACY_LAUNCHER_STORAGE_KEY);
     if (!legacyRaw) return defaultLayout();
-    const migrated = withSeededDock(parseLayout(legacyRaw));
+    const migrated = parseLayout(legacyRaw);
     writeLauncherLayout(migrated);
     window.localStorage.removeItem(LEGACY_LAUNCHER_STORAGE_KEY);
     return migrated;
   } catch {
-    // Corrupt/unreadable payload: fall back to the first-run default (with the
-    // seeded dock) rather than a dock-less empty layout.
     return defaultLayout();
   }
 }
@@ -138,19 +100,15 @@ export function readLauncherLayout(): LauncherLayout {
 export function writeLauncherLayout(layout: LauncherLayout): void {
   if (typeof window === "undefined") return;
   try {
-    // Stamp an explicitly-committed empty dock so a future read distinguishes
-    // user intent from pre-dock-era residue (see withSeededDock).
-    const toStore =
-      layout.favorites.length === 0 ? { ...layout, dockCleared: true } : layout;
-    window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(toStore));
+    window.localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(layout));
   } catch {
     /* localStorage unavailable */
   }
 }
 
-/** All view ids currently placed somewhere in the layout (dock + pages). */
+/** All view ids currently placed somewhere in the layout. */
 export function placedIds(layout: LauncherLayout): Set<string> {
-  const ids = new Set<string>(layout.favorites);
+  const ids = new Set<string>();
   for (const page of layout.pages) {
     for (const id of page) ids.add(id);
   }
@@ -170,7 +128,6 @@ function chunk(ids: string[], size: number): string[][] {
  * Reconcile a stored layout against the live set of available view ids:
  * - drop ids that no longer exist (uninstalled / hidden views),
  * - append newly-available ids (preserving their catalog order) to the end,
- * - keep dock favorites out of the page grid (the dock is a separate surface),
  * - repack pages to LAUNCHER_PAGE_SIZE so removals never leave holes.
  *
  * Deterministic and pure — safe to run on every render.
@@ -181,23 +138,14 @@ export function reconcileLayout(
   pageSize: number = LAUNCHER_PAGE_SIZE,
 ): LauncherLayout {
   const available = new Set(availableIds);
-
-  // Dedupe defensively: toggleFavorite never adds a duplicate, but a corrupted
-  // or hand-edited localStorage payload could, and a duplicated favorite would
-  // otherwise render twice in the dock.
-  const favorites = [...new Set(layout.favorites)]
-    .filter((id) => available.has(id))
-    .slice(0, LAUNCHER_DOCK_LIMIT);
-  const favoriteSet = new Set(favorites);
-
-  const seen = new Set<string>(favorites);
+  const seen = new Set<string>();
   const ordered: string[] = [];
   // A manually-arranged layout preserves the user's page ordering first; an
   // automatic one follows the incoming catalog order so sort/install reflows.
   if (layout.manual) {
     for (const page of layout.pages) {
       for (const id of page) {
-        if (available.has(id) && !favoriteSet.has(id) && !seen.has(id)) {
+        if (available.has(id) && !seen.has(id)) {
           seen.add(id);
           ordered.push(id);
         }
@@ -212,25 +160,12 @@ export function reconcileLayout(
     }
   }
 
-  return { favorites, pages: chunk(ordered, pageSize), manual: layout.manual };
-}
-
-/** Toggle an id in/out of the dock. Adding evicts the oldest when full. */
-export function toggleFavorite(
-  layout: LauncherLayout,
-  id: string,
-): LauncherLayout {
-  if (layout.favorites.includes(id)) {
-    return { ...layout, favorites: layout.favorites.filter((f) => f !== id) };
-  }
-  const favorites = [...layout.favorites, id].slice(-LAUNCHER_DOCK_LIMIT);
-  return { ...layout, favorites };
+  return { pages: chunk(ordered, pageSize), manual: layout.manual };
 }
 
 /**
  * Move an icon to a target page at a target index, repacking the flattened
- * page order so the move never leaves holes or duplicates. The id is removed
- * from the dock if it was a favorite (an icon lives in exactly one surface).
+ * page order so the move never leaves holes or duplicates.
  *
  * NOTE: cross-page moves (`targetPage > 0`) are fully supported by this model,
  * but the Launcher's current drag gesture is `axis="y"` within the active
@@ -245,7 +180,6 @@ export function moveIcon(
   targetIndex: number,
   pageSize: number = LAUNCHER_PAGE_SIZE,
 ): LauncherLayout {
-  const favorites = layout.favorites.filter((f) => f !== id);
   const pages = layout.pages.map((page) => page.filter((p) => p !== id));
   while (pages.length <= targetPage) pages.push([]);
   const page = pages[targetPage];
@@ -253,5 +187,5 @@ export function moveIcon(
   page.splice(index, 0, id);
   const flat = pages.flat();
   // A drag is an explicit manual arrangement — lock the order from now on.
-  return { favorites, pages: chunk(flat, pageSize), manual: true };
+  return { pages: chunk(flat, pageSize), manual: true };
 }

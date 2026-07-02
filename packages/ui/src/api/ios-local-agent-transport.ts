@@ -22,6 +22,51 @@ let fullBunRuntime:
   | null = null;
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 
+/**
+ * Policy error raised when a cloud-mode iOS build tries to reach the on-device
+ * agent over local-agent IPC. Non-retryable within a session: it depends only
+ * on the build's runtime mode and the persisted `eliza:mobile-runtime-mode`,
+ * neither of which changes while the startup poll runs (issue #11030).
+ */
+const IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE =
+  "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active";
+
+/**
+ * Message fragments of TERMINAL (non-retryable) native agent/transport boot
+ * failures. Each is a build-config or runtime-mode policy violation that
+ * cannot self-heal while the renderer keeps polling — retrying only produces
+ * the same rejection until the backend-poll deadline, which is how the iOS
+ * device boot hang in issue #11030 presented ("Booting up…" forever).
+ */
+const TERMINAL_IOS_NATIVE_AGENT_BOOT_ERROR_FRAGMENTS: readonly string[] = [
+  IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE,
+  "iOS store builds must use eliza-local-agent://ipc for local-agent requests",
+  "iOS store/cloud builds block cleartext loopback or private-network requests",
+  // fullBunStartupError(): the build REQUIRES the embedded Bun engine and it
+  // is missing or failed to start — no amount of polling revives it.
+  "Full Bun iOS runtime required but",
+  // plugins/plugin-native-agent AgentPlugin.swift missingEndpointMessage():
+  // remote/cloud mode with no configured Agent.apiBase. Surfaces through
+  // native Agent plugin call rejections and getStatus state:"error".
+  "iOS Agent requires a configured HTTP endpoint",
+];
+
+/**
+ * True when a startup-time request failure is a terminal native transport /
+ * agent-config error that will never succeed on retry. Consumed by
+ * `state/startup-phase-poll.ts` to fail fast into the coordinator's error
+ * phase (surfacing the real message + Retry) instead of blind-polling to the
+ * backend deadline.
+ */
+export function isTerminalIosNativeAgentBootErrorMessage(
+  message: string | null | undefined,
+): boolean {
+  if (!message) return false;
+  return TERMINAL_IOS_NATIVE_AGENT_BOOT_ERROR_FRAGMENTS.some((fragment) =>
+    message.includes(fragment),
+  );
+}
+
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
 };
@@ -635,9 +680,7 @@ export async function handleIosLocalAgentNativeRequest(
     !iosRuntimeHasOnDeviceAgent() &&
     !isCloudRuntimeAllowedLocalAgentPath(path)
   ) {
-    throw new TypeError(
-      "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
-    );
+    throw new TypeError(IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE);
   }
 
   const fullBunResult = await tryFullBunNativeRequest({
@@ -698,9 +741,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
   }
   if (isIosLocalAgentIpcUrl(url) && !canUseIosLocalAgentIpc()) {
     if (isCloudRuntimeAllowedIpcPath(url)) return true;
-    throw new TypeError(
-      "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
-    );
+    throw new TypeError(IOS_CLOUD_MODE_LOCAL_IPC_POLICY_MESSAGE);
   }
   if (
     usesStrictIosNetworkPolicy() &&

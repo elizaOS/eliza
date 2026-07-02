@@ -1,20 +1,20 @@
-import { generateText, streamText } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 import type { App } from "../../db/repositories";
 import { uploadToBlob } from "../blob";
-import {
-  mergeAnthropicCotProviderOptions,
-  mergeGoogleImageModalitiesWithAnthropicCot,
-} from "../providers/anthropic-thinking";
+import { mergeAnthropicCotProviderOptions } from "../providers/anthropic-thinking";
+import { getImageProvider } from "../providers/image/registry";
 import { getLanguageModel } from "../providers/language-model";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { safeFetch } from "../security/safe-fetch";
 import { parseAiJson } from "../utils/ai-json-parse";
 import { extractErrorMessage } from "../utils/error-handling";
 import { logger } from "../utils/logger";
+import { DEFAULT_IMAGE_MODEL_ID, getSupportedImageModelDefinition } from "./ai-pricing-definitions";
 import { contentSafetyService } from "./content-safety";
 
-const IMAGE_MODEL = "google/gemini-2.5-flash-image";
+const IMAGE_MODEL = DEFAULT_IMAGE_MODEL_ID;
 
 export const AD_SIZES = {
   facebook_feed: { width: 1200, height: 628 },
@@ -310,37 +310,29 @@ class AppPromotionAssetsService {
       hasWebsiteContext: Object.keys(websiteContext).length > 0,
     });
 
-    let imageBase64: string | null = null;
-    let streamError: string | null = null;
+    let imageBytes: Uint8Array | null = null;
 
     try {
-      // Pass the model id as a string (matching /api/v1/generate-image) so the
-      // AI SDK resolves an image-capable provider. mergeGoogleImageModalitiesWithAnthropicCot
-      // sets responseModalities for Google models; CoT/thinking budget is ignored
-      // here because IMAGE_MODEL is not Anthropic.
-      const result = streamText({
-        model: IMAGE_MODEL,
-        ...mergeGoogleImageModalitiesWithAnthropicCot(IMAGE_MODEL, process.env),
-        prompt: `Generate a promotional banner image: ${prompt}`,
-      });
-
-      for await (const delta of result.fullStream) {
-        if (delta.type === "error") {
-          streamError = String(delta.error);
-          logger.error("[PromotionAssets] Stream error", {
-            appId: app.id,
-            size,
-            error: streamError,
-          });
-          break;
-        }
-        if (delta.type === "file" && delta.file.mediaType.startsWith("image/")) {
-          const uint8Array = delta.file.uint8Array;
-          const base64 = Buffer.from(uint8Array).toString("base64");
-          imageBase64 = `data:${delta.file.mediaType};base64,${base64}`;
-          break;
-        }
+      // Dispatch through the priced image-provider registry (matching
+      // /api/v1/generate-image). The old streamText path resolved the retired
+      // BitRouter image models, which had no image:generation pricing (#11005).
+      const definition = getSupportedImageModelDefinition(IMAGE_MODEL);
+      if (!definition) {
+        throw new Error(`Unsupported image model: ${IMAGE_MODEL}`);
       }
+      const env = getCloudAwareEnv();
+      const generated = await getImageProvider(definition.billingSource).generate({
+        model: definition.modelId,
+        prompt: `Generate a promotional banner image: ${prompt}`,
+        size: `${dimensions.width}x${dimensions.height}`,
+        apiKeys: {
+          ATLASCLOUD_API_KEY: env.ATLASCLOUD_API_KEY,
+          ATLASCLOUD_BASE_URL: env.ATLASCLOUD_BASE_URL,
+          FAL_KEY: env.FAL_KEY,
+          FAL_API_KEY: env.FAL_API_KEY,
+        },
+      });
+      imageBytes = generated.bytes;
     } catch (error) {
       logger.error("[PromotionAssets] Image generation error", {
         appId: app.id,
@@ -350,17 +342,16 @@ class AppPromotionAssetsService {
       return null;
     }
 
-    if (!imageBase64) {
+    if (!imageBytes) {
       logger.warn("[PromotionAssets] Failed to generate image - no image returned", {
         appId: app.id,
         size,
-        streamError,
       });
       return null;
     }
 
     // Upload to R2 storage
-    const buffer = Buffer.from(imageBase64.split(",")[1], "base64");
+    const buffer = Buffer.from(imageBytes);
 
     logger.info("[PromotionAssets] Uploading to blob storage", {
       appId: app.id,

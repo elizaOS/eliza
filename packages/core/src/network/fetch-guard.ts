@@ -5,10 +5,13 @@
  * SSRF attacks and DNS rebinding.
  */
 
+import { logger } from "../logger.js";
 import {
 	isBlockedHostname,
 	isPrivateIpAddress,
 	type LookupFn,
+	type PinnedHostname,
+	type PinnedLookup,
 	resolvePinnedHostname,
 	resolvePinnedHostnameWithPolicy,
 	SsrfBlockedError,
@@ -23,6 +26,7 @@ type FetchLike = (
 export type GuardedFetchOptions = {
 	url: string;
 	fetchImpl?: FetchLike;
+	pinnedFetchImpl?: PinnedLookupFetchLike;
 	init?: RequestInit;
 	maxRedirects?: number;
 	timeoutMs?: number;
@@ -31,6 +35,17 @@ export type GuardedFetchOptions = {
 	lookupFn?: LookupFn;
 };
 
+export type PinnedLookupFetchParams = {
+	url: URL;
+	init: RequestInit;
+	lookup: PinnedLookup;
+	addresses: string[];
+};
+
+export type PinnedLookupFetchLike = (
+	params: PinnedLookupFetchParams,
+) => Promise<Response>;
+
 export type GuardedFetchResult = {
 	response: Response;
 	finalUrl: string;
@@ -38,6 +53,54 @@ export type GuardedFetchResult = {
 };
 
 const DEFAULT_MAX_REDIRECTS = 3;
+
+type NodePinnedFetchDefaults = {
+	lookupFn: LookupFn;
+	pinnedFetchImpl: PinnedLookupFetchLike;
+};
+
+let nodePinnedFetchDefaults:
+	| Promise<NodePinnedFetchDefaults | null>
+	| undefined;
+
+function isNodeLikeRuntime(): boolean {
+	const runtime = globalThis as {
+		Bun?: unknown;
+		process?: { versions?: { node?: string } };
+	};
+	return Boolean(runtime.Bun || runtime.process?.versions?.node);
+}
+
+async function loadNodePinnedFetchDefaults(): Promise<NodePinnedFetchDefaults | null> {
+	if (!isNodeLikeRuntime()) {
+		return null;
+	}
+	// On Node-like runtimes the pinned transport is the DNS-rebinding defense.
+	// If it fails to load, fail CLOSED: guarded fetches must error rather than
+	// silently fall back to the racy unpinned path.
+	nodePinnedFetchDefaults ??= import("./node-pinned-fetch.js").then(
+		({ nodeLookupFn, nodePinnedFetch }) => ({
+			lookupFn: nodeLookupFn,
+			pinnedFetchImpl: nodePinnedFetch,
+		}),
+	);
+	try {
+		return await nodePinnedFetchDefaults;
+	} catch (error) {
+		// Do not memoize the failure as a permanent null — allow a retry on the
+		// next guarded fetch in case the failure was transient.
+		nodePinnedFetchDefaults = undefined;
+		logger.error(
+			{ error },
+			"[FetchGuard] Failed to load the pinned DNS transport on a Node-like runtime; failing closed",
+		);
+		throw new Error(
+			"SSRF guard: pinned DNS transport (node-pinned-fetch) failed to load on a Node-like runtime. " +
+				"Refusing to fall back to unpinned fetch (DNS rebinding risk). " +
+				`Underlying error: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+}
 
 function isRedirectStatus(status: number): boolean {
 	return (
@@ -104,6 +167,13 @@ export async function fetchWithSsrfGuard(
 	if (!fetcher) {
 		throw new Error("fetch is not available");
 	}
+	const nodeDefaults =
+		!params.pinnedFetchImpl && !params.fetchImpl
+			? await loadNodePinnedFetchDefaults()
+			: null;
+	const lookupFn = params.lookupFn ?? nodeDefaults?.lookupFn;
+	const pinnedFetchImpl =
+		params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl;
 
 	const maxRedirects =
 		typeof params.maxRedirects === "number" &&
@@ -143,21 +213,20 @@ export async function fetchWithSsrfGuard(
 		}
 
 		try {
-			if (params.lookupFn) {
+			let pinned: PinnedHostname | undefined;
+			if (lookupFn) {
 				// A DNS lookup is available → pin the resolved address(es). This is
 				// the strongest mode: it also defends against DNS rebinding.
 				const usePolicy = Boolean(
 					params.policy?.allowPrivateNetwork ||
 						params.policy?.allowedHostnames?.length,
 				);
-				if (usePolicy) {
-					await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
-						lookupFn: params.lookupFn,
-						policy: params.policy,
-					});
-				} else {
-					await resolvePinnedHostname(parsedUrl.hostname, params.lookupFn);
-				}
+				pinned = usePolicy
+					? await resolvePinnedHostnameWithPolicy(parsedUrl.hostname, {
+							lookupFn,
+							policy: params.policy,
+						})
+					: await resolvePinnedHostname(parsedUrl.hostname, lookupFn);
 			} else {
 				// No lookupFn (e.g. environment-agnostic core, which has no node:dns
 				// to pin with): fall back to synchronous literal-host checks — block
@@ -188,14 +257,21 @@ export async function fetchWithSsrfGuard(
 				}
 			}
 
-			// Note: In browser environments, we can't pin DNS, so we rely on policy validation only
 			const init: RequestInit = {
 				...(params.init ? { ...params.init } : {}),
 				redirect: "manual",
 				...(signal ? { signal } : {}),
 			};
 
-			const response = await fetcher(parsedUrl.toString(), init);
+			const response =
+				pinned && pinnedFetchImpl
+					? await pinnedFetchImpl({
+							url: parsedUrl,
+							init,
+							lookup: pinned.lookup,
+							addresses: pinned.addresses,
+						})
+					: await fetcher(parsedUrl.toString(), init);
 
 			if (isRedirectStatus(response.status)) {
 				const location = response.headers.get("location");

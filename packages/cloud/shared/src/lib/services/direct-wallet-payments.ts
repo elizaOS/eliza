@@ -854,7 +854,24 @@ async function verifySolanaTokenPayment(params: {
       maxSupportedTransactionVersion: 0,
     });
   }
-  if (!tx?.meta || tx.meta.err) throw new Error("Transaction was not confirmed successfully");
+  if (!tx) {
+    // Not on chain from this RPC's view — mempool propagation, a lagging
+    // node, or a dropped tx. Phrased to match the cron's not-found
+    // classification so it retries (and only fails after the retry budget)
+    // instead of terminally failing a possibly-paid deposit on attempt 1.
+    throw new Error("Transaction not found on Solana — it may not be confirmed yet");
+  }
+  if (!tx.meta) {
+    // The RPC returned the tx without meta, so balances can't be verified
+    // yet. Deliberately does NOT match the not-found bucket: a persistently
+    // meta-less tx exists on chain and must keep retrying, not be declared
+    // dropped.
+    throw new Error("Transaction metadata unavailable from RPC");
+  }
+  if (tx.meta.err) {
+    // On chain and failed — deterministic and terminal.
+    throw new Error("Transaction was not confirmed successfully");
+  }
 
   const mint = params.cfg.tokenMint;
   const receiver = normalizeSolanaAddress(params.cfg.receiveAddress);
@@ -1600,6 +1617,9 @@ export class DirectWalletPaymentsService {
    *   - Tx reverted, recipient/amount wrong, or chain rejected → mark
    *     `failed_chain` with `metadata.failure_reason`. Surfaces in the UI
    *     waiting overlay so the user knows it's done.
+   *   - RPC/infra error (503, timeout, rate-limit) → says nothing about the
+   *     tx itself, so leave as `broadcast` and retry next tick. A paid
+   *     deposit must never be terminally failed on RPC evidence alone.
    */
   async processBroadcastBatch(
     env: Bindings,
@@ -1626,8 +1646,10 @@ export class DirectWalletPaymentsService {
     // Cap how many times the cron retries a transient verify failure on a
     // single payment. A real tx propagates within minutes; ~1 hour of
     // "not found" usually means a bad hash, wrong network, or a tx that
-    // was dropped from the mempool. Past that, mark `failed_chain` so the
-    // user sees the failure instead of an indefinite spinner.
+    // was dropped from the mempool. Past that, a NOT-FOUND tx is marked
+    // `failed_chain` so the user sees the failure instead of an indefinite
+    // spinner. Unknown (RPC/infra) errors keep retrying past the cap — see
+    // the classification in the catch below.
     const MAX_VERIFY_ATTEMPTS = 60;
 
     for (const payment of candidates) {
@@ -1644,18 +1666,33 @@ export class DirectWalletPaymentsService {
         stats.confirmed += 1;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        // Heuristic: receipt-not-yet-found means we should keep waiting.
-        // Anything else (wrong recipient, low value, reverted) is terminal
-        // — record it so the user sees a clear failure.
-        const transient =
+        // Classify the failure. Money rule: only a DETERMINISTIC verification
+        // failure may terminally fail a deposit — the tx is on chain (or the
+        // payment row is provably unverifiable) and retrying can never change
+        // the outcome: reverted tx, wrong sender/recipient/amount, tampered
+        // quote, payer-proof mismatch, hash already credited to another
+        // payment, or an unverifiable legacy row. Everything OUTSIDE this
+        // allowlist retries — a transient RPC failure (503 / timeout /
+        // rate-limit thrown by getTransactionReceipt / getTransaction /
+        // getParsedTransaction, e.g. viem HttpRequestError or TimeoutError)
+        // says nothing about the tx and must never mark a genuinely-paid
+        // deposit `failed_chain`.
+        const terminal =
+          /Transaction failed|amount is lower than the expected|is (below|above) the expected (floor|ceiling)|recipient does not match|sender does not match the proven payer|was not confirmed successfully|ATA owner does not match|does not transfer enough|proof metadata mismatch|Quote signature|already processed for another payment|missing token address|LEGACY_PAYMENT_MISSING_PAYER_PROOF/i.test(
+            msg,
+          );
+        // Receipt-not-yet-found: expected while a tx propagates. Unlike the
+        // unknown/RPC bucket this IS terminal once retries are exhausted —
+        // ~1 hour of "not found" means a bad hash, wrong network, or a tx
+        // dropped from the mempool.
+        const notFound =
           /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(msg);
 
         const attempts =
           Number((metadataOf(payment) as Record<string, unknown>).verify_attempts ?? 0) + 1;
 
-        if (transient && attempts < MAX_VERIFY_ATTEMPTS) {
-          stats.stillPending += 1;
-          await dbWrite
+        const bumpVerifyAttempts = () =>
+          dbWrite
             .update(cryptoPayments)
             .set({
               updated_at: new Date(),
@@ -1672,10 +1709,31 @@ export class DirectWalletPaymentsService {
                 error: String(e),
               });
             });
+
+        if (!terminal && attempts < MAX_VERIFY_ATTEMPTS) {
+          stats.stillPending += 1;
+          await bumpVerifyAttempts();
           continue;
         }
 
-        if (transient && attempts >= MAX_VERIFY_ATTEMPTS) {
+        if (!terminal && !notFound) {
+          // Unknown (almost certainly RPC/infra) errors exhausted the retry
+          // window. The tx may be PAID — RPC trouble is not evidence about
+          // the tx, so never flip to `failed_chain` here. Keep the row in
+          // `broadcast` (the attempt counter keeps climbing for
+          // observability) and log at error level; the payment confirms as
+          // soon as the RPC recovers, or fails properly once a real
+          // terminal / not-found signal appears.
+          stats.stillPending += 1;
+          logger.error(
+            "[DirectWalletPayments] verify still failing with a non-terminal error after MAX_VERIFY_ATTEMPTS — keeping payment in broadcast",
+            { paymentId: redact.paymentId(payment.id), attempts, lastError: msg },
+          );
+          await bumpVerifyAttempts();
+          continue;
+        }
+
+        if (!terminal) {
           logger.warn(
             "[DirectWalletPayments] giving up on broadcast payment after MAX_VERIFY_ATTEMPTS",
             { paymentId: redact.paymentId(payment.id), attempts, lastError: msg },

@@ -605,6 +605,25 @@ export interface ScreenCapturePluginLike extends NativePlugin {
   }): Promise<ScreenCaptureScreenshotResult>;
 }
 
+export interface TesseractWord {
+  text: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  confidence: number;
+  block: number;
+  par: number;
+  line: number;
+}
+
+export interface TesseractPluginLike extends NativePlugin {
+  recognize?: (options: {
+    image: string;
+    psm?: number;
+  }) => Promise<{ words: TesseractWord[] }>;
+}
+
 export interface WebsiteBlockerPermissionResult {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
@@ -896,6 +915,13 @@ export function getLocationPlugin(): LocationPluginLike {
 
 export function getScreenCapturePlugin(): ScreenCapturePluginLike {
   return getNativePlugin<ScreenCapturePluginLike>("ScreenCapture");
+}
+
+export function getTesseractPlugin(): TesseractPluginLike {
+  const plugins = getCapacitorPlugins();
+  return (plugins.Tesseract ??
+    plugins.ElizaTesseract ??
+    {}) as TesseractPluginLike;
 }
 
 export function getCanvasPlugin(): GenericNativePlugin {

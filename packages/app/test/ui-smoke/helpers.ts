@@ -109,16 +109,20 @@ function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
   return false;
 }
 
+// Avatar / background EXISTENCE probes: the client's `hasCustomVrm` /
+// `hasCustomBackground` issue a HEAD to `/api/avatar/vrm|background` with
+// `allowNonOk` and treat any non-ok response as "no custom asset" (falls back
+// to the default avatar/background). In the zero-key smoke stack that probe
+// legitimately answers non-2xx, which is the expected zero-state — the client
+// handles it and renders the default — not a diagnostic error.
+function isOptionalAssetProbeUrl(url: string): boolean {
+  return /\/api\/avatar\/(vrm|background)(\?|$)/.test(url);
+}
+
 function shouldIgnoreHttpError(url: string, status: number): boolean {
   if (status < 400) return true;
   if (url.startsWith("data:") || url.startsWith("blob:")) return true;
-  // Avatar / background EXISTENCE probes: the client's `hasCustomVrm` /
-  // `hasCustomBackground` issue a HEAD to `/api/avatar/vrm|background` with
-  // `allowNonOk` and treat any non-ok response as "no custom asset" (falls back
-  // to the default avatar/background). In the zero-key smoke stack that probe
-  // legitimately answers non-2xx, which is the expected zero-state — the client
-  // handles it and renders the default — not a diagnostic error.
-  if (/\/api\/avatar\/(vrm|background)(\?|$)/.test(url)) return true;
+  if (isOptionalAssetProbeUrl(url)) return true;
   return false;
 }
 
@@ -134,6 +138,12 @@ export function installPageDiagnosticsGuard(page: Page): void {
 
   page.on("console", (message) => {
     if (message.type() !== "error") return;
+    // The browser logs an automatic "Failed to load resource" console error for
+    // every non-2xx response; its text carries no URL — the resource URL is the
+    // message *location*. Skip it only for the optional-asset probes whose
+    // non-2xx answer is the expected zero-state (same contract as
+    // shouldIgnoreHttpError above); every other console.error still fails.
+    if (isOptionalAssetProbeUrl(message.location().url ?? "")) return;
     issues.push(`console.error: ${message.text()}`);
   });
 
@@ -160,6 +170,31 @@ export async function expectNoPageDiagnostics(
   expect(
     issues,
     `[playwright-ui-smoke] ${label}: expected no browser console.error/pageerror/requestfailed diagnostics; actual=${JSON.stringify(
+      issues,
+      null,
+      2,
+    )}`,
+  ).toEqual([]);
+}
+
+/**
+ * Fault-injection variant of {@link expectNoPageDiagnostics}: a spec that
+ * deliberately makes the backend fail (e.g. a 500 on POST /api/first-run to
+ * drive the error-recovery flow) allowlists exactly those diagnostics; any
+ * UNRELATED console.error/pageerror/requestfailed still fails the spec.
+ */
+export async function expectOnlyAllowedPageDiagnostics(
+  page: Page,
+  label: string,
+  allowed: RegExp[],
+): Promise<void> {
+  const issues = browserDiagnosticIssuesByPage.get(page) ?? [];
+  const unexpected = issues.filter(
+    (issue) => !allowed.some((pattern) => pattern.test(issue)),
+  );
+  expect(
+    unexpected,
+    `[playwright-ui-smoke] ${label}: diagnostics beyond the injected fault; all=${JSON.stringify(
       issues,
       null,
       2,
@@ -698,6 +733,15 @@ function smokePolymarketStatus() {
       reason: null,
       gammaApiBase: "https://gamma-api.polymarket.com",
       dataApiBase: "https://data-api.polymarket.com",
+    },
+    // Required by PolymarketStatusResponse — usePolymarketState reads
+    // `status.account.ready` before fetching positions; omitting the block
+    // made the view render a caught TypeError as its error banner.
+    account: {
+      ready: false,
+      reason:
+        "No Polymarket wallet address configured. Set POLYMARKET_WALLET_ADDRESS (or a managed EVM address) to read positions.",
+      address: null,
     },
     trading: {
       ready: false,

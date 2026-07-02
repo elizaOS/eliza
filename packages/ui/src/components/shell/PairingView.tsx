@@ -16,10 +16,10 @@ import { PairingCommandHint } from "./PairingCommandHint";
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-y-auto bg-bg px-4 py-6 font-body text-txt sm:px-6";
+/* The screen card keeps its surface scrim: it must carry its own contrast
+   over the wallpaper. Inner content is flat — no nested boxes. */
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95 ";
-const SURFACE_PANEL_CLASS =
-  "rounded-sm border border-border/50 bg-bg/40 p-4 sm:p-5";
+  "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95";
 
 export function PairingView() {
   const {
@@ -74,7 +74,7 @@ export function PairingView() {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_40%)]"
       />
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="bg-card/70 pb-6 pt-6">
+        <CardHeader className="pb-6 pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-1.5">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/80">
@@ -91,7 +91,7 @@ export function PairingView() {
               <div
                 id="pairing-code-expiry"
                 aria-live="polite"
-                className="inline-flex min-h-10 items-center rounded-sm border border-border/60 bg-bg/55 px-3 py-2 text-xs font-medium text-muted "
+                className="inline-flex min-h-10 items-center text-xs font-medium text-muted"
               >
                 {expiryText}
               </div>
@@ -106,7 +106,8 @@ export function PairingView() {
               aria-busy={pairingBusy}
               className="space-y-6"
             >
-              <div className={SURFACE_PANEL_CLASS}>
+              {/* Flat — no inner box. Whitespace separates the field group. */}
+              <div>
                 <div className="mb-3">
                   <Label
                     htmlFor="pairing-code"
@@ -183,13 +184,11 @@ export function PairingView() {
             </form>
           ) : (
             <div className="space-y-5 text-sm">
-              <div className="rounded-sm border border-border/60 bg-bg/40 px-4 py-3.5 text-muted">
-                <p className="leading-relaxed">
-                  {t("pairingview.PairingIsNotEnabl")}
-                </p>
-              </div>
+              <p className="leading-relaxed text-muted">
+                {t("pairingview.PairingIsNotEnabl")}
+              </p>
 
-              <div className={`${SURFACE_PANEL_CLASS} space-y-3`}>
+              <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
                   {t("pairingview.NextSteps")}
                 </p>

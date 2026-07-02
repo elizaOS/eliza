@@ -725,6 +725,24 @@ export class PgApprovalQueue implements ApprovalQueue {
     throw new ApprovalTransitionConflictError(id, actual.state, target);
   }
 
+  /**
+   * Lazily enforce expiry at the transition boundary (#11092): no production
+   * caller runs purgeExpired periodically, so without this check a request
+   * whose expiresAt has passed stays `pending` forever and remains approvable.
+   * A lapsed pending row is flipped to `expired` (CAS — a concurrent
+   * transition wins cleanly) and the attempted transition is refused as
+   * from-expired, the same typed error callers already handle.
+   */
+  private async refuseLapsedPending(
+    current: ApprovalRequest,
+    target: ApprovalRequestState,
+  ): Promise<void> {
+    if (current.state !== "pending" || target === "expired") return;
+    if (current.expiresAt.getTime() > Date.now()) return;
+    await this.transitionWithoutResolution(current.id, "expired");
+    throw new ApprovalStateTransitionError(current.id, "expired", target);
+  }
+
   private async transitionWithResolution(
     id: string,
     target: ApprovalRequestState,
@@ -732,6 +750,7 @@ export class PgApprovalQueue implements ApprovalQueue {
   ): Promise<ApprovalRequest> {
     const current = await this.fetchById(id);
     if (!current) throw new ApprovalNotFoundError(id);
+    await this.refuseLapsedPending(current, target);
     assertTransition(id, current.state, target);
     const now = new Date();
     // Compare-and-swap: the state guard makes the read-assert-write race-safe.
@@ -762,6 +781,7 @@ export class PgApprovalQueue implements ApprovalQueue {
   ): Promise<ApprovalRequest> {
     const current = await this.fetchById(id);
     if (!current) throw new ApprovalNotFoundError(id);
+    await this.refuseLapsedPending(current, target);
     assertTransition(id, current.state, target);
     const now = new Date();
     // Compare-and-swap: see transitionWithResolution.

@@ -126,7 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "LLM model used to simulate the user. Default is derived from "
-            "--model-tier (large → gpt-oss-120b on Cerebras)."
+            "--model-tier (large → gemma-4-31b on Cerebras)."
         ),
     )
     parser.add_argument(
@@ -342,7 +342,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             model_override
             or os.environ.get("BENCHMARK_MODEL_NAME")
             or os.environ.get("MODEL_NAME")
-            or "gpt-oss-120b"
+            or "gemma-4-31b"
         )
         client = OpenClawClient(
             provider=provider,
@@ -520,9 +520,9 @@ def _build_world_factory():
         spec = specs_by_seed.get(seed)
         if spec is not None:
             return build_world_for(spec)
-        return WorldGenerator(seed=seed, now_iso=now_iso).generate_default_world(
-            scale="small"
-        )
+        return WorldGenerator(
+            seed=seed, now_iso=now_iso, scale="small"
+        ).generate_default_world()
 
     return factory
 
