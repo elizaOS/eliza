@@ -240,7 +240,10 @@ export async function adoptRotatedCodexTokens(
     // Only adopt when the CLI's copy is NEWER than the canonical record. An
     // older materialized copy (e.g. the account was re-linked via OAuth after
     // that session ran) would clobber a fresh login with dead tokens.
-    const materializedAt = Date.parse(parsed.last_refresh ?? "");
+    const materializedAt =
+      typeof parsed.last_refresh === "string"
+        ? Date.parse(parsed.last_refresh)
+        : Number.NaN;
     if (
       !Number.isFinite(materializedAt) ||
       materializedAt <= record.updatedAt
@@ -280,7 +283,12 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   const record = loadAccount("openai-codex", accountId);
-  const refreshToken = record?.credentials.refresh ?? "";
+  const refreshToken = record?.credentials.refresh;
+  if (!refreshToken) {
+    throw new Error(
+      `openai-codex account "${accountId}" is missing a refresh token`,
+    );
+  }
   const chatgptAccountId = record?.organizationId;
   // Codex's chatgpt-mode auth loader requires `tokens.id_token`; omitting it
   // fails with "Authentication required" even when access_token is valid (an
