@@ -28,6 +28,14 @@ const eventSourceMock = vi.hoisted(() => ({
   openEventSource: vi.fn(() => ({ close: vi.fn() })),
 }));
 
+// Auth gate (#11084): the hook must stay dormant until the shared auth
+// snapshot reports an authenticated session. Mutable so tests can flip it.
+const authMock = vi.hoisted(() => ({ authenticated: true }));
+
+vi.mock("../../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => authMock.authenticated,
+}));
+
 vi.mock("../../hooks/useRuntimeMode", () => ({
   useRuntimeMode: () => runtimeModeMock.value,
 }));
@@ -89,6 +97,7 @@ beforeEach(() => {
   clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
   clientMock.getLocalInferenceHub.mockResolvedValue(emptyHub);
   eventSourceMock.openEventSource.mockClear();
+  authMock.authenticated = true;
   setRuntimeMode("local");
 });
 
@@ -138,6 +147,32 @@ describe("useHomeModelStatus", () => {
     });
     expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
     expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
+
+  // #11084 — the shell mounts this hook before the auth probe resolves; the
+  // SSE stream + hub fetch must not fire a single request until the session
+  // is authenticated, then start as soon as it flips.
+  it("stays dormant while unauthenticated, then starts once the session authenticates", async () => {
+    authMock.authenticated = false;
+
+    const { result, rerender } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("not-required");
+    });
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+
+    authMock.authenticated = true;
+    rerender();
+
+    await waitFor(() => {
+      expect(clientMock.getLocalInferenceHub).toHaveBeenCalledTimes(1);
+    });
+    expect(eventSourceMock.openEventSource).toHaveBeenCalledWith(
+      "/api/local-inference/downloads/stream",
+      { withCredentials: false },
+    );
   });
 
   it("rechecks the base before polling when startup flips to a dedicated cloud agent", async () => {
