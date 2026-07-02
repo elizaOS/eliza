@@ -3,7 +3,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { BionicHostLoader } from "./bionic-host-loader";
+import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
 
 /**
  * Real-IPC test: stand up an actual abstract-namespace AF_UNIX server (the same
@@ -69,6 +69,75 @@ function makeBundleModelPath(manifest: unknown = {}): string {
 	return path.join(bundleRoot, "text", "model.gguf");
 }
 
+describe("deriveBundleDir", () => {
+	it("returns the bundle root for the canonical text directory layout", () => {
+		const modelPath = path.join(
+			"/data",
+			"x",
+			"eliza-1",
+			"bundle",
+			"text",
+			"model.gguf",
+		);
+		expect(deriveBundleDir(modelPath)).toBe(
+			path.join("/data", "x", "eliza-1", "bundle"),
+		);
+	});
+
+	it("stages a hidden bundle view for flat Android Eliza-1 GGUFs", () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-models-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+		fs.writeFileSync(modelPath, "GGUF");
+
+		const bundleDir = deriveBundleDir(modelPath);
+		const expectedBundleDir = path.join(
+			modelsDir,
+			".bionic-bundles",
+			"eliza-1-2b-128k",
+		);
+		const stagedPath = path.join(
+			expectedBundleDir,
+			"text",
+			"eliza-1-2b-128k.gguf",
+		);
+
+		expect(bundleDir).toBe(expectedBundleDir);
+		expect(fs.existsSync(stagedPath)).toBe(true);
+		expect(fs.readFileSync(stagedPath, "utf8")).toBe("GGUF");
+	});
+
+	it("does not stage arbitrary flat GGUF files into a fused Eliza-1 bundle", () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-generic-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "flat-model.gguf");
+		fs.writeFileSync(modelPath, "GGUF");
+
+		expect(deriveBundleDir(modelPath)).toBe("");
+		expect(fs.existsSync(path.join(modelsDir, ".bionic-bundles"))).toBe(false);
+	});
+
+	it("keeps flat text-only bundle aliases behind the ASR bundle gate", async () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-text-only-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+		fs.writeFileSync(modelPath, "GGUF");
+
+		const loader = new BionicHostLoader("unused-asr-gate");
+		await loader.loadModel({ modelPath });
+
+		await expect(
+			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
+		).rejects.toThrow(/requires an active Gemma ASR-capable bundle/);
+	});
+});
+
 describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 	it("round-trips a buffered generate and returns the host completion", async () => {
 		let seen: Record<string, unknown> | null = null;
@@ -103,7 +172,7 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		});
 	});
 
-	it("forwards an empty bundleDir when the model is not in a text/ bundle", async () => {
+	it("forwards an empty bundleDir when a non-Eliza model is not in a text/ bundle", async () => {
 		let seen: Record<string, unknown> | null = null;
 		host = startHost(SOCK, (req) => {
 			seen = req;
