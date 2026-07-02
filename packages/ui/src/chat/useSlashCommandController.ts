@@ -203,12 +203,28 @@ export function useSlashCommandController(
     let cancelled = false;
     setLoading(true);
     void (async () => {
+      // Degrade to an empty catalog so the composer keeps working, but SURFACE
+      // the failure: a silently-swallowed fetch error is indistinguishable
+      // from a genuinely empty catalog (the menu just never mounts), which
+      // made #11112 needlessly hard to diagnose.
       const catalog: SlashCommandCatalogItem[] = await client
         .listCommands("gui")
-        .catch(() => []);
+        .catch((error: unknown) => {
+          console.error(
+            "[useSlashCommandController] Failed to load the slash-command catalog; slash menu will be empty",
+            error,
+          );
+          return [];
+        });
       const customActions: CustomActionDef[] = await client
         .listCustomActions()
-        .catch(() => []);
+        .catch((error: unknown) => {
+          console.error(
+            "[useSlashCommandController] Failed to load custom actions; omitting them from the slash menu",
+            error,
+          );
+          return [];
+        });
       if (cancelled) return;
       setServerCommands(catalog);
       const saved = loadSavedCustomCommands().map((c) =>
