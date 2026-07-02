@@ -908,6 +908,28 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
  * traffic still leaves normal turns alone — only requests that arrive with the
  * bench-server metadata get the tool-call boost.
  */
+/**
+ * True when the turn came from a benchmark suite that grades the reply TEXT
+ * (the standard public suite: MMLU / GSM8K / HumanEval / MT-Bench). Those
+ * turns must never hard-force a non-terminal tool call — neither via
+ * `ELIZA_BENCH_FORCE_TOOL_CALL` nor via a Stage-1 `requiresTool` vote. The
+ * Stage-1 classifier reliably over-flags hard exam questions as
+ * tool-requiring (observed live: `candidateActions: ["VIEWS"]` on
+ * abstract-algebra MCQs); forcing then makes the planner either loop into a
+ * `required_tool_misses` TrajectoryLimitExceeded apology or run a junk tool
+ * whose capture text becomes the graded reply. Planning stays on "auto" —
+ * the planner can still call a tool when one genuinely helps.
+ */
+function isTextScoredBenchmarkTurn(message: Memory): boolean {
+	const benchmark = (
+		message.content?.metadata as Record<string, unknown> | undefined
+	)?.benchmark;
+	return (
+		typeof benchmark === "string" &&
+		benchmark.trim().toLowerCase() === "standard"
+	);
+}
+
 function isBenchmarkForcingToolCall(message: Memory): boolean {
 	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
@@ -6410,7 +6432,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
 		const requireNonTerminalToolCall =
 			(stageOneNamedAToolForThisTurn || benchmarkForcingToolCall) &&
-			plannerTools.length > 0;
+			plannerTools.length > 0 &&
+			!isTextScoredBenchmarkTurn(args.message);
 		const effectivePlannerContext = requireNonTerminalToolCall
 			? appendContextEvent(plannerContextWithDecision, {
 					id: `tool-required:${messageHandlerEndedAt}`,

@@ -487,6 +487,18 @@ function repairFinishedToolTurnWithoutUserMessage(
 ): EvaluatorOutput {
 	if (typeof output.messageToUser === "string") return output;
 	if (output.success !== true || output.decision !== "FINISH") return output;
+	// Terminal-only iteration: the planner just emitted a user-facing message
+	// (pushed as the latest step) and the loop finishes with
+	// `evaluator.messageToUser ?? plannerOutput.messageToUser`. A FINISH without
+	// an evaluator message is complete there; coercing it to CONTINUE burns
+	// `terminal_only_continuations` and, after three identical planner answers,
+	// throws TrajectoryLimitExceeded and relays a generic apology instead of the
+	// planner's real answer (observed live: MMLU via the benchmark server — the
+	// planner answered "B" three times and the turn still errored).
+	const lastStep = trajectory.steps.at(-1);
+	if (lastStep?.terminalOnly && lastStep.terminalMessage?.trim()) {
+		return output;
+	}
 	const latestStep = [...trajectory.steps]
 		.reverse()
 		.find((step) => step.toolCall && step.result);

@@ -681,10 +681,23 @@ def _field_registry_tools_by_name() -> dict[str, dict[str, Any]]:
     manifest_path = Path(__file__).resolve().parents[1] / "manifests" / "actions.manifest.json"
     try:
         raw = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        # Without the manifest every tool degrades to a discriminator-only
+        # schema and schema-obedient models score ~0 — never fail silently.
+        logger.warning(
+            "actions.manifest.json unavailable at %s (%s); falling back to "
+            "discriminator-only tool schemas — expect severely degraded scores",
+            manifest_path,
+            exc,
+        )
         return {}
     actions = raw.get("actions") if isinstance(raw, dict) else None
     if not isinstance(actions, list):
+        logger.warning(
+            "actions.manifest.json at %s has no 'actions' list; falling back "
+            "to discriminator-only tool schemas",
+            manifest_path,
+        )
         return {}
     tools: dict[str, dict[str, Any]] = {}
     for tool in actions:
