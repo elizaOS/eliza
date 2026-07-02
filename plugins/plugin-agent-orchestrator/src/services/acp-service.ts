@@ -683,7 +683,9 @@ export class AcpService extends Service {
     // non-app tasks; applied only to the initial task, never to follow-up sends.
     const initialTask =
       opts.initialTask && opts.initialTask.trim().length > 0
-        ? augmentTaskWithDeployGuidance(opts.initialTask)
+        ? augmentTaskWithDeployGuidance(opts.initialTask, undefined, {
+            monetized: opts.monetized,
+          })
         : opts.initialTask;
 
     if (this.transportMode === "native") {

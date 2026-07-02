@@ -105,9 +105,13 @@ export function resolveAppDeployConfig(): AppDeployConfig {
   return { target: "eliza-cloud" };
 }
 
-function elizaCloudGuidance(task?: string): string {
+function elizaCloudGuidance(task?: string, monetized?: boolean): string {
   const lines = ["--- App Deployment (Eliza Cloud) ---"];
-  if (isMonetizedAppTask(task)) {
+  // The planner's `monetized` judgment is the primary signal (it understands
+  // "people pay $1 to chat" as monetization where a keyword regex does not);
+  // the regex remains only as a fallback so detection can never REGRESS. The
+  // signal only ever ADDS monetization detection, never removes it.
+  if (monetized === true || isMonetizedAppTask(task)) {
     lines.push(
       "START FROM THE TEMPLATE — do NOT build the Cloud SDK / registration / OAuth-proxy / Dockerfile from scratch. A complete, working, already-deployed monetized chat app is in THIS checkout at `packages/examples/cloud/edad`. Copy it as your starting point: `cp -r packages/examples/cloud/edad <your-app-dir>`, then ADAPT only the app-specific bits.",
       "- CHANGE only: `public/index.html` (the SYSTEM_PROMPT constant, the MODEL constant, the <title>/brand/meta text, the input placeholder, the TOKEN_KEY/STATE_KEY localStorage prefixes), the art in `public/` (SVGs, favicon, og-image), and the markup % you set at registration.",
@@ -129,9 +133,22 @@ function elizaCloudGuidance(task?: string): string {
   return lines.join("\n");
 }
 
-function agentHomeGuidance(config: AppDeployConfig, _task?: string): string {
+function agentHomeGuidance(
+  config: AppDeployConfig,
+  _task?: string,
+  monetized?: boolean,
+): string {
   const dir = config.agentHomeAppsDir ?? "";
   const base = config.agentHomeBaseUrl ?? "";
+  // The monetization line is a self-gating conditional by default ("if the app
+  // must earn money …"), but when the planner has JUDGED this task as monetized
+  // it becomes a firm directive — a normie "people pay $1 to chat" must not be
+  // built as a free static page. Structural: driven by the model's intent
+  // signal, not by keyword-matching the task text.
+  const monetizeLine =
+    monetized === true
+      ? "- THIS APP IS MONETIZED: it must charge per use, so a static page is NOT enough. Register it with Eliza Cloud and follow the `build-monetized-app` skill (Cloud SDK app registration → an `appId`, an inference markup, Eliza Cloud OAuth, and a same-origin proxy that forwards to `/api/v1/messages` with `x-app-id` + `x-affiliate-code` — the org-balance billing path). Start from the working reference at `packages/examples/cloud/edad`. Report the live monetized URL only after a real billed message round-trips."
+      : "- If the app must earn money / be monetized: also register it with Eliza Cloud — follow the `build-monetized-app` skill (Cloud SDK registration, an inference markup, per-call billing). Otherwise do not involve Eliza Cloud.";
   // A capability note, NOT an assertion that the current task is an app — it is
   // always available and the agent applies it by judgment. So it must stay
   // correct for a request to BUILD a new app, to EDIT an existing one, OR for a
@@ -142,7 +159,7 @@ function agentHomeGuidance(config: AppDeployConfig, _task?: string): string {
     `- Published apps are plain static files under \`${dir}/<slug>/\` (index.html plus any css/js — there is NO per-app build step), served live at \`${base}/apps/<slug>/\`.`,
     `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL.`,
     `- To EDIT an existing app: the \`<slug>\` is the app's existing folder name under \`${dir}/\` — read its files there, modify them in place, then re-open \`${base}/apps/<slug>/\` to confirm. Do not create a new slug for an edit.`,
-    "- If the app must earn money / be monetized: also register it with Eliza Cloud — follow the `build-monetized-app` skill (Cloud SDK registration, an inference markup, per-call billing). Otherwise do not involve Eliza Cloud.",
+    monetizeLine,
     "- Do NOT run `deploy.sh` (operator-only; only for a new Next.js backend route). Static apps need no build/restart.",
     "If your task is not a web app, ignore this section.",
   ].join("\n");
@@ -167,11 +184,12 @@ export function viewPluginGuidance(
 export function buildAppDeployGuidance(
   config?: AppDeployConfig,
   task?: string,
+  monetized?: boolean,
 ): string {
   const resolved = config ?? resolveAppDeployConfig();
   return resolved.target === "agent-home"
-    ? agentHomeGuidance(resolved, task)
-    : elizaCloudGuidance(task);
+    ? agentHomeGuidance(resolved, task, monetized)
+    : elizaCloudGuidance(task, monetized);
 }
 
 function isCloudDeployTarget(config: AppDeployConfig): boolean {
@@ -193,6 +211,7 @@ function extractViewPluginSourceDir(task: string): string | undefined {
 export function augmentTaskWithDeployGuidance(
   task: string,
   config?: AppDeployConfig,
+  opts?: { monetized?: boolean },
 ): string {
   // Idempotent: if a deploy block is already present, no-op.
   if (
@@ -204,6 +223,8 @@ export function augmentTaskWithDeployGuidance(
     return task;
   }
   const resolved = config ?? resolveAppDeployConfig();
+  // The planner's monetization judgment (model intent, not a keyword match).
+  const monetized = opts?.monetized === true;
   // View/plugin tasks are a distinct surface (#8918) with their own cloud-vs-local
   // sandbox contract — they are NOT hosted web apps, so they must be routed before
   // the agent-home app note (which would otherwise wrongly tell the agent to
@@ -222,10 +243,14 @@ export function augmentTaskWithDeployGuidance(
   // got no apps-dir context and could not find or edit the deployed app. Letting
   // the model decide from an always-present note is both cleaner and general.
   if (resolved.target === "agent-home") {
-    return `${task.trimEnd()}\n\n${agentHomeGuidance(resolved, task)}`;
+    return `${task.trimEnd()}\n\n${agentHomeGuidance(resolved, task, monetized)}`;
   }
-  if (!isAppBuildTask(task)) {
+  // Force the deploy contract for a monetized task even when isAppBuildTask
+  // misses it — a monetized request ("an app where people pay $1 to chat …") is
+  // by definition an app build, but its phrasing may lack a build verb. The
+  // planner's monetized signal is the structural override for that gate.
+  if (!monetized && !isAppBuildTask(task)) {
     return task;
   }
-  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(resolved, task)}`;
+  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(resolved, task, monetized)}`;
 }

@@ -733,6 +733,8 @@ async function runCreate(
       // itself; the helper is gated + idempotent so non-app tasks pass through.
       const taskWithRouteHints = augmentTaskWithDeployGuidance(
         taskWithResolvedRoute(task, route, sessionWorkdir, swarmRoomMetadata),
+        undefined,
+        { monetized: pickBoolean(params, content, "appMonetized") === true },
       );
       const session = await service.spawnSession({
         agentType,
@@ -1204,6 +1206,7 @@ async function runSpawnAgent(
       workdir: effectiveWorkdir,
       isolateWorkdir,
       initialTask: taskWithRouteHints,
+      monetized: pickBoolean(params, content, "appMonetized") === true,
       memoryContent,
       approvalPreset,
       metadata: {
@@ -3252,6 +3255,13 @@ export const tasksAction: Action & {
         "Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. Defaults to ELIZA_ACP_DEFAULT_AGENT, normally elizaos.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "appMonetized",
+      description:
+        "Set true when the user wants the app to EARN MONEY / charge for access — e.g. 'people pay $1 to chat with X', 'charge per message', 'a paid app', 'monetized', a paywall, or per-use pricing. Judge the user's INTENT, not specific keywords. When true the sub-agent gets the monetized Eliza Cloud contract (register for an appId, inference markup, OAuth + affiliate billing) instead of a free static page. Leave unset for a normal free app or non-app task.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "agents",
