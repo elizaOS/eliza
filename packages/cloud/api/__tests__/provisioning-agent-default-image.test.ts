@@ -26,6 +26,10 @@ const mockCreateAgent = mock(async () => ({
 
 const mockEnqueueAgentProvision = mock(async () => ({}));
 const mockListByOrganization = mock(async () => []);
+const mockCheckAgentCreditGate = mock(async () => ({
+  allowed: true,
+  balance: 1,
+}));
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   ...agentSandboxesActual,
@@ -45,6 +49,10 @@ mock.module("@/lib/services/eliza-app", () => ({
         : null,
     ),
   },
+}));
+
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate: mockCheckAgentCreditGate,
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({

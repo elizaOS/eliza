@@ -7,6 +7,13 @@ const requireAuthOrApiKeyWithOrg = mock(async () => ({
 const findByIdAndOrg = mock();
 const generateToken = mock(async () => "pair-token");
 const enqueueAgentProvisionOnce = mock();
+type CreditGateResult = { allowed: boolean; balance: number; error?: string };
+const checkAgentCreditGate = mock(
+  async (): Promise<CreditGateResult> => ({
+    allowed: true,
+    balance: 1,
+  }),
+);
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
 let publicBaseDomain: string | undefined = "elizacloud.ai";
 
@@ -56,6 +63,10 @@ mock.module("@/lib/services/provisioning-jobs", () => ({
   provisioningJobService: {
     enqueueAgentProvisionOnce,
   },
+}));
+
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate,
 }));
 
 mock.module("@/lib/services/provisioning-worker-health", () => ({
@@ -114,6 +125,11 @@ describe("eliza agent pairing token route", () => {
     findByIdAndOrg.mockReset();
     generateToken.mockClear();
     enqueueAgentProvisionOnce.mockClear();
+    checkAgentCreditGate.mockClear();
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: true,
+      balance: 1,
+    });
     checkProvisioningWorkerHealth.mockClear();
     publicBaseDomain = "elizacloud.ai";
   });
@@ -221,6 +237,34 @@ describe("eliza agent pairing token route", () => {
       success: false,
       code: "AGENT_WEB_UI_NOT_READY",
     });
+    expect(generateToken).not.toHaveBeenCalled();
+  });
+
+  test("blocks auto-resume with canonical 402 when credits are insufficient", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      ...runningSandbox("dedicated-lazy"),
+      status: "stopped",
+    });
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits",
+    });
+
+    const response = await postPairingToken();
+
+    expect(response.status).toBe(402);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toEqual({
+      success: false,
+      code: "insufficient_credits",
+      error: "Insufficient credits",
+      requiredBalance: 0.1,
+      currentBalance: 0,
+    });
+    expect(checkProvisioningWorkerHealth).toHaveBeenCalledTimes(1);
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
     expect(generateToken).not.toHaveBeenCalled();
   });
 });

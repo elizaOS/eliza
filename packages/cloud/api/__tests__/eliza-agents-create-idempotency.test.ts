@@ -31,10 +31,13 @@ const enqueueAgentProvision = mock(async () => ({
 }));
 const triggerImmediate = mock(async () => undefined);
 
-const checkAgentCreditGate = mock(async () => ({
-  allowed: true,
-  balance: 100,
-}));
+type CreditGateResult = { allowed: boolean; balance: number; error?: string };
+const checkAgentCreditGate = mock(
+  async (): Promise<CreditGateResult> => ({
+    allowed: true,
+    balance: 100,
+  }),
+);
 const checkProvisioningWorkerHealth = mock(async () => ({ ok: true }));
 const prepareManagedElizaEnvironment = mock(async () => ({
   changed: false,
@@ -207,7 +210,8 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     });
 
     expect(res.status).toBe(402);
-    expect(await res.json()).toEqual({
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toEqual({
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits. Please add funds.",

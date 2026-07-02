@@ -216,7 +216,8 @@ describe("coding containers route", () => {
     );
 
     expect(response.status).toBe(402);
-    expect(await response.json()).toEqual({
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toEqual({
       success: false,
       code: "insufficient_credits",
       error: "Insufficient credits",
