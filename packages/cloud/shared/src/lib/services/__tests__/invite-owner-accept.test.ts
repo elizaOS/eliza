@@ -148,6 +148,11 @@ async function orgExists(orgId: string): Promise<boolean> {
   return rows.rows.length > 0;
 }
 
+async function appExists(appId: string): Promise<boolean> {
+  const rows = await dbWrite.execute(`SELECT id FROM apps WHERE id = '${appId}';`);
+  return rows.rows.length > 0;
+}
+
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
@@ -287,6 +292,46 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
       expect((conversationRows.rows[0] as { organization_id: string }).organization_id).toBe(
         seeded.inviterOrgId,
       );
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "vacated org is not deleted if real state appears after the user move",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario({ invitedRole: "member" });
+      const racedAppId = uid();
+
+      const { usersService } = await import("../users");
+      const originalUpdate = usersService.update;
+      let injected = false;
+      usersService.update = mock(async (id, data) => {
+        const updated = await originalUpdate.call(usersService, id, data);
+        if (id === seeded.inviteeUserId && !injected) {
+          injected = true;
+          await dbWrite.insert(schemas.apps).values({
+            id: racedAppId,
+            organization_id: seeded.inviteeOrgId,
+            created_by_user_id: seeded.inviteeUserId,
+            name: "race app",
+            slug: `race-${seeded.inviteeOrgId}`,
+            app_url: "https://example.com",
+          });
+        }
+        return updated;
+      }) as typeof usersService.update;
+
+      try {
+        const accepted = await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
+
+        expect(accepted.status).toBe("accepted");
+        expect((await readUser(seeded.inviteeUserId)).organization_id).toBe(seeded.inviterOrgId);
+        expect(await orgExists(seeded.inviteeOrgId)).toBe(true);
+        expect(await appExists(racedAppId)).toBe(true);
+      } finally {
+        usersService.update = originalUpdate;
+      }
     },
     PGLITE_TIMEOUT,
   );
