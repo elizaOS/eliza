@@ -158,7 +158,9 @@ jobs:
             # overlapping runs are expected; without this they would interleave
             # git clean/bun install/systemctl restart on the same checkout.
             exec 9>/tmp/eliza-apps-worker-deploy.lock
-            flock -w 900 9 || { echo "::error::another apps-worker deploy holds the host lock after 15m"; exit 1; }
+            # 540s keeps the lock wait under this step's 10m command_timeout so
+            # a starved waiter fails with THIS message, not an opaque SSH kill.
+            flock -w 540 9 || { echo "::error::another apps-worker deploy holds the host lock after 9m"; exit 1; }
             echo "=== Deploying eliza-apps-worker (branch: $DEPLOY_BRANCH) ==="
 
             cd /opt/eliza
