@@ -203,3 +203,71 @@ CEREBRAS_API_KEY=... PYTHONPATH=packages python3 -m benchmarks.orchestrator run 
 python3 -m benchmarks.orchestrator review-package \
   --out-dir <evidence>/review-package --reviewed-by "<you>" --reviewer-note "..." --skip-runtime-gates
 ```
+
+---
+
+## 2026-07-02 — multi-harness comparability revalidation on gemma-4-31b (#10199 / #10193)
+
+Follow-up to the eliza-harness re-baseline above: the two **required** non-eliza
+real harnesses (**hermes**, **openclaw**) were run on `gemma-4-31b` (Cerebras)
+alongside eliza with **identical `extra_config`** per benchmark, so the
+orchestrator comparison signatures match and the cross-harness comparability
+gate can evaluate them. This unblocks the comparability contract for the
+model-comparable core that the section above had deferred. Reviewed rows live in
+`benchmark_results/latest/` (gitignored); the packaged scorecard + manifest are
+under `.github/issue-evidence/10199-gemma-4-31b-cutover/review-package-multiharness/`.
+
+| benchmark | eliza | hermes | openclaw | samples | comparable (≤0.08) |
+| --- | --- | --- | --- | --- | --- |
+| bfcl | 1.00 | 1.00 | 1.00 | multiple+parallel ×4 | ✅ |
+| action-calling | 1.00 | 1.00 | 1.00 | 12 | ✅ |
+| gsm8k | 0.95 | 0.975 | 0.975 | 40 | ✅ (spread 0.025) |
+| mmlu | 0.725 | 0.80 | 0.80 | 40 | ✅ (spread 0.075) |
+| humaneval | 0.40 | 1.00 | 1.00 | 20 | ❌ runtime-pipeline gap (below) |
+
+`review-package --include-benchmarks mmlu,gsm8k,bfcl,action-calling
+--skip-runtime-gates` → **status `ok`** (readiness findings 0, 12 comparable
+rows across eliza/hermes/openclaw, artifact offenders 0).
+
+Findings:
+
+- **hermes/openclaw run on gemma-4-31b via the in-process openai-compatible
+  path** (no hermes-agent / openclaw venv needed). The **eliza** harness needed
+  `@elizaos/plugin-openai` built (`dist/node/index.node.js`) so the runtime
+  loads a model provider — otherwise the TS bench server boots with
+  `Model handlers: {}` and every turn defers with "no LLM provider configured"
+  (scores 0.0). Building the plugin fixed it.
+- **action-calling hermes** was fixed to default to the venv-free `in_process`
+  bridge; it had hard-defaulted to the one-shot subprocess mode, which needs
+  `~/.eliza/agents/hermes-agent-src/.venv` (absent) — see `action-calling/cli.py`.
+- **humaneval is the one non-comparable core cell.** The eliza AgentRuntime
+  Stage-1 reply heuristic (`isUnusableStage1Reply`,
+  `packages/core/src/services/message.ts`) defers ~60% of gemma-4-31b code turns
+  to "I'm not sure how to answer that.", so eliza (0.40) measures the runtime
+  reply pipeline, not the raw model that hermes/openclaw (1.00) call directly.
+  This is a runtime-pipeline gap, **not** a harness-availability or model gap.
+- **smithers** stays infra-gated here: the smithers harness needs
+  `smithers-orchestrator` installed at
+  `~/.eliza/agents/smithers/<version>/node_modules/`, absent in this
+  environment. smithers is deliberately not in `CANONICAL_REAL_HARNESSES`, so it
+  is not required for the comparability gate.
+- **HITL multi-account codex/gpt-5.5 runner** remains credential-gated: 0
+  materialized `CODEX_HOME` accounts (`<stateDir>/auth/_codex-home/`), and the
+  runner needs ≥2 OAuth-authenticated Codex/ChatGPT accounts with gpt-5.5
+  entitlement. The scaffolding (`codex-adapter`, account discovery, `review`
+  wrapper) is present and offline-verified; the model run has no offline
+  substitute (see `docs/HITL_MULTI_CODEX_RUNBOOK.md`).
+
+Reproduce:
+
+```bash
+cd packages/benchmarks
+EX='{"per_benchmark":{"mmlu":{"limit":40,"max_tokens":2048},"gsm8k":{"limit":40,"max_tokens":2048},"bfcl":{"categories":["multiple","parallel"],"max_per_category":4},"action-calling":{"max_examples":12,"max_new_tokens":512}}}'
+CEREBRAS_API_KEY=... HERMES_MODE=in_process PYTHONPATH=packages python3 -m benchmarks.orchestrator run \
+  --benchmarks mmlu gsm8k bfcl action-calling --harnesses eliza hermes openclaw \
+  --provider cerebras --model gemma-4-31b --force --extra "$EX"
+PYTHONPATH=packages python3 -m benchmarks.orchestrator review-package \
+  --out-dir <evidence>/review-package-multiharness --reviewed-by "<you>" \
+  --reviewer-note "..." --skip-runtime-gates \
+  --include-benchmarks mmlu,gsm8k,bfcl,action-calling
+```
