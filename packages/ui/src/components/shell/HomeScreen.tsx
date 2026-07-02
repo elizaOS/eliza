@@ -234,6 +234,10 @@ export function HomeScreen({
           // the content and left a large empty band above the dashboard. Just a
           // small gutter — the notch is already cleared by the root.
           "px-4",
+          // Reserve the notification pull-strip band at the very top so resting
+          // content isn't tap-shadowed by the invisible pull-zone button (same
+          // height math as the strip in the pull zone below).
+          "pt-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)]",
           // Clear the floating chat composer at the bottom.
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
         )}
